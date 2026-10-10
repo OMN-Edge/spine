@@ -1,0 +1,41 @@
+{
+  "name": "spine-server",
+  "version": "1.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc && cp src/store/sqlite/schema.sql dist/store/sqlite/schema.sql",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "cli": "node --env-file=../.env dist/cli.js"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^9.4.0",
+    "@fastify/multipart": "^8.3.0",
+    "@fastify/rate-limit": "^9.1.0",
+    "@fastify/session": "^10.9.0",
+    "@fastify/static": "^7.0.4",
+    "@langchain/anthropic": "^1.5.12",
+    "@langchain/core": "^1.2.17",
+    "@langchain/google-vertexai": "^2.3.2",
+    "@node-rs/argon2": "^2.2.2",
+    "better-sqlite3": "^13.0.3",
+    "fastify": "^4.28.0",
+    "uuid": "^10.0.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^20.14.0",
+    "@types/uuid": "^10.0.0",
+    "@vitest/coverage-v8": "^2.0.0",
+    "tsx": "^4.15.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  }
+}

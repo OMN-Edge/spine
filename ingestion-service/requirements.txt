@@ -1,0 +1,5 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+unstructured[pdf]==0.15.0
+# Optional: uncomment for PaddleOCR (requires custom Dockerfile build)
+# unstructured-paddleocr==0.0.4

@@ -1,0 +1,189 @@
+import { pathToFileURL } from 'url';
+import { v4 as uuidv4 } from 'uuid';
+import { getStore } from './store/index.js';
+import { RESET_TTL_MS, deleteAccount, describeAccount, issueUserToken, resetLink } from './accounts.js';
+import {
+  checkPasswordPolicy,
+  generatePassword,
+  hashPassword,
+  isPlausibleEmail,
+  normaliseEmail,
+} from './passwords.js';
+
+/**
+ * Operator commands. Accounts are created here, not through the web app: there is
+ * no open signup yet, and an instance with no mailer has no other way in.
+ *
+ *   npm run cli -- create-user <email> [--password-stdin]
+ *   npm run cli -- set-password <email> [--password-stdin]
+ *   npm run cli -- reset-link <email> [--hours N]
+ *   npm run cli -- delete-user <email> [--yes]
+ *   npm run cli -- list-users
+ *
+ * Without --password-stdin a password is generated and printed once. It is never
+ * stored anywhere readable and cannot be shown again.
+ */
+
+export interface CliIo {
+  out(line: string): void;
+  err(line: string): void;
+  /** First line of standard input, for --password-stdin. */
+  readPassword(): Promise<string>;
+}
+
+const USAGE = `usage:
+  create-user <email> [--password-stdin]
+  set-password <email> [--password-stdin]
+  reset-link <email> [--hours N]
+  delete-user <email> [--yes]
+  list-users`;
+
+async function choosePassword(flags: string[], io: CliIo): Promise<{ password: string; generated: boolean }> {
+  if (flags.includes('--password-stdin')) {
+    return { password: (await io.readPassword()).replace(/\r?\n$/, ''), generated: false };
+  }
+  return { password: generatePassword(), generated: true };
+}
+
+/** Returns the process exit code. */
+export async function runCli(args: string[], io: CliIo): Promise<number> {
+  const [command, ...rest] = args;
+  const flags = rest.filter(arg => arg.startsWith('--'));
+  const positional = rest.filter(arg => !arg.startsWith('--'));
+  const store = getStore();
+
+  switch (command) {
+    case 'create-user': {
+      const email = normaliseEmail(positional[0] ?? '');
+      if (!isPlausibleEmail(email)) {
+        io.err('create-user needs a valid email address');
+        return 2;
+      }
+      if (await store.users.findByEmail(email)) {
+        io.err(`an account for ${email} already exists`);
+        return 1;
+      }
+
+      const { password, generated } = await choosePassword(flags, io);
+      const problem = checkPasswordPolicy(password);
+      if (problem) {
+        io.err(problem);
+        return 1;
+      }
+
+      await store.users.create({
+        id: uuidv4(),
+        email,
+        passwordHash: await hashPassword(password),
+        createdAt: new Date().toISOString(),
+        // The operator vouches for the address, so there is nothing to confirm.
+        verifiedAt: new Date().toISOString(),
+      });
+
+      io.out(`created ${email}`);
+      if (generated) io.out(`password (shown once): ${password}`);
+      return 0;
+    }
+
+    case 'set-password': {
+      const email = normaliseEmail(positional[0] ?? '');
+      const user = await store.users.findByEmail(email);
+      if (!user) {
+        io.err(`no account for ${email}`);
+        return 1;
+      }
+
+      const { password, generated } = await choosePassword(flags, io);
+      const problem = checkPasswordPolicy(password);
+      if (problem) {
+        io.err(problem);
+        return 1;
+      }
+
+      await store.users.setPassword(user.id, await hashPassword(password));
+      io.out(`password changed for ${email}; their other sessions are signed out`);
+      if (generated) io.out(`password (shown once): ${password}`);
+      return 0;
+    }
+
+    case 'reset-link': {
+      const email = normaliseEmail(positional[0] ?? '');
+      const user = await store.users.findByEmail(email);
+      if (!user) {
+        io.err(`no account for ${email}`);
+        return 1;
+      }
+
+      // Works without a mailer, which is the point: this is how an instance that
+      // sends no mail recovers an account. Single-use, like the emailed kind.
+      const hoursFlag = flags.find(flag => flag.startsWith('--hours='));
+      const hours = hoursFlag ? Number(hoursFlag.split('=')[1]) : 1;
+      if (!Number.isFinite(hours) || hours <= 0 || hours > 72) {
+        io.err('--hours must be between 0 and 72');
+        return 2;
+      }
+
+      const token = await issueUserToken(user.id, 'reset', hours === 1 ? RESET_TTL_MS : hours * 3_600_000);
+      io.out(`one-time link for ${email}, valid ${hours} hour${hours === 1 ? '' : 's'}:`);
+      io.out(resetLink(token));
+      return 0;
+    }
+
+    case 'delete-user': {
+      const email = normaliseEmail(positional[0] ?? '');
+      const user = await store.users.findByEmail(email);
+      if (!user) {
+        io.err(`no account for ${email}`);
+        return 1;
+      }
+
+      const held = await describeAccount(user.id);
+      if (!flags.includes('--yes')) {
+        io.err(
+          `${email} owns ${held.uploads} upload(s) and ${held.documents} document(s). ` +
+            'Deleting removes them, their files and their share links, and cannot be undone. ' +
+            'Run again with --yes to do it.',
+        );
+        return 1;
+      }
+
+      await deleteAccount(user.id);
+      io.out(`deleted ${email}: ${held.uploads} upload(s), ${held.documents} document(s)`);
+      io.out('database snapshots already taken still hold the rows until they are pruned');
+      return 0;
+    }
+
+    case 'list-users': {
+      const users = await store.users.list();
+      if (users.length === 0) io.out('no accounts');
+      for (const user of users) {
+        const status = user.email_verified_at ? '' : '\tUNVERIFIED';
+        io.out(`${user.email}\tcreated ${user.created_at}${status}`);
+      }
+      return 0;
+    }
+
+    default:
+      io.err(USAGE);
+      return 2;
+  }
+}
+
+async function readStdinLine(): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) {
+    chunks.push(chunk as Buffer);
+    if (chunk.includes(10)) break;
+  }
+  return Buffer.concat(chunks).toString('utf8').split('\n')[0] ?? '';
+}
+
+// Only when executed directly, so importing this in a test does not run it.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const code = await runCli(process.argv.slice(2), {
+    out: line => console.log(line),
+    err: line => console.error(line),
+    readPassword: readStdinLine,
+  });
+  process.exit(code);
+}

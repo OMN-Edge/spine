@@ -1,0 +1,11 @@
+[Unit]
+Description=Spine — daily backup
+
+[Timer]
+OnCalendar=daily
+# The Pi is not on at a fixed time, so catch up after a boot that missed one.
+Persistent=true
+RandomizedDelaySec=15m
+
+[Install]
+WantedBy=timers.target

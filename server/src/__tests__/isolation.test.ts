@@ -1,0 +1,436 @@
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
+import { mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import path from 'path';
+import { v4 as uuidv4 } from 'uuid';
+import { buildTestApp, loginAs, routesOf } from './helpers/app.js';
+import {
+  OWNER_ID,
+  createTestUser,
+  seedDocument,
+  seedPage,
+  seedShareLink,
+  seedSourceFile,
+} from './helpers/seed.js';
+import { getStore } from '../store/index.js';
+import { hashShareToken } from '../share-token.js';
+
+/**
+ * SECURITY.md P12 / M-1: one user must never read, change or enumerate another's
+ * records, by any route.
+ *
+ * Written before the filtering existed, so the first run is the proof that these
+ * fail when isolation is missing. Every assertion is made as user B against data
+ * that belongs to user A.
+ *
+ * Responses for a record B does not own are 404, not 403: the same answer as for
+ * a record that does not exist, so B cannot probe for what A has.
+ */
+
+const mockStartJob = vi.hoisted(() => vi.fn());
+vi.mock('../ingestion/pipeline.js', () => ({
+  startIngestionJob: mockStartJob,
+  getJobStatus: vi.fn().mockReturnValue(null),
+  reconcileStalledJobs: vi.fn().mockResolvedValue(0),
+}));
+
+let app: Awaited<ReturnType<typeof buildTestApp>>;
+let cookieA: string;
+let cookieB: string;
+let B: { id: string; email: string };
+let tmp: string;
+
+// What A owns
+let docA: string;
+let fileA: string;
+let pageA: string;
+let linkA: string;
+let tokenA: string;
+let tagLinkA: string;
+let tagTokenA: string;
+let checksumA: string;
+
+// What B owns
+let docB: string;
+let tokenB: string;
+
+// One plain word: FTS5 reads a hyphen as a column filter and rejects the query.
+const SECRET = 'zebrafish';
+
+beforeAll(async () => {
+  tmp = mkdtempSync(path.join(tmpdir(), 'spine-isolation-'));
+  // Open registration, so the signup routes are registered and checked too.
+  app = await buildTestApp({ accounts: { registration: 'open' } });
+  B = await createTestUser('bee@spine.test');
+  cookieA = await loginAs(app);
+  cookieB = await loginAs(app, B.email);
+
+  const store = getStore();
+
+  // --- A's records ---------------------------------------------------------
+  checksumA = uuidv4();
+  fileA = await seedSourceFile({ userId: OWNER_ID, status: 'done', checksum: checksumA });
+
+  const imagePath = path.join(tmp, 'a-page.png');
+  writeFileSync(imagePath, Buffer.from('not-really-a-png'));
+  pageA = await seedPage(fileA, { userId: OWNER_ID, imagePath });
+
+  const a = await seedDocument({
+    userId: OWNER_ID,
+    sourceFileId: fileA,
+    withPage: false,
+    provider: 'Secret Clinic',
+    aiSummary: `A's note about the ${SECRET}`,
+    tags: ['cardiology', 'a-only-tag'],
+  });
+  docA = a.id;
+  await store.fields.create(OWNER_ID, {
+    id: uuidv4(), documentId: docA, pageId: pageA, label: 'diagnosis',
+    value: 'a-private-diagnosis', sourceSnippet: null, bbox: null, confidence: 0.9,
+  });
+
+  tokenA = 'token-a-all-' + uuidv4();
+  linkA = await seedShareLink({ userId: OWNER_ID, tokenHash: hashShareToken(tokenA), scope: 'all' });
+  tagTokenA = 'token-a-tag-' + uuidv4();
+  tagLinkA = await seedShareLink({
+    userId: OWNER_ID, tokenHash: hashShareToken(tagTokenA),
+    scope: 'tag', scopeValue: JSON.stringify('cardiology'),
+  });
+
+  // --- B's records, sharing a tag name with A on purpose ---------------------
+  const b = await seedDocument({
+    userId: B.id, provider: 'Other Clinic', aiSummary: "B's own note", tags: ['cardiology'],
+  });
+  docB = b.id;
+  tokenB = 'token-b-all-' + uuidv4();
+  await seedShareLink({ userId: B.id, tokenHash: hashShareToken(tokenB), scope: 'all' });
+});
+
+afterAll(async () => {
+  await app.close();
+  rmSync(tmp, { recursive: true, force: true });
+});
+
+const asB = (method: 'GET' | 'POST' | 'PATCH' | 'DELETE', url: string, payload?: unknown) =>
+  app.inject({ method, url, headers: { cookie: cookieB }, payload: payload as object | undefined });
+
+const asA = (method: 'GET' | 'POST' | 'PATCH' | 'DELETE', url: string, payload?: unknown) =>
+  app.inject({ method, url, headers: { cookie: cookieA }, payload: payload as object | undefined });
+
+const ids = (res: { json(): unknown }) => (res.json() as Array<{ id: string }>).map(r => r.id);
+
+// ---------------------------------------------------------------------------
+
+describe('P1 — deny by default', () => {
+  /**
+   * Every route the app registers must refuse an unauthenticated request, except
+   * these, which are public on purpose. A route added to the wrong file is public
+   * silently, so this fails when someone does that.
+   */
+  const PUBLIC = new Set([
+    'POST /api/auth/login',
+    'POST /api/auth/logout',
+    'GET /api/auth/me',
+    'GET /api/auth/options',
+    'POST /api/auth/register',
+    'POST /api/auth/verify',
+    'POST /api/auth/resend-verification',
+    'POST /api/auth/forgot',
+    'POST /api/auth/reset',
+    'GET /share/:token',
+    'GET /api/share/:token/documents',
+  ]);
+
+  it('refuses every other route without a session', async () => {
+    const routes = routesOf.get(app)!;
+    expect(routes.length).toBeGreaterThan(10);
+
+    const open: string[] = [];
+    for (const route of routes) {
+      if (PUBLIC.has(`${route.method} ${route.url}`)) continue;
+      const res = await app.inject({
+        method: route.method as 'GET',
+        url: route.url.replace(/:[a-z_]+/g, 'x'),
+      });
+      if (res.statusCode !== 401) open.push(`${route.method} ${route.url} -> ${res.statusCode}`);
+    }
+    expect(open).toEqual([]);
+  });
+});
+
+describe('reading — B cannot see A’s records', () => {
+  it('does not list A’s source files', async () => {
+    const res = await asB('GET', '/api/source-files');
+    expect(ids(res)).not.toContain(fileA);
+  });
+
+  it('answers 404 for A’s source file status', async () => {
+    expect((await asB('GET', `/api/source-files/${fileA}/status`)).statusCode).toBe(404);
+  });
+
+  it('does not list A’s documents', async () => {
+    const res = await asB('GET', '/api/documents');
+    expect(ids(res)).not.toContain(docA);
+    expect(ids(res)).toContain(docB);
+  });
+
+  it('does not return A’s documents from a full-text search (M-2)', async () => {
+    const mine = await asA('GET', `/api/documents?q=${SECRET}`);
+    expect(ids(mine)).toContain(docA); // the index does contain it
+
+    const theirs = await asB('GET', `/api/documents?q=${SECRET}`);
+    expect(ids(theirs)).not.toContain(docA);
+  });
+
+  it('does not return A’s documents when filtering by a tag name both use', async () => {
+    const res = await asB('GET', '/api/documents?tag=cardiology');
+    expect(ids(res)).toEqual([docB]);
+  });
+
+  it('does not return A’s documents when filtering by provider', async () => {
+    expect(ids(await asB('GET', '/api/documents?provider=Secret'))).toEqual([]);
+  });
+
+  it('answers 404 for A’s document, with the same body as one that does not exist', async () => {
+    const theirs = await asB('GET', `/api/documents/${docA}`);
+    const missing = await asB('GET', `/api/documents/${uuidv4()}`);
+
+    expect(theirs.statusCode).toBe(404);
+    expect(theirs.json()).toEqual(missing.json());
+  });
+
+  it('answers 404 for A’s page image', async () => {
+    expect((await asB('GET', `/api/pages/${pageA}/image`)).statusCode).toBe(404);
+  });
+
+  it('does not list A’s tags, and gives B their own', async () => {
+    const names = (await asB('GET', '/api/tags')).json() as Array<{ name: string }>;
+    expect(names.map(t => t.name)).not.toContain('a-only-tag');
+    expect(names.map(t => t.name)).toContain('cardiology');
+
+    // Per-user vocabulary: B's 'cardiology' is a different row from A's.
+    const tagIdsA = ((await asA('GET', '/api/tags')).json() as Array<{ id: number; name: string }>)
+      .filter(t => t.name === 'cardiology').map(t => t.id);
+    const tagIdsB = (await asB('GET', '/api/tags')).json() as Array<{ id: number; name: string }>;
+    expect(tagIdsB.filter(t => t.name === 'cardiology').map(t => t.id)).not.toEqual(tagIdsA);
+  });
+
+  it('does not list A’s share links', async () => {
+    const res = await asB('GET', '/api/share-links');
+    expect(ids(res)).not.toContain(linkA);
+    expect(ids(res)).not.toContain(tagLinkA);
+  });
+});
+
+describe('writing — B cannot change A’s records', () => {
+  it('cannot PATCH A’s document', async () => {
+    const res = await asB('PATCH', `/api/documents/${docA}`, { provider: 'Hijacked', user_notes: 'x' });
+    expect(res.statusCode).toBe(404);
+
+    const doc = await getStore().documents.findFor(OWNER_ID, docA);
+    expect(doc?.provider).toBe('Secret Clinic');
+    expect(doc?.user_notes).toBeNull();
+  });
+
+  it('cannot retag A’s document through a PATCH', async () => {
+    await asB('PATCH', `/api/documents/${docA}`, { tags: ['planted'] });
+    const tags = await getStore().tags.namesForDocument(OWNER_ID, docA);
+    expect(tags).not.toContain('planted');
+    expect(tags).toContain('a-only-tag');
+  });
+
+  it('cannot split A’s document', async () => {
+    const before = await getStore().documents.findFor(OWNER_ID, docA);
+    const res = await asB('POST', `/api/documents/${docA}/boundary`, { action: 'split', at_page: 1 });
+    expect(res.statusCode).toBe(404);
+    expect(await getStore().documents.findFor(OWNER_ID, docA)).toEqual(before);
+  });
+
+  it('cannot merge A’s document into one of B’s', async () => {
+    const res = await asB('POST', `/api/documents/${docB}/boundary`, {
+      action: 'merge', with_document_id: docA,
+    });
+    expect(res.statusCode).toBe(404);
+    expect(await getStore().documents.findFor(OWNER_ID, docA)).not.toBeNull();
+    expect(await getStore().fields.listForDocument(OWNER_ID, docA)).toHaveLength(1);
+  });
+
+  it('cannot merge one of B’s documents into A’s', async () => {
+    const res = await asB('POST', `/api/documents/${docA}/boundary`, {
+      action: 'merge', with_document_id: docB,
+    });
+    expect(res.statusCode).toBe(404);
+    expect(await getStore().documents.findFor(B.id, docB)).not.toBeNull();
+  });
+
+  it('cannot revoke A’s share link', async () => {
+    const res = await asB('DELETE', `/api/share-links/${linkA}`);
+    expect(res.statusCode).toBe(404);
+
+    const stillWorks = await app.inject({ method: 'GET', url: `/api/share/${tokenA}/documents` });
+    expect(stillWorks.statusCode).toBe(200);
+  });
+
+  it('does not treat B’s upload of the same bytes as a duplicate of A’s', async () => {
+    const boundary = 'IsolationBoundary';
+    const bytes = Buffer.from('identical scan bytes');
+    const body = Buffer.concat([
+      Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="files"; filename="s.pdf"\r\n` +
+        `Content-Type: application/pdf\r\n\r\n`,
+      ),
+      bytes,
+      Buffer.from(`\r\n--${boundary}--`),
+    ]);
+    const headers = (cookie: string) => ({
+      cookie, 'content-type': `multipart/form-data; boundary=${boundary}`,
+    });
+
+    const first = await app.inject({ method: 'POST', url: '/api/source-files/upload', headers: headers(cookieA), payload: body });
+    const aId = (first.json() as Array<{ id: string }>)[0].id;
+
+    const second = await app.inject({ method: 'POST', url: '/api/source-files/upload', headers: headers(cookieB), payload: body });
+    const result = (second.json() as Array<Record<string, unknown>>)[0];
+
+    // Reporting "duplicate of <A's id>" would tell B that A holds this file.
+    expect(result.skipped).toBeUndefined();
+    expect(result.existing_id).toBeUndefined();
+    expect(result.id).not.toBe(aId);
+  });
+});
+
+describe('sharing (M-5, P12)', () => {
+  it('refuses a link naming a document B does not own', async () => {
+    const res = await asB('POST', '/api/share-links', {
+      scope: 'document_ids', scope_value: [docB, docA],
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('refuses a link naming only documents that do not exist', async () => {
+    const res = await asB('POST', '/api/share-links', {
+      scope: 'document_ids', scope_value: [uuidv4()],
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('accepts a link naming B’s own documents', async () => {
+    const res = await asB('POST', '/api/share-links', {
+      scope: 'document_ids', scope_value: [docB],
+    });
+    expect(res.statusCode).toBe(201);
+  });
+
+  it('gives each link only its owner’s documents, even with scope "all"', async () => {
+    const a = await app.inject({ method: 'GET', url: `/api/share/${tokenA}/documents` });
+    const b = await app.inject({ method: 'GET', url: `/api/share/${tokenB}/documents` });
+
+    expect(ids(a)).toContain(docA);
+    expect(ids(a)).not.toContain(docB);
+    expect(ids(b)).toContain(docB);
+    expect(ids(b)).not.toContain(docA);
+  });
+
+  it('scopes a tag link to its owner’s documents when both use the tag', async () => {
+    const res = await app.inject({ method: 'GET', url: `/api/share/${tagTokenA}/documents` });
+    expect(ids(res)).toEqual([docA]);
+  });
+
+  it('keeps each owner’s access log to their own links', async () => {
+    await app.inject({ method: 'GET', url: `/api/share/${tokenA}/documents` });
+    expect(await getStore().shareLinks.accessLogFor(B.id, linkA)).toEqual([]);
+    expect((await getStore().shareLinks.accessLogFor(OWNER_ID, linkA)).length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * The same properties one layer down. A route can be correct while the repository
+ * is not — a second caller, or a refactor, would find that out the hard way — so
+ * every method that takes a user id is shown to honour it.
+ */
+describe('store — every method honours the acting user', () => {
+  it('reads return nothing for a record the user does not own', async () => {
+    const store = getStore();
+
+    expect(await store.sourceFiles.findFor(B.id, fileA)).toBeNull();
+    expect(await store.sourceFiles.findByChecksumFor(B.id, checksumA)).toBeNull();
+    expect((await store.sourceFiles.listFor(B.id)).map(f => f.id)).not.toContain(fileA);
+
+    expect(await store.documents.findFor(B.id, docA)).toBeNull();
+    expect(await store.fields.listForDocument(B.id, docA)).toEqual([]);
+    expect(await store.tags.namesForDocument(B.id, docA)).toEqual([]);
+
+    expect(await store.pages.listForSourceFile(B.id, fileA)).toEqual([]);
+    expect(await store.pages.listForDocument(B.id, docA)).toEqual([]);
+    expect(await store.pages.findGroundingContext(B.id, pageA)).toBeNull();
+    expect(await store.pages.findImagePathFor(B.id, pageA)).toBeNull();
+  });
+
+  it('writes change nothing for a record the user does not own', async () => {
+    const store = getStore();
+    const before = await store.documents.findFor(OWNER_ID, docA);
+    const fileBefore = await store.sourceFiles.findFor(OWNER_ID, fileA);
+
+    await store.documents.update(B.id, docA, { provider: 'x', reviewed: true });
+    await store.documents.setPageEnd(B.id, docA, 99);
+    await store.documents.delete(B.id, docA);
+    await store.tags.setForDocument(B.id, docA, ['planted']);
+    await store.tags.removeAllForDocument(B.id, docA);
+    await store.fields.reassignDocument(B.id, docA, docB);
+    await store.sourceFiles.setStatus(B.id, fileA, 'error', 'x');
+    await store.sourceFiles.setPageCount(B.id, fileA, 99);
+    await store.shareLinks.revoke(B.id, linkA);
+
+    expect(await store.documents.findFor(OWNER_ID, docA)).toEqual(before);
+    expect(await store.sourceFiles.findFor(OWNER_ID, fileA)).toEqual(fileBefore);
+    expect(await store.tags.namesForDocument(OWNER_ID, docA)).toContain('a-only-tag');
+    expect(await store.fields.listForDocument(OWNER_ID, docA)).toHaveLength(1);
+    const links = await store.shareLinks.listFor(OWNER_ID);
+    expect(links.find(l => l.id === linkA)?.revoked).toBeFalsy();
+  });
+
+  it('a listing for B never contains a row owned by A', async () => {
+    const store = getStore();
+    const docs = await store.documents.listFor(B.id, { limit: 100, offset: 0 });
+    expect(docs.every(d => d.id === docB || d.id !== docA)).toBe(true);
+    expect(docs.map(d => d.id)).not.toContain(docA);
+
+    expect((await store.shareLinks.listFor(B.id)).map(l => l.id)).not.toContain(linkA);
+  });
+
+  it('a create that names someone else’s record throws and inserts nothing', async () => {
+    const store = getStore();
+
+    await expect(store.documents.create(B.id, {
+      id: uuidv4(), sourceFileId: fileA, pageStart: 1, pageEnd: 1,
+    })).rejects.toThrow(/not found for this user/);
+
+    await expect(store.pages.create(B.id, {
+      id: uuidv4(), sourceFileId: fileA, pageNumber: 9, imagePath: '/tmp/x.png',
+      imageWidth: 1, imageHeight: 1, rawText: null, elements: [],
+      extractionSource: null, isContinuation: null,
+      continuationConfidence: null, continuationReasoning: null,
+    })).rejects.toThrow(/not found for this user/);
+
+    // Attaching B's field to A's document — or A's page to B's document.
+    await expect(store.fields.create(B.id, {
+      id: uuidv4(), documentId: docA, pageId: pageA, label: 'x', value: 'y',
+      sourceSnippet: null, bbox: null, confidence: null,
+    })).rejects.toThrow(/not found for this user/);
+
+    expect(await store.fields.listForDocument(OWNER_ID, docA)).toHaveLength(1);
+    expect(await store.pages.listForSourceFile(OWNER_ID, fileA)).toHaveLength(1);
+  });
+
+  it('moving fields onto a document the user does not own does nothing', async () => {
+    const store = getStore();
+    // B's own document as the source, A's as the target.
+    await store.fields.reassignDocument(B.id, docB, docA);
+    expect(await store.fields.listForDocument(OWNER_ID, docA)).toHaveLength(1);
+  });
+
+  it('refuses to run without an acting user, rather than matching nothing quietly', async () => {
+    await expect(getStore().documents.listFor('', { limit: 1, offset: 0 })).rejects.toThrow(/acting user/);
+    await expect(getStore().documents.findFor(undefined as unknown as string, docA)).rejects.toThrow(/acting user/);
+  });
+});

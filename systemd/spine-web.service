@@ -1,0 +1,24 @@
+[Unit]
+Description=Spine — medical document server
+After=network-online.target spine-ingestion.service
+Wants=network-online.target
+Requires=spine-ingestion.service
+
+[Service]
+Type=simple
+User=SPINE_USER
+WorkingDirectory=SPINE_DIR/server
+ExecStart=/usr/bin/node SPINE_DIR/server/dist/index.js
+EnvironmentFile=SPINE_DIR/.env
+Environment=NODE_ENV=production
+Environment=DATA_DIR=SPINE_DIR/data
+Environment=INGESTION_URL=http://127.0.0.1:8000
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=SPINE_DIR/data
+
+[Install]
+WantedBy=multi-user.target

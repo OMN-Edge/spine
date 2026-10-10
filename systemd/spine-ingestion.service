@@ -1,0 +1,20 @@
+[Unit]
+Description=Spine — ingestion sidecar (Unstructured PDF parser)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=SPINE_USER
+WorkingDirectory=SPINE_DIR/ingestion-service
+ExecStart=SPINE_DIR/ingestion-service/.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000
+Environment=DATA_DIR=SPINE_DIR/data
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=SPINE_DIR/data
+
+[Install]
+WantedBy=multi-user.target

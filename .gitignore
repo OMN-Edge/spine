@@ -1,0 +1,16 @@
+.env
+node_modules/
+dist/
+coverage/
+data/spine.db
+data/spine.db-shm
+data/spine.db-wal
+data/originals/
+data/pages/
+__pycache__/
+*.pyc
+.venv/
+
+# tsc emits .js next to the .tsx sources; Vite resolves .js before .ts,
+# so these would shadow the real sources. See web/tsconfig.json noEmit.
+web/src/**/*.js
