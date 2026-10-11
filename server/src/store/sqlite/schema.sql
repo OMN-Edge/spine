@@ -28,6 +28,26 @@ CREATE TABLE IF NOT EXISTS user_tokens (
   used_at TEXT
 );
 
+-- Second factor (SECURITY.md M-12). New tables rather than columns on users, because
+-- CREATE TABLE IF NOT EXISTS can add these to an existing database and cannot alter users.
+-- A row exists from the moment enrolment starts; the factor only applies once
+-- confirmed_at is set, which needs a valid first code.
+CREATE TABLE IF NOT EXISTS user_totp (
+  user_id TEXT PRIMARY KEY REFERENCES users(id),
+  secret_enc TEXT NOT NULL, -- AES-256-GCM; recoverable by design, see totp.ts
+  created_at TEXT NOT NULL,
+  confirmed_at TEXT,
+  last_step INTEGER NOT NULL DEFAULT 0 -- newest time step accepted; blocks replay
+);
+
+-- sha256 of each recovery code. A code is spent by one atomic UPDATE.
+CREATE TABLE IF NOT EXISTS user_recovery_codes (
+  user_id TEXT NOT NULL REFERENCES users(id),
+  code_hash TEXT NOT NULL,
+  used_at TEXT,
+  PRIMARY KEY (user_id, code_hash)
+);
+
 -- Every table below carries user_id, and every query on it filters by it (P12).
 
 CREATE TABLE IF NOT EXISTS source_files (

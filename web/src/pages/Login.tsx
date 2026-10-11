@@ -11,6 +11,9 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [unverified, setUnverified] = useState(false);
+  // The password was right and the account has a second factor: ask for the code.
+  const [needsCode, setNeedsCode] = useState(false);
+  const [code, setCode] = useState('');
   const [resent, setResent] = useState('');
   const [options, setOptions] = useState({ registration: 'operator', recovery: false });
 
@@ -25,13 +28,35 @@ export default function Login() {
     setResent('');
     try {
       const result = await api.auth.login(email, password);
-      setAuthenticated(true, result.email);
+      if (result.second_factor_required) {
+        setPassword(''); // it has done its job; do not keep it in the page
+        setNeedsCode(true);
+        return;
+      }
+      setAuthenticated(true, result.email ?? email);
       navigate('/');
     } catch (err) {
       // The server's own words: "incorrect email or password", a rate-limit
       // notice, or that the address is not confirmed yet. It deliberately does
       // not say which half of a wrong login was wrong.
       setUnverified(err instanceof ApiError && err.code === 'email_not_verified');
+      setError(err instanceof Error ? err.message : 'Could not sign in');
+    }
+  };
+
+  const submitCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    try {
+      const result = await api.auth.secondFactor(code);
+      setAuthenticated(true, result.email);
+      navigate('/');
+    } catch (err) {
+      // Too many wrong codes, or too long since the password: start again.
+      if (err instanceof ApiError && err.code === 'login_expired') {
+        setNeedsCode(false);
+        setCode('');
+      }
       setError(err instanceof Error ? err.message : 'Could not sign in');
     }
   };
@@ -54,6 +79,20 @@ export default function Login() {
         </>
       }
     >
+      {needsCode ? (
+        <form onSubmit={submitCode}>
+          <p className="text-sm text-gray-600 mb-3">
+            Enter the code from your authenticator app, or one of your recovery codes.
+          </p>
+          <input
+            type="text" placeholder="Code" autoComplete="one-time-code" autoFocus
+            inputMode="text" autoCapitalize="characters" spellCheck={false}
+            value={code} onChange={e => setCode(e.target.value)} className={inputClass}
+          />
+          {error && <Notice kind="error">{error}</Notice>}
+          <button type="submit" className={buttonClass}>Continue</button>
+        </form>
+      ) : (
       <form onSubmit={submit}>
         <input
           type="email" placeholder="Email" autoComplete="username" autoFocus
@@ -74,6 +113,7 @@ export default function Login() {
         {resent && <Notice kind="ok">{resent}</Notice>}
         <button type="submit" className={buttonClass}>Sign in</button>
       </form>
+      )}
     </AuthCard>
   );
 }

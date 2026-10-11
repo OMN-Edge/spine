@@ -87,6 +87,14 @@ export interface ParserEnvConfig {
   mode: string;
   /** The opt-in for page images leaving the host (SECURITY.md M-7). */
   multimodalEnabled: boolean;
+  /** Minimum non-whitespace characters for a page to count as having a text layer. */
+  textLayerMinChars: number;
+  /** Local OCR is kept only at or above this mean word confidence (0-100)... */
+  ocrMinConfidence: number;
+  /** ...and with no more than this share of words under 60 (0-1). */
+  ocrMaxLowShare: number;
+  /** Tesseract languages, e.g. `ron+eng`. */
+  ocrLangs: string;
 }
 
 export interface MailEnvConfig {
@@ -159,7 +167,34 @@ function readParserConfig(env: NodeJS.ProcessEnv, problems: string[]): ParserEnv
         'SPINE_MULTIMODAL_ENABLED=true as well. It is a separate switch on purpose.',
     );
   }
-  return { mode, multimodalEnabled };
+  // First guesses, measured on Romanian print and handwriting-style fonts: clean print
+  // reads at about 93 with no weak words, 3-degree tilt at 87 with 6%, and the cursive
+  // fonts at 76-81 with 11-18%. Real handwriting is probably worse, but that is
+  // untested, so these are meant to be tuned from the per-page routing log.
+  const number = (name: string, fallback: number, min: number, max: number): number => {
+    const raw = env[name];
+    if (raw === undefined || raw === '') return fallback;
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value < min || value > max) {
+      problems.push(`${name} is "${raw}"; needs a number from ${min} to ${max}`);
+      return fallback;
+    }
+    return value;
+  };
+
+  const ocrLangs = env.SPINE_OCR_LANGS || 'ron+eng';
+  if (!/^[a-z_]+(\+[a-z_]+)*$/.test(ocrLangs)) {
+    problems.push(`SPINE_OCR_LANGS is "${ocrLangs}"; expected Tesseract codes joined by +, e.g. ron+eng`);
+  }
+
+  return {
+    mode,
+    multimodalEnabled,
+    textLayerMinChars: number('SPINE_TEXT_LAYER_MIN_CHARS', 50, 1, 100_000),
+    ocrMinConfidence: number('SPINE_OCR_MIN_CONFIDENCE', 85, 0, 100),
+    ocrMaxLowShare: number('SPINE_OCR_MAX_LOW_SHARE', 0.1, 0, 1),
+    ocrLangs,
+  };
 }
 
 /** The parser section on its own, for `getParser()`. */

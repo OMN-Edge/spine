@@ -1,4 +1,5 @@
 import { readFile } from 'fs/promises';
+import { logger } from '../logger.js';
 import { HumanMessage } from '@langchain/core/messages';
 import { z } from 'zod';
 import type { ContinuationResult, ExtractionResult } from '../types.js';
@@ -18,11 +19,6 @@ import {
  * The interface implementation: prompts in, validated domain types out. It holds no
  * vendor types, so swapping the library underneath touches only `adapters/`.
  */
-
-const consoleLogger: LlmLogger = {
-  info: (message, detail) => console.log(message, detail ?? ''),
-  warn: (message, detail) => console.warn(message, detail ?? ''),
-};
 
 async function invokeValidated<T>(
   clients: TaskClients,
@@ -49,14 +45,14 @@ async function invokeValidated<T>(
 }
 
 export function buildChatLlm(clients: TaskClients, config: ChatLlmConfig): ChatLlm {
-  const logger = config.logger ?? consoleLogger;
+  const log = config.logger ?? logger;
 
   return {
     async detectContinuation(previousPageText, currentPageText): Promise<ContinuationResult> {
       const validated = await invokeValidated(
         clients,
         config,
-        logger,
+        log,
         'continuation',
         buildContinuationPrompt(previousPageText, currentPageText),
         TASK_SCHEMAS.continuation,
@@ -69,7 +65,7 @@ export function buildChatLlm(clients: TaskClients, config: ChatLlmConfig): ChatL
       const validated = await invokeValidated(
         clients,
         config,
-        logger,
+        log,
         'extraction',
         buildExtractionPrompt(documentText),
         TASK_SCHEMAS.extraction,
@@ -90,7 +86,7 @@ export function buildChatLlm(clients: TaskClients, config: ChatLlmConfig): ChatL
       });
 
       const validated = await invokeValidated(
-        clients, config, logger, 'page', [message], TASK_SCHEMAS.page,
+        clients, config, log, 'page', [message], TASK_SCHEMAS.page,
       );
       if (!validated) return null;
 

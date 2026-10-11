@@ -11,7 +11,11 @@ import { v4 as uuidv4 } from 'uuid';
  * spot-checked, so a new column added to a table does not leak by default.
  */
 
-const FORBIDDEN_KEYS = ['user_id', 'file_path', 'image_path', 'checksum', 'password_hash', 'auth_version', 'token'];
+const FORBIDDEN_KEYS = [
+  'user_id', 'file_path', 'image_path', 'checksum', 'password_hash', 'auth_version', 'token',
+  // The second factor's rows (M-12): the encrypted secret, the replay marker, the code hashes.
+  'secret_enc', 'last_step', 'code_hash',
+];
 
 function leaks(value: unknown, trail = '$'): string[] {
   if (Array.isArray(value)) return value.flatMap((v, i) => leaks(v, `${trail}[${i}]`));
@@ -77,5 +81,20 @@ describe('responses carry no internal columns or server paths (S-8)', () => {
     expect(leaks({ a: [{ user_id: 'x' }] })).toEqual(['$.a[0].user_id']);
     expect(leaks({ where: '/Users/someone/spine/data/x.pdf' })).toHaveLength(1);
     expect(leaks({ id: 'abc', name: 'fine' })).toEqual([]);
+  });
+});
+
+describe('the second factor’s reads (M-12)', () => {
+  it('never carry the secret, its ciphertext or the code hashes', async () => {
+    const store = getStore();
+    await store.users.beginTotp(OWNER_ID, 'v1.ciphertext-that-must-not-appear', new Date().toISOString());
+    await store.users.enableTotp(OWNER_ID, 5, ['hash-that-must-not-appear'], new Date().toISOString());
+
+    for (const [url, cookieHeader] of [['/api/auth/me', cookie], ['/api/auth/totp', cookie]] as const) {
+      const res = await app.inject({ method: 'GET', url, headers: { cookie: cookieHeader } });
+      expect(leaks(res.json()), url).toEqual([]);
+      expect(res.body).not.toContain('must-not-appear');
+    }
+    await store.users.disableTotp(OWNER_ID);
   });
 });

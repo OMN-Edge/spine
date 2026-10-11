@@ -6,6 +6,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { getStore } from '../store/index.js';
 import { resolveDataDir } from '../config.js';
 import { startIngestionJob, getJobStatus } from '../ingestion/pipeline.js';
+import { aiReadingAllowed } from '../parser/index.js';
+import { loadLlmConfig } from '../config.js';
 import { requireAuth } from './middleware.js';
 
 
@@ -68,6 +70,32 @@ export async function sourceFileRoutes(app: FastifyInstance) {
     }
 
     return reply.send(results);
+  });
+
+  // What the page needs to offer "Read with AI", and to say where the images would go.
+  app.get('/api/capabilities', async (_req, reply) => {
+    const llm = loadLlmConfig();
+    return reply.send({
+      aiReading: { enabled: aiReadingAllowed(), provider: llm.provider, endpoint: llm.endpoint ?? null },
+    });
+  });
+
+  // Read this upload again with the model for every page. It sends the page images to
+  // the configured provider, so it needs the operator's switch as well as the click.
+  app.post<{ Params: { id: string } }>('/api/source-files/:id/reread', async (req, reply) => {
+    const { id } = req.params;
+    const file = await getStore().sourceFiles.findFor(req.userId, id);
+    if (!file) return reply.status(404).send({ error: 'not found' });
+
+    if (!aiReadingAllowed()) {
+      return reply.status(409).send({ error: 'AI reading is not enabled on this server' });
+    }
+    if (file.status === 'pending' || file.status === 'processing' || getJobStatus(id)?.status === 'processing') {
+      return reply.status(409).send({ error: 'this file is still being processed' });
+    }
+
+    startIngestionJob(id, req.userId, { reread: true });
+    return reply.status(202).send({ id, status: 'processing' });
   });
 
   app.get<{ Params: { id: string } }>('/api/source-files/:id/status', async (req, reply) => {

@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { getStore } from '../store/index.js';
 import { rasterizePdf } from './rasterize.js';
-import { getParser } from '../parser/index.js';
+import { getModelParser, getParser } from '../parser/index.js';
 import { checkContinuation } from './continuation.js';
 import { extractFields } from './extraction.js';
 import { groundSnippet } from './grounding.js';
@@ -26,7 +26,16 @@ export async function reconcileStalledJobs(): Promise<number> {
   return getStore().maintenance.failStalledSourceFiles();
 }
 
-export function startIngestionJob(sourceFileId: string, userId: string): void {
+export interface IngestionOptions {
+  /**
+   * Read the file again with the model for every page, replacing what it produced.
+   * The "Read with AI" button. The old documents are removed only after the new
+   * reading has succeeded, so a failed attempt leaves them as they were.
+   */
+  reread?: boolean;
+}
+
+export function startIngestionJob(sourceFileId: string, userId: string, options: IngestionOptions = {}): void {
   if (jobs.get(sourceFileId)?.status === 'processing') return;
 
   const job: JobStatus = {
@@ -38,10 +47,15 @@ export function startIngestionJob(sourceFileId: string, userId: string): void {
   jobs.set(sourceFileId, job);
 
   // Fire-and-forget; errors are captured in the job record
-  runPipeline(sourceFileId, userId, job).catch(() => {});
+  runPipeline(sourceFileId, userId, job, options).catch(() => {});
 }
 
-async function runPipeline(sourceFileId: string, userId: string, job: JobStatus): Promise<void> {
+async function runPipeline(
+  sourceFileId: string,
+  userId: string,
+  job: JobStatus,
+  options: IngestionOptions,
+): Promise<void> {
   const store = getStore();
 
   const sourceFile = await store.sourceFiles.findFor(userId, sourceFileId);
@@ -62,11 +76,16 @@ async function runPipeline(sourceFileId: string, userId: string, job: JobStatus)
     // way: one entry per page image, boxes in that image's pixel space.
     job.step = 'parsing';
     job.progress = 20;
-    const parseResult = await getParser().parse({
+    const parser = options.reread ? getModelParser() : getParser();
+    const parseResult = await parser.parse({
       sourceFileId,
       filePath: sourceFile.file_path,
       pages: pageImages,
     });
+
+    // The new reading is in hand. Only now remove the old documents, so a failure above
+    // — a provider outage, a page the model could not read — leaves them untouched.
+    if (options.reread) await store.sourceFiles.clearDerived(userId, sourceFileId);
 
     // Step 3: Store pages + run continuation checks
     job.step = 'detecting boundaries';

@@ -39,6 +39,10 @@ export interface ParserConfig {
   mode: string;
   /** Required for any parser that sends images (`multimodal`, `hybrid`). */
   multimodalEnabled: boolean;
+  textLayerMinChars: number;
+  ocrMinConfidence: number;
+  ocrMaxLowShare: number;
+  ocrLangs: string;
 }
 
 export class ParserConfigError extends Error {

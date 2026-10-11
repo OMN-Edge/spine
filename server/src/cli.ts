@@ -17,6 +17,7 @@ import {
  *   npm run cli -- create-user <email> [--password-stdin]
  *   npm run cli -- set-password <email> [--password-stdin]
  *   npm run cli -- reset-link <email> [--hours N]
+ *   npm run cli -- disable-2fa <email>
  *   npm run cli -- delete-user <email> [--yes]
  *   npm run cli -- list-users
  *
@@ -35,6 +36,7 @@ const USAGE = `usage:
   create-user <email> [--password-stdin]
   set-password <email> [--password-stdin]
   reset-link <email> [--hours N]
+  disable-2fa <email>
   delete-user <email> [--yes]
   list-users`;
 
@@ -126,6 +128,25 @@ export async function runCli(args: string[], io: CliIo): Promise<number> {
       const token = await issueUserToken(user.id, 'reset', hours === 1 ? RESET_TTL_MS : hours * 3_600_000);
       io.out(`one-time link for ${email}, valid ${hours} hour${hours === 1 ? '' : 's'}:`);
       io.out(resetLink(token));
+      return 0;
+    }
+
+    case 'disable-2fa': {
+      const email = normaliseEmail(positional[0] ?? '');
+      const user = await store.users.findByEmail(email);
+      if (!user) {
+        io.err(`no account for ${email}`);
+        return 1;
+      }
+      if (!(await store.users.getTotp(user.id))) {
+        io.out(`${email} has no two-factor to turn off`);
+        return 0;
+      }
+
+      // For a lost phone with no recovery codes. It also ends their sessions, so a
+      // session opened by whoever has the phone does not outlive the reset.
+      await store.users.disableTotp(user.id);
+      io.out(`two-factor turned off for ${email}; their sessions are signed out`);
       return 0;
     }
 

@@ -22,10 +22,13 @@ spine/
 │   └── src/
 │       ├── config.ts       # env parsed + validated once at startup; resolveDataDir() is the one place DATA_DIR is decided
 │       ├── passwords.ts    # argon2id hash/verify, policy, email normalisation
-│       ├── cli.ts          # operator commands: create-user, set-password, reset-link, delete-user, list-users
+│       ├── totp.ts         # RFC 6238 codes, secret encryption at rest, recovery codes (pure; no store)
+│       ├── second-factor.ts # checkSecondFactor(): joins totp.ts to the store; atomic spend
+│       ├── cli.ts          # operator commands: create-user, set-password, reset-link, disable-2fa, delete-user, list-users
 │       ├── accounts.ts     # verify/reset tokens and links, neutral mail text, deleteAccount()
 │       ├── rate-limit.ts   # windowLimiter(): per-key limits the Fastify plugin cannot stack
-│       ├── parser/         # parser interface: types.ts (the contract), index.ts (registry), adapters/{sidecar,multimodal,hybrid}.ts
+│       ├── parser/         # parser interface: types.ts (the contract), index.ts (registry), adapters/{sidecar,multimodal,hybrid}.ts, ocr.ts (Tesseract)
+│       ├── logger.ts       # the logger for modules without the app; index.ts points it at the structured log
 │       ├── mail/           # mailer interface: types.ts, index.ts (registry), adapters/{none,brevo}.ts
 │       ├── share-scope.ts  # the only place a share-link scope is validated or resolved
 │       ├── share-token.ts  # token issuing + sha256-at-rest; shape predicates
@@ -34,7 +37,7 @@ spine/
 │       ├── store/         # store interface: types.ts (interfaces), index.ts (registry), sqlite/ (the only adapter)
 │       ├── hash-legacy-tokens.ts  # S-4 boot rewrite of plaintext share tokens
 │       ├── ingestion/      # pipeline.ts, extraction.ts, continuation.ts, grounding.ts, rasterize.ts, ingestion-client.ts
-│       ├── routes/         # auth.ts, documents.ts, source-files.ts, share.ts, public-share.ts, tags.ts
+│       ├── routes/         # auth.ts (login + second step), totp.ts, documents.ts, source-files.ts, share.ts, public-share.ts, tags.ts
 │       └── __tests__/      # Vitest tests + helpers/app.ts
 ├── web/                    # React + Vite + Tailwind
 ├── ingestion-service/      # Python FastAPI — PDF parsing via Unstructured (port 8000)
@@ -64,6 +67,7 @@ sudo ./install.sh -n
 cd server && npm run cli -- create-user you@example.com      # prints a password once
 cd server && npm run cli -- set-password you@example.com     # ends that user's sessions
 cd server && npm run cli -- reset-link you@example.com       # one-time link; works with no mailer
+cd server && npm run cli -- disable-2fa you@example.com      # lost phone and recovery codes
 cd server && npm run cli -- delete-user you@example.com      # shows what it would remove; --yes to do it
 cd server && npm run cli -- list-users
 
@@ -90,6 +94,7 @@ cd server && npm run test:coverage
 | `PORT` | Fastify listen port (default `3000`) |
 | `SPINE_PARSER` | `sidecar` (default, nothing leaves the host) \| `multimodal` \| `hybrid` (sidecar first, a vision model for scanned/blank pages) |
 | `SPINE_MULTIMODAL_ENABLED` | `true` to allow page images to be sent to the LLM provider. **A second switch on purpose**: `multimodal`/`hybrid` without it refuse to start |
+| `SPINE_TEXT_LAYER_MIN_CHARS`, `SPINE_OCR_MIN_CONFIDENCE`, `SPINE_OCR_MAX_LOW_SHARE`, `SPINE_OCR_LANGS` | `hybrid`'s screening thresholds (50 / 85 / 0.10) and Tesseract languages (`ron+eng`; startup refuses if a pack is missing). First guesses: tune from the `page routed` log lines |
 | `SPINE_REGISTRATION` | `operator` (default: accounts come from the CLI) \| `open` (signup with email verification; **refuses to start without a mailer**) |
 | `SPINE_MAILER` | `none` (default) \| `brevo` |
 | `BREVO_API_KEY`, `SPINE_MAIL_SENDER` | Required for `brevo`. The sender has no default: pick a neutral name, it is visible in the recipient's inbox |
@@ -142,10 +147,18 @@ detection and field extraction. Everything provider-specific is behind the LLM i
   `response-shape.test.ts` scans whole responses.
 - **Parsing goes through the parser interface** — one entry per page image, in order, with
   boxes in that image's pixel space (the sidecar adapter scales from its own coordinates).
-  Page images leave the host only via `readPage`, only for `multimodal`/`hybrid`, and only
-  with `SPINE_MULTIMODAL_ENABLED`. `hybrid` never sends a `native_text` or `mixed` page; if
-  the model fails, the page keeps the sidecar's result. Model-read pages are `multimodal`
-  and the UI marks their highlights approximate.
+  - The sidecar runs Unstructured with `strategy="fast"` only: the PDF's own text layer, no
+    OCR, no layout model. A page with no text layer returns no elements. (`auto` is one
+    decision for the whole file, and its `ocr` label is never set.)
+  - `hybrid` goes cheapest first per page: text layer (what the sidecar returned, at least
+    `SPINE_TEXT_LAYER_MIN_CHARS`) → local Tesseract if its confidence is good → the model. It
+    never sends a page that has a text layer, and fails the upload if the sidecar is down
+    rather than treating every page as scanned.
+  - Page images leave the host only via `readPage`, only for `multimodal`/`hybrid`, and only
+    with `SPINE_MULTIMODAL_ENABLED`. If the model fails, the page keeps local OCR.
+  - "Read this file with AI" re-runs an upload through the `multimodal` parser and replaces
+    its documents only after the new reading succeeds.
+  - Model-read pages are stored as `multimodal`, and the UI marks their highlights approximate.
 - **Verification and reset links** — tokens are hashed at rest, spent by one atomic
   `UPDATE`, carried in the URL **fragment** (never sent to the server, so not in nginx's
   log) and spent by a `POST`. Requests that name an address answer identically whether or
@@ -154,6 +167,12 @@ detection and field extraction. Everything provider-specific is behind the LLM i
 - **Schema changes need an empty database** — `CREATE TABLE IF NOT EXISTS` cannot alter a
   table, and startup refuses an old-shape database. Load real records only after deciding
   how the next change will be made (a migration runner, which does not exist).
+- **Two-factor** — optional TOTP per user (`totp.ts`, `routes/totp.ts`). With it on, the
+  right password only starts a *pending* login in the session; `POST /api/auth/login/second-factor`
+  completes it. The secret is AES-GCM encrypted under a key derived from `SESSION_SECRET`
+  (rotating that secret orphans every enrolment); the last used step blocks replay;
+  recovery codes are sha256-hashed and single use. Tables are new (`user_totp`,
+  `user_recovery_codes`), because a new table needs no migration and a new column would.
 - **Auth** — email + argon2id password; `requireAuth` re-resolves the session to a live
   user on every request and sets `req.userId`, which handlers pass to the store. A
   changed password bumps `auth_version`, ending that user's other sessions. An unknown
@@ -211,7 +230,7 @@ detection and field extraction. Everything provider-specific is behind the LLM i
 
 ## Tests
 
-325 tests, 98.14% statement coverage, 94.28% branch coverage.
+`npm test` runs the suite; `npm run test:coverage` reports coverage (above 90% for statements and branches).
 
 Intentionally uncovered (integration tests would need a live sidecar, real PDFs or live
 provider credentials):

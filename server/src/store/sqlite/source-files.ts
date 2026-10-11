@@ -25,6 +25,26 @@ export function sourceFileRepository(db: Database): SourceFileRepository {
     'UPDATE source_files SET page_count = ? WHERE id = ? AND user_id = ?',
   );
 
+  // What ingestion made from one upload, children before parents. Every statement
+  // filters by user_id, so another user's upload id removes nothing.
+  const deleteFields = db.prepare(`
+    DELETE FROM extracted_fields WHERE user_id = ?
+      AND document_id IN (SELECT id FROM documents WHERE source_file_id = ? AND user_id = ?)
+  `);
+  const deleteDocumentTags = db.prepare(`
+    DELETE FROM document_tags WHERE user_id = ?
+      AND document_id IN (SELECT id FROM documents WHERE source_file_id = ? AND user_id = ?)
+  `);
+  const deleteDocuments = db.prepare('DELETE FROM documents WHERE source_file_id = ? AND user_id = ?');
+  const deletePages = db.prepare('DELETE FROM pages WHERE source_file_id = ? AND user_id = ?');
+  const clearDerived = db.transaction((userId: string, id: string) => {
+    deleteFields.run(userId, id, userId);
+    deleteDocumentTags.run(userId, id, userId);
+    const removed = deleteDocuments.run(id, userId).changes;
+    deletePages.run(id, userId);
+    return removed;
+  });
+
   return {
     async listFor(userId) {
       return list.all(owner(userId)) as SourceFileSummary[];
@@ -56,6 +76,10 @@ export function sourceFileRepository(db: Database): SourceFileRepository {
 
     async setPageCount(userId, id, pageCount) {
       setPageCount.run(pageCount, id, owner(userId));
+    },
+
+    async clearDerived(userId, id) {
+      return clearDerived(owner(userId), id);
     },
   };
 }

@@ -7,6 +7,7 @@ import fastifyRateLimit from '@fastify/rate-limit';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { authRoutes } from './routes/auth.js';
+import { totpRoutes } from './routes/totp.js';
 import { accountRoutes } from './routes/accounts.js';
 import { documentRoutes } from './routes/documents.js';
 import { sourceFileRoutes } from './routes/source-files.js';
@@ -18,8 +19,9 @@ import { reconcileStalledJobs } from './ingestion/pipeline.js';
 import { hashLegacyShareTokens } from './hash-legacy-tokens.js';
 import { getStore } from './store/index.js';
 import { getChatLlm, LlmConfigError } from './llm/index.js';
-import { getParser, ParserConfigError } from './parser/index.js';
+import { checkParserRequirements, getParser, ParserConfigError } from './parser/index.js';
 import { loadConfig, ConfigError, type Config } from './config.js';
+import { useLogger } from './logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -43,6 +45,13 @@ const app = Fastify({
   trustProxy: true, // nginx sits in front
 });
 
+// From here on, modules that log without the app (the parser, the LLM) write to the
+// same structured log as everything else.
+useLogger({
+  info: (message, detail) => app.log.info(detail ?? {}, message),
+  warn: (message, detail) => app.log.warn(detail ?? {}, message),
+});
+
 // P3: an unknown provider or an unusable credential must stop the process here,
 // not surface later as a failed ingestion. P8: log what it resolved to —
 // provider, model and endpoint — because if residency has to be provable it has
@@ -62,6 +71,7 @@ try {
 
   // M-7: whether page images can leave this host is a startup fact, stated plainly
   // rather than left to be inferred from two settings.
+  await checkParserRequirements();
   const parser = getParser();
   app.log.info({ parser: config.parser.mode, imageEgress: parser.imageEgress }, 'parser ready');
   if (parser.imageEgress) {
@@ -104,6 +114,7 @@ decorateAuth(app);
 
 // Register API routes
 await app.register(authRoutes);
+await app.register(totpRoutes);
 await app.register(accountRoutes, { registration: config.registration });
 await app.register(documentRoutes);
 await app.register(sourceFileRoutes);

@@ -323,3 +323,96 @@ describe('pipeline — the parser interface', () => {
     expect(row?.error_message).toMatch(/page 1 could not be read/);
   });
 });
+
+
+/** The "Read with AI" button: the upload is read again by the model and replaced. */
+describe('pipeline — reading an upload again with the model', () => {
+  afterEach(() => resetParser(null));
+
+  const nativeParser = {
+    imageEgress: false,
+    parse: async () => ({ pages: [{
+      page_number: 1,
+      elements: [{ type: 'Text', text: 'garbled ocr', page_number: 1, source: 'ocr' as const, bbox: { x0: 0, y0: 0, x1: 10, y1: 10 } }],
+      extraction_source: 'ocr' as const, image_width: 800, image_height: 1100,
+    }] }),
+  };
+  const modelParser = (text = 'clean text from the model') => ({
+    imageEgress: true,
+    parse: async () => ({ pages: [{
+      page_number: 1,
+      elements: [{ type: 'Text', text, page_number: 1, source: 'multimodal' as const, bbox: { x0: 80, y0: 110, x1: 400, y1: 160 } }],
+      extraction_source: 'multimodal' as const, image_width: 800, image_height: 1100,
+    }] }),
+  });
+
+  async function ingestOnce() {
+    const id = uuidv4();
+    await insertSourceFile(id);
+    mockRasterizePdf.mockResolvedValue([makePageImage(1)]);
+    mockCheckContinuation.mockResolvedValue({ is_continuation: false, confidence: 0.9, reasoning: 'new' });
+    mockExtractFields.mockResolvedValue(makeExtraction({ suggested_tags: ['lab'] }));
+    resetParser(nativeParser, modelParser());
+
+    startIngestionJob(id, OWNER_ID);
+    expect((await waitForJob(id)).status).toBe('done');
+    return id;
+  }
+
+  it('replaces the documents with ones read by the model', async () => {
+    const id = await ingestOnce();
+    const before = await documentsFor(id);
+    expect(before).toHaveLength(1);
+
+    startIngestionJob(id, OWNER_ID, { reread: true });
+    expect((await waitForJob(id)).status).toBe('done');
+
+    const after = await documentsFor(id);
+    expect(after).toHaveLength(1);
+    expect(after[0].id).not.toBe(before[0].id); // a new document, not an edit of the old one
+    expect(await getStore().documents.findFor(OWNER_ID, before[0].id)).toBeNull();
+
+    const store = getStore();
+    const [page] = await store.pages.listForDocument(OWNER_ID, after[0].id);
+    expect(page.extraction_source).toBe('multimodal');
+    expect(await store.pages.listForSourceFile(OWNER_ID, id)).toHaveLength(1); // not duplicated
+    expect(await store.tags.namesForDocument(OWNER_ID, after[0].id)).toContain('lab');
+  });
+
+  it('uses the model parser, not the one the server is configured with', async () => {
+    const id = await ingestOnce();
+    const defaultParse = vi.spyOn(nativeParser, 'parse');
+    resetParser(nativeParser, modelParser());
+    defaultParse.mockClear();
+
+    startIngestionJob(id, OWNER_ID, { reread: true });
+    await waitForJob(id);
+
+    expect(defaultParse).not.toHaveBeenCalled();
+  });
+
+  it('keeps the old documents if the new reading fails', async () => {
+    const id = await ingestOnce();
+    const before = await documentsFor(id);
+
+    resetParser(nativeParser, {
+      imageEgress: true, parse: async () => { throw new Error('page 1 could not be read'); },
+    });
+    startIngestionJob(id, OWNER_ID, { reread: true });
+    expect((await waitForJob(id)).status).toBe('error');
+
+    const after = await documentsFor(id);
+    expect(after.map(d => d.id)).toEqual(before.map(d => d.id));
+    expect(await getStore().fields.listForDocument(OWNER_ID, before[0].id)).not.toHaveLength(0);
+  });
+
+  it('leaves the vocabulary of tags alone', async () => {
+    const id = await ingestOnce();
+    const tagsBefore = (await getStore().tags.listFor(OWNER_ID)).map(t => t.name);
+
+    startIngestionJob(id, OWNER_ID, { reread: true });
+    await waitForJob(id);
+
+    expect((await getStore().tags.listFor(OWNER_ID)).map(t => t.name)).toEqual(tagsBefore);
+  });
+});

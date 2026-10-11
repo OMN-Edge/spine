@@ -1,7 +1,9 @@
 import { getChatLlm } from '../llm/index.js';
 import { loadParserConfig } from '../config.js';
+import { logger } from '../logger.js';
 import { parseDocument } from '../ingestion/ingestion-client.js';
 import { getPageImageDimensions } from '../ingestion/rasterize.js';
+import { checkOcrAvailable, ocrPage } from './ocr.js';
 import { createHybridParser } from './adapters/hybrid.js';
 import { createMultimodalParser } from './adapters/multimodal.js';
 import { createSidecarParser } from './adapters/sidecar.js';
@@ -13,7 +15,7 @@ const ADAPTERS = {
   sidecar: createSidecarParser,
   multimodal: createMultimodalParser,
   hybrid: createHybridParser,
-} satisfies Record<string, (deps: ParserDeps) => Parser>;
+} satisfies Record<string, (deps: ParserDeps, config: ParserConfig) => Parser>;
 
 export const PARSERS = Object.keys(ADAPTERS);
 
@@ -21,7 +23,9 @@ const SENDS_IMAGES = new Set(['multimodal', 'hybrid']);
 
 /** Pure: validates the config and builds a parser. Testable with fake dependencies. */
 export function createParser(config: ParserConfig, deps: ParserDeps): Parser {
-  const factory = (ADAPTERS as Record<string, ((deps: ParserDeps) => Parser) | undefined>)[config.mode];
+  const factory = (ADAPTERS as Record<string, ((deps: ParserDeps, config: ParserConfig) => Parser) | undefined>)[
+    config.mode
+  ];
   if (!factory) {
     throw new ParserConfigError(`unknown SPINE_PARSER "${config.mode}"; expected one of ${PARSERS.join(', ')}`);
   }
@@ -32,30 +36,63 @@ export function createParser(config: ParserConfig, deps: ParserDeps): Parser {
       `SPINE_PARSER=${config.mode} sends page images off this host and needs SPINE_MULTIMODAL_ENABLED=true`,
     );
   }
-  return factory(deps);
+  return factory(deps, config);
+}
+
+function realDeps(config: ParserConfig): ParserDeps {
+  return {
+    sidecar: parseDocument,
+    imageSize: getPageImageDimensions,
+    ocrPage: (imagePath, pageNumber) => ocrPage(imagePath, pageNumber, config.ocrLangs),
+    readPage: imagePath => getChatLlm().readPage(imagePath),
+    logger,
+  };
 }
 
 let _parser: Parser | null = null;
+let _modelParser: Parser | null = null;
 
 /** Reads config on first use and memoizes. */
 export function getParser(): Parser {
   if (!_parser) {
-    _parser = createParser(loadParserConfig(), {
-      sidecar: parseDocument,
-      imageSize: getPageImageDimensions,
-      readPage: imagePath => getChatLlm().readPage(imagePath),
-      logger: {
-        info: (message, detail) => console.log(message, detail ?? ''),
-        warn: (message, detail) => console.warn(message, detail ?? ''),
-      },
-    });
+    const config = loadParserConfig();
+    _parser = createParser(config, realDeps(config));
   }
   return _parser;
 }
 
-/** Tests only. */
-export function resetParser(replacement: Parser | null = null): void {
+/**
+ * A parser that has the model read every page, for the "Read with AI" button. It is
+ * the same `multimodal` adapter and the same switch: refused unless the operator has
+ * allowed images to leave, so the button cannot work where the setting says no.
+ */
+export function getModelParser(): Parser {
+  if (!_modelParser) {
+    const config = loadParserConfig();
+    _modelParser = createParser({ ...config, mode: 'multimodal' }, realDeps(config));
+  }
+  return _modelParser;
+}
+
+/** Whether the operator has allowed page images to be sent to the model at all. */
+export function aiReadingAllowed(): boolean {
+  return loadParserConfig().multimodalEnabled;
+}
+
+/**
+ * At startup, in `hybrid` only: Tesseract and the configured language packs must be
+ * there. A missing pack does not fail, it just scores lower and sends more pages to
+ * the model, which is cost and egress with nothing to say why.
+ */
+export async function checkParserRequirements(): Promise<void> {
+  const config = loadParserConfig();
+  if (config.mode === 'hybrid') await checkOcrAvailable(config.ocrLangs);
+}
+
+/** Tests only. The model parser defaults to the same replacement unless given its own. */
+export function resetParser(replacement: Parser | null = null, modelReplacement: Parser | null = replacement): void {
   _parser = replacement;
+  _modelParser = modelReplacement;
 }
 
 export * from './types.js';

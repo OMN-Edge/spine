@@ -3,8 +3,10 @@ import type { ParserDeps } from '../deps.js';
 import type { Parser, ParseInput } from '../types.js';
 
 /**
- * The local Unstructured sidecar: exact boxes for native text, no egress, but weak
- * OCR on handwriting — which is what the multimodal adapter is for.
+ * The local Unstructured sidecar, run with its `fast` strategy: the PDF's own text layer
+ * with exact boxes, no OCR and no layout model, nothing leaves the host. A page with no
+ * text layer — a scan, a photo, handwriting — comes back with no elements, which is how
+ * the caller finds it and sends it to local OCR or the model.
  *
  * Its output is reshaped to the parser contract: one entry per page image, with
  * boxes in that image's pixel space.

@@ -41,6 +41,8 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the delta and the ordered migration p
 
 ## First install
 
+The steps below are the short version. [docs/setup.md](docs/setup.md) is the full guide: what to decide first, Vertex, reading scans, Brevo and open signup, nginx without the packages repository, and what to do when the server refuses to start.
+
 ### 1. Dependencies
 
 ```bash
@@ -89,10 +91,13 @@ npm run cli -- create-user you@example.com   # prints a password once
 npm run cli -- list-users
 npm run cli -- set-password you@example.com  # signs that user out everywhere
 npm run cli -- reset-link you@example.com    # a one-time link to choose a new password
+npm run cli -- disable-2fa you@example.com   # lost phone and recovery codes
 npm run cli -- delete-user you@example.com   # says what it would remove; add --yes to do it
 ```
 
 Pass `--password-stdin` to choose the password instead of generating one (12+ characters).
+
+**Two-factor sign-in** is optional and per user: **Account → Two-factor sign-in → Set up**, scan the QR code with any authenticator app, enter the first code, and save the ten recovery codes it then shows once. After that, signing in also asks for a code. It is not required of anyone, so on an open instance each user chooses. If `SESSION_SECRET` is ever changed, authenticator codes stop working (recovery codes still do); see SECURITY.md S-21.
 
 ### 6. nginx
 
@@ -100,7 +105,7 @@ Pass `--password-stdin` to choose the password instead of generating one (12+ ch
 sudo ./install.sh -n
 ```
 
-Reads `SPINE_DOMAIN` from `.env`, calls `nginx-domains.sh cert` from the nginx package to issue the Let's Encrypt cert, installs the Spine site config, and reloads nginx.
+Reads `SPINE_DOMAIN` from `.env` and, if the [nginx package](https://gitlab.com/alexcocinda/packages.git) is cloned next to this folder as `../packages/nginx`, runs its `nginx-domains.sh cert` (needs certbot installed). Any nginx works; [docs/setup.md](docs/setup.md#6-https-and-nginx) has the commands with and without that package. It then to issue the Let's Encrypt cert, installs the Spine site config, and reloads nginx.
 
 ## After code changes
 
@@ -133,7 +138,9 @@ A daily timer copies the database and the originals to `backups/` beside `data/`
 
 ## Reading handwriting
 
-The local parser is exact on typed PDFs and weak on handwriting. `SPINE_PARSER=hybrid` keeps it for typed pages and sends only the scanned or blank ones, as images, to your LLM provider. It needs `SPINE_MULTIMODAL_ENABLED=true` as well — sending images is a separate decision — and the startup log says whether it is on. Those pages are marked "Read by AI · position approximate" in the review screen.
+Most documents are digital PDFs, and those need no AI: their own text is used. `SPINE_PARSER=hybrid` handles the rest per page, cheapest first: the PDF's text layer, then local OCR (Tesseract) if it is confident, and only then your LLM provider, which sees a page only if both of those fell short. It needs `SPINE_MULTIMODAL_ENABLED=true` as well — sending images is a separate decision — and `tesseract-ocr` with its language packs (it refuses to start without them). The startup log says whether images can leave, and every page logs which way it went, so the thresholds in `.env.example` can be tuned on your own documents. Pages the model read are marked "Read by AI · position approximate" in the review screen.
+
+If a document still comes out wrong — handwriting, a tilted or photographed page, a scan with a poor embedded text layer — open it in the review screen and use **Read this file with AI**. It tells you where the images go and what it replaces before it does anything.
 
 ## Share links
 
@@ -147,13 +154,14 @@ npm test              # run all tests
 npm run test:coverage      # run with coverage report
 ```
 
-325 tests across 24 files. Coverage as of last run: **98.14% statements, 94.28% branches**.
+Run `npm test` (or `npm run test:coverage`) in `server/`. Statement and branch coverage are both above 90%; the figures change with every commit, so they are not copied here.
 
 | Area | Files | Notes |
 |---|---|---|
 | Isolation | `isolation.test.ts` | A second user against the first user's data, every route and every repository method; every route refuses an unauthenticated request |
 | Response shape | `response-shape.test.ts` | Whole responses scanned for `user_id`, server paths, checksums, tokens |
 | Auth | `auth.test.ts` | Email login, no account enumeration, session fixation, password change, rate limits |
+| Two-factor | `totp.test.ts`, `second-factor.test.ts` | RFC 4226/6238 vectors, drift and replay, encryption at rest, the two-step login, recovery codes, guess throttling, no bypass via reset |
 | Accounts | `accounts.test.ts`, `cli.test.ts` | Signup, verification, recovery links, rate limits; the CLI commands, including deletion |
 | Mail | `mail.test.ts` | Brevo adapter, no attachment field, config refusals, neutral wording |
 | Config | `config.test.ts`, `llm.test.ts` | Startup refuses bad secrets, providers and endpoints |
@@ -162,7 +170,7 @@ npm run test:coverage      # run with coverage report
 | Share links | `share.test.ts`, `public-share-scoped.test.ts`, `share-token.test.ts` | Scope validation, fail-closed reads, hashed tokens, the recipient's page |
 | Store | `legacy-database.test.ts` | An old-shape database is refused |
 | Backup | `backup.test.ts` | Snapshot is a readable database; originals mirror; retention |
-| Parser | `parser.test.ts`, `read-page.test.ts` | Box scaling, one entry per page, which pages hybrid sends, fallback, the two-switch rule, the image message |
+| Parser | `parser.test.ts`, `ocr.test.ts`, `read-page.test.ts`, `reread.test.ts` | Box scaling, one entry per page, the text-layer → OCR → model cascade and its thresholds, fallback, the two-switch rule, the image message, "Read with AI" |
 | Ingestion pipeline | `pipeline.test.ts`, `reconcile.test.ts` | Splitting, grounding, error paths, restart recovery, a blank page not shifting images, model-read pages |
 | AI | `continuation.test.ts`, `grounding.test.ts` | Validation and fallbacks, tested through fake task clients |
 | Page images | `page-image.test.ts` | Auth required, streams PNG, 404 on missing row or file |

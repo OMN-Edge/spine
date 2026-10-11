@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api, type Document, type ExtractedField, type Page } from '../api';
 import PageImageOverlay from '../components/PageImageOverlay';
+import ReadWithAi from '../components/ReadWithAi';
 
 export default function DocumentReview() {
   const { id } = useParams<{ id: string }>();
@@ -91,6 +92,8 @@ export default function DocumentReview() {
             />
           </div>
         </div>
+
+        <ReadWithAi sourceFileId={doc.source_file_id} />
 
         {/* Extracted fields */}
         <div className="bg-white border border-gray-200 rounded-xl p-4">

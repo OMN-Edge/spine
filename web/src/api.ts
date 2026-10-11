@@ -93,13 +93,16 @@ const post = <T>(url: string, body: unknown) =>
 
 export const api = {
   auth: {
+    /** Either signed in, or the password was right and a second factor is still needed. */
     login: (email: string, password: string) =>
-      req<{ ok: boolean; email: string }>('/api/auth/login', {
+      req<{ ok?: boolean; email?: string; second_factor_required?: boolean }>('/api/auth/login', {
         method: 'POST',
         body: JSON.stringify({ email, password }),
       }),
+    secondFactor: (code: string) =>
+      post<{ ok: boolean; email: string }>('/api/auth/login/second-factor', { code }),
     logout: () => req('/api/auth/logout', { method: 'POST' }),
-    me: () => req<{ authenticated: boolean; email: string }>('/api/auth/me'),
+    me: () => req<{ authenticated: boolean; email: string; second_factor_enabled?: boolean }>('/api/auth/me'),
     options: () => req<{ registration: 'operator' | 'open'; recovery: boolean }>('/api/auth/options'),
     register: (email: string, password: string) =>
       post<{ ok: boolean; message: string }>('/api/auth/register', { email, password }),
@@ -111,6 +114,15 @@ export const api = {
       post<{ ok: boolean }>('/api/auth/reset', { token, password }),
     changePassword: (current: string, next: string) =>
       post<{ ok: boolean }>('/api/auth/password', { current, next }),
+    totp: {
+      status: () => req<{ enabled: boolean; recovery_codes_left: number }>('/api/auth/totp'),
+      setup: (password: string) =>
+        post<{ secret: string; otpauth_uri: string }>('/api/auth/totp/setup', { password }),
+      enable: (code: string) => post<{ ok: boolean; recovery_codes: string[] }>('/api/auth/totp/enable', { code }),
+      disable: (password: string, code: string) => post<{ ok: boolean }>('/api/auth/totp/disable', { password, code }),
+      newRecoveryCodes: (password: string, code: string) =>
+        post<{ ok: boolean; recovery_codes: string[] }>('/api/auth/totp/recovery-codes', { password, code }),
+    },
   },
 
   documents: {
@@ -128,6 +140,11 @@ export const api = {
   sourceFiles: {
     list: () => req<Array<{ id: string; original_filename: string; status: string; uploaded_at: string }>>('/api/source-files'),
     status: (id: string) => req<{ status: string; progress: number; step: string; error?: string }>(`/api/source-files/${id}/status`),
+    capabilities: () =>
+      req<{ aiReading: { enabled: boolean; provider: string; endpoint: string | null } }>('/api/capabilities'),
+    /** Read the upload again with the model. Sends its page images to the provider. */
+    reread: (id: string) =>
+      req<{ id: string; status: string }>(`/api/source-files/${id}/reread`, { method: 'POST' }),
     upload: (files: FileList) => {
       const form = new FormData();
       for (const f of Array.from(files)) form.append('files', f);

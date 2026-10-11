@@ -52,7 +52,8 @@ function build() {
 
   echo "Setting up Python venv for ingestion service..."
   cd "${SPINE_DIR}/ingestion-service"
-  python3 -m venv .venv
+  # PYTHON=python3.12 ./install.sh -b if the default python3 is newer than the sidecar supports
+  "${PYTHON:-python3}" -m venv .venv
   .venv/bin/pip install --upgrade pip
   .venv/bin/pip install -r requirements.txt
 

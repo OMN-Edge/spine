@@ -88,6 +88,14 @@ export interface NewUser {
   verifiedAt: string | null;
 }
 
+/** A user's TOTP enrolment. `confirmed_at` is null until a first code has been accepted. */
+export interface TotpRecord {
+  secret_enc: string;
+  confirmed_at: string | null;
+  /** Newest time step already accepted. A code for this step or an older one is a replay. */
+  last_step: number;
+}
+
 export type UserTokenKind = 'verify' | 'reset';
 
 export interface NewUserToken {
@@ -120,6 +128,33 @@ export interface UserRepository {
   invalidateTokens(userId: string, kind: UserTokenKind): Promise<void>;
   /** Removes the user and everything they own. Files on disk are the caller's. */
   delete(id: string): Promise<void>;
+
+  /** The enrolment, confirmed or not; null if the user never started one. */
+  getTotp(userId: string): Promise<TotpRecord | null>;
+  /**
+   * Starts (or restarts) enrolment with a new encrypted secret. Returns false, and
+   * changes nothing, if a confirmed enrolment exists: that has to be disabled first.
+   */
+  beginTotp(userId: string, secretEnc: string, now: string): Promise<boolean>;
+  /**
+   * Confirms enrolment: records the accepted step, stores the recovery code hashes and
+   * bumps `auth_version`, returning the new value. Null if there is nothing unconfirmed
+   * to confirm. One transaction.
+   */
+  enableTotp(userId: string, step: number, codeHashes: string[], now: string): Promise<number | null>;
+  /**
+   * Accepts a time step only if it is newer than any accepted before. One atomic
+   * statement, so two requests presenting the same code cannot both succeed.
+   */
+  claimTotpStep(userId: string, step: number): Promise<boolean>;
+  /** Spends a recovery code. False if it is unknown or already used; atomic. */
+  useRecoveryCode(userId: string, codeHash: string, now: string): Promise<boolean>;
+  /** Replaces all of the user's recovery codes. */
+  replaceRecoveryCodes(userId: string, codeHashes: string[]): Promise<void>;
+  /** Unspent recovery codes. */
+  countRecoveryCodes(userId: string): Promise<number>;
+  /** Removes the secret and the codes and bumps `auth_version`, returning the new value. */
+  disableTotp(userId: string): Promise<number>;
 }
 
 /** What a client may see of an upload: no server path, no checksum. */
@@ -134,6 +169,12 @@ export interface SourceFileRepository {
   create(userId: string, input: NewSourceFile): Promise<void>;
   setStatus(userId: string, id: string, status: SourceFile['status'], errorMessage?: string | null): Promise<void>;
   setPageCount(userId: string, id: string, pageCount: number): Promise<void>;
+  /**
+   * Removes what ingestion produced from this upload — its documents, their fields and
+   * tag links, and its pages — and keeps the upload itself and the user's tags. Returns
+   * how many documents went. For re-reading a file.
+   */
+  clearDerived(userId: string, id: string): Promise<number>;
 }
 
 export interface NewSourceFile {

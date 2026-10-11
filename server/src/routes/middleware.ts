@@ -8,9 +8,23 @@ declare module 'fastify' {
   }
 }
 
+/**
+ * A login that has the right password but not yet the second factor. It lives in the
+ * session but is not a login: `authenticate` ignores it, and only the second step turns
+ * it into `userId`. It records the `auth_version` it was started under, so a password
+ * change in between voids it.
+ */
+export interface PendingLogin {
+  userId: string;
+  authVersion: number;
+  expiresAt: number;
+  failures: number;
+}
+
 export interface SessionData {
   userId?: string;
   authVersion?: number;
+  pending?: PendingLogin;
 }
 
 /** Declares the request property; call once on the root instance, before routes. */

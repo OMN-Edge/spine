@@ -108,6 +108,40 @@ describe('set-password', () => {
   });
 });
 
+describe('disable-2fa', () => {
+  it('turns off the second factor, ends their sessions, and removes the secret and codes', async () => {
+    await runCli(['create-user', 'lost@example.com', '--password-stdin'], io('the-first-password'));
+    const user = (await getStore().users.findByEmail('lost@example.com'))!;
+    await getStore().users.beginTotp(user.id, 'v1.x', new Date().toISOString());
+    await getStore().users.enableTotp(user.id, 1, ['h1', 'h2'], new Date().toISOString());
+    const before = (await getStore().users.findById(user.id))!;
+
+    const console_ = io();
+    expect(await runCli(['disable-2fa', 'lost@example.com'], console_)).toBe(0);
+
+    expect(console_.out_.join()).toMatch(/turned off.*signed out/);
+    expect(await getStore().users.getTotp(user.id)).toBeNull();
+    expect(await getStore().users.countRecoveryCodes(user.id)).toBe(0);
+    expect((await getStore().users.findById(user.id))!.auth_version).toBe(before.auth_version + 1);
+  });
+
+  it('leaves an account without one alone, and says so', async () => {
+    await runCli(['create-user', 'plain@example.com'], io());
+    const user = (await getStore().users.findByEmail('plain@example.com'))!;
+    const console_ = io();
+
+    expect(await runCli(['disable-2fa', 'plain@example.com'], console_)).toBe(0);
+    expect(console_.out_.join()).toMatch(/no two-factor/);
+    expect((await getStore().users.findById(user.id))!.auth_version).toBe(user.auth_version);
+  });
+
+  it('reports an unknown account', async () => {
+    const console_ = io();
+    expect(await runCli(['disable-2fa', 'ghost@example.com'], console_)).toBe(1);
+    expect(console_.err_.join()).toMatch(/no account/);
+  });
+});
+
 describe('list-users', () => {
   it('lists accounts without any password material', async () => {
     await runCli(['create-user', 'listed@example.com'], io());

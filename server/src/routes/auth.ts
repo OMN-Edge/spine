@@ -10,6 +10,7 @@ import {
 } from '../passwords.js';
 import { authenticate, requireAuth, type SessionData } from './middleware.js';
 import { windowLimiter } from '../rate-limit.js';
+import { checkSecondFactor, hasSecondFactor } from '../second-factor.js';
 
 /**
  * SECURITY.md P5: every unauthenticated endpoint is rate limited. Login carries
@@ -46,9 +47,16 @@ export const DEFAULT_GLOBAL_LOGIN_RATE_LIMIT: InstanceWideRateLimit = {
   windowMs: TEN_MINUTES_MS,
 };
 
+/** Wrong codes allowed at the second step, per user, whatever address they come from. */
+export const SECOND_FACTOR_ATTEMPTS = 5;
+/** How long a correct password stays valid while the code is fetched from the phone. */
+export const PENDING_LOGIN_MS = 5 * 60 * 1000;
+
 export interface AuthRouteOptions {
   loginRateLimit?: PerSourceRateLimit;
   globalLoginRateLimit?: InstanceWideRateLimit;
+  /** Attempts per user per ten minutes at the second step. Tests drive the real limiter. */
+  secondFactorAttempts?: number;
 }
 
 export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions = {}) {
@@ -105,10 +113,83 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions = 
       // A fresh session id on login, so one fixed before login is not carried over.
       await req.session.regenerate();
       const session = req.session as SessionData;
+
+      // The password alone is not enough for a user with a second factor (M-12). This
+      // is the only place a session is issued, so it is the only place that checks.
+      if (await hasSecondFactor(user.id)) {
+        session.pending = {
+          userId: user.id,
+          authVersion: user.auth_version,
+          expiresAt: Date.now() + PENDING_LOGIN_MS,
+          failures: 0,
+        };
+        req.log.info({ ip: req.ip, userId: user.id }, 'password accepted, second factor required');
+        return reply.send({ second_factor_required: true });
+      }
+
       session.userId = user.id;
       session.authVersion = user.auth_version;
 
       req.log.info({ ip: req.ip, userId: user.id }, 'login succeeded');
+      return reply.send({ ok: true, email: user.email });
+    },
+  );
+
+  // Six digits is a million possibilities, so guessing is limited three ways: per
+  // source, per user whatever the source, and the pending login is dropped after a few
+  // wrong tries. The user limit is keyed on the session's pending login, so an
+  // unauthenticated caller with no pending login is not counted against anyone.
+  const secondFactorLimiters = [
+    app.rateLimit(perSource),
+    windowLimiter(
+      { max: opts.secondFactorAttempts ?? SECOND_FACTOR_ATTEMPTS, windowMs: TEN_MINUTES_MS },
+      req => (req.session as SessionData).pending?.userId ?? null,
+      'too many attempts, try again later',
+    ),
+  ];
+
+  app.post<{ Body: { code?: string } }>(
+    '/api/auth/login/second-factor',
+    { preHandler: secondFactorLimiters },
+    async (req, reply) => {
+      const session = req.session as SessionData;
+      const pending = session.pending;
+      const expired = { error: 'sign in again', code: 'login_expired' };
+
+      if (!pending || pending.expiresAt < Date.now()) {
+        delete session.pending;
+        return reply.status(401).send(expired);
+      }
+
+      const { code } = req.body ?? {};
+      if (typeof code !== 'string' || !code || code.length > 64) {
+        return reply.status(400).send({ error: 'code required' });
+      }
+
+      // Re-read the user: a password change or deletion since the password step voids it.
+      const user = await getStore().users.findById(pending.userId);
+      if (!user || !user.email_verified_at || user.auth_version !== pending.authVersion) {
+        delete session.pending;
+        return reply.status(401).send(expired);
+      }
+
+      if (!(await checkSecondFactor(user, code))) {
+        const failures = pending.failures + 1;
+        session.pending = { ...pending, failures };
+        req.log.warn({ ip: req.ip, userId: user.id, failures }, 'failed second factor');
+        if (failures >= SECOND_FACTOR_ATTEMPTS) {
+          delete session.pending;
+          return reply.status(401).send(expired);
+        }
+        return reply.status(401).send({ error: 'incorrect code' });
+      }
+
+      await req.session.regenerate();
+      const fresh = req.session as SessionData;
+      fresh.userId = user.id;
+      fresh.authVersion = user.auth_version;
+
+      req.log.info({ ip: req.ip, userId: user.id }, 'login succeeded with second factor');
       return reply.send({ ok: true, email: user.email });
     },
   );
@@ -121,7 +202,11 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions = 
   app.get('/api/auth/me', async (req, reply) => {
     const user = await authenticate(req);
     if (!user) return reply.status(401).send({ error: 'not authenticated' });
-    return reply.send({ authenticated: true, email: user.email });
+    return reply.send({
+      authenticated: true,
+      email: user.email,
+      second_factor_enabled: await hasSecondFactor(user.id),
+    });
   });
 
   // P13: changing the password ends the user's other sessions. Their sessions

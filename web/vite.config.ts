@@ -7,7 +7,6 @@ export default defineConfig({
     proxy: {
       '/api': 'http://localhost:3000',
       '/share': 'http://localhost:3000',
-      '/data': 'http://localhost:3000',
     },
   },
   build: {

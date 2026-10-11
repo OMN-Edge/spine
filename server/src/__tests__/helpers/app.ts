@@ -8,6 +8,7 @@ import { tmpdir } from 'os';
 import path from 'path';
 import type { AuthRouteOptions } from '../../routes/auth.js';
 import type { AccountRouteOptions } from '../../routes/accounts.js';
+import type { TotpRouteOptions } from '../../routes/totp.js';
 import { OWNER_EMAIL, TEST_PASSWORD, createTestUser } from './seed.js';
 
 /**
@@ -43,6 +44,8 @@ export interface TestAppOptions {
   auth?: AuthRouteOptions;
   /** Signup, verification and recovery. Closed registration unless a test opens it. */
   accounts?: AccountRouteOptions;
+  /** Managing the second factor. */
+  totp?: TotpRouteOptions;
 }
 
 export async function buildTestApp(options: TestAppOptions = {}) {
@@ -76,6 +79,7 @@ export async function buildTestApp(options: TestAppOptions = {}) {
   // Import routes after env vars are set
   const { authRoutes } = await import('../../routes/auth.js');
   const { accountRoutes } = await import('../../routes/accounts.js');
+  const { totpRoutes } = await import('../../routes/totp.js');
   const { documentRoutes } = await import('../../routes/documents.js');
   const { sourceFileRoutes } = await import('../../routes/source-files.js');
   const { shareRoutes } = await import('../../routes/share.js');
@@ -90,6 +94,7 @@ export async function buildTestApp(options: TestAppOptions = {}) {
     globalLoginRateLimit: { max: 1000, windowMs: 60 * 1000 },
     ...options.auth,
   });
+  await app.register(totpRoutes, options.totp ?? {});
   await app.register(accountRoutes, {
     registration: 'operator',
     // Generous by default so a test's own requests do not trip them; the tests

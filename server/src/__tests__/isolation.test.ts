@@ -129,6 +129,7 @@ describe('P1 — deny by default', () => {
    */
   const PUBLIC = new Set([
     'POST /api/auth/login',
+    'POST /api/auth/login/second-factor',
     'POST /api/auth/logout',
     'GET /api/auth/me',
     'GET /api/auth/options',
@@ -380,6 +381,7 @@ describe('store — every method honours the acting user', () => {
     await store.sourceFiles.setStatus(B.id, fileA, 'error', 'x');
     await store.sourceFiles.setPageCount(B.id, fileA, 99);
     await store.shareLinks.revoke(B.id, linkA);
+    expect(await store.sourceFiles.clearDerived(B.id, fileA)).toBe(0);
 
     expect(await store.documents.findFor(OWNER_ID, docA)).toEqual(before);
     expect(await store.sourceFiles.findFor(OWNER_ID, fileA)).toEqual(fileBefore);

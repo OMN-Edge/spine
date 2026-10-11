@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import { buttonClass, inputClass, Notice } from '../components/AuthCard';
+import TwoFactor from '../components/TwoFactor';
 
 export default function Account() {
   const { email } = useAuth();
@@ -42,6 +43,8 @@ export default function Account() {
         {done && <Notice kind="ok">Password changed. Your other sessions have been signed out.</Notice>}
         <button type="submit" className={buttonClass}>Change password</button>
       </form>
+
+      <TwoFactor />
     </div>
   );
 }
