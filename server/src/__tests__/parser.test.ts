@@ -37,7 +37,7 @@ function sidecarPage(n: number, elements: UnstructuredElement[], source: 'native
 
 const cfg = (mode: string, multimodalEnabled = false): ParserConfig => ({
   mode, multimodalEnabled,
-  textLayerMinChars: 50, ocrMinConfidence: 85, ocrMaxLowShare: 0.1, ocrLangs: 'ron+eng',
+  textLayerMinChars: 50, ocrMinConfidence: 85, ocrMaxLowShare: 0.1, ocrLangs: 'ron+eng', concurrency: 4,
 });
 
 /** A local OCR reading with the figures the routing looks at. */
@@ -396,7 +396,7 @@ describe('image egress needs two switches', () => {
 describe('the screening thresholds in config', () => {
   it('default to values measured on print, tilted print and handwriting-style text', () => {
     expect(loadParserConfig({})).toMatchObject({
-      textLayerMinChars: 50, ocrMinConfidence: 85, ocrMaxLowShare: 0.1, ocrLangs: 'ron+eng',
+      textLayerMinChars: 50, ocrMinConfidence: 85, ocrMaxLowShare: 0.1, ocrLangs: 'ron+eng', concurrency: 4,
     });
   });
 
@@ -415,5 +415,94 @@ describe('the screening thresholds in config', () => {
     ['SPINE_OCR_LANGS', 'ron, eng'],
   ])('rejects %s=%s', (name, value) => {
     expect(() => loadParserConfig({ [name]: value })).toThrow(new RegExp(name));
+  });
+});
+
+/**
+ * Pages are read one image per call, several calls at once. A 100-page scan is the case this
+ * is for. Local OCR is the exception: it stays one page at a time.
+ */
+describe('reading pages in parallel', () => {
+  const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+  /** A model whose calls each take a moment, and that records how many were running at once and what each was given. */
+  function slowModel(ms = 10) {
+    let now = 0; let peak = 0; const asked: string[] = [];
+    const readPage = async (path: string): Promise<PageReading | null> => {
+      now += 1; peak = Math.max(peak, now); asked.push(path);
+      await sleep(ms);
+      now -= 1;
+      return reading([`text of ${path}`, 0.1, 0.1, 0.9, 0.2]);
+    };
+    return { readPage, peak: () => peak, asked };
+  }
+
+  it('multimodal sends one image per call, up to the concurrency setting at once, and keeps page order', async () => {
+    const model = slowModel();
+    const { d } = deps({ readPage: model.readPage });
+
+    const { pages } = await createParser({ ...cfg('multimodal', true), concurrency: 3 }, d).parse(input(12));
+
+    expect(model.peak()).toBe(3);
+    expect(model.asked).toHaveLength(12);
+    expect(new Set(model.asked).size).toBe(12); // each page's image once, never two pages in one call
+    expect(pages.map(p => p.page_number)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    expect(pages.map(p => p.elements[0].text)).toEqual(pages.map(p => `text of /data/pages/sf-1/page-${p.page_number}.png`));
+  });
+
+  it('multimodal reads one page at a time when the setting is 1', async () => {
+    const model = slowModel(5);
+    const { d } = deps({ readPage: model.readPage });
+    await createParser({ ...cfg('multimodal', true), concurrency: 1 }, d).parse(input(5));
+    expect(model.peak()).toBe(1);
+  });
+
+  it('multimodal fails the upload naming the page, and starts no more pages after it', async () => {
+    let started = 0;
+    const { d } = deps({ readPage: async path => {
+      started += 1;
+      await sleep(5);
+      return path.endsWith('page-2.png') ? null : reading(['ok', 0, 0, 1, 1]);
+    } });
+
+    await expect(createParser({ ...cfg('multimodal', true), concurrency: 2 }, d).parse(input(40)))
+      .rejects.toThrow(/page 2 could not be read/);
+    expect(started).toBeLessThan(10); // not all forty
+  });
+
+  it('hybrid sends its weak pages to the model in parallel, but runs local OCR one page at a time', async () => {
+    const model = slowModel();
+    let ocrNow = 0; let ocrPeak = 0;
+    const { d, ocrPage } = deps({
+      readPage: model.readPage,
+      ocrPage: async () => {
+        ocrNow += 1; ocrPeak = Math.max(ocrPeak, ocrNow);
+        await sleep(5);
+        ocrNow -= 1;
+        return ocr(0, 0, 1); // no words: every page goes on to the model
+      },
+    });
+
+    const { pages } = await createParser({ ...cfg('hybrid', true), concurrency: 4 }, d).parse(input(10));
+
+    expect(ocrPeak).toBe(1);
+    expect(ocrPage).toHaveBeenCalledTimes(10);
+    expect(model.peak()).toBeGreaterThan(1);
+    expect(model.peak()).toBeLessThanOrEqual(4);
+    expect(pages.map(p => p.page_number)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(pages.every(p => p.extraction_source === 'multimodal')).toBe(true);
+  });
+
+  it('hybrid still routes each page on its own when they run together', async () => {
+    const model = slowModel();
+    const { d } = deps({
+      sidecar: { pages: [sidecarPage(1, [el('x'.repeat(200), { x0: 0, y0: 0, x1: 10, y1: 10 })])] },
+      readPage: model.readPage,
+      ocrPage: async (_p, n) => (n === 2 ? ocr(60, 93) : ocr(0, 0, 1)),
+    });
+    const { pages } = await createParser({ ...cfg('hybrid', true), concurrency: 4 }, d).parse(input(4));
+    // 1 has a text layer, 2 is read well by OCR, 3 and 4 go to the model.
+    expect(pages.map(p => p.extraction_source)).toEqual(['native_text', 'ocr', 'multimodal', 'multimodal']);
+    expect(model.asked.sort()).toEqual(['/data/pages/sf-1/page-3.png', '/data/pages/sf-1/page-4.png']);
   });
 });

@@ -7,15 +7,63 @@ import { getStore } from '../store/index.js';
 import { resolveDataDir } from '../config.js';
 import { startIngestionJob, getJobStatus } from '../ingestion/pipeline.js';
 import { aiReadingAllowed } from '../parser/index.js';
+import { getAiReading, isReadingPages, startAiReading } from '../ingestion/ai-reading.js';
 import { loadLlmConfig } from '../config.js';
 import { requireAuth } from './middleware.js';
+import type { Document } from '../types.js';
 
+
+/** What a client needs to name and place one document of an upload. */
+function documentSummary(doc: Document) {
+  return {
+    id: doc.id, title: doc.title, doc_type: doc.doc_type, doc_date: doc.doc_date, provider: doc.provider,
+    page_start: doc.page_start, page_end: doc.page_end, reviewed: doc.reviewed,
+  };
+}
+
+/** One request cannot ask for an unbounded number of images to be sent. */
+const MAX_PAGES_PER_READING = 200;
 
 export async function sourceFileRoutes(app: FastifyInstance) {
   app.addHook('preHandler', requireAuth);
 
+  // Every upload, newest first, with what it became, so the history can name each upload
+  // by its documents and link to regrouping its pages.
   app.get('/api/source-files', async (req, reply) => {
-    return reply.send(await getStore().sourceFiles.listFor(req.userId));
+    const store = getStore();
+    const uploads = await store.sourceFiles.listFor(req.userId);
+    const withDocuments = await Promise.all(
+      uploads.map(async upload => ({
+        ...upload,
+        documents: (await store.documents.listFor(req.userId, { sourceFileId: upload.id, limit: 1000, offset: 0 }))
+          .sort((a, b) => a.page_start - b.page_start)
+          .map(documentSummary),
+      })),
+    );
+    return reply.send(withDocuments.sort((a, b) => b.uploaded_at.localeCompare(a.uploaded_at)));
+  });
+
+  // One upload's pages and how they are grouped into documents: what the regrouping
+  // screen draws. Page images come from /api/pages/:id/image, as everywhere else.
+  app.get<{ Params: { id: string } }>('/api/source-files/:id', async (req, reply) => {
+    const store = getStore();
+    const upload = await store.sourceFiles.findFor(req.userId, req.params.id);
+    if (!upload) return reply.status(404).send({ error: 'not found' });
+
+    const pages = await store.pages.listForSourceFile(req.userId, upload.id);
+    const documents = await store.documents.listFor(req.userId, { sourceFileId: upload.id, limit: 1000, offset: 0 });
+    return reply.send({
+      id: upload.id,
+      uploaded_at: upload.uploaded_at,
+      status: upload.status,
+      error_message: upload.error_message,
+      page_count: upload.page_count,
+      pages: pages.map(p => ({
+        id: p.id, page_number: p.page_number, image_width: p.image_width,
+        image_height: p.image_height, extraction_source: p.extraction_source,
+      })),
+      documents: documents.sort((a, b) => a.page_start - b.page_start).map(documentSummary),
+    });
   });
 
   app.post('/api/source-files/upload', async (req, reply) => {
@@ -90,12 +138,50 @@ export async function sourceFileRoutes(app: FastifyInstance) {
     if (!aiReadingAllowed()) {
       return reply.status(409).send({ error: 'AI reading is not enabled on this server' });
     }
-    if (file.status === 'pending' || file.status === 'processing' || getJobStatus(id)?.status === 'processing') {
+    if (file.status === 'pending' || file.status === 'processing' || getJobStatus(id)?.status === 'processing' || isReadingPages(id)) {
       return reply.status(409).send({ error: 'this file is still being processed' });
     }
 
     startIngestionJob(id, req.userId, { reread: true });
     return reply.status(202).send({ id, status: 'processing' });
+  });
+
+  // Read chosen pages with the model, then extract again the documents they belong to: the
+  // page- and document-level "Read with AI". Only those pages' images are sent, so the same
+  // operator switch applies as for every other route that sends one (SECURITY.md M-7).
+  app.post<{ Params: { id: string }; Body: { page_ids?: unknown } }>('/api/source-files/:id/ai-reading', async (req, reply) => {
+    const { id } = req.params;
+    const store = getStore();
+    const file = await store.sourceFiles.findFor(req.userId, id);
+    if (!file) return reply.status(404).send({ error: 'not found' });
+
+    if (!aiReadingAllowed()) {
+      return reply.status(409).send({ error: 'AI reading is not enabled on this server' });
+    }
+
+    const pageIds = req.body?.page_ids;
+    if (!Array.isArray(pageIds) || pageIds.length === 0 || pageIds.length > MAX_PAGES_PER_READING
+        || pageIds.some(p => typeof p !== 'string') || new Set(pageIds).size !== pageIds.length) {
+      return reply.status(400).send({ error: `page_ids must be 1 to ${MAX_PAGES_PER_READING} different page ids` });
+    }
+    // Pages of another upload, or another user's, are reported the same as pages that do not exist.
+    const known = new Set((await store.pages.listForSourceFile(req.userId, id)).map(p => p.id));
+    if (!(pageIds as string[]).every(p => known.has(p))) {
+      return reply.status(400).send({ error: 'a page is not part of this upload' });
+    }
+
+    if (file.status === 'pending' || file.status === 'processing' || getJobStatus(id)?.status === 'processing' || isReadingPages(id)) {
+      return reply.status(409).send({ error: 'this file is still being processed' });
+    }
+
+    return reply.status(202).send(startAiReading(req.userId, id, pageIds as string[]));
+  });
+
+  app.get<{ Params: { id: string } }>('/api/source-files/:id/ai-reading', async (req, reply) => {
+    if (!(await getStore().sourceFiles.findFor(req.userId, req.params.id))) {
+      return reply.status(404).send({ error: 'not found' });
+    }
+    return reply.send(getAiReading(req.params.id) ?? { status: 'idle' });
   });
 
   app.get<{ Params: { id: string } }>('/api/source-files/:id/status', async (req, reply) => {
@@ -105,11 +191,19 @@ export async function sourceFileRoutes(app: FastifyInstance) {
     if (!row) return reply.status(404).send({ error: 'not found' });
 
     const job = getJobStatus(id);
+    // What the upload became, so the page can name it by its documents' titles rather
+    // than the file name. Empty until processing has finished.
+    const documents = row.status === 'done'
+      ? (await getStore().documents.listFor(req.userId, { sourceFileId: id, limit: 1000, offset: 0 }))
+          .sort((a, b) => a.page_start - b.page_start)
+          .map(documentSummary)
+      : [];
     return reply.send({
       status: row.status,
       progress: job?.progress ?? (row.status === 'done' ? 100 : 0),
       step: job?.step ?? row.status,
       error: row.error_message,
+      documents,
     });
   });
 }

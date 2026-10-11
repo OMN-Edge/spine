@@ -27,7 +27,7 @@ export default function Account() {
   };
 
   return (
-    <div className="max-w-md mx-auto px-6 py-10">
+    <div className="max-w-md mx-auto">
       <h1 className="text-2xl font-semibold text-gray-900 mb-1">Account</h1>
       <p className="text-sm text-gray-500 mb-6">{email}</p>
 

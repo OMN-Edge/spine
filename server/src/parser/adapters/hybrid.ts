@@ -4,6 +4,7 @@ import type { OcrReading } from '../ocr.js';
 import type { Parser, ParseInput, ParserConfig } from '../types.js';
 import { createSidecarParser } from './sidecar.js';
 import { elementsFromReading } from './multimodal.js';
+import { limiter, mapLimit } from '../../concurrency.js';
 
 /**
  * Cheapest signal first, and each step only for the pages the one before could not
@@ -27,9 +28,14 @@ import { elementsFromReading } from './multimodal.js';
  *
  * The model can only improve a page, never lose one: if it fails or gives an unusable
  * answer, the page keeps what local OCR read, and the failure is logged.
+ *
+ * Pages are handled in parallel (up to `SPINE_LLM_CONCURRENCY`), so one page waiting on the
+ * model does not hold up the next. Local OCR is the exception: it is CPU-bound and
+ * Tesseract already uses the cores it can, so it runs one page at a time, in a lane of its own.
  */
 export function createHybridParser(deps: ParserDeps, config: ParserConfig): Parser {
   const sidecar = createSidecarParser(deps);
+  const ocrLane = limiter(1);
 
   const ocrIsGoodEnough = (ocr: OcrReading): { ok: boolean; why: string } => {
     if (ocr.words === 0) return { ok: false, why: 'local OCR found no words' };
@@ -65,22 +71,20 @@ export function createHybridParser(deps: ParserDeps, config: ParserConfig): Pars
         (sidecarPage(n)?.elements ?? []).reduce((sum, element) => sum + element.text.replace(/\s+/g, '').length, 0);
       const hasLayer = (n: number) => textChars(n) >= config.textLayerMinChars;
 
-      const pages: ParseResponse['pages'] = [];
-      for (const image of input.pages) {
+      const pages = await mapLimit(input.pages, config.concurrency, async (image): Promise<ParseResponse['pages'][number]> => {
         const n = image.page_number;
         const { width, height } = deps.imageSize(image.image_path);
 
         const layer = sidecarPage(n);
         if (layer && hasLayer(n)) {
           log(n, { route: 'text_layer', textChars: textChars(n) });
-          pages.push({ ...layer, extraction_source: 'native_text' });
-          continue;
+          return { ...layer, extraction_source: 'native_text' };
         }
 
         // No usable text layer. Local OCR first.
         let ocr: OcrReading | null = null;
         try {
-          ocr = await deps.ocrPage(image.image_path, n);
+          ocr = await ocrLane(() => deps.ocrPage(image.image_path, n));
         } catch (err) {
           deps.logger.warn('local OCR failed on a page', {
             sourceFileId: input.sourceFileId, page: n, error: err instanceof Error ? err.message : String(err),
@@ -94,11 +98,10 @@ export function createHybridParser(deps: ParserDeps, config: ParserConfig): Pars
 
         if (ocr && verdict.ok) {
           log(n, { route: 'ocr_local', ...figures });
-          pages.push({
+          return {
             page_number: n, elements: ocr.elements, extraction_source: 'ocr',
             image_width: width, image_height: height,
-          });
-          continue;
+          };
         }
 
         // The model.
@@ -116,14 +119,13 @@ export function createHybridParser(deps: ParserDeps, config: ParserConfig): Pars
         try {
           const reading = await deps.readPage(image.image_path);
           if (reading && reading.regions.length > 0) {
-            pages.push({
+            return {
               page_number: n,
               elements: elementsFromReading(reading, n, width, height),
               extraction_source: 'multimodal',
               image_width: width,
               image_height: height,
-            });
-            continue;
+            };
           }
           deps.logger.warn('the model read nothing usable from a page; keeping local OCR', { sourceFileId: input.sourceFileId, page: n });
         } catch (err) {
@@ -131,8 +133,8 @@ export function createHybridParser(deps: ParserDeps, config: ParserConfig): Pars
             sourceFileId: input.sourceFileId, page: n, error: err instanceof Error ? err.message : String(err),
           });
         }
-        pages.push(fallback);
-      }
+        return fallback;
+      });
 
       return { pages };
     },

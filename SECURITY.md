@@ -199,9 +199,10 @@ Verified present.
 | Open signup without a mailer refuses to start | `config.ts` |
 | Page images leave only through `readPage`, which only the `multimodal` and `hybrid` parsers call, and those need `SPINE_MULTIMODAL_ENABLED` as well; `hybrid` never sends a native-text page | `parser/`, `config.ts` |
 | Startup logs whether images can leave, and each one sent; every page logs its route | `index.ts`, `parser/adapters/` |
-| "Read with AI" needs the operator switch and the caller's own upload, and names the provider before sending | `routes/source-files.ts`, `web/src/components/ReadWithAi.tsx` |
+| "Read with AI" (the whole file, or a page) needs the operator switch and the caller's own upload or page, takes at most 200 pages, runs one reading per upload at a time, and names the count and provider before sending | `routes/source-files.ts`, `ingestion/ai-reading.ts`, `web/src/components/AiReading.tsx`, `ReadWithAi.tsx` |
 | `hybrid` refuses to start without Tesseract and its language packs, which would otherwise quietly send more pages away | `parser/ocr.ts`, `index.ts` |
 | Page images served only by an authenticated route, streamed, `Cache-Control: private` | `routes/documents.ts` |
+| An edit is validated before anything is written and saved in one transaction; a field or page that is not on the user's own document is refused, and the store's SQL checks owner and document again | `routes/documents.ts`, `store/sqlite/fields.ts`, `__tests__/document-edit.test.ts` |
 | No static mount over `DATA_DIR` | `index.ts` |
 | Share tokens 256-bit, stored as `sha256` — never in plaintext | `share-token.ts`, `routes/share.ts` |
 | Legacy plaintext tokens rewritten to digests at boot, idempotently | `hash-legacy-tokens.ts` |
@@ -437,6 +438,13 @@ answers 409), acts only on the caller's own uploads (404 otherwise), and asks fi
 the provider and endpoint. It replaces the documents made from the file, including edits
 and any share link that names them, which the confirmation says.
 
+**A third route: one page.** "Read this page with AI" (on the document page) sends
+only that page's image through the same model parser, so the same switch applies and nothing new
+decides whether an image can leave. It acts only on the caller's own pages (a page of another upload,
+or another user's, is refused like one that does not exist), takes at most 200 a request, runs one
+reading per upload at a time, and asks first, naming the number of images and the destination. A page the model cannot read changes nothing. "Extract details again" sends
+the page *text* only, as at upload, and so needs no switch.
+
 **Which provider matters.** Images go to `SPINE_LLM_PROVIDER`. The Anthropic adapter has no
 EU-only processing commitment, so a deployment with a residency requirement should enable
 this only on Vertex at an `eu` endpoint (M-8). The software cannot know your deployment has
@@ -477,8 +485,10 @@ to an existing database but cannot add a column to an existing table. Multi-user
 verification changed existing tables while the archive held no records, so they edited
 `schema.sql` directly; a database of an older shape is **refused at startup**, with a
 message saying how many uploads and documents it holds and whether it is safe to delete.
-TOTP (M-12) added new tables only, so it did not need a change. **The next change to an
-existing table needs a runner first**, or an empty database.
+TOTP (M-12) added new tables only, so it did not need a change. Document titles added a
+column to `documents`, again while the archive held no records; a database without it is
+refused the same way. **The next change to an existing table needs a runner first**, or an
+empty database.
 
 **M-11 — Account recovery and verification.**
 

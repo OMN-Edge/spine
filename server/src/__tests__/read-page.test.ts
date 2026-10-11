@@ -18,6 +18,7 @@ const config: ChatLlmConfig = {
   provider: 'fake', model: 'fake-model',
   maxTokens: { continuation: 256, extraction: 2048, page: 4096 },
   maxRetries: 0,
+  contextChars: 300_000,
   logger: { info: () => {}, warn: () => {} },
 };
 

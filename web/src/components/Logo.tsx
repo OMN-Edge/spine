@@ -1,0 +1,34 @@
+/**
+ * The mark: four vertebral bodies seen from the front, waisted at the middle and widening
+ * slightly downward, with an intervertebral disc between each pair. It draws in
+ * `currentColor` (the discs at reduced opacity), so a parent sets its colour with a text-*
+ * class. `public/favicon.svg` is the same geometry in a fixed colour, because a favicon has
+ * no parent to inherit from.
+ */
+export function LogoMark({ className = 'h-6 w-6' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 32 32" className={className} aria-hidden="true" focusable="false">
+      <g fill="currentColor">
+        <path d="M11.8 1.4H20.2Q22.5 1.4 22.5 3.7C21.07 3.43 21.07 5.17 22.5 4.9Q22.5 7.2 20.2 7.2H11.8Q9.5 7.2 9.5 4.9C10.93 5.17 10.93 3.43 9.5 3.7Q9.5 1.4 11.8 1.4Z" />
+        <path d="M10.97 9.2H21.03Q23.33 9.2 23.33 11.5C21.72 11.23 21.72 12.97 23.33 12.7Q23.33 15 21.03 15H10.97Q8.67 15 8.67 12.7C10.28 12.97 10.28 11.23 8.67 11.5Q8.67 9.2 10.97 9.2Z" />
+        <path d="M10.13 17H21.87Q24.17 17 24.17 19.3C22.37 19.03 22.37 20.77 24.17 20.5Q24.17 22.8 21.87 22.8H10.13Q7.83 22.8 7.83 20.5C9.63 20.77 9.63 19.03 7.83 19.3Q7.83 17 10.13 17Z" />
+        <path d="M9.3 24.8H22.7Q25 24.8 25 27.1C23.02 26.83 23.02 28.57 25 28.3Q25 30.6 22.7 30.6H9.3Q7 30.6 7 28.3C8.98 28.57 8.98 26.83 7 27.1Q7 24.8 9.3 24.8Z" />
+      </g>
+      <g fill="currentColor" opacity={0.4}>
+        <rect x={9.45} y={7.6} width={13.1} height={1.2} rx={0.60} />
+        <rect x={8.7} y={15.4} width={14.6} height={1.2} rx={0.60} />
+        <rect x={7.95} y={23.2} width={16.1} height={1.2} rx={0.60} />
+      </g>
+    </svg>
+  );
+}
+
+/** The mark and the name, for the navigation bar. */
+export function Wordmark({ className = '' }: { className?: string }) {
+  return (
+    <span className={`inline-flex items-center gap-2 ${className}`}>
+      <LogoMark className="h-7 w-7 text-blue-600" />
+      <span className="font-semibold text-gray-900 text-lg tracking-tight">Spine</span>
+    </span>
+  );
+}

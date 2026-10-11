@@ -4,11 +4,16 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    // Set here, not in test files: db/index.ts captures DB_PATH at module load,
+    // Set here, not in test files: the store captures SPINE_DB_PATH at module load,
     // and ESM hoists imports above any top-level assignment a test makes. Tests
     // that set this themselves silently wrote to the real data/spine.db.
+    //
+    // ANTHROPIC_API_KEY is emptied so a developer's own key can never turn a test into a
+    // live model call: anything that reaches the real adapter fails to construct instead.
+    // Tests that need a key set one themselves.
     env: {
       SPINE_DB_PATH: ':memory:',
+      ANTHROPIC_API_KEY: '',
     },
     coverage: {
       provider: 'v8',

@@ -1,6 +1,8 @@
 import { useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type Document } from '../api';
+import { documentByline, documentTitle } from '../titles';
+import SpineLog from '../components/SpineLog';
 
 export default function Search() {
   const [query, setQuery] = useState('');
@@ -12,7 +14,7 @@ export default function Search() {
     setLoading(true);
     const params: Record<string, string> = { ...filters };
     if (query.trim()) params.q = query.trim();
-    api.documents.list(params)
+    api.documents.listAll(params)
       .then(setDocs)
       .finally(() => setLoading(false));
   }, [query, filters]);
@@ -69,26 +71,33 @@ export default function Search() {
         docs.length === 0 ? (
           <p className="text-gray-400 text-sm">No results</p>
         ) : (
-          <div className="space-y-2">
+          <div>
             <p className="text-xs text-gray-400 mb-3">{docs.length} result{docs.length !== 1 ? 's' : ''}</p>
-            {docs.map(doc => (
-              <Link
-                key={doc.id}
-                to={`/review/${doc.id}`}
-                className="block bg-white border border-gray-200 rounded-xl p-4 hover:border-blue-300 transition-all"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">{doc.provider ?? 'Unknown provider'}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">{doc.doc_type} · {doc.doc_date}</p>
-                    {doc.ai_summary && (
-                      <p className="text-sm text-gray-500 mt-1 line-clamp-2">{doc.ai_summary}</p>
-                    )}
-                  </div>
-                  <span className="text-xs text-gray-400 shrink-0">p. {doc.page_start}–{doc.page_end}</span>
-                </div>
-              </Link>
-            ))}
+            {/* Loose vertebrae: results are taken out of the spine and are not in date order. */}
+            <SpineLog
+              loose
+              items={docs.map(doc => ({
+                id: doc.id,
+                state: doc.reviewed ? 'done' : 'unreviewed',
+                children: (
+                  <Link
+                    to={`/documents/${doc.id}`}
+                    className="block bg-white border border-gray-200 rounded-xl p-4 hover:border-blue-300 transition-all"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-900">{documentTitle(doc)}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">{documentByline(doc)}</p>
+                        {doc.ai_summary && (
+                          <p className="text-sm text-gray-500 mt-1 line-clamp-2">{doc.ai_summary}</p>
+                        )}
+                      </div>
+                      <span className="text-xs text-gray-400 shrink-0">p. {doc.page_start}–{doc.page_end}</span>
+                    </div>
+                  </Link>
+                ),
+              }))}
+            />
           </div>
         )
       )}

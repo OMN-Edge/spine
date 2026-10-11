@@ -1,5 +1,5 @@
 import type { Database } from 'better-sqlite3';
-import type { UnstructuredElement } from '../../types.js';
+import type { UnstructuredElement, Page } from '../../types.js';
 import type {
   GroundingContext,
   NewPage,
@@ -23,8 +23,11 @@ export function pageRepository(db: Database): PageRepository {
     FROM source_files WHERE id = ? AND user_id = ?
   `);
 
+  const updateReading = db.prepare(
+    'UPDATE pages SET raw_text = ?, elements = ?, extraction_source = ? WHERE id = ? AND user_id = ?',
+  );
   const listForSourceFile = db.prepare(`
-    SELECT id, page_number, raw_text, is_continuation
+    SELECT id, page_number, raw_text, is_continuation, image_width, image_height, extraction_source
     FROM pages WHERE source_file_id = ? AND user_id = ? ORDER BY page_number
   `);
 
@@ -67,6 +70,12 @@ export function pageRepository(db: Database): PageRepository {
         uid,
       );
       expectInserted(result.changes, 'source file');
+    },
+
+    async updateReading(userId, pageId, reading) {
+      return updateReading.run(
+        reading.rawText, JSON.stringify(reading.elements), reading.extractionSource, pageId, owner(userId),
+      ).changes === 1;
     },
 
     async listForSourceFile(userId, sourceFileId) {

@@ -43,6 +43,8 @@ export interface ParserConfig {
   ocrMinConfidence: number;
   ocrMaxLowShare: number;
   ocrLangs: string;
+  /** Pages read at once when images go to the model. Local OCR is always one at a time. */
+  concurrency: number;
 }
 
 export class ParserConfigError extends Error {

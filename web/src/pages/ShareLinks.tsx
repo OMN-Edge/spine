@@ -58,7 +58,7 @@ export default function ShareLinks() {
   };
 
   return (
-    <div className="max-w-2xl">
+    <div className="max-w-2xl mx-auto">
       <h1 className="text-2xl font-semibold text-gray-900 mb-6">Share Links</h1>
 
       {/* Create form */}

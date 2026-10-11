@@ -1,7 +1,8 @@
 import type { ParseResponse, UnstructuredElement } from '../../types.js';
 import type { PageReading } from '../../llm/types.js';
 import type { ParserDeps } from '../deps.js';
-import type { Parser, ParseInput } from '../types.js';
+import type { Parser, ParseInput, ParserConfig } from '../types.js';
+import { mapLimit } from '../../concurrency.js';
 
 /**
  * Turn what a model read into the elements the rest of the pipeline already
@@ -31,18 +32,21 @@ export function elementsFromReading(
 }
 
 /**
- * Every page read by the model. No sidecar, so nothing here can fall back: a page
- * the model cannot read fails the upload, with the page number, rather than being
- * stored empty and looking like a blank page.
+ * Every page read by the model, one image per call, several calls at once (up to
+ * `SPINE_LLM_CONCURRENCY`). The pages are independent, so there is nothing to gain from
+ * reading them in turn and a 100-page scan is the case where it matters. Results come back
+ * in page order whatever order the calls finish in.
+ *
+ * No sidecar, so nothing here can fall back: a page the model cannot read fails the
+ * upload, with the page number, rather than being stored empty and looking like a blank
+ * page. After the first failure no further page is started.
  */
-export function createMultimodalParser(deps: ParserDeps): Parser {
+export function createMultimodalParser(deps: ParserDeps, config: Pick<ParserConfig, 'concurrency'>): Parser {
   return {
     imageEgress: true,
 
     async parse(input: ParseInput): Promise<ParseResponse> {
-      const pages: ParseResponse['pages'] = [];
-
-      for (const image of input.pages) {
+      const pages = await mapLimit(input.pages, config.concurrency, async image => {
         const { width, height } = deps.imageSize(image.image_path);
 
         deps.logger.info('sending a page image to the model provider', {
@@ -54,14 +58,14 @@ export function createMultimodalParser(deps: ParserDeps): Parser {
           throw new Error(`page ${image.page_number} could not be read: the model's answer was not usable`);
         }
 
-        pages.push({
+        return {
           page_number: image.page_number,
           elements: elementsFromReading(reading, image.page_number, width, height),
-          extraction_source: 'multimodal',
+          extraction_source: 'multimodal' as const,
           image_width: width,
           image_height: height,
-        });
-      }
+        };
+      });
 
       return { pages };
     },

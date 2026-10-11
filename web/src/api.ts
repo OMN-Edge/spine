@@ -12,6 +12,7 @@ export interface Document {
   source_file_id: string;
   page_start: number;
   page_end: number;
+  title: string | null;
   doc_date: string | null;
   provider: string | null;
   doc_type: DocType | null;
@@ -22,6 +23,60 @@ export interface Document {
   fields?: ExtractedField[];
   tags?: string[];
   pages?: Page[];
+}
+
+/** A document an upload produced, as the upload endpoints list it. */
+export interface UploadDocument {
+  id: string;
+  title: string | null;
+  doc_type: DocType | null;
+  doc_date: string | null;
+  provider: string | null;
+  page_start: number;
+  page_end: number;
+  reviewed: boolean | number;
+}
+
+export interface UploadSummary {
+  id: string;
+  uploaded_at: string;
+  status: 'pending' | 'processing' | 'done' | 'error';
+  error_message: string | null;
+  page_count: number | null;
+  documents: UploadDocument[];
+}
+
+export interface UploadLayout extends UploadSummary {
+  pages: Array<{ id: string; page_number: number; image_width: number; image_height: number; extraction_source: string | null }>;
+}
+
+/** One edit session: the details, the tags and the extracted fields, saved together. */
+export interface DocumentEdit {
+  title?: string;
+  doc_date?: string;
+  provider?: string;
+  doc_type?: string;
+  ai_summary?: string;
+  user_notes?: string;
+  reviewed?: boolean;
+  tags?: string[];
+  fields?: {
+    update?: Array<{ id: string; label: string; value: string }>;
+    remove?: string[];
+    add?: Array<{ label: string; value: string; page_id: string }>;
+  };
+}
+
+export interface AiReadingJob {
+  source_file_id: string;
+  status: 'running' | 'done' | 'failed';
+  progress: number;
+  step: string;
+  pages_total: number;
+  pages_read: number;
+  documents_updated: number;
+  documents_not_updated: number;
+  error?: string;
 }
 
 export interface Page {
@@ -75,7 +130,10 @@ export class ApiError extends Error {
 
 async function req<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
+    // Only a request that sends JSON says so. Fastify refuses an empty body that claims to
+    // be JSON, so a POST with no body (sign out, extract again, read the whole file again)
+    // used to fail with a 400 whenever it came from the app.
+    headers: options?.body !== undefined ? { 'Content-Type': 'application/json' } : {},
     ...options,
   });
   if (!res.ok) {
@@ -131,15 +189,43 @@ export const api = {
       return req<Document[]>(`/api/documents${qs}`);
     },
     get: (id: string) => req<Document>(`/api/documents/${id}`),
-    update: (id: string, body: Partial<Document> & { tags?: string[] }) =>
+    /** Extract the details again from the page text already read. No image is sent. */
+    reextract: (id: string) => req<{ reread: 'done' | 'failed' }>(`/api/documents/${id}/reextract`, { method: 'POST' }),
+    /**
+     * Every match, not just the first page: the server returns 50 by default and at most
+     * 500, so this pages through in chunks until a short one. Without it a page showing an
+     * archive would silently stop at the first 50 documents.
+     */
+    listAll: async (params: Record<string, string> = {}): Promise<Document[]> => {
+      const all: Document[] = [];
+      const size = 200;
+      for (let offset = 0; ; offset += size) {
+        const qs = new URLSearchParams({ ...params, limit: String(size), offset: String(offset) }).toString();
+        const chunk = await req<Document[]>(`/api/documents?${qs}`);
+        all.push(...chunk);
+        if (chunk.length < size) return all;
+      }
+    },
+    update: (id: string, body: DocumentEdit) =>
       req(`/api/documents/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
     boundary: (id: string, body: { action: 'split'; at_page: number } | { action: 'merge'; with_document_id: string }) =>
       req(`/api/documents/${id}/boundary`, { method: 'POST', body: JSON.stringify(body) }),
   },
 
   sourceFiles: {
-    list: () => req<Array<{ id: string; original_filename: string; status: string; uploaded_at: string }>>('/api/source-files'),
-    status: (id: string) => req<{ status: string; progress: number; step: string; error?: string }>(`/api/source-files/${id}/status`),
+    /** Every upload, newest first, with the documents it became. */
+    list: () => req<UploadSummary[]>('/api/source-files'),
+    /** What was read from one page, and how. */
+    pageText: (pageId: string) =>
+      req<{ id: string; page_number: number; raw_text: string | null; extraction_source: string | null }>(`/api/pages/${pageId}`),
+    /** Read chosen pages with the model, then extract the documents they belong to again. */
+    startAiReading: (id: string, pageIds: string[]) =>
+      req<AiReadingJob>(`/api/source-files/${id}/ai-reading`, { method: 'POST', body: JSON.stringify({ page_ids: pageIds }) }),
+    aiReading: (id: string) => req<AiReadingJob | { status: 'idle' }>(`/api/source-files/${id}/ai-reading`),
+    /** One upload's pages and how they are grouped into documents. */
+    get: (id: string) => req<UploadLayout>(`/api/source-files/${id}`),
+    status: (id: string) =>
+      req<{ status: string; progress: number; step: string; error?: string; documents: UploadDocument[] }>(`/api/source-files/${id}/status`),
     capabilities: () =>
       req<{ aiReading: { enabled: boolean; provider: string; endpoint: string | null } }>('/api/capabilities'),
     /** Read the upload again with the model. Sends its page images to the provider. */

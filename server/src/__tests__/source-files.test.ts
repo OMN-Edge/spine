@@ -77,3 +77,25 @@ describe('POST /api/source-files/upload — duplicate detection', () => {
     expect(found?.id).toBe(existingId);
   });
 });
+
+describe('GET /api/source-files/:id/status — what the upload became', () => {
+  it('names the documents a finished upload produced, in page order', async () => {
+    const store = getStore();
+    const sf = await seedSourceFile({ status: 'done' });
+    await store.documents.create(OWNER_ID, { id: uuidv4(), sourceFileId: sf, pageStart: 3, pageEnd: 4, title: 'Second' });
+    await store.documents.create(OWNER_ID, { id: uuidv4(), sourceFileId: sf, pageStart: 1, pageEnd: 2, title: 'First', docType: 'lab_result' });
+    const other = await seedSourceFile({ status: 'done' });
+    await store.documents.create(OWNER_ID, { id: uuidv4(), sourceFileId: other, pageStart: 1, pageEnd: 1, title: 'Not this upload' });
+
+    const res = await app.inject({ method: 'GET', url: `/api/source-files/${sf}/status`, headers: { cookie } });
+    const docs = (res.json() as { documents: Array<{ title: string; doc_type: string | null }> }).documents;
+    expect(docs.map(d => d.title)).toEqual(['First', 'Second']);
+    expect(docs[0].doc_type).toBe('lab_result');
+  });
+
+  it('lists none while the upload is still processing', async () => {
+    const sf = await seedSourceFile({ status: 'processing' });
+    const res = await app.inject({ method: 'GET', url: `/api/source-files/${sf}/status`, headers: { cookie } });
+    expect((res.json() as { documents: unknown[] }).documents).toEqual([]);
+  });
+});

@@ -49,6 +49,7 @@ function makeParseResult(pageCount: number) {
 
 function makeExtraction(overrides = {}) {
   return {
+    title: 'Buletin de analize',
     doc_date: '2026-01-15',
     provider: 'Regina Maria',
     doc_type: 'lab_result',
@@ -107,6 +108,21 @@ describe('pipeline — single page document', () => {
     expect(docs[0].page_end).toBe(1);
     expect(docs[0].doc_date).toBe('2026-01-15');
     expect(docs[0].provider).toBe('Regina Maria');
+    expect(docs[0].title).toBe('Buletin de analize');
+    // A new document waits in the review queue until the owner has checked it.
+    expect(docs[0].reviewed).toBe(0);
+  });
+
+  it('stores a blank title as no title, so the page falls back to type and provider', async () => {
+    const id = uuidv4();
+    await insertSourceFile(id);
+    mockRasterizePdf.mockResolvedValueOnce([makePageImage(1)]);
+    mockParseDocument.mockResolvedValueOnce(makeParseResult(1));
+    mockExtractFields.mockResolvedValueOnce(makeExtraction({ title: '   ' }));
+
+    startIngestionJob(id, OWNER_ID);
+    expect((await waitForJob(id)).status).toBe('done');
+    expect((await documentsFor(id))[0].title).toBeNull();
   });
 });
 
@@ -414,5 +430,92 @@ describe('pipeline — reading an upload again with the model', () => {
     await waitForJob(id);
 
     expect((await getStore().tags.listFor(OWNER_ID)).map(t => t.name)).toEqual(tagsBefore);
+  });
+});
+
+/**
+ * The checks and the reads wait on the model and are independent, so they run several at once.
+ * What has to stay true is that an answer lands on the pair of pages it was asked about, however
+ * the answers arrive, and that no more are in flight than the setting allows.
+ */
+describe('pipeline — model calls in parallel', () => {
+  const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+  const saved = process.env.SPINE_LLM_CONCURRENCY;
+  afterEach(() => {
+    if (saved === undefined) delete process.env.SPINE_LLM_CONCURRENCY;
+    else process.env.SPINE_LLM_CONCURRENCY = saved;
+  });
+
+  it('puts each continuation answer on its own pair of pages, though they finish out of order', async () => {
+    process.env.SPINE_LLM_CONCURRENCY = '4';
+    const id = uuidv4();
+    await insertSourceFile(id);
+    const count = 12;
+    mockRasterizePdf.mockResolvedValueOnce(Array.from({ length: count }, (_, i) => makePageImage(i + 1)));
+    mockParseDocument.mockResolvedValueOnce(makeParseResult(count));
+
+    // Pages 5, 9 and 10 start new documents. The answer is a function of the pair's text, and the
+    // calls finish in a scrambled order, so only a correct pairing gives these documents.
+    const startsNew = new Set([5, 9, 10]);
+    mockCheckContinuation.mockImplementation(async (_prev: string, curr: string) => {
+      const n = Number(curr.match(/page (\d+)/)![1]);
+      await sleep((count - n) * 3); // later pages answer first
+      return { is_continuation: !startsNew.has(n), confidence: 0.9, reasoning: `page ${n}` };
+    });
+    mockExtractFields.mockResolvedValue(makeExtraction());
+
+    startIngestionJob(id, OWNER_ID);
+    expect((await waitForJob(id)).status).toBe('done');
+
+    const docs = await documentsFor(id);
+    expect(docs.map(d => [d.page_start, d.page_end])).toEqual([[1, 4], [5, 8], [9, 9], [10, 12]]);
+    // And each page holds the answer about itself.
+    const pages = await getStore().pages.listForSourceFile(OWNER_ID, id);
+    expect(pages.map(p => p.is_continuation)).toEqual([null, 1, 1, 1, 0, 1, 1, 1, 0, 0, 1, 1]);
+  });
+
+  it('never has more checks or extractions in flight than the setting, and does overlap them', async () => {
+    process.env.SPINE_LLM_CONCURRENCY = '3';
+    const id = uuidv4();
+    await insertSourceFile(id);
+    const count = 14;
+    mockRasterizePdf.mockResolvedValueOnce(Array.from({ length: count }, (_, i) => makePageImage(i + 1)));
+    mockParseDocument.mockResolvedValueOnce(makeParseResult(count));
+
+    let now = 0; let peak = 0;
+    const slow = async <T>(value: T): Promise<T> => {
+      now += 1; peak = Math.max(peak, now);
+      await sleep(8);
+      now -= 1;
+      return value;
+    };
+    // Every page is its own document, so there are 14 extractions as well as 13 checks.
+    mockCheckContinuation.mockImplementation(() => slow({ is_continuation: false, confidence: 0.9, reasoning: 'new' }));
+    mockExtractFields.mockImplementation(() => slow(makeExtraction()));
+
+    startIngestionJob(id, OWNER_ID);
+    expect((await waitForJob(id)).status).toBe('done');
+
+    expect(peak).toBe(3);
+    expect(await documentsFor(id)).toHaveLength(count);
+  });
+
+  it('writes nothing, and keeps the old documents of a re-read, when a model call fails', async () => {
+    const id = uuidv4();
+    await insertSourceFile(id);
+    mockRasterizePdf.mockResolvedValueOnce([1, 2, 3].map(makePageImage));
+    mockParseDocument.mockResolvedValueOnce(makeParseResult(3));
+    mockCheckContinuation
+      .mockResolvedValueOnce({ is_continuation: true, confidence: 0.9, reasoning: 'a' })
+      .mockRejectedValueOnce(new Error('provider down'));
+
+    startIngestionJob(id, OWNER_ID);
+    const job = await waitForJob(id);
+
+    expect(job.status).toBe('error');
+    expect(job.error).toMatch(/provider down/);
+    // Nothing half-written: no pages from the successful check, no documents.
+    expect(await getStore().pages.listForSourceFile(OWNER_ID, id)).toEqual([]);
+    expect(await documentsFor(id)).toEqual([]);
   });
 });

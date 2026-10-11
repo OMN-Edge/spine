@@ -16,7 +16,7 @@ have not been run end to end. Everything else was run, though not on a fresh mac
 | May page images leave the machine? | **No**: typed PDFs work fully; scans and handwriting are read by local OCR only and may come out poorly. **Yes, for pages that need it**: `hybrid` | No |
 
 The third is the one to think about. With the default, nothing but short text excerpts
-(about 500 characters per page boundary, and the first 6000 characters of each document)
+(the text of each page pair, to decide boundaries, and each document's full text, to extract it)
 goes to the model. With `hybrid`, a page image is sent only when the page has no text layer
 **and** local OCR could not read it confidently. If your data must stay in the EU, use
 Vertex at an `eu` endpoint: the Anthropic adapter has no such commitment.

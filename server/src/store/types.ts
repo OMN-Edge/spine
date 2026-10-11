@@ -194,6 +194,12 @@ export interface PageRepository {
   findGroundingContext(userId: string, pageId: string): Promise<GroundingContext | null>;
   /** The absolute path is never returned to a client (S-8); this is for streaming. */
   findImagePathFor(userId: string, pageId: string): Promise<string | null>;
+  /** A page read again: its text, where it is, and how it was read. False if it is not the user's. */
+  updateReading(
+    userId: string,
+    pageId: string,
+    reading: { rawText: string; elements: UnstructuredElement[]; extractionSource: Page['extraction_source'] },
+  ): Promise<boolean>;
 }
 
 export interface NewPage {
@@ -211,7 +217,10 @@ export interface NewPage {
   continuationReasoning: string | null;
 }
 
-export type PageSummary = Pick<Page, 'id' | 'page_number' | 'raw_text' | 'is_continuation'>;
+export type PageSummary = Pick<
+  Page,
+  'id' | 'page_number' | 'raw_text' | 'is_continuation' | 'image_width' | 'image_height' | 'extraction_source'
+>;
 export type PageWithoutPath = Omit<Page, 'image_path'>;
 
 export interface GroundingContext {
@@ -229,6 +238,8 @@ export interface DocumentFilter {
   dateFrom?: string;
   dateTo?: string;
   reviewed?: boolean;
+  /** The documents one upload produced. */
+  sourceFileId?: string;
   limit: number;
   offset: number;
 }
@@ -252,6 +263,7 @@ export interface NewDocument {
   sourceFileId: string;
   pageStart: number;
   pageEnd: number;
+  title?: string | null;
   docDate?: string | null;
   provider?: string | null;
   docType?: DocType | null;
@@ -259,11 +271,12 @@ export interface NewDocument {
 }
 
 export interface DocumentPatch {
-  doc_date?: string;
-  provider?: string;
+  title?: string | null;
+  doc_date?: string | null;
+  provider?: string | null;
   doc_type?: string;
-  ai_summary?: string;
-  user_notes?: string;
+  ai_summary?: string | null;
+  user_notes?: string | null;
   reviewed?: boolean;
 }
 
@@ -272,6 +285,17 @@ export interface ExtractedFieldRepository {
   create(userId: string, field: NewExtractedField): Promise<void>;
   /** Merging two documents moves the fields of one onto the other. */
   reassignDocument(userId: string, fromDocumentId: string, toDocumentId: string): Promise<void>;
+  /**
+   * Splitting a document moves the fields on its pages from `fromPageNumber` on to the new
+   * document, so each field stays with the page it was read from.
+   */
+  reassignFromPage(userId: string, fromDocumentId: string, toDocumentId: string, fromPageNumber: number): Promise<void>;
+  /** Before a document is read again, its old fields go. */
+  deleteForDocument(userId: string, documentId: string): Promise<void>;
+  /** The owner correcting a field. False if it is not this user's, or not on this document. */
+  update(userId: string, documentId: string, fieldId: string, change: { label: string; value: string }): Promise<boolean>;
+  /** The owner removing a field. False if it is not this user's, or not on this document. */
+  remove(userId: string, documentId: string, fieldId: string): Promise<boolean>;
 }
 
 export interface NewExtractedField {

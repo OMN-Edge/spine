@@ -4,20 +4,24 @@ import { DOC_TYPES } from './types.js';
  * Prompts live above the adapters: they are provider-agnostic, and keeping them
  * here is what lets a second provider be a map entry plus an adapter file.
  *
- * The slice sizes are the egress budget, not an implementation detail — they
- * are what ARCHITECTURE.md's egress table promises leaves the host per call.
+ * Nothing is shortened to save money or to send less. The one cap is the context window
+ * (`contextChars`), so that a request is never refused for being too long.
  */
-export const CONTINUATION_CONTEXT_CHARS = 500;
-export const EXTRACTION_CONTEXT_CHARS = 6000;
 
-export function buildContinuationPrompt(previousPageText: string, currentPageText: string): string {
+/** Keeps `text` within `max` characters, from the end when the end is what matters. */
+const fit = (text: string, max: number, keep: 'start' | 'end') =>
+  text.length <= max ? text : keep === 'start' ? text.slice(0, max) : text.slice(text.length - max);
+
+export function buildContinuationPrompt(previousPageText: string, currentPageText: string, contextChars: number): string {
+  // Each page gets half the window at most, which a page of text never approaches.
+  const half = Math.floor(contextChars / 2);
   return `You are analyzing two consecutive pages from a PDF to determine if they belong to the same logical document.
 
-Page N-1 text (last ~${CONTINUATION_CONTEXT_CHARS} chars):
-${previousPageText.slice(-CONTINUATION_CONTEXT_CHARS)}
+Page N-1 text:
+${fit(previousPageText, half, 'end')}
 
-Page N text (first ~${CONTINUATION_CONTEXT_CHARS} chars):
-${currentPageText.slice(0, CONTINUATION_CONTEXT_CHARS)}
+Page N text:
+${fit(currentPageText, half, 'start')}
 
 Decide: does page N directly continue page N-1, or does it start a new document?
 
@@ -54,14 +58,21 @@ Respond with ONLY valid JSON, no markdown:
 {"regions": [{"text": "...", "x0": 0.0, "y0": 0.0, "x1": 0.0, "y1": 0.0}]}`;
 }
 
+/**
+ * The text is the pages of one document, each under a marker with its page number in the
+ * upload (`--- page 4 ---`), so the model can say which page a value is on. The caller
+ * keeps it within the context window by splitting a very long document into chunks.
+ */
 export function buildExtractionPrompt(documentText: string): string {
   return `Extract structured metadata from this medical document. The document may be in Romanian or English.
+Each page of the text begins with a marker such as "--- page 4 ---".
 
 Document text:
-${documentText.slice(0, EXTRACTION_CONTEXT_CHARS)}
+${documentText}
 
 Extract and return ONLY valid JSON (no markdown):
 {
+  "title": "the document's own title as printed on it (e.g. \"Bilet de externare\", \"Buletin de analize\"), in its original language; if it has none, a short descriptive title in the document's language, under 60 characters",
   "doc_date": "YYYY-MM-DD or null if not found",
   "provider": "clinic/hospital name or null",
   "doc_type": one of ${JSON.stringify(DOC_TYPES)},
@@ -72,7 +83,7 @@ Extract and return ONLY valid JSON (no markdown):
       "label": "field name (e.g. diagnosis, allergy, medication, lab_value, result, follow_up)",
       "value": "extracted value",
       "source_snippet": "the exact phrase from the document text that supports this value",
-      "page_number": 1,
+      "page_number": 4,
       "confidence": 0.0-1.0
     }
   ]
@@ -81,5 +92,5 @@ Extract and return ONLY valid JSON (no markdown):
 Rules:
 - source_snippet must be a substring that actually appears in the document text
 - Include diagnoses, allergies, medications, key lab values, referrals, and follow-up instructions as fields
-- page_number is 1-indexed; estimate based on text position if unclear`;
+- page_number is the number in the page marker above the text that supports the value`;
 }

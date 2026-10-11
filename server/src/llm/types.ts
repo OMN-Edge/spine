@@ -53,6 +53,12 @@ export interface ChatLlmConfig {
   maxTokens: { continuation: number; extraction: number; page: number };
   /** Retries inside the adapter, where transport failures belong. */
   maxRetries: number;
+  /**
+   * The model's context window in characters, the only cap on the text in a request. A page
+   * pair or a document that would exceed it is cut for a boundary check or split into chunks
+   * for extraction; nothing is shortened for any other reason.
+   */
+  contextChars: number;
   logger?: LlmLogger;
 }
 
@@ -92,6 +98,7 @@ export const continuationSchema = z.object({
 });
 
 export const extractionSchema = z.object({
+  title: z.string(),
   doc_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
   provider: z.string().nullable(),
   doc_type: z.enum(DOC_TYPES),
@@ -142,6 +149,7 @@ export const CONTINUATION_FALLBACK: ContinuationResult = {
 };
 
 export const EXTRACTION_FALLBACK: ExtractionResult = {
+  title: null,
   doc_date: null,
   provider: null,
   doc_type: 'other',

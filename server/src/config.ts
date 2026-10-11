@@ -49,7 +49,17 @@ const DEFAULT_LLM_PROVIDER = 'anthropic';
 const DEFAULT_ENDPOINTS: Record<string, string> = { anthropic: 'api.anthropic.com' };
 const DEFAULT_LLM_MODEL = 'claude-haiku-4-5-20251001';
 const DEFAULT_MAX_TOKENS_CONTINUATION = 256;
-const DEFAULT_MAX_TOKENS_EXTRACTION = 2048;
+// A document with many values (a lab panel) needs room to list them all.
+const DEFAULT_MAX_TOKENS_EXTRACTION = 4096;
+/**
+ * The only limit on how much text goes into one request: the model's context window, in
+ * characters, with headroom for the answer and the prompt. 300,000 characters is about
+ * 100,000 tokens at the three-or-so characters per token that Romanian text costs, inside
+ * a 200,000-token window. Text over it is split into chunks, never cut off.
+ */
+const DEFAULT_CONTEXT_CHARS = 300_000;
+/** Model calls in flight at once. Providers rate-limit and a Pi has few cores, so not unbounded. */
+const DEFAULT_CONCURRENCY = 4;
 const DEFAULT_MAX_TOKENS_PAGE = 4096;
 const DEFAULT_MAX_RETRIES = 2;
 
@@ -95,6 +105,8 @@ export interface ParserEnvConfig {
   ocrMaxLowShare: number;
   /** Tesseract languages, e.g. `ron+eng`. */
   ocrLangs: string;
+  /** Pages read at once when images go to the model. Local OCR is always one at a time. */
+  concurrency: number;
 }
 
 export interface MailEnvConfig {
@@ -116,6 +128,8 @@ export interface LlmEnvConfig {
   project?: string;
   maxTokens: { continuation: number; extraction: number; page: number };
   maxRetries: number;
+  /** The context window in characters: the only cap on the text in a request. */
+  contextChars: number;
 }
 
 export interface Config {
@@ -193,6 +207,7 @@ function readParserConfig(env: NodeJS.ProcessEnv, problems: string[]): ParserEnv
     textLayerMinChars: number('SPINE_TEXT_LAYER_MIN_CHARS', 50, 1, 100_000),
     ocrMinConfidence: number('SPINE_OCR_MIN_CONFIDENCE', 85, 0, 100),
     ocrMaxLowShare: number('SPINE_OCR_MAX_LOW_SHARE', 0.1, 0, 1),
+    concurrency: Math.trunc(number('SPINE_LLM_CONCURRENCY', DEFAULT_CONCURRENCY, 1, 16)),
     ocrLangs,
   };
 }
@@ -323,7 +338,14 @@ function readLlmConfig(env: NodeJS.ProcessEnv, problems: string[]): LlmEnvConfig
       'SPINE_LLM_MAX_RETRIES',
       problems,
     ),
+    contextChars: positiveInteger(
+      env.SPINE_LLM_CONTEXT_CHARS,
+      DEFAULT_CONTEXT_CHARS,
+      'SPINE_LLM_CONTEXT_CHARS',
+      problems,
+    ),
   };
+  if (llm.contextChars < 10_000) problems.push('SPINE_LLM_CONTEXT_CHARS is below 10,000, which is too small for a page of text');
 
   if (llm.model.trim().length === 0) problems.push('SPINE_LLM_MODEL is empty');
   return llm;
@@ -369,4 +391,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     parser,
     registration,
   };
+}
+
+/** How many model calls may be in flight at once (`SPINE_LLM_CONCURRENCY`, default 4). */
+export function llmConcurrency(env: NodeJS.ProcessEnv = process.env): number {
+  return loadParserConfig(env).concurrency;
+}
+
+/** The context window in characters, the only cap on the text sent in one request. */
+export function llmContextChars(env: NodeJS.ProcessEnv = process.env): number {
+  return loadLlmConfig(env).contextChars;
 }

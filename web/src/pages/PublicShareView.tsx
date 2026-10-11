@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { api, type Document } from '../api';
+import { documentByline, documentTitle } from '../titles';
 
 export default function PublicShareView() {
   const { token } = useParams<{ token: string }>();
@@ -50,11 +51,9 @@ export default function PublicShareView() {
             {docs.map(doc => (
               <div key={doc.id} className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="flex items-start justify-between gap-4 mb-3">
-                  <div>
-                    <p className="font-medium text-gray-900">{doc.provider ?? 'Unknown provider'}</p>
-                    <p className="text-sm text-gray-500 mt-0.5">
-                      {doc.doc_type?.replace('_', ' ')} · {doc.doc_date ?? 'no date'}
-                    </p>
+                  <div className="min-w-0">
+                    <p className="font-medium text-gray-900">{documentTitle(doc)}</p>
+                    <p className="text-sm text-gray-500 mt-0.5">{documentByline(doc)}</p>
                   </div>
                 </div>
                 {doc.ai_summary && (

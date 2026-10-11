@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type Document } from '../api';
+import { documentTitle } from '../titles';
+import SpineLog from '../components/SpineLog';
 
 const DOC_TYPE_LABELS: Record<string, string> = {
   lab_result: 'Lab',
@@ -28,12 +30,12 @@ function DocCard({ doc }: { doc: Document }) {
 
   return (
     <Link
-      to={`/review/${doc.id}`}
+      to={`/documents/${doc.id}`}
       className="block bg-white border border-gray-200 rounded-xl p-5 hover:border-blue-300 hover:shadow-sm transition-all"
     >
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-1">
             <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${typeColor}`}>{typeLabel}</span>
             {!doc.reviewed && (
               <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
@@ -41,7 +43,8 @@ function DocCard({ doc }: { doc: Document }) {
               </span>
             )}
           </div>
-          <p className="text-sm font-medium text-gray-900 truncate">{doc.provider ?? 'Unknown provider'}</p>
+          <p className="text-sm font-medium text-gray-900 truncate">{documentTitle(doc)}</p>
+          {doc.title && doc.provider && <p className="text-xs text-gray-500 truncate">{doc.provider}</p>}
           {doc.ai_summary && (
             <p className="text-sm text-gray-500 mt-1 line-clamp-2">{doc.ai_summary}</p>
           )}
@@ -64,7 +67,7 @@ export default function Timeline() {
 
   useEffect(() => {
     setLoading(true);
-    api.documents.list(filter)
+    api.documents.listAll(filter)
       .then(setDocs)
       .finally(() => setLoading(false));
   }, [filter]);
@@ -79,9 +82,9 @@ export default function Timeline() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <h1 className="text-2xl font-semibold text-gray-900">Timeline</h1>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <select
             className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
             value={filter.doc_type ?? ''}
@@ -116,9 +119,14 @@ export default function Timeline() {
           {years.map(year => (
             <div key={year}>
               <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">{year}</h2>
-              <div className="space-y-2">
-                {byYear[year].map(doc => <DocCard key={doc.id} doc={doc} />)}
-              </div>
+              {/* One spine per year: a reviewed document is a solid vertebra, an unreviewed one an empty amber outline. */}
+              <SpineLog
+                items={byYear[year].map(doc => ({
+                  id: doc.id,
+                  state: doc.reviewed ? 'done' : 'unreviewed',
+                  children: <DocCard doc={doc} />,
+                }))}
+              />
             </div>
           ))}
         </div>

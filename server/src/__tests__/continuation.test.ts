@@ -17,6 +17,7 @@ const config: ChatLlmConfig = {
   model: 'fake-model',
   maxTokens: { continuation: 256, extraction: 2048, page: 4096 },
   maxRetries: 0,
+  contextChars: 300_000,
   logger: { info: () => {}, warn: () => {} },
 };
 
@@ -80,23 +81,35 @@ describe('checkContinuation', () => {
     expect(result.confidence).toBe(0.81);
   });
 
-  it('sends only the configured slice of each page — the egress budget', async () => {
+  it('sends the whole of both pages: the only cap is the context window', async () => {
     const chat = install([{ is_continuation: false, confidence: 0.5, reasoning: 'x' }]);
-    // Filler characters that do not appear in the prompt template, so the runs
-    // measured below are exactly what came from the page text.
-    const prev = 'Q'.repeat(900) + 'TAIL';
-    const curr = 'HEAD' + 'Z'.repeat(900);
+    // Filler that does not appear in the prompt template, so the runs measured are exactly the page text.
+    const prev = 'HEAD' + 'Q'.repeat(9000) + 'TAIL';
+    const curr = 'HEAD' + 'Z'.repeat(9000) + 'TAIL';
 
     await checkContinuation(prev, curr);
 
     const prompt = chat.prompts[0];
-    // The tail of the previous page and the head of the current one: 500 chars
-    // from each side, which is what ARCHITECTURE.md's egress table promises.
+    expect(prompt.match(/Q+/)?.[0].length).toBe(9000);
+    expect(prompt.match(/Z+/)?.[0].length).toBe(9000);
+    expect(prompt.match(/HEAD/g)).toHaveLength(2);
+    expect(prompt.match(/TAIL/g)).toHaveLength(2);
+    expect(chat.tasks).toEqual(['continuation']);
+  });
+
+  it('cuts a page only when the pair would not fit the context window, keeping the end of one and the start of the other', async () => {
+    const small = { ...config, contextChars: 1000 };
+    const recorder = fakeClients([{ is_continuation: false, confidence: 0.5, reasoning: 'x' }]);
+    resetChatLlm(buildChatLlm(recorder.clients, small));
+
+    await checkContinuation('Q'.repeat(900) + 'TAIL', 'HEAD' + 'Z'.repeat(900));
+
+    const prompt = recorder.prompts[0];
+    // Each page gets half the window: its end for the previous page, its start for the current.
     expect(prompt).toContain('TAIL');
     expect(prompt).toContain('HEAD');
     expect(prompt.match(/Q+/)?.[0].length).toBe(496);
     expect(prompt.match(/Z+/)?.[0].length).toBe(496);
-    expect(chat.tasks).toEqual(['continuation']);
   });
 
   it('falls back to a new document when the response fails validation', async () => {
@@ -140,6 +153,7 @@ describe('checkContinuation', () => {
 
 describe('extractFields', () => {
   const valid = {
+    title: 'Buletin de analize',
     doc_date: '2026-01-15',
     provider: 'Regina Maria',
     doc_type: 'lab_result',
@@ -154,6 +168,14 @@ describe('extractFields', () => {
     install([valid]);
     const result = await extractFields('document text');
     expect(result).toEqual(valid);
+  });
+
+  it('degrades to the fallback, with no title, when the title is missing', async () => {
+    const { title: _omitted, ...withoutTitle } = valid;
+    install([withoutTitle]);
+    const result = await extractFields('x');
+    expect(result).toEqual(EXTRACTION_FALLBACK);
+    expect(result.title).toBeNull();
   });
 
   it('accepts a null date and provider', async () => {
@@ -178,12 +200,20 @@ describe('extractFields', () => {
     expect(await extractFields('x')).toEqual(EXTRACTION_FALLBACK);
   });
 
-  it('truncates the document to the configured extraction budget', async () => {
+  it('sends the whole document text, however long: nothing is cut to save money', async () => {
     const chat = install([valid]);
-    await extractFields('Z'.repeat(9000));
-    // 'Z' does not occur in the template, so this run is exactly the slice sent.
-    expect(chat.prompts[0].match(/Z+/)?.[0].length).toBe(6000);
+    await extractFields('Z'.repeat(90_000));
+    // 'Z' does not occur in the template, so this run is exactly the text sent.
+    expect(chat.prompts[0].match(/Z+/)?.[0].length).toBe(90_000);
     expect(chat.tasks).toEqual(['extraction']);
+  });
+
+  it('tells the model the pages are marked, and to name the marker a value is under', async () => {
+    const chat = install([valid]);
+    await extractFields('--- page 4 ---\nsome text');
+    expect(chat.prompts[0]).toMatch(/begins with a marker such as "--- page 4 ---"/);
+    expect(chat.prompts[0]).toMatch(/page_number is the number in the page marker/);
+    expect(chat.prompts[0]).not.toMatch(/1-indexed|estimate/);
   });
 
   it('falls back to a reviewable marker, not an exception', async () => {

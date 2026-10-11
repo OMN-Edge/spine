@@ -87,6 +87,9 @@ CREATE TABLE IF NOT EXISTS documents (
   source_file_id TEXT NOT NULL REFERENCES source_files(id),
   page_start INTEGER NOT NULL,
   page_end INTEGER NOT NULL,
+  -- The document's own title if it prints one, otherwise one extraction made up; the
+  -- owner can edit it. What the UI shows instead of the upload's file name.
+  title TEXT,
   doc_date TEXT,
   provider TEXT,
   doc_type TEXT,
@@ -129,7 +132,7 @@ CREATE TABLE IF NOT EXISTS document_tags (
 -- Search results are filtered by joining back to documents.user_id, so the index
 -- itself can stay shared without leaking (see DocumentRepository.listFor).
 CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(
-  doc_type, provider, ai_summary, user_notes,
+  title, doc_type, provider, ai_summary, user_notes,
   content='documents', content_rowid='rowid'
 );
 
@@ -161,18 +164,18 @@ CREATE INDEX IF NOT EXISTS idx_share_links_user ON share_links(user_id);
 
 -- FTS sync triggers
 CREATE TRIGGER IF NOT EXISTS documents_fts_insert AFTER INSERT ON documents BEGIN
-  INSERT INTO documents_fts(rowid, doc_type, provider, ai_summary, user_notes)
-  VALUES (new.rowid, new.doc_type, new.provider, new.ai_summary, new.user_notes);
+  INSERT INTO documents_fts(rowid, title, doc_type, provider, ai_summary, user_notes)
+  VALUES (new.rowid, new.title, new.doc_type, new.provider, new.ai_summary, new.user_notes);
 END;
 
 CREATE TRIGGER IF NOT EXISTS documents_fts_update AFTER UPDATE ON documents BEGIN
-  INSERT INTO documents_fts(documents_fts, rowid, doc_type, provider, ai_summary, user_notes)
-  VALUES ('delete', old.rowid, old.doc_type, old.provider, old.ai_summary, old.user_notes);
-  INSERT INTO documents_fts(rowid, doc_type, provider, ai_summary, user_notes)
-  VALUES (new.rowid, new.doc_type, new.provider, new.ai_summary, new.user_notes);
+  INSERT INTO documents_fts(documents_fts, rowid, title, doc_type, provider, ai_summary, user_notes)
+  VALUES ('delete', old.rowid, old.title, old.doc_type, old.provider, old.ai_summary, old.user_notes);
+  INSERT INTO documents_fts(rowid, title, doc_type, provider, ai_summary, user_notes)
+  VALUES (new.rowid, new.title, new.doc_type, new.provider, new.ai_summary, new.user_notes);
 END;
 
 CREATE TRIGGER IF NOT EXISTS documents_fts_delete AFTER DELETE ON documents BEGIN
-  INSERT INTO documents_fts(documents_fts, rowid, doc_type, provider, ai_summary, user_notes)
-  VALUES ('delete', old.rowid, old.doc_type, old.provider, old.ai_summary, old.user_notes);
+  INSERT INTO documents_fts(documents_fts, rowid, title, doc_type, provider, ai_summary, user_notes)
+  VALUES ('delete', old.rowid, old.title, old.doc_type, old.provider, old.ai_summary, old.user_notes);
 END;

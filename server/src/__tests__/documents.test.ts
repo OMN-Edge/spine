@@ -225,3 +225,22 @@ describe('GET /api/documents/:id — response columns (S-8)', () => {
     expect(JSON.stringify(body)).not.toContain('/tmp/p.png');
   });
 });
+
+describe('document titles', () => {
+  it('are returned, editable, and searchable', async () => {
+    const { id } = await seedDocument({ aiSummary: 'nothing about it here' });
+    expect((await app.inject({ method: 'GET', url: `/api/documents/${id}`, headers: { cookie } })).json()).toHaveProperty('title', null);
+
+    const patch = await app.inject({
+      method: 'PATCH', url: `/api/documents/${id}`, headers: { cookie },
+      payload: { title: 'Bilet de externare Colentina' },
+    });
+    expect(patch.statusCode).toBe(200);
+    expect((await app.inject({ method: 'GET', url: `/api/documents/${id}`, headers: { cookie } })).json().title)
+      .toBe('Bilet de externare Colentina');
+
+    // The full-text index covers the title, through the update trigger.
+    const found = await app.inject({ method: 'GET', url: '/api/documents?q=externare', headers: { cookie } });
+    expect((found.json() as Array<{ id: string }>).map(d => d.id)).toContain(id);
+  });
+});

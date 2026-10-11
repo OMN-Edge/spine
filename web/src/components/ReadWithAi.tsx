@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
+import { loadAiTarget } from './aiTarget';
 
 type Phase = 'idle' | 'confirm' | 'running' | 'failed';
 
@@ -11,7 +12,7 @@ type Phase = 'idle' | 'confirm' | 'running' | 'failed';
  *
  * Shown only if the operator has allowed AI reading at all.
  */
-export default function ReadWithAi({ sourceFileId }: { sourceFileId: string }) {
+export default function ReadWithAi({ sourceFileId, bare = false }: { sourceFileId: string; /** Without its own card, for use inside another. */ bare?: boolean }) {
   const navigate = useNavigate();
   const [target, setTarget] = useState<{ provider: string; endpoint: string | null } | null>(null);
   const [phase, setPhase] = useState<Phase>('idle');
@@ -20,9 +21,7 @@ export default function ReadWithAi({ sourceFileId }: { sourceFileId: string }) {
   const timer = useRef<number | undefined>(undefined);
 
   useEffect(() => {
-    api.sourceFiles.capabilities()
-      .then(c => setTarget(c.aiReading.enabled ? c.aiReading : null))
-      .catch(() => setTarget(null));
+    loadAiTarget().then(setTarget);
     return () => window.clearTimeout(timer.current);
   }, []);
 
@@ -58,12 +57,12 @@ export default function ReadWithAi({ sourceFileId }: { sourceFileId: string }) {
   const where = target.endpoint ? `${target.provider} (${target.endpoint})` : target.provider;
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-4">
+    <div className={bare ? 'mt-2' : 'bg-white border border-gray-200 rounded-xl p-4'}>
       {phase === 'idle' && (
         <>
-          <p className="text-xs text-gray-500 mb-2">Handwritten, tilted or photographed, and the text came out wrong?</p>
+          {!bare && <p className="text-xs text-gray-500 mb-2">Handwritten, tilted or photographed, and the text came out wrong?</p>}
           <button onClick={() => setPhase('confirm')} className="text-sm text-purple-700 hover:text-purple-900">
-            Read this file with AI
+            Read the whole file with AI
           </button>
         </>
       )}
@@ -71,7 +70,8 @@ export default function ReadWithAi({ sourceFileId }: { sourceFileId: string }) {
       {phase === 'confirm' && (
         <>
           <p className="text-sm text-gray-800 mb-2">
-            This sends every page image of this file to <strong>{where}</strong> and reads it again.
+            This sends <strong>every</strong> page image of this file to <strong>{where}</strong> and reads it again. To
+            read only some pages, open Pages and grouping instead.
           </p>
           <p className="text-xs text-gray-500 mb-3">
             It replaces the documents made from this file, including edits you made to them and any

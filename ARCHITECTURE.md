@@ -272,8 +272,8 @@ conversation formats differ across vendors.
 
 | Call | Input | Output | `max_tokens` |
 |---|---|---|---|
-| `detectContinuation(prev, curr)` | last 500 chars of page N-1 + first 500 of page N | `{is_continuation, confidence, reasoning}` | 256 |
-| `extractFields(text)` | first 6000 chars of a logical document | date, provider, type, summary, tags, `fields[]` | 2048 |
+| `detectContinuation(prev, curr)` | the whole text of page N-1 and page N | `{is_continuation, confidence, reasoning}` | 256 |
+| `extractFields(text)` | the whole document, each page under a `--- page N ---` marker | title, date, provider, type, summary, tags, `fields[]` | 4096 |
 | `readPage(image)` | one page image | `regions[]`: text + a box as fractions of the page | 4096 |
 
 ```
@@ -282,6 +282,12 @@ parse → [continuation × (N-1)] → group into documents → [extract × M] �
 
 A 10-page upload with 3 documents is 9 continuation calls and 3 extraction calls, plus a
 `readPage` per page the model has to read. Grounding is not a model call.
+
+#### Limits and concurrency
+
+The only cap on the text in a request is the model's context window, `SPINE_LLM_CONTEXT_CHARS` (default 300,000 characters): nothing is shortened to save money or to send less. A document over it is split into chunks at page boundaries (details from the first chunk, tags and fields gathered from all; if any chunk fails the document counts as failed). Pages are labelled with their real numbers so a field lands on the right page, including for documents that start after page 1. Because the whole text now goes to the provider, more document text leaves the host than before (see the egress table).
+
+Reading pages, checking page pairs and extracting documents are independent, so they run in parallel, at most `SPINE_LLM_CONCURRENCY` at once (default 4). Only the waiting is parallel: every database write stays sequential, and nothing is written until the model calls for that step have succeeded.
 
 #### How it is built
 
@@ -523,7 +529,7 @@ outage.
 
 The model can only improve a page, never lose one. If it fails or answers with nothing
 usable, the page keeps what local OCR read (or comes back empty if that failed too) and the
-failure is logged. Pages go one at a time, which keeps load and rate limits predictable on
+failure is logged. Pages are read in parallel, up to `SPINE_LLM_CONCURRENCY` (default 4), one image per call; local OCR stays one page at a time. This keeps load and rate limits predictable on
 a Pi. Boxes from the model are its own estimate and less exact than OCR's, so those pages
 are stored as `multimodal` and the UI draws their highlight dashed with a "Read by AI ·
 position approximate" label.
@@ -537,6 +543,39 @@ with nothing to say why.
 `SPINE_MULTIMODAL_ENABLED=true` the other; either alone does nothing or is refused at
 startup (SECURITY.md **M-7**). Images go to whatever `SPINE_LLM_PROVIDER` is, so a
 deployment with a residency requirement should use Vertex at an `eu` endpoint.
+
+### Reading a page with AI
+
+A misreading is a property of a page (handwriting, a tilt, a table the OCR scrambled), so that is
+what can be read again with the model, not a document. It is offered on the **document page**, where
+the scan, the extracted fields and their highlights already are: a **Scan | Text** switch shows either
+the page image or the text the app read from it at a readable size, with how it was read (text layer,
+OCR or AI) and "Read this page with AI" beside it. A page with no text says so and, if the server may
+use the model, how to have it read. The grouping screen's thumbnails mark the pages that were not read
+from a text layer, and its large preview is only a viewer with a link to the page's document
+(`/documents/:id?page=N`).
+
+When a page has no text at all, nothing needs doing in `hybrid` with image reading allowed: it goes to
+the model at upload. The button is for a page that was read, but badly, which the routing cannot see; in
+`sidecar` mode, or when the model failed, an empty page stays empty until it is used.
+
+- Only the chosen page's image is sent, through the same model parser and operator switch as every
+  other route that sends an image. The API takes up to 200 pages a request (for a future multi-select);
+  the app asks for one. One reading per upload at a time.
+- Every page is read before anything is written, so a page the model cannot read leaves the upload
+  exactly as it was. Their text, boxes and `multimodal` source are then written together.
+- Only the documents that contain a page that was read are extracted again (once each, however many
+  of their pages changed), from their pages' text. That replaces title, date, provider, type,
+  summary, tags and fields, keeps the owner's notes, and puts the document back in review. If
+  extracting a document fails, its page text is already updated and its details stay as they were; the
+  result says so and "Extract details again" retries.
+- It runs as a background job the browser polls (progress by page, then by document). The confirmation
+  states how many images go where, how many documents will be extracted again, and, if some are already
+  reviewed, that their edits will be replaced.
+- **Extract details again** is the document-level action, and the cheap one: the same extraction on
+  the text already there, no image, so it needs no switch.
+
+The whole-file button below lives on each upload in the Upload history.
 
 ### Reading a file again with AI
 
@@ -556,6 +595,63 @@ For those, a finished upload has a **"Read this file with AI"** button on the re
 It is a per-document decision made after seeing that a document needs it, in place of an
 upload-time checkbox that would ask on every upload and could not be undone (re-uploading
 the same file is refused as a duplicate).
+
+### The document page
+
+One page per document, `/documents/:id`, in two modes. **Reading** is what a tile on the
+timeline opens: the extracted details and fields beside the scans. **Review** turns the same
+page into an editor: title, date, type, provider, tags, summary, notes, and every extracted
+field (change, remove, add). **Done** saves it all, marks the document reviewed and returns
+to reading; Review again edits again; Discard changes drops the edits. A document opened from
+the review queue starts in edit mode (`?edit=1`), anywhere else in reading mode. Old
+`/review/:id` links redirect.
+
+An edit session is one `PATCH /api/documents/:id`, carrying the details, the tags, the field
+changes (`fields: { update, remove, add }`) and `reviewed`. Everything is validated first and
+written in one transaction, so a bad field cannot leave the rest half applied:
+
+- text has length limits, a date must be a real day, a type one the app knows; empty text
+  clears a detail;
+- a field to change or remove must be on *this* document, and a new field must be on one of its
+  pages, otherwise the whole request is refused (400) and nothing changes;
+- a corrected field keeps where it was read from; a field the owner adds has no source box.
+
+Reading the file again with AI is not offered while editing, since it replaces the document and
+would discard the edits.
+
+### Regrouping an upload
+
+Boundary detection will sometimes be wrong, most of all in a long scan holding many
+documents. Every upload stays in the Upload page's history, named by the documents it
+became, and opens a **Pages and grouping** screen: the upload's pages as thumbnails,
+grouped into documents on a spine, with a split control between any two pages of a
+document and a join control between two documents.
+
+- A split shortens the document and makes a new one for the rest of its pages; extracted
+  fields move with the page they were read from, and the new document starts with the
+  first one's tags, type, provider and date until it is read.
+- A join is only with the document directly after, in the same upload; anything else is
+  refused, since it would leave a page range that skips pages or runs backwards.
+- Either way the documents it touched are **read again** (`extractFields` on their own
+  pages' text, the same payload as at upload) and go back to review. The owner's notes
+  are kept. The new grouping is saved first and stands even if reading fails, in which
+  case the previous reading is kept rather than overwritten with "extraction failed".
+- Clicking a thumbnail opens a large preview of that page and nothing else: arrow keys or
+  buttons step through every page of the upload, tapping toggles zoom, Escape closes. It is
+  deliberately view-only. Editing a document's details, its fields and re-reading it
+  belong to the review screen, which is the separate and more capable place.
+- Whatever this screen changes lands in the review queue, since the queue is simply the
+  unreviewed documents: new documents from an upload, and any document a split or join
+  touched, are unreviewed, even if they were reviewed before.
+- Thumbnails are the full-size page images, loaded lazily. A 100-page upload is heavy on
+  a phone connection; smaller thumbnails made at rasterize time are the obvious next step.
+
+### Listing documents
+
+`GET /api/documents` is paged: 50 by default, at most 500 per request, and a limit or offset
+that is not a usable number falls back to the default instead of failing. The pages that show
+an archive (timeline, review queue, search) fetch everything by paging in chunks, so none of
+them stops at the first 50 documents.
 
 ### Job state
 
@@ -600,12 +696,14 @@ one place (`resolveDataDir`) to `<repo>/data`.
 - `user_recovery_codes` — sha256 of each code, `used_at`.
 - `source_files` — one row per upload. `status`: `pending | processing | done | error`.
 - `documents` — one *logical* document: a page range within a source file. The unit that
-  gets shared.
+  gets shared. `title` is the document's own printed title, or one extraction generated when
+  it has none; the owner can edit it, and the UI names documents by it, never by the
+  upload's file name (falling back to type and provider when it is empty).
 - `pages` — one per rasterized page, with parser elements and the absolute `image_path`.
 - `extracted_fields` — label/value per document, with page id and fractional bbox.
 - `tags`, `document_tags` — many-to-many, **scoped per user**; a new user gets starter tags.
 - `share_links`, `share_link_access_log`.
-- `documents_fts` — FTS5 over `doc_type`, `provider`, `ai_summary`, `user_notes`, kept in
+- `documents_fts` — FTS5 over `title`, `doc_type`, `provider`, `ai_summary`, `user_notes`, kept in
   sync by three triggers. The index is shared; search results are filtered by joining back
   to `documents.user_id`, so it leaks nothing.
 
@@ -644,10 +742,13 @@ Page images are the most sensitive egress in the system and are off unless asked
 
 | Path | Payload | Destination |
 |---|---|---|
-| Continuation detection | ~500 chars from each of two adjacent pages | configured provider |
-| Field extraction | first ~6000 chars of a document's text | configured provider |
+| Continuation detection | the text of two adjacent pages | configured provider |
+| Field extraction | the document's full text (split into chunks only if it would exceed the context window) | configured provider |
+| Reading again after a split or join | the same, for each document the change touched | configured provider |
 | Page reading (`hybrid`) | **full page images**, only for pages with no text layer that local OCR could not read | configured provider |
-| Page reading ("Read with AI", `multimodal`) | **full page images**, every page of the file | configured provider |
+| Page reading ("Read the whole file with AI", `multimodal`) | **full page images**, every page of the file | configured provider |
+| Page reading ("Read this page / these pages with AI") | **full page images**, only the pages chosen | configured provider |
+| "Extract details again" | the document's page **text**, as at upload; no image | configured provider |
 | Parsing (sidecar) | nothing — local | — |
 | Verification and recovery mail | recipient address + single-use link. **Never document content** | configured mail provider |
 
@@ -670,7 +771,9 @@ name. The links point at `SPINE_DOMAIN`, so a domain that says "medical" says it
 
 React + Vite + Tailwind, built to `web/dist`, served by Fastify. Pages: timeline, upload,
 review, search, share links, account (password and two-factor), login, register, verify,
-forgot/reset, and the public `/share/:token` view. In dev, `npm run dev` runs Vite
+forgot/reset, and the public `/share/:token` view. Every page works at phone width: below
+the `md` breakpoint the navigation collapses into a menu and the review screen stacks the
+fields above the page image. In dev, `npm run dev` runs Vite
 separately and proxies `/api` and `/share` to port 3000 (`web/vite.config.ts`).
 
 `web/tsconfig.json` sets `noEmit: true` deliberately. Without it `tsc` writes `.js` next to

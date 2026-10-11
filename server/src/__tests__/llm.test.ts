@@ -7,7 +7,7 @@ const base: ChatLlmConfig = {
   provider: 'anthropic',
   model: 'claude-haiku-4-5-20251001',
   maxTokens: { continuation: 256, extraction: 2048, page: 4096 },
-  maxRetries: 2,
+  maxRetries: 2, contextChars: 300_000,
   logger: { info: () => {}, warn: () => {} },
 };
 
@@ -109,7 +109,25 @@ describe('loadConfig — llm section', () => {
     const { llm } = loadConfig({ ...valid });
     expect(llm.provider).toBe('anthropic');
     expect(llm.model).toBe('claude-haiku-4-5-20251001');
-    expect(llm.maxTokens).toEqual({ continuation: 256, extraction: 2048, page: 4096 });
+    // Extraction has room to list a lab panel's every value.
+    expect(llm.maxTokens).toEqual({ continuation: 256, extraction: 4096, page: 4096 });
+  });
+
+  it('has one cap on request text, the context window, and takes it from the environment', () => {
+    expect(loadConfig({ ...valid }).llm.contextChars).toBe(300_000);
+    expect(loadConfig({ ...valid, SPINE_LLM_CONTEXT_CHARS: '120000' }).llm.contextChars).toBe(120_000);
+  });
+
+  it.each(['abc', '0', '-5', '5000'])('refuses a context budget of %s', value => {
+    expect(() => loadConfig({ ...valid, SPINE_LLM_CONTEXT_CHARS: value })).toThrow(/SPINE_LLM_CONTEXT_CHARS/);
+  });
+
+  it('defaults to four model calls at once, and refuses a nonsense number', () => {
+    expect(loadConfig({ ...valid }).parser.concurrency).toBe(4);
+    expect(loadConfig({ ...valid, SPINE_LLM_CONCURRENCY: '8' }).parser.concurrency).toBe(8);
+    for (const bad of ['0', '17', 'many', '-1']) {
+      expect(() => loadConfig({ ...valid, SPINE_LLM_CONCURRENCY: bad }), bad).toThrow(/SPINE_LLM_CONCURRENCY/);
+    }
   });
 
   it('defaults the endpoint only where it carries no residency meaning', () => {

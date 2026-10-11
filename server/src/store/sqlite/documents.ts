@@ -14,7 +14,7 @@ import { expectInserted, owner } from './owner.js';
  * a column name, so there is no path by which a request key reaches the SQL
  * (S-12).
  */
-const UPDATABLE_COLUMNS = ['doc_date', 'provider', 'doc_type', 'ai_summary', 'user_notes'] as const;
+const UPDATABLE_COLUMNS = ['title', 'doc_date', 'provider', 'doc_type', 'ai_summary', 'user_notes'] as const;
 type UpdatableColumn = (typeof UPDATABLE_COLUMNS)[number];
 
 const ORDER = 'ORDER BY d.doc_date DESC NULLS LAST';
@@ -24,7 +24,7 @@ const ORDER = 'ORDER BY d.doc_date DESC NULLS LAST';
  * all a share recipient — has any use for (S-8).
  */
 const COLUMNS =
-  'd.id, d.source_file_id, d.page_start, d.page_end, d.doc_date, d.provider, ' +
+  'd.id, d.source_file_id, d.page_start, d.page_end, d.title, d.doc_date, d.provider, ' +
   'd.doc_type, d.ai_summary, d.user_notes, d.reviewed';
 
 /** Every statement filters by `user_id` (SECURITY.md P12). */
@@ -33,8 +33,8 @@ export function documentRepository(db: Database): DocumentRepository {
 
   // Inserts only if the source file is the user's.
   const insert = db.prepare(`
-    INSERT INTO documents (id, user_id, source_file_id, page_start, page_end, doc_date, provider, doc_type, ai_summary)
-    SELECT ?, ?, id, ?, ?, ?, ?, ?, ?
+    INSERT INTO documents (id, user_id, source_file_id, page_start, page_end, title, doc_date, provider, doc_type, ai_summary)
+    SELECT ?, ?, id, ?, ?, ?, ?, ?, ?, ?
     FROM source_files WHERE id = ? AND user_id = ?
   `);
   const setPageEnd = db.prepare('UPDATE documents SET page_end = ? WHERE id = ? AND user_id = ?');
@@ -89,6 +89,7 @@ export function documentRepository(db: Database): DocumentRepository {
       if (filter.provider) { sql += ' AND d.provider LIKE ?'; params.push(`%${filter.provider}%`); }
       if (filter.dateFrom) { sql += ' AND d.doc_date >= ?'; params.push(filter.dateFrom); }
       if (filter.dateTo) { sql += ' AND d.doc_date <= ?'; params.push(filter.dateTo); }
+      if (filter.sourceFileId) { sql += ' AND d.source_file_id = ?'; params.push(filter.sourceFileId); }
       if (filter.reviewed !== undefined) {
         sql += ' AND d.reviewed = ?';
         params.push(filter.reviewed ? 1 : 0);
@@ -112,6 +113,7 @@ export function documentRepository(db: Database): DocumentRepository {
         uid,
         doc.pageStart,
         doc.pageEnd,
+        doc.title ?? null,
         doc.docDate ?? null,
         doc.provider ?? null,
         doc.docType ?? null,
@@ -131,7 +133,7 @@ export function documentRepository(db: Database): DocumentRepository {
       if (columns.length === 0) return;
 
       const values = columns.map(key =>
-        key === 'reviewed' ? (patch.reviewed ? 1 : 0) : (patch[key] as string),
+        key === 'reviewed' ? (patch.reviewed ? 1 : 0) : (patch[key] as string | null),
       );
       const sets = columns.map(key => `${key} = ?`).join(', ');
       db.prepare(`UPDATE documents SET ${sets} WHERE id = ? AND user_id = ?`).run(...values, id, uid);

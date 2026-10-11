@@ -54,7 +54,7 @@ export function buildChatLlm(clients: TaskClients, config: ChatLlmConfig): ChatL
         config,
         log,
         'continuation',
-        buildContinuationPrompt(previousPageText, currentPageText),
+        buildContinuationPrompt(previousPageText, currentPageText, config.contextChars),
         TASK_SCHEMAS.continuation,
       );
 

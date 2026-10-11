@@ -71,6 +71,22 @@ describe('opening a database from before multi-user', () => {
     );
   });
 
+  it('refuses a database whose documents predate titles', () => {
+    dir = mkdtempSync(path.join(tmpdir(), 'spine-notitle-'));
+    const file = path.join(dir, 'spine.db');
+    const db = new Database(file);
+    db.exec(`
+      CREATE TABLE users (id TEXT PRIMARY KEY, email TEXT, email_verified_at TEXT);
+      CREATE TABLE source_files (id TEXT PRIMARY KEY, user_id TEXT);
+      CREATE TABLE documents (id TEXT PRIMARY KEY, user_id TEXT, doc_date TEXT);
+      INSERT INTO documents VALUES ('d1', 'u1', '2026-01-01');
+    `);
+    db.close();
+
+    // It holds a document, so the message must not tell anyone to delete it.
+    expect(() => createStore({ adapter: 'sqlite', location: file })).toThrow(/earlier version.*Do NOT delete/s);
+  });
+
   it('opens a fresh database and a current one without complaint', () => {
     dir = mkdtempSync(path.join(tmpdir(), 'spine-current-'));
     const file = path.join(dir, 'spine.db');

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { LogoMark } from './Logo';
 
 /** The centred card the sign-in, signup and recovery pages share. */
 export default function AuthCard({
@@ -12,7 +13,8 @@ export default function AuthCard({
 }) {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-200 w-full max-w-sm">
+      <div className="bg-white p-6 sm:p-8 rounded-xl shadow-sm border border-gray-200 w-full max-w-sm">
+        <LogoMark className="h-9 w-9 text-blue-600 mb-4" />
         <h1 className="text-2xl font-semibold text-gray-900 mb-6">{title}</h1>
         {children}
         {footer && <div className="mt-5 text-sm text-gray-500 space-y-1">{footer}</div>}

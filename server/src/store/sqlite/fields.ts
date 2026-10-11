@@ -31,6 +31,23 @@ export function extractedFieldRepository(db: Database): ExtractedFieldRepository
       AND EXISTS (SELECT 1 FROM documents WHERE id = ? AND user_id = ?)
   `);
 
+  // Only fields on the document's own pages from that number on, and only into a
+  // document that is the user's.
+  const reassignFromPage = db.prepare(`
+    UPDATE extracted_fields SET document_id = ?
+    WHERE document_id = ? AND user_id = ?
+      AND page_id IN (
+        SELECT p.id FROM pages p JOIN documents d ON d.source_file_id = p.source_file_id
+        WHERE d.id = ? AND d.user_id = ? AND p.user_id = ? AND p.page_number >= ?
+      )
+      AND EXISTS (SELECT 1 FROM documents WHERE id = ? AND user_id = ?)
+  `);
+  const deleteForDocument = db.prepare('DELETE FROM extracted_fields WHERE document_id = ? AND user_id = ?');
+  const updateOne = db.prepare(
+    'UPDATE extracted_fields SET label = ?, value = ? WHERE id = ? AND document_id = ? AND user_id = ?',
+  );
+  const removeOne = db.prepare('DELETE FROM extracted_fields WHERE id = ? AND document_id = ? AND user_id = ?');
+
   return {
     async listForDocument(userId, documentId) {
       return listForDocument.all(documentId, owner(userId)) as ExtractedField[];
@@ -60,6 +77,23 @@ export function extractedFieldRepository(db: Database): ExtractedFieldRepository
     async reassignDocument(userId, fromDocumentId, toDocumentId) {
       const uid = owner(userId);
       reassign.run(toDocumentId, fromDocumentId, uid, toDocumentId, uid);
+    },
+
+    async reassignFromPage(userId, fromDocumentId, toDocumentId, fromPageNumber) {
+      const uid = owner(userId);
+      reassignFromPage.run(toDocumentId, fromDocumentId, uid, fromDocumentId, uid, uid, fromPageNumber, toDocumentId, uid);
+    },
+
+    async deleteForDocument(userId, documentId) {
+      deleteForDocument.run(documentId, owner(userId));
+    },
+
+    async update(userId, documentId, fieldId, change) {
+      return updateOne.run(change.label, change.value, fieldId, documentId, owner(userId)).changes === 1;
+    },
+
+    async remove(userId, documentId, fieldId) {
+      return removeOne.run(fieldId, documentId, owner(userId)).changes === 1;
     },
   };
 }

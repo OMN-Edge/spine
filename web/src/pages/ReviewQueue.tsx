@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type Document } from '../api';
+import { documentByline, documentTitle } from '../titles';
+import SpineLog from '../components/SpineLog';
 
 export default function ReviewQueue() {
   const [docs, setDocs] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.documents.list({ reviewed: 'false' })
+    api.documents.listAll({ reviewed: 'false' })
       .then(setDocs)
       .finally(() => setLoading(false));
   }, []);
@@ -26,25 +28,30 @@ export default function ReviewQueue() {
           <p>All caught up. No documents need review.</p>
         </div>
       ) : (
-        <div className="space-y-2">
-          {docs.map(doc => (
-            <Link
-              key={doc.id}
-              to={`/review/${doc.id}`}
-              className="flex items-center justify-between bg-white border border-amber-200 rounded-xl p-4 hover:border-amber-300 hover:shadow-sm transition-all"
-            >
-              <div>
-                <p className="text-sm font-medium text-gray-900">{doc.provider ?? 'Unknown provider'}</p>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  {doc.doc_type ?? 'unknown type'} · {doc.doc_date ?? 'no date'} · pages {doc.page_start}–{doc.page_end}
-                </p>
-              </div>
-              <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">
-                Review →
-              </span>
-            </Link>
-          ))}
-        </div>
+        // Loose vertebrae: these have not joined the spine yet. Reviewing one adds it to the timeline's.
+        <SpineLog
+          loose
+          items={docs.map(doc => ({
+            id: doc.id,
+            state: 'unreviewed',
+            children: (
+              <Link
+                to={`/documents/${doc.id}?edit=1`}
+                className="flex items-center justify-between gap-3 bg-white border border-amber-200 rounded-xl p-4 hover:border-amber-300 hover:shadow-sm transition-all"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">{documentTitle(doc)}</p>
+                  <p className="text-xs text-gray-500 mt-0.5 truncate">
+                    {[documentByline(doc), `pages ${doc.page_start}–${doc.page_end}`].filter(Boolean).join(' · ')}
+                  </p>
+                </div>
+                <span className="shrink-0 text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">
+                  Review →
+                </span>
+              </Link>
+            ),
+          }))}
+        />
       )}
     </div>
   );

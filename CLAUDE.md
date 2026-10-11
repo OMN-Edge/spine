@@ -86,7 +86,9 @@ cd server && npm run test:coverage
 | `SPINE_LLM_ENDPOINT` | Explicit endpoint. **Required for `vertex`, never defaulted** — residency is a property of the endpoint |
 | `SPINE_LLM_REGION` | Provider region (required for `vertex`, e.g. `eu`) |
 | `SPINE_LLM_PROJECT` | GCP project (required for `vertex`) |
-| `SPINE_LLM_MAX_TOKENS_CONTINUATION` / `_EXTRACTION` | Output caps (256 / 2048) |
+| `SPINE_LLM_MAX_TOKENS_CONTINUATION` / `_EXTRACTION` | Output caps (256 / 4096) |
+| `SPINE_LLM_CONTEXT_CHARS` | Context window in characters, the only cap on request text (default 300000); longer documents are chunked |
+| `SPINE_LLM_CONCURRENCY` | Model calls in flight at once (1-16, default 4); DB writes stay sequential |
 | `SPINE_LLM_MAX_RETRIES` | Retries inside the adapter (default 2) |
 | `SESSION_SECRET` | ≥32 char random string for cookie signing |
 | `SPINE_DOMAIN` | Domain nginx serves from (e.g. `spine.yourdomain.com`) |
@@ -156,8 +158,11 @@ detection and field extraction. Everything provider-specific is behind the LLM i
     rather than treating every page as scanned.
   - Page images leave the host only via `readPage`, only for `multimodal`/`hybrid`, and only
     with `SPINE_MULTIMODAL_ENABLED`. If the model fails, the page keeps local OCR.
-  - "Read this file with AI" re-runs an upload through the `multimodal` parser and replaces
-    its documents only after the new reading succeeds.
+  - "Read the whole file with AI" re-runs an upload through the `multimodal` parser and
+    replaces its documents only after the new reading succeeds. "Read this page with AI"
+    (`ingestion/ai-reading.ts`) sends only that page through the same parser and switch, then
+    extracts only the documents that contain it again; "Extract details again" does that on the
+    text already read, with no image.
   - Model-read pages are stored as `multimodal`, and the UI marks their highlights approximate.
 - **Verification and reset links** — tokens are hashed at rest, spent by one atomic
   `UPDATE`, carried in the URL **fragment** (never sent to the server, so not in nginx's
