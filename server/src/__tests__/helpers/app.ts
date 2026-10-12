@@ -85,6 +85,8 @@ export async function buildTestApp(options: TestAppOptions = {}) {
   const { shareRoutes } = await import('../../routes/share.js');
   const { publicShareRoutes } = await import('../../routes/public-share.js');
   const { tagRoutes } = await import('../../routes/tags.js');
+  const { trendRoutes } = await import('../../routes/trends.js');
+  const { doctorRoutes } = await import('../../routes/doctors.js');
   const { decorateAuth } = await import('../../routes/middleware.js');
 
   decorateAuth(app);
@@ -113,6 +115,8 @@ export async function buildTestApp(options: TestAppOptions = {}) {
         : (options.appShellPath ?? writeAppShell()),
   });
   await app.register(tagRoutes);
+  await app.register(trendRoutes);
+  await app.register(doctorRoutes);
 
   await app.ready();
 

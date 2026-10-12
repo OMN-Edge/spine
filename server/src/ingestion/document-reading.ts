@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
-import { getStore, type NewExtractedField, type PageSummary } from '../store/index.js';
+import { getStore, type NewExtractedField, type NewMeasurement, type PageSummary, type Store } from '../store/index.js';
+import { normaliseMeasurements } from './measurements.js';
 import { extractFields } from './extraction.js';
 import { groundSnippet } from './grounding.js';
 import { EXTRACTION_FALLBACK } from '../llm/types.js';
@@ -79,6 +80,26 @@ function pageFor(pages: PageSummary[], pageNumber: number): PageSummary {
 export interface DocumentReading {
   extraction: ExtractionResult;
   fields: NewExtractedField[];
+  /** Normalised and grounded, ready to store. */
+  measurements: NewMeasurement[];
+}
+
+/** A small share of the context window: the list is a hint, and must never crowd out the document. */
+const KNOWN_TESTS_SHARE = 0.05;
+const KNOWN_TESTS_MAX = 300;
+
+/** The canonical test names in this user's archive, most-used first, within a budget of characters. */
+export async function knownTestNames(userId: string): Promise<string[]> {
+  const budget = Math.floor(llmContextChars() * KNOWN_TESTS_SHARE);
+  const names = (await getStore().measurements.names(userId)).sort((a, b) => b.count - a.count);
+  const out: string[] = [];
+  let used = 0;
+  for (const { canonical } of names) {
+    if (out.length >= KNOWN_TESTS_MAX || used + canonical.length + 2 > budget) break;
+    out.push(canonical);
+    used += canonical.length + 2;
+  }
+  return out;
 }
 
 export async function readDocument(
@@ -90,35 +111,80 @@ export async function readDocument(
 
   // One after another: a long document is a few chunks at most, and the calls across
   // documents are what run in parallel.
+  // The tests already in the archive go with every chunk, so one test is named one way across labs.
+  const knownTests = await knownTestNames(userId);
   const extractions: ExtractionResult[] = [];
-  for (const text of chunkPages(pages, llmContextChars())) extractions.push(await extractFields(text));
+  for (const text of chunkPages(pages, llmContextChars())) extractions.push(await extractFields(text, knownTests));
   const extraction = mergeExtractions(extractions);
+
+  // Where on its page a supporting phrase is, as a box; null when it cannot be pinned down.
+  const locate = async (pageId: string, snippet: string) => {
+    const context = await store.pages.findGroundingContext(userId, pageId);
+    const box = context
+      ? groundSnippet(snippet, context.elements, context.imageWidth, context.imageHeight)
+      : { bbox_x0: null, bbox_y0: null, bbox_x1: null, bbox_y1: null };
+    return box.bbox_x0 === null || box.bbox_y0 === null || box.bbox_x1 === null || box.bbox_y1 === null
+      ? null
+      : { x0: box.bbox_x0, y0: box.bbox_y0, x1: box.bbox_x1, y1: box.bbox_y1 };
+  };
 
   // Grounded before any write, so a caller's transaction holds only store calls.
   const fields = await Promise.all(
-    extraction.fields.map(async field => {
+    extraction.fields.map(async (field): Promise<NewExtractedField> => {
       const page = pageFor(pages, field.page_number);
-      const context = await store.pages.findGroundingContext(userId, page.id);
-      const box = context
-        ? groundSnippet(field.source_snippet, context.elements, context.imageWidth, context.imageHeight)
-        : { bbox_x0: null, bbox_y0: null, bbox_x1: null, bbox_y1: null };
-
       return {
         id: uuidv4(),
         documentId,
         pageId: page.id,
         label: field.label,
         value: field.value,
+        groupNo: field.group ?? null,
         sourceSnippet: field.source_snippet,
-        bbox:
-          box.bbox_x0 === null || box.bbox_y0 === null || box.bbox_x1 === null || box.bbox_y1 === null
-            ? null
-            : { x0: box.bbox_x0, y0: box.bbox_y0, x1: box.bbox_x1, y1: box.bbox_y1 },
+        bbox: await locate(page.id, field.source_snippet),
         confidence: field.confidence,
       };
     }),
   );
-  return { extraction, fields };
+
+  const measurements = await Promise.all(
+    normaliseMeasurements(extraction.measurements, extraction.doc_date).map(async (m): Promise<NewMeasurement> => {
+      const page = pageFor(pages, m.page_number);
+      return {
+        id: uuidv4(),
+        documentId,
+        pageId: page.id,
+        name: m.name,
+        // A name the owner has merged into another is filed under the other.
+        canonical: await store.measurements.resolveCanonical(userId, m.canonical),
+        valueText: m.value_text,
+        valueNum: m.value_num,
+        unit: m.unit,
+        refLow: m.ref_low,
+        refHigh: m.ref_high,
+        flag: m.flag,
+        takenOn: m.taken_on,
+        sourceSnippet: m.source_snippet,
+        bbox: await locate(page.id, m.source_snippet),
+        confidence: m.confidence,
+      };
+    }),
+  );
+  return { extraction, fields, measurements };
+}
+
+/**
+ * Everything a reading produced, written into one document: its fields, its measurements, and the
+ * doctors it names (added to the directory if new, and linked). Called inside the caller's transaction.
+ */
+export async function storeReading(tx: Store, userId: string, documentId: string, reading: DocumentReading): Promise<void> {
+  for (const field of reading.fields) await tx.fields.create(userId, field);
+  for (const measurement of reading.measurements) await tx.measurements.create(userId, measurement);
+
+  const now = new Date().toISOString();
+  for (const doctor of reading.extraction.doctors) {
+    const id = await tx.doctors.upsert(userId, { name: doctor.name, specialty: doctor.specialty, clinic: reading.extraction.provider, licenseCode: doctor.code }, now);
+    if (id) await tx.doctors.link(userId, documentId, id, doctor.role);
+  }
 }
 
 /**
@@ -152,7 +218,7 @@ async function readExisting(userId: string, documentId: string): Promise<Documen
  */
 async function applyReading(userId: string, documentId: string, reading: DocumentReading): Promise<void> {
   const store = getStore();
-  const { extraction, fields } = reading;
+  const { extraction } = reading;
   await store.transaction(async tx => {
     await tx.documents.update(userId, documentId, {
       title: extraction.title?.trim() || undefined,
@@ -164,7 +230,9 @@ async function applyReading(userId: string, documentId: string, reading: Documen
     });
     await tx.tags.setForDocument(userId, documentId, extraction.suggested_tags);
     await tx.fields.deleteForDocument(userId, documentId);
-    for (const field of fields) await tx.fields.create(userId, field);
+    await tx.measurements.deleteForDocument(userId, documentId);
+    await tx.doctors.unlinkAll(userId, documentId);
+    await storeReading(tx, userId, documentId, reading);
   });
 }
 

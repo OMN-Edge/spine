@@ -2,11 +2,13 @@ import type { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
 import { createReadStream, existsSync, statSync } from 'fs';
 import { extname } from 'path';
-import { getStore, type DocumentPatch } from '../store/index.js';
+import { getStore, type DocumentPatch, type MeasurementChange, type NewMeasurement } from '../store/index.js';
 import { requireAuth } from './middleware.js';
 import { rereadDocument, rereadDocuments } from '../ingestion/document-reading.js';
 import { isReadingPages } from '../ingestion/ai-reading.js';
-import { DOC_TYPES } from '../llm/types.js';
+import { DOC_TYPES, DOCTOR_ROLES } from '../llm/types.js';
+import { canonicalName, flagFor, parseNumber, validWhen } from '../ingestion/measurements.js';
+import type { DoctorRole } from '../types.js';
 
 /** The only fields a PATCH may name. `reviewed` is handled alongside them. */
 const PATCHABLE_FIELDS = [
@@ -31,7 +33,10 @@ interface ValidFieldEdits {
   add: Array<{ label: string; value: string; page_id: string }>;
 }
 
-const LIMITS = { title: 200, provider: 200, summary: 4000, notes: 10000, label: 80, value: 2000, tag: 60, tags: 30, fieldEdits: 200 };
+const LIMITS = {
+  title: 200, provider: 200, summary: 4000, notes: 10000, label: 80, value: 2000, tag: 60, tags: 30, fieldEdits: 200,
+  measurementValue: 60, unit: 30, doctors: 20, doctorName: 120, specialty: 80,
+};
 
 /** A string within a length, or null for "not that". */
 const text = (value: unknown, max: number): string | null =>
@@ -67,6 +72,88 @@ function normaliseDetails(patch: DocumentPatch): DocumentPatch {
   for (const key of ['title', 'provider', 'doc_date', 'ai_summary', 'user_notes'] as const) {
     const value = out[key];
     if (typeof value === 'string') out[key] = value.trim() === '' ? null : key === 'user_notes' || key === 'ai_summary' ? value : value.trim();
+  }
+  return out;
+}
+
+/** A measurement as the owner typed it, as what is stored: the number parsed, the flag worked out from the range. */
+function measurementFrom(item: { name?: unknown; canonical?: unknown; value?: unknown; unit?: unknown; ref_low?: unknown; ref_high?: unknown; taken_on?: unknown }): MeasurementChange | string {
+  const name = text(item.name, LIMITS.label);
+  const value = text(item.value, LIMITS.measurementValue);
+  if (name === null || name.trim() === '') return `a measurement name is 1 to ${LIMITS.label} characters`;
+  if (value === null || value.trim() === '') return `a measurement value is 1 to ${LIMITS.measurementValue} characters`;
+  const unit = item.unit == null || item.unit === '' ? null : text(item.unit, LIMITS.unit);
+  if (item.unit != null && item.unit !== '' && unit === null) return `a unit is at most ${LIMITS.unit} characters`;
+  const range = (raw: unknown): number | null | 'bad' => {
+    if (raw == null || raw === '') return null;
+    const n = typeof raw === 'number' ? raw : typeof raw === 'string' ? parseNumber(raw) : null;
+    return n === null || !Number.isFinite(n) ? 'bad' : n;
+  };
+  const low = range(item.ref_low);
+  const high = range(item.ref_high);
+  if (low === 'bad' || high === 'bad') return 'a reference range must be a number';
+  if (item.taken_on != null && item.taken_on !== '' && validWhen(String(item.taken_on)) === null) return 'a measurement date must be a real day (YYYY-MM-DD) or a month (YYYY-MM)';
+
+  const valueNum = parseNumber(value);
+  return {
+    name: name.trim(),
+    canonical: canonicalName(typeof item.canonical === 'string' ? item.canonical : null, name),
+    valueText: value.trim(),
+    valueNum,
+    unit: unit?.trim() || null,
+    refLow: low,
+    refHigh: high,
+    flag: flagFor(valueNum, low, high, null),
+    takenOn: item.taken_on ? String(item.taken_on) : null,
+  };
+}
+
+async function checkMeasurementEdits(userId: string, documentId: string, edits: MeasurementEdits): Promise<ValidMeasurementEdits | string> {
+  const store = getStore();
+  const update = edits.update ?? [];
+  const remove = edits.remove ?? [];
+  const add = edits.add ?? [];
+  if (![update, remove, add].every(Array.isArray)) return 'measurements must hold lists: update, remove, add';
+  if (update.length + remove.length + add.length > LIMITS.fieldEdits) return `at most ${LIMITS.fieldEdits} measurement changes at a time`;
+
+  const mine = new Set((await store.measurements.listForDocument(userId, documentId)).map(m => m.id));
+  const pages = new Set((await store.pages.listForDocument(userId, documentId)).map(p => p.id));
+  const touched = new Set<string>();
+  const out: ValidMeasurementEdits = { update: [], remove: [], add: [] };
+
+  for (const item of update) {
+    const change = measurementFrom(item);
+    if (typeof change === 'string') return change;
+    if (typeof item.id !== 'string' || !mine.has(item.id)) return 'a measurement to change was not found on this document';
+    if (touched.has(item.id)) return 'a measurement is changed or removed twice';
+    touched.add(item.id);
+    out.update.push({ id: item.id, change });
+  }
+  for (const measurementId of remove) {
+    if (typeof measurementId !== 'string' || !mine.has(measurementId)) return 'a measurement to remove was not found on this document';
+    if (touched.has(measurementId)) return 'a measurement is changed or removed twice';
+    touched.add(measurementId);
+    out.remove.push(measurementId);
+  }
+  for (const item of add) {
+    const change = measurementFrom(item);
+    if (typeof change === 'string') return change;
+    if (typeof item.page_id !== 'string' || !pages.has(item.page_id)) return 'a new measurement must be on one of this document\'s pages';
+    out.add.push({ pageId: item.page_id, change });
+  }
+  return out;
+}
+
+function checkDoctors(doctors: unknown): ValidDoctor[] | string {
+  if (!Array.isArray(doctors) || doctors.length > LIMITS.doctors) return `doctors must be a list of at most ${LIMITS.doctors}`;
+  const out: ValidDoctor[] = [];
+  for (const d of doctors as DoctorEdit[]) {
+    const name = text(d.name, LIMITS.doctorName);
+    if (name === null || name.trim() === '') return `a doctor's name is 1 to ${LIMITS.doctorName} characters`;
+    const specialty = d.specialty == null || d.specialty === '' ? null : text(d.specialty, LIMITS.specialty);
+    if (d.specialty != null && d.specialty !== '' && specialty === null) return `a specialty is at most ${LIMITS.specialty} characters`;
+    if (!(DOCTOR_ROLES as readonly string[]).includes(String(d.role))) return `a doctor's role must be one of ${DOCTOR_ROLES.join(', ')}`;
+    out.push({ name: name.trim(), specialty: specialty?.trim() || null, role: d.role as DoctorRole });
   }
   return out;
 }
@@ -131,6 +218,20 @@ async function checkFieldEdits(userId: string, documentId: string, edits: FieldE
   return out;
 }
 
+interface MeasurementEdits {
+  update?: Array<{ id?: unknown; name?: unknown; canonical?: unknown; value?: unknown; unit?: unknown; ref_low?: unknown; ref_high?: unknown; taken_on?: unknown }>;
+  remove?: unknown[];
+  add?: Array<{ name?: unknown; canonical?: unknown; value?: unknown; unit?: unknown; ref_low?: unknown; ref_high?: unknown; taken_on?: unknown; page_id?: unknown }>;
+}
+interface DoctorEdit { name?: unknown; specialty?: unknown; role?: unknown }
+interface ValidDoctor { name: string; specialty: string | null; role: DoctorRole }
+interface ValidMeasurementEdits {
+  update: Array<{ id: string; change: MeasurementChange }>;
+  remove: string[];
+  add: Array<{ pageId: string; change: MeasurementCreate }>;
+}
+type MeasurementCreate = Omit<NewMeasurement, 'id' | 'documentId' | 'pageId' | 'sourceSnippet' | 'bbox' | 'confidence'>;
+
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 500;
 
@@ -183,13 +284,15 @@ export async function documentRoutes(app: FastifyInstance) {
     const doc = await store.documents.findFor(req.userId, id);
     if (!doc) return reply.status(404).send({ error: 'not found' });
 
-    const [fields, tags, pages] = await Promise.all([
+    const [fields, tags, pages, measurements, doctors] = await Promise.all([
       store.fields.listForDocument(req.userId, id),
       store.tags.namesForDocument(req.userId, id),
       store.pages.listForDocument(req.userId, id),
+      store.measurements.listForDocument(req.userId, id),
+      store.doctors.forDocument(req.userId, id),
     ]);
 
-    return reply.send({ ...doc, fields, tags, pages });
+    return reply.send({ ...doc, fields, tags, pages, measurements, doctors });
   });
 
   /**
@@ -201,11 +304,11 @@ export async function documentRoutes(app: FastifyInstance) {
    */
   app.patch<{
     Params: { id: string };
-    Body: DocumentPatch & { tags?: string[]; fields?: FieldEdits };
+    Body: DocumentPatch & { tags?: string[]; fields?: FieldEdits; measurements?: MeasurementEdits; doctors?: DoctorEdit[] };
   }>('/api/documents/:id', async (req, reply) => {
     const store = getStore();
     const { id } = req.params;
-    const { tags, fields, ...patch } = req.body ?? {};
+    const { tags, fields, measurements, doctors, ...patch } = req.body ?? {};
 
     // The store takes a patch object and maps it to columns itself, so a
     // request key can never reach the SQL (S-12). Unknown keys are refused
@@ -219,9 +322,8 @@ export async function documentRoutes(app: FastifyInstance) {
 
     // 404, not 403, for a document that is someone else's: the same answer as for
     // one that does not exist, so it cannot be probed for.
-    if (!(await store.documents.findFor(req.userId, id))) {
-      return reply.status(404).send({ error: 'not found' });
-    }
+    const doc = await store.documents.findFor(req.userId, id);
+    if (!doc) return reply.status(404).send({ error: 'not found' });
 
     const problem = checkDetails(patch) ?? checkTags(tags);
     if (problem) return reply.status(400).send({ error: problem });
@@ -235,9 +337,44 @@ export async function documentRoutes(app: FastifyInstance) {
       edits = checked;
     }
 
+    let measurementEdits: ValidMeasurementEdits | null = null;
+    if (measurements !== undefined) {
+      const checked = await checkMeasurementEdits(req.userId, id, measurements);
+      if (typeof checked === 'string') return reply.status(400).send({ error: checked });
+      measurementEdits = checked;
+    }
+    let doctorEdits: ValidDoctor[] | null = null;
+    if (doctors !== undefined) {
+      const checked = checkDoctors(doctors);
+      if (typeof checked === 'string') return reply.status(400).send({ error: checked });
+      doctorEdits = checked;
+    }
+
     await store.transaction(async tx => {
       await tx.documents.update(req.userId, id, normalised);
       if (tags !== undefined) await tx.tags.setForDocument(req.userId, id, tags);
+      if (measurementEdits) {
+        for (const m of measurementEdits.update) {
+          await tx.measurements.update(req.userId, id, m.id, { ...m.change, canonical: await tx.measurements.resolveCanonical(req.userId, m.change.canonical) });
+        }
+        for (const measurementId of measurementEdits.remove) await tx.measurements.remove(req.userId, id, measurementId);
+        for (const m of measurementEdits.add) {
+          await tx.measurements.create(req.userId, {
+            id: uuidv4(), documentId: id, pageId: m.pageId, ...m.change,
+            canonical: await tx.measurements.resolveCanonical(req.userId, m.change.canonical),
+            sourceSnippet: null, bbox: null, confidence: null,
+          });
+        }
+      }
+      if (doctorEdits) {
+        // The list sent is the document's doctors: replace, adding anyone new to the directory.
+        await tx.doctors.unlinkAll(req.userId, id);
+        const now = new Date().toISOString();
+        for (const d of doctorEdits) {
+          const doctorId = await tx.doctors.upsert(req.userId, { name: d.name, specialty: d.specialty, clinic: doc.provider }, now);
+          if (doctorId) await tx.doctors.link(req.userId, id, doctorId, d.role);
+        }
+      }
       if (edits) {
         for (const change of edits.update) await tx.fields.update(req.userId, id, change.id, change);
         for (const fieldId of edits.remove) await tx.fields.remove(req.userId, id, fieldId);
@@ -309,6 +446,8 @@ export async function documentRoutes(app: FastifyInstance) {
           docDate: doc.doc_date,
         });
         await tx.fields.reassignFromPage(req.userId, id, newId, at_page);
+        await tx.measurements.reassignFromPage(req.userId, id, newId, at_page);
+        await tx.doctors.copyLinks(req.userId, id, newId);
         await tx.tags.setForDocument(req.userId, newId, tags);
         await tx.documents.update(req.userId, id, { reviewed: false });
       });
@@ -332,6 +471,8 @@ export async function documentRoutes(app: FastifyInstance) {
       await store.transaction(async tx => {
         await tx.documents.setPageEnd(req.userId, id, other.page_end);
         await tx.fields.reassignDocument(req.userId, other.id, id);
+        await tx.measurements.reassignDocument(req.userId, other.id, id);
+        await tx.doctors.moveLinks(req.userId, other.id, id);
         await tx.tags.removeAllForDocument(req.userId, other.id);
         await tx.documents.delete(req.userId, other.id);
         await tx.documents.update(req.userId, id, { reviewed: false });

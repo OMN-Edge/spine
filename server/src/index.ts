@@ -14,6 +14,8 @@ import { sourceFileRoutes } from './routes/source-files.js';
 import { shareRoutes } from './routes/share.js';
 import { publicShareRoutes } from './routes/public-share.js';
 import { tagRoutes } from './routes/tags.js';
+import { trendRoutes } from './routes/trends.js';
+import { doctorRoutes } from './routes/doctors.js';
 import { decorateAuth } from './routes/middleware.js';
 import { reconcileStalledJobs } from './ingestion/pipeline.js';
 import { hashLegacyShareTokens } from './hash-legacy-tokens.js';
@@ -124,6 +126,8 @@ await app.register(publicShareRoutes, {
   appShellPath: path.join(webDist, 'index.html'),
 });
 await app.register(tagRoutes);
+await app.register(trendRoutes);
+await app.register(doctorRoutes);
 
 // Serve built web app for all non-API routes
 await app.register(fastifyStatic, {

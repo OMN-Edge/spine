@@ -1,9 +1,20 @@
 import { useRef, useEffect, useState } from 'react';
-import type { ExtractedField, Page } from '../api';
+import type { Page } from '../api';
+
+/** What the overlay needs to draw a box: the page it is on and where. */
+export interface Highlight {
+  id: string;
+  page_id: string;
+  bbox_x0: number | null;
+  bbox_y0: number | null;
+  bbox_x1: number | null;
+  bbox_y1: number | null;
+}
 
 interface Props {
   page: Page;
-  highlightField: ExtractedField | null;
+  /** Anything read off the page with a box on it: a field or a measurement. */
+  highlightField: Highlight | null;
 }
 
 export default function PageImageOverlay({ page, highlightField }: Props) {

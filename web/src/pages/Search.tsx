@@ -33,7 +33,7 @@ export default function Search() {
           value={query}
           onChange={e => setQuery(e.target.value)}
           onKeyDown={onKey}
-          placeholder="Search by keyword, diagnosis, provider…"
+          placeholder="Search documents, doctors, medicines, values…"
           className="flex-1 border border-gray-300 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
           autoFocus
         />

@@ -2,6 +2,8 @@ import type { Database } from 'better-sqlite3';
 import { openDatabase } from './connection.js';
 import { documentRepository } from './documents.js';
 import { extractedFieldRepository } from './fields.js';
+import { measurementRepository } from './measurements.js';
+import { doctorRepository } from './doctors.js';
 import { maintenanceRepository } from './maintenance.js';
 import { pageRepository } from './pages.js';
 import { shareLinkRepository } from './share-links.js';
@@ -30,6 +32,8 @@ function storeOver(db: Database, depth: number): Store {
     pages: pageRepository(db),
     documents: documentRepository(db),
     fields: extractedFieldRepository(db),
+    measurements: measurementRepository(db),
+    doctors: doctorRepository(db),
     tags: tagRepository(db),
     shareLinks: shareLinkRepository(db),
     maintenance: maintenanceRepository(db),

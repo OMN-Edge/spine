@@ -7,19 +7,19 @@ import { expectInserted, owner } from './owner.js';
 export function extractedFieldRepository(db: Database): ExtractedFieldRepository {
   // Explicit columns: user_id is not for clients (S-8).
   const listForDocument = db.prepare(`
-    SELECT id, document_id, page_id, label, value, source_snippet,
+    SELECT id, document_id, page_id, label, value, group_no, source_snippet,
            bbox_x0, bbox_y0, bbox_x1, bbox_y1, confidence
-    FROM extracted_fields WHERE document_id = ? AND user_id = ?
+    FROM extracted_fields WHERE document_id = ? AND user_id = ? ORDER BY rowid
   `);
 
   // Inserts only if both the document and the page are the user's, so a field
   // cannot be attached to someone else's record.
   const insert = db.prepare(`
     INSERT INTO extracted_fields (
-      id, user_id, document_id, page_id, label, value, source_snippet,
+      id, user_id, document_id, page_id, label, value, group_no, source_snippet,
       bbox_x0, bbox_y0, bbox_x1, bbox_y1, confidence
     )
-    SELECT ?, ?, d.id, p.id, ?, ?, ?, ?, ?, ?, ?, ?
+    SELECT ?, ?, d.id, p.id, ?, ?, ?, ?, ?, ?, ?, ?, ?
     FROM documents d, pages p
     WHERE d.id = ? AND d.user_id = ? AND p.id = ? AND p.user_id = ?
   `);
@@ -60,6 +60,7 @@ export function extractedFieldRepository(db: Database): ExtractedFieldRepository
         uid,
         field.label,
         field.value,
+        field.groupNo ?? null,
         field.sourceSnippet,
         field.bbox?.x0 ?? null,
         field.bbox?.y0 ?? null,

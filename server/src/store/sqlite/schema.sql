@@ -98,6 +98,64 @@ CREATE TABLE IF NOT EXISTS documents (
   reviewed INTEGER DEFAULT 0
 );
 
+-- Numeric results (lab values, vitals): what trends over time are drawn from. A field is
+-- text to read; a measurement is a number with a unit that can be compared across documents.
+CREATE TABLE IF NOT EXISTS measurements (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  document_id TEXT NOT NULL REFERENCES documents(id),
+  page_id TEXT NOT NULL REFERENCES pages(id),
+  name TEXT NOT NULL,        -- as printed: "Hemoglobina"
+  canonical TEXT NOT NULL,   -- the same test under one name: "hemoglobin"; what a trend groups by
+  value_text TEXT NOT NULL,  -- as printed: "13,5", "<0.5", "pozitiv"
+  value_num REAL,            -- NULL unless it is a plain number
+  unit TEXT,
+  ref_low REAL,
+  ref_high REAL,
+  flag TEXT,                 -- 'low' | 'high' | 'normal' | NULL
+  taken_on TEXT,             -- YYYY-MM-DD: the document's date, or the row's own if it has one
+  source_snippet TEXT,
+  bbox_x0 REAL,
+  bbox_y0 REAL,
+  bbox_x1 REAL,
+  bbox_y1 REAL,
+  confidence REAL
+);
+
+-- People who appear on documents, built up as documents are read. `key` is the name with
+-- titles, accents, case and word order removed, so "Dr. Popescu Ion" and "Ion Popescu" are one.
+-- "These two names are one test": once a person merges two tests, later documents that use the old
+-- name are filed under the new one. `canonical` is always a name that measurements use.
+CREATE TABLE IF NOT EXISTS measurement_aliases (
+  user_id TEXT NOT NULL REFERENCES users(id),
+  alias TEXT NOT NULL,
+  canonical TEXT NOT NULL,
+  PRIMARY KEY (user_id, alias)
+);
+
+CREATE TABLE IF NOT EXISTS doctors (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  name TEXT NOT NULL,
+  key TEXT NOT NULL,
+  specialty TEXT,
+  clinic TEXT,
+  -- The professional code printed under a signature ("Cod X12345"), upper case without punctuation.
+  -- One doctor per code, so two spellings of one name that carry the same code are one person.
+  license_code TEXT,
+  created_at TEXT NOT NULL,
+  UNIQUE (user_id, key)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS doctors_license_code ON doctors(user_id, license_code) WHERE license_code IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS document_doctors (
+  user_id TEXT NOT NULL REFERENCES users(id),
+  document_id TEXT NOT NULL REFERENCES documents(id),
+  doctor_id TEXT NOT NULL REFERENCES doctors(id),
+  role TEXT NOT NULL, -- 'author' | 'prescriber' | 'referrer' | 'other'
+  PRIMARY KEY (document_id, doctor_id, role)
+);
+
 CREATE TABLE IF NOT EXISTS extracted_fields (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id),
@@ -105,6 +163,9 @@ CREATE TABLE IF NOT EXISTS extracted_fields (
   page_id TEXT NOT NULL REFERENCES pages(id),
   label TEXT NOT NULL,
   value TEXT NOT NULL,
+  -- Fields that belong together share a number within a document: the drug, dose and
+  -- frequency of one prescription line, or one vaccine's name, lot and site. NULL = on its own.
+  group_no INTEGER,
   source_snippet TEXT,
   bbox_x0 REAL,
   bbox_y0 REAL,
@@ -129,11 +190,15 @@ CREATE TABLE IF NOT EXISTS document_tags (
   PRIMARY KEY (document_id, tag_id)
 );
 
--- Search results are filtered by joining back to documents.user_id, so the index
--- itself can stay shared without leaking (see DocumentRepository.listFor).
+-- Search: one row per document, holding what a person would type to find it: its title, type,
+-- provider, summary and notes, and in `body` the text of its pages, its extracted values, its
+-- measurements' names and its doctors' names. Kept in step by the triggers below, so no code path can
+-- change one of those and forget the index. Results are filtered by joining back to documents.user_id,
+-- and `body` is built only from that user's rows, so the index itself leaks nothing (M-2).
+-- Accents are folded ("lombara" finds "lombară").
 CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(
-  title, doc_type, provider, ai_summary, user_notes,
-  content='documents', content_rowid='rowid'
+  title, doc_type, provider, ai_summary, user_notes, body,
+  tokenize = 'unicode61 remove_diacritics 2'
 );
 
 CREATE TABLE IF NOT EXISTS share_links (
@@ -162,20 +227,101 @@ CREATE INDEX IF NOT EXISTS idx_source_files_user ON source_files(user_id);
 CREATE INDEX IF NOT EXISTS idx_documents_user ON documents(user_id, doc_date);
 CREATE INDEX IF NOT EXISTS idx_share_links_user ON share_links(user_id);
 
--- FTS sync triggers
+-- Search index. The view is what one document contributes; each trigger rebuilds the rows of the
+-- documents a change touches.
+CREATE VIEW IF NOT EXISTS document_search_source AS
+SELECT d.rowid AS id, d.title, d.doc_type, d.provider, d.ai_summary, d.user_notes,
+  COALESCE((SELECT group_concat(p.raw_text, ' ') FROM pages p
+            WHERE p.source_file_id = d.source_file_id AND p.user_id = d.user_id
+              AND p.page_number BETWEEN d.page_start AND d.page_end), '') || ' ' ||
+  COALESCE((SELECT group_concat(f.value, ' ') FROM extracted_fields f
+            WHERE f.document_id = d.id AND f.user_id = d.user_id), '') || ' ' ||
+  COALESCE((SELECT group_concat(m.name || ' ' || m.value_text, ' ') FROM measurements m
+            WHERE m.document_id = d.id AND m.user_id = d.user_id), '') || ' ' ||
+  COALESCE((SELECT group_concat(k.name, ' ') FROM document_doctors l
+            JOIN doctors k ON k.id = l.doctor_id AND k.user_id = l.user_id
+            WHERE l.document_id = d.id AND l.user_id = d.user_id), '') AS body
+FROM documents d;
+
 CREATE TRIGGER IF NOT EXISTS documents_fts_insert AFTER INSERT ON documents BEGIN
-  INSERT INTO documents_fts(rowid, title, doc_type, provider, ai_summary, user_notes)
-  VALUES (new.rowid, new.title, new.doc_type, new.provider, new.ai_summary, new.user_notes);
+  INSERT INTO documents_fts(rowid, title, doc_type, provider, ai_summary, user_notes, body)
+  SELECT id, title, doc_type, provider, ai_summary, user_notes, body FROM document_search_source WHERE id = new.rowid;
 END;
-
 CREATE TRIGGER IF NOT EXISTS documents_fts_update AFTER UPDATE ON documents BEGIN
-  INSERT INTO documents_fts(documents_fts, rowid, title, doc_type, provider, ai_summary, user_notes)
-  VALUES ('delete', old.rowid, old.title, old.doc_type, old.provider, old.ai_summary, old.user_notes);
-  INSERT INTO documents_fts(rowid, title, doc_type, provider, ai_summary, user_notes)
-  VALUES (new.rowid, new.title, new.doc_type, new.provider, new.ai_summary, new.user_notes);
+  DELETE FROM documents_fts WHERE rowid = new.rowid;
+  INSERT INTO documents_fts(rowid, title, doc_type, provider, ai_summary, user_notes, body)
+  SELECT id, title, doc_type, provider, ai_summary, user_notes, body FROM document_search_source WHERE id = new.rowid;
+END;
+CREATE TRIGGER IF NOT EXISTS documents_fts_delete AFTER DELETE ON documents BEGIN
+  DELETE FROM documents_fts WHERE rowid = old.rowid;
 END;
 
-CREATE TRIGGER IF NOT EXISTS documents_fts_delete AFTER DELETE ON documents BEGIN
-  INSERT INTO documents_fts(documents_fts, rowid, title, doc_type, provider, ai_summary, user_notes)
-  VALUES ('delete', old.rowid, old.title, old.doc_type, old.provider, old.ai_summary, old.user_notes);
+-- A page belongs to the documents of its upload whose page range holds it.
+CREATE TRIGGER IF NOT EXISTS pages_fts_insert AFTER INSERT ON pages BEGIN
+  DELETE FROM documents_fts WHERE rowid IN (SELECT rowid FROM documents WHERE source_file_id = new.source_file_id AND user_id = new.user_id AND new.page_number BETWEEN page_start AND page_end);
+  INSERT INTO documents_fts(rowid, title, doc_type, provider, ai_summary, user_notes, body)
+  SELECT id, title, doc_type, provider, ai_summary, user_notes, body FROM document_search_source
+  WHERE id IN (SELECT rowid FROM documents WHERE source_file_id = new.source_file_id AND user_id = new.user_id AND new.page_number BETWEEN page_start AND page_end);
+END;
+CREATE TRIGGER IF NOT EXISTS pages_fts_update AFTER UPDATE OF raw_text ON pages BEGIN
+  DELETE FROM documents_fts WHERE rowid IN (SELECT rowid FROM documents WHERE source_file_id = new.source_file_id AND user_id = new.user_id AND new.page_number BETWEEN page_start AND page_end);
+  INSERT INTO documents_fts(rowid, title, doc_type, provider, ai_summary, user_notes, body)
+  SELECT id, title, doc_type, provider, ai_summary, user_notes, body FROM document_search_source
+  WHERE id IN (SELECT rowid FROM documents WHERE source_file_id = new.source_file_id AND user_id = new.user_id AND new.page_number BETWEEN page_start AND page_end);
+END;
+CREATE TRIGGER IF NOT EXISTS pages_fts_delete AFTER DELETE ON pages BEGIN
+  DELETE FROM documents_fts WHERE rowid IN (SELECT rowid FROM documents WHERE source_file_id = old.source_file_id AND user_id = old.user_id AND old.page_number BETWEEN page_start AND page_end);
+  INSERT INTO documents_fts(rowid, title, doc_type, provider, ai_summary, user_notes, body)
+  SELECT id, title, doc_type, provider, ai_summary, user_notes, body FROM document_search_source
+  WHERE id IN (SELECT rowid FROM documents WHERE source_file_id = old.source_file_id AND user_id = old.user_id AND old.page_number BETWEEN page_start AND page_end);
+END;
+
+CREATE TRIGGER IF NOT EXISTS fields_fts_insert AFTER INSERT ON extracted_fields BEGIN
+  DELETE FROM documents_fts WHERE rowid = (SELECT rowid FROM documents WHERE id = new.document_id);
+  INSERT INTO documents_fts(rowid, title, doc_type, provider, ai_summary, user_notes, body)
+  SELECT id, title, doc_type, provider, ai_summary, user_notes, body FROM document_search_source WHERE id = (SELECT rowid FROM documents WHERE id = new.document_id);
+END;
+CREATE TRIGGER IF NOT EXISTS fields_fts_update AFTER UPDATE ON extracted_fields BEGIN
+  DELETE FROM documents_fts WHERE rowid = (SELECT rowid FROM documents WHERE id = new.document_id);
+  INSERT INTO documents_fts(rowid, title, doc_type, provider, ai_summary, user_notes, body)
+  SELECT id, title, doc_type, provider, ai_summary, user_notes, body FROM document_search_source WHERE id = (SELECT rowid FROM documents WHERE id = new.document_id);
+END;
+CREATE TRIGGER IF NOT EXISTS fields_fts_delete AFTER DELETE ON extracted_fields BEGIN
+  DELETE FROM documents_fts WHERE rowid = (SELECT rowid FROM documents WHERE id = old.document_id);
+  INSERT INTO documents_fts(rowid, title, doc_type, provider, ai_summary, user_notes, body)
+  SELECT id, title, doc_type, provider, ai_summary, user_notes, body FROM document_search_source WHERE id = (SELECT rowid FROM documents WHERE id = old.document_id);
+END;
+
+CREATE TRIGGER IF NOT EXISTS measurements_fts_insert AFTER INSERT ON measurements BEGIN
+  DELETE FROM documents_fts WHERE rowid = (SELECT rowid FROM documents WHERE id = new.document_id);
+  INSERT INTO documents_fts(rowid, title, doc_type, provider, ai_summary, user_notes, body)
+  SELECT id, title, doc_type, provider, ai_summary, user_notes, body FROM document_search_source WHERE id = (SELECT rowid FROM documents WHERE id = new.document_id);
+END;
+CREATE TRIGGER IF NOT EXISTS measurements_fts_update AFTER UPDATE ON measurements BEGIN
+  DELETE FROM documents_fts WHERE rowid IN (SELECT rowid FROM documents WHERE id IN (new.document_id, old.document_id));
+  INSERT INTO documents_fts(rowid, title, doc_type, provider, ai_summary, user_notes, body)
+  SELECT id, title, doc_type, provider, ai_summary, user_notes, body FROM document_search_source WHERE id IN (SELECT rowid FROM documents WHERE id IN (new.document_id, old.document_id));
+END;
+CREATE TRIGGER IF NOT EXISTS measurements_fts_delete AFTER DELETE ON measurements BEGIN
+  DELETE FROM documents_fts WHERE rowid = (SELECT rowid FROM documents WHERE id = old.document_id);
+  INSERT INTO documents_fts(rowid, title, doc_type, provider, ai_summary, user_notes, body)
+  SELECT id, title, doc_type, provider, ai_summary, user_notes, body FROM document_search_source WHERE id = (SELECT rowid FROM documents WHERE id = old.document_id);
+END;
+
+CREATE TRIGGER IF NOT EXISTS doctors_link_fts_insert AFTER INSERT ON document_doctors BEGIN
+  DELETE FROM documents_fts WHERE rowid = (SELECT rowid FROM documents WHERE id = new.document_id);
+  INSERT INTO documents_fts(rowid, title, doc_type, provider, ai_summary, user_notes, body)
+  SELECT id, title, doc_type, provider, ai_summary, user_notes, body FROM document_search_source WHERE id = (SELECT rowid FROM documents WHERE id = new.document_id);
+END;
+CREATE TRIGGER IF NOT EXISTS doctors_link_fts_delete AFTER DELETE ON document_doctors BEGIN
+  DELETE FROM documents_fts WHERE rowid = (SELECT rowid FROM documents WHERE id = old.document_id);
+  INSERT INTO documents_fts(rowid, title, doc_type, provider, ai_summary, user_notes, body)
+  SELECT id, title, doc_type, provider, ai_summary, user_notes, body FROM document_search_source WHERE id = (SELECT rowid FROM documents WHERE id = old.document_id);
+END;
+-- Renaming a doctor changes what every document naming them says.
+CREATE TRIGGER IF NOT EXISTS doctors_fts_update AFTER UPDATE OF name ON doctors BEGIN
+  DELETE FROM documents_fts WHERE rowid IN (SELECT d.rowid FROM documents d JOIN document_doctors l ON l.document_id = d.id WHERE l.doctor_id = new.id);
+  INSERT INTO documents_fts(rowid, title, doc_type, provider, ai_summary, user_notes, body)
+  SELECT id, title, doc_type, provider, ai_summary, user_notes, body FROM document_search_source
+  WHERE id IN (SELECT d.rowid FROM documents d JOIN document_doctors l ON l.document_id = d.id WHERE l.doctor_id = new.id);
 END;

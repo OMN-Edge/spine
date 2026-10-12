@@ -3,7 +3,7 @@ import { getStore } from '../store/index.js';
 import { rasterizePdf } from './rasterize.js';
 import { getModelParser, getParser } from '../parser/index.js';
 import { checkContinuation } from './continuation.js';
-import { readDocument } from './document-reading.js';
+import { readDocument, storeReading } from './document-reading.js';
 import { llmConcurrency } from '../config.js';
 import { mapLimit } from '../concurrency.js';
 import type { JobStatus, UnstructuredElement } from '../types.js';
@@ -162,7 +162,8 @@ async function runPipeline(
       return { docId, range, ...reading };
     });
 
-    for (const [di, { docId, range, extraction, fields: groundedFields }] of readings.entries()) {
+    for (const [di, { docId, range, ...reading }] of readings.entries()) {
+      const { extraction } = reading;
       await store.transaction(async tx => {
         await tx.documents.create(userId, {
           id: docId,
@@ -178,10 +179,7 @@ async function runPipeline(
         });
 
         await tx.tags.setForDocument(userId, docId, extraction.suggested_tags);
-
-        for (const field of groundedFields) {
-          await tx.fields.create(userId, field);
-        }
+        await storeReading(tx, userId, docId, reading);
       });
 
       job.progress = 90 + Math.floor(((di + 1) / readings.length) * 8);

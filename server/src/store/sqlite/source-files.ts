@@ -31,6 +31,15 @@ export function sourceFileRepository(db: Database): SourceFileRepository {
     DELETE FROM extracted_fields WHERE user_id = ?
       AND document_id IN (SELECT id FROM documents WHERE source_file_id = ? AND user_id = ?)
   `);
+  const deleteMeasurements = db.prepare(`
+    DELETE FROM measurements WHERE user_id = ?
+      AND document_id IN (SELECT id FROM documents WHERE source_file_id = ? AND user_id = ?)
+  `);
+  // The doctors stay: they are the user's directory, and outlive any one reading.
+  const deleteDoctorLinks = db.prepare(`
+    DELETE FROM document_doctors WHERE user_id = ?
+      AND document_id IN (SELECT id FROM documents WHERE source_file_id = ? AND user_id = ?)
+  `);
   const deleteDocumentTags = db.prepare(`
     DELETE FROM document_tags WHERE user_id = ?
       AND document_id IN (SELECT id FROM documents WHERE source_file_id = ? AND user_id = ?)
@@ -39,6 +48,8 @@ export function sourceFileRepository(db: Database): SourceFileRepository {
   const deletePages = db.prepare('DELETE FROM pages WHERE source_file_id = ? AND user_id = ?');
   const clearDerived = db.transaction((userId: string, id: string) => {
     deleteFields.run(userId, id, userId);
+    deleteMeasurements.run(userId, id, userId);
+    deleteDoctorLinks.run(userId, id, userId);
     deleteDocumentTags.run(userId, id, userId);
     const removed = deleteDocuments.run(id, userId).changes;
     deletePages.run(id, userId);

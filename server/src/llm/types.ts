@@ -15,7 +15,8 @@ export interface ChatLlm {
   /** Are these two adjacent pages the same logical document? */
   detectContinuation(previousPageText: string, currentPageText: string): Promise<ContinuationResult>;
   /** Structured metadata for one logical document. */
-  extractFields(documentText: string): Promise<ExtractionResult>;
+  /** `knownTests`: canonical test names already in the archive, so the same test is named the same way. */
+  extractFields(documentText: string, knownTests?: string[]): Promise<ExtractionResult>;
   /**
    * Read one page image: the text on it and where. **This is the only call that
    * sends an image off the host** (SECURITY.md M-7), so it is reached only through
@@ -97,6 +98,14 @@ export const continuationSchema = z.object({
   reasoning: z.string(),
 });
 
+export const DOCTOR_ROLES = ['author', 'prescriber', 'referrer', 'other'] as const;
+
+/**
+ * Deliberately lenient where the model is describing what is printed: reference ranges,
+ * flags and dates arrive as text and are normalised on our side (ingestion/measurements.ts).
+ * Rejecting a whole document because a reference range came back as "12" instead of 12 would
+ * lose everything else on it.
+ */
 export const extractionSchema = z.object({
   title: z.string(),
   doc_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
@@ -104,15 +113,41 @@ export const extractionSchema = z.object({
   doc_type: z.enum(DOC_TYPES),
   ai_summary: z.string(),
   suggested_tags: z.array(z.string()),
+  // Absent means none: a model that leaves out a list the document does not have should not lose the rest.
+  doctors: z.array(
+    z.object({
+      name: z.string(),
+      specialty: z.string().nullable(),
+      // Printed under the signature ("Cod X12345"); absent on most documents.
+      code: z.string().nullish(),
+      role: z.enum(DOCTOR_ROLES),
+    }),
+  ).default([]),
   fields: z.array(
     z.object({
       label: z.string(),
       value: z.string(),
+      group: z.number().int().positive().nullish(),
       source_snippet: z.string(),
       page_number: z.number().int().positive(),
       confidence: z.number().min(0).max(1),
     }),
   ),
+  measurements: z.array(
+    z.object({
+      name: z.string(),
+      canonical: z.string(),
+      value: z.string(),
+      unit: z.string().nullable(),
+      ref_low: z.string().nullable(),
+      ref_high: z.string().nullable(),
+      flag: z.string().nullable(),
+      date: z.string().nullable(),
+      source_snippet: z.string(),
+      page_number: z.number().int().positive(),
+      confidence: z.number().min(0).max(1),
+    }),
+  ).default([]),
 });
 
 /**
@@ -155,5 +190,7 @@ export const EXTRACTION_FALLBACK: ExtractionResult = {
   doc_type: 'other',
   ai_summary: 'Extraction failed — review manually.',
   suggested_tags: [],
+  doctors: [],
   fields: [],
+  measurements: [],
 };

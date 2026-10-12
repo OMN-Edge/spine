@@ -274,7 +274,7 @@ describe('writing — B cannot change A’s records', () => {
 
   it('does not treat B’s upload of the same bytes as a duplicate of A’s', async () => {
     const boundary = 'IsolationBoundary';
-    const bytes = Buffer.from('identical scan bytes');
+    const bytes = Buffer.from('%PDF-1.4 identical scan bytes');
     const body = Buffer.concat([
       Buffer.from(
         `--${boundary}\r\nContent-Disposition: form-data; name="files"; filename="s.pdf"\r\n` +

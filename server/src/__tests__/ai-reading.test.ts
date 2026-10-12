@@ -62,7 +62,7 @@ afterEach(() => {
 
 const reading = (title: string) => ({
   title, doc_date: '2026-05-01', provider: 'Synevo', doc_type: 'lab_result' as const,
-  ai_summary: `${title} summary`, suggested_tags: ['lab'],
+  ai_summary: `${title} summary`, suggested_tags: ['lab'], doctors: [], measurements: [],
   fields: [{ label: 'value', value: title, source_snippet: 'AI text', page_number: 1, confidence: 0.9 }],
 });
 

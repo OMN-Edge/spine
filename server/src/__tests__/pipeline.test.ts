@@ -55,6 +55,8 @@ function makeExtraction(overrides = {}) {
     doc_type: 'lab_result',
     ai_summary: 'Lab results summary.',
     suggested_tags: ['lab'],
+    doctors: [],
+    measurements: [],
     fields: [{ label: 'haemoglobin', value: '13.5', source_snippet: 'text for page 1', page_number: 1, confidence: 0.9 }],
     ...overrides,
   };

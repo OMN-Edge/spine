@@ -159,8 +159,10 @@ describe('extractFields', () => {
     doc_type: 'lab_result',
     ai_summary: 'A lab result.',
     suggested_tags: ['lab'],
+    doctors: [],
+    measurements: [],
     fields: [
-      { label: 'diagnosis', value: 'anemia', source_snippet: 'anemie', page_number: 1, confidence: 0.9 },
+      { label: 'diagnosis', value: 'anemia', group: null, source_snippet: 'anemie', page_number: 1, confidence: 0.9 },
     ],
   };
 

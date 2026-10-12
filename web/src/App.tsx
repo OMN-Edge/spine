@@ -14,6 +14,9 @@ import UploadPages from './pages/UploadPages';
 import ReviewQueue from './pages/ReviewQueue';
 import DocumentPage from './pages/DocumentPage';
 import Search from './pages/Search';
+import Trends from './pages/Trends';
+import Doctors from './pages/Doctors';
+import DoctorPage from './pages/DoctorPage';
 import ShareLinks from './pages/ShareLinks';
 import PublicShareView from './pages/PublicShareView';
 import { Wordmark } from './components/Logo';
@@ -22,6 +25,8 @@ const NAV_LINKS = [
   { to: '/', label: 'Timeline' },
   { to: '/upload', label: 'Upload' },
   { to: '/review', label: 'Review' },
+  { to: '/trends', label: 'Trends' },
+  { to: '/doctors', label: 'Doctors' },
   { to: '/search', label: 'Search' },
   { to: '/share', label: 'Share Links' },
 ];
@@ -141,6 +146,9 @@ export default function App() {
         <Route path="/review" element={<PrivateRoute><ReviewQueue /></PrivateRoute>} />
         <Route path="/documents/:id" element={<PrivateRoute><DocumentPage /></PrivateRoute>} />
         <Route path="/review/:id" element={<ReviewRedirect />} />
+        <Route path="/trends" element={<PrivateRoute><Trends /></PrivateRoute>} />
+        <Route path="/doctors" element={<PrivateRoute><Doctors /></PrivateRoute>} />
+        <Route path="/doctors/:id" element={<PrivateRoute><DoctorPage /></PrivateRoute>} />
         <Route path="/search" element={<PrivateRoute><Search /></PrivateRoute>} />
         <Route path="/share" element={<PrivateRoute><ShareLinks /></PrivateRoute>} />
         <Route path="/account" element={<PrivateRoute><Account /></PrivateRoute>} />

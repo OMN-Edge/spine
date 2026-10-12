@@ -61,13 +61,13 @@ export function buildChatLlm(clients: TaskClients, config: ChatLlmConfig): ChatL
       return validated ?? CONTINUATION_FALLBACK;
     },
 
-    async extractFields(documentText): Promise<ExtractionResult> {
+    async extractFields(documentText, knownTests = []): Promise<ExtractionResult> {
       const validated = await invokeValidated(
         clients,
         config,
         log,
         'extraction',
-        buildExtractionPrompt(documentText),
+        buildExtractionPrompt(documentText, knownTests),
         TASK_SCHEMAS.extraction,
       );
 

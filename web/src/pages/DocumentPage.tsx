@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { api, type Document, type ExtractedField, type Page } from '../api';
-import PageImageOverlay from '../components/PageImageOverlay';
+import { api, type Document, type DocumentTypeGuide, type ExtractedField, type Page } from '../api';
+import PageImageOverlay, { type Highlight } from '../components/PageImageOverlay';
+import { MeasurementsEditor, MeasurementsList, draftMeasurement, type DraftMeasurement } from '../components/MeasurementsPanel';
+import { DoctorsEditor, DoctorsList, draftDoctor, type DraftDoctor } from '../components/DoctorsPanel';
 import { AiReadButton, AiReadingBanner, AiReadingProvider, ExtractAgainButton, useAiReading } from '../components/AiReading';
 import PageTextPanel from '../components/PageTextPanel';
 import { sourceLabel } from '../components/pageSource';
@@ -36,6 +38,8 @@ interface Draft {
   user_notes: string;
   tags: string;
   fields: DraftField[];
+  measurements: DraftMeasurement[];
+  doctors: DraftDoctor[];
 }
 
 const input = 'w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500';
@@ -50,7 +54,16 @@ const draftOf = (doc: Document): Draft => ({
   user_notes: doc.user_notes ?? '',
   tags: (doc.tags ?? []).join(', '),
   fields: (doc.fields ?? []).map(f => ({ key: f.id, id: f.id, label: f.label, value: f.value, page_id: f.page_id, removed: false })),
+  measurements: (doc.measurements ?? []).map(draftMeasurement),
+  doctors: (doc.doctors ?? []).map(draftDoctor),
 });
+
+/** The fields that share a group number, in the order the groups first appear. */
+const groupsOf = (fields: ExtractedField[]): Array<[number, ExtractedField[]]> => {
+  const groups = new Map<number, ExtractedField[]>();
+  for (const f of fields) if (f.group_no !== null) groups.set(f.group_no, [...(groups.get(f.group_no) ?? []), f]);
+  return [...groups.entries()];
+};
 
 const parseTags = (text: string) => [...new Set(text.split(',').map(t => t.trim()).filter(Boolean))];
 
@@ -102,7 +115,10 @@ export default function DocumentPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [hoveredField, setHoveredField] = useState<ExtractedField | null>(null);
+  const [hoveredField, setHoveredField] = useState<Highlight | null>(null);
+  // Offered while editing: the doctors already in the directory, and what each type of document usually holds.
+  const [knownDoctors, setKnownDoctors] = useState<string[]>([]);
+  const [guides, setGuides] = useState<DocumentTypeGuide[]>([]);
   const [currentPageIdx, setCurrentPageIdx] = useState(0);
   // What the right panel shows for the page: the scan, or the text read from it.
   const [view, setView] = useState<'scan' | 'text'>('scan');
@@ -130,6 +146,14 @@ export default function DocumentPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  const editingNow = draft !== null;
+  useEffect(() => {
+    if (!editingNow) return;
+    // Suggestions only: if either call fails, editing works without them.
+    api.doctors.list().then(list => setKnownDoctors(list.map(d => d.name))).catch(() => {});
+    api.documentTypes().then(setGuides).catch(() => {});
+  }, [editingNow]);
+
   // Hovering (or focusing) a field shows its page and where on it the text was read.
   useEffect(() => {
     if (!hoveredField || !doc?.pages) return;
@@ -150,6 +174,22 @@ export default function DocumentPage() {
   const setField = (key: string, patch: Partial<DraftField>) =>
     setDraft(d => (d ? { ...d, fields: d.fields.map(f => (f.key === key ? { ...f, ...patch } : f)) } : d));
 
+  const setMeasurement = (key: string, patch: Partial<DraftMeasurement>) =>
+    setDraft(d => (d ? { ...d, measurements: d.measurements.map(m => (m.key === key ? { ...m, ...patch } : m)) } : d));
+  const addMeasurement = () =>
+    setDraft(d => (d ? {
+      ...d,
+      measurements: [...d.measurements, {
+        key: `new-${Date.now()}-${d.measurements.length}`, name: '', canonical: '', value: '', unit: '', ref_low: '', ref_high: '',
+        taken_on: d.doc_date, page_id: currentPage?.id ?? pages[0]?.id ?? '', removed: false,
+      }],
+    } : d));
+  const setDoctor = (key: string, patch: Partial<DraftDoctor>) =>
+    setDraft(d => (d ? { ...d, doctors: d.doctors.map(x => (x.key === key ? { ...x, ...patch } : x)) } : d));
+  const addDoctor = () =>
+    setDraft(d => (d ? { ...d, doctors: [...d.doctors, { key: `new-${Date.now()}-${d.doctors.length}`, name: '', specialty: '', role: 'author' }] } : d));
+  const removeDoctor = (key: string) => setDraft(d => (d ? { ...d, doctors: d.doctors.filter(x => x.key !== key) } : d));
+
   const startEditing = () => { setError(''); setNotice(''); setDraft(draftOf(doc)); };
   const discard = () => { setError(''); setDraft(null); };
 
@@ -168,6 +208,27 @@ export default function DocumentPage() {
       setError('Every field needs both a label and a value. Remove a field you do not want.');
       return;
     }
+    const measurements = doc.measurements ?? [];
+    const keptM = draft.measurements.filter(m => !m.removed && (m.id || m.name.trim() || m.value.trim()));
+    if (keptM.some(m => !m.name.trim() || !m.value.trim())) {
+      setError('Every measurement needs both a test name and a value. Remove one you do not want.');
+      return;
+    }
+    const originalM = new Map(measurements.map(m => [m.id, draftMeasurement(m)]));
+    const asInput = (m: DraftMeasurement) => ({
+      name: m.name.trim(), canonical: m.canonical, value: m.value.trim(), unit: m.unit.trim() || null,
+      ref_low: m.ref_low.trim() || null, ref_high: m.ref_high.trim() || null, taken_on: m.taken_on || null,
+    });
+    const changedM = (m: DraftMeasurement) => {
+      const o = originalM.get(m.id!)!;
+      return JSON.stringify(asInput(m)) !== JSON.stringify(asInput({ ...o, canonical: m.canonical }));
+    };
+
+    const keptD = draft.doctors.filter(d => d.name.trim());
+    const doctorList = (list: Array<{ name: string; specialty: string | null | ''; role: string }>) =>
+      JSON.stringify(list.map(d => [d.name.trim(), d.specialty || null, d.role]));
+    const doctorsChanged = doctorList(keptD) !== doctorList(doc.doctors ?? []);
+
     const original = new Map(fields.map(f => [f.id, f]));
     setSaving(true);
     setError('');
@@ -181,6 +242,12 @@ export default function DocumentPage() {
         user_notes: draft.user_notes,
         tags: parseTags(draft.tags),
         reviewed: true,
+        measurements: {
+          update: keptM.filter(m => m.id && changedM(m)).map(m => ({ id: m.id!, ...asInput(m) })),
+          remove: draft.measurements.filter(m => m.removed && m.id).map(m => m.id!),
+          add: keptM.filter(m => !m.id).map(m => ({ ...asInput(m), page_id: m.page_id })),
+        },
+        ...(doctorsChanged ? { doctors: keptD.map(d => ({ name: d.name.trim(), specialty: d.specialty.trim() || null, role: d.role })) } : {}),
         fields: {
           update: rows
             .filter(f => f.id && (original.get(f.id)!.label !== f.label.trim() || original.get(f.id)!.value !== f.value.trim()))
@@ -199,7 +266,20 @@ export default function DocumentPage() {
     }
   };
 
-  const fieldRowClass = (f: ExtractedField | undefined) =>
+  const renderField = (field: ExtractedField) => (
+    <div
+      key={field.id}
+      onMouseEnter={() => setHoveredField(field)}
+      onMouseLeave={() => setHoveredField(null)}
+      className={`flex items-start justify-between gap-3 p-2 text-xs ${fieldRowClass(field)}`}
+    >
+      <span className="font-medium text-gray-500 shrink-0">{field.label}</span>
+      <span className="text-gray-900 text-right break-words min-w-0">{field.value}</span>
+      {field.bbox_x0 === null && <span className="text-gray-300" title="Source not pinpointed">◌</span>}
+    </div>
+  );
+
+  const fieldRowClass = (f: Highlight | undefined) =>
     `rounded-lg transition-colors ${f && hoveredField?.id === f.id ? 'bg-yellow-50 border border-yellow-200' : 'border border-transparent hover:bg-gray-50'}`;
 
   return (
@@ -273,6 +353,43 @@ export default function DocumentPage() {
           )}
         </div>
 
+        {/* Who the document names */}
+        {(editing || (doc.doctors ?? []).length > 0) && (
+          <div className="bg-white border border-gray-200 rounded-xl p-4">
+            <h2 className="font-medium text-gray-900 mb-3 text-sm">Doctors</h2>
+            {!editing ? <DoctorsList doctors={doc.doctors ?? []} /> : (
+              <DoctorsEditor
+                rows={draft.doctors} known={knownDoctors} listId="known-doctors"
+                onChange={setDoctor} onAdd={addDoctor} onRemove={removeDoctor}
+              />
+            )}
+          </div>
+        )}
+
+        {/* Lab values and vitals: these are what the trends are drawn from */}
+        {(editing || (doc.measurements ?? []).length > 0) && (
+          <div className="bg-white border border-gray-200 rounded-xl p-4">
+            <h2 className="font-medium text-gray-900 mb-3 text-sm">Measurements</h2>
+            {!editing ? <MeasurementsList items={doc.measurements ?? []} onHover={m => setHoveredField(m)} /> : (
+              <MeasurementsEditor
+                rows={draft.measurements} pages={pages} currentPageId={currentPage?.id ?? ''} listId="measurement-names"
+                onChange={setMeasurement} onAdd={addMeasurement}
+              />
+            )}
+          </div>
+        )}
+
+        {editing && (
+          <>
+            <datalist id="field-labels">
+              {[...new Set(guides.filter(g => g.type === draft.doc_type).flatMap(g => [...g.fields, ...g.grouped]))].map(l => <option key={l} value={l} />)}
+            </datalist>
+            <datalist id="measurement-names">
+              {[...new Set((doc.measurements ?? []).map(m => m.name))].map(n => <option key={n} value={n} />)}
+            </datalist>
+          </>
+        )}
+
         {/* Extracted fields */}
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <h2 className="font-medium text-gray-900 mb-3 text-sm">Extracted fields</h2>
@@ -282,16 +399,11 @@ export default function DocumentPage() {
               <p className="text-xs text-gray-400">No fields extracted</p>
             ) : (
               <div className="space-y-1">
-                {fields.map(field => (
-                  <div
-                    key={field.id}
-                    onMouseEnter={() => setHoveredField(field)}
-                    onMouseLeave={() => setHoveredField(null)}
-                    className={`flex items-start justify-between gap-3 p-2 text-xs ${fieldRowClass(field)}`}
-                  >
-                    <span className="font-medium text-gray-500 shrink-0">{field.label}</span>
-                    <span className="text-gray-900 text-right break-words min-w-0">{field.value}</span>
-                    {field.bbox_x0 === null && <span className="text-gray-300" title="Source not pinpointed">◌</span>}
+                {fields.filter(f => f.group_no === null).map(renderField)}
+                {/* Fields that belong together (one prescription line) are shown together. */}
+                {groupsOf(fields).map(([no, members]) => (
+                  <div key={no} className="border border-gray-100 rounded-lg p-1 my-2">
+                    {members.map(renderField)}
                   </div>
                 ))}
               </div>
@@ -312,7 +424,7 @@ export default function DocumentPage() {
                     >
                       <div className="flex items-center gap-2 mb-1">
                         <input
-                          aria-label="Field label" placeholder="Label" className={`${input} font-medium`}
+                          aria-label="Field label" placeholder="Label" list="field-labels" className={`${input} font-medium`}
                           value={f.label} onChange={e => setField(f.key, { label: e.target.value })}
                         />
                         <button

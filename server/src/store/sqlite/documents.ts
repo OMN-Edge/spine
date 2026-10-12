@@ -8,6 +8,7 @@ import type {
   ResolvedShareLink,
 } from '../types.js';
 import { expectInserted, owner } from './owner.js';
+import { ftsQuery } from '../../search-query.js';
 
 /**
  * The only columns a client may write. The caller passes a patch object, never
@@ -63,16 +64,19 @@ export function documentRepository(db: Database): DocumentRepository {
       const params: unknown[] = [];
       let sql: string;
 
-      if (filter.q) {
+      const match = filter.q ? ftsQuery(filter.q) : null;
+      if (filter.q && match === null) return []; // typed only punctuation: nothing to look for
+
+      if (match !== null) {
         // The full-text index is shared across users; results are filtered by
         // joining back to documents.user_id, so the index itself leaks nothing
         // (M-2).
         sql = `
           SELECT ${COLUMNS} FROM documents d
-          JOIN documents_fts fts ON fts.rowid = d.rowid
+          JOIN documents_fts ON documents_fts.rowid = d.rowid
           WHERE d.user_id = ? AND documents_fts MATCH ?
         `;
-        params.push(uid, filter.q);
+        params.push(uid, match);
       } else {
         sql = `SELECT ${COLUMNS} FROM documents d WHERE d.user_id = ?`;
         params.push(uid);
@@ -95,7 +99,10 @@ export function documentRepository(db: Database): DocumentRepository {
         params.push(filter.reviewed ? 1 : 0);
       }
 
-      if (!filter.q) sql += ` ${ORDER}, d.rowid DESC`;
+      // Best match first: a hit in the title counts for more than one deep in a page.
+      sql += match !== null
+        ? ' ORDER BY bm25(documents_fts, 10.0, 1.0, 3.0, 4.0, 3.0, 1.0), d.rowid DESC'
+        : ` ${ORDER}, d.rowid DESC`;
       sql += ' LIMIT ? OFFSET ?';
       params.push(filter.limit, filter.offset);
 

@@ -273,7 +273,7 @@ conversation formats differ across vendors.
 | Call | Input | Output | `max_tokens` |
 |---|---|---|---|
 | `detectContinuation(prev, curr)` | the whole text of page N-1 and page N | `{is_continuation, confidence, reasoning}` | 256 |
-| `extractFields(text)` | the whole document, each page under a `--- page N ---` marker | title, date, provider, type, summary, tags, `fields[]` | 4096 |
+| `extractFields(text)` | the whole document, each page under a `--- page N ---` marker | title, date, provider, type, summary, tags, `doctors[]`, `fields[]`, `measurements[]` | 4096 |
 | `readPage(image)` | one page image | `regions[]`: text + a box as fractions of the page | 4096 |
 
 ```
@@ -282,6 +282,37 @@ parse → [continuation × (N-1)] → group into documents → [extract × M] �
 
 A 10-page upload with 3 documents is 9 continuation calls and 3 extraction calls, plus a
 `readPage` per page the model has to read. Grounding is not a model call.
+
+#### What is extracted for each type
+
+The model decides the document's type, then follows that type's guide (`llm/doc-types.ts`, the one
+definition used by the prompt and the review form): labs get a measurement per analyte with unit and
+reference range; prescriptions get repeating groups of drug, dose, frequency and duration; vaccinations
+a group per vaccine; imaging its modality, findings and impression; discharge notes and consultations
+their diagnoses, plan and follow-up, with vitals as measurements; and every type names its doctors.
+A clinic's "raport medical" is a consultation whose sections are free text: services performed
+(one `service` field each, with its result as an `investigations` field), history split into
+family, personal, habits and current treatment, symptoms and examination, the diagnosis with
+its ICD code (`diagnosis`, `diagnosis_code`, and `diagnosis_uncoded` for what the report left
+uncoded), and recommendations split into tests, lifestyle advice and medication. Lab values and
+hormone levels quoted in that text become measurements, each with the date it was taken, which
+is often earlier than the visit; a date printed as a month ("03.2026") is kept as the month
+(`YYYY-MM`) and charted at its start, shown as "month only". The patient's national ID number,
+patient code and age are never extracted.
+
+A lab bulletin is dated by when the sample was collected, not issued or released, since that is
+the date a trend should use. Its reference range is the one beside the result; the ranges listed
+for other groups (by sex, age, pregnancy) are ignored, and a bound printed as `<0.5` or `≤ 5.8`
+is the upper bound alone. A page numbered "1 / 1" after one numbered "3 / 3" starts a new
+document, which is how one PDF holding two bulletins splits.
+
+Signing doctors and their professional codes are usually printed in a stamp image, which has no
+text, so they are missing from a reading of the page text. Reading that page with AI (an image
+read) can pick them up; otherwise they are entered by hand.
+
+The answer is validated leniently (a missing list means none; a reference range read as `"12"` is
+fine) and normalised on our side: decimal commas, a flag worked out from the value and range, the
+document's date where a row has none. A reading with no doctors or measurements is still a reading.
 
 #### Limits and concurrency
 
@@ -600,14 +631,19 @@ the same file is refused as a duplicate).
 
 One page per document, `/documents/:id`, in two modes. **Reading** is what a tile on the
 timeline opens: the extracted details and fields beside the scans. **Review** turns the same
-page into an editor: title, date, type, provider, tags, summary, notes, and every extracted
-field (change, remove, add). **Done** saves it all, marks the document reviewed and returns
+page into an editor: title, date, type, provider, tags, summary, notes, the doctors, the
+measurements (test, value, unit, reference range, date) and every extracted field (change,
+remove, add). Fields that share a group number are shown together in reading mode, and the
+label box suggests what this type of document usually holds. The doctors box suggests names
+already in the directory, so someone met before is chosen, not spelled a second way. **Done** saves it all, marks the document reviewed and returns
 to reading; Review again edits again; Discard changes drops the edits. A document opened from
 the review queue starts in edit mode (`?edit=1`), anywhere else in reading mode. Old
 `/review/:id` links redirect.
 
 An edit session is one `PATCH /api/documents/:id`, carrying the details, the tags, the field
-changes (`fields: { update, remove, add }`) and `reviewed`. Everything is validated first and
+changes (`fields: { update, remove, add }`), the measurement changes (the same shape), the
+document's doctors (the list sent replaces the current one) and `reviewed`. The flag on a
+measurement is worked out again from its value and range on every save. Everything is validated first and
 written in one transaction, so a bad field cannot leave the rest half applied:
 
 - text has length limits, a date must be a real day, a type one the app knows; empty text
@@ -618,6 +654,30 @@ written in one transaction, so a bad field cannot leave the rest half applied:
 
 Reading the file again with AI is not offered while editing, since it replaces the document and
 would discard the edits.
+
+### Trends and doctors
+
+**Trends** (`/trends`) lists every test with its latest value and flag. A test opens as a line
+chart over time (`/trends?name=…`): the printed reference range of the newest value as a band,
+each point coloured low/high/in range and linking to its document, and a table of every value
+beside it so the chart is never the only way to read them. It is drawn as SVG by hand: one
+shape, no chart library on a Pi. A line only joins values that can be compared (a unit written two ways, "mUI/mL" and "mIU/mL", "µg" and "ug", is one unit); a consultation that quotes a lab's value gives the same test, day and value twice, so it is drawn once, from the report that has a reference range, and the other stays listed, so the series
+uses the unit most of its values have; a value in another unit (13.5 g/dL against 135 g/L), one
+that is not a number (`<0.5`, `pozitiv`) or one with no date is listed but not drawn. Tests are
+grouped by a canonical name, and three things keep one test under one name across labs. The model
+is told the names already in the archive and asked to reuse one when a measurement is the same test
+("Hb" and "Hemoglobina" both become `hemoglobin`). Where it still names a test two ways, the owner
+merges them on the test's page ("Same test under another name?"): the values move to the chosen
+name and the old name is remembered, so later documents land there too; there is no automatic
+merging, since two tests with similar names, units and ranges can still be different tests. A merge
+is undone by editing the values, not by a button. Renaming a measurement in the review form gives it
+a new name unless that name was merged, in which case it joins the merged test.
+
+**Doctors** (`/doctors`) is the directory the readings build: each doctor with specialty,
+clinic, how many documents name them and when last. A doctor opens to their documents and role
+on each; the owner can rename, fill in a specialty or clinic, merge another entry into this one
+(two spellings of one person), or delete an entry no document names. A name that already
+belongs to another doctor is refused rather than silently merged.
 
 ### Regrouping an upload
 
@@ -700,12 +760,36 @@ one place (`resolveDataDir`) to `<repo>/data`.
   it has none; the owner can edit it, and the UI names documents by it, never by the
   upload's file name (falling back to type and provider when it is empty).
 - `pages` — one per rasterized page, with parser elements and the absolute `image_path`.
-- `extracted_fields` — label/value per document, with page id and fractional bbox.
+- `extracted_fields` — label/value per document, with page id and fractional bbox. Fields that
+  belong together (one prescription line, one vaccine) share a `group_no`.
+- `measurements` — numeric results (lab values, vitals): the name as printed and a `canonical`
+  name that is the same across documents, the value as printed and as a number, unit, printed
+  reference range, a low/high/normal flag, and the date taken. Trends are drawn from these.
+- `measurement_aliases` — "this name means that test", written when two tests are merged (below), so a
+  later document that uses the old name is filed under the new one. Per user; `canonical` is always a
+  name that measurements use, and a chain of merges is flattened, never left pointing at a removed name.
+- `doctors`, `document_doctors` — a per-user directory built as documents are read. A doctor's
+  `key` is the name without titles, accents, case or word order, so "Dr. Popescu Ion" and "Ion
+  Popescu" are one entry; initials are not guessed at, and two entries for one person are merged
+  by hand. A document names its doctors with a role (author, prescriber, referrer, other).
+  A doctor may also carry the professional code printed beside a signature (`license_code`,
+  upper case without punctuation, unique per user). A reading looks the code up first, so one
+  doctor spelled two ways joins one entry when both carry the code; a code only fills a blank
+  and never replaces one. Signature stamps are usually pictures, so the model rarely sees the
+  code in a scan's text: it is mostly entered by hand on the doctor's page.
 - `tags`, `document_tags` — many-to-many, **scoped per user**; a new user gets starter tags.
 - `share_links`, `share_link_access_log`.
-- `documents_fts` — FTS5 over `title`, `doc_type`, `provider`, `ai_summary`, `user_notes`, kept in
-  sync by three triggers. The index is shared; search results are filtered by joining back
-  to `documents.user_id`, so it leaks nothing.
+- `documents_fts` — FTS5, one row per document: `title`, `doc_type`, `provider`, `ai_summary`,
+  `user_notes`, and `body`, which holds the text of the document's pages, its extracted values, its
+  measurements' names and its doctors' names. The view `document_search_source` says what one
+  document contributes, and triggers on documents, pages, fields, measurements, doctor links and
+  doctor names rebuild the rows a change touches, so no code path can change one of those and
+  forget the index. Accents are folded ("lombara" finds "lombară"). The index is shared; search
+  results are filtered by joining back to `documents.user_id`, and `body` is built only from that
+  user's rows, so it leaks nothing.
+  Typed text is never passed to the index as query syntax: each run of letters and digits becomes
+  a quoted word that matches by its start, all words must match, and a hit in the title ranks
+  above one deep in a page (`search-query.ts`).
 
 There is **no migration runner**: `schema.sql` is idempotent `CREATE TABLE IF NOT EXISTS`,
 re-applied every boot. That adds a new *table* to an existing database but cannot add a
@@ -743,7 +827,7 @@ Page images are the most sensitive egress in the system and are off unless asked
 | Path | Payload | Destination |
 |---|---|---|
 | Continuation detection | the text of two adjacent pages | configured provider |
-| Field extraction | the document's full text (split into chunks only if it would exceed the context window) | configured provider |
+| Field extraction | the document's full text (split into chunks only if it would exceed the context window), **and the names of the tests already in this person's archive** (up to 300, within 5% of the context window; names only, never values, dates or documents) so one test is named one way | configured provider |
 | Reading again after a split or join | the same, for each document the change touched | configured provider |
 | Page reading (`hybrid`) | **full page images**, only for pages with no text layer that local OCR could not read | configured provider |
 | Page reading ("Read the whole file with AI", `multimodal`) | **full page images**, every page of the file | configured provider |

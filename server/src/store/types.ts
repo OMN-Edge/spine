@@ -1,7 +1,11 @@
 import type {
+  Doctor,
+  DoctorRole,
   Document,
   DocType,
   ExtractedField,
+  Measurement,
+  MeasurementFlag,
   Page,
   ShareLink,
   SourceFile,
@@ -50,6 +54,8 @@ export interface Store {
   pages: PageRepository;
   documents: DocumentRepository;
   fields: ExtractedFieldRepository;
+  measurements: MeasurementRepository;
+  doctors: DoctorRepository;
   tags: TagRepository;
   shareLinks: ShareLinkRepository;
   maintenance: MaintenanceRepository;
@@ -304,9 +310,139 @@ export interface NewExtractedField {
   pageId: string;
   label: string;
   value: string;
+  /** Fields that belong together share a number within a document; null if on its own. */
+  groupNo?: number | null;
   sourceSnippet: string | null;
   bbox: { x0: number; y0: number; x1: number; y1: number } | null;
   confidence: number | null;
+}
+
+export interface NewMeasurement {
+  id: string;
+  documentId: string;
+  pageId: string;
+  name: string;
+  canonical: string;
+  valueText: string;
+  valueNum: number | null;
+  unit: string | null;
+  refLow: number | null;
+  refHigh: number | null;
+  flag: MeasurementFlag | null;
+  takenOn: string | null;
+  sourceSnippet: string | null;
+  bbox: { x0: number; y0: number; x1: number; y1: number } | null;
+  confidence: number | null;
+}
+
+/** What the owner can correct on a measurement. */
+export interface MeasurementChange {
+  name: string;
+  canonical: string;
+  valueText: string;
+  valueNum: number | null;
+  unit: string | null;
+  refLow: number | null;
+  refHigh: number | null;
+  flag: MeasurementFlag | null;
+  takenOn: string | null;
+}
+
+/** One test across all documents: what the list of trends shows. */
+export interface MeasurementName {
+  canonical: string;
+  /** The name as most recently printed. */
+  name: string;
+  unit: string | null;
+  count: number;
+  latest_value_text: string;
+  latest_taken_on: string | null;
+  latest_flag: MeasurementFlag | null;
+}
+
+/** One value of one test, with the document it came from: one point on a chart. */
+export interface MeasurementPoint {
+  id: string;
+  document_id: string;
+  document_title: string | null;
+  taken_on: string | null;
+  name: string;
+  value_text: string;
+  value_num: number | null;
+  unit: string | null;
+  ref_low: number | null;
+  ref_high: number | null;
+  flag: MeasurementFlag | null;
+}
+
+export interface MeasurementRepository {
+  listForDocument(userId: string, documentId: string): Promise<Measurement[]>;
+  create(userId: string, measurement: NewMeasurement): Promise<void>;
+  /** The owner correcting a value. False if it is not this user's, or not on this document. */
+  update(userId: string, documentId: string, id: string, change: MeasurementChange): Promise<boolean>;
+  remove(userId: string, documentId: string, id: string): Promise<boolean>;
+  /** Before a document is read again. */
+  deleteForDocument(userId: string, documentId: string): Promise<void>;
+  /** Merging two documents. */
+  reassignDocument(userId: string, fromDocumentId: string, toDocumentId: string): Promise<void>;
+  /** Splitting a document: the values on its pages from this one on go with them. */
+  reassignFromPage(userId: string, fromDocumentId: string, toDocumentId: string, fromPageNumber: number): Promise<void>;
+  /** The name a test is filed under: the name given, or the one it was merged into. */
+  resolveCanonical(userId: string, canonical: string): Promise<string>;
+  /**
+   * Two names for one test become one: every value under `from` moves to `into`, and `from` is
+   * remembered so later documents that use it land under `into`. Both must be tests this user has.
+   */
+  mergeTests(userId: string, from: string, into: string): Promise<'ok' | 'same' | 'not_found'>;
+  /** Every test this user has a value for. */
+  names(userId: string): Promise<MeasurementName[]>;
+  /** Every value of one test, oldest first. */
+  series(userId: string, canonical: string): Promise<MeasurementPoint[]>;
+}
+
+export interface DoctorWithCounts extends Doctor {
+  document_count: number;
+  /** The newest document date they appear on. */
+  last_seen: string | null;
+}
+
+export interface DoctorOnDocument extends Doctor {
+  role: DoctorRole;
+}
+
+export interface DoctorDocument {
+  id: string;
+  title: string | null;
+  doc_type: DocType | null;
+  doc_date: string | null;
+  provider: string | null;
+  role: DoctorRole;
+}
+
+export interface DoctorRepository {
+  /**
+   * The directory entry for this name, made if there is none. A name that reduces to the same key as an
+   * existing doctor is that doctor, and so is a doctor with the same professional code under another spelling
+   * (the code wins); a blank specialty, clinic or code is filled in from what is now known, never overwritten.
+   */
+  upsert(userId: string, doctor: { name: string; specialty?: string | null; clinic?: string | null; licenseCode?: string | null }, now: string): Promise<string | null>;
+  /** Names a doctor on a document. False if either is not the user's. */
+  link(userId: string, documentId: string, doctorId: string, role: DoctorRole): Promise<boolean>;
+  unlinkAll(userId: string, documentId: string): Promise<void>;
+  forDocument(userId: string, documentId: string): Promise<DoctorOnDocument[]>;
+  /** Merging two documents: the second's doctors are named on the first. */
+  moveLinks(userId: string, fromDocumentId: string, toDocumentId: string): Promise<void>;
+  /** Splitting a document: the new half names the same doctors. */
+  copyLinks(userId: string, fromDocumentId: string, toDocumentId: string): Promise<void>;
+  listFor(userId: string): Promise<DoctorWithCounts[]>;
+  find(userId: string, id: string): Promise<Doctor | null>;
+  documentsFor(userId: string, doctorId: string): Promise<DoctorDocument[]>;
+  /** 'name_taken' or 'code_taken' if the new name or code is another doctor's. */
+  update(userId: string, id: string, change: { name?: string; specialty?: string | null; clinic?: string | null; licenseCode?: string | null }): Promise<'ok' | 'not_found' | 'name_taken' | 'code_taken'>;
+  /** Two entries for one person become one. False if either is not the user's, or they are the same. */
+  merge(userId: string, fromId: string, intoId: string): Promise<boolean>;
+  /** Only a doctor no document names. */
+  remove(userId: string, id: string): Promise<boolean>;
 }
 
 export interface TagRepository {

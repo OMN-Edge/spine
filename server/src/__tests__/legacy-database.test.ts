@@ -87,6 +87,39 @@ describe('opening a database from before multi-user', () => {
     expect(() => createStore({ adapter: 'sqlite', location: file })).toThrow(/earlier version.*Do NOT delete/s);
   });
 
+  it('refuses a database whose doctors have no professional code, as one from before it was added', () => {
+    dir = mkdtempSync(path.join(tmpdir(), 'spine-nocode-'));
+    const file = path.join(dir, 'spine.db');
+    const db = new Database(file);
+    db.exec(`
+      CREATE TABLE users (id TEXT PRIMARY KEY, email TEXT, email_verified_at TEXT);
+      CREATE TABLE source_files (id TEXT PRIMARY KEY, user_id TEXT);
+      CREATE TABLE documents (id TEXT PRIMARY KEY, user_id TEXT, title TEXT);
+      CREATE TABLE extracted_fields (id TEXT PRIMARY KEY, group_no INTEGER);
+      CREATE TABLE doctors (id TEXT PRIMARY KEY, user_id TEXT, name TEXT, key TEXT, specialty TEXT, clinic TEXT, created_at TEXT);
+    `);
+    db.close();
+
+    expect(() => createStore({ adapter: 'sqlite', location: file })).toThrow(/earlier version.*safe to delete/s);
+  });
+
+  it('refuses a database whose search index only covers titles and summaries', () => {
+    dir = mkdtempSync(path.join(tmpdir(), 'spine-oldsearch-'));
+    const file = path.join(dir, 'spine.db');
+    const db = new Database(file);
+    db.exec(`
+      CREATE TABLE users (id TEXT PRIMARY KEY, email TEXT, email_verified_at TEXT);
+      CREATE TABLE source_files (id TEXT PRIMARY KEY, user_id TEXT);
+      CREATE TABLE documents (id TEXT PRIMARY KEY, user_id TEXT, title TEXT);
+      CREATE TABLE extracted_fields (id TEXT PRIMARY KEY, group_no INTEGER);
+      CREATE TABLE doctors (id TEXT PRIMARY KEY, license_code TEXT);
+      CREATE VIRTUAL TABLE documents_fts USING fts5(title, doc_type, provider, ai_summary, user_notes);
+    `);
+    db.close();
+
+    expect(() => createStore({ adapter: 'sqlite', location: file })).toThrow(/earlier version.*safe to delete/s);
+  });
+
   it('opens a fresh database and a current one without complaint', () => {
     dir = mkdtempSync(path.join(tmpdir(), 'spine-current-'));
     const file = path.join(dir, 'spine.db');

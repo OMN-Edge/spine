@@ -187,6 +187,7 @@ Verified present.
 | Search is filtered by owner by joining back to `documents.user_id` | `store/sqlite/documents.ts` |
 | A share link may name only its creator's documents, checked at creation | `routes/share.ts` |
 | Tags are per user | `store/sqlite/tags.ts` |
+| Measurements and the doctors directory are per user: a value cannot sit on another user's page, a doctor cannot be linked, merged or edited across users, and a doctor's match key is unique per user, not global | `store/sqlite/measurements.ts`, `doctors.ts`; `__tests__/structured.test.ts`, `trends-doctors.test.ts` |
 | Originals stored under `data/originals/<user>/<year>/` | `routes/source-files.ts` |
 | Responses list explicit columns: no `user_id`, server path, checksum or token; tested by scanning whole responses | `store/sqlite/`, `__tests__/response-shape.test.ts` |
 | Signup, verification, forgot and reset limited per source and per address; identical answers for known and unknown addresses | `routes/accounts.ts`, `rate-limit.ts` |
@@ -388,7 +389,11 @@ share query does *not* fail it, because the outer `d.user_id` already excludes o
 users' documents; that one is defence in depth.
 
 **M-2 — Owner-aware full-text search.** The FTS index stays shared; results are filtered by
-joining back to `documents.user_id`. Tested.
+joining back to `documents.user_id`. The index now also holds page text, values and doctor
+names (the most sensitive text in the system), so what makes it safe is that each row is built
+only from the owning user's rows and is only reachable through that join; a test searches for
+another user's page text, value and doctor name and finds nothing. Typed text is quoted, never
+passed as query syntax. Tested.
 
 **M-3 — Credential storage.** **P13.** argon2id, 19 MiB / 2 passes / 1 lane (the OWASP
 minimum), per-hash salt, 12–256 characters. About 30 ms per hash on a laptop-class CPU; not yet

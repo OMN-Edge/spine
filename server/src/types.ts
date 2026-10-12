@@ -56,6 +56,8 @@ export interface ExtractedField {
   page_id: string;
   label: string;
   value: string;
+  /** Fields with the same number belong together (one prescription line); null if on its own. */
+  group_no: number | null;
   source_snippet: string | null;
   bbox_x0: number | null;
   bbox_y0: number | null;
@@ -101,6 +103,9 @@ export interface ContinuationResult {
   reasoning: string;
 }
 
+export type DoctorRole = 'author' | 'prescriber' | 'referrer' | 'other';
+export type MeasurementFlag = 'low' | 'high' | 'normal';
+
 export interface ExtractionResult {
   title: string | null;
   doc_date: string | null;
@@ -108,13 +113,62 @@ export interface ExtractionResult {
   doc_type: DocType;
   ai_summary: string;
   suggested_tags: string[];
+  /** Everyone named on the document in a clinical role, without titles. */
+  doctors: Array<{ name: string; specialty: string | null; code?: string | null; role: DoctorRole }>;
   fields: Array<{
     label: string;
     value: string;
+    group?: number | null;
     source_snippet: string;
     page_number: number;
     confidence: number;
   }>;
+  /** Numeric results: lab values and vitals, each with a name that is the same across documents. */
+  measurements: Array<{
+    name: string;
+    canonical: string;
+    value: string;
+    unit: string | null;
+    /** As printed. Parsed into numbers, and the flag checked, by ingestion/measurements.ts. */
+    ref_low: string | null;
+    ref_high: string | null;
+    flag: string | null;
+    date: string | null;
+    source_snippet: string;
+    page_number: number;
+    confidence: number;
+  }>;
+}
+
+export interface Measurement {
+  id: string;
+  document_id: string;
+  page_id: string;
+  name: string;
+  canonical: string;
+  value_text: string;
+  value_num: number | null;
+  unit: string | null;
+  ref_low: number | null;
+  ref_high: number | null;
+  flag: MeasurementFlag | null;
+  taken_on: string | null;
+  source_snippet: string | null;
+  bbox_x0: number | null;
+  bbox_y0: number | null;
+  bbox_x1: number | null;
+  bbox_y1: number | null;
+  confidence: number | null;
+}
+
+export interface Doctor {
+  id: string;
+  name: string;
+  specialty: string | null;
+  clinic: string | null;
+  /** The professional code printed under their signature, if one was. */
+  license_code: string | null;
+  created_at: string;
 }
 
 export interface JobStatus {

@@ -23,6 +23,8 @@ export default function UploadPages() {
   const [notice, setNotice] = useState<React.ReactNode>('');
   // Which page is open in the big preview, by its position in the upload.
   const [preview, setPreview] = useState<number | null>(null);
+  // A change that would replace what the owner already reviewed waits here for a yes.
+  const [confirm, setConfirm] = useState<{ label: string; docId: string; body: Parameters<typeof api.documents.boundary>[1]; titles: string[] } | null>(null);
 
   const load = useCallback(() => {
     if (!id) return;
@@ -30,7 +32,16 @@ export default function UploadPages() {
   }, [id]);
   useEffect(load, [load]);
 
+  /** Splits or joins. If a document that was reviewed is affected, ask first: it is read again, which replaces its details. */
+  const ask = (label: string, docId: string, body: Parameters<typeof api.documents.boundary>[1], affected: UploadDocument[]) => {
+    const reviewed = affected.filter(d => d.reviewed);
+    if (reviewed.length === 0) { regroup(label, docId, body); return; }
+    setNotice('');
+    setConfirm({ label, docId, body, titles: reviewed.map(documentTitle) });
+  };
+
   const regroup = async (label: string, docId: string, body: Parameters<typeof api.documents.boundary>[1]) => {
+    setConfirm(null);
     setBusy(label);
     setNotice('');
     try {
@@ -68,6 +79,21 @@ export default function UploadPages() {
         Split a document between two pages, or join it to the one before.
       </p>
 
+      {confirm && (
+        <div role="alertdialog" aria-label="Replace reviewed details?" className="mb-4 bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm">
+          <p className="text-amber-900">
+            {confirm.label === 'Joining' ? 'Joining' : 'Splitting'} reads the changed documents again and <strong>replaces the details you reviewed</strong> in{' '}
+            {confirm.titles.map((t, i) => <span key={i}>{i > 0 && ', '}“{t}”</span>)}. They go back to Review.
+          </p>
+          <div className="flex gap-2 mt-3">
+            <button type="button" onClick={() => regroup(confirm.label, confirm.docId, confirm.body)} className="bg-blue-600 text-white rounded-lg px-3 py-1.5 text-sm hover:bg-blue-700">
+              {confirm.label === 'Joining' ? 'Join anyway' : 'Split anyway'}
+            </button>
+            <button type="button" onClick={() => setConfirm(null)} className="px-3 py-1.5 rounded-lg text-sm text-gray-600 border border-gray-300 hover:bg-white">Cancel</button>
+          </div>
+        </div>
+      )}
+
       <div aria-live="polite" className="min-h-[1.5rem] mb-4 text-sm space-y-2">
         {busy ? <span className="text-blue-700">{busy}…</span> : notice && <span className="text-gray-700">{notice}</span>}
       </div>
@@ -95,7 +121,7 @@ export default function UploadPages() {
                     <button
                       type="button"
                       disabled={!!busy}
-                      onClick={() => regroup('Joining', layout.documents[index - 1].id, { action: 'merge', with_document_id: doc.id })}
+                      onClick={() => ask('Joining', layout.documents[index - 1].id, { action: 'merge', with_document_id: doc.id }, [layout.documents[index - 1], doc])}
                       className="shrink-0 text-xs text-blue-600 border border-blue-200 rounded-lg px-2.5 py-1 hover:bg-blue-50 disabled:opacity-50"
                     >
                       Join with previous
@@ -110,7 +136,7 @@ export default function UploadPages() {
                         <button
                           type="button"
                           disabled={!!busy}
-                          onClick={() => regroup('Splitting', doc.id, { action: 'split', at_page: page.page_number })}
+                          onClick={() => ask('Splitting', doc.id, { action: 'split', at_page: page.page_number }, [doc])}
                           aria-label={`Split before page ${page.page_number}`}
                           title={`Split before page ${page.page_number}`}
                           className="group mx-1 w-10 sm:w-6 flex flex-col items-center justify-center text-gray-300 hover:text-blue-600 focus:text-blue-600 disabled:opacity-40"

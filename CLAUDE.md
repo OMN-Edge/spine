@@ -37,7 +37,7 @@ spine/
 │       ├── store/         # store interface: types.ts (interfaces), index.ts (registry), sqlite/ (the only adapter)
 │       ├── hash-legacy-tokens.ts  # S-4 boot rewrite of plaintext share tokens
 │       ├── ingestion/      # pipeline.ts, extraction.ts, continuation.ts, grounding.ts, rasterize.ts, ingestion-client.ts
-│       ├── routes/         # auth.ts (login + second step), totp.ts, documents.ts, source-files.ts, share.ts, public-share.ts, tags.ts
+│       ├── routes/         # auth.ts (login + second step), totp.ts, documents.ts, source-files.ts, share.ts, public-share.ts, tags.ts, trends.ts, doctors.ts
 │       └── __tests__/      # Vitest tests + helpers/app.ts
 ├── web/                    # React + Vite + Tailwind
 ├── ingestion-service/      # Python FastAPI — PDF parsing via Unstructured (port 8000)
@@ -192,6 +192,7 @@ detection and field extraction. Everything provider-specific is behind the LLM i
   fixtures are built through the interface via `__tests__/helpers/seed.ts` rather than raw SQL
   (P10 — and it is what proves the interface is complete).
 - **Ingestion pipeline is fire-and-forget** — `startIngestionJob(sourceFileId, userId)` returns immediately; status tracked in an in-memory registry, polled by the browser.
+- **Structured extraction** — per-type guides in `llm/doc-types.ts`; numeric results are `measurements` (parsed and flagged in `ingestion/measurements.ts`), people are a per-user `doctors` directory (`doctors.ts` matches names), related fields share a `group_no`. Edits to all of these go through the one atomic `PATCH /api/documents/:id`.
 - **Page images are authenticated** — served by `GET /api/pages/:id/image`, streamed from the
   absolute `pages.image_path`. Never mounted statically: `DATA_DIR` holds `spine.db` and the
   original scans.

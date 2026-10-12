@@ -23,6 +23,100 @@ export interface Document {
   fields?: ExtractedField[];
   tags?: string[];
   pages?: Page[];
+  measurements?: Measurement[];
+  doctors?: DoctorOnDocument[];
+}
+
+export type Flag = 'low' | 'high' | 'normal';
+export type DoctorRole = 'author' | 'prescriber' | 'referrer' | 'other';
+
+/** A numeric result: a lab value or a vital. */
+export interface Measurement {
+  id: string;
+  document_id: string;
+  page_id: string;
+  name: string;
+  canonical: string;
+  value_text: string;
+  value_num: number | null;
+  unit: string | null;
+  ref_low: number | null;
+  ref_high: number | null;
+  flag: Flag | null;
+  taken_on: string | null;
+  source_snippet: string | null;
+  bbox_x0: number | null;
+  bbox_y0: number | null;
+  bbox_x1: number | null;
+  bbox_y1: number | null;
+  confidence: number | null;
+}
+
+export interface DoctorOnDocument {
+  id: string;
+  name: string;
+  specialty: string | null;
+  clinic: string | null;
+  license_code: string | null;
+  role: DoctorRole;
+}
+
+/** One test across all documents, for the list of trends. */
+export interface TrendName {
+  canonical: string;
+  name: string;
+  unit: string | null;
+  count: number;
+  latest_value_text: string;
+  latest_taken_on: string | null;
+  latest_flag: Flag | null;
+}
+
+export interface TrendPoint {
+  id: string;
+  document_id: string;
+  document_title: string | null;
+  taken_on: string | null;
+  name: string;
+  value_text: string;
+  value_num: number | null;
+  unit: string | null;
+  ref_low: number | null;
+  ref_high: number | null;
+  flag: Flag | null;
+  /** Whether it can be drawn with the others: a number, dated, in the same unit. */
+  charted: boolean;
+  /** The same test, day and value as another point that is drawn (a consultation quoting a lab). */
+  repeat: boolean;
+}
+
+export interface TrendSeries {
+  canonical: string;
+  name: string;
+  unit: string | null;
+  points: TrendPoint[];
+}
+
+export interface DoctorEntry {
+  id: string;
+  name: string;
+  specialty: string | null;
+  clinic: string | null;
+  license_code: string | null;
+  created_at: string;
+  document_count: number;
+  last_seen: string | null;
+}
+
+export interface DoctorDetail extends Omit<DoctorEntry, 'document_count' | 'last_seen'> {
+  documents: Array<{ id: string; title: string | null; doc_type: DocType | null; doc_date: string | null; provider: string | null; role: DoctorRole }>;
+}
+
+export interface DocumentTypeGuide {
+  type: DocType;
+  label: string;
+  fields: string[];
+  grouped: string[];
 }
 
 /** A document an upload produced, as the upload endpoints list it. */
@@ -65,6 +159,23 @@ export interface DocumentEdit {
     remove?: string[];
     add?: Array<{ label: string; value: string; page_id: string }>;
   };
+  measurements?: {
+    update?: Array<MeasurementInput & { id: string }>;
+    remove?: string[];
+    add?: Array<MeasurementInput & { page_id: string }>;
+  };
+  /** The document's doctors: this list replaces the current one. */
+  doctors?: Array<{ name: string; specialty: string | null; role: DoctorRole }>;
+}
+
+export interface MeasurementInput {
+  name: string;
+  canonical: string;
+  value: string;
+  unit: string | null;
+  ref_low: string | null;
+  ref_high: string | null;
+  taken_on: string | null;
 }
 
 export interface AiReadingJob {
@@ -100,6 +211,8 @@ export interface ExtractedField {
   page_id: string;
   label: string;
   value: string;
+  /** Fields with the same number belong together (one prescription line). */
+  group_no: number | null;
   source_snippet: string | null;
   bbox_x0: number | null;
   bbox_y0: number | null;
@@ -149,7 +262,35 @@ async function req<T>(url: string, options?: RequestInit): Promise<T> {
 const post = <T>(url: string, body: unknown) =>
   req<T>(url, { method: 'POST', body: JSON.stringify(body) });
 
+const patch = <T>(url: string, body: unknown) =>
+  req<T>(url, { method: 'PATCH', body: JSON.stringify(body) });
+
 export const api = {
+  trends: {
+    names: () => req<TrendName[]>('/api/measurements'),
+    /** `from`'s values are counted as `into`, and later documents that use `from` are filed there too. */
+    merge: (from: string, into: string) => post<{ ok: boolean; canonical: string }>('/api/measurements/merge', { from, into }),
+    series: (canonical: string) => req<TrendSeries>(`/api/measurements/series?name=${encodeURIComponent(canonical)}`),
+  },
+
+  doctors: {
+    list: () => req<DoctorEntry[]>('/api/doctors'),
+    get: (id: string) => req<DoctorDetail>(`/api/doctors/${id}`),
+    update: (id: string, change: { name?: string; specialty?: string | null; clinic?: string | null; license_code?: string | null }) =>
+      patch<{ ok: boolean }>(`/api/doctors/${id}`, change),
+    /** `from` is folded into `id` and removed. */
+    merge: (id: string, from: string) => post<{ ok: boolean }>(`/api/doctors/${id}/merge`, { from }),
+    remove: async (id: string) => {
+      const res = await fetch(`/api/doctors/${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
+        throw new ApiError(err.error ?? res.statusText, res.status);
+      }
+    },
+  },
+
+  documentTypes: () => req<DocumentTypeGuide[]>('/api/document-types'),
+
   auth: {
     /** Either signed in, or the password was right and a second factor is still needed. */
     login: (email: string, password: string) =>

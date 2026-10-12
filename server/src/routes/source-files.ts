@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { createHash } from 'crypto';
-import { createWriteStream, mkdirSync } from 'fs';
+import { closeSync, createWriteStream, mkdirSync, openSync, readSync, rmSync } from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { getStore } from '../store/index.js';
@@ -23,6 +23,22 @@ function documentSummary(doc: Document) {
 
 /** One request cannot ask for an unbounded number of images to be sent. */
 const MAX_PAGES_PER_READING = 200;
+
+/**
+ * Whether a file is a PDF by what is in it, not by what the browser called it. The signature
+ * "%PDF-" must appear within the first 1024 bytes, which is what the format allows (some writers put a
+ * few bytes of junk before it). The pipeline renders with pdftoppm, which reads PDFs and nothing else.
+ */
+export function looksLikePdf(filePath: string): boolean {
+  const buffer = Buffer.alloc(1024);
+  const fd = openSync(filePath, 'r');
+  try {
+    const read = readSync(fd, buffer, 0, buffer.length, 0);
+    return buffer.subarray(0, read).includes('%PDF-');
+  } finally {
+    closeSync(fd);
+  }
+}
 
 export async function sourceFileRoutes(app: FastifyInstance) {
   app.addHook('preHandler', requireAuth);
@@ -97,9 +113,17 @@ export async function sourceFileRoutes(app: FastifyInstance) {
 
       const checksum = hash.digest('hex');
 
+      // Only what can be read is kept. A refused file, and a copy of one already held, is not left on disk.
+      if (!looksLikePdf(filePath)) {
+        rmSync(filePath, { force: true });
+        results.push({ skipped: true, reason: 'not_pdf', filename: part.filename ?? null });
+        continue;
+      }
+
       // Reject duplicate uploads
       const existing = await store.sourceFiles.findByChecksumFor(req.userId, checksum);
       if (existing) {
+        rmSync(filePath, { force: true });
         results.push({ skipped: true, reason: 'duplicate', existing_id: existing.id });
         continue;
       }

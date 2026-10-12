@@ -10,6 +10,7 @@ interface UploadResult {
   status?: string;
   skipped?: boolean;
   reason?: string;
+  filename?: string | null;
   existing_id?: string;
 }
 
@@ -107,6 +108,8 @@ function UploadRow({ job }: { job: JobState }) {
 export default function Upload() {
   const [dragging, setDragging] = useState(false);
   const [jobs, setJobs] = useState<JobState[]>([]);
+  // Files the server would not take, by name.
+  const [refused, setRefused] = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const update = useCallback((key: string, patch: Partial<JobState>) => {
@@ -144,6 +147,7 @@ export default function Upload() {
   const handleFiles = useCallback(async (fileList: FileList) => {
     const results: UploadResult[] = await api.sourceFiles.upload(fileList);
     const newJobs: JobState[] = [];
+    setRefused(results.filter(r => r.skipped && r.reason === 'not_pdf').map(r => r.filename || 'A file'));
 
     results.forEach((r, i) => {
       const key = `${Date.now()}-${i}`;
@@ -182,10 +186,10 @@ export default function Upload() {
           ${dragging ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-gray-400 bg-white'}
         `}
       >
-        {/* A phone has nothing to drag from; it gets the file picker (and the camera, for photos). */}
+        {/* A phone has nothing to drag from; it gets the file picker  */}
         <p className="text-gray-500 mb-2">
-          <span className="hidden sm:inline">Drag & drop PDFs or photos here</span>
-          <span className="sm:hidden">Tap to choose PDFs or photos</span>
+          <span className="hidden sm:inline">Drag & drop PDFs here</span>
+          <span className="sm:hidden">Tap to choose PDFs</span>
         </p>
         <p className="text-sm text-gray-400">
           <span className="hidden sm:inline">or click to browse — </span>up to 200 MB per file
@@ -194,7 +198,7 @@ export default function Upload() {
           ref={fileRef}
           type="file"
           multiple
-          accept=".pdf,image/*"
+          accept=".pdf,application/pdf"
           className="hidden"
           onChange={e => {
             if (e.target.files?.length) handleFiles(e.target.files);
@@ -204,6 +208,13 @@ export default function Upload() {
           }}
         />
       </div>
+
+      {refused.length > 0 && (
+        <div role="alert" className="mt-4 bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-900">
+          {refused.length === 1 ? `${refused[0]} was not added: it is not a PDF.` : `${refused.length} files were not added because they are not PDFs: ${refused.join(', ')}.`}
+          {' '}Photos of paper are not read yet; a scanning app that saves a PDF works.
+        </div>
+      )}
 
       {jobs.length > 0 && (
         <div className="mt-8">

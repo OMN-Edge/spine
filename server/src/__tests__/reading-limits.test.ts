@@ -31,8 +31,8 @@ const page = (n: number, text: string): PageSummary =>
   ({ id: `p${n}`, page_number: n, raw_text: text, is_continuation: null, image_width: 1, image_height: 1, extraction_source: 'ocr' });
 
 const extraction = (title: string, fields: Array<{ label: string; page_number: number; value?: string }> = []) => ({
-  title, doc_date: null, provider: null, doc_type: 'other' as const, ai_summary: `${title} summary`, suggested_tags: [title.toLowerCase()],
-  fields: fields.map(f => ({ label: f.label, value: f.value ?? f.label, source_snippet: 'x', page_number: f.page_number, confidence: 1 })),
+  title, doc_date: null, provider: null, doc_type: 'other' as const, ai_summary: `${title} summary`, suggested_tags: [title.toLowerCase()], doctors: [], measurements: [],
+  fields: fields.map(f => ({ label: f.label, value: f.value ?? f.label, group: null, source_snippet: 'x', page_number: f.page_number, confidence: 1 })),
 });
 
 describe('what the model is sent', () => {
