@@ -153,6 +153,9 @@ CREATE TABLE IF NOT EXISTS document_doctors (
   document_id TEXT NOT NULL REFERENCES documents(id),
   doctor_id TEXT NOT NULL REFERENCES doctors(id),
   role TEXT NOT NULL, -- 'author' | 'prescriber' | 'referrer' | 'other'
+  -- Where the link came from: 'text' (the document's text, or the owner) or 'stamp' (a signature stamp read
+  -- from an image). Reading the text again replaces only the first, so it cannot erase what an image gave.
+  source TEXT NOT NULL DEFAULT 'text',
   PRIMARY KEY (document_id, doctor_id, role)
 );
 

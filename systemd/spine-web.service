@@ -19,6 +19,7 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=SPINE_DIR/data
+PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target

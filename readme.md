@@ -6,13 +6,14 @@ Runs on a Raspberry Pi. No cloud storage — all data stays local.
 
 ## What it does
 
-- Upload PDFs, including scans (drag-and-drop, multi-file). Photos are not read yet; a PDF is checked by its contents, not its name
+- Upload PDFs, including scans (drag-and-drop, multi-file). Photos (JPEG, PNG) are read by the AI model when image reading is switched on, and are refused otherwise; files are checked by their contents, not their names
 - Full-text search over titles, summaries, notes, the text of every page, extracted values and doctors' names, with accents ignored
 - Automatically splits a merged multi-document PDF into logical documents using AI boundary detection
 - Extracts metadata per document: date, provider, type, summary, and individual fields (diagnoses, medications, lab values, etc.)
 - Every extracted field links back to its exact position on the original page — hover over a field to highlight its source
 - Lab values and vitals are kept as numbers, so each test can be charted over time against its reference range
-- A doctors directory that grows as documents are read: who wrote, prescribed or referred, with their documents
+- A doctors directory that grows as documents are read: who wrote, prescribed or referred, with their documents. With image reading on, a clinic's signature stamp (name, specialty, professional code) is read too
+
 - Review queue to accept, correct, or override anything the AI got wrong
 - Full-text and filtered search across all documents
 - Create expiring, revocable read-only share links to send a doctor a subset of your history — no account or app needed on their end

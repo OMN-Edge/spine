@@ -52,6 +52,31 @@ The owner scans a QR code, confirms one code, and saves ten recovery codes.
 
 Status: auto (`totp`, `second-factor`).
 
+### 1.4 Sign up
+Only where the operator has opened registration (it needs a mail provider). A person enters an email
+address and a password, and is sent a link.
+
+- Until the link is used the account cannot sign in, and it gets no session.
+- The link works once, expires, and is carried in the part of the address the server never sees.
+  Asking for another link replaces the old one.
+- A taken address, an unknown one and a verified one all get the same answer, so the form cannot be
+  used to find out who has an account, and nothing is mailed to an address that is not new.
+- A weak password (under 12 characters) or a bad address creates nothing.
+- If the mail provider is down the form still answers; it does not crash.
+- With registration closed there is no sign-up route at all.
+- Requests are rate limited per address and per source, so the form cannot flood an inbox.
+
+Status: auto (`accounts`). Delivery by a real mail provider: real provider, untested.
+
+### 1.5 Change my password
+On the Account page, with the current password and the new one twice.
+
+- The current password is required, and a wrong one changes nothing.
+- The new password is at least 12 characters.
+- Every other session of the owner is signed out; the one they are using stays.
+
+Status: auto (`auth`, `second-factor`).
+
 ---
 
 ## 2. Getting documents in
@@ -71,17 +96,32 @@ The owner drops a 40-page scan on the Upload page. It was a stack of letters, re
 Status: auto (`pipeline`, `continuation`, `upload`); boundary quality on real scans: real model.
 
 ### 2.2 The same file twice, or a file that is not a document
-- A file already uploaded is refused as a duplicate and points at the existing one.
+- A file already uploaded is refused as a duplicate and points at the existing one, unless that
+  upload failed (see 2.7), in which case it is tried again.
 - A file over 200 MB is refused with a reason.
-- Only PDFs are accepted, judged by the file's contents (the PDF signature near its start), not by
-  its name or the type the browser reported. Anything else is refused and named on the page, and
-  nothing of it is kept on disk or recorded.
+- PDFs, and JPEG or PNG photos, are accepted, judged by the file's contents, not by its name or the
+  type the browser reported. Anything else is refused and named on the page, and nothing of it is
+  kept on disk or recorded. The type recorded is the detected one.
 - A duplicate leaves no second copy on disk.
-- Photos (JPEG, PNG) are **not** accepted: the pipeline renders PDFs only. See "Not covered yet".
+- A photo is accepted only when image reading is switched on. Otherwise it is refused with the
+  reason, the picker offers PDFs only, and nothing is kept.
 
 Status: auto (`upload`).
 
-### 2.3 A scan with no text layer
+### 2.3 A photo of a paper report
+The owner photographs a letter and uploads the picture.
+
+- The page says, before the upload, that a photo is sent to the model provider (named) to be read.
+- The photo is read by the model directly; local OCR is not tried first.
+- A photo taken sideways (the phone's orientation flag) is shown and read upright, and a very large
+  photo is reduced before it is sent. The original is kept as it was.
+- It becomes a one-page upload with the usual title, details and review.
+- With image reading off, the owner is told the photo needs it, and nothing leaves the machine.
+
+Status: auto (`photos`, `upload`); the upload and the upright page in the running app: hand;
+how well a real model reads a phone photo: real model.
+
+### 2.4 A scan with no text layer
 The file is a PDF made by a scanner or a scanning app, so its pages are pictures with no text.
 
 - With the default settings, the page keeps whatever local reading found and nothing leaves the machine.
@@ -92,7 +132,7 @@ The file is a PDF made by a scanner or a scanning app, so its pages are pictures
 
 Status: auto (`parser`, `ocr`, `read-page`); quality on real handwriting: real model.
 
-### 2.4 Fix how the pages were grouped
+### 2.5 Fix how the pages were grouped
 The owner opens an upload's **Pages and grouping**. Pages 11 and 12 belong with the document before them.
 
 - Pages show as thumbnails grouped by document; clicking a page opens a large preview.
@@ -105,6 +145,46 @@ The owner opens an upload's **Pages and grouping**. Pages 11 and 12 belong with 
 - Values, doctors and fields move with the pages they were read from.
 
 Status: auto (`regroup`, `structured`); screens: hand.
+
+### 2.6 A very long document
+A 300-page discharge file that is one document.
+
+- Normally the whole document goes to the model in one request, each page under its real page
+  number, and nothing is shortened to save money.
+- Only when it would not fit the model's window (`SPINE_LLM_CONTEXT_CHARS`, 300,000 characters by
+  default) is it split, at page boundaries, into parts that each fit, with no page lost or repeated.
+  A single page that alone exceeds the window is cut, and nothing else is.
+- The details come from the first part, the tags from all parts, and a repeated field is kept once.
+- If any part cannot be read the whole document counts as failed, so it never looks complete when
+  it is not.
+- A field lands on the page the model named, also for a document that starts after page 1, and on
+  the nearest page when the model names one the document does not have.
+- Documents are read several at a time (`SPINE_LLM_CONCURRENCY`, 4 by default), and one failing
+  does not hide the others.
+
+Status: auto (`reading-limits`, `concurrency`); a real 300-page file: not tried.
+
+### 2.7 The model is unavailable
+The provider is down, or its answer is unusable, while a file is being read.
+
+- The upload is marked failed, with the reason, and the page shows it.
+- Nothing half-written is left: no documents with missing details, and no old documents removed
+  when a file was being read again.
+- The original file is kept.
+- A failed read of one document's details (as opposed to the whole upload) leaves a document that
+  says so and waits in Review.
+- The failed row offers **Try again**. It runs the upload again the way it was first read (the
+  configured parser, not the model for every page, so nothing is sent off the machine that would not
+  have been the first time), and replaces what the failed attempt left only once the new reading has
+  succeeded, so a second failure changes nothing.
+- Uploading the same file again does the same, instead of being refused as a duplicate of the failed
+  one. A file whose earlier upload is done, or still running, is a duplicate as before.
+- Try again is for an upload that failed: for any other it is refused, and for another user's it is
+  reported as not found.
+- A restart that interrupts a reading marks it failed, so it can be tried again too.
+
+Status: auto (`pipeline`, `upload`, `reread`); the Try again button and a failure, then a recovered
+provider, then a retry in the running app: hand.
 
 ---
 
@@ -144,6 +224,34 @@ Status: auto (`ai-reading`, `read-page`); quality: real model.
 - The document goes back to unreviewed.
 
 Status: auto (`reread`).
+
+### 3.4 A clinic's report, read as it is written
+A clinic's "raport medical" or lab bulletin, whose sections are free text.
+
+- A consultation gets what such a report holds: report number, each service performed with its
+  result, history split into family, personal, habits and current treatment, symptoms and
+  examination, the diagnosis with its ICD code (and what the report left uncoded), and the
+  recommendations split into tests, lifestyle advice and medication.
+- A lab bulletin is dated by when the sample was collected, not issued, and its values by that date.
+- Lab values quoted in a consultation's text become measurements, each with the date it was taken,
+  often earlier than the visit; BMI is among the vitals.
+- A prescription's medicines show as one group each (drug, dose, frequency, duration).
+- The patient's national ID, patient code, phone number and age are never extracted.
+- A page footer "1 / 1" after "3 / 3" starts a new document, so two bulletins in one PDF split.
+- A document that fails to read still exists and says so, and waits in Review.
+
+Status: auto (`structured`, `continuation`); what a real model produces from real reports: real model.
+
+### 3.5 The review queue
+The owner works through what has not been reviewed.
+
+- The queue lists every unreviewed document, each drawn as a loose vertebra (not yet on the spine),
+  and says how many are waiting; with none it says so.
+- A document opens in edit mode from the queue, in reading mode from the timeline.
+- Done saves it and marks it reviewed, and it leaves the queue and joins the timeline's spine as a solid vertebra.
+- A document that was edited by a re-read, a split or a join returns to the queue.
+
+Status: auto (`documents`, `document-edit`, `regroup`); screens: hand.
 
 ---
 
@@ -195,22 +303,52 @@ Each reading adds the doctors a document names, with a role: wrote it, prescribe
   filled in once and never replaced.
 - The same doctor on a hundred documents is one entry with a count and a last-seen date.
 - The patient is never listed as a doctor, and the national ID, patient code and phone are never extracted.
+- With image reading on, the doctor on a signature stamp (a small picture on the document's last page)
+  is added too, with their specialty and professional code, as the document's author. Only the
+  stamp is sent, never the page; logos, QR codes and seals are not sent.
+- A code is stored only if every character was legible; otherwise the doctor is added without one.
+- Reading the document's text again keeps the doctors read from a stamp.
+- With image reading off, a photo, or a stamp that is not an embedded picture, no doctor is added
+  from a stamp and nothing is sent; the owner can enter them by hand.
+- A PDF that is **digitally signed** adds its signer as an author of each document in the file, read
+  locally from the certificate (a given name and surname, signature valid), so this needs no image
+  reading and sends nothing. A company seal, an invalid signature and the certificate's serial
+  number (an identifier of the person, not a professional code) are ignored. Like a stamp, it stays
+  when the text is read again.
 
-Status: auto (`structured`); finding names in real reports: real model. Signing doctors and codes
-in signature stamps are pictures and are usually not read from text; see 5.2.
+Status: auto (`structured`, `stamps`, `stamps-flow`); which pictures are chosen, checked on four real
+reports by hand; how well a real model reads a stamp, especially a code under a signature: real model.
 
 ### 5.2 Correct the directory
 The owner finds two entries for one person ("Popescu I." and "Popescu Ion").
 
 - An entry can be renamed, given a specialty, clinic and professional code, and merged into another.
 - A merge keeps every document and role and removes the other entry.
+- The Doctors page lists entries that are **probably the same person**, for the owner to confirm:
+  one name is the other with more words ("Ioana Dumitrescu" and "Dumitrescu Ioana Maria"), or an
+  initial stands for a name ("Popescu I." and "Popescu Ion"). Never two entries with different
+  specialties, never a single word, and never merged without the owner choosing to.
+- "Merge into <fuller name>" merges them; "Not the same" hides that pair on this browser.
 - A name or code that already belongs to another doctor is refused, not silently merged.
 - An entry that no document names can be deleted; one that is named cannot.
-- A stamped signature's name and code can be entered by hand.
+- A signing doctor's name and code can be entered by hand where no stamp was read.
 
 Status: auto (`trends-doctors`, `structured`); screens: hand.
 
-### 5.3 Which investigations have I had
+### 5.3 A doctor's professional code
+The code printed beside a signature ("Cod parafa X12345") identifies a person better than a name does.
+
+- A code is stored as letters and digits only, upper case, and the label is dropped; something too
+  short to identify anyone (under 4 characters) is not a code.
+- A doctor read with a code already held by another entry is that doctor, whatever the name looked
+  like; a code only fills a blank and never replaces one.
+- Two doctors cannot hold the same code; typing one that is taken is refused and says to merge.
+- A merge hands the code to the entry that stays if it has none.
+- The code is editable on the doctor's page, and cleared by emptying the box.
+
+Status: auto (`structured`, `trends-doctors`); screens: hand.
+
+### 5.4 Which investigations have I had
 An ultrasound or an MRI is stored as text on the document that holds it.
 
 - The result appears on that document, and a search for words in it finds the document.
@@ -231,6 +369,8 @@ The owner searches for "lombar", or filters by date, tag, type or provider.
   word typed must match.
 - Punctuation, quotes and words like OR in the box never cause an error.
 - Best matches come first, a hit in the title above one deep in a page.
+- Each result shows a short excerpt around the match with the matched words highlighted, so a
+  document found through its page text, a value or a doctor says why it matched.
 - The results stay right after the document changes: an edited value, a page read again, a renamed
   doctor, a split or a join.
 - Filters combine with the keyword and with each other.
@@ -238,6 +378,26 @@ The owner searches for "lombar", or filters by date, tag, type or provider.
 - Search results show a loose vertebra per result and no spine axis, since they are not yet part of the timeline.
 
 Status: auto (`documents`, `tags`); screens: hand.
+
+### 6.2 Browse the timeline
+The owner opens the Timeline to see their history.
+
+- Documents are grouped by year, newest first, with those without a date under "Unknown date".
+- Each year is a spine: a reviewed document is a solid vertebra, an unreviewed one an amber outline.
+- A tile shows the type, the title (never the file name), the provider, the summary, the date and
+  its pages, and opens the document in reading mode.
+- The list can be narrowed by type and by reviewed or not. The whole archive is shown: the page fetches it
+  in batches of 200, though the API itself returns at most 500 at a time.
+
+Status: auto (`documents`, `document-paging`); the look, and the phone layout: hand.
+
+### 6.3 Tags
+- Every account starts with its own set of tags (allergy, chronic, vaccine and so on), and a tag
+  is private to its account.
+- Tags are edited on the document page in Review, comma separated, and the extraction suggests them.
+- Search can be narrowed to one tag, and a share link can be scoped to one.
+
+Status: auto (`tags`, `isolation`, `share`).
 
 ---
 
@@ -282,7 +442,21 @@ The operator follows [docs/setup.md](setup.md) on a fresh Pi.
 
 Status: auto (`config`, `legacy-database`); a full install on a fresh machine: not yet done.
 
-### 9.2 Back up and restore
+### 9.2 Manage accounts from the command line
+The operator creates and looks after accounts without a mail provider.
+
+- `create-user` makes an account and prints a generated password once; it is never stored. A
+  password can be given on standard input instead, and a short one is refused. A duplicate email
+  (in any case) or something that is not an email is refused.
+- `set-password` changes it and ends that person's sessions; `reset-link` prints a one-time link
+  that works without a mailer; `disable-2fa` turns off a lost second factor and ends their sessions.
+- `delete-user` shows what it would remove and only does it with `--yes`; it removes the person's
+  records, page images, originals and the backup copy of their originals, and nobody else's.
+- `list-users` lists accounts and never prints any password material.
+
+Status: auto (`cli`, `accounts`, `isolation`).
+
+### 9.3 Back up and restore
 - A daily snapshot of the database and a copy of the original files are made; the snapshot is
   never a plain file copy of a live database.
 - A restore from the snapshot brings back every record.
@@ -290,7 +464,7 @@ Status: auto (`config`, `legacy-database`); a full install on a fresh machine: n
 
 Status: auto for making the snapshot (`backup`); a restore to a blank machine: not yet rehearsed.
 
-### 9.3 Where the data goes
+### 9.4 Where the data goes
 - With default settings, only document text (and, for extraction, the names of the tests already
   in the archive) goes to the model provider; with Vertex configured, to the endpoint stated.
 - Page images leave only for pages and files the owner chose or that image reading selected, and
@@ -302,23 +476,38 @@ provider is checked against the provider's request logs, which has not been done
 
 ---
 
+## 10. On a phone
+
+### 10.1 Use it from a phone
+- The screens fit a 390-pixel-wide phone with no sideways scrolling.
+- Navigation collapses to a menu, and the upload page offers the file picker instead of drag and drop.
+- The spine, document page, trends, doctors, search and grouping screens use the same data as on a
+  desktop, laid out in one column.
+
+Status: hand (no sideways scrolling checked in a headless browser at phone width for the upload,
+review, trends, trend, doctors, document and document-edit screens; the rest were looked at, not
+measured). Real devices, touch targets and the camera flow: not tried.
+
+---
+
 ## Gaps found while writing this
 
 Found by checking each scenario against the code.
 
-Fixed: search covering only titles and summaries; splitting or joining replacing reviewed edits
+Fixed: signature stamps not being read (now read as small crops when image reading is on);
+search covering only titles and summaries; splitting or joining replacing reviewed edits
 without asking; the upload type not being checked on the server (and a duplicate leaving a copy
-on disk).
+on disk); a failed upload that could not be retried without image reading; and the same doctor
+appearing twice under two spellings with no help finding them (now suggested for confirmation); and
+search results not saying why they matched (now an excerpt with the match highlighted).
 
 Still open:
 
-- **Stamped signatures** (a doctor's name, specialty and code) are images and are not read from
-  text, so the signing doctor is often missing until it is entered by hand.
-- **Search shows no snippet**, so when a document matches on page text the page does not say where.
+
 
 ## Not covered yet
 
-Things people will reasonably ask for that no scenario above promises: reading **photos** of paper
-(only PDFs are read; a phone scanning app that saves a PDF works), exporting everything,
+Things people will reasonably ask for that no scenario above promises: several photos as one
+document (each photo is its own upload), other photo formats such as HEIC or WebP, exporting everything,
 deleting an account from the app itself (today the operator does it), reminders for follow-ups the
 documents mention, sharing a chart, and merging two uploads' history. Add a scenario when one is wanted.

@@ -3,7 +3,7 @@ import { logger } from '../logger.js';
 import { HumanMessage } from '@langchain/core/messages';
 import { z } from 'zod';
 import type { ContinuationResult, ExtractionResult } from '../types.js';
-import { buildContinuationPrompt, buildExtractionPrompt, buildPageReadingPrompt } from './prompts.js';
+import { buildContinuationPrompt, buildExtractionPrompt, buildPageReadingPrompt, buildStampReadingPrompt } from './prompts.js';
 import type { BaseLanguageModelInput } from '@langchain/core/language_models/base';
 import { TASK_SCHEMAS, type LlmTask, type TaskClients } from './tasks.js';
 import {
@@ -13,6 +13,7 @@ import {
   type ChatLlmConfig,
   type LlmLogger,
   type PageReading,
+  type StampReading,
 } from './types.js';
 
 /**
@@ -72,6 +73,26 @@ export function buildChatLlm(clients: TaskClients, config: ChatLlmConfig): ChatL
       );
 
       return validated ?? EXTRACTION_FALLBACK;
+    },
+
+    async readStamps(imagePaths): Promise<StampReading | null> {
+      if (imagePaths.length === 0) return { doctors: [] };
+      const images = await Promise.all(imagePaths.map(async p => (await readFile(p)).toString('base64')));
+      const message = new HumanMessage({
+        content: [
+          { type: 'text', text: buildStampReadingPrompt(images.length) },
+          ...images.map(image => ({ type: 'image_url' as const, image_url: { url: `data:image/png;base64,${image}` } })),
+        ],
+      });
+      const validated = await invokeValidated(clients, config, log, 'stamps', [message], TASK_SCHEMAS.stamps);
+      if (!validated) return null;
+
+      const clean = (value: string | null | undefined) => value?.trim() || null;
+      return {
+        doctors: validated.doctors
+          .map(d => ({ name: d.name.trim(), specialty: clean(d.specialty), code: clean(d.code) }))
+          .filter(d => d.name.length > 0),
+      };
     },
 
     async readPage(imagePath): Promise<PageReading | null> {

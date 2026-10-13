@@ -146,6 +146,20 @@ describe('what the review form offers per type', () => {
 describe('the doctors directory', () => {
   const make = (name: string, userId = OWNER_ID, specialty?: string) => getStore().doctors.upsert(userId, { name, specialty }, new Date().toISOString());
 
+  it('keeps what a document says about a doctor to a bounded length', async () => {
+    const store = getStore();
+    const id = (await store.doctors.upsert(OWNER_ID, {
+      name: `Zorila ${'a'.repeat(500)}`, specialty: 's'.repeat(500), clinic: 'c'.repeat(500), licenseCode: 'X'.repeat(200),
+    }, new Date().toISOString()))!;
+    const doctor = (await store.doctors.find(OWNER_ID, id))!;
+    expect(doctor.name.length).toBeLessThanOrEqual(120);
+    expect(doctor.specialty!.length).toBe(120);
+    expect(doctor.clinic!.length).toBe(120);
+    expect(doctor.license_code).toBeNull(); // too long to be a code at all
+    const ok = (await store.doctors.upsert(OWNER_ID, { name: 'Zorila Ok', licenseCode: 'B'.repeat(24) }, new Date().toISOString()))!;
+    expect((await store.doctors.find(OWNER_ID, ok))!.license_code).toBe('B'.repeat(24));
+  });
+
   it('lists doctors with their counts, and one doctor with their documents', async () => {
     const tag = uuidv4().slice(0, 6);
     const id = (await make(`Dr. Lister ${tag}`, OWNER_ID, 'cardiology'))!;
@@ -249,5 +263,86 @@ describe('the doctors directory', () => {
     for (const [method, url] of [['GET', '/api/doctors'], ['GET', '/api/measurements'], ['GET', '/api/measurements/series?name=x'], ['GET', '/api/document-types'], ['PATCH', `/api/doctors/${id}`], ['POST', `/api/doctors/${id}/merge`], ['DELETE', `/api/doctors/${id}`]] as const) {
       expect((await app.inject({ method, url, payload: method === 'GET' || method === 'DELETE' ? undefined : {} })).statusCode, `${method} ${url}`).toBe(401);
     }
+  });
+});
+
+describe('entries that are probably one person', () => {
+  const make = (name: string, specialty?: string) => getStore().doctors.upsert(OWNER_ID, { name, specialty }, new Date().toISOString()).then(id => id!);
+  const tag = () => uuidv4().slice(0, 6).replace(/[^a-z]/g, 'q');
+  const suggestions = async (c = cookie) => (await get('/api/doctors/duplicates', c)).json() as Array<{ keep: { id: string; name: string }; other: { id: string; name: string } }>;
+  const pairOf = (list: Awaited<ReturnType<typeof suggestions>>, a: string, b: string) => list.find(p => [p.keep.id, p.other.id].sort().join() === [a, b].sort().join());
+
+  it('suggests the fuller name to keep when one is the other with more words', async () => {
+    const t = tag();
+    const short = await make(`Dr. Ioana ${t}`), full = await make(`${t} Ioana Maria`);
+    const hit = pairOf(await suggestions(), short, full)!;
+    expect(hit).toBeDefined();
+    expect([hit.keep.id, hit.other.id]).toEqual([full, short]);
+  });
+
+  it('suggests an initial for the name it stands for', async () => {
+    const t = tag();
+    const initial = await make(`${t} I.`), whole = await make(`${t} Ion`);
+    expect(pairOf(await suggestions(), initial, whole)).toBeDefined();
+  });
+
+  it.each([
+    ['a single word, which could be anyone', (t: string) => [`Ioana`, `${t} Ioana Maria`]],
+    ['two initials and no whole word', (t: string) => [`I. ${t.slice(0, 1)}.`, `Ioana ${t}`]],
+    ['words that do not match', (t: string) => [`${t} Ioana`, `${t} Vasile Maria`]],
+  ])('does not suggest %s', async (_n, names) => {
+    const t = tag();
+    const [a, b] = await Promise.all(names(t).map(n => make(n)));
+    expect(pairOf(await suggestions(), a, b)).toBeUndefined();
+  });
+
+  it('does not suggest two entries with different specialties, and does when one has none or both agree', async () => {
+    const t = tag();
+    const cardio = await make(`${t} Ioana`, 'cardiology'), uro = await make(`${t} Ioana Maria`, 'urology');
+    expect(pairOf(await suggestions(), cardio, uro)).toBeUndefined();
+    const t2 = tag();
+    const plain = await make(`${t2} Ioana`), known = await make(`${t2} Ioana Maria`, 'urology');
+    expect(pairOf(await suggestions(), plain, known)).toBeDefined();
+    const t3 = tag();
+    const x = await make(`${t3} Ioana`, 'Cardiology '), y = await make(`${t3} Ioana Maria`, 'cardiology');
+    expect(pairOf(await suggestions(), x, y)).toBeDefined();
+  });
+
+  it('lists each pair once, and never an entry with itself', async () => {
+    const t = tag();
+    const a = await make(`${t} Ioana`), b = await make(`${t} Ioana Maria`);
+    const hits = (await suggestions()).filter(p => [p.keep.id, p.other.id].includes(a) && [p.keep.id, p.other.id].includes(b));
+    expect(hits).toHaveLength(1);
+    expect((await suggestions()).every(p => p.keep.id !== p.other.id)).toBe(true);
+  });
+
+  it('merging the suggestion removes it', async () => {
+    const t = tag();
+    const a = await make(`${t} Ioana`), b = await make(`${t} Ioana Maria`);
+    const hit = pairOf(await suggestions(), a, b)!;
+    expect((await send('POST', `/api/doctors/${hit.keep.id}/merge`, { from: hit.other.id })).statusCode).toBe(200);
+    expect(pairOf(await suggestions(), a, b)).toBeUndefined();
+  });
+
+  it('only looks at the caller’s own directory', async () => {
+    const other = await createTestUser(`dup-${uuidv4()}@spine.test`);
+    const t = tag();
+    const store = getStore(); const now = new Date().toISOString();
+    // One half of the pair is mine and the other is theirs: never suggested to anyone.
+    const mine = await make(`${t} Ioana`);
+    const theirs = (await store.doctors.upsert(other.id, { name: `${t} Ioana Maria` }, now))!;
+    expect(pairOf(await suggestions(), mine, theirs)).toBeUndefined();
+    expect(pairOf(await suggestions(await loginAs(app, other.email)), mine, theirs)).toBeUndefined();
+    // The `id` route name must not swallow this one.
+    expect((await get('/api/doctors/duplicates')).statusCode).toBe(200);
+  });
+
+  it('needs a session, and returns no match key or user id', async () => {
+    expect((await app.inject({ method: 'GET', url: '/api/doctors/duplicates' })).statusCode).toBe(401);
+    const t = tag();
+    await make(`${t} Ioana`); await make(`${t} Ioana Maria`);
+    const body = (await get('/api/doctors/duplicates')).body;
+    expect(body).not.toContain('user_id');
+    expect(body).not.toContain('"key"');
   });
 });

@@ -19,7 +19,7 @@ export async function rasterizePdf(
     '-png',
     filePath,
     path.join(outDir, 'page'),
-  ]);
+  ], { timeout: 10 * 60_000 }); // a file that never finishes must not hold the upload forever
 
   const files = fs.readdirSync(outDir)
     .filter(f => f.endsWith('.png'))

@@ -90,7 +90,11 @@ SPINE_PARSER=hybrid
 SPINE_MULTIMODAL_ENABLED=true
 ```
 
-Both lines are required; either alone is refused. `hybrid` also needs `tesseract-ocr` and
+Both lines are required; either alone is refused. They are also what lets people upload
+**photos** (JPEG or PNG): a photo has no text for this machine to read, so it is sent to the model
+provider to be read, and without these lines a photo is refused at upload. They also let Spine read
+the signature stamps in a PDF (the doctor's name, specialty and professional code, which are small
+pictures, not text): only the stamps are sent, never the page. `hybrid` also needs `tesseract-ocr` and
 the language packs in `SPINE_OCR_LANGS` (default `ron+eng`; `-d` installs Romanian). Add
 other packs with `sudo apt install tesseract-ocr-<lang>`. The thresholds are first guesses:
 after a few uploads, look at the `page routed` lines in the log and adjust (see

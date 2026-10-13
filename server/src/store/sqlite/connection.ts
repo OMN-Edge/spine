@@ -37,7 +37,7 @@ export function openDatabase(location: string): Database.Database {
  * Four earlier shapes are recognised: before multi-user (uploads have no
  * `user_id`), before email verification (users have no `email_verified_at`),
  * before document titles (documents have no `title`), and before structured
- * extraction (fields have no `group_no`, doctors no `license_code`, or the search index no `body`).
+ * extraction (fields have no `group_no`, doctors no `license_code`, the search index no `body`, or doctor links no `source`).
  */
 function refuseOutdatedDatabase(db: Database.Database, location: string): void {
   const columnsOf = (table: string) =>
@@ -51,6 +51,7 @@ function refuseOutdatedDatabase(db: Database.Database, location: string): void {
   const fieldColumns = columnsOf('extracted_fields');
   const doctorColumns = columnsOf('doctors');
   const searchColumns = columnsOf('documents_fts');
+  const linkColumns = columnsOf('document_doctors');
 
   const beforeMultiUser = uploads.length > 0 && !uploads.includes('user_id');
   const beforeVerification = users.length > 0 && !users.includes('email_verified_at');
@@ -58,7 +59,8 @@ function refuseOutdatedDatabase(db: Database.Database, location: string): void {
   const beforeStructure =
     (fieldColumns.length > 0 && !fieldColumns.includes('group_no')) ||
     (doctorColumns.length > 0 && !doctorColumns.includes('license_code')) ||
-    (searchColumns.length > 0 && !searchColumns.includes('body'));
+    (searchColumns.length > 0 && !searchColumns.includes('body')) ||
+    (linkColumns.length > 0 && !linkColumns.includes('source'));
   if (!beforeMultiUser && !beforeVerification && !beforeTitles && !beforeStructure) return;
 
   const count = (table: string): number =>

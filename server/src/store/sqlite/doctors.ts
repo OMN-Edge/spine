@@ -2,7 +2,7 @@ import type { Database } from 'better-sqlite3';
 import { v4 as uuidv4 } from 'uuid';
 import type { Doctor } from '../../types.js';
 import type { DoctorDocument, DoctorOnDocument, DoctorRepository, DoctorWithCounts } from '../types.js';
-import { doctorDisplayName, doctorKey, normaliseLicenseCode } from '../../doctors.js';
+import { doctorDisplayName, doctorKey, MAX_DOCTOR_TEXT, normaliseLicenseCode } from '../../doctors.js';
 import { owner } from './owner.js';
 
 /** Every statement filters by `user_id` (SECURITY.md P12). */
@@ -18,19 +18,21 @@ export function doctorRepository(db: Database): DoctorRepository {
 
   // Only if the document and the doctor are both the user's.
   const link = db.prepare(`
-    INSERT OR IGNORE INTO document_doctors (user_id, document_id, doctor_id, role)
-    SELECT ?, d.id, k.id, ? FROM documents d, doctors k
+    INSERT INTO document_doctors (user_id, document_id, doctor_id, role, source)
+    SELECT ?, d.id, k.id, ?, ? FROM documents d, doctors k
     WHERE d.id = ? AND d.user_id = ? AND k.id = ? AND k.user_id = ?
+    ON CONFLICT (document_id, doctor_id, role) DO UPDATE SET source = CASE WHEN excluded.source <> 'text' THEN excluded.source ELSE source END
   `);
   const unlinkAll = db.prepare('DELETE FROM document_doctors WHERE document_id = ? AND user_id = ?');
+  const unlinkRead = db.prepare("DELETE FROM document_doctors WHERE document_id = ? AND user_id = ? AND source = 'text'");
   const forDocument = db.prepare(`
     SELECT k.id, k.name, k.specialty, k.clinic, k.license_code, k.created_at, l.role
     FROM document_doctors l JOIN doctors k ON k.id = l.doctor_id AND k.user_id = l.user_id
     WHERE l.document_id = ? AND l.user_id = ? ORDER BY l.rowid
   `);
   const moveLinks = db.prepare(`
-    INSERT OR IGNORE INTO document_doctors (user_id, document_id, doctor_id, role)
-    SELECT user_id, ?, doctor_id, role FROM document_doctors
+    INSERT OR IGNORE INTO document_doctors (user_id, document_id, doctor_id, role, source)
+    SELECT user_id, ?, doctor_id, role, source FROM document_doctors
     WHERE document_id = ? AND user_id = ? AND EXISTS (SELECT 1 FROM documents WHERE id = ? AND user_id = ?)
   `);
   const list = db.prepare(`
@@ -70,7 +72,9 @@ export function doctorRepository(db: Database): DoctorRepository {
   return {
     async upsert(userId, doctor, now) {
       const uid = owner(userId);
-      const name = doctorDisplayName(doctor.name);
+      const name = doctorDisplayName(doctor.name).slice(0, MAX_DOCTOR_TEXT).trim();
+      const specialty = doctor.specialty?.trim().slice(0, MAX_DOCTOR_TEXT) || null;
+      const clinic = doctor.clinic?.trim().slice(0, MAX_DOCTOR_TEXT) || null;
       const key = doctorKey(name);
       if (!name || !key) return null;
 
@@ -79,25 +83,29 @@ export function doctorRepository(db: Database): DoctorRepository {
       const byCode = code ? (findByCode.get(uid, code) as { id: string } | undefined) : undefined;
       const existing = byCode ?? (findByKey.get(uid, key) as { id: string } | undefined);
       if (existing) {
-        fill.run(doctor.specialty?.trim() || null, doctor.clinic?.trim() || null, existing.id, uid);
+        fill.run(specialty, clinic, existing.id, uid);
         // Only a doctor with no code yet takes one: a name match whose code differs is left as it is.
         if (code) fillCode.run(code, existing.id, uid);
         return existing.id;
       }
       const id = uuidv4();
-      insert.run(id, uid, name, key, doctor.specialty?.trim() || null, doctor.clinic?.trim() || null, code, now);
+      insert.run(id, uid, name, key, specialty, clinic, code, now);
       return id;
     },
 
-    async link(userId, documentId, doctorId, role) {
+    async link(userId, documentId, doctorId, role, source = 'text') {
       const uid = owner(userId);
-      // OR IGNORE makes a repeat a no-op, so "did it link" is "do the rows exist": check by the join.
-      link.run(uid, role, documentId, uid, doctorId, uid);
+      // A repeat changes nothing (except a stamp taking over from text), so "did it link" is "do the rows exist".
+      link.run(uid, role, source, documentId, uid, doctorId, uid);
       return forDocument.all(documentId, uid).some(d => (d as { id: string }).id === doctorId);
     },
 
     async unlinkAll(userId, documentId) {
       unlinkAll.run(documentId, owner(userId));
+    },
+
+    async unlinkRead(userId, documentId) {
+      unlinkRead.run(documentId, owner(userId));
     },
 
     async forDocument(userId, documentId) {

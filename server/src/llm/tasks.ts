@@ -5,11 +5,12 @@ import {
   continuationSchema,
   extractionSchema,
   pageReadingSchema,
+  stampReadingSchema,
   type ChatLlmConfig,
 } from './types.js';
 
 /**
- * Spine makes exactly two model calls, and everything about their shape is
+ * Spine makes a handful of model calls, and everything about their shape is
  * fixed at startup: the output budget and the response schema. So both belong
  * in a task definition the adapter is handed once, rather than being passed
  * per call.
@@ -18,7 +19,7 @@ import {
  * provider is constrained with and the zod schema the interface validates against
  * cannot drift apart.
  */
-export const LLM_TASKS = ['continuation', 'extraction', 'page'] as const;
+export const LLM_TASKS = ['continuation', 'extraction', 'page', 'stamps'] as const;
 export type LlmTask = (typeof LLM_TASKS)[number];
 
 export interface TaskSpec {
@@ -49,6 +50,7 @@ export const TASK_SCHEMAS = {
   continuation: continuationSchema,
   extraction: extractionSchema,
   page: pageReadingSchema,
+  stamps: stampReadingSchema,
 } satisfies Record<LlmTask, z.ZodType>;
 
 export function buildTaskSpecs(config: ChatLlmConfig): TaskSpecs {
@@ -67,6 +69,12 @@ export function buildTaskSpecs(config: ChatLlmConfig): TaskSpecs {
       name: 'page',
       maxTokens: config.maxTokens.page,
       jsonSchema: z.toJSONSchema(TASK_SCHEMAS.page) as Record<string, unknown>,
+    },
+    // A few lines of text per stamp: the page budget is a ceiling, not a target.
+    stamps: {
+      name: 'stamps',
+      maxTokens: config.maxTokens.page,
+      jsonSchema: z.toJSONSchema(TASK_SCHEMAS.stamps) as Record<string, unknown>,
     },
   };
 }

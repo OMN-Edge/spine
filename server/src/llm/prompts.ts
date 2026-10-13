@@ -42,6 +42,24 @@ Respond with ONLY valid JSON, no markdown:
 {"is_continuation": boolean, "confidence": 0.0-1.0, "reasoning": "one concise sentence"}`;
 }
 
+export function buildStampReadingPrompt(count: number): string {
+  return `${count === 1 ? 'This image is' : `These ${count} images are`} cut from the last page of a medical document. Each may be a doctor's signature stamp, usually blue or black ink, often crossed by a handwritten signature. It may also be something else.
+
+For every image that is a doctor's stamp, give:
+- name: the doctor's name as printed, without "Dr." or other titles
+- specialty: the specialty as printed (for example "medic specialist cardiolog" or "microbiologie medicala"), or null if none is printed
+- code: the professional code printed with it (after "Cod", "COD:" or "cod"), letters and digits only, or null
+
+Rules:
+- Ignore logos, seals, quality marks, QR codes, barcodes, photographs and anything that is not a doctor's stamp
+- Copy what is printed. Do not translate, correct or complete a name
+- If any character of the code is covered by the signature or cannot be read with confidence, give code null. A wrong code is worse than none
+- If no image is a doctor's stamp, return an empty list
+
+Respond with ONLY valid JSON, no markdown:
+{"doctors": [{"name": "...", "specialty": "... or null", "code": "... or null"}]}`;
+}
+
 export function buildPageReadingPrompt(): string {
   return `This image is one scanned page of a medical document. It may be handwritten, and it may be in Romanian or English.
 

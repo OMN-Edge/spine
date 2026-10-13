@@ -241,8 +241,11 @@ One interface covering what Spine asks of a model:
 
 - `detectContinuation(pageA, pageB)` — are these the same logical document?
 - `extractFields(documentText)` — structured metadata.
-- `readPage(image)` — the text on one page image, with boxes. The only call that sends an
-  image off the host, so only the `multimodal` and `hybrid` parsers reach it.
+- `readPage(image)` — the text on one page image, with boxes. Sends a page image off the host, so
+  only the `multimodal` and `hybrid` parsers reach it.
+- `readStamps(images)` — the doctors on a document's signature stamps (name, specialty,
+  professional code). Sends small images, never a page, and only when the operator has allowed
+  images to leave: `readSignatures` checks the same switch before it does anything.
 
 Adapters: **Anthropic** (direct API) and **Vertex AI** (Gemini *and* Claude, EU
 multi-region). Configuration carries the provider, model ID and endpoint; model IDs change
@@ -306,9 +309,33 @@ for other groups (by sex, age, pregnancy) are ignored, and a bound printed as `<
 is the upper bound alone. A page numbered "1 / 1" after one numbered "3 / 3" starts a new
 document, which is how one PDF holding two bulletins splits.
 
-Signing doctors and their professional codes are usually printed in a stamp image, which has no
-text, so they are missing from a reading of the page text. Reading that page with AI (an image
-read) can pick them up; otherwise they are entered by hand.
+Signing doctors and their professional codes are usually printed in a **stamp**, which is a small
+picture embedded in the PDF and has no text, so they are absent from a reading of the page text.
+`ingestion/signatures.ts` finds them without rendering anything: poppler's `pdfimages -list` gives
+every embedded picture, and the candidates are those on a document's last page that are
+
+- not a mask, and at least 100 x 40 px;
+- wider than tall but not a strip (aspect 1.2 to 4.0), which leaves out QR codes and round seals
+  (square) and letterhead logos (long strips);
+- not repeated on another page of the file, which is what a letterhead is;
+- at most four, the largest first. There is no size ceiling: one real stamp was a 1580 x 878 scan.
+
+Only those are extracted, reduced to 1000 px on their longer side, and shown to the model, which
+returns a name, specialty and code for each that is a doctor's stamp, and a code only if every
+character is legible (a wrong code is worse than none). They are filed as the document's authors,
+marked as coming from a stamp, so reading the text again replaces the doctors the text named and
+leaves these. The thresholds are first guesses to tune from what is sent (the log says how many
+images go per page). With image reading off, for a photo, or if anything fails, nothing is added and
+the upload is unaffected. Doctors are entered by hand when a stamp is not an embedded image (a
+scanned page, a stamp too faint to read) or is absent.
+
+A PDF may instead carry a **digital signature**, whose certificate names the signer. `readDigitalSigners`
+runs poppler's `pdfsig` on the file: locally, so it does not depend on the image switch and sends
+nothing. A signer counts only with both a given name and a surname in the certificate (a personal
+signature; a company seal has neither) and a signature that validates; the certificate's serial number
+is not kept. The signature covers the whole file, so the signer is filed as an author of every document
+in it, marked `signature` so a re-read of the text leaves it. Verified against one real signed PDF (not
+a clinic's); the wording of clinics' certificates is untested.
 
 The answer is validated leniently (a missing list means none; a reference range read as `"12"` is
 fine) and normalised on our side: decimal commas, a flag worked out from the value and range, the
@@ -512,7 +539,36 @@ upload  →  write original, sha256 checksum (per-user de-duplication)
         →  extractFields        per logical document
         →  grounding            map each field to a box on its page
         →  store
+        →  signatures           (PDFs, image reading on) the stamps on each document's last page
+                                → readStamps → doctors
 ```
+
+### Uploads: PDFs, and photos when image reading is on
+
+A file is what its contents say it is (the `%PDF-` signature in the first kilobyte, or a JPEG or
+PNG signature at the very start), not what its name or the browser's type claims; anything else is
+refused, and a refused file or a duplicate is not left on disk. The recorded type is the detected one.
+
+A **photo** has no text layer and nothing local can read it well, so it is not tried against OCR: it
+goes **straight to the model** as a one-page upload. It is prepared first (`ingestion/photo.ts`):
+turned upright by its EXIF orientation (phones store most photos sideways and set a flag the model
+would not apply, which would also put every box in the wrong place), shrunk so its longer side is at
+most 2600 px, flattened onto white if it has transparency, and written as a PNG. The original stays
+in `originals/`. Because reading it sends the image off the host, a photo is accepted only when the
+operator has switched image reading on; otherwise it is refused at upload with that reason, and the
+Upload page offers photos only when they would be read, and says where they are sent. A photo is
+always read by the model parser whatever `SPINE_PARSER` is; a PDF is never sent to the model just
+because image reading is on.
+
+### Failed uploads
+
+A failure (the provider was down, a page could not be read, the process restarted mid-reading) marks
+the upload failed with its reason and keeps the original. It is not the file's fault, so it should
+not need re-uploading, which the duplicate check would refuse: `POST /api/source-files/:id/retry`
+(the Upload page's Try again) runs it again, and so does uploading the same file again, whose
+checksum matches only an upload that failed. It reads the way the first attempt did (the configured
+parser, never the model for every page unless it is a photo), and, like a re-read, removes what the
+failed attempt left only after the new reading has succeeded. Only a failed upload can be retried.
 
 ### Hybrid routing
 
@@ -678,6 +734,12 @@ clinic, how many documents name them and when last. A doctor opens to their docu
 on each; the owner can rename, fill in a specialty or clinic, merge another entry into this one
 (two spellings of one person), or delete an entry no document names. A name that already
 belongs to another doctor is refused rather than silently merged.
+Entries that are probably one person under two spellings are *suggested*, never merged automatically
+(`suggestDuplicates`, `GET /api/doctors/duplicates`): the shorter name's words must each be found in
+the longer as the same word or an initial of it, with at least one whole word in common and at least
+two words in the shorter, and two different specialties rule a pair out. The owner merges into the
+fuller name or says "not the same", which is kept in that browser only. A wrong automatic merge would
+silently combine two people, where a duplicate is visible and fixable, so this errs toward asking.
 
 ### Regrouping an upload
 
@@ -789,7 +851,9 @@ one place (`resolveDataDir`) to `<repo>/data`.
   user's rows, so it leaks nothing.
   Typed text is never passed to the index as query syntax: each run of letters and digits becomes
   a quoted word that matches by its start, all words must match, and a hit in the title ranks
-  above one deep in a page (`search-query.ts`).
+  above one deep in a page (`search-query.ts`). A search also returns, per result, a `snippet`: FTS5's excerpt from the best-matching column
+  of that user's own row, with each match wrapped in control characters (U+0001, U+0002), never markup, which
+  the page turns into highlighting as text nodes.
 
 There is **no migration runner**: `schema.sql` is idempotent `CREATE TABLE IF NOT EXISTS`,
 re-applied every boot. That adds a new *table* to an existing database but cannot add a
@@ -833,6 +897,8 @@ Page images are the most sensitive egress in the system and are off unless asked
 | Page reading ("Read the whole file with AI", `multimodal`) | **full page images**, every page of the file | configured provider |
 | Page reading ("Read this page / these pages with AI") | **full page images**, only the pages chosen | configured provider |
 | "Extract details again" | the document's page **text**, as at upload; no image | configured provider |
+| Signature stamps (PDFs only, `readSignatures`) | **small cropped images** from each document's last page that look like a stamp: no whole page and no logo or QR code; only with image reading on | configured provider |
+| Photo upload (JPEG, PNG) | **the photo**, upright and at most 2600 px a side; only with image reading on, otherwise refused | configured provider |
 | Parsing (sidecar) | nothing — local | — |
 | Verification and recovery mail | recipient address + single-use link. **Never document content** | configured mail provider |
 

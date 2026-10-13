@@ -70,9 +70,12 @@ export function documentRepository(db: Database): DocumentRepository {
       if (match !== null) {
         // The full-text index is shared across users; results are filtered by
         // joining back to documents.user_id, so the index itself leaks nothing
-        // (M-2).
+        // (M-2). The snippet is cut from the matching column of the caller's own row, and the matched
+        // words are wrapped in control characters (never in markup) that the page turns into emphasis.
         sql = `
-          SELECT ${COLUMNS} FROM documents d
+          SELECT ${COLUMNS},
+            snippet(documents_fts, -1, char(1), char(2), '…', 16) AS snippet
+          FROM documents d
           JOIN documents_fts ON documents_fts.rowid = d.rowid
           WHERE d.user_id = ? AND documents_fts MATCH ?
         `;

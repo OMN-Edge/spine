@@ -124,7 +124,7 @@ a Pi; GCP is inference only.
 **Request flow:**
 Browser → nginx (TLS) → Fastify (port 3000) → SQLite
 
-**Ingestion flow:**
+**Ingestion flow** (a photo skips `rasterize.ts` and the sidecar: `photo.ts` makes it an upright PNG page and the model parser reads it, and it is accepted only with `SPINE_MULTIMODAL_ENABLED`):
 Upload → `source-files.ts` writes to `data/originals/` → `pipeline.ts` (fire-and-forget) → `rasterize.ts` (PDF→PNG) → `ingestion-client.ts` (HTTP to Python sidecar) → `continuation.ts` (Claude Haiku, per page pair) → `extraction.ts` (Claude Haiku, per logical doc) → `grounding.ts` (bbox matching) → SQLite
 
 **Python sidecar** (`ingestion-service/`, port 8000): FastAPI wrapping Unstructured. Called by `ingestion-client.ts`. Returns per-page elements with bounding boxes.
@@ -156,8 +156,10 @@ detection and field extraction. Everything provider-specific is behind the LLM i
     `SPINE_TEXT_LAYER_MIN_CHARS`) → local Tesseract if its confidence is good → the model. It
     never sends a page that has a text layer, and fails the upload if the sidecar is down
     rather than treating every page as scanned.
-  - Page images leave the host only via `readPage`, only for `multimodal`/`hybrid`, and only
-    with `SPINE_MULTIMODAL_ENABLED`. If the model fails, the page keeps local OCR.
+  - Images leave the host only via `readPage` (a page; `multimodal`/`hybrid`, or a photo) and
+    `readStamps` (small signature-stamp crops from a PDF's last page, `ingestion/signatures.ts`),
+    and only with `SPINE_MULTIMODAL_ENABLED`. If the model fails, the page keeps local OCR, and a
+    failed stamp read adds no doctors and never fails the upload.
   - "Read the whole file with AI" re-runs an upload through the `multimodal` parser and
     replaces its documents only after the new reading succeeds. "Read this page with AI"
     (`ingestion/ai-reading.ts`) sends only that page through the same parser and switch, then

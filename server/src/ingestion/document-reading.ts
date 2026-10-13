@@ -231,7 +231,7 @@ async function applyReading(userId: string, documentId: string, reading: Documen
     await tx.tags.setForDocument(userId, documentId, extraction.suggested_tags);
     await tx.fields.deleteForDocument(userId, documentId);
     await tx.measurements.deleteForDocument(userId, documentId);
-    await tx.doctors.unlinkAll(userId, documentId);
+    await tx.doctors.unlinkRead(userId, documentId); // not what a signature stamp gave: that is not in the text
     await storeReading(tx, userId, documentId, reading);
   });
 }

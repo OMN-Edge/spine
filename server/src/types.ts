@@ -27,6 +27,8 @@ export interface Page {
 }
 
 export interface Document {
+  /** Only on search results: where the words matched, with each match between \u0001 and \u0002. */
+  snippet?: string;
   id: string;
   source_file_id: string;
   page_start: number;

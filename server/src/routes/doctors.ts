@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { getStore } from '../store/index.js';
 import { requireAuth } from './middleware.js';
-import { normaliseLicenseCode } from '../doctors.js';
+import { normaliseLicenseCode, suggestDuplicates } from '../doctors.js';
 
 const LIMITS = { name: 120, specialty: 80, clinic: 120, licenseCode: 40 };
 const text = (value: unknown, max: number) => (typeof value === 'string' && value.length <= max ? value : null);
@@ -15,6 +15,13 @@ export async function doctorRoutes(app: FastifyInstance) {
   app.addHook('preHandler', requireAuth);
 
   app.get('/api/doctors', async (req, reply) => reply.send(await getStore().doctors.listFor(req.userId)));
+
+  // Entries that are probably one person written two ways, for the owner to confirm and merge.
+  app.get('/api/doctors/duplicates', async (req, reply) => {
+    const doctors = await getStore().doctors.listFor(req.userId);
+    const pick = (d: (typeof doctors)[number]) => ({ id: d.id, name: d.name, specialty: d.specialty, document_count: d.document_count });
+    return reply.send(suggestDuplicates(doctors).map(({ keep, other }) => ({ keep: pick(keep), other: pick(other) })));
+  });
 
   app.get<{ Params: { id: string } }>('/api/doctors/:id', async (req, reply) => {
     const store = getStore();

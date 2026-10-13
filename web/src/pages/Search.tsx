@@ -4,6 +4,16 @@ import { api, type Document } from '../api';
 import { documentByline, documentTitle } from '../titles';
 import SpineLog from '../components/SpineLog';
 
+/** The server marks each match with \u0001 … \u0002; they become emphasis here, and everything else stays plain text. */
+function Snippet({ text }: { text: string }) {
+  const parts = text.split(/[\u0001\u0002]/);
+  return (
+    <p className="text-xs text-gray-600 mt-1 line-clamp-2" data-testid="snippet">
+      {parts.map((part, i) => (i % 2 === 1 ? <mark key={i} className="bg-yellow-100 text-gray-900 rounded px-0.5">{part}</mark> : part))}
+    </p>
+  );
+}
+
 export default function Search() {
   const [query, setQuery] = useState('');
   const [filters, setFilters] = useState<Record<string, string>>({});
@@ -88,6 +98,7 @@ export default function Search() {
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-gray-900">{documentTitle(doc)}</p>
                         <p className="text-xs text-gray-500 mt-0.5">{documentByline(doc)}</p>
+                        {doc.snippet && doc.snippet.includes('\u0001') && <Snippet text={doc.snippet} />}
                         {doc.ai_summary && (
                           <p className="text-sm text-gray-500 mt-1 line-clamp-2">{doc.ai_summary}</p>
                         )}

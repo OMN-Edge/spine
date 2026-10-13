@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import { existsSync, mkdirSync, readdirSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { buildTestApp, loginSession } from './helpers/app.js';
-import { OWNER_ID } from './helpers/seed.js';
+import { buildTestApp, loginAs, loginSession } from './helpers/app.js';
+import { createTestUser, OWNER_ID } from './helpers/seed.js';
 import { getStore } from '../store/index.js';
 
 const mockStartJob = vi.hoisted(() => vi.fn());
@@ -113,11 +113,10 @@ describe('POST /api/source-files/upload', () => {
 
   it.each([
     ['a Word document', 'report.docx', Buffer.from('PK\u0003\u0004 not a pdf'), 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
-    ['a JPEG photo', 'photo.jpg', Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46, 0x49, 0x46]), 'image/jpeg'],
-    ['a PNG', 'scan.png', Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), 'image/png'],
+    ['a GIF', 'anim.gif', Buffer.from('GIF89a......'), 'image/gif'],
     ['plain text', 'notes.txt', Buffer.from('just some notes'), 'text/plain'],
     ['an empty file', 'empty.pdf', Buffer.alloc(0), 'application/pdf'],
-    ['a photo named .pdf, claiming to be one', 'looks-like.pdf', Buffer.from([0xff, 0xd8, 0xff, 0xe0]), 'application/pdf'],
+    ['a two-byte stub of a JPEG', 'stub.jpg', Buffer.from([0xff, 0xd8]), 'image/jpeg'],
     ['a PDF signature past the first kilobyte', 'late.pdf', Buffer.concat([Buffer.alloc(2000, 0x20), Buffer.from('%PDF-1.4')]), 'application/pdf'],
   ])('refuses %s, keeps nothing, and starts no reading', async (_name, filename, content, contentType) => {
     const before = heldFiles();
@@ -130,6 +129,52 @@ describe('POST /api/source-files/upload', () => {
     expect(heldFiles()).toBe(before);                                                 // nothing left on disk
     expect((await getStore().sourceFiles.listFor(OWNER_ID)).length).toBe(sourceFilesBefore); // nothing recorded
     expect(mockStartJob).not.toHaveBeenCalled();
+  });
+
+  describe('photos', () => {
+    const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46, 0x49, 0x46, 0]);
+    const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+    const unique = (b: Buffer) => Buffer.concat([b, Buffer.from(String(Math.random()))]);
+
+    it.each([['a JPEG', 'photo.jpg', JPEG, 'image/jpeg'], ['a PNG', 'scan.png', PNG, 'image/png'], ['a JPEG named .pdf', 'sneaky.pdf', JPEG, 'application/pdf']])(
+      'refuses %s while image reading is off, saying why, and keeps nothing', async (_n, filename, content, type) => {
+        vi.stubEnv('SPINE_MULTIMODAL_ENABLED', 'false');
+        const before = heldFiles();
+        mockStartJob.mockClear();
+        const res = await upload(filename, unique(content), type);
+        expect(res.json()).toEqual([{ skipped: true, reason: 'photo_needs_ai', filename }]);
+        expect(heldFiles()).toBe(before);
+        expect(mockStartJob).not.toHaveBeenCalled();
+        vi.unstubAllEnvs();
+      });
+
+    it.each([['a JPEG', 'photo.jpg', JPEG, 'image/jpeg', 'image/jpeg'], ['a PNG', 'scan.png', PNG, 'image/png', 'image/png'], ['a JPEG named .pdf', 'x.pdf', JPEG, 'application/pdf', 'image/jpeg']])(
+      'takes %s when image reading is on, and records what it is, not what it was called', async (_n, filename, content, claimed, actual) => {
+        vi.stubEnv('SPINE_MULTIMODAL_ENABLED', 'true');
+        mockStartJob.mockClear();
+        const res = await upload(filename, unique(content), claimed);
+        const [result] = res.json() as Array<{ id: string; status: string }>;
+        expect(result.status).toBe('processing');
+        expect(mockStartJob).toHaveBeenCalledWith(result.id, OWNER_ID);
+        expect((await getStore().sourceFiles.findFor(OWNER_ID, result.id))!.mime_type).toBe(actual);
+        vi.unstubAllEnvs();
+      });
+
+    it('records a PDF as a PDF whatever the browser called it', async () => {
+      const res = await upload('scan.jpg', Buffer.from('%PDF-1.7 ' + Math.random()), 'image/jpeg');
+      const [result] = res.json() as Array<{ id: string }>;
+      expect((await getStore().sourceFiles.findFor(OWNER_ID, result.id))!.mime_type).toBe('application/pdf');
+    });
+
+    it('keeps one copy of the same photo uploaded twice', async () => {
+      vi.stubEnv('SPINE_MULTIMODAL_ENABLED', 'true');
+      const photo = unique(JPEG);
+      await upload('p.jpg', photo, 'image/jpeg');
+      const held = heldFiles();
+      expect(((await upload('again.jpg', photo, 'image/jpeg')).json() as Array<{ reason?: string }>)[0].reason).toBe('duplicate');
+      expect(heldFiles()).toBe(held);
+      vi.unstubAllEnvs();
+    });
   });
 
   it('goes by what is in the file, not its name or the type the browser gave', async () => {
@@ -162,6 +207,77 @@ describe('POST /api/source-files/upload', () => {
     });
     const results = res.json() as Array<{ reason?: string; status?: string }>;
     expect(results.map(r => r.reason ?? r.status)).toEqual(['not_pdf', 'processing']);
+  });
+
+  describe('uploading a file whose earlier attempt failed', () => {
+    const pdf = () => Buffer.from('%PDF-1.4 a file that failed once ' + Math.random());
+    async function failed() {
+      const content = pdf();
+      const first = (await upload('flaky.pdf', content)).json() as Array<{ id: string }>;
+      await getStore().sourceFiles.setStatus(OWNER_ID, first[0].id, 'error', 'provider unavailable');
+      mockStartJob.mockClear();
+      return { content, id: first[0].id };
+    }
+
+    it('is a retry of that upload, not a duplicate of it: no second record and no second copy', async () => {
+      const { content, id } = await failed();
+      const files = heldFiles(); const records = (await getStore().sourceFiles.listFor(OWNER_ID)).length;
+
+      const res = await upload('again.pdf', content);
+      expect(res.json()).toEqual([{ id, status: 'processing', retried: true }]);
+      expect(mockStartJob).toHaveBeenCalledWith(id, OWNER_ID, { retry: true });
+      expect(heldFiles()).toBe(files);
+      expect((await getStore().sourceFiles.listFor(OWNER_ID)).length).toBe(records);
+    });
+
+    it.each(['done', 'processing', 'pending'] as const)('is still a duplicate while the earlier upload is %s', async status => {
+      const content = pdf();
+      const first = (await upload('x.pdf', content)).json() as Array<{ id: string }>;
+      if (status !== 'pending') await getStore().sourceFiles.setStatus(OWNER_ID, first[0].id, status);
+      mockStartJob.mockClear();
+      const res = (await upload('y.pdf', content)).json() as Array<{ reason?: string; existing_id?: string }>;
+      expect(res[0]).toMatchObject({ reason: 'duplicate', existing_id: first[0].id });
+      expect(mockStartJob).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /api/source-files/:id/retry', () => {
+    const post = (id: string, c = cookie) => app.inject({ method: 'POST', url: `/api/source-files/${id}/retry`, headers: { cookie: c } });
+    async function upl(status: 'error' | 'done' | 'processing' | 'pending') {
+      const res = (await upload('r.pdf', Buffer.from('%PDF-1.4 retry route ' + Math.random()))).json() as Array<{ id: string }>;
+      if (status !== 'pending') await getStore().sourceFiles.setStatus(OWNER_ID, res[0].id, status, status === 'error' ? 'boom' : undefined);
+      mockStartJob.mockClear();
+      return res[0].id;
+    }
+
+    it('runs a failed upload again and answers 202', async () => {
+      const id = await upl('error');
+      const res = await post(id);
+      expect(res.statusCode).toBe(202);
+      expect(res.json()).toEqual({ id, status: 'processing' });
+      expect(mockStartJob).toHaveBeenCalledWith(id, OWNER_ID, { retry: true });
+    });
+
+    it.each(['done', 'processing', 'pending'] as const)('refuses an upload that is %s: nothing failed', async status => {
+      const id = await upl(status);
+      const res = await post(id);
+      expect(res.statusCode).toBe(409);
+      expect(mockStartJob).not.toHaveBeenCalled();
+    });
+
+    it('answers not found for an upload that does not exist, or is another user’s, and starts nothing', async () => {
+      const other = await createTestUser(`retry-${Math.random().toString(36).slice(2)}@spine.test`);
+      const id = await upl('error');
+      const theirs = await loginAs(app, other.email);
+      expect((await post(id, theirs)).statusCode).toBe(404);
+      expect((await post('no-such-upload')).statusCode).toBe(404);
+      expect(mockStartJob).not.toHaveBeenCalled();
+    });
+
+    it('needs a session', async () => {
+      const id = await upl('error');
+      expect((await app.inject({ method: 'POST', url: `/api/source-files/${id}/retry` })).statusCode).toBe(401);
+    });
   });
 
   it('returns 401 without auth', async () => {

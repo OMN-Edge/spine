@@ -49,6 +49,7 @@ function fakeClients(responses: unknown[]): Recorder {
       continuation: clientFor('continuation'),
       extraction: clientFor('extraction'),
       page: clientFor('page'),
+      stamps: clientFor('stamps'),
     },
   };
 }

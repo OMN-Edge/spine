@@ -521,3 +521,65 @@ describe('pipeline — model calls in parallel', () => {
     expect(await documentsFor(id)).toEqual([]);
   });
 });
+
+
+describe('pipeline — trying a failed upload again', () => {
+  const failFirstThenRead = async (id: string) => {
+    // The first attempt gets as far as storing pages and then cannot read the document's details.
+    mockRasterizePdf.mockResolvedValueOnce([makePageImage(1)]);
+    mockParseDocument.mockResolvedValueOnce(makeParseResult(1));
+    mockExtractFields.mockRejectedValueOnce(new Error('provider unavailable'));
+    startIngestionJob(id, OWNER_ID);
+    expect((await waitForJob(id)).status).toBe('error');
+  };
+
+  it('reads it again and replaces what the failed attempt left, without duplicating pages', async () => {
+    const id = uuidv4();
+    await insertSourceFile(id);
+    await failFirstThenRead(id);
+    expect(await getStore().pages.listForSourceFile(OWNER_ID, id)).toHaveLength(1);
+    expect(await documentsFor(id)).toHaveLength(0);
+
+    mockRasterizePdf.mockResolvedValueOnce([makePageImage(1)]);
+    mockParseDocument.mockResolvedValueOnce(makeParseResult(1));
+    mockExtractFields.mockResolvedValueOnce(makeExtraction());
+    startIngestionJob(id, OWNER_ID, { retry: true });
+    const job = await waitForJob(id);
+
+    expect(job.status).toBe('done');
+    expect(job.error).toBeUndefined();
+    expect(await documentsFor(id)).toHaveLength(1);
+    expect(await getStore().pages.listForSourceFile(OWNER_ID, id)).toHaveLength(1);
+    expect((await getStore().sourceFiles.findFor(OWNER_ID, id))!.status).toBe('done');
+  });
+
+  it('reads it the way it was first read: the configured parser, not the model for every page', async () => {
+    const id = uuidv4();
+    await insertSourceFile(id);
+    await failFirstThenRead(id);
+    mockParseDocument.mockClear();
+
+    mockRasterizePdf.mockResolvedValueOnce([makePageImage(1)]);
+    mockParseDocument.mockResolvedValueOnce(makeParseResult(1));
+    mockExtractFields.mockResolvedValueOnce(makeExtraction());
+    startIngestionJob(id, OWNER_ID, { retry: true });
+    expect((await waitForJob(id)).status).toBe('done');
+    expect(mockParseDocument).toHaveBeenCalledTimes(1); // the sidecar, which sends nothing off the host
+  });
+
+  it('leaves what is there as it was if the second attempt fails too', async () => {
+    const id = uuidv4();
+    await insertSourceFile(id);
+    await failFirstThenRead(id);
+
+    mockRasterizePdf.mockResolvedValueOnce([makePageImage(1)]);
+    mockParseDocument.mockRejectedValueOnce(new Error('sidecar down'));
+    startIngestionJob(id, OWNER_ID, { retry: true });
+    const job = await waitForJob(id);
+
+    expect(job.status).toBe('error');
+    expect(job.error).toMatch(/sidecar down/);
+    expect(await getStore().pages.listForSourceFile(OWNER_ID, id)).toHaveLength(1);
+    expect((await getStore().sourceFiles.findFor(OWNER_ID, id))!.status).toBe('error');
+  });
+});

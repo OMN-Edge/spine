@@ -214,6 +214,9 @@ Verified present.
 | Share view is text-only — no image URL reaches a recipient | `web/src/pages/PublicShareView.tsx` |
 | No SQL or driver import outside the store adapter | `store/sqlite/` |
 | PATCH takes a patch object, so no request key reaches a column name | `routes/documents.ts`, `store/sqlite/documents.ts` |
+| A file's kind is read from its content, never its name or declared type; poppler calls have a time limit; image decoding has a pixel limit; doctor fields have a length limit | `file-kind.ts`, `ingestion/signatures.ts`, `photo.ts`, `rasterize.ts`, `store/sqlite/doctors.ts` |
+| Digital signatures are read locally by `pdfsig`, and only a valid personal signature counts; the certificate's serial number is not kept | `ingestion/signatures.ts` |
+| Search text is quoted into a full-text query and a result's excerpt is drawn as text with highlight marks, never as HTML | `search-query.ts`, `web/src/pages/Search.tsx` |
 | Every LLM response validated against a schema before it reaches the database | `llm/types.ts`, `llm/chat-llm.ts` |
 | Startup refuses an unknown LLM provider, an unstated Vertex endpoint/region, or a stray Google API key | `llm/index.ts`, `llm/adapters/vertex.ts` |
 | Startup refuses a database of an older shape, saying whether it is safe to delete | `store/sqlite/connection.ts` |
@@ -225,6 +228,7 @@ Verified present.
 | Control | Where |
 |---|---|
 | `NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`, `ReadWritePaths=data/` | both units |
+| `PrivateTmp`: stamp crops and other temporary files are not in a shared `/tmp` | `spine-web.service` |
 | Sidecar bound `127.0.0.1:8000` | `spine-ingestion.service:10` |
 | Services run as the invoking user, not root | both units |
 
@@ -281,9 +285,34 @@ it. That is denial rather than disclosure (holding the password already exposed 
 archive), and the operator's `disable-2fa` undoes it. Not built, and the obvious fix: email
 the account when two-factor is turned on or off, so a lock-out is noticed.
 
+**S-23 — A doctor read from a document is a label, not a proof.** Text, a stamp and a digital
+signature all name a doctor, and anyone who can get a file into the archive (a forwarded PDF, a
+clinic's mail) can make one say anything. A signature is checked only for being intact: `pdfsig`'s
+certificate trust is not consulted, so a self-signed certificate naming a real doctor is filed as
+that doctor. Nothing is decided from it (no scope, no access, no share); it puts a name in the
+owner's own directory, where Review can remove it and Duplicates can show it. A stamp or signature
+is not evidence of who wrote a document and the interface never says so.
+
+**S-24 — Uploaded files are parsed by poppler and sharp in the web service's own process
+owner.** A memory-safety flaw in either would run as the `spine` user, with that user's access to
+`data/` and `.env`. The units drop privileges and make the system read-only, and every call has
+a time limit and a pixel limit (S-25), but there is no memory cap, no seccomp filter and no separate
+user for the readers. Keep poppler and the `sharp` package up to date; a stricter unit
+(`MemoryMax=`, `SystemCallFilter=`, a dedicated user) is the next step and is not built.
+
 ### Closed
 
 Fixed; the control is in [Controls in place](#controls-in-place).
+
+**S-25 — Readers of uploaded files had no resource limits** (**Low**). `pdfimages`, `pdftoppm` and
+`sharp` had no time limit, and `pdfimages` writes every image on a page, so a file built with huge
+declared images could hold an upload forever or fill the temporary directory. Now: `pdfimages` and
+`pdfsig` stop after 60 s (`pdftoppm` after ten minutes); a page declaring over 120 million image pixels
+is not unpacked, and `sharp` refuses an image over that for both stamps and photos; the web unit
+has `PrivateTmp`, so stamp crops are not in a shared `/tmp`; a doctor's name, specialty and clinic
+are cut at 120 characters and a professional code over 24 is not a code (they come from stamps,
+signatures and the model, all of which a sender controls). `__tests__/stamps.test.ts`,
+`trends-doctors.test.ts`.
 
 **S-1 — Share scoping failed open** (**High**, **P2**). A `tag` scope with no `scope_value`
 skipped every branch of the scope chain and returned everything (215 documents on a running
@@ -428,6 +457,11 @@ which sends nothing. The parsers that send page images, `multimodal` and `hybrid
 without it: in `config.ts`, and again in `createParser`, which decides whether an image can
 leave and does not rely on its caller. The second switch alone does nothing, so picking a
 parser never turns egress on by implication.
+
+Signature stamps (`ingestion/signatures.ts`) are a second, smaller image egress under the same switch: each
+document's last page contributes at most four small pictures that look like a stamp (a doctor's name,
+specialty and code; no clinical content), never the page; nothing runs with the switch off, and a
+test asserts that no image is sent then. Each send is logged with the number of images.
 
 The startup log states the result (`imageEgress: true`, plus a warning naming the provider
 and endpoint); each image sent is logged, and every page logs its route and the figures

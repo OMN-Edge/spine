@@ -426,9 +426,15 @@ export interface DoctorRepository {
    * (the code wins); a blank specialty, clinic or code is filled in from what is now known, never overwritten.
    */
   upsert(userId: string, doctor: { name: string; specialty?: string | null; clinic?: string | null; licenseCode?: string | null }, now: string): Promise<string | null>;
-  /** Names a doctor on a document. False if either is not the user's. */
-  link(userId: string, documentId: string, doctorId: string, role: DoctorRole): Promise<boolean>;
+  /**
+   * Names a doctor on a document. False if either is not the user's. `source` is where it came from: a
+   * stamp wins over text if both name the same doctor in the same role.
+   */
+  link(userId: string, documentId: string, doctorId: string, role: DoctorRole, source?: 'text' | 'stamp' | 'signature'): Promise<boolean>;
+  /** Every link, however it was made: the owner replacing the list. */
   unlinkAll(userId: string, documentId: string): Promise<void>;
+  /** Only the links made from the document's text, so reading the text again leaves what a stamp gave. */
+  unlinkRead(userId: string, documentId: string): Promise<void>;
   forDocument(userId: string, documentId: string): Promise<DoctorOnDocument[]>;
   /** Merging two documents: the second's doctors are named on the first. */
   moveLinks(userId: string, fromDocumentId: string, toDocumentId: string): Promise<void>;

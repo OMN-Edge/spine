@@ -228,3 +228,44 @@ describe('whose it is', () => {
     expect(mine.id).toBeTruthy();
   });
 });
+
+describe('snippets', () => {
+  const found = async (q: string, c = cookie) => (await (await app.inject({ method: 'GET', url: `/api/documents?q=${encodeURIComponent(q)}`, headers: { cookie: c } })).json()) as Array<{ id: string; snippet?: string }>;
+
+  it('shows the words around a match deep in a page, with the match marked', async () => {
+    const term = word();
+    const d = await make({ pages: ['intro', `Tratament cu ${term} de doua ori pe zi, dupa mese`] });
+    const [hit] = await found(term);
+    expect(hit.id).toBe(d.id);
+    expect(hit.snippet).toContain(`\u0001${term}\u0002`);
+    expect(hit.snippet).toContain('Tratament');
+  });
+
+  it('marks the start of a word match, ignoring case and accents', async () => {
+    const stem = word();
+    await make({ pages: [`dureri ${stem}ară cronice`] });
+    const [hit] = await found(stem.toUpperCase());
+    expect(hit.snippet).toMatch(/\u0001.*\u0002/);
+  });
+
+  it('is only on searches, and only text from that user’s own document', async () => {
+    const term = word();
+    const mine = await make({ pages: [`mine ${term}`] });
+    const other = await createTestUser(`sn-${uuidv4()}@spine.test`);
+    const theirSecret = word();
+    await make({ userId: other.id, pages: [`secret ${theirSecret} ${term}`] });
+    const hits = await found(term);
+    expect(hits.map(h => h.id)).toEqual([mine.id]);
+    expect(JSON.stringify(hits)).not.toContain(theirSecret);
+    const plain = (await (await app.inject({ method: 'GET', url: '/api/documents', headers: { cookie } })).json()) as Array<{ snippet?: string }>;
+    expect(plain.every(d => d.snippet === undefined)).toBe(true);
+  });
+
+  it('never contains markup of its own: a page’s angle brackets are only text', async () => {
+    const term = word();
+    await make({ pages: [`<script>alert(1)</script> ${term}`] });
+    const [hit] = await found(term);
+    expect(hit.snippet).toContain('<script>'); // returned as plain text; the page renders text nodes, not HTML
+    expect(hit.snippet).toContain(`\u0001${term}\u0002`);
+  });
+});

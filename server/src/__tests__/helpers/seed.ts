@@ -43,6 +43,8 @@ export async function seedSourceFile(
     userId?: string;
     checksum?: string;
     status?: 'pending' | 'processing' | 'done' | 'error';
+    mimeType?: string;
+    filePath?: string;
   } = {},
 ) {
   const store = getStore();
@@ -53,8 +55,8 @@ export async function seedSourceFile(
     id,
     uploadedAt: new Date().toISOString(),
     originalFilename: 'scan.pdf',
-    filePath: '/tmp/x.pdf',
-    mimeType: 'application/pdf',
+    filePath: overrides.filePath ?? '/tmp/x.pdf',
+    mimeType: overrides.mimeType ?? 'application/pdf',
     checksum: overrides.checksum ?? uuidv4(),
   });
 

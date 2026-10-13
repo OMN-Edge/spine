@@ -8,6 +8,8 @@ export type DocType =
   | 'other';
 
 export interface Document {
+  /** Only on search results: the text around a match, each match between \u0001 and \u0002. */
+  snippet?: string;
   id: string;
   source_file_id: string;
   page_start: number;
@@ -106,6 +108,13 @@ export interface DoctorEntry {
   created_at: string;
   document_count: number;
   last_seen: string | null;
+}
+
+export interface DoctorSummary {
+  id: string;
+  name: string;
+  specialty: string | null;
+  document_count: number;
 }
 
 export interface DoctorDetail extends Omit<DoctorEntry, 'document_count' | 'last_seen'> {
@@ -275,6 +284,8 @@ export const api = {
 
   doctors: {
     list: () => req<DoctorEntry[]>('/api/doctors'),
+    /** Pairs of entries that are probably one person; `keep` is the fuller name. The owner confirms. */
+    duplicates: () => req<Array<{ keep: DoctorSummary; other: DoctorSummary }>>('/api/doctors/duplicates'),
     get: (id: string) => req<DoctorDetail>(`/api/doctors/${id}`),
     update: (id: string, change: { name?: string; specialty?: string | null; clinic?: string | null; license_code?: string | null }) =>
       patch<{ ok: boolean }>(`/api/doctors/${id}`, change),
@@ -369,6 +380,8 @@ export const api = {
       req<{ status: string; progress: number; step: string; error?: string; documents: UploadDocument[] }>(`/api/source-files/${id}/status`),
     capabilities: () =>
       req<{ aiReading: { enabled: boolean; provider: string; endpoint: string | null } }>('/api/capabilities'),
+    /** Run a failed upload again, as it was first read. */
+    retry: (id: string) => req<{ id: string; status: string }>(`/api/source-files/${id}/retry`, { method: 'POST' }),
     /** Read the upload again with the model. Sends its page images to the provider. */
     reread: (id: string) =>
       req<{ id: string; status: string }>(`/api/source-files/${id}/reread`, { method: 'POST' }),

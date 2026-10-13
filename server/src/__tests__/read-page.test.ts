@@ -40,7 +40,7 @@ function llmReturning(answer: unknown) {
     return answer;
   });
   const clients: TaskClients = {
-    continuation: client('continuation'), extraction: client('extraction'), page: client('page'),
+    continuation: client('continuation'), extraction: client('extraction'), page: client('page'), stamps: client('stamps'),
   };
   return { llm: buildChatLlm(clients, config), received };
 }

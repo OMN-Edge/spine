@@ -1,7 +1,10 @@
 import { v4 as uuidv4 } from 'uuid';
 import { getStore } from '../store/index.js';
 import { rasterizePdf } from './rasterize.js';
-import { getModelParser, getParser } from '../parser/index.js';
+import { normalisePhoto } from './photo.js';
+import { readDigitalSigners, readSignatures } from './signatures.js';
+import { logger } from '../logger.js';
+import { aiReadingAllowed, getModelParser, getParser } from '../parser/index.js';
 import { checkContinuation } from './continuation.js';
 import { readDocument, storeReading } from './document-reading.js';
 import { llmConcurrency } from '../config.js';
@@ -34,6 +37,12 @@ export interface IngestionOptions {
    * reading has succeeded, so a failed attempt leaves them as they were.
    */
   reread?: boolean;
+  /**
+   * Run an upload that failed again, the way it was first read (the configured parser, not the
+   * model for every page). What the failed attempt left behind is removed only once this one has
+   * succeeded, as for `reread`.
+   */
+  retry?: boolean;
 }
 
 export function startIngestionJob(sourceFileId: string, userId: string, options: IngestionOptions = {}): void {
@@ -65,10 +74,19 @@ async function runPipeline(
   try {
     await store.sourceFiles.setStatus(userId, sourceFileId, 'processing');
 
+    // A photo is one page that has no text to find locally, so it goes straight to the model; it is
+    // not tried against OCR first. That sends the image off the host, which only the operator's switch allows.
+    const isPhoto = sourceFile.mime_type?.startsWith('image/') ?? false;
+    if (isPhoto && !aiReadingAllowed()) {
+      throw new Error('a photo can only be read by the model, and image reading is switched off on this server');
+    }
+
     // Step 1: Rasterize pages
-    job.step = 'rasterizing';
+    job.step = isPhoto ? 'preparing the photo' : 'rasterizing';
     job.progress = 5;
-    const pageImages = await rasterizePdf(sourceFileId, sourceFile.file_path);
+    const pageImages = isPhoto
+      ? await normalisePhoto(sourceFileId, sourceFile.file_path)
+      : await rasterizePdf(sourceFileId, sourceFile.file_path);
     await store.sourceFiles.setPageCount(userId, sourceFileId, pageImages.length);
 
     // Step 2: Parse. Which parser runs — the local sidecar, a vision model, or the
@@ -76,7 +94,7 @@ async function runPipeline(
     // way: one entry per page image, boxes in that image's pixel space.
     job.step = 'parsing';
     job.progress = 20;
-    const parser = options.reread ? getModelParser() : getParser();
+    const parser = options.reread || isPhoto ? getModelParser() : getParser();
     const parseResult = await parser.parse({
       sourceFileId,
       filePath: sourceFile.file_path,
@@ -104,7 +122,7 @@ async function runPipeline(
 
     // Everything that can fail on the model's side has now succeeded. Only now remove the old
     // documents, so a provider outage or a page the model could not read leaves them untouched.
-    if (options.reread) await store.sourceFiles.clearDerived(userId, sourceFileId);
+    if (options.reread || options.retry) await store.sourceFiles.clearDerived(userId, sourceFileId);
 
     for (const [i, page] of parsed.entries()) {
       const continuation = i > 0 ? continuations[i - 1] : null;
@@ -183,6 +201,51 @@ async function runPipeline(
       });
 
       job.progress = 90 + Math.floor(((di + 1) / readings.length) * 8);
+    }
+
+    // Step 6: Doctors from signature stamps, which are pictures. Only a PDF has them as embedded images;
+    // a photo has no separate stamp to cut out. With image reading off, or if anything fails, this adds nothing.
+    if (!isPhoto) {
+      job.step = 'reading signatures';
+      try {
+        const stamps = await readSignatures(sourceFile.file_path, readings.map(r => r.range.end));
+        if (stamps.size > 0) {
+          await store.transaction(async tx => {
+            const now = new Date().toISOString();
+            for (const { docId, range, extraction } of readings) {
+              for (const doctor of stamps.get(range.end) ?? []) {
+                // A stamp is a signature: whoever signed wrote it.
+                const id = await tx.doctors.upsert(userId, { name: doctor.name, specialty: doctor.specialty, clinic: extraction.provider, licenseCode: doctor.code }, now);
+                if (id) await tx.doctors.link(userId, docId, id, 'author', 'stamp');
+              }
+            }
+          });
+        }
+      } catch (err) {
+        // The documents are already stored; a signature that could not be filed is not a failed upload.
+        logger.warn('could not file the doctors read from signature stamps', { sourceFileId, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+
+    // Step 7: Doctors who digitally signed the PDF. Local, so it does not need the image switch. The signature
+    // is on the whole file, so it names an author of each document in it.
+    if (!isPhoto) {
+      try {
+        const signers = await readDigitalSigners(sourceFile.file_path);
+        if (signers.length > 0) {
+          await store.transaction(async tx => {
+            const now = new Date().toISOString();
+            for (const { docId, extraction } of readings) {
+              for (const signer of signers) {
+                const id = await tx.doctors.upsert(userId, { name: signer.name, clinic: extraction.provider }, now);
+                if (id) await tx.doctors.link(userId, docId, id, 'author', 'signature');
+              }
+            }
+          });
+        }
+      } catch (err) {
+        logger.warn('could not file the doctors who signed the PDF', { sourceFileId, error: err instanceof Error ? err.message : String(err) });
+      }
     }
 
     await store.sourceFiles.setStatus(userId, sourceFileId, 'done');

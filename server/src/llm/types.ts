@@ -24,6 +24,17 @@ export interface ChatLlm {
    * Null if the model's answer could not be used.
    */
   readPage(imagePath: string): Promise<PageReading | null>;
+  /**
+   * Read the doctors' names, specialties and professional codes off signature stamps: small images cut
+   * from a document's last page, never a whole page. **The second call that sends an image off the host**
+   * (SECURITY.md M-7), under the same operator switch; the caller checks it. Null if the answer could not
+   * be used.
+   */
+  readStamps(imagePaths: string[]): Promise<StampReading | null>;
+}
+
+export interface StampReading {
+  doctors: Array<{ name: string; specialty: string | null; code: string | null }>;
 }
 
 /** A block of text on a page, with its box as fractions (0–1) of the page, from the top left. */
@@ -163,6 +174,17 @@ export const pageReadingSchema = z.object({
       y0: z.number(),
       x1: z.number(),
       y1: z.number(),
+    }),
+  ),
+});
+
+/** What a stamp reading answers: nothing for an image that is not a doctor's stamp. */
+export const stampReadingSchema = z.object({
+  doctors: z.array(
+    z.object({
+      name: z.string(),
+      specialty: z.string().nullish(),
+      code: z.string().nullish(),
     }),
   ),
 });

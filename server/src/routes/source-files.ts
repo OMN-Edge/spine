@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { createHash } from 'crypto';
-import { closeSync, createWriteStream, mkdirSync, openSync, readSync, rmSync } from 'fs';
+import { createWriteStream, mkdirSync, rmSync } from 'fs';
+import { detectFileKind, isImage, MIME_OF } from '../file-kind.js';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { getStore } from '../store/index.js';
@@ -25,19 +26,16 @@ function documentSummary(doc: Document) {
 const MAX_PAGES_PER_READING = 200;
 
 /**
- * Whether a file is a PDF by what is in it, not by what the browser called it. The signature
- * "%PDF-" must appear within the first 1024 bytes, which is what the format allows (some writers put a
- * few bytes of junk before it). The pipeline renders with pdftoppm, which reads PDFs and nothing else.
+ * Runs an upload that failed again. A failure (the provider was down, a page could not be read) is not
+ * the file's fault, and the original is still held, so it should not take re-uploading, which would be
+ * refused as a duplicate of the failed one. Only a failed upload qualifies, and not while a job runs.
  */
-export function looksLikePdf(filePath: string): boolean {
-  const buffer = Buffer.alloc(1024);
-  const fd = openSync(filePath, 'r');
-  try {
-    const read = readSync(fd, buffer, 0, buffer.length, 0);
-    return buffer.subarray(0, read).includes('%PDF-');
-  } finally {
-    closeSync(fd);
-  }
+async function retryFailedUpload(userId: string, id: string): Promise<'started' | 'not_found' | 'not_failed'> {
+  const file = await getStore().sourceFiles.findFor(userId, id);
+  if (!file) return 'not_found';
+  if (file.status !== 'error' || getJobStatus(id)?.status === 'processing') return 'not_failed';
+  startIngestionJob(id, userId, { retry: true });
+  return 'started';
 }
 
 export async function sourceFileRoutes(app: FastifyInstance) {
@@ -114,9 +112,17 @@ export async function sourceFileRoutes(app: FastifyInstance) {
       const checksum = hash.digest('hex');
 
       // Only what can be read is kept. A refused file, and a copy of one already held, is not left on disk.
-      if (!looksLikePdf(filePath)) {
+      const kind = detectFileKind(filePath);
+      if (kind === null) {
         rmSync(filePath, { force: true });
         results.push({ skipped: true, reason: 'not_pdf', filename: part.filename ?? null });
+        continue;
+      }
+      // A photo has no text for anything local to read, so the model reads it, and that sends the
+      // image off this host: refused, with the reason, unless the operator has allowed it.
+      if (isImage(kind) && !aiReadingAllowed()) {
+        rmSync(filePath, { force: true });
+        results.push({ skipped: true, reason: 'photo_needs_ai', filename: part.filename ?? null });
         continue;
       }
 
@@ -124,6 +130,11 @@ export async function sourceFileRoutes(app: FastifyInstance) {
       const existing = await store.sourceFiles.findByChecksumFor(req.userId, checksum);
       if (existing) {
         rmSync(filePath, { force: true });
+        // The same file again after it failed is a request to try again, not a duplicate of nothing.
+        if (existing.status === 'error' && (await retryFailedUpload(req.userId, existing.id)) === 'started') {
+          results.push({ id: existing.id, status: 'processing', retried: true });
+          continue;
+        }
         results.push({ skipped: true, reason: 'duplicate', existing_id: existing.id });
         continue;
       }
@@ -133,7 +144,7 @@ export async function sourceFileRoutes(app: FastifyInstance) {
         uploadedAt: new Date().toISOString(),
         originalFilename: part.filename ?? null,
         filePath,
-        mimeType: part.mimetype ?? null,
+        mimeType: MIME_OF[kind], // what it is, not what the browser called it
         checksum,
       });
 
@@ -142,6 +153,14 @@ export async function sourceFileRoutes(app: FastifyInstance) {
     }
 
     return reply.send(results);
+  });
+
+  // Try a failed upload again, as it was first read. No image is sent unless it would have been the first time.
+  app.post<{ Params: { id: string } }>('/api/source-files/:id/retry', async (req, reply) => {
+    const outcome = await retryFailedUpload(req.userId, req.params.id);
+    if (outcome === 'not_found') return reply.status(404).send({ error: 'not found' });
+    if (outcome === 'not_failed') return reply.status(409).send({ error: 'only an upload that failed can be tried again' });
+    return reply.status(202).send({ id: req.params.id, status: 'processing' });
   });
 
   // What the page needs to offer "Read with AI", and to say where the images would go.

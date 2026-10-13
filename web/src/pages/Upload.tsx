@@ -4,6 +4,7 @@ import { api, type UploadDocument, type UploadSummary } from '../api';
 import SpineLog, { type VertebraState } from '../components/SpineLog';
 import ReadWithAi from '../components/ReadWithAi';
 import { documentTitle } from '../titles';
+import { whereTo } from '../components/aiTarget';
 
 interface UploadResult {
   id?: string;
@@ -63,7 +64,7 @@ function heading(job: JobState): string {
   return 'Reading document…';
 }
 
-function UploadRow({ job }: { job: JobState }) {
+function UploadRow({ job, onRetry }: { job: JobState; onRetry: () => void }) {
   const [first, ...rest] = job.documents;
   return (
     <div className="bg-white border border-gray-200 rounded-xl px-4 py-3">
@@ -100,6 +101,11 @@ function UploadRow({ job }: { job: JobState }) {
         <p className="text-xs text-gray-400 mt-0.5">{job.step}</p>
       ) : null}
       {job.error && <p className="text-xs text-red-500 mt-1">{job.error}</p>}
+      {job.status === 'error' && (
+        <button type="button" onClick={onRetry} className="mt-2 text-sm text-blue-600 hover:underline">
+          Try again
+        </button>
+      )}
       {(job.status === 'done' || job.status === 'error') && <ReadWithAi sourceFileId={job.fileId} bare />}
     </div>
   );
@@ -109,7 +115,14 @@ export default function Upload() {
   const [dragging, setDragging] = useState(false);
   const [jobs, setJobs] = useState<JobState[]>([]);
   // Files the server would not take, by name.
-  const [refused, setRefused] = useState<string[]>([]);
+  const [refused, setRefused] = useState<Array<{ name: string; reason: string }>>([]);
+  // Photos are read by the model, so they are offered only where the operator has allowed images to leave.
+  const [photos, setPhotos] = useState<{ enabled: boolean; where: string } | null>(null);
+  useEffect(() => {
+    api.sourceFiles.capabilities()
+      .then(c => setPhotos({ enabled: c.aiReading.enabled, where: whereTo(c.aiReading) }))
+      .catch(() => setPhotos({ enabled: false, where: '' }));
+  }, []);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const update = useCallback((key: string, patch: Partial<JobState>) => {
@@ -127,6 +140,17 @@ export default function Upload() {
       }
     }, 2000);
   }, [update]);
+
+  // A failed upload run again, as it was first read; the row goes back to working and is followed like a new one.
+  const retry = useCallback(async (job: JobState) => {
+    try {
+      await api.sourceFiles.retry(job.fileId);
+      update(job.key, { status: 'processing', progress: 0, step: 'queued', error: undefined });
+      pollStatus(job.key, job.fileId);
+    } catch (err) {
+      update(job.key, { error: err instanceof Error ? err.message : 'Could not try again' });
+    }
+  }, [pollStatus, update]);
 
   // The full history: every upload stays here, named by what it became, so its pages can
   // be regrouped later. Uploads still in progress pick up where they are.
@@ -147,7 +171,7 @@ export default function Upload() {
   const handleFiles = useCallback(async (fileList: FileList) => {
     const results: UploadResult[] = await api.sourceFiles.upload(fileList);
     const newJobs: JobState[] = [];
-    setRefused(results.filter(r => r.skipped && r.reason === 'not_pdf').map(r => r.filename || 'A file'));
+    setRefused(results.filter(r => r.skipped && (r.reason === 'not_pdf' || r.reason === 'photo_needs_ai')).map(r => ({ name: r.filename || 'A file', reason: r.reason! })));
 
     results.forEach((r, i) => {
       const key = `${Date.now()}-${i}`;
@@ -188,17 +212,22 @@ export default function Upload() {
       >
         {/* A phone has nothing to drag from; it gets the file picker  */}
         <p className="text-gray-500 mb-2">
-          <span className="hidden sm:inline">Drag & drop PDFs here</span>
-          <span className="sm:hidden">Tap to choose PDFs</span>
+          <span className="hidden sm:inline">Drag & drop PDFs{photos?.enabled ? ' or photos' : ''} here</span>
+          <span className="sm:hidden">Tap to choose PDFs{photos?.enabled ? ' or photos' : ''}</span>
         </p>
         <p className="text-sm text-gray-400">
           <span className="hidden sm:inline">or click to browse — </span>up to 200 MB per file
         </p>
+        {photos?.enabled && (
+          <p className="text-xs text-gray-400 mt-3">
+            A photo is sent to <strong>{photos.where}</strong> to be read: it has no text for this machine to read.
+          </p>
+        )}
         <input
           ref={fileRef}
           type="file"
           multiple
-          accept=".pdf,application/pdf"
+          accept={photos?.enabled ? '.pdf,application/pdf,image/jpeg,image/png' : '.pdf,application/pdf'}
           className="hidden"
           onChange={e => {
             if (e.target.files?.length) handleFiles(e.target.files);
@@ -211,8 +240,13 @@ export default function Upload() {
 
       {refused.length > 0 && (
         <div role="alert" className="mt-4 bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-900">
-          {refused.length === 1 ? `${refused[0]} was not added: it is not a PDF.` : `${refused.length} files were not added because they are not PDFs: ${refused.join(', ')}.`}
-          {' '}Photos of paper are not read yet; a scanning app that saves a PDF works.
+          {refused.map((r, i) => (
+            <p key={i}>
+              {r.reason === 'photo_needs_ai'
+                ? `${r.name} was not added: a photo can only be read by sending it to the AI model, and that is switched off on this server. A scanning app that saves a PDF works without it.`
+                : `${r.name} was not added: it is not a PDF${photos?.enabled ? ' or a JPEG or PNG photo' : ''}.`}
+            </p>
+          ))}
         </div>
       )}
 
@@ -224,7 +258,7 @@ export default function Upload() {
               state: STATE[job.status] ?? 'working',
               progress: job.progress,
               label: `${heading(job)}: ${job.status}`,
-              children: <UploadRow job={job} />,
+              children: <UploadRow job={job} onRetry={() => retry(job)} />,
             }))}
           />
         </div>
