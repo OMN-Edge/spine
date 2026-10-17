@@ -1,9 +1,10 @@
 import { readFile } from 'fs/promises';
 import { logger } from '../logger.js';
 import { HumanMessage } from '@langchain/core/messages';
+import { OutputParserException } from '@langchain/core/output_parsers';
 import { z } from 'zod';
 import type { ContinuationResult, ExtractionResult } from '../types.js';
-import { buildContinuationPrompt, buildExtractionPrompt, buildPageReadingPrompt, buildStampReadingPrompt } from './prompts.js';
+import { buildContinuationPrompt, buildExtractionPrompt, buildPageReadingPrompt, buildStampReadingPrompt, buildTranslationPrompt } from './prompts.js';
 import type { BaseLanguageModelInput } from '@langchain/core/language_models/base';
 import { TASK_SCHEMAS, type LlmTask, type TaskClients } from './tasks.js';
 import {
@@ -14,12 +15,16 @@ import {
   type LlmLogger,
   type PageReading,
   type StampReading,
+  type TranslationBundle,
 } from './types.js';
 
 /**
  * The interface implementation: prompts in, validated domain types out. It holds no
  * vendor types, so swapping the library underneath touches only `adapters/`.
  */
+
+/** One try and one more, for a reply that is not JSON. */
+const UNPARSEABLE_ATTEMPTS = 2;
 
 async function invokeValidated<T>(
   clients: TaskClients,
@@ -29,7 +34,21 @@ async function invokeValidated<T>(
   prompt: BaseLanguageModelInput,
   schema: z.ZodType<T>,
 ): Promise<T | null> {
-  const raw = await clients[task].invoke(prompt);
+  let raw: unknown;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      raw = await clients[task].invoke(prompt);
+      break;
+    } catch (err) {
+      // The model answered, but not with JSON that parses: a reply cut off at its token cap, say.
+      // That is the model misbehaving, not the provider being down, so ask once more and then
+      // degrade as for a schema failure. Anything else (auth, network, a 5xx) is a real failure and
+      // propagates. The message is not logged: it quotes the reply, which can hold document text.
+      if (!(err instanceof OutputParserException)) throw err;
+      logger.warn('llm response was not valid JSON', { task, provider: config.provider, model: config.model, attempt });
+      if (attempt === UNPARSEABLE_ATTEMPTS) return null;
+    }
+  }
   const parsed = schema.safeParse(raw);
 
   if (parsed.success) return parsed.data;
@@ -62,17 +81,38 @@ export function buildChatLlm(clients: TaskClients, config: ChatLlmConfig): ChatL
       return validated ?? CONTINUATION_FALLBACK;
     },
 
-    async extractFields(documentText, knownTests = []): Promise<ExtractionResult> {
+    async extractFields(documentText, knownTests = [], knownTags = []): Promise<ExtractionResult> {
       const validated = await invokeValidated(
         clients,
         config,
         log,
         'extraction',
-        buildExtractionPrompt(documentText, knownTests),
+        buildExtractionPrompt(documentText, knownTests, knownTags),
         TASK_SCHEMAS.extraction,
       );
 
       return validated ?? EXTRACTION_FALLBACK;
+    },
+
+    async translate(bundle, target, source): Promise<TranslationBundle | null> {
+      const validated = await invokeValidated(
+        clients,
+        config,
+        log,
+        'translation',
+        buildTranslationPrompt(bundle, target, source),
+        TASK_SCHEMAS.translation,
+      );
+      if (!validated) return null;
+      return {
+        title: validated.title ?? null,
+        summary: validated.summary ?? null,
+        notes: validated.notes ?? null,
+        fields: validated.fields.map(f => ({ id: f.id, label: f.label ?? null, value: f.value })),
+        measurements: validated.measurements,
+        doctors: validated.doctors.map(d => ({ id: d.id, specialty: d.specialty ?? null })),
+        source_language: validated.source_language ?? null,
+      };
     },
 
     async readStamps(imagePaths): Promise<StampReading | null> {
@@ -111,20 +151,8 @@ export function buildChatLlm(clients: TaskClients, config: ChatLlmConfig): ChatL
       );
       if (!validated) return null;
 
-      // Model-reported boxes are clamped into the page and put the right way up, and
-      // blocks with no text are dropped. The boxes stay approximate.
-      const clamp = (n: number) => Math.min(1, Math.max(0, n));
-      return {
-        regions: validated.regions
-          .filter(region => region.text.trim().length > 0)
-          .map(region => ({
-            text: region.text,
-            x0: clamp(Math.min(region.x0, region.x1)),
-            y0: clamp(Math.min(region.y0, region.y1)),
-            x1: clamp(Math.max(region.x0, region.x1)),
-            y1: clamp(Math.max(region.y0, region.y1)),
-          })),
-      };
+      // Blocks with no text are dropped.
+      return { regions: validated.regions.filter(region => region.text.trim().length > 0) };
     },
   };
 }

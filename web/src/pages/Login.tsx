@@ -3,8 +3,10 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api, ApiError } from '../api';
 import { useAuth } from '../auth';
 import AuthCard, { buttonClass, inputClass, Notice } from '../components/AuthCard';
+import { useI18n } from '../i18n';
 
 export default function Login() {
+  const { t } = useI18n();
   const { setAuthenticated } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
@@ -40,7 +42,7 @@ export default function Login() {
       // notice, or that the address is not confirmed yet. It deliberately does
       // not say which half of a wrong login was wrong.
       setUnverified(err instanceof ApiError && err.code === 'email_not_verified');
-      setError(err instanceof Error ? err.message : 'Could not sign in');
+      setError(err instanceof Error ? err.message : t('Could not sign in'));
     }
   };
 
@@ -57,7 +59,7 @@ export default function Login() {
         setNeedsCode(false);
         setCode('');
       }
-      setError(err instanceof Error ? err.message : 'Could not sign in');
+      setError(err instanceof Error ? err.message : t('Could not sign in'));
     }
   };
 
@@ -65,7 +67,7 @@ export default function Login() {
     try {
       setResent((await api.auth.resendVerification(email)).message);
     } catch (err) {
-      setResent(err instanceof Error ? err.message : 'Could not send the link');
+      setResent(err instanceof Error ? err.message : t('Could not send the link'));
     }
   };
 
@@ -74,44 +76,44 @@ export default function Login() {
       title="Spine"
       footer={
         <>
-          {options.recovery && <p><Link to="/forgot" className="text-blue-600">Forgot your password?</Link></p>}
-          {options.registration === 'open' && <p>No account? <Link to="/register" className="text-blue-600">Create one</Link></p>}
+          {options.recovery && <p><Link to="/forgot" className="text-blue-600">{t('Forgot your password?')}</Link></p>}
+          {options.registration === 'open' && <p>{t('No account?')} <Link to="/register" className="text-blue-600">{t('Create one')}</Link></p>}
         </>
       }
     >
       {needsCode ? (
         <form onSubmit={submitCode}>
           <p className="text-sm text-gray-600 mb-3">
-            Enter the code from your authenticator app, or one of your recovery codes.
+            {t('Enter the code from your authenticator app, or one of your recovery codes.')}
           </p>
           <input
-            type="text" placeholder="Code" autoComplete="one-time-code" autoFocus
+            type="text" placeholder={t('Code')} autoComplete="one-time-code" autoFocus
             inputMode="text" autoCapitalize="characters" spellCheck={false}
             value={code} onChange={e => setCode(e.target.value)} className={inputClass}
           />
           {error && <Notice kind="error">{error}</Notice>}
-          <button type="submit" className={buttonClass}>Continue</button>
+          <button type="submit" className={buttonClass}>{t('Continue')}</button>
         </form>
       ) : (
       <form onSubmit={submit}>
         <input
-          type="email" placeholder="Email" autoComplete="username" autoFocus
+          type="email" placeholder={t('Email')} autoComplete="username" autoFocus
           value={email} onChange={e => setEmail(e.target.value)} className={inputClass}
         />
         <input
-          type="password" placeholder="Password" autoComplete="current-password"
+          type="password" placeholder={t('Password')} autoComplete="current-password"
           value={password} onChange={e => setPassword(e.target.value)} className={inputClass}
         />
         {error && <Notice kind="error">{error}</Notice>}
         {unverified && (
           <p className="text-sm mb-3">
             <button type="button" onClick={resend} className="text-blue-600 underline">
-              Send the confirmation link again
+              {t('Send the confirmation link again')}
             </button>
           </p>
         )}
         {resent && <Notice kind="ok">{resent}</Notice>}
-        <button type="submit" className={buttonClass}>Sign in</button>
+        <button type="submit" className={buttonClass}>{t('Sign in')}</button>
       </form>
       )}
     </AuthCard>

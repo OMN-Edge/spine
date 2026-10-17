@@ -298,3 +298,88 @@ describe('reading a document again (rereadDocument)', () => {
     expect((await getStore().documents.findFor(OWNER_ID, doc))!.user_notes).toBe('ask about this');
   });
 });
+
+describe('regrouping now and reading later', () => {
+  it('saves a split without reading anything when asked to defer', async () => {
+    const { doc } = await upload(4);
+    const res = await post(`/api/documents/${doc}/boundary`, { action: 'split', at_page: 3, defer: true });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ reread: 'deferred' });
+    expect(mockExtractFields).not.toHaveBeenCalled();
+
+    const [head, tail] = (res.json() as { split_into: [string, string] }).split_into;
+    expect((await getStore().documents.findFor(OWNER_ID, head))?.page_end).toBe(2);
+    expect((await getStore().documents.findFor(OWNER_ID, tail))?.page_start).toBe(3);
+    expect((await getStore().documents.findFor(OWNER_ID, head))?.reviewed).toBeFalsy();
+  });
+
+  it('saves a join without reading anything when asked to defer', async () => {
+    const { doc, sf } = await upload(4);
+    const split = await post(`/api/documents/${doc}/boundary`, { action: 'split', at_page: 3, defer: true });
+    const [head, tail] = (split.json() as { split_into: [string, string] }).split_into;
+    const merged = await post(`/api/documents/${head}/boundary`, { action: 'merge', with_document_id: tail, defer: true });
+    expect(merged.json()).toMatchObject({ merged: head, reread: 'deferred' });
+    expect(mockExtractFields).not.toHaveBeenCalled();
+    expect((await getStore().documents.findFor(OWNER_ID, head))?.page_end).toBe(4);
+    expect(sf).toBeTruthy();
+  });
+
+  it('reads the chosen documents once, from the text already stored, when told it is done', async () => {
+    const { doc, sf } = await upload(4);
+    const split = await post(`/api/documents/${doc}/boundary`, { action: 'split', at_page: 3, defer: true });
+    const ids = (split.json() as { split_into: [string, string] }).split_into;
+    mockExtractFields.mockResolvedValueOnce(reading('Head')).mockResolvedValueOnce(reading('Tail'));
+
+    const res = await post(`/api/source-files/${sf}/extract`, { document_ids: ids });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ results: [{ id: ids[0], reread: 'done' }, { id: ids[1], reread: 'done' }] });
+    expect(mockExtractFields).toHaveBeenCalledTimes(2);
+    expect((await getStore().documents.findFor(OWNER_ID, ids[0]))?.title).toBe('Head');
+  });
+
+  it('answers with one result per document asked for', async () => {
+    const { doc, sf } = await upload(2);
+    mockExtractFields.mockResolvedValueOnce(EXTRACTION_FALLBACK);
+    const res = await post(`/api/source-files/${sf}/extract`, { document_ids: [doc] });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().results).toHaveLength(1);
+  });
+
+  it('refuses a document that is not in this upload, another user’s upload, and a bad list', async () => {
+    const a = await upload(2);
+    const b = await upload(2);
+    expect((await post(`/api/source-files/${a.sf}/extract`, { document_ids: [b.doc] })).statusCode).toBe(404);
+    expect((await post(`/api/source-files/${a.sf}/extract`, { document_ids: [] })).statusCode).toBe(400);
+    expect((await post(`/api/source-files/${a.sf}/extract`, { document_ids: [a.doc, a.doc] })).statusCode).toBe(400);
+    expect((await post(`/api/source-files/${a.sf}/extract`, {})).statusCode).toBe(400);
+
+    const other = await createTestUser('someone-else-regroup@spine.test');
+    const theirs = await upload(2, other.id);
+    expect((await post(`/api/source-files/${theirs.sf}/extract`, { document_ids: [theirs.doc] })).statusCode).toBe(404);
+    expect(mockExtractFields).not.toHaveBeenCalled();
+  });
+
+  it('skips a document whose pages are all hidden, which has nothing to read, instead of calling it failed', async () => {
+    const { doc, sf, pageIds } = await upload(1);
+    for (const id of pageIds) await getStore().pages.setHidden(OWNER_ID, id, true);
+    const res = await post(`/api/source-files/${sf}/extract`, { document_ids: [doc] });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ results: [{ id: doc, reread: 'skipped' }] });
+    expect(mockExtractFields).not.toHaveBeenCalled();
+  });
+
+  it('reads the ones that can be and skips the ones that cannot, in the order asked', async () => {
+    const { doc, sf, pageIds } = await upload(3);
+    const split = await post(`/api/documents/${doc}/boundary`, { action: 'split', at_page: 3, defer: true });
+    const [head, tail] = (split.json() as { split_into: [string, string] }).split_into;
+    await getStore().pages.setHidden(OWNER_ID, pageIds[2], true); // the tail's only page
+    mockExtractFields.mockResolvedValue(reading('Head'));
+    const res = await post(`/api/source-files/${sf}/extract`, { document_ids: [tail, head] });
+    expect(res.json()).toEqual({ results: [{ id: tail, reread: 'skipped' }, { id: head, reread: 'done' }] });
+    expect(mockExtractFields).toHaveBeenCalledTimes(1);
+  });
+
+  it('answers 404 for an unknown upload', async () => {
+    expect((await post(`/api/source-files/${uuidv4()}/extract`, { document_ids: [uuidv4()] })).statusCode).toBe(404);
+  });
+});

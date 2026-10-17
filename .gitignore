@@ -14,3 +14,11 @@ __pycache__/
 # tsc emits .js next to the .tsx sources; Vite resolves .js before .ts,
 # so these would shadow the real sources. See web/tsconfig.json noEmit.
 web/src/**/*.js
+
+# Local credentials (service account keys). Never commit.
+secrets/
+*-sa.json
+project-*.json
+
+# Scratch comparisons of model readings: real records, never committed.
+compare*.txt

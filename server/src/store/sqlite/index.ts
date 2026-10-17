@@ -9,6 +9,8 @@ import { pageRepository } from './pages.js';
 import { shareLinkRepository } from './share-links.js';
 import { sourceFileRepository } from './source-files.js';
 import { tagRepository } from './tags.js';
+import { translationRepository } from './translations.js';
+import { embeddingRepository } from './embeddings.js';
 import { userRepository } from './users.js';
 import type { Store, StoreConfig } from '../types.js';
 
@@ -36,6 +38,8 @@ function storeOver(db: Database, depth: number): Store {
     doctors: doctorRepository(db),
     tags: tagRepository(db),
     shareLinks: shareLinkRepository(db),
+    translations: translationRepository(db),
+    embeddings: embeddingRepository(db),
     maintenance: maintenanceRepository(db),
 
     /**

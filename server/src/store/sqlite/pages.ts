@@ -15,11 +15,11 @@ export function pageRepository(db: Database): PageRepository {
   // to someone else's upload.
   const insert = db.prepare(`
     INSERT INTO pages (
-      id, user_id, source_file_id, page_number, image_path, image_width, image_height,
+      id, user_id, source_file_id, page_number, source_page, image_path, image_width, image_height,
       raw_text, elements, extraction_source,
       is_continuation, continuation_confidence, continuation_reasoning
     )
-    SELECT ?, ?, id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+    SELECT ?, ?, id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
     FROM source_files WHERE id = ? AND user_id = ?
   `);
 
@@ -27,22 +27,44 @@ export function pageRepository(db: Database): PageRepository {
     'UPDATE pages SET raw_text = ?, elements = ?, extraction_source = ? WHERE id = ? AND user_id = ?',
   );
   const listForSourceFile = db.prepare(`
-    SELECT id, page_number, raw_text, is_continuation, image_width, image_height, extraction_source
+    SELECT id, page_number, source_page, raw_text, is_continuation, image_width, image_height, extraction_source, hidden
     FROM pages WHERE source_file_id = ? AND user_id = ? ORDER BY page_number
   `);
 
   // Explicit columns: image_path is an absolute server path and no client has a
   // use for it (S-8).
   const listForDocument = db.prepare(`
-    SELECT p.id, p.source_file_id, p.page_number, p.image_width, p.image_height, p.raw_text,
+    SELECT p.id, p.source_file_id, p.page_number, p.source_page, p.image_width, p.image_height, p.raw_text,
            p.elements, p.extraction_source, p.is_continuation, p.continuation_confidence,
-           p.continuation_reasoning, p.reviewed
+           p.continuation_reasoning, p.reviewed, p.hidden
     FROM documents d
     JOIN pages p
       ON p.source_file_id = d.source_file_id
      AND p.page_number BETWEEN d.page_start AND d.page_end
-    WHERE d.id = ? AND d.user_id = ? AND p.user_id = ?
+    WHERE d.id = ? AND d.user_id = ? AND p.user_id = ? AND p.hidden = 0
     ORDER BY p.page_number
+  `);
+
+  const sourceFileOf = db.prepare('SELECT source_file_id FROM pages WHERE id = ? AND user_id = ?');
+  const shiftNumbers = db.prepare('UPDATE pages SET page_number = page_number + 1000000 WHERE source_file_id = ? AND user_id = ?');
+  const setNumber = db.prepare('UPDATE pages SET page_number = ? WHERE id = ? AND source_file_id = ? AND user_id = ?');
+  const countFor = db.prepare('SELECT COUNT(*) AS n FROM pages WHERE source_file_id = ? AND user_id = ?');
+  const setHidden = db.prepare('UPDATE pages SET hidden = ? WHERE id = ? AND user_id = ?');
+  const holding = db.prepare(`
+    SELECT d.id FROM pages p
+    JOIN documents d
+      ON d.source_file_id = p.source_file_id AND d.user_id = p.user_id
+     AND p.page_number BETWEEN d.page_start AND d.page_end
+    WHERE p.id = ? AND p.user_id = ?
+    ORDER BY d.page_start
+  `);
+
+  const setHiddenForDocument = db.prepare(`
+    UPDATE pages SET hidden = ?
+    WHERE user_id = ?
+      AND source_file_id = (SELECT source_file_id FROM documents WHERE id = ? AND user_id = ?)
+      AND page_number BETWEEN (SELECT page_start FROM documents WHERE id = ? AND user_id = ?)
+                          AND (SELECT page_end FROM documents WHERE id = ? AND user_id = ?)
   `);
 
   const findGrounding = db.prepare(
@@ -57,6 +79,7 @@ export function pageRepository(db: Database): PageRepository {
         page.id,
         uid,
         page.pageNumber,
+        page.pageNumber, // in the file: where the page is until someone moves it
         page.imagePath,
         page.imageWidth,
         page.imageHeight,
@@ -85,6 +108,36 @@ export function pageRepository(db: Database): PageRepository {
     async listForDocument(userId, documentId) {
       const uid = owner(userId);
       return listForDocument.all(documentId, uid, uid) as PageWithoutPath[];
+    },
+
+    async setHidden(userId, pageId, hidden) {
+      const uid = owner(userId);
+      if (setHidden.run(hidden ? 1 : 0, pageId, uid).changes !== 1) return null;
+      return (holding.all(pageId, uid) as Array<{ id: string }>).map(row => row.id);
+    },
+
+    async sourceFileOf(userId, pageId) {
+      const row = sourceFileOf.get(pageId, owner(userId)) as { source_file_id: string } | undefined;
+      return row?.source_file_id ?? null;
+    },
+
+    async renumber(userId, sourceFileId, orderedPageIds) {
+      const uid = owner(userId);
+      const total = (countFor.get(sourceFileId, uid) as { n: number }).n;
+      if (total !== orderedPageIds.length || new Set(orderedPageIds).size !== total) {
+        throw new Error('renumber must name every page of the upload exactly once');
+      }
+      // The numbers are unique per upload, and a statement is checked row by row, so everything moves out of
+      // the way first and then lands where it is going. The caller's transaction makes this one change.
+      shiftNumbers.run(sourceFileId, uid);
+      orderedPageIds.forEach((id, index) => {
+        if (setNumber.run(index + 1, id, sourceFileId, uid).changes !== 1) throw new Error('a page to renumber is not part of this upload');
+      });
+    },
+
+    async setHiddenForDocument(userId, documentId, hidden) {
+      const uid = owner(userId);
+      return setHiddenForDocument.run(hidden ? 1 : 0, uid, documentId, uid, documentId, uid, documentId, uid).changes;
     },
 
     async findGroundingContext(userId, pageId): Promise<GroundingContext | null> {

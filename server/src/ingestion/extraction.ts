@@ -7,6 +7,6 @@ import type { ExtractionResult } from '../types.js';
  * The prompt, the model and the response validation live behind the LLM interface
  * (`src/llm/`); this is the ingestion pipeline's name for that call.
  */
-export async function extractFields(documentText: string, knownTests: string[] = []): Promise<ExtractionResult> {
-  return getChatLlm().extractFields(documentText, knownTests);
+export async function extractFields(documentText: string, knownTests: string[] = [], model?: string, knownTags: string[] = []): Promise<ExtractionResult> {
+  return getChatLlm(model).extractFields(documentText, knownTests, knownTags);
 }

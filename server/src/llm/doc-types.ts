@@ -21,6 +21,8 @@ export interface DocTypeGuide {
   measurements?: string;
   /** Who to expect in `doctors`, and in what role. */
   doctors: string;
+  /** How to tell similar fields apart. Goes into the prompt only; the review screen needs just the labels. */
+  notes?: string;
 }
 
 export const DOC_TYPE_GUIDES: Record<DocType, DocTypeGuide> = {
@@ -66,14 +68,17 @@ export const DOC_TYPE_GUIDES: Record<DocType, DocTypeGuide> = {
     about:
       'a doctor\'s consultation or visit note, including a clinic\'s "raport medical", which can list several services (a consult, an ultrasound), each with its own result',
     fields: [
-      'report_number', 'service', 'specialty', 'symptoms', 'examination',
+      'report_number', 'service', 'specialty', 'reason_for_visit', 'symptoms', 'examination',
       'family_history', 'personal_history', 'habits', 'current_treatment', 'investigations',
-      'diagnosis', 'diagnosis_code', 'diagnosis_uncoded', 'recommended_tests', 'lifestyle_advice', 'follow_up',
+      'diagnosis', 'diagnosis_code', 'diagnosis_uncoded', 'recommended_tests', 'recommended_vaccines',
+      'prevention', 'recommended_medication', 'lifestyle_advice', 'follow_up',
     ],
     grouped: ['drug', 'dose', 'frequency', 'duration'],
     measurements:
       'vitals taken at the visit (blood pressure as systolic and diastolic, heart rate, weight, height, BMI, temperature, oxygen saturation) AND every lab value or hormone level the text quotes, each with the date it was taken when the text gives one (often earlier than the visit)',
     doctors: 'the consulting doctor (author; "Consultat de", or whoever signs) and the referring doctor (referrer; "Recomandat de"), each with the professional code printed beside the signature if there is one',
+    notes:
+      'reason_for_visit is why the patient came ("se prezinta pentru", "motivul prezentarii"), including a routine or pre-travel visit with no complaint; symptoms is only what the patient reports as complaints, and is left out when there are none. recommended_vaccines lists every vaccine advised; prevention is protection other than vaccines and lifestyle advice, such as malaria prophylaxis. A drug group is a medicine the doctor prescribes or the patient takes now, with the dose when given; medicines only advised to keep at hand or to take if something happens (a travel kit, "in caz de") go together in one recommended_medication field',
   },
   other: {
     label: 'Other',
@@ -92,7 +97,17 @@ export function guidesForPrompt(): string {
       if (g.grouped?.length) parts.push(`Repeating groups, one group per item, with fields ${g.grouped.join(', ')}.`);
       if (g.measurements) parts.push(`Measurements: ${g.measurements}.`);
       parts.push(`Doctors: ${g.doctors}.`);
+      if (g.notes) parts.push(`Note: ${g.notes}.`);
       return `- ${parts.join(' ')}`;
     })
     .join('\n');
 }
+
+/**
+ * The field labels the guides name: the interface has wording for each of these in every language, so a
+ * translation leaves them alone. A label the model invented (the guides ask for "a short lowercase label"
+ * when none fits) is not here, and is translated like the rest of the text.
+ */
+export const KNOWN_FIELD_LABELS: ReadonlySet<string> = new Set(
+  Object.values(DOC_TYPE_GUIDES).flatMap(guide => [...guide.fields, ...(guide.grouped ?? [])]),
+);

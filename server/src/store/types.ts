@@ -58,6 +58,8 @@ export interface Store {
   doctors: DoctorRepository;
   tags: TagRepository;
   shareLinks: ShareLinkRepository;
+  translations: TranslationRepository;
+  embeddings: EmbeddingRepository;
   maintenance: MaintenanceRepository;
 
   /**
@@ -181,6 +183,12 @@ export interface SourceFileRepository {
    * how many documents went. For re-reading a file.
    */
   clearDerived(userId: string, id: string): Promise<number>;
+  /**
+   * Removes the upload and everything made from it, in one transaction. The user's tags and
+   * doctors stay. Returns false, and changes nothing, if the upload is not theirs. Files on
+   * disk are the caller's.
+   */
+  delete(userId: string, id: string): Promise<boolean>;
 }
 
 export interface NewSourceFile {
@@ -196,7 +204,25 @@ export interface PageRepository {
   create(userId: string, page: NewPage): Promise<void>;
   /** Ordered by page number — ingestion depends on that order. */
   listForSourceFile(userId: string, sourceFileId: string): Promise<PageSummary[]>;
+  /** The document's pages the owner has not hidden. */
   listForDocument(userId: string, documentId: string): Promise<PageWithoutPath[]>;
+  /**
+   * Hides or shows a page. Returns the ids of the documents whose range holds it, or null, changing
+   * nothing, if the page is not the user's.
+   */
+  setHidden(userId: string, pageId: string, hidden: boolean): Promise<string[] | null>;
+  /**
+   * Hides or shows every page of one document (the pages its range holds). Returns how many pages that was:
+   * 0 if the document is not the user's or holds no pages, and nothing is changed then.
+   */
+  setHiddenForDocument(userId: string, documentId: string, hidden: boolean): Promise<number>;
+  /** The upload a page is in; null if it is not the user's. */
+  sourceFileOf(userId: string, pageId: string): Promise<string | null>;
+  /**
+   * Puts an upload's pages in this order: the first id becomes page 1, and so on. Every page of the upload must be
+   * named, once. The file index (`source_page`) is untouched.
+   */
+  renumber(userId: string, sourceFileId: string, orderedPageIds: string[]): Promise<void>;
   findGroundingContext(userId: string, pageId: string): Promise<GroundingContext | null>;
   /** The absolute path is never returned to a client (S-8); this is for streaming. */
   findImagePathFor(userId: string, pageId: string): Promise<string | null>;
@@ -225,7 +251,7 @@ export interface NewPage {
 
 export type PageSummary = Pick<
   Page,
-  'id' | 'page_number' | 'raw_text' | 'is_continuation' | 'image_width' | 'image_height' | 'extraction_source'
+  'id' | 'page_number' | 'source_page' | 'raw_text' | 'is_continuation' | 'image_width' | 'image_height' | 'extraction_source' | 'hidden'
 >;
 export type PageWithoutPath = Omit<Page, 'image_path'>;
 
@@ -246,8 +272,19 @@ export interface DocumentFilter {
   reviewed?: boolean;
   /** The documents one upload produced. */
   sourceFileId?: string;
+  /** Also the documents whose every page the owner has hidden. Only the regrouping screen asks for them. */
+  includeHidden?: boolean;
   limit: number;
   offset: number;
+}
+
+export interface RelatedSignal {
+  document_id: string;
+  /** The names of tests both have values for. */
+  shared_tests: string[];
+  shared_doctors: string[];
+  shared_tags: string[];
+  same_provider: boolean;
 }
 
 export interface DocumentRepository {
@@ -257,7 +294,18 @@ export interface DocumentRepository {
   /** Only the columns a client may write; the caller cannot name a column. */
   update(userId: string, id: string, patch: DocumentPatch): Promise<void>;
   setPageEnd(userId: string, id: string, pageEnd: number): Promise<void>;
+  /** After pages were moved: the page numbers the document now holds. */
+  setRange(userId: string, id: string, pageStart: number, pageEnd: number): Promise<void>;
   delete(userId: string, id: string): Promise<void>;
+  /**
+   * What each other document has in common with this one, from the data alone: tests (by canonical name), doctors, tags
+   * and provider. Documents set aside are left out. For "related documents"; meaning is added by `similarity/`.
+   */
+  relatedSignals(userId: string, documentId: string): Promise<RelatedSignal[]>;
+  /** Each provider name used on the user's documents, with how many documents. */
+  providers(userId: string): Promise<Array<{ name: string; document_count: number }>>;
+  /** Every document of the user whose provider is `from` gets `to` (null clears it). How many changed. */
+  renameProvider(userId: string, from: string, to: string | null): Promise<number>;
   /** Which of these ids are the user's. For checking a share link names only their own. */
   ownedIds(userId: string, ids: string[]): Promise<string[]>;
   /** Resolved from a share token and scoped by the link's owner — P12's exception. */
@@ -274,6 +322,7 @@ export interface NewDocument {
   provider?: string | null;
   docType?: DocType | null;
   aiSummary?: string | null;
+  language?: string | null;
 }
 
 export interface DocumentPatch {
@@ -284,6 +333,7 @@ export interface DocumentPatch {
   ai_summary?: string | null;
   user_notes?: string | null;
   reviewed?: boolean;
+  language?: string | null;
 }
 
 export interface ExtractedFieldRepository {
@@ -296,6 +346,8 @@ export interface ExtractedFieldRepository {
    * document, so each field stays with the page it was read from.
    */
   reassignFromPage(userId: string, fromDocumentId: string, toDocumentId: string, fromPageNumber: number): Promise<void>;
+  /** A page moved to another document: the values read from it go with it. */
+  reassignPage(userId: string, pageId: string, toDocumentId: string): Promise<void>;
   /** Before a document is read again, its old fields go. */
   deleteForDocument(userId: string, documentId: string): Promise<void>;
   /** The owner correcting a field. False if it is not this user's, or not on this document. */
@@ -387,6 +439,8 @@ export interface MeasurementRepository {
   reassignDocument(userId: string, fromDocumentId: string, toDocumentId: string): Promise<void>;
   /** Splitting a document: the values on its pages from this one on go with them. */
   reassignFromPage(userId: string, fromDocumentId: string, toDocumentId: string, fromPageNumber: number): Promise<void>;
+  /** A page moved to another document: the values read from it go with it. */
+  reassignPage(userId: string, pageId: string, toDocumentId: string): Promise<void>;
   /** The name a test is filed under: the name given, or the one it was merged into. */
   resolveCanonical(userId: string, canonical: string): Promise<string>;
   /**
@@ -394,6 +448,14 @@ export interface MeasurementRepository {
    * remembered so later documents that use it land under `into`. Both must be tests this user has.
    */
   mergeTests(userId: string, from: string, into: string): Promise<'ok' | 'same' | 'not_found'>;
+  /**
+   * A test called something else everywhere: its values take the new name, and later documents that use the old one are
+   * filed under the new. `merged` if that name is another test's, whose values then include these. The old name must be a
+   * test this user has.
+   */
+  renameTest(userId: string, from: string, to: string): Promise<'ok' | 'merged' | 'same' | 'not_found' | 'invalid'>;
+  /** Removes every value of a test and what remembers its old names. How many values went. */
+  removeTest(userId: string, canonical: string): Promise<number>;
   /** Every test this user has a value for. */
   names(userId: string): Promise<MeasurementName[]>;
   /** Every value of one test, oldest first. */
@@ -451,7 +513,20 @@ export interface DoctorRepository {
   remove(userId: string, id: string): Promise<boolean>;
 }
 
+export interface TagWithCount { id: number; name: string; document_count: number }
+
 export interface TagRepository {
+  /** Each tag with how many documents carry it (set aside ones included). */
+  listWithCounts(userId: string): Promise<TagWithCount[]>;
+  /**
+   * Renames a tag. If another tag already has the new name the two become one (`merged`): the documents keep
+   * their tag, none twice. Links that share by this tag follow it. `invalid` for a name with nothing in it.
+   */
+  rename(userId: string, id: number, name: string): Promise<'ok' | 'merged' | 'not_found' | 'invalid'>;
+  /** One tag folded into another. Links that share by the first now share by the second. */
+  merge(userId: string, fromId: number, intoId: number): Promise<'ok' | 'same' | 'not_found'>;
+  /** Removes the tag from every document and from the vocabulary. Links that share by it then share nothing. */
+  remove(userId: string, id: number): Promise<boolean>;
   /** Per-user vocabulary: a shared one would leak other users' categories. */
   listFor(userId: string): Promise<Array<{ id: number; name: string }>>;
   namesForDocument(userId: string, documentId: string): Promise<string[]>;
@@ -492,6 +567,8 @@ export interface NewShareLink {
   scopeValue: string | null;
   createdAt: string;
   expiresAt: string;
+  includeScans: boolean;
+  language: string | null;
 }
 
 /** A live link with its owner resolved, which is what scopes a share read. */
@@ -501,6 +578,35 @@ export interface ResolvedShareLink {
   scope: string;
   scopeValue: string | null;
   expiresAt: string;
+  includeScans: boolean;
+  language: string | null;
+}
+
+/** A document's details in another language, kept until what was translated changes (see schema.sql). */
+export interface TranslationRepository {
+  get(userId: string, documentId: string, language: string): Promise<{ sourceHash: string; content: string; createdAt: string } | null>;
+  /** Replaces any earlier translation into that language. Nothing is written if the document is not the user's. */
+  put(userId: string, documentId: string, language: string, sourceHash: string, content: string, createdAt: string): Promise<void>;
+}
+
+/** A document's vector from one model. `vector` is float32 bytes; `textHash` is a digest of the text that was embedded. */
+export interface StoredEmbedding {
+  documentId: string;
+  model: string;
+  dims: number;
+  textHash: string;
+  vector: Buffer;
+}
+
+export interface EmbeddingRepository {
+  /** The vectors of one model for the user's documents that are not set aside. */
+  listFor(userId: string, model: string): Promise<StoredEmbedding[]>;
+  /** What a document has from a model, to tell whether it is current. */
+  hashesFor(userId: string, model: string): Promise<Map<string, string>>;
+  /** Replaces the document's vector from that model. Nothing is written if the document is not the user's. */
+  put(userId: string, embedding: StoredEmbedding, createdAt: string): Promise<void>;
+  /** Vectors from any other model: after a switch is complete, the old space is not kept. How many. */
+  pruneOtherModels(userId: string, keepModel: string): Promise<number>;
 }
 
 export interface MaintenanceRepository {

@@ -5,6 +5,11 @@ import { extname } from 'path';
 import { getStore, type DocumentPatch, type MeasurementChange, type NewMeasurement } from '../store/index.js';
 import { requireAuth } from './middleware.js';
 import { rereadDocument, rereadDocuments } from '../ingestion/document-reading.js';
+import { chooseModel } from '../llm/index.js';
+import { cleanLanguageCode, isSupportedLanguage, SUPPORTED_LANGUAGES } from '../languages.js';
+import { translateDocument } from '../translation.js';
+import { scheduleSync } from '../similarity/index.js';
+import { movePage, MoveError, type MoveTarget } from '../ingestion/move-page.js';
 import { isReadingPages } from '../ingestion/ai-reading.js';
 import { DOC_TYPES, DOCTOR_ROLES } from '../llm/types.js';
 import { canonicalName, flagFor, parseNumber, validWhen } from '../ingestion/measurements.js';
@@ -18,6 +23,7 @@ const PATCHABLE_FIELDS = [
   'doc_type',
   'ai_summary',
   'user_notes',
+  'language',
   'reviewed',
 ] as const;
 
@@ -63,6 +69,9 @@ function checkDetails(patch: DocumentPatch): string | null {
     return `type must be one of ${DOC_TYPES.join(', ')}`;
   }
   if (patch.reviewed !== undefined && typeof patch.reviewed !== 'boolean') return 'reviewed must be true or false';
+  if (patch.language !== undefined && patch.language !== null && patch.language !== '' && cleanLanguageCode(patch.language) === null) {
+    return 'language must be a two-letter code, or empty when unknown';
+  }
   return null;
 }
 
@@ -73,6 +82,7 @@ function normaliseDetails(patch: DocumentPatch): DocumentPatch {
     const value = out[key];
     if (typeof value === 'string') out[key] = value.trim() === '' ? null : key === 'user_notes' || key === 'ai_summary' ? value : value.trim();
   }
+  if (out.language !== undefined) out.language = cleanLanguageCode(out.language);
   return out;
 }
 
@@ -388,6 +398,7 @@ export async function documentRoutes(app: FastifyInstance) {
       }
     });
 
+    scheduleSync(req.userId); // what the document says may have changed
     return reply.send({ ok: true });
   });
 
@@ -395,24 +406,26 @@ export async function documentRoutes(app: FastifyInstance) {
   // needs no operator switch; it uses the same text-only model call as an upload. It replaces
   // the title, date, provider, type, summary, tags and fields (notes are kept) and puts the
   // document back in the review queue.
-  app.post<{ Params: { id: string } }>('/api/documents/:id/reextract', async (req, reply) => {
+  app.post<{ Params: { id: string }; Body: { model?: unknown } | undefined }>('/api/documents/:id/reextract', async (req, reply) => {
     const store = getStore();
     const doc = await store.documents.findFor(req.userId, req.params.id);
     if (!doc) return reply.status(404).send({ error: 'not found' });
+    const model = chooseModel(req.body?.model);
+    if (model === null) return reply.status(400).send({ error: 'that model is not offered' });
 
     const upload = await store.sourceFiles.findFor(req.userId, doc.source_file_id);
     if (isReadingPages(doc.source_file_id) || upload?.status === 'pending' || upload?.status === 'processing') {
       return reply.status(409).send({ error: 'this file is still being processed' });
     }
 
-    const read = await rereadDocument(req.userId, doc.id);
+    const read = await rereadDocument(req.userId, doc.id, model);
     return reply.send({ reread: read ? 'done' : 'failed' });
   });
 
   // Override page boundary — split or merge
   app.post<{
     Params: { id: string };
-    Body: { action: 'split'; at_page: number } | { action: 'merge'; with_document_id: string };
+    Body: ({ action: 'split'; at_page: number } | { action: 'merge'; with_document_id: string }) & { defer?: boolean };
   }>('/api/documents/:id/boundary', async (req, reply) => {
     const store = getStore();
     const { id } = req.params;
@@ -421,8 +434,8 @@ export async function documentRoutes(app: FastifyInstance) {
     const doc = await store.documents.findFor(req.userId, id);
     if (!doc) return reply.status(404).send({ error: 'not found' });
 
-    // Regrouping changes what a document holds, so the documents it touches are read
-    // again (text only, as at upload) and go back to review. The new grouping is saved
+    // Regrouping changes what a document holds, so the documents it touches go back to review and are read
+    // again (text only, as at upload; the pages' own text is never read again), now or, with `defer`, later. The new grouping is saved
     // first and stands even if reading fails; the old reading is then kept.
     if (body.action === 'split') {
       const { at_page } = body;
@@ -452,6 +465,9 @@ export async function documentRoutes(app: FastifyInstance) {
         await tx.documents.update(req.userId, id, { reviewed: false });
       });
 
+      // `defer`: the grouping is saved and nothing is read, so a run of changes costs one reading,
+      // which the caller asks for when it is done (POST /api/source-files/:id/extract).
+      if (body.defer) return reply.send({ split_into: [id, newId], reread: 'deferred' });
       const read = await rereadDocuments(req.userId, [id, newId]);
       return reply.send({ split_into: [id, newId], reread: read.every(Boolean) ? 'done' : 'failed' });
     }
@@ -478,11 +494,103 @@ export async function documentRoutes(app: FastifyInstance) {
         await tx.documents.update(req.userId, id, { reviewed: false });
       });
 
+      if (body.defer) return reply.send({ merged: id, reread: 'deferred' });
       const read = await rereadDocument(req.userId, id);
       return reply.send({ merged: id, reread: read ? 'done' : 'failed' });
     }
 
     return reply.status(400).send({ error: 'unknown action' });
+  });
+
+  // Set a page aside, or bring it back. The page, its image and its text are kept; it leaves the document's
+  // view, the search and the next reading. The documents that hold it go back to review, since what they
+  // should say changed, and are returned so the caller can read them again when it is ready.
+  app.patch<{ Params: { id: string }; Body: { hidden?: unknown } }>('/api/pages/:id', async (req, reply) => {
+    const hidden = req.body?.hidden;
+    if (typeof hidden !== 'boolean') return reply.status(400).send({ error: 'hidden must be true or false' });
+
+    const store = getStore();
+    const imagePath = await store.pages.findImagePathFor(req.userId, req.params.id);
+    if (!imagePath) return reply.status(404).send({ error: 'not found' });
+
+    const documentIds = await store.transaction(async tx => {
+      const held = await tx.pages.setHidden(req.userId, req.params.id, hidden);
+      for (const documentId of held ?? []) await tx.documents.update(req.userId, documentId, { reviewed: false });
+      return held;
+    });
+    if (documentIds === null) return reply.status(404).send({ error: 'not found' });
+    return reply.send({ hidden, document_ids: documentIds });
+  });
+
+  // The document in another language: its extracted details and the owner's notes, translated on demand and kept, so
+  // the next reader of this document in that language gets them at once. `status` says whether this was served
+  // from what was kept (cached), translated just now (translated), needed nothing (same, the document is already
+  // in that language) or is switched off on this server (off).
+  app.get<{ Params: { id: string }; Querystring: { lang?: string; part?: string } }>('/api/documents/:id/translation', async (req, reply) => {
+    const language = req.query.lang;
+    if (!isSupportedLanguage(language)) return reply.status(400).send({ error: `lang must be one of ${SUPPORTED_LANGUAGES.join(', ')}` });
+    const result = await translateDocument(req.userId, req.params.id, language, { part: req.query.part === 'head' ? 'head' : 'full' });
+    if (result === 'not_found') return reply.status(404).send({ error: 'not found' });
+    if (result === null) return reply.status(502).send({ error: 'the document could not be translated right now' });
+    return reply.header('Cache-Control', 'no-store').send(result);
+  });
+
+  // Move a page to another place in its upload: another position in its own document, into another document,
+  // or out into a document of its own. The page keeps its place in its file (re-reading it needs that), the
+  // pages are numbered again in their new order, the document ranges follow, and what was read from the page
+  // goes with it. The documents it touches go back to review and wait to be read again (the caller's Done).
+  app.post<{
+    Params: { id: string };
+    Body: { document_id?: unknown; before_page_id?: unknown; new_document?: unknown; before_document_id?: unknown };
+  }>('/api/pages/:id/move', async (req, reply) => {
+    const body = req.body ?? {};
+    const id = (value: unknown) => (typeof value === 'string' && value.length > 0 ? value : value === null || value === undefined ? null : undefined);
+
+    let target: MoveTarget;
+    if (body.new_document === true) {
+      const before = id(body.before_document_id);
+      if (before === undefined) return reply.status(400).send({ error: 'before_document_id must be a document id or null' });
+      target = { newDocument: true, beforeDocumentId: before };
+    } else {
+      const document = id(body.document_id);
+      const before = id(body.before_page_id);
+      if (!document || before === undefined) return reply.status(400).send({ error: 'name a document_id, and before_page_id or null; or new_document: true' });
+      target = { documentId: document, beforePageId: before };
+    }
+
+    const store = getStore();
+    const sourceFileId = await store.pages.sourceFileOf(req.userId, req.params.id);
+    if (!sourceFileId) return reply.status(404).send({ error: 'not found' });
+    const upload = await store.sourceFiles.findFor(req.userId, sourceFileId);
+    if (isReadingPages(sourceFileId) || upload?.status === 'pending' || upload?.status === 'processing') {
+      return reply.status(409).send({ error: 'this file is still being processed' });
+    }
+
+    try {
+      return reply.send(await movePage(req.userId, req.params.id, target, uuidv4()));
+    } catch (err) {
+      if (err instanceof MoveError) {
+        return reply.status(err.code === 'not_found' ? 404 : err.code === 'inconsistent' ? 409 : 400).send({ error: err.message });
+      }
+      throw err;
+    }
+  });
+
+  // Set a whole document aside, or bring it back: every page of its range at once, however many there are.
+  // The document then leaves the timeline, search, shares and trends (a document with every page hidden is
+  // set aside) and stays on the upload's regrouping screen. It goes back to review, as hiding one page does.
+  app.patch<{ Params: { id: string }; Body: { hidden?: unknown } }>('/api/documents/:id/hidden', async (req, reply) => {
+    const hidden = req.body?.hidden;
+    if (typeof hidden !== 'boolean') return reply.status(400).send({ error: 'hidden must be true or false' });
+
+    const store = getStore();
+    if (!(await store.documents.findFor(req.userId, req.params.id))) return reply.status(404).send({ error: 'not found' });
+
+    await store.transaction(async tx => {
+      await tx.pages.setHiddenForDocument(req.userId, req.params.id, hidden);
+      await tx.documents.update(req.userId, req.params.id, { reviewed: false });
+    });
+    return reply.send({ hidden, document_ids: [req.params.id] });
   });
 
   // Serve page images (authenticated — these are medical scans, never static)

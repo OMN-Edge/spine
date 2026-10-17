@@ -4,6 +4,7 @@ import type { Doctor } from '../../types.js';
 import type { DoctorDocument, DoctorOnDocument, DoctorRepository, DoctorWithCounts } from '../types.js';
 import { doctorDisplayName, doctorKey, MAX_DOCTOR_TEXT, normaliseLicenseCode } from '../../doctors.js';
 import { owner } from './owner.js';
+import { NOT_SET_ASIDE } from './visibility.js';
 
 /** Every statement filters by `user_id` (SECURITY.md P12). */
 export function doctorRepository(db: Database): DoctorRepository {
@@ -37,16 +38,16 @@ export function doctorRepository(db: Database): DoctorRepository {
   `);
   const list = db.prepare(`
     SELECT k.id, k.name, k.specialty, k.clinic, k.license_code, k.created_at,
-           COUNT(DISTINCT l.document_id) AS document_count, MAX(d.doc_date) AS last_seen
+           COUNT(DISTINCT d.id) AS document_count, MAX(d.doc_date) AS last_seen
     FROM doctors k
     LEFT JOIN document_doctors l ON l.doctor_id = k.id AND l.user_id = k.user_id
-    LEFT JOIN documents d ON d.id = l.document_id AND d.user_id = k.user_id
+    LEFT JOIN documents d ON d.id = l.document_id AND d.user_id = k.user_id AND ${NOT_SET_ASIDE}
     WHERE k.user_id = ? GROUP BY k.id ORDER BY k.name COLLATE NOCASE
   `);
   const documentsFor = db.prepare(`
     SELECT d.id, d.title, d.doc_type, d.doc_date, d.provider, l.role
     FROM document_doctors l JOIN documents d ON d.id = l.document_id AND d.user_id = l.user_id
-    WHERE l.doctor_id = ? AND l.user_id = ? ORDER BY d.doc_date DESC NULLS LAST, d.rowid DESC
+    WHERE l.doctor_id = ? AND l.user_id = ? AND ${NOT_SET_ASIDE} ORDER BY d.doc_date DESC NULLS LAST, d.rowid DESC
   `);
   const keyTaken = db.prepare('SELECT id FROM doctors WHERE user_id = ? AND key = ? AND id <> ?');
   const rename = db.prepare('UPDATE doctors SET name = ?, key = ? WHERE id = ? AND user_id = ?');

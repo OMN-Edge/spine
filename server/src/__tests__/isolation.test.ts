@@ -140,6 +140,13 @@ describe('P1 — deny by default', () => {
     'POST /api/auth/reset',
     'GET /share/:token',
     'GET /api/share/:token/documents',
+    // Public on purpose, and scoped by the link, not a session: public-share-detail.test.ts.
+    'GET /api/share/:token/documents/:id',
+    'GET /api/share/:token/pages/:pageId/image',
+    'GET /api/share/:token/meta',
+    'GET /api/share/:token/documents/:id/translation',
+    'GET /api/share/:token/trends',
+    'GET /api/share/:token/trends/series',
   ]);
 
   it('refuses every other route without a session', async () => {
@@ -382,11 +389,20 @@ describe('store — every method honours the acting user', () => {
     await store.sourceFiles.setPageCount(B.id, fileA, 99);
     await store.shareLinks.revoke(B.id, linkA);
     expect(await store.sourceFiles.clearDerived(B.id, fileA)).toBe(0);
+    expect(await store.sourceFiles.delete(B.id, fileA)).toBe(false);
+    expect(await store.pages.setHiddenForDocument(B.id, docA, true)).toBe(0);
+    // Moving pages: another user's page has no upload, cannot be numbered, and its values cannot be moved.
+    expect(await store.pages.sourceFileOf(B.id, pageA)).toBeNull();
+    await expect(store.pages.renumber(B.id, fileA, [pageA])).rejects.toThrow();
+    await store.documents.setRange(B.id, docA, 7, 9);
+    await store.fields.reassignPage(B.id, pageA, docB);
+    await store.measurements.reassignPage(B.id, pageA, docB);
 
     expect(await store.documents.findFor(OWNER_ID, docA)).toEqual(before);
     expect(await store.sourceFiles.findFor(OWNER_ID, fileA)).toEqual(fileBefore);
     expect(await store.tags.namesForDocument(OWNER_ID, docA)).toContain('a-only-tag');
     expect(await store.fields.listForDocument(OWNER_ID, docA)).toHaveLength(1);
+    expect(await store.fields.listForDocument(B.id, docB)).toEqual([]); // A's field did not move into B's document
     const links = await store.shareLinks.listFor(OWNER_ID);
     expect(links.find(l => l.id === linkA)?.revoked).toBeFalsy();
   });

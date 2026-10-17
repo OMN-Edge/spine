@@ -138,6 +138,8 @@ export async function seedShareLink(overrides: {
   scopeValue?: string | null;
   expiresAt?: string;
   revoked?: boolean;
+  includeScans?: boolean;
+  language?: string | null;
 }) {
   const store = getStore();
   const id = uuidv4();
@@ -151,6 +153,8 @@ export async function seedShareLink(overrides: {
     scopeValue: overrides.scopeValue ?? null,
     createdAt: new Date().toISOString(),
     expiresAt: overrides.expiresAt ?? new Date(Date.now() + 7 * 86_400_000).toISOString(),
+    includeScans: overrides.includeScans ?? false,
+    language: overrides.language ?? null,
   });
 
   if (overrides.revoked) await store.shareLinks.revoke(userId, id);

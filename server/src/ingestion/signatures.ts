@@ -9,6 +9,7 @@ import { logger } from '../logger.js';
 import { aiReadingAllowed } from '../parser/index.js';
 import { mapLimit } from '../concurrency.js';
 import { llmConcurrency } from '../config.js';
+import { describeError } from '../failure.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -137,7 +138,7 @@ export async function readSignatures(filePath: string, lastPages: number[], maxP
   try {
     listing = parseImageList((await execFileAsync('pdfimages', ['-list', filePath], { maxBuffer: 32 * 1024 * 1024, timeout: POPPLER_TIMEOUT_MS })).stdout);
   } catch (err) {
-    logger.warn('could not list the images in a PDF; no doctors read from stamps', { error: err instanceof Error ? err.message : String(err) });
+    logger.warn('could not list the images in a PDF; no doctors read from stamps', { error: describeError(err) });
     return result;
   }
 
@@ -157,7 +158,7 @@ export async function readSignatures(filePath: string, lastPages: number[], maxP
       const reading = await getChatLlm().readStamps(images);
       if (reading && reading.doctors.length > 0) result.set(page, reading.doctors);
     } catch (err) {
-      logger.warn('could not read the signature stamps on a page', { page, error: err instanceof Error ? err.message : String(err) });
+      logger.warn('could not read the signature stamps on a page', { page, error: describeError(err) });
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

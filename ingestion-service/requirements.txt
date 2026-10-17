@@ -1,5 +1,20 @@
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
-unstructured[pdf]==0.15.0
+unstructured==0.27.28
+# Not unstructured[pdf]: that extra installs torch and transformers (about 1.7 GB), and strategy="fast" uses neither. This is the set its fast path imports, found by trial; a version bump can add to it.
+pdfminer.six==20260107
+pypdf==6.21.0
+pikepdf==10.17.0
+pdf2image==1.17.0
+pi_heif==1.4.0
+unstructured.pytesseract==0.3.15
+# unstructured_inference is imported at load time even for "fast" but must be installed with --no-deps (torch, transformers), which a requirements file cannot say: install.sh does it. These are the rest of what it imports.
+opencv-python-headless==5.0.0.93
+pandas==3.0.6
+scipy==1.18.1
+onnx==1.23.2
+onnxruntime==1.31.0
+huggingface_hub==2.2.0
+matplotlib==3.11.2
 # Optional: uncomment for PaddleOCR (requires custom Dockerfile build)
 # unstructured-paddleocr==0.0.4

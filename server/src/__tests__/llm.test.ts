@@ -110,7 +110,7 @@ describe('loadConfig — llm section', () => {
     expect(llm.provider).toBe('anthropic');
     expect(llm.model).toBe('claude-haiku-4-5-20251001');
     // Extraction has room to list a lab panel's every value.
-    expect(llm.maxTokens).toEqual({ continuation: 256, extraction: 4096, page: 4096 });
+    expect(llm.maxTokens).toEqual({ continuation: 1024, extraction: 16384, page: 16384 });
   });
 
   it('has one cap on request text, the context window, and takes it from the environment', () => {
@@ -189,6 +189,10 @@ describe('task specs', () => {
     const specs = buildTaskSpecs({ ...base, maxTokens: { continuation: 111, extraction: 222, page: 333 } });
     expect(specs.continuation.maxTokens).toBe(111);
     expect(specs.extraction.maxTokens).toBe(222);
+    // The simple tasks are told not to deliberate; extraction is left to the model.
+    expect(Object.fromEntries(Object.values(specs).map(s => [s.name, s.reasoning]))).toEqual({
+      continuation: 'none', extraction: 'default', page: 'none', stamps: 'none', translation: 'none',
+    });
   });
 
   it('derives each JSON Schema from the zod schema the interface validates with', async () => {

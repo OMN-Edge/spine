@@ -9,14 +9,13 @@ import { checkContinuation } from './continuation.js';
 import { readDocument, storeReading } from './document-reading.js';
 import { llmConcurrency } from '../config.js';
 import { mapLimit } from '../concurrency.js';
+import { beginJob, getJobStatus, runQueued } from './jobs.js';
 import type { JobStatus, UnstructuredElement } from '../types.js';
+import { describeError } from '../failure.js';
+import { cleanLanguageCode } from '../languages.js';
+import { scheduleSync } from '../similarity/index.js';
 
-// Simple in-memory job registry — sufficient for single-user
-const jobs = new Map<string, JobStatus>();
-
-export function getJobStatus(sourceFileId: string): JobStatus | null {
-  return jobs.get(sourceFileId) ?? null;
-}
+export { getJobStatus };
 
 /**
  * Fail over any source_file left mid-flight by a previous process.
@@ -32,32 +31,18 @@ export async function reconcileStalledJobs(): Promise<number> {
 
 export interface IngestionOptions {
   /**
-   * Read the file again with the model for every page, replacing what it produced.
-   * The "Read with AI" button. The old documents are removed only after the new
-   * reading has succeeded, so a failed attempt leaves them as they were.
-   */
-  reread?: boolean;
-  /**
-   * Run an upload that failed again, the way it was first read (the configured parser, not the
-   * model for every page). What the failed attempt left behind is removed only once this one has
-   * succeeded, as for `reread`.
+   * Run an upload that failed again, the way it was first read. What the failed attempt left behind
+   * is removed only once this one has succeeded, so a second failure leaves it as it was.
    */
   retry?: boolean;
 }
 
 export function startIngestionJob(sourceFileId: string, userId: string, options: IngestionOptions = {}): void {
-  if (jobs.get(sourceFileId)?.status === 'processing') return;
-
-  const job: JobStatus = {
-    source_file_id: sourceFileId,
-    status: 'processing',
-    progress: 0,
-    step: 'starting',
-  };
-  jobs.set(sourceFileId, job);
+  const job = beginJob(sourceFileId);
+  if (!job) return;
 
   // Fire-and-forget; errors are captured in the job record
-  runPipeline(sourceFileId, userId, job, options).catch(() => {});
+  runQueued(() => runPipeline(sourceFileId, userId, job, options)).catch(() => {});
 }
 
 async function runPipeline(
@@ -94,7 +79,7 @@ async function runPipeline(
     // way: one entry per page image, boxes in that image's pixel space.
     job.step = 'parsing';
     job.progress = 20;
-    const parser = options.reread || isPhoto ? getModelParser() : getParser();
+    const parser = isPhoto ? getModelParser() : getParser();
     const parseResult = await parser.parse({
       sourceFileId,
       filePath: sourceFile.file_path,
@@ -122,7 +107,7 @@ async function runPipeline(
 
     // Everything that can fail on the model's side has now succeeded. Only now remove the old
     // documents, so a provider outage or a page the model could not read leaves them untouched.
-    if (options.reread || options.retry) await store.sourceFiles.clearDerived(userId, sourceFileId);
+    if (options.retry) await store.sourceFiles.clearDerived(userId, sourceFileId);
 
     for (const [i, page] of parsed.entries()) {
       const continuation = i > 0 ? continuations[i - 1] : null;
@@ -194,6 +179,7 @@ async function runPipeline(
           provider: extraction.provider,
           docType: extraction.doc_type,
           aiSummary: extraction.ai_summary,
+          language: cleanLanguageCode(extraction.language),
         });
 
         await tx.tags.setForDocument(userId, docId, extraction.suggested_tags);
@@ -223,7 +209,7 @@ async function runPipeline(
         }
       } catch (err) {
         // The documents are already stored; a signature that could not be filed is not a failed upload.
-        logger.warn('could not file the doctors read from signature stamps', { sourceFileId, error: err instanceof Error ? err.message : String(err) });
+        logger.warn('could not file the doctors read from signature stamps', { sourceFileId, error: describeError(err) });
       }
     }
 
@@ -244,16 +230,18 @@ async function runPipeline(
           });
         }
       } catch (err) {
-        logger.warn('could not file the doctors who signed the PDF', { sourceFileId, error: err instanceof Error ? err.message : String(err) });
+        logger.warn('could not file the doctors who signed the PDF', { sourceFileId, error: describeError(err) });
       }
     }
 
     await store.sourceFiles.setStatus(userId, sourceFileId, 'done');
+    scheduleSync(userId);
     job.status = 'done';
     job.progress = 100;
     job.step = 'complete';
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = describeError(err);
+    logger.error('an upload failed', { sourceFileId, error: msg });
     await store.sourceFiles.setStatus(userId, sourceFileId, 'error', msg);
     job.status = 'error';
     job.step = 'failed';

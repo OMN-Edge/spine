@@ -9,17 +9,20 @@
 export interface AppLogger {
   info(message: string, detail?: Record<string, unknown>): void;
   warn(message: string, detail?: Record<string, unknown>): void;
+  error(message: string, detail?: Record<string, unknown>): void;
 }
 
 let current: AppLogger = {
   info: (message, detail) => console.log(message, detail ?? ''),
   warn: (message, detail) => console.warn(message, detail ?? ''),
+  error: (message, detail) => console.error(message, detail ?? ''),
 };
 
 /** Delegates, so a module that imported `logger` early still follows a later `useLogger`. */
 export const logger: AppLogger = {
   info: (message, detail) => current.info(message, detail),
   warn: (message, detail) => current.warn(message, detail),
+  error: (message, detail) => current.error(message, detail),
 };
 
 export function useLogger(next: AppLogger): void {

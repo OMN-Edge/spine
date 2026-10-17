@@ -30,6 +30,25 @@ import { LlmConfigError, type ChatLlmConfig } from '../types.js';
  * docs/deployment-gcp.md.
  */
 
+/**
+ * The archive is clinical documents: a scanned page can mention an injury, a medication overdose, a
+ * sexual-health result or a body part, and Gemini's default filters then refuse the page ("Prompt
+ * blocked: SAFETY") and Spine is left with an unread page. Nothing here is generated for anyone else
+ * to see, so the configurable filters are turned off. Google's own non-configurable blocks stay.
+ */
+const SAFETY_SETTINGS = [
+  'HARM_CATEGORY_HARASSMENT',
+  'HARM_CATEGORY_HATE_SPEECH',
+  'HARM_CATEGORY_SEXUALLY_EXPLICIT',
+  'HARM_CATEGORY_DANGEROUS_CONTENT',
+].map(category => ({ category, threshold: 'BLOCK_NONE' }));
+
+/**
+ * The smallest thinking budget the model takes. Flash models accept 0; the Pro models refuse it (a 400)
+ * and have a floor of 128 tokens, which is as close to off as they go.
+ */
+const thinkingBudgetFor = (model: string): number => (/-pro\b/i.test(model) ? 128 : 0);
+
 /** Environment variables whose mere presence can reroute Google traffic. */
 const API_KEY_VARS = ['GOOGLE_API_KEY', 'GEMINI_API_KEY', 'GOOGLE_GENAI_API_KEY'] as const;
 
@@ -73,6 +92,10 @@ export function createVertexChat(
       location: config.region,
       endpoint,
       maxOutputTokens: task.maxTokens,
+      ...(/^gemini/i.test(config.model) ? { safetySettings: SAFETY_SETTINGS } : {}),
+      // Gemini counts its thinking against the output cap. A budget of 0 turns it off: the model rejects
+      // `thinkingLevel: MINIMAL` (400) but accepts this. Claude on Vertex has no such option.
+      ...(task.reasoning === 'none' && /^gemini/i.test(config.model) ? { thinkingBudget: thinkingBudgetFor(config.model) } : {}),
       maxRetries: config.maxRetries,
       authOptions: { projectId: config.project },
     });

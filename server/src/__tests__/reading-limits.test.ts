@@ -28,7 +28,7 @@ afterEach(() => {
 });
 
 const page = (n: number, text: string): PageSummary =>
-  ({ id: `p${n}`, page_number: n, raw_text: text, is_continuation: null, image_width: 1, image_height: 1, extraction_source: 'ocr' });
+  ({ id: `p${n}`, page_number: n, source_page: n, raw_text: text, is_continuation: null, image_width: 1, image_height: 1, extraction_source: 'ocr', hidden: false });
 
 const extraction = (title: string, fields: Array<{ label: string; page_number: number; value?: string }> = []) => ({
   title, doc_date: null, provider: null, doc_type: 'other' as const, ai_summary: `${title} summary`, suggested_tags: [title.toLowerCase()], doctors: [], measurements: [],

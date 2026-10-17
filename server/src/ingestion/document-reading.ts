@@ -6,6 +6,8 @@ import { groundSnippet } from './grounding.js';
 import { EXTRACTION_FALLBACK } from '../llm/types.js';
 import { llmConcurrency, llmContextChars } from '../config.js';
 import { mapLimit } from '../concurrency.js';
+import { cleanLanguageCode } from '../languages.js';
+import { scheduleSync } from '../similarity/index.js';
 import type { ExtractionResult } from '../types.js';
 
 /**
@@ -106,6 +108,7 @@ export async function readDocument(
   userId: string,
   documentId: string,
   pages: PageSummary[],
+  model?: string,
 ): Promise<DocumentReading> {
   const store = getStore();
 
@@ -114,7 +117,9 @@ export async function readDocument(
   // The tests already in the archive go with every chunk, so one test is named one way across labs.
   const knownTests = await knownTestNames(userId);
   const extractions: ExtractionResult[] = [];
-  for (const text of chunkPages(pages, llmContextChars())) extractions.push(await extractFields(text, knownTests));
+  // The person's own tags, so a category is not split into near-duplicates by the model's wording.
+  const knownTags = (await store.tags.listFor(userId)).map(t => t.name);
+  for (const text of chunkPages(pages, llmContextChars())) extractions.push(await extractFields(text, knownTests, model, knownTags));
   const extraction = mergeExtractions(extractions);
 
   // Where on its page a supporting phrase is, as a box; null when it cannot be pinned down.
@@ -193,18 +198,19 @@ export async function storeReading(tx: Store, userId: string, documentId: string
  * is better than writing "extraction failed" over it. This is the part that waits on the
  * model, so documents can be read in parallel.
  */
-async function readExisting(userId: string, documentId: string): Promise<DocumentReading | null> {
+async function readExisting(userId: string, documentId: string, model?: string): Promise<DocumentReading | null> {
   const store = getStore();
   const doc = await store.documents.findFor(userId, documentId);
   if (!doc) return null;
 
+  // Pages the owner set aside are not read: that is what hiding one is for.
   const pages = (await store.pages.listForSourceFile(userId, doc.source_file_id)).filter(
-    p => p.page_number >= doc.page_start && p.page_number <= doc.page_end,
+    p => p.page_number >= doc.page_start && p.page_number <= doc.page_end && !p.hidden,
   );
   if (pages.length === 0) return null;
 
   try {
-    const reading = await readDocument(userId, documentId, pages);
+    const reading = await readDocument(userId, documentId, pages, model);
     return reading.extraction === EXTRACTION_FALLBACK ? null : reading;
   } catch {
     return null;
@@ -226,6 +232,7 @@ async function applyReading(userId: string, documentId: string, reading: Documen
       provider: extraction.provider ?? undefined,
       doc_type: extraction.doc_type,
       ai_summary: extraction.ai_summary,
+      language: cleanLanguageCode(extraction.language) ?? undefined,
       reviewed: false,
     });
     await tx.tags.setForDocument(userId, documentId, extraction.suggested_tags);
@@ -234,11 +241,12 @@ async function applyReading(userId: string, documentId: string, reading: Documen
     await tx.doctors.unlinkRead(userId, documentId); // not what a signature stamp gave: that is not in the text
     await storeReading(tx, userId, documentId, reading);
   });
+  scheduleSync(userId); // its meaning may have changed
 }
 
 /** Reads one document again and, if that worked, replaces what it held. */
-export async function rereadDocument(userId: string, documentId: string): Promise<boolean> {
-  const reading = await readExisting(userId, documentId);
+export async function rereadDocument(userId: string, documentId: string, model?: string): Promise<boolean> {
+  const reading = await readExisting(userId, documentId, model);
   if (!reading) return false;
   await applyReading(userId, documentId, reading);
   return true;
@@ -248,8 +256,8 @@ export async function rereadDocument(userId: string, documentId: string): Promis
  * Several documents read again. The model calls run in parallel, up to the concurrency
  * setting; the writes then happen one after another. Whether each one worked, in the order given.
  */
-export async function rereadDocuments(userId: string, documentIds: string[]): Promise<boolean[]> {
-  const readings = await mapLimit(documentIds, llmConcurrency(), id => readExisting(userId, id));
+export async function rereadDocuments(userId: string, documentIds: string[], model?: string): Promise<boolean[]> {
+  const readings = await mapLimit(documentIds, llmConcurrency(), id => readExisting(userId, id, model));
   const done: boolean[] = [];
   for (const [i, reading] of readings.entries()) {
     if (reading) await applyReading(userId, documentIds[i], reading);

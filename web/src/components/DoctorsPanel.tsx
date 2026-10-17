@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import type { DoctorOnDocument, DoctorRole } from '../api';
+import { msg, useI18n } from '../i18n';
 
 export interface DraftDoctor {
   key: string;
@@ -9,27 +10,35 @@ export interface DraftDoctor {
 }
 
 export const ROLE_LABELS: Record<DoctorRole, string> = {
-  author: 'Wrote it',
-  prescriber: 'Prescribed',
-  referrer: 'Referred',
-  other: 'Mentioned',
+  author: msg('Wrote it'),
+  prescriber: msg('Prescribed'),
+  referrer: msg('Referred'),
+  other: msg('Mentioned'),
 };
 
 export const draftDoctor = (d: DoctorOnDocument): DraftDoctor => ({ key: `${d.id}-${d.role}`, name: d.name, specialty: d.specialty ?? '', role: d.role });
 
 /** Reading mode: who this document names, each linking to their page in the directory. */
-export function DoctorsList({ doctors }: { doctors: DoctorOnDocument[] }) {
+export function DoctorsList({ doctors, plain = false }: { doctors: Array<Pick<DoctorOnDocument, 'id' | 'name' | 'specialty' | 'role'>>; plain?: boolean }) {
+  const { t } = useI18n();
   return (
     <div className="space-y-1">
-      {doctors.map(d => (
-        <Link key={`${d.id}-${d.role}`} to={`/doctors/${d.id}`} className="flex items-baseline justify-between gap-3 p-2 text-xs rounded-lg hover:bg-gray-50">
-          <span className="min-w-0">
-            <span className="font-medium text-gray-900 break-words">{d.name}</span>
-            {d.specialty && <span className="block text-gray-400">{d.specialty}</span>}
-          </span>
-          <span className="text-gray-500 shrink-0">{ROLE_LABELS[d.role]}</span>
-        </Link>
-      ))}
+      {doctors.map(d => {
+        const inside = (
+          <>
+            <span className="min-w-0">
+              <span className="font-medium text-gray-900 break-words">{d.name}</span>
+              {d.specialty && <span className="block text-gray-400">{d.specialty}</span>}
+            </span>
+            <span className="text-gray-500 shrink-0">{t(ROLE_LABELS[d.role] ?? ROLE_LABELS.other)}</span>
+          </>
+        );
+        const row = 'flex items-baseline justify-between gap-3 p-2 text-xs rounded-lg';
+        // A recipient has no directory to go to: the owner's pages are not theirs to open.
+        return plain
+          ? <div key={`${d.id}-${d.role}`} className={row}>{inside}</div>
+          : <Link key={`${d.id}-${d.role}`} to={`/doctors/${d.id}`} className={`${row} hover:bg-gray-50`}>{inside}</Link>;
+      })}
     </div>
   );
 }
@@ -48,25 +57,26 @@ export function DoctorsEditor({ rows, known, onChange, onAdd, onRemove, listId }
   onRemove: (key: string) => void;
   listId: string;
 }) {
+  const { t } = useI18n();
   return (
     <div className="space-y-3">
       <datalist id={listId}>{known.map(n => <option key={n} value={n} />)}</datalist>
       {rows.map(r => (
         <div key={r.key} className="border border-gray-100 rounded-lg p-2 space-y-2">
           <div className="flex gap-2">
-            <input aria-label="Doctor name" placeholder="Name" list={listId} className={`${cell} font-medium`} value={r.name} onChange={e => onChange(r.key, { name: e.target.value })} />
-            <button type="button" aria-label="Remove doctor" className="text-gray-400 hover:text-red-600 px-1" onClick={() => onRemove(r.key)}>✕</button>
+            <input aria-label={t('Doctor name')} placeholder={t('Name')} list={listId} className={`${cell} font-medium`} value={r.name} onChange={e => onChange(r.key, { name: e.target.value })} />
+            <button type="button" aria-label={t('Remove doctor')} className="text-gray-400 hover:text-red-600 px-1" onClick={() => onRemove(r.key)}>✕</button>
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <input aria-label="Specialty" placeholder="Specialty" className={cell} value={r.specialty} onChange={e => onChange(r.key, { specialty: e.target.value })} />
-            <select aria-label="Role" className={cell} value={r.role} onChange={e => onChange(r.key, { role: e.target.value as DoctorRole })}>
-              {(Object.keys(ROLE_LABELS) as DoctorRole[]).map(role => <option key={role} value={role}>{ROLE_LABELS[role]}</option>)}
+            <input aria-label={t('Specialty')} placeholder={t('Specialty')} className={cell} value={r.specialty} onChange={e => onChange(r.key, { specialty: e.target.value })} />
+            <select aria-label={t('Role')} className={cell} value={r.role} onChange={e => onChange(r.key, { role: e.target.value as DoctorRole })}>
+              {(Object.keys(ROLE_LABELS) as DoctorRole[]).map(role => <option key={role} value={role}>{t(ROLE_LABELS[role])}</option>)}
             </select>
           </div>
         </div>
       ))}
-      {rows.length === 0 && <p className="text-xs text-gray-400">No doctors</p>}
-      <button type="button" onClick={onAdd} className="text-xs text-blue-600 hover:underline">+ Add doctor</button>
+      {rows.length === 0 && <p className="text-xs text-gray-400">{t('No doctors')}</p>}
+      <button type="button" onClick={onAdd} className="text-xs text-blue-600 hover:underline">+ {t('Add doctor')}</button>
     </div>
   );
 }

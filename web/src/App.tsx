@@ -16,23 +16,27 @@ import DocumentPage from './pages/DocumentPage';
 import Search from './pages/Search';
 import Trends from './pages/Trends';
 import Doctors from './pages/Doctors';
+import Library from './pages/Library';
 import DoctorPage from './pages/DoctorPage';
 import ShareLinks from './pages/ShareLinks';
 import PublicShareView from './pages/PublicShareView';
 import { Wordmark } from './components/Logo';
+import { LanguageSwitcher, msg, useI18n } from './i18n';
 
 const NAV_LINKS = [
-  { to: '/', label: 'Timeline' },
-  { to: '/upload', label: 'Upload' },
-  { to: '/review', label: 'Review' },
-  { to: '/trends', label: 'Trends' },
-  { to: '/doctors', label: 'Doctors' },
-  { to: '/search', label: 'Search' },
-  { to: '/share', label: 'Share Links' },
+  { to: '/', label: msg('Timeline') },
+  { to: '/upload', label: msg('Upload') },
+  { to: '/review', label: msg('Review') },
+  { to: '/trends', label: msg('Trends') },
+  { to: '/doctors', label: msg('Doctors') },
+  { to: '/library', label: msg('Library') },
+  { to: '/search', label: msg('Search') },
+  { to: '/share', label: msg('Share links') },
 ];
 
 function Layout({ children }: { children: React.ReactNode }) {
   const { email, setAuthenticated } = useAuth();
+  const { t } = useI18n();
   const navigate = useNavigate();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -53,15 +57,16 @@ function Layout({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-gray-50">
       <nav className="bg-white border-b border-gray-200">
         <div className="px-4 sm:px-6 py-3 flex items-center gap-6">
-          <Link to="/" className="mr-2 md:mr-4" aria-label="Spine, home"><Wordmark /></Link>
+          <Link to="/" className="mr-2 md:mr-4" aria-label={t('Spine, home')}><Wordmark /></Link>
 
           {/* wide screens: everything in one row */}
           <div className="hidden md:flex items-center gap-6 flex-1">
             {NAV_LINKS.map(link => (
-              <NavLink key={link.to} to={link.to} end={link.to === '/'} className={linkClass}>{link.label}</NavLink>
+              <NavLink key={link.to} to={link.to} end={link.to === '/'} className={linkClass}>{t(link.label)}</NavLink>
             ))}
-            <Link to="/account" className="ml-auto text-sm text-gray-400 hover:text-gray-600 truncate max-w-[16rem]">{email}</Link>
-            <button onClick={logout} className="text-sm text-gray-400 hover:text-gray-600">Sign out</button>
+            <LanguageSwitcher className="ml-auto" />
+            <Link to="/account" className="text-sm text-gray-400 hover:text-gray-600 truncate max-w-[16rem]">{email}</Link>
+            <button onClick={logout} className="text-sm text-gray-400 hover:text-gray-600">{t('Sign out')}</button>
           </div>
 
           {/* narrow screens: a menu button */}
@@ -70,7 +75,7 @@ function Layout({ children }: { children: React.ReactNode }) {
             onClick={() => setMenuOpen(open => !open)}
             aria-expanded={menuOpen}
             aria-controls="nav-menu"
-            aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+            aria-label={menuOpen ? t('Close menu') : t('Open menu')}
             className="md:hidden ml-auto -mr-2 p-2 rounded-lg text-gray-600 hover:bg-gray-100"
           >
             <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden="true">
@@ -86,13 +91,14 @@ function Layout({ children }: { children: React.ReactNode }) {
                 key={link.to} to={link.to} end={link.to === '/'}
                 className={({ isActive }) => `block py-3 text-base border-b border-gray-100 ${isActive ? 'text-gray-900 font-medium' : 'text-gray-600'}`}
               >
-                {link.label}
+                {t(link.label)}
               </NavLink>
             ))}
             <Link to="/account" className="block py-3 text-base text-gray-600 border-b border-gray-100 truncate">
-              Account <span className="text-gray-400">· {email}</span>
+              {t('Account')} <span className="text-gray-400">· {email}</span>
             </Link>
-            <button onClick={logout} className="block w-full text-left py-3 text-base text-gray-600">Sign out</button>
+            <div className="py-3"><LanguageSwitcher /></div>
+            <button onClick={logout} className="block w-full text-left py-3 text-base text-gray-600">{t('Sign out')}</button>
           </div>
         )}
       </nav>
@@ -113,6 +119,7 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  const { t } = useI18n();
   const [authenticated, setAuthenticatedState] = useState(false);
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(true);
@@ -129,7 +136,7 @@ export default function App() {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center text-gray-400">Loading…</div>;
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-gray-400">{t('Loading…')}</div>;
 
   return (
     <AuthContext.Provider value={{ authenticated, email, setAuthenticated }}>
@@ -148,6 +155,7 @@ export default function App() {
         <Route path="/review/:id" element={<ReviewRedirect />} />
         <Route path="/trends" element={<PrivateRoute><Trends /></PrivateRoute>} />
         <Route path="/doctors" element={<PrivateRoute><Doctors /></PrivateRoute>} />
+        <Route path="/library" element={<PrivateRoute><Library /></PrivateRoute>} />
         <Route path="/doctors/:id" element={<PrivateRoute><DoctorPage /></PrivateRoute>} />
         <Route path="/search" element={<PrivateRoute><Search /></PrivateRoute>} />
         <Route path="/share" element={<PrivateRoute><ShareLinks /></PrivateRoute>} />

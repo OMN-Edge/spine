@@ -268,7 +268,10 @@ describe('the doctors directory', () => {
 
 describe('entries that are probably one person', () => {
   const make = (name: string, specialty?: string) => getStore().doctors.upsert(OWNER_ID, { name, specialty }, new Date().toISOString()).then(id => id!);
-  const tag = () => uuidv4().slice(0, 6).replace(/[^a-z]/g, 'q');
+  // Letters only and different in every position the matcher could compare (random ones with digits turned into 'q' could
+  // end up near each other, and near another test's names, now and then).
+  let seq = 0;
+  const tag = () => { seq += 1; return `${'bcdfghjklmnpqrstvwxz'[seq % 20]}${'aeiou'[Math.floor(seq / 20) % 5]}${'bcdfghjklmnpqrstvwxz'[Math.floor(seq / 100) % 20]}zork`; };
   const suggestions = async (c = cookie) => (await get('/api/doctors/duplicates', c)).json() as Array<{ keep: { id: string; name: string }; other: { id: string; name: string } }>;
   const pairOf = (list: Awaited<ReturnType<typeof suggestions>>, a: string, b: string) => list.find(p => [p.keep.id, p.other.id].sort().join() === [a, b].sort().join());
 

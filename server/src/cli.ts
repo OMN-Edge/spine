@@ -20,6 +20,8 @@ import {
  *   npm run cli -- disable-2fa <email>
  *   npm run cli -- delete-user <email> [--yes]
  *   npm run cli -- list-users
+ *   npm run cli -- check-embeddings
+ *   npm run cli -- embed-all <email>
  *
  * Without --password-stdin a password is generated and printed once. It is never
  * stored anywhere readable and cannot be shown again.
@@ -38,7 +40,9 @@ const USAGE = `usage:
   reset-link <email> [--hours N]
   disable-2fa <email>
   delete-user <email> [--yes]
-  list-users`;
+  list-users
+  check-embeddings
+  embed-all <email>`;
 
 async function choosePassword(flags: string[], io: CliIo): Promise<{ password: string; generated: boolean }> {
   if (flags.includes('--password-stdin')) {
@@ -181,6 +185,34 @@ export async function runCli(args: string[], io: CliIo): Promise<number> {
         const status = user.email_verified_at ? '' : '\tUNVERIFIED';
         io.out(`${user.email}\tcreated ${user.created_at}${status}`);
       }
+      return 0;
+    }
+
+    // Sends one short sentence to the embedding service and says what came back: whether the endpoint, project and
+    // model are right, how many numbers, how long it took. Nothing of any document is sent.
+    case 'check-embeddings': {
+      const { getEmbedder } = await import('./embedding/index.js');
+      const embedder = getEmbedder();
+      if (!embedder.enabled) { io.err('embeddings are off (SPINE_EMBEDDINGS is none)'); return 1; }
+      const started = Date.now();
+      try {
+        const [v] = await embedder.embed(['a short test sentence'], 'query');
+        io.out(`ok: ${embedder.id}, ${v.length} numbers in ${Date.now() - started} ms`);
+        return 0;
+      } catch (err) {
+        io.err(`failed: ${err instanceof Error ? err.message : String(err)}`);
+        return 1;
+      }
+    }
+
+    // Makes the vectors for one account's documents now, instead of in the background after the next change.
+    case 'embed-all': {
+      const user = await store.users.findByEmail(normaliseEmail(positional[0] ?? ''));
+      if (!user) { io.err('no such account'); return 1; }
+      const { similarityEnabled, syncEmbeddings } = await import('./similarity/index.js');
+      if (!similarityEnabled()) { io.err('embeddings are off (SPINE_EMBEDDINGS is none)'); return 1; }
+      const { embedded } = await syncEmbeddings(user.id);
+      io.out(`embedded ${embedded} document${embedded === 1 ? '' : 's'}`);
       return 0;
     }
 

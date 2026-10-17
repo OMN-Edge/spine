@@ -119,7 +119,7 @@ export async function checkOcrAvailable(langs: string): Promise<void> {
     // Older builds print the list on stderr.
     output = `${stdout}\n${stderr}`;
   } catch {
-    throw new ParserConfigError('tesseract is not installed, and SPINE_PARSER=hybrid needs it (apt install tesseract-ocr)');
+    throw new ParserConfigError('tesseract is not installed, and the configured parser needs it (apt install tesseract-ocr), or set SPINE_PARSER=text, or SPINE_OCR=off with hybrid');
   }
   const missing = missingLanguages(output, langs);
   if (missing.length > 0) {

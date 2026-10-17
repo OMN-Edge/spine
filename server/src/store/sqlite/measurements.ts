@@ -8,6 +8,7 @@ import type {
   NewMeasurement,
 } from '../types.js';
 import { expectInserted, owner } from './owner.js';
+import { NOT_SET_ASIDE } from './visibility.js';
 
 /** Every statement filters by `user_id` (SECURITY.md P12). */
 export function measurementRepository(db: Database): MeasurementRepository {
@@ -47,10 +48,15 @@ export function measurementRepository(db: Database): MeasurementRepository {
       )
       AND EXISTS (SELECT 1 FROM documents WHERE id = ? AND user_id = ?)
   `);
+  const reassignPage = db.prepare(`
+    UPDATE measurements SET document_id = ?
+    WHERE page_id = ? AND user_id = ?
+      AND EXISTS (SELECT 1 FROM documents WHERE id = ? AND user_id = ?)
+  `);
   const all = db.prepare(`
     SELECT m.canonical, m.name, m.unit, m.value_text, m.taken_on, m.flag
     FROM measurements m JOIN documents d ON d.id = m.document_id AND d.user_id = m.user_id
-    WHERE m.user_id = ?
+    WHERE m.user_id = ? AND ${NOT_SET_ASIDE}
     ORDER BY m.taken_on IS NULL, m.taken_on, m.rowid
   `);
   const aliasOf = db.prepare('SELECT canonical FROM measurement_aliases WHERE user_id = ? AND alias = ?');
@@ -63,11 +69,24 @@ export function measurementRepository(db: Database): MeasurementRepository {
     repointAliases.run(into, uid, from); // an alias that led to `from` now leads to `into`
     rememberAlias.run(uid, from, into);
   });
+  const renameValues = db.prepare('UPDATE measurements SET canonical = ?, name = ? WHERE user_id = ? AND canonical = ?');
+  const dropValues = db.prepare('DELETE FROM measurements WHERE user_id = ? AND canonical = ?');
+  const dropAliases = db.prepare('DELETE FROM measurement_aliases WHERE user_id = ? AND (canonical = ? OR alias = ?)');
+  const rename = db.transaction((uid: string, from: string, to: string, shown: string) => {
+    renameValues.run(to, shown, uid, from);
+    repointAliases.run(to, uid, from);
+    rememberAlias.run(uid, from, to);
+  });
+  const remove = db.transaction((uid: string, canonical: string) => {
+    const gone = dropValues.run(uid, canonical).changes;
+    dropAliases.run(uid, canonical, canonical);
+    return gone;
+  });
   const series = db.prepare(`
     SELECT m.id, m.document_id, d.title AS document_title, m.taken_on, m.name, m.value_text, m.value_num,
            m.unit, m.ref_low, m.ref_high, m.flag
     FROM measurements m JOIN documents d ON d.id = m.document_id AND d.user_id = m.user_id
-    WHERE m.user_id = ? AND m.canonical = ?
+    WHERE m.user_id = ? AND m.canonical = ? AND ${NOT_SET_ASIDE}
     ORDER BY m.taken_on IS NULL, m.taken_on, m.rowid
   `);
 
@@ -106,6 +125,11 @@ export function measurementRepository(db: Database): MeasurementRepository {
       reassign.run(toDocumentId, fromDocumentId, uid, toDocumentId, uid);
     },
 
+    async reassignPage(userId, pageId, toDocumentId) {
+      const uid = owner(userId);
+      reassignPage.run(toDocumentId, pageId, uid, toDocumentId, uid);
+    },
+
     async reassignFromPage(userId, fromDocumentId, toDocumentId, fromPageNumber) {
       const uid = owner(userId);
       reassignFromPage.run(toDocumentId, fromDocumentId, uid, fromDocumentId, uid, uid, fromPageNumber, toDocumentId, uid);
@@ -122,6 +146,23 @@ export function measurementRepository(db: Database): MeasurementRepository {
       if (!hasTest.get(uid, from) || !hasTest.get(uid, into)) return 'not_found';
       merge(uid, from, into);
       return 'ok';
+    },
+
+    async renameTest(userId, from, to) {
+      const uid = owner(userId);
+      const shown = to.trim().replace(/\s+/g, ' ').slice(0, 120);
+      const target = shown.toLowerCase();
+      if (!target) return 'invalid';
+      if (!hasTest.get(uid, from)) return 'not_found';
+      if (target === from) return 'same';
+      // Another test's name: the two become one and the values keep the names they were printed with.
+      if (hasTest.get(uid, target)) { merge(uid, from, target); return 'merged'; }
+      rename(uid, from, target, shown);
+      return 'ok';
+    },
+
+    async removeTest(userId, canonical) {
+      return remove(owner(userId), canonical);
     },
 
     async names(userId) {

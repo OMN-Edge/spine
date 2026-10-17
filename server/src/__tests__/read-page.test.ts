@@ -40,7 +40,7 @@ function llmReturning(answer: unknown) {
     return answer;
   });
   const clients: TaskClients = {
-    continuation: client('continuation'), extraction: client('extraction'), page: client('page'), stamps: client('stamps'),
+    continuation: client('continuation'), extraction: client('extraction'), page: client('page'), stamps: client('stamps'), translation: client('translation'),
   };
   return { llm: buildChatLlm(clients, config), received };
 }
@@ -60,34 +60,28 @@ describe('readPage', () => {
     );
   });
 
-  it('returns the regions the model read', async () => {
-    const { llm } = llmReturning({ regions: [
-      { text: 'Diagnostic: anemie', x0: 0.1, y0: 0.2, x1: 0.6, y1: 0.25 },
-    ] });
-    expect(await llm.readPage(page())).toEqual({
-      regions: [{ text: 'Diagnostic: anemie', x0: 0.1, y0: 0.2, x1: 0.6, y1: 0.25 }],
-    });
+  it('returns the text the model read', async () => {
+    const { llm } = llmReturning({ regions: [{ text: 'Diagnostic: anemie' }] });
+    expect(await llm.readPage(page())).toEqual({ regions: [{ text: 'Diagnostic: anemie' }] });
   });
 
-  it('clamps boxes into the page and puts them the right way up', async () => {
-    const { llm } = llmReturning({ regions: [
-      { text: 'edge', x0: -0.05, y0: 0.9, x1: 1.04, y1: 1.2 },
-      { text: 'inverted', x0: 0.6, y0: 0.5, x1: 0.2, y1: 0.4 },
-    ] });
-    const reading = await llm.readPage(page());
+  it('asks for no positions, and ignores any the model adds anyway', async () => {
+    const { llm, received } = llmReturning({ regions: [{ text: 'edge', x0: -0.05, y0: 0.9, x1: 1.04, y1: 1.2 }] });
+    expect(await llm.readPage(page())).toEqual({ regions: [{ text: 'edge' }] });
 
-    expect(reading!.regions[0]).toMatchObject({ x0: 0, y0: 0.9, x1: 1, y1: 1 });
-    expect(reading!.regions[1]).toMatchObject({ x0: 0.2, y0: 0.4, x1: 0.6, y1: 0.5 });
+    const prompt = ((received[0] as Array<{ content: Array<Record<string, any>> }>)[0]).content[0].text as string;
+    expect(prompt).not.toMatch(/x0|y0|fractions/);
+    expect(prompt).toMatch(/Do not give positions/);
   });
 
   it('drops blocks with no text, and accepts a blank page', async () => {
-    const { llm } = llmReturning({ regions: [{ text: '  ', x0: 0, y0: 0, x1: 1, y1: 1 }] });
+    const { llm } = llmReturning({ regions: [{ text: '  ' }] });
     expect(await llm.readPage(page())).toEqual({ regions: [] });
   });
 
   it('returns null, not a guess, when the answer is not the shape asked for', async () => {
     expect(await llmReturning({ text: 'plain text' }).llm.readPage(page())).toBeNull();
-    expect(await llmReturning({ regions: [{ text: 'x', x0: 'left' }] }).llm.readPage(page())).toBeNull();
+    expect(await llmReturning({ regions: [{ text: 5 }] }).llm.readPage(page())).toBeNull();
   });
 
   it('lets a transport error propagate, so the caller decides', async () => {

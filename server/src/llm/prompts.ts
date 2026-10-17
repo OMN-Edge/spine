@@ -1,3 +1,4 @@
+import { STARTER_TAGS } from '../tags.js';
 import { DOC_TYPES } from './types.js';
 import { guidesForPrompt } from './doc-types.js';
 
@@ -42,6 +43,25 @@ Respond with ONLY valid JSON, no markdown:
 {"is_continuation": boolean, "confidence": 0.0-1.0, "reasoning": "one concise sentence"}`;
 }
 
+export function buildTranslationPrompt(bundle: unknown, target: string, source: string | null): string {
+  return `Translate the text values of this medical record into ${target}. ${source ? `They are in ${source}.` : 'They are in the document\'s own language.'}
+
+Record (JSON):
+${JSON.stringify(bundle)}
+
+Rules:
+- Return the same JSON structure. Translate only the string values. Keep every "id" exactly as given.
+- Keep numbers, units, dates, codes, reference ranges, drug and brand names, and people's names as they are.
+- Use the standard ${target} medical term. Do not add, drop, explain or reinterpret anything.
+- A value already in ${target} stays as it is. null stays null.
+- A "label" is a short heading; translate it as a short heading.
+- Each value is translated on its own and replaced by its translation: never repeat the original, give alternatives, use arrows, or add notes inside a value. A translation is about as long as what it translates.
+- Return every item you were given, with its id, even when its value needs no change.
+${source ? '' : '- You are not told the source language: also give it as "source_language", the two-letter ISO 639-1 code of the language the record is written in (for example "ro", "en", "fr", "de").\n'}
+Respond with ONLY valid JSON, no markdown, in this shape:
+{${source ? '' : '"source_language": "ro", '}"title": "...", "summary": "...", "notes": "...", "fields": [{"id": "...", "label": "... or null", "value": "..."}], "measurements": [{"id": "...", "name": "..."}], "doctors": [{"id": "...", "specialty": "... or null"}]}`;
+}
+
 export function buildStampReadingPrompt(count: number): string {
   return `${count === 1 ? 'This image is' : `These ${count} images are`} cut from the last page of a medical document. Each may be a doctor's signature stamp, usually blue or black ink, often crossed by a handwritten signature. It may also be something else.
 
@@ -63,10 +83,7 @@ Respond with ONLY valid JSON, no markdown:
 export function buildPageReadingPrompt(): string {
   return `This image is one scanned page of a medical document. It may be handwritten, and it may be in Romanian or English.
 
-Transcribe all the text on the page, as blocks (a line, or a few lines that belong together) in reading order.
-
-For each block give its position as a box, as fractions of the page from the top-left corner:
-x0, y0 is the top-left of the box and x1, y1 the bottom-right, each between 0 and 1.
+Transcribe all the text on the page, as blocks (a line, or a few lines that belong together) in reading order. Do not give positions.
 
 Rules:
 - Copy what is written. Do not translate, correct, summarise or add anything.
@@ -75,7 +92,7 @@ Rules:
 - A blank page has no blocks.
 
 Respond with ONLY valid JSON, no markdown:
-{"regions": [{"text": "...", "x0": 0.0, "y0": 0.0, "x1": 0.0, "y1": 0.0}]}`;
+{"regions": [{"text": "..."}]}`;
 }
 
 /**
@@ -91,7 +108,8 @@ Respond with ONLY valid JSON, no markdown:
  * What to extract depends on the type of document, so the model first decides the type and
  * then follows that type's guide (llm/doc-types.ts).
  */
-export function buildExtractionPrompt(documentText: string, knownTests: string[] = []): string {
+export function buildExtractionPrompt(documentText: string, knownTests: string[] = [], knownTags: string[] = []): string {
+  const tags = knownTags.length ? knownTags : [...STARTER_TAGS];
   const known = knownTests.length
     ? `\nTests already in this person's archive (canonical names): ${knownTests.join(', ')}.
 When a measurement is the same test as one of these, use that exact name as its canonical, even if this document prints it differently ("Hb" for hemoglobin, a Romanian name for an English one). Only when none matches, give the test a new standard English name.\n`
@@ -107,12 +125,13 @@ ${guidesForPrompt()}
 ${known}
 Return ONLY valid JSON (no markdown):
 {
+  "language": "the language the document is written in, as a two-letter code (ro, en, fr, de, hu, ...), or null if you cannot tell",
   "title": "the document's own title as printed on it (e.g. \"Bilet de externare\", \"Buletin de analize\"), in its original language; if it has none, a short descriptive title in the document's language, under 60 characters",
   "doc_date": "YYYY-MM-DD or null if not found",
   "provider": "clinic/hospital/laboratory name or null",
   "doc_type": "one of the types above",
   "ai_summary": "2-3 sentence summary of what this document contains and its clinical significance",
-  "suggested_tags": ["array", "of", "tag", "names", "from: allergy, chronic, vaccine, medication, imaging, follow-up-needed, cardiology, oncology, lab"],
+  "suggested_tags": ["a few lower-case tags; use these when one fits: ${tags.map(t => JSON.stringify(t)).join(', ')}. Add a new one (one or two words) only when none of them does"],
   "doctors": [{"name": "name as printed, without Dr./Prof./Conf. titles", "specialty": "e.g. cardiology, or null", "code": "the professional code printed with their signature, e.g. X12345, or null", "role": "author | prescriber | referrer | other"}],
   "fields": [
     {
@@ -150,6 +169,9 @@ Rules:
 - Results quoted inside the text of a consultation or discharge note ("TSH 3.10 uU/ml", "FSH = 4.2 (1,5-12,4)") are measurements too; give each the date it was taken when the text gives one, which is often not the date of the visit
 - A report that lists several services (a consult, an ultrasound) gets one "service" field per service, with only its name, and the result of each as an "investigations" field that starts with that service's name
 - A reference range is the one printed for this patient beside the result (often in brackets, "[1.5 - 12.4]"). Ranges listed for other groups (by sex, age, pregnancy, Tanner stage) are not the reference range. A bound printed as "<0.5" or "≤ 5.8" is ref_high alone; ">10" is ref_low alone
+- A label means what it names. When nothing in the document fits a label, leave that field out; do not put the nearest thing in it (a reason for the visit is not a symptom)
+- A medicine is a drug group only when the document prescribes it or says the patient takes it. One named only in advice (to keep at hand, to take if something happens) is part of a single field that lists all of them
+- When a field lists several things (tests, vaccines, medicines), list every one the document gives, as printed
 - Do not extract the patient's personal identifiers (national ID number, patient code, phone number, age)
 - Use [] for doctors, fields or measurements that the document does not have`;
 }

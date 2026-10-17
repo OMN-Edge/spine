@@ -5,6 +5,8 @@ import type { Parser, ParseInput, ParserConfig } from '../types.js';
 import { createSidecarParser } from './sidecar.js';
 import { elementsFromReading } from './multimodal.js';
 import { limiter, mapLimit } from '../../concurrency.js';
+import { textCharsOf } from '../text-layer.js';
+import { describeError } from '../../failure.js';
 
 /**
  * Cheapest signal first, and each step only for the pages the one before could not
@@ -14,6 +16,7 @@ import { limiter, mapLimit } from '../../concurrency.js';
  *   1. The page has a text layer       → use it. Free, exact, nothing leaves. (The sidecar
  *                                          returned text for it.)
  *   2. Local OCR reads it confidently  → keep that. Free, boxes are exact, nothing leaves.
+ *                                          (Skipped when `SPINE_OCR=off`.)
  *   3. Otherwise                       → the model reads the page.
  *
  * Step 2 is the "would OCR have a chance" test. Tesseract reports its own confidence per
@@ -65,10 +68,7 @@ export function createHybridParser(deps: ParserDeps, config: ParserConfig): Pars
       const fromSidecar = await sidecar.parse(input);
       const sidecarPage = (n: number) => fromSidecar.pages.find(page => page.page_number === n);
 
-      // How much real text a page has, by non-whitespace characters, so a scan whose only
-      // text is a stray page number does not count as having a text layer.
-      const textChars = (n: number) =>
-        (sidecarPage(n)?.elements ?? []).reduce((sum, element) => sum + element.text.replace(/\s+/g, '').length, 0);
+      const textChars = (n: number) => textCharsOf(sidecarPage(n));
       const hasLayer = (n: number) => textChars(n) >= config.textLayerMinChars;
 
       const pages = await mapLimit(input.pages, config.concurrency, async (image): Promise<ParseResponse['pages'][number]> => {
@@ -81,17 +81,19 @@ export function createHybridParser(deps: ParserDeps, config: ParserConfig): Pars
           return { ...layer, extraction_source: 'native_text' };
         }
 
-        // No usable text layer. Local OCR first.
+        // No usable text layer. Local OCR first, unless the operator turned it off.
         let ocr: OcrReading | null = null;
-        try {
-          ocr = await ocrLane(() => deps.ocrPage(image.image_path, n));
-        } catch (err) {
-          deps.logger.warn('local OCR failed on a page', {
-            sourceFileId: input.sourceFileId, page: n, error: err instanceof Error ? err.message : String(err),
-          });
+        if (config.ocrEnabled) {
+          try {
+            ocr = await ocrLane(() => deps.ocrPage(image.image_path, n));
+          } catch (err) {
+            deps.logger.warn('local OCR failed on a page', {
+              sourceFileId: input.sourceFileId, page: n, error: describeError(err),
+            });
+          }
         }
 
-        const verdict = ocr ? ocrIsGoodEnough(ocr) : { ok: false, why: 'local OCR failed' };
+        const verdict = ocr ? ocrIsGoodEnough(ocr) : { ok: false, why: config.ocrEnabled ? 'local OCR failed' : 'local OCR is off' };
         const figures = ocr
           ? { words: ocr.words, meanConfidence: Math.round(ocr.meanConfidence), lowShare: Number(ocr.lowConfidenceShare.toFixed(2)) }
           : {};
@@ -108,10 +110,12 @@ export function createHybridParser(deps: ParserDeps, config: ParserConfig): Pars
         log(n, { route: 'model', why: verdict.why, ...figures });
         deps.logger.info('sending a page image to the model provider', { sourceFileId: input.sourceFileId, page: n });
 
+        const fallbackNote = ocr && ocr.words > 0 ? 'keeping local OCR' : 'the page is left without text';
         const fallback = {
           page_number: n,
           elements: ocr?.elements ?? [],
-          extraction_source: 'ocr' as const,
+          // Labelled by what actually read it: with no OCR text to keep, the page was not read at all.
+          extraction_source: ocr && ocr.words > 0 ? ('ocr' as const) : ('unread' as const),
           image_width: width,
           image_height: height,
         };
@@ -121,16 +125,16 @@ export function createHybridParser(deps: ParserDeps, config: ParserConfig): Pars
           if (reading && reading.regions.length > 0) {
             return {
               page_number: n,
-              elements: elementsFromReading(reading, n, width, height),
+              elements: elementsFromReading(reading, n),
               extraction_source: 'multimodal',
               image_width: width,
               image_height: height,
             };
           }
-          deps.logger.warn('the model read nothing usable from a page; keeping local OCR', { sourceFileId: input.sourceFileId, page: n });
+          deps.logger.warn(`the model read nothing usable from a page; ${fallbackNote}`, { sourceFileId: input.sourceFileId, page: n });
         } catch (err) {
-          deps.logger.warn('the model could not read a page; keeping local OCR', {
-            sourceFileId: input.sourceFileId, page: n, error: err instanceof Error ? err.message : String(err),
+          deps.logger.warn(`the model could not read a page; ${fallbackNote}`, {
+            sourceFileId: input.sourceFileId, page: n, error: describeError(err),
           });
         }
         return fallback;

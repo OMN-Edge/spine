@@ -6,6 +6,7 @@ import {
   extractionSchema,
   pageReadingSchema,
   stampReadingSchema,
+  translationSchema,
   type ChatLlmConfig,
 } from './types.js';
 
@@ -19,13 +20,19 @@ import {
  * provider is constrained with and the zod schema the interface validates against
  * cannot drift apart.
  */
-export const LLM_TASKS = ['continuation', 'extraction', 'page', 'stamps'] as const;
+export const LLM_TASKS = ['continuation', 'extraction', 'page', 'stamps', 'translation'] as const;
 export type LlmTask = (typeof LLM_TASKS)[number];
 
 export interface TaskSpec {
   name: LlmTask;
   /** Both providers take this at construction, under different option names. */
   maxTokens: number;
+  /**
+   * `none` for a task that is classifying or copying, where deliberation adds only cost. A model
+   * that thinks before it answers spends its output budget on that first, so a long think can leave
+   * no room for the answer. `default` leaves it to the model. Providers that do not think ignore it.
+   */
+  reasoning: 'none' | 'default';
   jsonSchema: Record<string, unknown>;
 }
 
@@ -51,6 +58,7 @@ export const TASK_SCHEMAS = {
   extraction: extractionSchema,
   page: pageReadingSchema,
   stamps: stampReadingSchema,
+  translation: translationSchema,
 } satisfies Record<LlmTask, z.ZodType>;
 
 export function buildTaskSpecs(config: ChatLlmConfig): TaskSpecs {
@@ -58,23 +66,35 @@ export function buildTaskSpecs(config: ChatLlmConfig): TaskSpecs {
     continuation: {
       name: 'continuation',
       maxTokens: config.maxTokens.continuation,
+      reasoning: 'none',
       jsonSchema: z.toJSONSchema(TASK_SCHEMAS.continuation) as Record<string, unknown>,
     },
     extraction: {
       name: 'extraction',
       maxTokens: config.maxTokens.extraction,
+      reasoning: 'default',
       jsonSchema: z.toJSONSchema(TASK_SCHEMAS.extraction) as Record<string, unknown>,
     },
     page: {
       name: 'page',
       maxTokens: config.maxTokens.page,
+      reasoning: 'none',
       jsonSchema: z.toJSONSchema(TASK_SCHEMAS.page) as Record<string, unknown>,
     },
     // A few lines of text per stamp: the page budget is a ceiling, not a target.
     stamps: {
       name: 'stamps',
       maxTokens: config.maxTokens.page,
+      reasoning: 'none',
       jsonSchema: z.toJSONSchema(TASK_SCHEMAS.stamps) as Record<string, unknown>,
+    },
+    // The same ceiling as extraction: a translation is about as long as what it translates, which a lab panel
+    // can make long, and it is a ceiling and not a target.
+    translation: {
+      name: 'translation',
+      maxTokens: config.maxTokens.extraction,
+      reasoning: 'none',
+      jsonSchema: z.toJSONSchema(TASK_SCHEMAS.translation) as Record<string, unknown>,
     },
   };
 }

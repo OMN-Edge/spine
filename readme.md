@@ -10,13 +10,17 @@ Runs on a Raspberry Pi. No cloud storage — all data stays local.
 - Full-text search over titles, summaries, notes, the text of every page, extracted values and doctors' names, with accents ignored
 - Automatically splits a merged multi-document PDF into logical documents using AI boundary detection
 - Extracts metadata per document: date, provider, type, summary, and individual fields (diagnoses, medications, lab values, etc.)
-- Every extracted field links back to its exact position on the original page — hover over a field to highlight its source
+- Every extracted field links back to the page it came from — click a field to open that page, with its exact position highlighted where the page has a text layer or was read by local OCR
 - Lab values and vitals are kept as numbers, so each test can be charted over time against its reference range
 - A doctors directory that grows as documents are read: who wrote, prescribed or referred, with their documents. With image reading on, a clinic's signature stamp (name, specialty, professional code) is read too
 
 - Review queue to accept, correct, or override anything the AI got wrong
+- A library of the names the AI extracted and reuses — tags, providers, tests, and the doctors directory — to rename, merge and remove duplicates
 - Full-text and filtered search across all documents
-- Create expiring, revocable read-only share links to send a doctor a subset of your history — no account or app needed on their end
+- Expiring, revocable read-only share links to send a doctor a subset of your history — everything, a tag, documents you pick or a date range. The recipient gets the timeline, the document pages and the trends, read-only, with no account or app
+- Related documents (the same test or doctor, and, with Vertex embeddings on, ones that read alike) and search by words and meaning together
+- The interface is in English, Romanian, French and German, and a document's extracted details and your notes are translated into the reader's language on demand (and kept), including on a shared page
+- Export one document, or everything, as a zip with a manifest of what was read; upload that zip anywhere to restore it without the AI, with duplicates recognised. Any other zip of PDFs is added like separate uploads
 
 ## Documentation
 
@@ -26,11 +30,7 @@ Runs on a Raspberry Pi. No cloud storage — all data stays local.
 
 ### Direction
 
-What runs today is **single-user**, SQLite-coupled and Anthropic-only. The intended
-shape is multi-user with local accounts, storage and inference behind interfaces, and
-hybrid ingestion that routes scans and handwriting to a multimodal model. Hosting stays
-self-hosted on a Raspberry Pi — GCP is used for inference only, never as an app host.
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the delta and the ordered migration path.
+What runs today is multi-user with local accounts, with storage, inference, parsing and mail behind interfaces (SQLite the only store; Anthropic and Vertex for inference), and hybrid ingestion that routes scans and handwriting to a multimodal model when you allow it. Hosting stays self-hosted on a Raspberry Pi — GCP is used for inference only, never as an app host. See [ARCHITECTURE.md](ARCHITECTURE.md) for the design and what is left.
 
 ## Stack
 
@@ -40,7 +40,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the delta and the ordered migration p
 | Web | React + Vite + Tailwind CSS |
 | Database | SQLite (single file, zero ops) |
 | Parsing | Python + Unstructured (a local service on port 8000), optionally a vision model for scanned pages |
-| AI | Anthropic API (Claude Haiku — continuation detection + field extraction) |
+| AI | Anthropic or Vertex AI, set by configuration (continuation detection, field extraction, translation, optionally reading page images) |
 | Web server | nginx (from `packages/nginx`) with Let's Encrypt |
 
 ## First install
@@ -142,9 +142,9 @@ A daily timer copies the database and the originals to `backups/` beside `data/`
 
 ## Reading handwriting
 
-Most documents are digital PDFs, and those need no AI: their own text is used. `SPINE_PARSER=hybrid` handles the rest per page, cheapest first: the PDF's text layer, then local OCR (Tesseract) if it is confident, and only then your LLM provider, which sees a page only if both of those fell short. It needs `SPINE_MULTIMODAL_ENABLED=true` as well — sending images is a separate decision — and `tesseract-ocr` with its language packs (it refuses to start without them). The startup log says whether images can leave, and every page logs which way it went, so the thresholds in `.env.example` can be tuned on your own documents. Pages the model read are marked "Read by AI · position approximate" in the review screen.
+Most documents are digital PDFs, and those need no AI: their own text is used. `SPINE_PARSER=hybrid` handles the rest per page, cheapest first: the PDF's text layer, then local OCR (Tesseract) if it is confident, and only then your LLM provider, which sees a page only if both of those fell short. It needs `SPINE_MULTIMODAL_ENABLED=true` as well — sending images is a separate decision — and `tesseract-ocr` with its language packs (it refuses to start without them), unless you set `SPINE_OCR=off`, which goes from the text layer straight to the model. `SPINE_PARSER=ocr` is the same without any model: nothing leaves your machine, and handwriting reads poorly. The startup log says whether images can leave, and every page logs which way it went, so the thresholds in `.env.example` can be tuned on your own documents. Pages the model read are marked "Read by AI · position approximate" in the review screen.
 
-If a document still comes out wrong — handwriting, a tilted or photographed page, a scan with a poor embedded text layer — open it in the review screen and use **Read this file with AI**. It tells you where the images go and what it replaces before it does anything.
+If a document still comes out wrong — handwriting, a tilted or photographed page, a scan with a poor embedded text layer — open it and use **Read again** beside Review: **Read page with AI** sends this page's image to a model, **Read whole document** reads the document's pages again the way an upload does. Each tells you where any image goes and what it replaces before it does anything.
 
 ## Share links
 
@@ -171,13 +171,17 @@ Run `npm test` (or `npm run test:coverage`) in `server/`. Statement and branch c
 | Config | `config.test.ts`, `llm.test.ts` | Startup refuses bad secrets, providers and endpoints |
 | Documents | `documents.test.ts` | CRUD, tag updates, split/merge boundaries, column whitelist |
 | Upload | `upload.test.ts`, `source-files.test.ts` | Multipart upload, per-user storage, duplicate detection, status polling |
-| Share links | `share.test.ts`, `public-share-scoped.test.ts`, `share-token.test.ts` | Scope validation, fail-closed reads, hashed tokens, the recipient's page |
+| Share links | `share.test.ts`, `public-share-scoped.test.ts`, `public-share-detail.test.ts`, `share-token.test.ts` | Scope validation, fail-closed reads, hashed tokens, the recipient's page |
 | Store | `legacy-database.test.ts` | An old-shape database is refused |
 | Backup | `backup.test.ts` | Snapshot is a readable database; originals mirror; retention |
-| Parser | `parser.test.ts`, `ocr.test.ts`, `read-page.test.ts`, `reread.test.ts` | Box scaling, one entry per page, the text-layer → OCR → model cascade and its thresholds, fallback, the two-switch rule, the image message, "Read with AI" |
+| Parser | `parser.test.ts`, `ocr.test.ts`, `read-page.test.ts`, `capabilities.test.ts` | Box scaling, one entry per page, the text-layer → OCR → model cascade and its thresholds, fallback, the two-switch rule, the image message, "Read with AI" |
 | Ingestion pipeline | `pipeline.test.ts`, `reconcile.test.ts` | Splitting, grounding, error paths, restart recovery, a blank page not shifting images, model-read pages |
 | AI | `continuation.test.ts`, `grounding.test.ts` | Validation and fallbacks, tested through fake task clients |
 | Page images | `page-image.test.ts` | Auth required, streams PNG, 404 on missing row or file |
+| Translation | `translation.test.ts`, `i18n-coverage.test.ts` | Digest-validated cache, two stages, retry of missing or rambling values, language detection, the public routes; every interface string present in all dictionaries |
+| Export and import | `archive.test.ts` | Trimmed document export, whole archive, restore without a model, duplicates by checksum and by text, plain zips, Office files, damaged and tampered manifests (needs poppler) |
+| Similarity | `similarity.test.ts` | The Vertex embedder against a fake service, stale vectors, model changes, related documents, search by words and meaning, other users and set-aside documents excluded |
+| Library | `management.test.ts` | Tags, providers and tests: counts, rename, merge, remove, share links following a tag, another user's entries |
 
 ### What isn't covered
 

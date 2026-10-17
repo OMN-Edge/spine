@@ -82,6 +82,8 @@ export async function buildTestApp(options: TestAppOptions = {}) {
   const { totpRoutes } = await import('../../routes/totp.js');
   const { documentRoutes } = await import('../../routes/documents.js');
   const { sourceFileRoutes } = await import('../../routes/source-files.js');
+  const { exportRoutes } = await import('../../routes/export.js');
+  const { similarityRoutes } = await import('../../routes/similarity.js');
   const { shareRoutes } = await import('../../routes/share.js');
   const { publicShareRoutes } = await import('../../routes/public-share.js');
   const { tagRoutes } = await import('../../routes/tags.js');
@@ -107,6 +109,8 @@ export async function buildTestApp(options: TestAppOptions = {}) {
   });
   await app.register(documentRoutes);
   await app.register(sourceFileRoutes);
+  await app.register(exportRoutes);
+  await app.register(similarityRoutes);
   await app.register(shareRoutes);
   await app.register(publicShareRoutes, {
     appShellPath:

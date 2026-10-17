@@ -133,6 +133,114 @@ describe('reading one page', () => {
   });
 });
 
+/** The configured parser: the text layer where there is one, and nothing for a page marked unreadable. */
+const configuredSent: ParseInput[] = [];
+let unreadPage: number | null = null;
+const configuredParser: Parser = {
+  imageEgress: false,
+  async parse(input) {
+    configuredSent.push(input);
+    return {
+      pages: input.pages.map(p => p.page_number === unreadPage
+        ? { page_number: p.page_number, elements: [], extraction_source: 'unread' as const, image_width: 800, image_height: 1100 }
+        : {
+          page_number: p.page_number,
+          elements: [{ type: 'Text', text: `configured text ${p.page_number}`, page_number: p.page_number, bbox: { x0: 0, y0: 0, x1: 10, y1: 10 }, source: 'native_text' as const }],
+          extraction_source: 'native_text' as const,
+          image_width: 800,
+          image_height: 1100,
+        }),
+    };
+  },
+};
+
+describe('reading a whole document the way an upload does', () => {
+  beforeEach(() => { resetParser(configuredParser, modelParser); configuredSent.length = 0; unreadPage = null; });
+
+  const startWhole = (sf: string, page_ids: unknown, extra: object = {}, c = cookie) =>
+    app.inject({ method: 'POST', url: `/api/source-files/${sf}/ai-reading`, payload: { page_ids, strategy: 'configured', ...extra }, headers: { cookie: c } });
+
+  it('reads its pages once, together, with the configured parser and not the model, then extracts it again', async () => {
+    const { sf, pageIds, a, b } = await upload();
+    mockExtractFields.mockResolvedValue(reading('Doc A, read whole'));
+
+    expect((await startWhole(sf, pageIds.slice(0, 3))).statusCode).toBe(202);
+    expect(await finished(sf)).toMatchObject({ status: 'done', pages_total: 3, documents_updated: 1 });
+
+    expect(configuredSent).toHaveLength(1);
+    expect(configuredSent[0].pages.map(p => p.page_number)).toEqual([1, 2, 3]);
+    expect(sent).toHaveLength(0);
+    expect((await pageText(sf, 2)).raw_text).toBe('configured text 2');
+    expect((await pageText(sf, 2)).extraction_source).toBe('native_text');
+    expect((await doc(a)).title).toBe('Doc A, read whole');
+    expect((await doc(b)).title).toBe('Doc B'); // the other document is left alone
+    expect((await pageText(sf, 5)).raw_text).toBe('old text 5');
+  });
+
+  it('keeps the earlier text of a page the parser could read nothing from', async () => {
+    const { sf, pageIds } = await upload();
+    unreadPage = 2;
+    mockExtractFields.mockResolvedValue(reading('Doc A'));
+    await startWhole(sf, pageIds.slice(0, 3));
+    await finished(sf);
+    expect((await pageText(sf, 2)).raw_text).toBe('old text 2');
+    expect((await pageText(sf, 1)).raw_text).toBe('configured text 1');
+  });
+
+  it('takes the model the owner picked for whatever the parser sends to one', async () => {
+    const { sf, pageIds } = await upload();
+    process.env.SPINE_LLM_MODELS = 'other-model';
+    try {
+      mockExtractFields.mockResolvedValue(reading('Doc A'));
+      await startWhole(sf, pageIds.slice(0, 3), { model: 'other-model' });
+      await finished(sf);
+      expect(mockExtractFields.mock.calls[0][2]).toBe('other-model');
+    } finally { delete process.env.SPINE_LLM_MODELS; }
+  });
+
+  it('needs no image switch when the configured parser sends no image, and sends nothing then', async () => {
+    delete process.env.SPINE_MULTIMODAL_ENABLED;
+    const { sf, pageIds } = await upload();
+    mockExtractFields.mockResolvedValue(reading('Doc A'));
+    expect((await startWhole(sf, pageIds.slice(0, 3))).statusCode).toBe(202);
+    await finished(sf);
+    expect(sent).toHaveLength(0);
+  });
+
+  it('does need the switch when the configured parser sends images', async () => {
+    resetParser({ imageEgress: true, parse: configuredParser.parse }, modelParser);
+    delete process.env.SPINE_MULTIMODAL_ENABLED;
+    const { sf, pageIds } = await upload();
+    expect((await startWhole(sf, pageIds.slice(0, 3))).statusCode).toBe(409);
+  });
+
+  it('refuses a strategy it does not know, and keeps the per-page reading as it was', async () => {
+    const { sf, pageIds } = await upload();
+    expect((await startWhole(sf, pageIds.slice(0, 1), { strategy: 'everything' })).statusCode).toBe(400);
+    mockExtractFields.mockResolvedValue(reading('Doc A'));
+    expect((await start(sf, [pageIds[0]])).statusCode).toBe(202); // no strategy: the model reads the page
+    await finished(sf);
+    expect(sent).toHaveLength(1);
+    expect(configuredSent).toHaveLength(0);
+  });
+});
+
+describe('a page that was moved', () => {
+  it('is still asked for by its place in the file, which is what the parser counts', async () => {
+    const { sf, pageIds } = await upload();
+    // Page 1 and page 2 swap places in the upload.
+    await getStore().pages.renumber(OWNER_ID, sf, [pageIds[1], pageIds[0], ...pageIds.slice(2)]);
+    mockExtractFields.mockResolvedValue(reading('Doc A'));
+
+    await start(sf, [pageIds[0]]); // the page that is now number 2 and was number 1 in the file
+    await finished(sf);
+    expect(sent[0].pages).toEqual([{ page_number: 1, image_path: `/data/pages/${sf}/page-1.png` }]);
+    // Its new text lands on it, not on the page that now has number 1.
+    expect((await pageText(sf, 2)).raw_text).toBe('AI text 1');
+    expect((await pageText(sf, 1)).raw_text).toBe('old text 2');
+  });
+});
+
 describe('reading several pages', () => {
   it('reads each chosen page, one image at a time, and extracts each affected document once', async () => {
     const { sf, pageIds, a, b } = await upload();
@@ -266,7 +374,6 @@ describe('who may ask, and for what', () => {
 
     expect((await start(sf, [pageIds[0]])).statusCode).toBe(202);
     expect((await start(sf, [pageIds[1]])).statusCode).toBe(409);
-    expect((await app.inject({ method: 'POST', url: `/api/source-files/${sf}/reread`, headers: { cookie } })).statusCode).toBe(409);
     expect((await status(sf)).json()).toMatchObject({ status: 'running' });
 
     release();

@@ -18,6 +18,7 @@ export function openDatabase(location: string): Database.Database {
   db.pragma('foreign_keys = ON');
 
   refuseOutdatedDatabase(db, location);
+  addColumnsInPlace(db);
 
   // Idempotent `CREATE TABLE IF NOT EXISTS`, re-applied every boot. The file
   // sits beside this adapter because it is SQLite-specific DDL; `npm run build`
@@ -25,6 +26,53 @@ export function openDatabase(location: string): Database.Database {
   db.exec(fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8'));
 
   return db;
+}
+
+const columnsOf = (db: Database.Database, table: string): string[] =>
+  (db.prepare(`SELECT name FROM pragma_table_info('${table}')`).all() as Array<{ name: string }>).map(column => column.name);
+
+/**
+ * The one kind of change that needs no emptying: a new column with a default. Each step here is
+ * idempotent and lists what it adds, so a database from before it is brought forward on open and
+ * a new one (made whole by schema.sql) is left alone. Anything that is not additive still has to
+ * be refused by `refuseOutdatedDatabase`.
+ *
+ *  - `pages.source_page`: where a page is in its file, separate from where it sits in the upload. Filled from `page_number`, which
+ *    was always that until pages could be moved.
+ *  - `documents.language`, `share_links.language`: the language a document is written in, and the one a share page starts in.
+ *    Both may be null, so existing rows need nothing filled in.
+ *  - `share_links.include_scans`: whether a link also shows the page images. Nothing names it but the queries.
+ *  - `pages.hidden`: pages the owner has set aside. The search view and one trigger name the column,
+ *    and `CREATE ... IF NOT EXISTS` would keep the old versions, so they are dropped here and
+ *    schema.sql, which runs next, makes them again.
+ */
+function addColumnsInPlace(db: Database.Database): void {
+  const pages = columnsOf(db, 'pages');
+  if (pages.length > 0 && !pages.includes('hidden')) {
+    db.transaction(() => {
+      db.exec('ALTER TABLE pages ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0');
+      db.exec('DROP VIEW IF EXISTS document_search_source');
+      db.exec('DROP TRIGGER IF EXISTS pages_fts_update');
+    })();
+  }
+
+  // The index of a page in its file, kept apart from its place in the upload so pages can be moved: the
+  // parser, the sidecar and the stamp reader all count pages of the file. Every page was in file order until now.
+  if (pages.length > 0 && !pages.includes('source_page')) {
+    db.transaction(() => {
+      db.exec('ALTER TABLE pages ADD COLUMN source_page INTEGER NOT NULL DEFAULT 0');
+      db.exec('UPDATE pages SET source_page = page_number');
+    })();
+  }
+
+  const links = columnsOf(db, 'share_links');
+  if (links.length > 0 && !links.includes('include_scans')) {
+    db.exec('ALTER TABLE share_links ADD COLUMN include_scans INTEGER NOT NULL DEFAULT 0');
+  }
+  if (links.length > 0 && !links.includes('language')) db.exec('ALTER TABLE share_links ADD COLUMN language TEXT');
+
+  const documents = columnsOf(db, 'documents');
+  if (documents.length > 0 && !documents.includes('language')) db.exec('ALTER TABLE documents ADD COLUMN language TEXT');
 }
 
 /**
@@ -40,18 +88,13 @@ export function openDatabase(location: string): Database.Database {
  * extraction (fields have no `group_no`, doctors no `license_code`, the search index no `body`, or doctor links no `source`).
  */
 function refuseOutdatedDatabase(db: Database.Database, location: string): void {
-  const columnsOf = (table: string) =>
-    (db.prepare(`SELECT name FROM pragma_table_info('${table}')`).all() as Array<{ name: string }>).map(
-      column => column.name,
-    );
-
-  const uploads = columnsOf('source_files');
-  const users = columnsOf('users');
-  const documentColumns = columnsOf('documents');
-  const fieldColumns = columnsOf('extracted_fields');
-  const doctorColumns = columnsOf('doctors');
-  const searchColumns = columnsOf('documents_fts');
-  const linkColumns = columnsOf('document_doctors');
+  const uploads = columnsOf(db, 'source_files');
+  const users = columnsOf(db, 'users');
+  const documentColumns = columnsOf(db, 'documents');
+  const fieldColumns = columnsOf(db, 'extracted_fields');
+  const doctorColumns = columnsOf(db, 'doctors');
+  const searchColumns = columnsOf(db, 'documents_fts');
+  const linkColumns = columnsOf(db, 'document_doctors');
 
   const beforeMultiUser = uploads.length > 0 && !uploads.includes('user_id');
   const beforeVerification = users.length > 0 && !users.includes('email_verified_at');

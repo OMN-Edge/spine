@@ -77,6 +77,14 @@ describe('responses carry no internal columns or server paths (S-8)', () => {
     expect(leaks(res.json())).toEqual([]);
   });
 
+  it('GET /api/share/:token/documents/:id — one document a recipient opens, scans included', async () => {
+    await seedShareLink({ tokenHash: hashShareToken('shape-doc-token'), scope: 'document_ids', scopeValue: JSON.stringify([docId]), includeScans: true });
+    const res = await app.inject({ method: 'GET', url: `/api/share/shape-doc-token/documents/${docId}` });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { fields: unknown[] }).fields.length).toBeGreaterThan(0);
+    expect(leaks(res.json())).toEqual([]);
+  });
+
   it('the scanner itself catches a leak', () => {
     expect(leaks({ a: [{ user_id: 'x' }] })).toEqual(['$.a[0].user_id']);
     expect(leaks({ where: '/Users/someone/spine/data/x.pdf' })).toHaveLength(1);

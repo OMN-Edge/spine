@@ -11,6 +11,9 @@ import { totpRoutes } from './routes/totp.js';
 import { accountRoutes } from './routes/accounts.js';
 import { documentRoutes } from './routes/documents.js';
 import { sourceFileRoutes } from './routes/source-files.js';
+import { exportRoutes } from './routes/export.js';
+import { getEmbedder, EmbedderConfigError } from './embedding/index.js';
+import { similarityRoutes } from './routes/similarity.js';
 import { shareRoutes } from './routes/share.js';
 import { publicShareRoutes } from './routes/public-share.js';
 import { tagRoutes } from './routes/tags.js';
@@ -52,6 +55,7 @@ const app = Fastify({
 useLogger({
   info: (message, detail) => app.log.info(detail ?? {}, message),
   warn: (message, detail) => app.log.warn(detail ?? {}, message),
+  error: (message, detail) => app.log.error(detail ?? {}, message),
 });
 
 // P3: an unknown provider or an unusable credential must stop the process here,
@@ -82,8 +86,18 @@ try {
       'page images WILL be sent to the model provider for scanned and handwritten pages',
     );
   }
+  // The same for embeddings: constructed once so a missing endpoint or a stray Google API key stops the process here.
+  const embedder = getEmbedder();
+  if (embedder.enabled) {
+    app.log.warn(
+      { model: embedder.id, endpoint: config.embeddings.endpoint, region: config.embeddings.region },
+      'document summaries WILL be sent to the embedding service to find related documents',
+    );
+  } else {
+    app.log.info('embeddings are off: documents are found by their words only');
+  }
 } catch (err) {
-  if (err instanceof LlmConfigError || err instanceof ParserConfigError) {
+  if (err instanceof LlmConfigError || err instanceof ParserConfigError || err instanceof EmbedderConfigError) {
     console.error(`Refusing to start — ${err.message}`);
     process.exit(1);
   }
@@ -102,7 +116,8 @@ await app.register(fastifySession, {
 });
 
 await app.register(fastifyMultipart, {
-  limits: { fileSize: 200 * 1024 * 1024 }, // 200 MB
+  // A zip of files may be large; a single document or photo is held to 200 MB in the upload route.
+  limits: { fileSize: 2 * 1024 * 1024 * 1024 },
 });
 
 await app.register(fastifyRateLimit, {
@@ -120,6 +135,8 @@ await app.register(totpRoutes);
 await app.register(accountRoutes, { registration: config.registration });
 await app.register(documentRoutes);
 await app.register(sourceFileRoutes);
+await app.register(exportRoutes);
+await app.register(similarityRoutes);
 await app.register(shareRoutes);
 // The share entry route serves the SPA shell, so it needs the build's path.
 await app.register(publicShareRoutes, {

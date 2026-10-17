@@ -48,9 +48,9 @@ export const verificationLink = (token: string) => publicUrl(`/verify#${token}`)
 export const resetLink = (token: string) => publicUrl(`/reset#${token}`);
 
 /**
- * Neutral wording: no product name, nothing that says this is a medical records
- * system. The subject and sender are visible to the mail provider and to anyone who
- * sees the inbox (SECURITY.md P8).
+ * No medical content: nothing about records, documents or health. The subject and
+ * sender are visible to the mail provider and to anyone who sees the inbox, so what
+ * the sender is called is the operator's choice (SECURITY.md P8).
  */
 export function verificationMail(to: string, link: string): MailMessage {
   return {

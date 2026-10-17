@@ -73,7 +73,9 @@ CREATE TABLE IF NOT EXISTS pages (
   image_height INTEGER NOT NULL,
   raw_text TEXT,
   elements TEXT, -- JSON array of UnstructuredElement[]
-  extraction_source TEXT, -- 'native_text' | 'ocr' | 'mixed'
+  hidden INTEGER NOT NULL DEFAULT 0, -- 1: kept, but left out of the document's view, search and reading
+  source_page INTEGER NOT NULL DEFAULT 0, -- the page's index in the file, which reading it again needs; page_number is its place in the upload, which the owner can change
+  extraction_source TEXT, -- 'native_text' | 'ocr' | 'mixed' | 'multimodal' | 'unread' (the model could not read it and nothing else did)
   is_continuation INTEGER, -- SQLite boolean
   continuation_confidence REAL,
   continuation_reasoning TEXT,
@@ -95,7 +97,8 @@ CREATE TABLE IF NOT EXISTS documents (
   doc_type TEXT,
   ai_summary TEXT,
   user_notes TEXT,
-  reviewed INTEGER DEFAULT 0
+  reviewed INTEGER DEFAULT 0,
+  language TEXT -- what the document is written in (a two-letter code), as extraction found it; null if unknown
 );
 
 -- Numeric results (lab values, vitals): what trends over time are drawn from. A field is
@@ -215,7 +218,9 @@ CREATE TABLE IF NOT EXISTS share_links (
   expires_at TEXT NOT NULL,
   revoked INTEGER DEFAULT 0,
   view_count INTEGER DEFAULT 0,
-  last_accessed_at TEXT
+  last_accessed_at TEXT,
+  include_scans INTEGER NOT NULL DEFAULT 0, -- 1: the recipient may also see the page images
+  language TEXT -- the language the recipient's page starts in, if the owner chose one
 );
 
 CREATE TABLE IF NOT EXISTS share_link_access_log (
@@ -224,6 +229,36 @@ CREATE TABLE IF NOT EXISTS share_link_access_log (
   share_link_id TEXT REFERENCES share_links(id),
   accessed_at TEXT NOT NULL,
   ip_address TEXT
+);
+
+-- A document's extracted details and the owner's notes, translated into another language, kept so the
+-- next reader gets them at once. `source_hash` is a digest of exactly what was translated: a translation
+-- is used only while the document still hashes to it, so re-extracting, editing or moving pages makes
+-- it stale by itself, with nothing to remember to invalidate.
+CREATE TABLE IF NOT EXISTS document_translations (
+  user_id TEXT NOT NULL REFERENCES users(id),
+  document_id TEXT NOT NULL REFERENCES documents(id),
+  language TEXT NOT NULL,
+  source_hash TEXT NOT NULL,
+  content TEXT NOT NULL, -- JSON
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (document_id, language)
+);
+
+-- A document's meaning as a vector, for finding what resembles it. `model` names the vector space (vectors of
+-- different models are never compared, so each is kept with the model that made it), and `text_hash` is a digest of
+-- exactly the text that was embedded: a vector is used only while the document still produces that text, so editing
+-- or re-reading a document makes it stale by itself. Regenerable from the rest of the database, so nothing here is
+-- exported.
+CREATE TABLE IF NOT EXISTS document_embeddings (
+  user_id TEXT NOT NULL REFERENCES users(id),
+  document_id TEXT NOT NULL REFERENCES documents(id),
+  model TEXT NOT NULL,
+  dims INTEGER NOT NULL,
+  text_hash TEXT NOT NULL,
+  vector BLOB NOT NULL, -- float32, little endian
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (document_id, model)
 );
 
 CREATE INDEX IF NOT EXISTS idx_source_files_user ON source_files(user_id);
@@ -236,7 +271,7 @@ CREATE VIEW IF NOT EXISTS document_search_source AS
 SELECT d.rowid AS id, d.title, d.doc_type, d.provider, d.ai_summary, d.user_notes,
   COALESCE((SELECT group_concat(p.raw_text, ' ') FROM pages p
             WHERE p.source_file_id = d.source_file_id AND p.user_id = d.user_id
-              AND p.page_number BETWEEN d.page_start AND d.page_end), '') || ' ' ||
+              AND p.page_number BETWEEN d.page_start AND d.page_end AND p.hidden = 0), '') || ' ' ||
   COALESCE((SELECT group_concat(f.value, ' ') FROM extracted_fields f
             WHERE f.document_id = d.id AND f.user_id = d.user_id), '') || ' ' ||
   COALESCE((SELECT group_concat(m.name || ' ' || m.value_text, ' ') FROM measurements m
@@ -266,7 +301,7 @@ CREATE TRIGGER IF NOT EXISTS pages_fts_insert AFTER INSERT ON pages BEGIN
   SELECT id, title, doc_type, provider, ai_summary, user_notes, body FROM document_search_source
   WHERE id IN (SELECT rowid FROM documents WHERE source_file_id = new.source_file_id AND user_id = new.user_id AND new.page_number BETWEEN page_start AND page_end);
 END;
-CREATE TRIGGER IF NOT EXISTS pages_fts_update AFTER UPDATE OF raw_text ON pages BEGIN
+CREATE TRIGGER IF NOT EXISTS pages_fts_update AFTER UPDATE OF raw_text, hidden ON pages BEGIN
   DELETE FROM documents_fts WHERE rowid IN (SELECT rowid FROM documents WHERE source_file_id = new.source_file_id AND user_id = new.user_id AND new.page_number BETWEEN page_start AND page_end);
   INSERT INTO documents_fts(rowid, title, doc_type, provider, ai_summary, user_notes, body)
   SELECT id, title, doc_type, provider, ai_summary, user_notes, body FROM document_search_source

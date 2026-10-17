@@ -5,28 +5,16 @@ import type { Parser, ParseInput, ParserConfig } from '../types.js';
 import { mapLimit } from '../../concurrency.js';
 
 /**
- * Turn what a model read into the elements the rest of the pipeline already
- * understands. The model gives fractions of the page; elements carry pixels.
- *
- * These boxes are the model's own estimate, so they are less exact than the
- * sidecar's. The page is marked `multimodal` and the UI says so.
+ * Turn what a model read into the elements the rest of the pipeline already understands. They carry
+ * text and no box: a model's idea of where text sits was unreliable, so nothing is drawn for them, and
+ * a field read from such a page keeps its page (the page it was found on) and no highlight.
  */
-export function elementsFromReading(
-  reading: PageReading,
-  pageNumber: number,
-  width: number,
-  height: number,
-): UnstructuredElement[] {
+export function elementsFromReading(reading: PageReading, pageNumber: number): UnstructuredElement[] {
   return reading.regions.map(region => ({
     type: 'Text',
     text: region.text,
     page_number: pageNumber,
-    bbox: {
-      x0: region.x0 * width,
-      y0: region.y0 * height,
-      x1: region.x1 * width,
-      y1: region.y1 * height,
-    },
+    bbox: null,
     source: 'multimodal' as const,
   }));
 }
@@ -60,7 +48,7 @@ export function createMultimodalParser(deps: ParserDeps, config: Pick<ParserConf
 
         return {
           page_number: image.page_number,
-          elements: elementsFromReading(reading, image.page_number, width, height),
+          elements: elementsFromReading(reading, image.page_number),
           extraction_source: 'multimodal' as const,
           image_width: width,
           image_height: height,

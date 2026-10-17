@@ -22,31 +22,31 @@ export async function trendRoutes(app: FastifyInstance) {
     const canonical = typeof req.query.name === 'string' ? req.query.name.trim().toLowerCase() : '';
     if (!canonical) return reply.status(400).send({ error: 'name is required' });
 
-    const points = await getStore().measurements.series(req.userId, canonical);
-    if (points.length === 0) return reply.status(404).send({ error: 'not found' });
+    const series = buildSeries(canonical, await getStore().measurements.series(req.userId, canonical));
+    if (!series) return reply.status(404).send({ error: 'not found' });
+    return reply.send(series);
+  });
 
-    const unit = commonUnit(points);
-    const key = unitKey(unit);
-    const drawable = (p: MeasurementPoint) => p.value_num !== null && p.taken_on !== null && unitKey(p.unit) === key;
+  // A test called something else everywhere. A name another test has makes the two one.
+  app.post<{ Body: { from?: unknown; to?: unknown } }>('/api/measurements/rename', async (req, reply) => {
+    const from = typeof req.body?.from === 'string' ? req.body.from.trim().toLowerCase() : '';
+    const to = req.body?.to;
+    if (!from) return reply.status(400).send({ error: 'from is required' });
+    if (typeof to !== 'string' || to.trim() === '' || to.length > 120) return reply.status(400).send({ error: 'to must be a name of 1 to 120 characters' });
+    const result = await getStore().measurements.renameTest(req.userId, from, to);
+    if (result === 'not_found') return reply.status(404).send({ error: 'not found' });
+    if (result === 'same') return reply.status(400).send({ error: 'that is already its name' });
+    if (result === 'invalid') return reply.status(400).send({ error: 'to must have something in it' });
+    return reply.send({ result, canonical: to.trim().replace(/\s+/g, ' ').toLowerCase() });
+  });
 
-    // A consultation often quotes values a lab report already holds: the same test, day and value.
-    // Draw it once, from the report that has a reference range (or the first), and list the rest.
-    const winner = new Map<string, MeasurementPoint>();
-    for (const p of points.filter(drawable)) {
-      const at = `${p.taken_on}|${p.value_num}`;
-      const held = winner.get(at);
-      if (!held || (held.ref_low === null && held.ref_high === null && (p.ref_low !== null || p.ref_high !== null))) winner.set(at, p);
-    }
-    return reply.send({
-      canonical,
-      name: points[points.length - 1].name,
-      unit,
-      points: points.map(p => {
-        const isDrawable = drawable(p);
-        const repeat = isDrawable && winner.get(`${p.taken_on}|${p.value_num}`) !== p;
-        return { ...p, charted: isDrawable && !repeat, repeat };
-      }),
-    });
+  // Every value of a test is removed (the documents stay).
+  app.delete<{ Querystring: { name?: string } }>('/api/measurements', async (req, reply) => {
+    const canonical = typeof req.query.name === 'string' ? req.query.name.trim().toLowerCase() : '';
+    if (!canonical) return reply.status(400).send({ error: 'name is required' });
+    const removed = await getStore().measurements.removeTest(req.userId, canonical);
+    if (removed === 0) return reply.status(404).send({ error: 'not found' });
+    return reply.send({ removed });
   });
 
   // Two names for one test become one: `from` is folded into `into` and remembered for later documents.
@@ -67,6 +67,36 @@ export async function trendRoutes(app: FastifyInstance) {
       Object.entries(DOC_TYPE_GUIDES).map(([type, g]) => ({ type, label: g.label, fields: g.fields, grouped: g.grouped ?? [] })),
     );
   });
+}
+
+/**
+ * One test's points as the chart and table want them: the unit they share, and which can be drawn. Shared by the owner's
+ * trends and a share link's, which differ only in which points they pass in.
+ */
+export function buildSeries(canonical: string, points: MeasurementPoint[]) {
+  if (points.length === 0) return null;
+  const unit = commonUnit(points);
+  const key = unitKey(unit);
+  const drawable = (p: MeasurementPoint) => p.value_num !== null && p.taken_on !== null && unitKey(p.unit) === key;
+
+  // A consultation often quotes values a lab report already holds: the same test, day and value.
+  // Draw it once, from the report that has a reference range (or the first), and list the rest.
+  const winner = new Map<string, MeasurementPoint>();
+  for (const p of points.filter(drawable)) {
+    const at = `${p.taken_on}|${p.value_num}`;
+    const held = winner.get(at);
+    if (!held || (held.ref_low === null && held.ref_high === null && (p.ref_low !== null || p.ref_high !== null))) winner.set(at, p);
+  }
+  return {
+    canonical,
+    name: points[points.length - 1].name,
+    unit,
+    points: points.map(p => {
+      const isDrawable = drawable(p);
+      const repeat = isDrawable && winner.get(`${p.taken_on}|${p.value_num}`) !== p;
+      return { ...p, charted: isDrawable && !repeat, repeat };
+    }),
+  };
 }
 
 /** The unit most of a test's numeric values are in (spelling aside); ties go to the newest value's, as printed. */

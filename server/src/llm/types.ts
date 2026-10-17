@@ -16,7 +16,7 @@ export interface ChatLlm {
   detectContinuation(previousPageText: string, currentPageText: string): Promise<ContinuationResult>;
   /** Structured metadata for one logical document. */
   /** `knownTests`: canonical test names already in the archive, so the same test is named the same way. */
-  extractFields(documentText: string, knownTests?: string[]): Promise<ExtractionResult>;
+  extractFields(documentText: string, knownTests?: string[], knownTags?: string[]): Promise<ExtractionResult>;
   /**
    * Read one page image: the text on it and where. **This is the only call that
    * sends an image off the host** (SECURITY.md M-7), so it is reached only through
@@ -31,19 +31,37 @@ export interface ChatLlm {
    * be used.
    */
   readStamps(imagePaths: string[]): Promise<StampReading | null>;
+  /**
+   * A document's extracted details and the owner's notes in another language. Text only, to the configured
+   * provider, like extraction (SECURITY.md P8). Null if the answer could not be used. The caller reconciles
+   * what came back with what it sent, by id.
+   */
+  translate(bundle: TranslationBundle, target: string, source: string | null): Promise<TranslationBundle | null>;
+}
+
+/** What is translated for one document. Ids are the caller's, and come back unchanged. */
+export interface TranslationBundle {
+  title: string | null;
+  summary: string | null;
+  notes: string | null;
+  /** `label` only for a label the interface has no wording for (the model may invent one); null otherwise. */
+  fields: Array<{ id: string; label: string | null; value: string }>;
+  measurements: Array<{ id: string; name: string }>;
+  doctors: Array<{ id: string; specialty: string | null }>;
+  /** In an answer only: the language the record is written in (a two-letter code), when the caller did not know it. */
+  source_language?: string | null;
 }
 
 export interface StampReading {
   doctors: Array<{ name: string; specialty: string | null; code: string | null }>;
 }
 
-/** A block of text on a page, with its box as fractions (0–1) of the page, from the top left. */
+/**
+ * A block of text on a page: a line, or a few that belong together. No position: a model's estimate of
+ * where text sits was unreliable, so a page the model reads has its text and nothing to highlight.
+ */
 export interface PageRegion {
   text: string;
-  x0: number;
-  y0: number;
-  x1: number;
-  y1: number;
 }
 
 export interface PageReading {
@@ -118,6 +136,8 @@ export const DOCTOR_ROLES = ['author', 'prescriber', 'referrer', 'other'] as con
  * lose everything else on it.
  */
 export const extractionSchema = z.object({
+  // What the document is written in; absent or null when it cannot be told.
+  language: z.string().nullish(),
   title: z.string(),
   doc_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
   provider: z.string().nullable(),
@@ -161,21 +181,20 @@ export const extractionSchema = z.object({
   ).default([]),
 });
 
-/**
- * Coordinates are plain numbers here and clamped afterwards, rather than bounded
- * in the schema: a model that answers 1.02 for a box at the page edge should still
- * be usable, not fail the whole page.
- */
+/** Text only. A model that still adds coordinates is not failed for it: unknown keys are dropped. */
 export const pageReadingSchema = z.object({
-  regions: z.array(
-    z.object({
-      text: z.string(),
-      x0: z.number(),
-      y0: z.number(),
-      x1: z.number(),
-      y1: z.number(),
-    }),
-  ),
+  regions: z.array(z.object({ text: z.string() })),
+});
+
+/** What a translation answers: the same shape it was given, in the other language. Absent lists are empty, so one a model leaves out does not lose the rest. */
+export const translationSchema = z.object({
+  source_language: z.string().nullish(),
+  title: z.string().nullish(),
+  summary: z.string().nullish(),
+  notes: z.string().nullish(),
+  fields: z.array(z.object({ id: z.string(), label: z.string().nullish(), value: z.string() })).default([]),
+  measurements: z.array(z.object({ id: z.string(), name: z.string() })).default([]),
+  doctors: z.array(z.object({ id: z.string(), specialty: z.string().nullish() })).default([]),
 });
 
 /** What a stamp reading answers: nothing for an image that is not a doctor's stamp. */

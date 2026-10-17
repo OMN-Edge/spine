@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import type { TrendPoint } from '../api';
+import { useI18n } from '../i18n';
 
 /**
  * A value over time, drawn as SVG: a line through the points, the printed reference range as a
@@ -28,7 +29,8 @@ const colour = (flag: string | null) => (flag === 'high' ? '#dc2626' : flag === 
 const day = (iso: string) => Date.parse(`${iso.length === 7 ? `${iso}-01` : iso}T00:00:00Z`);
 const format = (n: number) => String(Number(n.toFixed(3)));
 
-export default function TrendChart({ points, unit }: { points: TrendPoint[]; unit: string | null }) {
+export default function TrendChart({ points, unit, documentHref = id => `/documents/${id}` }: { points: TrendPoint[]; unit: string | null; documentHref?: (documentId: string) => string }) {
+  const { t: tr } = useI18n();
   const drawn = points.filter(p => p.charted && p.value_num !== null && p.taken_on);
   if (drawn.length === 0) return null;
 
@@ -64,14 +66,14 @@ export default function TrendChart({ points, unit }: { points: TrendPoint[]; uni
   const last = latest.taken_on!;
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img" aria-label={`${drawn.length} values from ${first} to ${last}${unit ? `, in ${unit}` : ''}. A table of the values follows.`}>
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img" aria-label={tr('{n} values from {from} to {to}{unit}. A table of the values follows.', { n: drawn.length, from: first, to: last, unit: unit ? `, ${tr('in {unit}', { unit })}` : '' })}>
       {low !== null || high !== null ? (
         <rect
           x={PAD.left} width={W - PAD.left - PAD.right}
           y={py(high ?? yMax)} height={Math.max(0, py(low ?? yMin) - py(high ?? yMax))}
           fill="#dcfce7" opacity={0.7}
         >
-          <title>{`Reference range ${low !== null ? format(low) : '…'} to ${high !== null ? format(high) : '…'}${unit ? ` ${unit}` : ''}`}</title>
+          <title>{tr('Reference range {low} to {high}{unit}', { low: low !== null ? format(low) : '…', high: high !== null ? format(high) : '…', unit: unit ? ` ${unit}` : '' })}</title>
         </rect>
       ) : null}
 
@@ -89,9 +91,9 @@ export default function TrendChart({ points, unit }: { points: TrendPoint[]; uni
       {drawn.length > 1 && <polyline points={line} fill="none" stroke="#93c5fd" strokeWidth={2} strokeLinejoin="round" />}
 
       {drawn.map(p => (
-        <Link key={p.id} to={`/documents/${p.document_id}`}>
+        <Link key={p.id} to={documentHref(p.document_id)}>
           <circle cx={px(day(p.taken_on!))} cy={py(p.value_num!)} r={5.5} fill={colour(p.flag)} stroke="#fff" strokeWidth={2}>
-            <title>{`${p.value_text}${p.unit ? ` ${p.unit}` : ''} · ${p.taken_on}${p.taken_on!.length === 7 ? ' (month only)' : ''}${p.document_title ? ` · ${p.document_title}` : ''}`}</title>
+            <title>{`${p.value_text}${p.unit ? ` ${p.unit}` : ''} · ${p.taken_on}${p.taken_on!.length === 7 ? ` (${tr('month only')})` : ''}${p.document_title ? ` · ${p.document_title}` : ''}`}</title>
           </circle>
         </Link>
       ))}

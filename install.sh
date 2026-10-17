@@ -52,10 +52,12 @@ function build() {
 
   echo "Setting up Python venv for ingestion service..."
   cd "${SPINE_DIR}/ingestion-service"
-  # PYTHON=python3.12 ./install.sh -b if the default python3 is newer than the sidecar supports
+  # PYTHON=python3.13 ./install.sh -b if the default python3 is newer than the sidecar supports (3.11 to 3.13)
   "${PYTHON:-python3}" -m venv .venv
   .venv/bin/pip install --upgrade pip
   .venv/bin/pip install -r requirements.txt
+  # --no-deps: its dependencies include torch and transformers (about 1 GB), and strategy="fast" uses neither. See requirements.txt.
+  .venv/bin/pip install --no-deps unstructured_inference==1.6.13
 
   echo "Build complete."
 }

@@ -43,6 +43,8 @@ export interface ParserConfig {
   ocrMinConfidence: number;
   ocrMaxLowShare: number;
   ocrLangs: string;
+  /** `hybrid` only: off sends a page with no text layer straight to the model, with no local OCR. */
+  ocrEnabled: boolean;
   /** Pages read at once when images go to the model. Local OCR is always one at a time. */
   concurrency: number;
 }

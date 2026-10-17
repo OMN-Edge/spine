@@ -161,9 +161,9 @@ describe('the mail text', () => {
     resetMail('a@b.co', 'https://x.example/reset#t'),
   ];
 
-  it('mentions nothing clinical, and no product name', () => {
+  it('mentions nothing clinical', () => {
     for (const m of messages) {
-      expect(`${m.subject} ${m.text}`).not.toMatch(/medic|health|record|document|patient|clinic|doctor|spine/i);
+      expect(`${m.subject} ${m.text}`).not.toMatch(/medic|health|record|document|patient|clinic|doctor/i);
     }
   });
 

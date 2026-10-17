@@ -28,3 +28,16 @@ export function detectFileKind(filePath: string): FileKind | null {
 }
 
 export const isImage = (kind: FileKind | null): boolean => kind === 'jpeg' || kind === 'png';
+
+/** A zip, by its signature ("PK" and a local-header or end-of-archive marker). Opened only by `archive/import.ts`. */
+export function isZip(filePath: string): boolean {
+  const buffer = Buffer.alloc(4);
+  const fd = openSync(filePath, 'r');
+  let read: number;
+  try {
+    read = readSync(fd, buffer, 0, 4, 0);
+  } finally {
+    closeSync(fd);
+  }
+  return read === 4 && buffer[0] === 0x50 && buffer[1] === 0x4b && ((buffer[2] === 3 && buffer[3] === 4) || (buffer[2] === 5 && buffer[3] === 6));
+}

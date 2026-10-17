@@ -1,9 +1,11 @@
 import { getStore } from '../store/index.js';
-import { getModelParser } from '../parser/index.js';
+import { getModelParser, getParser } from '../parser/index.js';
 import { rereadDocuments } from './document-reading.js';
 import { llmConcurrency } from '../config.js';
 import { mapLimit } from '../concurrency.js';
-import type { UnstructuredElement } from '../types.js';
+import type { Page, UnstructuredElement } from '../types.js';
+import { describeError } from '../failure.js';
+import { logger } from '../logger.js';
 
 /**
  * Reading chosen pages of an upload with the model, then re-extracting the documents
@@ -48,7 +50,15 @@ export function resetAiReadings(): void {
   jobs.clear();
 }
 
-export function startAiReading(userId: string, sourceFileId: string, pageIds: string[]): AiReadingJob {
+/**
+ * How the pages are read. `model`: each page's image goes to the model, which is "Read page with AI".
+ * `configured`: the way an upload reads them, with the parser the operator set (the text layer, then
+ * OCR, then a model for what is left, or whatever it is), which is "Read whole document": the pages
+ * keep their grouping and are read once, together, and the details are extracted again.
+ */
+export type ReadingStrategy = 'model' | 'configured';
+
+export function startAiReading(userId: string, sourceFileId: string, pageIds: string[], model?: string, strategy: ReadingStrategy = 'model'): AiReadingJob {
   const job: AiReadingJob = {
     source_file_id: sourceFileId,
     status: 'running',
@@ -61,15 +71,16 @@ export function startAiReading(userId: string, sourceFileId: string, pageIds: st
   };
   jobs.set(sourceFileId, job);
 
-  run(userId, sourceFileId, pageIds, job).catch(err => {
+  run(userId, sourceFileId, pageIds, job, model, strategy).catch(err => {
     job.status = 'failed';
     job.step = 'failed';
-    job.error = err instanceof Error ? err.message : String(err);
+    job.error = describeError(err);
+    logger.error('reading pages with the model failed', { sourceFileId, error: job.error });
   });
   return job;
 }
 
-async function run(userId: string, sourceFileId: string, pageIds: string[], job: AiReadingJob): Promise<void> {
+async function run(userId: string, sourceFileId: string, pageIds: string[], job: AiReadingJob, model?: string, strategy: ReadingStrategy = 'model'): Promise<void> {
   const store = getStore();
   const upload = await store.sourceFiles.findFor(userId, sourceFileId);
   if (!upload) throw new Error('upload not found');
@@ -79,28 +90,58 @@ async function run(userId: string, sourceFileId: string, pageIds: string[], job:
   if (wanted.some(p => !p)) throw new Error('a page to read is not part of this upload');
   const pages = wanted as typeof known;
 
-  // Read every page before changing anything, so a page the model cannot read leaves the
-  // upload exactly as it was. One image per call, several calls at once.
-  const parser = getModelParser();
-  let done = 0;
-  const readings = await mapLimit(pages, llmConcurrency(), async page => {
-    job.step = `reading ${pages.length === 1 ? `page ${page.page_number}` : `${pages.length} pages`}`;
-    const imagePath = await store.pages.findImagePathFor(userId, page.id);
-    if (!imagePath) throw new Error(`page ${page.page_number} has no image to read`);
+  // Read every page before changing anything, so a page that cannot be read leaves the upload exactly as it was.
+  type Reading = { pageId: string; rawText: string; elements: UnstructuredElement[]; source: Page['extraction_source'] };
+  let readings: Reading[];
 
-    const result = await parser.parse({
-      sourceFileId,
-      filePath: upload.file_path,
-      pages: [{ page_number: page.page_number, image_path: imagePath }],
+  if (strategy === 'configured') {
+    // The way an upload reads: one call for the pages together (a PDF is parsed once, not once a page), by the
+    // configured parser; a photo has no text layer, so it goes to the model, as at upload.
+    const parser = upload.mime_type?.startsWith('image/') ? getModelParser(model) : getParser(model);
+    job.step = pages.length === 1 ? `reading page ${pages[0].page_number}` : `reading ${pages.length} pages`;
+    job.progress = 5;
+    const input = [];
+    for (const page of pages) {
+      const imagePath = await store.pages.findImagePathFor(userId, page.id);
+      if (!imagePath) throw new Error(`page ${page.page_number} has no image to read`);
+      // The parser counts pages of the file, and a page may have been moved since: ask for it by that.
+      input.push({ page_number: page.source_page, image_path: imagePath });
+    }
+    const result = await parser.parse({ sourceFileId, filePath: upload.file_path, pages: input });
+
+    readings = [];
+    for (const page of pages) {
+      const read = result.pages.find(r => r.page_number === page.source_page);
+      if (!read) throw new Error(`page ${page.page_number} could not be read`);
+      // Nothing read where something was before: the earlier reading is better than none.
+      if (read.extraction_source === 'unread' && (page.raw_text ?? '').trim()) continue;
+      readings.push({ pageId: page.id, rawText: read.elements.map(e => e.text).join('\n'), elements: read.elements, source: read.extraction_source });
+    }
+    job.pages_read = readings.length;
+    job.progress = 70;
+  } else {
+    // One image per call, several calls at once.
+    const parser = getModelParser(model);
+    let done = 0;
+    readings = await mapLimit(pages, llmConcurrency(), async page => {
+      job.step = `reading ${pages.length === 1 ? `page ${page.page_number}` : `${pages.length} pages`}`;
+      const imagePath = await store.pages.findImagePathFor(userId, page.id);
+      if (!imagePath) throw new Error(`page ${page.page_number} has no image to read`);
+
+      const result = await parser.parse({
+        sourceFileId,
+        filePath: upload.file_path,
+        pages: [{ page_number: page.source_page, image_path: imagePath }],
+      });
+      const read = result.pages[0];
+      if (!read) throw new Error(`page ${page.page_number} could not be read`);
+
+      done += 1;
+      job.pages_read = done;
+      job.progress = Math.floor((done / pages.length) * 70);
+      return { pageId: page.id, rawText: read.elements.map(e => e.text).join('\n'), elements: read.elements, source: 'multimodal' as const };
     });
-    const read = result.pages[0];
-    if (!read) throw new Error(`page ${page.page_number} could not be read`);
-
-    done += 1;
-    job.pages_read = done;
-    job.progress = Math.floor((done / pages.length) * 70);
-    return { pageId: page.id, rawText: read.elements.map(e => e.text).join('\n'), elements: read.elements, source: 'multimodal' as const };
-  });
+  }
 
   job.step = 'saving the new text';
   job.progress = 72;
@@ -117,7 +158,7 @@ async function run(userId: string, sourceFileId: string, pageIds: string[], job:
 
   job.step = documents.length === 1 ? 'extracting the document again' : `extracting ${documents.length} documents again`;
   job.progress = 75;
-  const worked = await rereadDocuments(userId, documents.map(d => d.id));
+  const worked = await rereadDocuments(userId, documents.map(d => d.id), model);
   job.documents_updated = worked.filter(Boolean).length;
   job.documents_not_updated = worked.length - job.documents_updated;
 

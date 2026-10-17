@@ -19,10 +19,14 @@ export interface Page {
   image_height: number;
   raw_text: string | null;
   elements: string | null; // JSON array of Element[]
-  extraction_source: 'native_text' | 'ocr' | 'mixed' | 'multimodal' | null;
+  extraction_source: 'native_text' | 'ocr' | 'mixed' | 'multimodal' | 'unread' | null;
   is_continuation: boolean | null;
   continuation_confidence: number | null;
   continuation_reasoning: string | null;
+  /** Set aside by the owner: kept, but left out of the document's view, search and reading. */
+  hidden: boolean;
+  /** Where the page is in its file. `page_number` is its place in the upload, which the owner can change. */
+  source_page: number;
   reviewed: boolean;
 }
 
@@ -41,6 +45,8 @@ export interface Document {
   ai_summary: string | null;
   user_notes: string | null;
   reviewed: boolean;
+  /** What it is written in (a two-letter code), as extraction found it; null if unknown. */
+  language: string | null;
 }
 
 export type DocType =
@@ -79,6 +85,10 @@ export interface ShareLink {
   revoked: boolean;
   view_count: number;
   last_accessed_at: string | null;
+  /** The recipient may also see the page images. Off unless the owner ticked it for this link. */
+  include_scans: boolean;
+  /** The language the recipient's page starts in, if the owner chose one. */
+  language: string | null;
 }
 
 export interface UnstructuredElement {
@@ -93,7 +103,7 @@ export interface ParseResponse {
   pages: Array<{
     page_number: number;
     elements: UnstructuredElement[];
-    extraction_source: 'native_text' | 'ocr' | 'mixed' | 'multimodal';
+    extraction_source: 'native_text' | 'ocr' | 'mixed' | 'multimodal' | 'unread';
     image_width: number;
     image_height: number;
   }>;
@@ -109,6 +119,8 @@ export type DoctorRole = 'author' | 'prescriber' | 'referrer' | 'other';
 export type MeasurementFlag = 'low' | 'high' | 'normal';
 
 export interface ExtractionResult {
+  /** What the document is written in, if extraction could tell. */
+  language?: string | null;
   title: string | null;
   doc_date: string | null;
   provider: string | null;

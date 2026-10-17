@@ -197,7 +197,7 @@ describe('what each type of document is asked for', () => {
   });
   it('asks a consultation for what a clinic’s report holds, and for dated labs quoted in its text', () => {
     const c = DOC_TYPE_GUIDES.consultation_note;
-    expect(c.fields).toEqual(expect.arrayContaining(['service', 'symptoms', 'examination', 'family_history', 'personal_history', 'habits', 'current_treatment', 'investigations', 'diagnosis_code', 'diagnosis_uncoded', 'recommended_tests', 'lifestyle_advice', 'report_number']));
+    expect(c.fields).toEqual(expect.arrayContaining(['service', 'reason_for_visit', 'recommended_vaccines', 'prevention', 'recommended_medication', 'symptoms', 'examination', 'family_history', 'personal_history', 'habits', 'current_treatment', 'investigations', 'diagnosis_code', 'diagnosis_uncoded', 'recommended_tests', 'lifestyle_advice', 'report_number']));
     expect(c.grouped).toContain('duration');
     expect(c.about).toMatch(/several services/);
     expect(c.measurements).toMatch(/BMI/);
@@ -205,6 +205,15 @@ describe('what each type of document is asked for', () => {
     expect(c.doctors).toMatch(/Recomandat de/);
     expect(DOC_TYPE_GUIDES.discharge_note.measurements).toMatch(/date it was taken/);
     for (const t of ['discharge_note', 'other'] as const) expect(DOC_TYPE_GUIDES[t].fields).toContain('diagnosis_code');
+  });
+  it('tells a reason for the visit from a symptom, and advised medicines from prescribed ones', () => {
+    const prompt = guidesForPrompt();
+    expect(DOC_TYPE_GUIDES.consultation_note.notes).toMatch(/reason_for_visit is why the patient came/);
+    expect(prompt).toMatch(/Note: reason_for_visit/);
+    const extraction = buildExtractionPrompt('--- page 1 ---\ntext');
+    expect(extraction).toMatch(/not a symptom/);
+    expect(extraction).toMatch(/only when the document prescribes it/);
+    expect(extraction).toMatch(/list every one/);
   });
   it('asks labs for measurements and prescriptions for repeating groups', () => {
     expect(DOC_TYPE_GUIDES.lab_result.measurements).toMatch(/EVERY analyte/);

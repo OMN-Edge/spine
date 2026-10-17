@@ -9,13 +9,14 @@ import type {
 } from '../types.js';
 import { expectInserted, owner } from './owner.js';
 import { ftsQuery } from '../../search-query.js';
+import { NOT_SET_ASIDE } from './visibility.js';
 
 /**
  * The only columns a client may write. The caller passes a patch object, never
  * a column name, so there is no path by which a request key reaches the SQL
  * (S-12).
  */
-const UPDATABLE_COLUMNS = ['title', 'doc_date', 'provider', 'doc_type', 'ai_summary', 'user_notes'] as const;
+const UPDATABLE_COLUMNS = ['title', 'doc_date', 'provider', 'doc_type', 'ai_summary', 'user_notes', 'language'] as const;
 type UpdatableColumn = (typeof UPDATABLE_COLUMNS)[number];
 
 const ORDER = 'ORDER BY d.doc_date DESC NULLS LAST';
@@ -26,7 +27,7 @@ const ORDER = 'ORDER BY d.doc_date DESC NULLS LAST';
  */
 const COLUMNS =
   'd.id, d.source_file_id, d.page_start, d.page_end, d.title, d.doc_date, d.provider, ' +
-  'd.doc_type, d.ai_summary, d.user_notes, d.reviewed';
+  'd.doc_type, d.ai_summary, d.user_notes, d.reviewed, d.language';
 
 /** Every statement filters by `user_id` (SECURITY.md P12). */
 export function documentRepository(db: Database): DocumentRepository {
@@ -34,17 +35,21 @@ export function documentRepository(db: Database): DocumentRepository {
 
   // Inserts only if the source file is the user's.
   const insert = db.prepare(`
-    INSERT INTO documents (id, user_id, source_file_id, page_start, page_end, title, doc_date, provider, doc_type, ai_summary)
-    SELECT ?, ?, id, ?, ?, ?, ?, ?, ?, ?
+    INSERT INTO documents (id, user_id, source_file_id, page_start, page_end, title, doc_date, provider, doc_type, ai_summary, language)
+    SELECT ?, ?, id, ?, ?, ?, ?, ?, ?, ?, ?
     FROM source_files WHERE id = ? AND user_id = ?
   `);
   const setPageEnd = db.prepare('UPDATE documents SET page_end = ? WHERE id = ? AND user_id = ?');
+  const setRange = db.prepare('UPDATE documents SET page_start = ?, page_end = ? WHERE id = ? AND user_id = ?');
+  const dropTranslations = db.prepare('DELETE FROM document_translations WHERE document_id = ? AND user_id = ?');
+  const dropEmbeddings = db.prepare('DELETE FROM document_embeddings WHERE document_id = ? AND user_id = ?');
   const remove = db.prepare('DELETE FROM documents WHERE id = ? AND user_id = ?');
 
-  const forShareAll = db.prepare(`SELECT ${COLUMNS} FROM documents d WHERE d.user_id = ? ${ORDER}`);
+  // A document the owner set aside is not shared, whatever the link's scope says.
+  const forShareAll = db.prepare(`SELECT ${COLUMNS} FROM documents d WHERE d.user_id = ? AND ${NOT_SET_ASIDE} ${ORDER}`);
   const forShareTag = db.prepare(`
     SELECT ${COLUMNS} FROM documents d
-    WHERE d.user_id = ?
+    WHERE d.user_id = ? AND ${NOT_SET_ASIDE}
       AND d.id IN (
         SELECT dt.document_id FROM document_tags dt
         JOIN tags t ON t.id = dt.tag_id
@@ -54,9 +59,46 @@ export function documentRepository(db: Database): DocumentRepository {
   `);
   const forShareDateRange = db.prepare(`
     SELECT ${COLUMNS} FROM documents d
-    WHERE d.user_id = ? AND d.doc_date >= ? AND d.doc_date <= ?
+    WHERE d.user_id = ? AND ${NOT_SET_ASIDE} AND d.doc_date >= ? AND d.doc_date <= ?
     ${ORDER}
   `);
+
+  // Each signal is one grouped query over the target's rows joined to everyone else's; the visible filter is on the other document.
+  const sharedTests = db.prepare(`
+    SELECT id, GROUP_CONCAT(name, char(1)) AS names FROM (SELECT DISTINCT m2.document_id AS id, m2.name AS name
+    FROM measurements m1
+    JOIN measurements m2 ON m2.canonical = m1.canonical AND m2.user_id = m1.user_id AND m2.document_id <> m1.document_id
+    JOIN documents d ON d.id = m2.document_id AND d.user_id = m2.user_id
+    WHERE m1.document_id = ? AND m1.user_id = ? AND ${NOT_SET_ASIDE}) GROUP BY id
+  `);
+  const sharedDoctors = db.prepare(`
+    SELECT id, GROUP_CONCAT(name, char(1)) AS names FROM (SELECT DISTINCT x2.document_id AS id, doc.name AS name
+    FROM document_doctors x1
+    JOIN document_doctors x2 ON x2.doctor_id = x1.doctor_id AND x2.user_id = x1.user_id AND x2.document_id <> x1.document_id
+    JOIN doctors doc ON doc.id = x2.doctor_id AND doc.user_id = x2.user_id
+    JOIN documents d ON d.id = x2.document_id AND d.user_id = x2.user_id
+    WHERE x1.document_id = ? AND x1.user_id = ? AND ${NOT_SET_ASIDE}) GROUP BY id
+  `);
+  const sharedTags = db.prepare(`
+    SELECT id, GROUP_CONCAT(name, char(1)) AS names FROM (SELECT DISTINCT t2.document_id AS id, tg.name AS name
+    FROM document_tags t1
+    JOIN document_tags t2 ON t2.tag_id = t1.tag_id AND t2.user_id = t1.user_id AND t2.document_id <> t1.document_id
+    JOIN tags tg ON tg.id = t2.tag_id AND tg.user_id = t2.user_id
+    JOIN documents d ON d.id = t2.document_id AND d.user_id = t2.user_id
+    WHERE t1.document_id = ? AND t1.user_id = ? AND ${NOT_SET_ASIDE}) GROUP BY id
+  `);
+  const sameProvider = db.prepare(`
+    SELECT d.id FROM documents d, documents me
+    WHERE me.id = ? AND me.user_id = ? AND me.provider IS NOT NULL AND me.provider <> ''
+      AND d.user_id = me.user_id AND d.id <> me.id AND d.provider = me.provider AND ${NOT_SET_ASIDE}
+  `);
+  const providerCounts = db.prepare(`
+    SELECT provider AS name, COUNT(*) AS document_count FROM documents
+    WHERE user_id = ? AND provider IS NOT NULL AND provider <> ''
+    GROUP BY provider ORDER BY provider COLLATE NOCASE
+  `);
+  // Through UPDATE on `documents`, so the search index follows by its own trigger.
+  const renameProviderStmt = db.prepare('UPDATE documents SET provider = ? WHERE user_id = ? AND provider = ?');
 
   return {
     async listFor(userId, filter: DocumentFilter) {
@@ -97,6 +139,7 @@ export function documentRepository(db: Database): DocumentRepository {
       if (filter.dateFrom) { sql += ' AND d.doc_date >= ?'; params.push(filter.dateFrom); }
       if (filter.dateTo) { sql += ' AND d.doc_date <= ?'; params.push(filter.dateTo); }
       if (filter.sourceFileId) { sql += ' AND d.source_file_id = ?'; params.push(filter.sourceFileId); }
+      if (!filter.includeHidden) sql += ` AND ${NOT_SET_ASIDE}`;
       if (filter.reviewed !== undefined) {
         sql += ' AND d.reviewed = ?';
         params.push(filter.reviewed ? 1 : 0);
@@ -110,6 +153,10 @@ export function documentRepository(db: Database): DocumentRepository {
       params.push(filter.limit, filter.offset);
 
       return db.prepare(sql).all(...params) as Document[];
+    },
+
+    async setRange(userId, id, pageStart, pageEnd) {
+      setRange.run(pageStart, pageEnd, id, owner(userId));
     },
 
     async findFor(userId, id) {
@@ -128,6 +175,7 @@ export function documentRepository(db: Database): DocumentRepository {
         doc.provider ?? null,
         doc.docType ?? null,
         doc.aiSummary ?? null,
+        doc.language ?? null,
         doc.sourceFileId,
         uid,
       );
@@ -154,7 +202,34 @@ export function documentRepository(db: Database): DocumentRepository {
     },
 
     async delete(userId, id) {
-      remove.run(id, owner(userId));
+      const uid = owner(userId);
+      dropTranslations.run(id, uid); // they reference the document
+      dropEmbeddings.run(id, uid);
+      remove.run(id, uid);
+    },
+
+    async relatedSignals(userId, documentId) {
+      const uid = owner(userId);
+      const signals = new Map<string, { document_id: string; shared_tests: string[]; shared_doctors: string[]; shared_tags: string[]; same_provider: boolean }>();
+      const at = (id: string) => {
+        let s = signals.get(id);
+        if (!s) { s = { document_id: id, shared_tests: [], shared_doctors: [], shared_tags: [], same_provider: false }; signals.set(id, s); }
+        return s;
+      };
+      const names = (value: string | null) => (value ? value.split('\u0001').slice(0, 5) : []);
+      for (const r of sharedTests.all(documentId, uid) as Array<{ id: string; names: string | null }>) at(r.id).shared_tests = names(r.names);
+      for (const r of sharedDoctors.all(documentId, uid) as Array<{ id: string; names: string | null }>) at(r.id).shared_doctors = names(r.names);
+      for (const r of sharedTags.all(documentId, uid) as Array<{ id: string; names: string | null }>) at(r.id).shared_tags = names(r.names);
+      for (const r of sameProvider.all(documentId, uid) as Array<{ id: string }>) at(r.id).same_provider = true;
+      return [...signals.values()];
+    },
+
+    async providers(userId) {
+      return providerCounts.all(owner(userId)) as Array<{ name: string; document_count: number }>;
+    },
+
+    async renameProvider(userId, from, to) {
+      return renameProviderStmt.run(to, owner(userId), from).changes;
     },
 
     async ownedIds(userId, ids) {
@@ -188,7 +263,7 @@ export function documentRepository(db: Database): DocumentRepository {
           return db
             .prepare(
               `SELECT ${COLUMNS} FROM documents d
-               WHERE d.user_id = ? AND d.id IN (${ids.map(() => '?').join(',')}) ${ORDER}`,
+               WHERE d.user_id = ? AND ${NOT_SET_ASIDE} AND d.id IN (${ids.map(() => '?').join(',')}) ${ORDER}`,
             )
             .all(uid, ...ids) as Document[];
         }

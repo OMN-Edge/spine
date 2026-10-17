@@ -14,15 +14,15 @@ export function shareLinkRepository(db: Database): ShareLinkRepository {
   // and there is no reason to hand a client a capability digest (S-8).
   const list = db.prepare(`
     SELECT id, label, scope, scope_value, created_at, expires_at, revoked,
-           view_count, last_accessed_at
+           view_count, last_accessed_at, include_scans, language
     FROM share_links
     WHERE user_id = ?
     ORDER BY created_at DESC
   `);
 
   const insert = db.prepare(`
-    INSERT INTO share_links (id, user_id, token, label, scope, scope_value, created_at, expires_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO share_links (id, user_id, token, label, scope, scope_value, created_at, expires_at, include_scans, language)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const revoke = db.prepare('UPDATE share_links SET revoked = 1 WHERE id = ? AND user_id = ?');
@@ -30,7 +30,7 @@ export function shareLinkRepository(db: Database): ShareLinkRepository {
   // P6: looked up by sha256(token), so possession of the database does not
   // confer usable links.
   const findLive = db.prepare(`
-    SELECT id, user_id, scope, scope_value, expires_at
+    SELECT id, user_id, scope, scope_value, expires_at, include_scans, language
     FROM share_links
     WHERE token = ? AND revoked = 0
   `);
@@ -51,7 +51,11 @@ export function shareLinkRepository(db: Database): ShareLinkRepository {
 
   return {
     async listFor(userId) {
-      return list.all(owner(userId)) as ShareLinkSummary[];
+      // SQLite keeps the flag as 0 or 1.
+      return (list.all(owner(userId)) as Array<Omit<ShareLinkSummary, 'include_scans'> & { include_scans: number }>).map(row => ({
+        ...row,
+        include_scans: !!row.include_scans,
+      }));
     },
 
     async create(userId, link: NewShareLink) {
@@ -64,6 +68,8 @@ export function shareLinkRepository(db: Database): ShareLinkRepository {
         link.scopeValue,
         link.createdAt,
         link.expiresAt,
+        link.includeScans ? 1 : 0,
+        link.language,
       );
     },
 
@@ -73,7 +79,7 @@ export function shareLinkRepository(db: Database): ShareLinkRepository {
 
     async findLiveByTokenHash(tokenHash) {
       const row = findLive.get(tokenHash) as
-        | { id: string; user_id: string; scope: string; scope_value: string | null; expires_at: string }
+        | { id: string; user_id: string; scope: string; scope_value: string | null; expires_at: string; include_scans: number; language: string | null }
         | undefined;
       if (!row) return null;
       if (new Date(row.expires_at) < new Date()) return null;
@@ -84,6 +90,8 @@ export function shareLinkRepository(db: Database): ShareLinkRepository {
         scope: row.scope,
         scopeValue: row.scope_value,
         expiresAt: row.expires_at,
+        includeScans: !!row.include_scans,
+        language: row.language,
       };
       return resolved;
     },

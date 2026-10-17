@@ -44,6 +44,14 @@ export function sourceFileRepository(db: Database): SourceFileRepository {
     DELETE FROM document_tags WHERE user_id = ?
       AND document_id IN (SELECT id FROM documents WHERE source_file_id = ? AND user_id = ?)
   `);
+  const deleteTranslations = db.prepare(`
+    DELETE FROM document_translations WHERE user_id = ?
+      AND document_id IN (SELECT id FROM documents WHERE source_file_id = ? AND user_id = ?)
+  `);
+  const deleteEmbeddings = db.prepare(`
+    DELETE FROM document_embeddings WHERE user_id = ?
+      AND document_id IN (SELECT id FROM documents WHERE source_file_id = ? AND user_id = ?)
+  `);
   const deleteDocuments = db.prepare('DELETE FROM documents WHERE source_file_id = ? AND user_id = ?');
   const deletePages = db.prepare('DELETE FROM pages WHERE source_file_id = ? AND user_id = ?');
   const clearDerived = db.transaction((userId: string, id: string) => {
@@ -51,9 +59,16 @@ export function sourceFileRepository(db: Database): SourceFileRepository {
     deleteMeasurements.run(userId, id, userId);
     deleteDoctorLinks.run(userId, id, userId);
     deleteDocumentTags.run(userId, id, userId);
+    deleteTranslations.run(userId, id, userId);
+    deleteEmbeddings.run(userId, id, userId);
     const removed = deleteDocuments.run(id, userId).changes;
     deletePages.run(id, userId);
     return removed;
+  });
+  const deleteUpload = db.prepare('DELETE FROM source_files WHERE id = ? AND user_id = ?');
+  const remove = db.transaction((userId: string, id: string) => {
+    clearDerived(userId, id);
+    return deleteUpload.run(id, userId).changes > 0;
   });
 
   return {
@@ -91,6 +106,10 @@ export function sourceFileRepository(db: Database): SourceFileRepository {
 
     async clearDerived(userId, id) {
       return clearDerived(owner(userId), id);
+    },
+
+    async delete(userId, id) {
+      return remove(owner(userId), id);
     },
   };
 }

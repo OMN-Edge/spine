@@ -37,7 +37,7 @@ function sidecarPage(n: number, elements: UnstructuredElement[], source: 'native
 
 const cfg = (mode: string, multimodalEnabled = false): ParserConfig => ({
   mode, multimodalEnabled,
-  textLayerMinChars: 50, ocrMinConfidence: 85, ocrMaxLowShare: 0.1, ocrLangs: 'ron+eng', concurrency: 4,
+  textLayerMinChars: 50, ocrMinConfidence: 85, ocrMaxLowShare: 0.1, ocrLangs: 'ron+eng', ocrEnabled: true, concurrency: 4,
 });
 
 /** A local OCR reading with the figures the routing looks at. */
@@ -68,16 +68,17 @@ function deps(over: {
   return { d, readPage, ocrPage, sidecar, logs };
 }
 
-const reading = (...regions: Array<[string, number, number, number, number]>): PageReading => ({
-  regions: regions.map(([text, x0, y0, x1, y1]) => ({ text, x0, y0, x1, y1 })),
+// The arguments after the text are the positions older tests passed; a reading carries only text now.
+const reading = (...regions: Array<[string, ...number[]]>): PageReading => ({
+  regions: regions.map(([text]) => ({ text })),
 });
 
-describe('the sidecar parser', () => {
+describe('the text parser (the PDF’s own text layer, via the sidecar)', () => {
   it('scales its boxes from PDF points into the page image’s pixels', async () => {
     const box = { x0: 59.5, y0: 84.2, x1: 297.5, y1: 126.3 };
     const { d } = deps({ sidecar: { pages: [sidecarPage(1, [el('Diagnostic', box)])] } });
 
-    const page = (await createParser(cfg('sidecar'), d).parse(input(1))).pages[0];
+    const page = (await createParser(cfg('text'), d).parse(input(1))).pages[0];
 
     expect(page.image_width).toBe(PIXELS.w);
     expect(page.elements[0].bbox!.x0).toBeCloseTo(box.x0 * (PIXELS.w / POINTS.w), 5);
@@ -87,7 +88,7 @@ describe('the sidecar parser', () => {
   it('keeps a box at the same place on the page: the fraction does not change', async () => {
     const box = { x0: 59.5, y0: 84.2, x1: 297.5, y1: 126.3 };
     const { d } = deps({ sidecar: { pages: [sidecarPage(1, [el('Diagnostic', box)])] } });
-    const page = (await createParser(cfg('sidecar'), d).parse(input(1))).pages[0];
+    const page = (await createParser(cfg('text'), d).parse(input(1))).pages[0];
 
     // What grounding stores, using the page image's size as the pipeline now does.
     const grounded = groundSnippet('Diagnostic', page.elements, page.image_width, page.image_height);
@@ -105,7 +106,7 @@ describe('the sidecar parser', () => {
       sidecarPage(3, [el('three', { x0: 0, y0: 0, x1: 10, y1: 10 })]),
     ] } });
 
-    const { pages } = await createParser(cfg('sidecar'), d).parse(input(3));
+    const { pages } = await createParser(cfg('text'), d).parse(input(3));
 
     expect(pages.map(p => p.page_number)).toEqual([1, 2, 3]);
     expect(pages[1].elements).toEqual([]);
@@ -117,19 +118,19 @@ describe('the sidecar parser', () => {
     const page = { ...sidecarPage(1, [el('x', box)]), image_width: 0, image_height: 0 };
     const { d } = deps({ sidecar: { pages: [page] } });
 
-    const out = (await createParser(cfg('sidecar'), d).parse(input(1))).pages[0];
+    const out = (await createParser(cfg('text'), d).parse(input(1))).pages[0];
     expect(out.elements[0].bbox).toEqual(box);
   });
 
   it('keeps a missing box missing', async () => {
     const { d } = deps({ sidecar: { pages: [sidecarPage(1, [el('no coordinates', null)])] } });
-    const out = (await createParser(cfg('sidecar'), d).parse(input(1))).pages[0];
+    const out = (await createParser(cfg('text'), d).parse(input(1))).pages[0];
     expect(out.elements[0].bbox).toBeNull();
   });
 
   it('never sends an image', async () => {
     const { d, readPage } = deps({ sidecar: { pages: [sidecarPage(1, [], 'ocr')] } });
-    const parser = createParser(cfg('sidecar'), d);
+    const parser = createParser(cfg('text'), d);
 
     await parser.parse(input(1));
 
@@ -141,14 +142,13 @@ describe('the sidecar parser', () => {
 describe('the multimodal parser', () => {
   const config = cfg('multimodal', true);
 
-  it('turns the model’s fractions into pixel boxes', async () => {
-    const { d } = deps({ readPage: async () => reading(['Diagnostic: anemie', 0.1, 0.2, 0.6, 0.25]) });
+  it('turns what the model read into text elements with no box', async () => {
+    const { d } = deps({ readPage: async () => reading(['Diagnostic: anemie']) });
     const page = (await createParser(config, d).parse(input(1))).pages[0];
 
     expect(page.extraction_source).toBe('multimodal');
-    expect(page.elements[0]).toMatchObject({ text: 'Diagnostic: anemie', source: 'multimodal' });
-    expect(page.elements[0].bbox!.x0).toBeCloseTo(0.1 * PIXELS.w);
-    expect(page.elements[0].bbox!.y1).toBeCloseTo(0.25 * PIXELS.h);
+    expect(page.elements[0]).toMatchObject({ text: 'Diagnostic: anemie', source: 'multimodal', bbox: null });
+    expect(page.image_width).toBe(PIXELS.w);
   });
 
   it('reads every page, from its own image, and never calls the sidecar', async () => {
@@ -338,6 +338,43 @@ describe('the hybrid parser: text layer, then local OCR, then the model', () => 
     expect(logs.info).toHaveBeenCalledWith('page routed', expect.objectContaining({ page: 1, route: 'text_layer', textChars: 321 }));
   });
 
+  it('sends a page with no text layer straight to the model when local OCR is off', async () => {
+    const off = { ...config, ocrEnabled: false };
+    const { d, ocrPage, readPage, logs } = deps({
+      sidecar: { pages: [] },
+      readPage: async () => reading(['read by the model', 0.1, 0.1, 0.9, 0.2]),
+    });
+    const result = await createParser(off, d).parse(input(1));
+    expect(ocrPage).not.toHaveBeenCalled();
+    expect(readPage).toHaveBeenCalledTimes(1);
+    expect(result.pages[0].extraction_source).toBe('multimodal');
+    expect(logs.info).toHaveBeenCalledWith('page routed', expect.objectContaining({ page: 1, route: 'model', why: 'local OCR is off' }));
+  });
+
+  it('leaves such a page empty, and does not fail, when the model reads nothing', async () => {
+    const off = { ...config, ocrEnabled: false };
+    const { d } = deps({ sidecar: { pages: [] }, readPage: async () => null });
+    const result = await createParser(off, d).parse(input(1));
+    expect(result.pages).toHaveLength(1);
+    expect(result.pages[0].elements).toEqual([]);
+    // Nothing read it, so it is not called OCR.
+    expect(result.pages[0].extraction_source).toBe('unread');
+  });
+
+  it('still calls a page OCR when the model fails but local OCR did read it', async () => {
+    const { d } = deps({ sidecar: { pages: [] }, ocrPage: async () => ocr(40, 70), readPage: async () => null });
+    const { pages } = await createParser(config, d).parse(input(1));
+    expect(pages[0].extraction_source).toBe('ocr');
+    expect(pages[0].elements.length).toBeGreaterThan(0);
+  });
+
+  it('still uses a text layer when local OCR is off', async () => {
+    const off = { ...config, ocrEnabled: false };
+    const { d, readPage } = deps({ sidecar: { pages: [text(1, 200)] } });
+    await createParser(off, d).parse(input(1));
+    expect(readPage).not.toHaveBeenCalled();
+  });
+
   it('honours the thresholds it is given', async () => {
     const strict = { ...config, ocrMinConfidence: 95 };
     const { d, readPage } = deps({ ocrPage: async () => ocr(64, 93), readPage: async () => null });
@@ -361,11 +398,58 @@ describe('the hybrid parser: text layer, then local OCR, then the model', () => 
 });
 
 /** SECURITY.md M-7: asked for twice, so choosing a parser never turns it on by implication. */
+describe('the ocr parser: text layer, then local OCR, nothing else', () => {
+  const text = (n: number, chars = 500) => sidecarPage(n, [el('x'.repeat(chars), box)], 'native_text');
+  const box = { x0: 0, y0: 0, x1: 10, y1: 10 };
+
+  it('uses a text layer when there is one, and reads the other pages with OCR, keeping them whatever the confidence', async () => {
+    const { d, ocrPage, readPage } = deps({
+      sidecar: { pages: [text(1)] },
+      ocrPage: async () => ocr(40, 40, 0.9, 'poor ocr text'),
+    });
+    const { pages } = await createParser(cfg('ocr'), d).parse(input(2));
+    expect(pages[0].extraction_source).toBe('native_text');
+    expect(pages[1].extraction_source).toBe('ocr');
+    expect(pages[1].elements[0].text).toBe('poor ocr text');
+    expect(ocrPage).toHaveBeenCalledTimes(1);
+    expect(readPage).not.toHaveBeenCalled();
+  });
+
+  it('never sends an image, and does not need the second switch', () => {
+    expect(createParser(cfg('ocr', false), deps().d).imageEgress).toBe(false);
+  });
+
+  it('keeps an empty page, and does not fail, when OCR fails', async () => {
+    const { d, logs } = deps({ sidecar: { pages: [] }, ocrPage: async () => { throw new Error('tesseract crashed'); } });
+    const { pages } = await createParser(cfg('ocr'), d).parse(input(1));
+    expect(pages).toHaveLength(1);
+    expect(pages[0].elements).toEqual([]);
+    expect(logs.warn).toHaveBeenCalled();
+  });
+
+  it('fails the upload if the sidecar is down, instead of treating every page as scanned', async () => {
+    const { d, ocrPage } = deps({ sidecar: new Error('connection refused') });
+    await expect(createParser(cfg('ocr'), d).parse(input(2))).rejects.toThrow(/connection refused/);
+    expect(ocrPage).not.toHaveBeenCalled();
+  });
+});
+
+describe('parser names', () => {
+  it('reads the old name sidecar as text', () => {
+    expect(loadParserConfig({ SPINE_PARSER: 'sidecar' }).mode).toBe('text');
+    expect(loadParserConfig({}).mode).toBe('text');
+  });
+
+  it('refuses ocr with local OCR turned off, which would read nothing', () => {
+    expect(() => loadParserConfig({ SPINE_PARSER: 'ocr', SPINE_OCR: 'off' })).toThrow(/SPINE_OCR=off/);
+  });
+});
+
 describe('image egress needs two switches', () => {
   const base = { SESSION_SECRET: 'a'.repeat(32) };
 
   it('defaults to the sidecar, with no egress', () => {
-    expect(loadParserConfig({})).toMatchObject({ mode: 'sidecar', multimodalEnabled: false });
+    expect(loadParserConfig({})).toMatchObject({ mode: 'text', multimodalEnabled: false });
   });
 
   it.each(['multimodal', 'hybrid'])('refuses SPINE_PARSER=%s without the second switch', mode => {
@@ -379,25 +463,30 @@ describe('image egress needs two switches', () => {
   });
 
   it('does not treat the second switch alone as asking for images', () => {
-    const parser = createParser(cfg('sidecar', true), deps().d);
+    const parser = createParser(cfg('text', true), deps().d);
     expect(parser.imageEgress).toBe(false);
   });
 
   it('rejects an unknown parser, naming the valid ones', () => {
-    expect(() => loadConfig({ ...base, SPINE_PARSER: 'tesseract' })).toThrow(/expected one of sidecar, multimodal, hybrid/);
+    expect(() => loadConfig({ ...base, SPINE_PARSER: 'tesseract' })).toThrow(/expected one of text, ocr, multimodal, hybrid/);
     expect(() => createParser(cfg('tesseract', false), deps().d)).toThrow(/expected one of/);
   });
 
   it('lists the adapters that exist', () => {
-    expect(PARSERS.sort()).toEqual(['hybrid', 'multimodal', 'sidecar']);
+    expect(PARSERS.sort()).toEqual(['hybrid', 'multimodal', 'ocr', 'text']);
   });
 });
 
 describe('the screening thresholds in config', () => {
   it('default to values measured on print, tilted print and handwriting-style text', () => {
     expect(loadParserConfig({})).toMatchObject({
-      textLayerMinChars: 50, ocrMinConfidence: 85, ocrMaxLowShare: 0.1, ocrLangs: 'ron+eng', concurrency: 4,
+      textLayerMinChars: 50, ocrMinConfidence: 85, ocrMaxLowShare: 0.1, ocrLangs: 'ron+eng', ocrEnabled: true, concurrency: 4,
     });
+  });
+
+  it('turns local OCR off with SPINE_OCR', () => {
+    for (const value of ['off', 'false', '0', 'no', 'OFF']) expect(loadParserConfig({ SPINE_OCR: value }).ocrEnabled).toBe(false);
+    for (const value of ['on', 'true', '', undefined]) expect(loadParserConfig({ SPINE_OCR: value }).ocrEnabled).toBe(true);
   });
 
   it('can be set', () => {

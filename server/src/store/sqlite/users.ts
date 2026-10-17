@@ -1,18 +1,7 @@
 import type { Database } from 'better-sqlite3';
 import type { NewUser, TotpRecord, UserRecord, UserRepository, UserTokenKind } from '../types.js';
 
-/** What a new user starts with. They can add their own; tags are per-user. */
-const STARTER_TAGS = [
-  'allergy',
-  'chronic',
-  'vaccine',
-  'medication',
-  'imaging',
-  'follow-up-needed',
-  'cardiology',
-  'oncology',
-  'lab',
-] as const;
+import { STARTER_TAGS } from '../../tags.js';
 
 export function userRepository(db: Database): UserRepository {
   const insert = db.prepare(
@@ -110,6 +99,8 @@ export function userRepository(db: Database): UserRepository {
     'measurements',
     'measurement_aliases',
     'document_doctors',
+    'document_translations',
+    'document_embeddings',
     'documents',
     'doctors',
     'pages',

@@ -48,9 +48,13 @@ const DEFAULT_LLM_PROVIDER = 'anthropic';
 /** Per-provider default endpoint. Only where there is no residency meaning. */
 const DEFAULT_ENDPOINTS: Record<string, string> = { anthropic: 'api.anthropic.com' };
 const DEFAULT_LLM_MODEL = 'claude-haiku-4-5-20251001';
-const DEFAULT_MAX_TOKENS_CONTINUATION = 256;
+// The answer is about 50 tokens, but a model that thinks first spends its budget on that: Gemini 2.5 Pro keeps at
+// least 128 for it, and a longer think cut the reply off at 256.
+const DEFAULT_MAX_TOKENS_CONTINUATION = 1024;
 // A document with many values (a lab panel) needs room to list them all.
-const DEFAULT_MAX_TOKENS_EXTRACTION = 4096;
+// A lab bulletin with 40 analytes needs about 6,500 tokens of JSON, measured on Gemini 3.8 Flash; 4096 cut it off
+// mid-reply, and Gemini 2.5 Pro spent 1,900 more on thinking. The cap is a ceiling: only what is generated is paid for.
+const DEFAULT_MAX_TOKENS_EXTRACTION = 16384;
 /**
  * The only limit on how much text goes into one request: the model's context window, in
  * characters, with headroom for the answer and the prompt. 300,000 characters is about
@@ -60,7 +64,9 @@ const DEFAULT_MAX_TOKENS_EXTRACTION = 4096;
 const DEFAULT_CONTEXT_CHARS = 300_000;
 /** Model calls in flight at once. Providers rate-limit and a Pi has few cores, so not unbounded. */
 const DEFAULT_CONCURRENCY = 4;
-const DEFAULT_MAX_TOKENS_PAGE = 4096;
+// A dense scanned page (about 100 lines) is 15,000 characters of text and was cut off at 4096 on Gemini 3.8 Flash,
+// and read whole at 8192. A ceiling, not a target: a normal page uses a fraction of it.
+const DEFAULT_MAX_TOKENS_PAGE = 16384;
 const DEFAULT_MAX_RETRIES = 2;
 
 function positiveInteger(
@@ -91,7 +97,7 @@ export class ConfigError extends Error {
 
 export type RegistrationMode = 'operator' | 'open';
 
-export type ParserMode = 'sidecar' | 'multimodal' | 'hybrid';
+export type ParserMode = 'text' | 'ocr' | 'multimodal' | 'hybrid';
 
 export interface ParserEnvConfig {
   mode: string;
@@ -105,6 +111,8 @@ export interface ParserEnvConfig {
   ocrMaxLowShare: number;
   /** Tesseract languages, e.g. `ron+eng`. */
   ocrLangs: string;
+  /** Whether `hybrid` tries local OCR before the model. Off: a page with no text layer goes straight to the model. */
+  ocrEnabled: boolean;
   /** Pages read at once when images go to the model. Local OCR is always one at a time. */
   concurrency: number;
 }
@@ -115,14 +123,34 @@ export interface MailEnvConfig {
   sender?: string;
 }
 
+export interface EmbeddingEnvConfig {
+  adapter: string;
+  model: string;
+  dims: number;
+  endpoint?: string;
+  region?: string;
+  project?: string;
+}
+
 export interface StoreEnvConfig {
   adapter: string;
   location: string;
 }
 
+/** A model that can be picked for a reading. The first is `SPINE_LLM_MODEL`, which uploads use. */
+export interface ModelChoice {
+  id: string;
+  label: string;
+  /** Where this model runs when that differs from `SPINE_LLM_REGION`: a model is not always served where the default is. */
+  region?: string;
+  endpoint?: string;
+}
+
 export interface LlmEnvConfig {
   provider: string;
   model: string;
+  /** Every model offered where a person picks one, the default first. All on the same provider, endpoint, region and project. */
+  models: ModelChoice[];
   endpoint?: string;
   region?: string;
   project?: string;
@@ -142,6 +170,7 @@ export interface Config {
   llm: LlmEnvConfig;
   mail: MailEnvConfig;
   parser: ParserEnvConfig;
+  embeddings: EmbeddingEnvConfig;
   /** `operator`: accounts come from the CLI. `open`: anyone may register (needs a mailer). */
   registration: RegistrationMode;
 }
@@ -163,14 +192,19 @@ export function resolveBackupDir(env: NodeJS.ProcessEnv = process.env): string {
     : path.join(resolveDataDir(env), '..', 'backups');
 }
 
-export const PARSER_MODES: readonly ParserMode[] = ['sidecar', 'multimodal', 'hybrid'];
+export const PARSER_MODES: readonly ParserMode[] = ['text', 'ocr', 'multimodal', 'hybrid'];
 
 function readParserConfig(env: NodeJS.ProcessEnv, problems: string[]): ParserEnvConfig {
-  const mode = env.SPINE_PARSER ?? 'sidecar';
+  // `sidecar` is the old name of `text`, which says what it does (the PDF's own text layer) and not what runs it.
+  const requested = env.SPINE_PARSER ?? 'text';
+  const mode = requested === 'sidecar' ? 'text' : requested;
   const multimodalEnabled = /^(1|true|yes|on)$/i.test(env.SPINE_MULTIMODAL_ENABLED ?? '');
 
   if (!(PARSER_MODES as readonly string[]).includes(mode)) {
     problems.push(`SPINE_PARSER is "${mode}"; expected one of ${PARSER_MODES.join(', ')}`);
+  }
+  if (mode === 'ocr' && /^(0|false|no|off)$/i.test(env.SPINE_OCR ?? '')) {
+    problems.push('SPINE_PARSER=ocr with SPINE_OCR=off would read no scanned page; use SPINE_PARSER=text, or turn SPINE_OCR back on');
   }
   // P8 / M-7: sending page images to a model must be asked for twice — once by
   // choosing a parser that does it, once by saying so — so that picking a parser
@@ -209,6 +243,7 @@ function readParserConfig(env: NodeJS.ProcessEnv, problems: string[]): ParserEnv
     ocrMaxLowShare: number('SPINE_OCR_MAX_LOW_SHARE', 0.1, 0, 1),
     concurrency: Math.trunc(number('SPINE_LLM_CONCURRENCY', DEFAULT_CONCURRENCY, 1, 16)),
     ocrLangs,
+    ocrEnabled: !/^(0|false|no|off)$/i.test(env.SPINE_OCR ?? ''),
   };
 }
 
@@ -250,6 +285,41 @@ function readMailConfig(
     if (!env.SPINE_DOMAIN) problems.push('SPINE_MAILER=brevo needs SPINE_DOMAIN, which the links in mail point at');
   }
   return { mail, registration };
+}
+
+/**
+ * Embeddings (similarity by meaning). Off unless asked for; on, they are Vertex at a stated endpoint, region and project
+ * (taken from the chat model's settings when that is Vertex too), never defaulted: residency is a property of the endpoint.
+ */
+function readEmbeddingConfig(env: NodeJS.ProcessEnv, problems: string[]): EmbeddingEnvConfig {
+  const adapter = (env.SPINE_EMBEDDINGS ?? 'none').toLowerCase();
+  const chatIsVertex = (env.SPINE_LLM_PROVIDER ?? 'anthropic') === 'vertex';
+  const inherit = (own: string | undefined, llm: string | undefined) => (own || (chatIsVertex ? llm : undefined) || undefined);
+  const rawDims = env.SPINE_EMBEDDING_DIMS ?? '768';
+  const dims = Number(rawDims);
+  if (!Number.isInteger(dims) || dims < 128 || dims > 3072) problems.push(`SPINE_EMBEDDING_DIMS is "${rawDims}"; needs an integer 128-3072`);
+  const config: EmbeddingEnvConfig = {
+    adapter,
+    model: env.SPINE_EMBEDDING_MODEL || 'gemini-embedding-001',
+    dims,
+    endpoint: inherit(env.SPINE_EMBEDDING_ENDPOINT, env.SPINE_LLM_ENDPOINT),
+    region: inherit(env.SPINE_EMBEDDING_REGION, env.SPINE_LLM_REGION),
+    project: inherit(env.SPINE_EMBEDDING_PROJECT, env.SPINE_LLM_PROJECT),
+  };
+  if (adapter === 'vertex') {
+    if (!config.endpoint) problems.push('SPINE_EMBEDDINGS=vertex needs SPINE_EMBEDDING_ENDPOINT (or SPINE_LLM_ENDPOINT with SPINE_LLM_PROVIDER=vertex): residency is a property of the endpoint, so there is no default');
+    if (!config.region) problems.push('SPINE_EMBEDDINGS=vertex needs SPINE_EMBEDDING_REGION (or SPINE_LLM_REGION)');
+    if (!config.project) problems.push('SPINE_EMBEDDINGS=vertex needs SPINE_EMBEDDING_PROJECT (or SPINE_LLM_PROJECT)');
+  }
+  return config;
+}
+
+/** The embeddings section on its own, so `getEmbedder()` does not depend on unrelated settings. */
+export function loadEmbeddingConfig(env: NodeJS.ProcessEnv = process.env): EmbeddingEnvConfig {
+  const problems: string[] = [];
+  const config = readEmbeddingConfig(env, problems);
+  if (problems.length > 0) throw new ConfigError(problems);
+  return config;
 }
 
 /** The registration mode on its own, for the account routes. */
@@ -302,10 +372,68 @@ export function loadLlmConfig(env: NodeJS.ProcessEnv = process.env): LlmEnvConfi
   return llm;
 }
 
+const MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._:@/-]*$/;
+const MAX_MODEL_CHOICES = 8;
+
+/**
+ * The host for a stated region, for a model that runs somewhere other than the default. Stated, never
+ * guessed: `global` is refused because it says nothing about where a request is handled, and anything that
+ * is not a region name is refused rather than turned into a host.
+ */
+function endpointForRegion(region: string): string | null {
+  if (/^(eu|us)$/.test(region)) return `aiplatform.${region}.rep.googleapis.com`;
+  if (/^[a-z]+-[a-z]+[0-9]+$/.test(region)) return `${region}-aiplatform.googleapis.com`;
+  return null;
+}
+
+/**
+ * `SPINE_LLM_MODELS`: the models offered where a person picks one ("Read with AI", "Extract details
+ * again"), comma separated, each `id` or `id=Label`. The default model is always first and is listed
+ * even if it is not named; naming it here only gives it a label (or a region). Ids are checked against this list on
+ * every request, so a client cannot ask for a model the operator did not offer. A model that is not served
+ * where the default is takes its own region, `id|europe-west4=Label`; its host follows from the region and
+ * the response says where each choice runs, so a person is told where their pages would go.
+ */
+function readModelChoices(env: NodeJS.ProcessEnv, defaultModel: string, problems: string[]): ModelChoice[] {
+  const choices: ModelChoice[] = [{ id: defaultModel, label: defaultModel }];
+  for (const entry of (env.SPINE_LLM_MODELS ?? '').split(',')) {
+    const text = entry.trim();
+    if (!text) continue;
+    // id[|region][=Label]. The label may hold anything but a comma; an id may hold an @ (a version).
+    const [left, ...rest] = text.split('=');
+    const [rawId, rawRegion] = left.split('|');
+    const id = rawId.trim();
+    const region = rawRegion === undefined ? undefined : rawRegion.trim();
+    const label = rest.join('=').trim() || id;
+    if (!MODEL_ID.test(id)) {
+      problems.push(`SPINE_LLM_MODELS has "${id}", which is not a model id (letters, digits and . _ : @ / -)`);
+      continue;
+    }
+    let endpoint: string | undefined;
+    if (region !== undefined) {
+      if (env.SPINE_LLM_PROVIDER !== 'vertex') {
+        problems.push(`SPINE_LLM_MODELS names a region for ${id}, which only means something with SPINE_LLM_PROVIDER=vertex`);
+        continue;
+      }
+      endpoint = endpointForRegion(region) ?? undefined;
+      if (!endpoint) {
+        problems.push(`SPINE_LLM_MODELS: "${region}" for ${id} is not a region (use eu, us or a name like europe-west4; global is refused)`);
+        continue;
+      }
+    }
+    const existing = choices.find(choice => choice.id === id);
+    if (existing) { existing.label = label; if (region) { existing.region = region; existing.endpoint = endpoint; } }
+    else choices.push({ id, label, ...(region ? { region, endpoint } : {}) });
+  }
+  if (choices.length > MAX_MODEL_CHOICES) problems.push(`SPINE_LLM_MODELS offers ${choices.length} models; the most is ${MAX_MODEL_CHOICES}`);
+  return choices;
+}
+
 function readLlmConfig(env: NodeJS.ProcessEnv, problems: string[]): LlmEnvConfig {
   const llm: LlmEnvConfig = {
     provider: env.SPINE_LLM_PROVIDER ?? DEFAULT_LLM_PROVIDER,
     model: env.SPINE_LLM_MODEL ?? DEFAULT_LLM_MODEL,
+    models: [],
     endpoint:
       env.SPINE_LLM_ENDPOINT ||
       DEFAULT_ENDPOINTS[env.SPINE_LLM_PROVIDER ?? DEFAULT_LLM_PROVIDER] ||
@@ -348,6 +476,7 @@ function readLlmConfig(env: NodeJS.ProcessEnv, problems: string[]): LlmEnvConfig
   if (llm.contextChars < 10_000) problems.push('SPINE_LLM_CONTEXT_CHARS is below 10,000, which is too small for a page of text');
 
   if (llm.model.trim().length === 0) problems.push('SPINE_LLM_MODEL is empty');
+  llm.models = readModelChoices(env, llm.model, problems);
   return llm;
 }
 
@@ -375,6 +504,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const llm = readLlmConfig(env, problems);
   const { mail, registration } = readMailConfig(env, problems);
   const parser = readParserConfig(env, problems);
+  const embeddings = readEmbeddingConfig(env, problems);
 
   if (problems.length > 0) throw new ConfigError(problems);
 
@@ -389,6 +519,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     llm,
     mail,
     parser,
+    embeddings,
     registration,
   };
 }
@@ -401,4 +532,13 @@ export function llmConcurrency(env: NodeJS.ProcessEnv = process.env): number {
 /** The context window in characters, the only cap on the text sent in one request. */
 export function llmContextChars(env: NodeJS.ProcessEnv = process.env): number {
   return loadLlmConfig(env).contextChars;
+}
+
+/**
+ * `SPINE_TRANSLATION=off` stops documents being translated into the reader's language: the details and the
+ * owner's notes then stay in the language they were written in. Translating sends that text to the LLM
+ * provider (SECURITY.md P8), so an operator who does not want that turns it off. On by default.
+ */
+export function translationEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return !/^(0|false|no|off)$/i.test(env.SPINE_TRANSLATION ?? '');
 }

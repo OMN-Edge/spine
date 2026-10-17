@@ -3,6 +3,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { getStore } from '../store/index.js';
 import { requireAuth } from './middleware.js';
 import { publicUrl } from '../config.js';
+import { isSupportedLanguage, SUPPORTED_LANGUAGES } from '../languages.js';
+import { warmTranslations } from '../translation.js';
 import { createShareToken, hashShareToken } from '../share-token.js';
 import {
   resolveScope,
@@ -24,14 +26,18 @@ export async function shareRoutes(app: FastifyInstance) {
       scope: 'all' | 'tag' | 'document_ids' | 'date_range';
       scope_value?: unknown;
       expires_days?: number;
+      include_scans?: unknown;
+      language?: unknown;
     };
   }>('/api/share-links', async (req, reply) => {
-    const { label, scope, scope_value, expires_days = 7 } = req.body ?? {};
+    const { label, scope, scope_value, expires_days = 7, include_scans = false, language = null } = req.body ?? {};
 
     if (!scope) return reply.status(400).send({ error: 'scope required' });
     if (expires_days < 1 || expires_days > 30) {
       return reply.status(400).send({ error: 'expires_days must be 1-30' });
     }
+    if (typeof include_scans !== 'boolean') return reply.status(400).send({ error: 'include_scans must be true or false' });
+    if (language !== null && !isSupportedLanguage(language)) return reply.status(400).send({ error: `language must be one of ${SUPPORTED_LANGUAGES.join(', ')}, or left out` });
 
     // P2: a link whose scope cannot be fully resolved must not exist. Rejecting
     // here is what stops a `tag` link with no tag from being stored and then
@@ -70,7 +76,16 @@ export async function shareRoutes(app: FastifyInstance) {
       scopeValue: serializeScopeValue(resolved),
       createdAt: now.toISOString(),
       expiresAt: expires.toISOString(),
+      includeScans: include_scans,
+      language,
     });
+
+    // A link that starts in a language: have its documents translated into it already, so the first reader
+    // does not wait. In the background; a failure is logged and the reader asks again.
+    if (language) {
+      const link = { id, userId: req.userId, scope: resolved.scope, scopeValue: serializeScopeValue(resolved), expiresAt: expires.toISOString(), includeScans: include_scans, language };
+      void getStore().documents.listForShare(link).then(docs => warmTranslations(req.userId, docs.map(d => d.id), language)).catch(() => undefined);
+    }
 
     const url = publicUrl(`/share/${token}`);
     return reply.status(201).send({ id, token, url, expires_at: expires.toISOString() });

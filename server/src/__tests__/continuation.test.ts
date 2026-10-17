@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { checkContinuation } from '../ingestion/continuation.js';
 import { extractFields } from '../ingestion/extraction.js';
 import { RunnableLambda } from '@langchain/core/runnables';
+import { OutputParserException } from '@langchain/core/output_parsers';
 import { buildChatLlm } from '../llm/chat-llm.js';
 import { resetChatLlm, CONTINUATION_FALLBACK, EXTRACTION_FALLBACK } from '../llm/index.js';
 import type { ChatLlmConfig, LlmTask, TaskClients } from '../llm/index.js';
@@ -50,6 +51,7 @@ function fakeClients(responses: unknown[]): Recorder {
       extraction: clientFor('extraction'),
       page: clientFor('page'),
       stamps: clientFor('stamps'),
+      translation: clientFor('translation'),
     },
   };
 }
@@ -144,6 +146,26 @@ describe('checkContinuation', () => {
       'llm response failed schema validation',
       expect.objectContaining({ task: 'continuation' }),
     );
+  });
+
+  it('asks again when the reply is not JSON, and uses the second answer', async () => {
+    const cut = new OutputParserException('Failed to parse. Text: "{\\"is_continuation\\": true, \\"reasoning\\": \\"');
+    const { clients, prompts } = fakeClients([cut, { is_continuation: true, confidence: 0.8, reasoning: 'numbered 2/2' }]);
+    resetChatLlm(buildChatLlm(clients, config));
+    expect(await checkContinuation('a', 'b')).toMatchObject({ is_continuation: true, confidence: 0.8 });
+    expect(prompts).toHaveLength(2);
+  });
+
+  it('falls back, without failing the upload, when the reply is not JSON twice, and logs it without the reply', async () => {
+    const warn = vi.fn();
+    const cut = () => new OutputParserException('Failed to parse. Text: "a patient called Invented Name"');
+    const { clients, prompts } = fakeClients([cut(), cut()]);
+    resetChatLlm(buildChatLlm(clients, { ...config, logger: { info: () => {}, warn } }));
+
+    expect(await checkContinuation('a', 'b')).toEqual(CONTINUATION_FALLBACK);
+    expect(prompts).toHaveLength(2);
+    expect(warn).toHaveBeenCalledTimes(2);
+    expect(JSON.stringify(warn.mock.calls)).not.toMatch(/Invented Name/);
   });
 
   it('lets a transport error propagate — the pipeline records the job as failed', async () => {

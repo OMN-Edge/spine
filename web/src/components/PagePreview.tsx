@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { useI18n } from '../i18n';
 
 export interface PreviewPage {
   id: string;
@@ -32,6 +33,7 @@ export default function PagePreview({
   onIndex: (index: number) => void;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   const dialog = useRef<HTMLDialogElement>(null);
   const [zoomed, setZoomed] = useState(false);
   const page = pages[index];
@@ -60,7 +62,7 @@ export default function PagePreview({
   return (
     <dialog
       ref={dialog}
-      aria-label={`Page ${page.page_number} of ${pages.length}`}
+      aria-label={t('Page {n} of {total}', { n: page.page_number, total: pages.length })}
       onClose={onClose}
       onClick={e => { if (e.target === dialog.current) onClose(); }}
       onKeyDown={e => {
@@ -72,10 +74,10 @@ export default function PagePreview({
       <div className="h-full flex flex-col" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
         <div className="flex items-center justify-between gap-3 px-4 py-3 text-white">
           <div className="min-w-0">
-            <p className="text-sm font-medium">Page {page.page_number} of {pages.length}</p>
+            <p className="text-sm font-medium">{t('Page {n} of {total}', { n: page.page_number, total: pages.length })}</p>
             <p className="text-xs text-white/70 truncate">{caption(page)}</p>
           </div>
-          <button type="button" onClick={onClose} aria-label="Close preview" className={button}>
+          <button type="button" onClick={onClose} aria-label={t('Close preview')} className={button}>
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden="true">
               <path d="M6 6l12 12M18 6L6 18" />
             </svg>
@@ -89,7 +91,7 @@ export default function PagePreview({
           <img
             key={page.id}
             src={`/api/pages/${page.id}/image`}
-            alt={`Page ${page.page_number}`}
+            alt={t('Page {n}', { n: page.page_number })}
             onClick={() => setZoomed(z => !z)}
             className={`bg-white rounded shadow-lg select-none ${
               zoomed ? 'w-full max-w-none cursor-zoom-out mx-auto' : 'max-h-full max-w-full object-contain cursor-zoom-in'
@@ -100,11 +102,11 @@ export default function PagePreview({
         {extras && <div className="px-4 pt-2 max-w-xl w-full self-center text-white">{extras(page)}</div>}
 
         <div className="flex items-center justify-center gap-4 px-4 py-3">
-          <button type="button" onClick={() => go(index - 1)} disabled={index === 0} aria-label="Previous page" className={button}>
+          <button type="button" onClick={() => go(index - 1)} disabled={index === 0} aria-label={t('Previous page')} className={button}>
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
           </button>
-          <span className="text-xs text-white/70 w-24 text-center">{zoomed ? 'tap to fit' : 'tap to zoom'}</span>
-          <button type="button" onClick={() => go(index + 1)} disabled={index === pages.length - 1} aria-label="Next page" className={button}>
+          <span className="text-xs text-white/70 w-24 text-center">{zoomed ? t('tap to fit') : t('tap to zoom')}</span>
+          <button type="button" onClick={() => go(index + 1)} disabled={index === pages.length - 1} aria-label={t('Next page')} className={button}>
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
           </button>
         </div>
