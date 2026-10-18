@@ -181,6 +181,9 @@ Run `npm test` (or `npm run test:coverage`) in `server/`. Statement and branch c
 | Translation | `translation.test.ts`, `i18n-coverage.test.ts` | Digest-validated cache, two stages, retry of missing or rambling values, language detection, the public routes; every interface string present in all dictionaries |
 | Export and import | `archive.test.ts` | Trimmed document export, whole archive, restore without a model, duplicates by checksum and by text, plain zips, Office files, damaged and tampered manifests (needs poppler) |
 | Similarity | `similarity.test.ts` | The Vertex embedder against a fake service, stale vectors, model changes, related documents, search by words and meaning, other users and set-aside documents excluded |
+| Grouping confirmation | `grouping-confirmation.test.ts` | Documents of an unconfirmed upload are out of the timeline, search, review queue and shares but on the upload; cannot be reviewed; no links; confirming shows them and starts linking; old uploads count as confirmed |
+| Owner edits | `owner-edits.test.ts` | Headline, fields and results the owner set, added, changed or removed survive a new reading; clearing a value hands it back; an unchanged save marks nothing |
+| Care chains | `linking.test.ts` | Candidates without a model, what the model is shown, the relation-to-link mapping and the date check, proposals replaced while confirmed and dismissed links stay, dismissed pairs not offered again, other users and set-aside documents excluded, cascade deletes, the routes' 404s |
 | Library | `management.test.ts` | Tags, providers and tests: counts, rename, merge, remove, share links following a tag, another user's entries |
 
 ### What isn't covered

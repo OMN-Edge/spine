@@ -16,14 +16,16 @@ export interface ChatLlm {
   detectContinuation(previousPageText: string, currentPageText: string): Promise<ContinuationResult>;
   /** Structured metadata for one logical document. */
   /** `knownTests`: canonical test names already in the archive, so the same test is named the same way. */
-  extractFields(documentText: string, knownTests?: string[], knownTags?: string[]): Promise<ExtractionResult>;
+  /** `ownerNotes`: what the owner wrote on the document, as context (never as a source of values). */
+  extractFields(documentText: string, knownTests?: string[], knownTags?: string[], ownerNotes?: string | null): Promise<ExtractionResult>;
   /**
    * Read one page image: the text on it and where. **This is the only call that
    * sends an image off the host** (SECURITY.md M-7), so it is reached only through
    * the multimodal parser, which is off unless the operator turns it on.
    * Null if the model's answer could not be used.
    */
-  readPage(imagePath: string): Promise<PageReading | null>;
+  /** `thinking`: let the model think before it answers (slower and dearer; for handwriting and dense pages). */
+  readPage(imagePath: string, options?: { thinking?: boolean }): Promise<PageReading | null>;
   /**
    * Read the doctors' names, specialties and professional codes off signature stamps: small images cut
    * from a document's last page, never a whole page. **The second call that sends an image off the host**
@@ -37,6 +39,24 @@ export interface ChatLlm {
    * what came back with what it sent, by id.
    */
   translate(bundle: TranslationBundle, target: string, source: string | null): Promise<TranslationBundle | null>;
+  /**
+   * Which of these candidate documents the target is linked to: one requested the other, one follows up the other, or
+   * they are one episode. Summary cards only, never pages (SECURITY.md P8); the cards are data, not instructions.
+   * `candidate` in an answer is the id the caller gave. Null if the answer could not be used.
+   */
+  link(target: LinkCard, candidates: LinkCard[]): Promise<LinkJudgement[] | null>;
+}
+
+/** A document as the linking model sees it. The id is the caller's (a short label, not a database id). */
+export interface LinkCard {
+  id: string;
+  text: string;
+}
+
+export interface LinkJudgement {
+  candidate: string;
+  relation: LinkRelation;
+  reason: string;
 }
 
 /** What is translated for one document. Ids are the caller's, and come back unchanged. */
@@ -98,6 +118,17 @@ export interface LlmLogger {
 }
 
 export type TaskClientsFactory = (config: ChatLlmConfig, tasks: TaskSpecs) => TaskClients;
+
+/**
+ * The provider declined to answer this input (a recitation or safety block, say). It is about these words, not about
+ * the provider being down: a smaller piece of the same input may well be answered, so callers can split and try again.
+ */
+export class LlmBlockedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'LlmBlockedError';
+  }
+}
 
 export class LlmConfigError extends Error {
   constructor(message: string) {
@@ -195,6 +226,20 @@ export const translationSchema = z.object({
   fields: z.array(z.object({ id: z.string(), label: z.string().nullish(), value: z.string() })).default([]),
   measurements: z.array(z.object({ id: z.string(), name: z.string() })).default([]),
   doctors: z.array(z.object({ id: z.string(), specialty: z.string().nullish() })).default([]),
+});
+
+export const LINK_RELATIONS = [
+  'candidate_requested_target', 'target_requested_candidate', 'target_follows_up_candidate', 'candidate_follows_up_target', 'same_episode',
+] as const;
+export type LinkRelation = (typeof LINK_RELATIONS)[number];
+
+/** What a linking answers: only the candidates that are related, each with the relation and one sentence on why. */
+export const linkingSchema = z.object({
+  links: z.array(z.object({
+    candidate: z.string(),
+    relation: z.enum(LINK_RELATIONS),
+    reason: z.string(),
+  })).default([]),
 });
 
 /** What a stamp reading answers: nothing for an image that is not a doctor's stamp. */

@@ -13,7 +13,6 @@ import { beginJob, getJobStatus, runQueued } from './jobs.js';
 import type { JobStatus, UnstructuredElement } from '../types.js';
 import { describeError } from '../failure.js';
 import { cleanLanguageCode } from '../languages.js';
-import { scheduleSync } from '../similarity/index.js';
 
 export { getJobStatus };
 
@@ -234,8 +233,11 @@ async function runPipeline(
       }
     }
 
+    // The documents wait, out of the timeline, search and shares, until the owner has checked how the pages were grouped
+    // (POST /api/source-files/:id/grouping/confirm); that is also when vectors are made and links are looked for. Set
+    // before the upload counts as done, so there is no moment when it is done and shown.
+    await store.sourceFiles.setGroupingConfirmed(userId, sourceFileId, false);
     await store.sourceFiles.setStatus(userId, sourceFileId, 'done');
-    scheduleSync(userId);
     job.status = 'done';
     job.progress = 100;
     job.step = 'complete';

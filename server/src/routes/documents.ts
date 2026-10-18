@@ -9,11 +9,15 @@ import { chooseModel } from '../llm/index.js';
 import { cleanLanguageCode, isSupportedLanguage, SUPPORTED_LANGUAGES } from '../languages.js';
 import { translateDocument } from '../translation.js';
 import { scheduleSync } from '../similarity/index.js';
+import { scheduleLinking } from '../linking/index.js';
 import { movePage, MoveError, type MoveTarget } from '../ingestion/move-page.js';
 import { isReadingPages } from '../ingestion/ai-reading.js';
 import { DOC_TYPES, DOCTOR_ROLES } from '../llm/types.js';
 import { canonicalName, flagFor, parseNumber, validWhen } from '../ingestion/measurements.js';
 import type { DoctorRole } from '../types.js';
+
+/** The columns a new reading would fill in, and that the owner can take over by setting them. */
+const HEADLINE_COLUMNS = ['title', 'doc_date', 'provider', 'doc_type', 'ai_summary'] as const;
 
 /** The only fields a PATCH may name. `reviewed` is handled alongside them. */
 const PATCHABLE_FIELDS = [
@@ -302,7 +306,8 @@ export async function documentRoutes(app: FastifyInstance) {
       store.doctors.forDocument(req.userId, id),
     ]);
 
-    return reply.send({ ...doc, fields, tags, pages, measurements, doctors });
+    const upload = await getStore().sourceFiles.findFor(req.userId, doc.source_file_id);
+    return reply.send({ ...doc, fields, tags, pages, measurements, doctors, grouping_confirmed: upload?.grouping_confirmed ?? true });
   });
 
   /**
@@ -338,6 +343,11 @@ export async function documentRoutes(app: FastifyInstance) {
     const problem = checkDetails(patch) ?? checkTags(tags);
     if (problem) return reply.status(400).send({ error: problem });
 
+    // A document is reviewed against a grouping the owner has confirmed: the pages it holds must be the right ones first.
+    if (patch.reviewed === true && !(await store.sourceFiles.findFor(req.userId, doc.source_file_id))?.grouping_confirmed) {
+      return reply.status(409).send({ error: 'check how this upload’s pages are grouped first, and confirm it' });
+    }
+
     const normalised = normaliseDetails(patch);
 
     let edits: ValidFieldEdits | null = null;
@@ -360,6 +370,17 @@ export async function documentRoutes(app: FastifyInstance) {
       doctorEdits = checked;
     }
 
+    // What the owner sets by hand stays through a new reading; clearing a value hands it back to the reading.
+    const before = await store.documents.editedColumns(req.userId, id);
+    const edited = new Set(before);
+    for (const column of HEADLINE_COLUMNS) {
+      const next = (normalised as Record<string, unknown>)[column];
+      if (next === undefined) continue;
+      if (next === null || next === '') edited.delete(column);
+      else if (next !== (doc as unknown as Record<string, unknown>)[column]) edited.add(column);
+    }
+    const headlineChange = edited.size === before.length && before.every(c => edited.has(c)) ? null : [...edited];
+
     await store.transaction(async tx => {
       await tx.documents.update(req.userId, id, normalised);
       if (tags !== undefined) await tx.tags.setForDocument(req.userId, id, tags);
@@ -372,7 +393,7 @@ export async function documentRoutes(app: FastifyInstance) {
           await tx.measurements.create(req.userId, {
             id: uuidv4(), documentId: id, pageId: m.pageId, ...m.change,
             canonical: await tx.measurements.resolveCanonical(req.userId, m.change.canonical),
-            sourceSnippet: null, bbox: null, confidence: null,
+            sourceSnippet: null, bbox: null, confidence: null, ownerEdited: true,
           });
         }
       }
@@ -392,13 +413,16 @@ export async function documentRoutes(app: FastifyInstance) {
           await tx.fields.create(req.userId, {
             id: uuidv4(), documentId: id, pageId: field.page_id, label: field.label, value: field.value,
             // Entered by the owner: nothing was read from the page, so there is no source.
-            sourceSnippet: null, bbox: null, confidence: null,
+            sourceSnippet: null, bbox: null, confidence: null, ownerEdited: true,
           });
         }
       }
+      if (headlineChange) await tx.documents.setEditedColumns(req.userId, id, headlineChange);
     });
 
     scheduleSync(req.userId); // what the document says may have changed
+    // Reviewing a document says its grouping and details are right: a good time to look for its links.
+    if (patch.reviewed === true) scheduleLinking(req.userId, [id]);
     return reply.send({ ok: true });
   });
 

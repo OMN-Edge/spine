@@ -5,6 +5,7 @@ import { OWNER_ID, createTestUser, seedPage, seedSourceFile, seedShareLink } fro
 import { getStore } from '../store/index.js';
 import { hashShareToken } from '../share-token.js';
 import { resetChatLlm, type ChatLlm, type TranslationBundle } from '../llm/index.js';
+import { LlmBlockedError } from '../llm/types.js';
 import { translateDocument } from '../translation.js';
 
 /**
@@ -155,6 +156,21 @@ describe('translating a document', () => {
     expect(await getStore().translations.get(OWNER_ID, d.id, 'en')).toBeNull();
     answer = mark;
     expect(await translateDocument(OWNER_ID, d.id, 'en')).toMatchObject({ status: 'translated' });
+  });
+
+  it('when the provider refuses a reply, asks again in halves: one refused text costs that text, not the document', async () => {
+    const d = await romanian();
+    // The provider refuses anything that carries "Repaus" (a recitation block), in whatever company.
+    answer = bundle => {
+      if (bundle.fields.some(f => f.value === 'Repaus')) throw new LlmBlockedError('Finish reason: RECITATION');
+      return mark(bundle);
+    };
+    const result = await translateDocument(OWNER_ID, d.id, 'en');
+    if (result === null || result === 'not_found') throw new Error('expected a partial translation');
+    expect(result.fields[d.known]).toEqual({ label: null, value: 'EN[Anemie]' });
+    expect(result.fields[d.custom].value).toBe('Repaus'); // the original, since it was refused alone
+    expect(result.measurements[d.measurementId]).toBe('EN[Hemoglobina]');
+    expect(await translateDocument(OWNER_ID, d.id, 'en', { cachedOnly: true })).toBeNull(); // a half answer is not kept
   });
 
   it('falls back to the original for anything the model left out', async () => {

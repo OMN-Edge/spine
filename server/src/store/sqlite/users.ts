@@ -101,6 +101,8 @@ export function userRepository(db: Database): UserRepository {
     'document_doctors',
     'document_translations',
     'document_embeddings',
+    'document_links',
+    'removed_readings',
     'documents',
     'doctors',
     'pages',

@@ -172,7 +172,7 @@ describe('the pipeline for a photo', () => {
 
     const pages = await getStore().pages.listForSourceFile(OWNER_ID, id);
     expect(pages).toHaveLength(1);
-    const docs = (await getStore().documents.listFor(OWNER_ID, { limit: 100, offset: 0 })).filter(d => d.source_file_id === id);
+    const docs = (await getStore().documents.listFor(OWNER_ID, { limit: 100, offset: 0, includeUnconfirmed: true })).filter(d => d.source_file_id === id);
     expect(docs).toHaveLength(1);
     expect(mockCheckContinuation).not.toHaveBeenCalled(); // one page: no boundary to judge
   });

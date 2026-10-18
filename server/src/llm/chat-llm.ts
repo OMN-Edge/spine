@@ -4,7 +4,7 @@ import { HumanMessage } from '@langchain/core/messages';
 import { OutputParserException } from '@langchain/core/output_parsers';
 import { z } from 'zod';
 import type { ContinuationResult, ExtractionResult } from '../types.js';
-import { buildContinuationPrompt, buildExtractionPrompt, buildPageReadingPrompt, buildStampReadingPrompt, buildTranslationPrompt } from './prompts.js';
+import { buildContinuationPrompt, buildExtractionPrompt, buildLinkingPrompt, buildPageReadingPrompt, buildStampReadingPrompt, buildTranslationPrompt } from './prompts.js';
 import type { BaseLanguageModelInput } from '@langchain/core/language_models/base';
 import { TASK_SCHEMAS, type LlmTask, type TaskClients } from './tasks.js';
 import {
@@ -12,6 +12,7 @@ import {
   EXTRACTION_FALLBACK,
   type ChatLlm,
   type ChatLlmConfig,
+  type LinkJudgement,
   type LlmLogger,
   type PageReading,
   type StampReading,
@@ -81,13 +82,13 @@ export function buildChatLlm(clients: TaskClients, config: ChatLlmConfig): ChatL
       return validated ?? CONTINUATION_FALLBACK;
     },
 
-    async extractFields(documentText, knownTests = [], knownTags = []): Promise<ExtractionResult> {
+    async extractFields(documentText, knownTests = [], knownTags = [], ownerNotes = null): Promise<ExtractionResult> {
       const validated = await invokeValidated(
         clients,
         config,
         log,
         'extraction',
-        buildExtractionPrompt(documentText, knownTests, knownTags),
+        buildExtractionPrompt(documentText, knownTests, knownTags, ownerNotes),
         TASK_SCHEMAS.extraction,
       );
 
@@ -115,6 +116,15 @@ export function buildChatLlm(clients: TaskClients, config: ChatLlmConfig): ChatL
       };
     },
 
+    async link(target, candidates): Promise<LinkJudgement[] | null> {
+      if (candidates.length === 0) return [];
+      const validated = await invokeValidated(clients, config, log, 'linking', buildLinkingPrompt(target, candidates), TASK_SCHEMAS.linking);
+      if (!validated) return null;
+      const labels = new Set(candidates.map(c => c.id));
+      // A label the model made up is not an answer about any document we sent.
+      return validated.links.filter(l => labels.has(l.candidate.trim())).map(l => ({ ...l, candidate: l.candidate.trim(), reason: l.reason.trim() }));
+    },
+
     async readStamps(imagePaths): Promise<StampReading | null> {
       if (imagePaths.length === 0) return { doctors: [] };
       const images = await Promise.all(imagePaths.map(async p => (await readFile(p)).toString('base64')));
@@ -135,7 +145,7 @@ export function buildChatLlm(clients: TaskClients, config: ChatLlmConfig): ChatL
       };
     },
 
-    async readPage(imagePath): Promise<PageReading | null> {
+    async readPage(imagePath, options): Promise<PageReading | null> {
       // The page goes as a data URL in a standard image block, which LangChain turns
       // into a base64 `image` block for Anthropic and `inlineData` for Gemini.
       const image = (await readFile(imagePath)).toString('base64');
@@ -147,7 +157,7 @@ export function buildChatLlm(clients: TaskClients, config: ChatLlmConfig): ChatL
       });
 
       const validated = await invokeValidated(
-        clients, config, log, 'page', [message], TASK_SCHEMAS.page,
+        clients, config, log, options?.thinking ? 'pageThinking' : 'page', [message], TASK_SCHEMAS.page,
       );
       if (!validated) return null;
 

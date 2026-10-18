@@ -191,7 +191,7 @@ describe('task specs', () => {
     expect(specs.extraction.maxTokens).toBe(222);
     // The simple tasks are told not to deliberate; extraction is left to the model.
     expect(Object.fromEntries(Object.values(specs).map(s => [s.name, s.reasoning]))).toEqual({
-      continuation: 'none', extraction: 'default', page: 'none', stamps: 'none', translation: 'none',
+      continuation: 'none', extraction: 'default', page: 'none', pageThinking: 'default', stamps: 'none', translation: 'none', linking: 'none',
     });
   });
 

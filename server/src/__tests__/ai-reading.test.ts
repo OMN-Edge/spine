@@ -225,6 +225,24 @@ describe('reading a whole document the way an upload does', () => {
   });
 });
 
+describe('thinking', () => {
+  const startThinking = (sf: string, page_ids: unknown, thinking: unknown) =>
+    app.inject({ method: 'POST', url: `/api/source-files/${sf}/ai-reading`, payload: { page_ids, thinking }, headers: { cookie } });
+
+  it('takes true or false, and refuses anything else before reading', async () => {
+    const { sf, pageIds } = await upload();
+    for (const bad of ['yes', 1, {}, null]) {
+      if (bad === null) continue; // null is "not given"
+      expect((await startThinking(sf, [pageIds[0]], bad)).statusCode).toBe(400);
+    }
+    expect(sent).toHaveLength(0);
+    mockExtractFields.mockResolvedValue(reading('Doc A'));
+    expect((await startThinking(sf, [pageIds[0]], true)).statusCode).toBe(202);
+    await finished(sf);
+    expect(sent).toHaveLength(1);
+  });
+});
+
 describe('a page that was moved', () => {
   it('is still asked for by its place in the file, which is what the parser counts', async () => {
     const { sf, pageIds } = await upload();

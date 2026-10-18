@@ -29,6 +29,8 @@ export interface Document {
   pages?: Page[];
   measurements?: Measurement[];
   doctors?: DoctorOnDocument[];
+  /** On GET /api/documents/:id: whether the owner has confirmed how its upload's pages were grouped. */
+  grouping_confirmed?: boolean;
 }
 
 export type Flag = 'low' | 'high' | 'normal';
@@ -159,6 +161,8 @@ export interface UploadSummary {
   status: 'pending' | 'processing' | 'done' | 'error';
   error_message: string | null;
   page_count: number | null;
+  /** False until the owner confirms how the pages were grouped; the documents are out of the timeline until then. */
+  grouping_confirmed?: boolean;
   documents: UploadDocument[];
   /** Documents whose every page is hidden: not in `documents`, but there. */
   hidden_documents?: number;
@@ -254,7 +258,16 @@ export type RelatedReason =
 export interface RelatedDocument {
   id: string; title: string | null; doc_type: DocType | null; doc_date: string | null; provider: string | null;
   score: number; reasons: RelatedReason[];
+  /** The title in the reader's language, when it has been translated. */
+  translated_title?: string | null;
 }
+
+export type LinkKind = 'requests' | 'follow_up' | 'same_episode';
+
+export interface ChainNode { id: string; title: string | null; doc_type: DocType | null; doc_date: string | null; provider: string | null }
+/** `from` is the earlier document. A `proposed` link was found by the app and waits for the owner. */
+export interface ChainEdge { from: string; to: string; kind: LinkKind; state: 'proposed' | 'confirmed'; source: 'auto' | 'owner'; reason: string | null }
+export interface Chain { enabled: boolean; searching: boolean; nodes: ChainNode[]; edges: ChainEdge[] }
 
 export interface ShareLink {
   id: string;
@@ -412,7 +425,14 @@ export const api = {
 
   documents: {
     /** Documents that share a test or a doctor with this one, or read like it, and why. */
-    related: (id: string) => req<{ related: RelatedDocument[]; meaning: { enabled: boolean; ready: boolean } }>(`/api/documents/${id}/related`),
+    related: (id: string, lang?: string) => req<{ related: RelatedDocument[]; translation_pending?: boolean; meaning: { enabled: boolean; ready: boolean } }>(`/api/documents/${id}/related${lang ? `?lang=${lang}` : ''}`),
+    /** The documents around this one: what asked for it, what it asked for, what follows it up. */
+    chain: (id: string) => req<Chain>(`/api/documents/${id}/chain`),
+    /** Looks for links again, in the background. */
+    refreshChain: (id: string) => post<{ ok: boolean }>(`/api/documents/${id}/chain/refresh`, {}),
+    /** The owner adds a link; `from` is the earlier document. */
+    addLink: (from: string, to: string, kind: LinkKind) => post<{ ok: boolean }>('/api/document-links', { from, to, kind }),
+    decideLink: (from: string, to: string, kind: LinkKind, state: 'confirmed' | 'dismissed') => post<{ ok: boolean }>('/api/document-links/state', { from, to, kind, state }),
     /** Search by words and by meaning together. */
     hybrid: (q: string) => req<Array<Document & { via: Array<'words' | 'meaning'> }>>(`/api/search/hybrid?q=${encodeURIComponent(q)}`),
     /** The document in a language, translated on demand and kept. */
@@ -450,6 +470,8 @@ export const api = {
   sourceFiles: {
     /** Every upload, newest first, with the documents it became. */
     list: () => req<UploadSummary[]>('/api/source-files'),
+    /** The grouping is right: the upload's documents appear in the timeline and are looked at for links. */
+    confirmGrouping: (id: string) => post<{ confirmed: boolean }>(`/api/source-files/${id}/grouping/confirm`, {}),
     /** What was read from one page, and how. */
     /** Move a page: into a document at a place (before a page of it, or last), or out into a document of its own. */
     movePage: (pageId: string, body: { document_id: string; before_page_id: string | null } | { new_document: true; before_document_id: string | null }) =>
@@ -461,16 +483,16 @@ export const api = {
       req<{ id: string; page_number: number; raw_text: string | null; extraction_source: string | null }>(`/api/pages/${pageId}`),
     /** Read chosen pages with the model, then extract the documents they belong to again. */
     /** `model`: each page image goes to a model. `configured`: read the pages the way an upload does. */
-    startAiReading: (id: string, pageIds: string[], model?: string, strategy: 'model' | 'configured' = 'model') =>
+    startAiReading: (id: string, pageIds: string[], model?: string, strategy: 'model' | 'configured' = 'model', thinking = false) =>
       req<AiReadingJob>(`/api/source-files/${id}/ai-reading`, {
         method: 'POST',
-        body: JSON.stringify({ page_ids: pageIds, ...(model ? { model } : {}), ...(strategy === 'configured' ? { strategy } : {}) }),
+        body: JSON.stringify({ page_ids: pageIds, ...(model ? { model } : {}), ...(strategy === 'configured' ? { strategy } : {}), ...(thinking ? { thinking } : {}) }),
       }),
     aiReading: (id: string) => req<AiReadingJob | { status: 'idle' }>(`/api/source-files/${id}/ai-reading`),
     /** One upload's pages and how they are grouped into documents. */
     get: (id: string) => req<UploadLayout>(`/api/source-files/${id}`),
     status: (id: string) =>
-      req<{ status: string; progress: number; step: string; error?: string; documents: UploadDocument[] }>(`/api/source-files/${id}/status`),
+      req<{ status: string; progress: number; step: string; error?: string; grouping_confirmed?: boolean; documents: UploadDocument[] }>(`/api/source-files/${id}/status`),
     capabilities: () =>
       req<{
         aiReading: { enabled: boolean; provider: string; endpoint: string | null };

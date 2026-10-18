@@ -18,7 +18,7 @@ interface AiReadingValue {
   target: AiTarget | null;
   job: AiReadingJob | null;
   busy: boolean;
-  start: (pageIds: string[], model?: string, strategy?: 'model' | 'configured') => Promise<void>;
+  start: (pageIds: string[], model?: string, strategy?: 'model' | 'configured', thinking?: boolean) => Promise<void>;
   dismiss: () => void;
 }
 
@@ -66,8 +66,8 @@ export function AiReadingProvider({
     return () => window.clearTimeout(timer.current);
   }, [sourceFileId, follow]);
 
-  const start = useCallback(async (pageIds: string[], model?: string, strategy: 'model' | 'configured' = 'model') => {
-    setJob(await api.sourceFiles.startAiReading(sourceFileId, pageIds, model, strategy));
+  const start = useCallback(async (pageIds: string[], model?: string, strategy: 'model' | 'configured' = 'model', thinking = false) => {
+    setJob(await api.sourceFiles.startAiReading(sourceFileId, pageIds, model, strategy, thinking));
     follow();
   }, [sourceFileId, follow]);
 
@@ -84,11 +84,27 @@ export function AiReadingBanner({ dark = false }: { dark?: boolean }) {
   const { job, dismiss } = useAiReading();
   if (!job) return null;
 
+  // The server words its progress in English; the steps it can say are known, and a new one shows as it came.
+  const stepText = (step: string): string => {
+    const page = /^reading page (\d+)$/.exec(step);
+    if (page) return t('reading page {n}', { n: page[1] });
+    const pages = /^reading (\d+) pages$/.exec(step);
+    if (pages) return tn(Number(pages[1]), 'reading {n} page', 'reading {n} pages');
+    const documents = /^extracting (\d+) documents again$/.exec(step);
+    if (documents) return tn(Number(documents[1]), 'extracting {n} document again', 'extracting {n} documents again');
+    switch (step) {
+      case 'starting': return t('starting');
+      case 'saving the new text': return t('saving the new text');
+      case 'extracting the document again': return t('extracting the document again');
+      default: return step;
+    }
+  };
+
   const base = dark ? 'text-white/90' : 'text-gray-700';
   if (job.status === 'running') {
     return (
       <div role="status" className={`text-sm ${base}`}>
-        <p>{t('Reading with AI…')} {job.step}</p>
+        <p>{t('Reading with AI…')} {stepText(job.step)}</p>
         <div className="h-1 mt-1 rounded-full bg-gray-200/60 overflow-hidden" aria-hidden="true">
           <div className="h-full bg-purple-500 transition-all duration-500 motion-reduce:transition-none" style={{ width: `${job.progress}%` }} />
         </div>

@@ -8,6 +8,8 @@ export interface SourceFile {
   checksum: string | null;
   status: 'pending' | 'processing' | 'done' | 'error';
   error_message: string | null;
+  /** False from when an upload is read until the owner confirms how its pages were grouped: its documents are held back meanwhile. */
+  grouping_confirmed: boolean;
 }
 
 export interface Page {

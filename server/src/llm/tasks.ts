@@ -4,6 +4,7 @@ import type { BaseLanguageModelInput } from '@langchain/core/language_models/bas
 import {
   continuationSchema,
   extractionSchema,
+  linkingSchema,
   pageReadingSchema,
   stampReadingSchema,
   translationSchema,
@@ -20,7 +21,7 @@ import {
  * provider is constrained with and the zod schema the interface validates against
  * cannot drift apart.
  */
-export const LLM_TASKS = ['continuation', 'extraction', 'page', 'stamps', 'translation'] as const;
+export const LLM_TASKS = ['continuation', 'extraction', 'page', 'pageThinking', 'stamps', 'translation', 'linking'] as const;
 export type LlmTask = (typeof LLM_TASKS)[number];
 
 export interface TaskSpec {
@@ -57,8 +58,10 @@ export const TASK_SCHEMAS = {
   continuation: continuationSchema,
   extraction: extractionSchema,
   page: pageReadingSchema,
+  pageThinking: pageReadingSchema,
   stamps: stampReadingSchema,
   translation: translationSchema,
+  linking: linkingSchema,
 } satisfies Record<LlmTask, z.ZodType>;
 
 export function buildTaskSpecs(config: ChatLlmConfig): TaskSpecs {
@@ -81,6 +84,14 @@ export function buildTaskSpecs(config: ChatLlmConfig): TaskSpecs {
       reasoning: 'none',
       jsonSchema: z.toJSONSchema(TASK_SCHEMAS.page) as Record<string, unknown>,
     },
+    // The same reading with the model left to think first, for a page it did badly: handwriting, a dense block.
+    // Slower and billed for the thinking, so only when asked for (the "think harder" choice beside Read page with AI).
+    pageThinking: {
+      name: 'pageThinking',
+      maxTokens: config.maxTokens.page,
+      reasoning: 'default',
+      jsonSchema: z.toJSONSchema(TASK_SCHEMAS.pageThinking) as Record<string, unknown>,
+    },
     // A few lines of text per stamp: the page budget is a ceiling, not a target.
     stamps: {
       name: 'stamps',
@@ -95,6 +106,13 @@ export function buildTaskSpecs(config: ChatLlmConfig): TaskSpecs {
       maxTokens: config.maxTokens.extraction,
       reasoning: 'none',
       jsonSchema: z.toJSONSchema(TASK_SCHEMAS.translation) as Record<string, unknown>,
+    },
+    // A few short judgements about a handful of cards: no deliberation, and the extraction ceiling is far more than it needs.
+    linking: {
+      name: 'linking',
+      maxTokens: config.maxTokens.continuation,
+      reasoning: 'none',
+      jsonSchema: z.toJSONSchema(TASK_SCHEMAS.linking) as Record<string, unknown>,
     },
   };
 }

@@ -14,6 +14,7 @@ import { sourceFileRoutes } from './routes/source-files.js';
 import { exportRoutes } from './routes/export.js';
 import { getEmbedder, EmbedderConfigError } from './embedding/index.js';
 import { similarityRoutes } from './routes/similarity.js';
+import { linkRoutes } from './routes/links.js';
 import { shareRoutes } from './routes/share.js';
 import { publicShareRoutes } from './routes/public-share.js';
 import { tagRoutes } from './routes/tags.js';
@@ -137,6 +138,7 @@ await app.register(documentRoutes);
 await app.register(sourceFileRoutes);
 await app.register(exportRoutes);
 await app.register(similarityRoutes);
+await app.register(linkRoutes);
 await app.register(shareRoutes);
 // The share entry route serves the SPA shell, so it needs the build's path.
 await app.register(publicShareRoutes, {

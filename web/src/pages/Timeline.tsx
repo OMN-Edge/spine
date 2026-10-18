@@ -6,10 +6,17 @@ import SpineLog from '../components/SpineLog';
 import { useI18n } from '../i18n';
 
 export default function Timeline() {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const [docs, setDocs] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Record<string, string>>({});
+  // Uploads whose pages wait for the owner to confirm the grouping: their documents are not in this list yet.
+  const [waiting, setWaiting] = useState(0);
+  useEffect(() => {
+    api.sourceFiles.list()
+      .then(uploads => setWaiting(uploads.filter(u => u.status === 'done' && u.grouping_confirmed === false && (u.documents.length > 0 || !!u.hidden_documents)).length))
+      .catch(() => setWaiting(0));
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -52,6 +59,13 @@ export default function Timeline() {
           </select>
         </div>
       </div>
+
+      {waiting > 0 && (
+        <div role="status" className="mb-6 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900 flex flex-wrap items-center justify-between gap-2">
+          <span>{tn(waiting, '{n} upload is waiting for you to check how its pages were grouped. Its documents appear here once you confirm.', '{n} uploads are waiting for you to check how their pages were grouped. Their documents appear here once you confirm.')}</span>
+          <Link to="/upload" className="shrink-0 text-blue-600 hover:underline font-medium">{t('Check the grouping')}</Link>
+        </div>
+      )}
 
       {loading ? (
         <p className="text-gray-400 text-sm">{t('Loading…')}</p>

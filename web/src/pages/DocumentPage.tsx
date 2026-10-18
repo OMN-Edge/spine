@@ -9,6 +9,7 @@ import ReadAgainMenu from '../components/ReadAgainMenu';
 import { SOURCE_CHIP } from '../components/pageSource';
 import PageTextPanel from '../components/PageTextPanel';
 import RelatedDocuments from '../components/RelatedDocuments';
+import CareChain from '../components/CareChain';
 import { DOC_TYPE_NAMES, documentByline, documentTitle, fieldName, isSection, labelFromName, valueLines } from '../titles';
 import { LANGUAGES, useI18n } from '../i18n';
 import { languageName, useTranslation } from '../i18n/useTranslation';
@@ -191,6 +192,10 @@ export default function DocumentPage() {
   const title = shown?.title ?? doc.title;
   const summary = shown?.ai_summary ?? doc.ai_summary;
   const notes = shown?.user_notes ?? doc.user_notes;
+  // A section pulses until its own part has arrived: the title, summary, notes and specialties come first, the fields and results after.
+  const waitingHead = needsTranslation && tr.translating && !tr.translation;
+  const waitingBody = needsTranslation && tr.translating && tr.translation?.part !== 'full';
+  const pulse = (waiting: boolean) => (waiting ? 'animate-pulse motion-reduce:animate-none' : '');
 
   const pages: Page[] = doc.pages ?? [];
   const fields: ExtractedField[] = doc.fields ?? [];
@@ -347,17 +352,25 @@ export default function DocumentPage() {
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <button onClick={() => navigate(-1)} className="text-xs text-gray-400 hover:text-gray-600 mb-3">← {t('Back')}</button>
 
+          {doc.grouping_confirmed === false && (
+            <div role="status" className="mb-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-900">
+              {t('How this upload’s pages were grouped has not been confirmed yet, so this document is not in your timeline and cannot be marked reviewed.')}{' '}
+              <Link to={`/uploads/${doc.source_file_id}`} className="font-medium text-blue-600 hover:underline">{t('Check the grouping')}</Link>
+            </div>
+          )}
+
           {!editing ? (
             <>
               <div className="flex flex-wrap items-center gap-2 mb-1">
-                <h1 className="text-lg font-semibold text-gray-900 break-words min-w-0">{documentTitle({ ...doc, title }, t)}</h1>
+                <h1 className={`text-lg font-semibold text-gray-900 break-words min-w-0 ${pulse(waitingHead)}`}>{documentTitle({ ...doc, title }, t)}</h1>
                 <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${reviewed ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
                   {reviewed ? t('Reviewed') : t('Unreviewed')}
                 </span>
               </div>
               <p className="text-sm text-gray-500">{documentByline(doc, t)}</p>
               {needsTranslation && (tr.translating || tr.active) && (
-                <p className="text-xs text-gray-500 mt-1" role="status">
+                <p className="text-xs text-gray-500 mt-1 flex flex-wrap items-center gap-1.5" role="status">
+                  {tr.translating && <span aria-hidden="true" className="inline-block h-3 w-3 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />}
                   {tr.translating ? t('Translating…') : t('Translated from {language}.', { language: languageName(tr.translation?.source_language ?? doc.language) || t('the original language') })}{' '}
                   {tr.active && (
                     <button type="button" onClick={() => tr.setShowOriginal(o => !o)} className="text-blue-600 hover:underline">
@@ -366,17 +379,18 @@ export default function DocumentPage() {
                   )}
                 </p>
               )}
+              {tr.partial && <p className="text-xs text-gray-400 mt-1">{t('Only part of this document could be translated. The rest is shown in the original.')}</p>}
               {tr.failed && <p className="text-xs text-gray-400 mt-1">{t('Could not translate this document. Showing the original.')}</p>}
               {(doc.tags ?? []).length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-2">
                   {doc.tags!.map(tag => <span key={tag} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{tag}</span>)}
                 </div>
               )}
-              {summary && <p className="text-sm text-gray-700 leading-relaxed mt-4">{summary}</p>}
+              {summary && <p className={`text-sm text-gray-700 leading-relaxed mt-4 ${pulse(waitingHead)}`}>{summary}</p>}
               {notes && (
                 <div className="mt-4">
                   <p className={label}>{t('Notes')}</p>
-                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{notes}</p>
+                  <p className={`text-sm text-gray-700 whitespace-pre-wrap ${pulse(waitingHead)}`}>{notes}</p>
                 </div>
               )}
               {notice && <p className="text-sm text-green-700 mt-4" role="status">{notice}</p>}
@@ -451,7 +465,7 @@ export default function DocumentPage() {
         {(editing || (doc.doctors ?? []).length > 0) && (
           <div className="bg-white border border-gray-200 rounded-xl p-4">
             <h2 className="font-medium text-gray-900 mb-3 text-sm">{t('Doctors')}</h2>
-            {!editing ? <DoctorsList doctors={(doc.doctors ?? []).map(d => (shown && d.id in shown.doctors ? { ...d, specialty: shown.doctors[d.id] } : d))} /> : (
+            {!editing ? <div className={pulse(waitingHead)}><DoctorsList doctors={(doc.doctors ?? []).map(d => (shown && d.id in shown.doctors ? { ...d, specialty: shown.doctors[d.id] } : d))} /></div> : (
               <DoctorsEditor
                 rows={draft.doctors} known={knownDoctors} listId="known-doctors"
                 onChange={setDoctor} onAdd={addDoctor} onRemove={removeDoctor}
@@ -464,7 +478,7 @@ export default function DocumentPage() {
         {(editing || (doc.measurements ?? []).length > 0) && (
           <div className="bg-white border border-gray-200 rounded-xl p-4">
             <h2 className="font-medium text-gray-900 mb-3 text-sm">{t('Measurements')}</h2>
-            {!editing ? <MeasurementsList items={(doc.measurements ?? []).map(m => ({ ...m, name: shown?.measurements[m.id] ?? m.name }))} selectedId={selectedField?.id} onSelect={m => setSelectedField(current => (current?.id === m.id ? null : m))} /> : (
+            {!editing ? <div className={pulse(waitingBody)}><MeasurementsList items={(doc.measurements ?? []).map(m => ({ ...m, name: shown?.measurements[m.id] ?? m.name }))} selectedId={selectedField?.id} onSelect={m => setSelectedField(current => (current?.id === m.id ? null : m))} /></div> : (
               <MeasurementsEditor
                 rows={draft.measurements} pages={pages} currentPageId={currentPage?.id ?? ''} listId="measurement-names"
                 onChange={setMeasurement} onAdd={addMeasurement}
@@ -484,6 +498,7 @@ export default function DocumentPage() {
           </>
         )}
 
+        {!editing && <CareChain documentId={doc.id} />}
         {!editing && <RelatedDocuments documentId={doc.id} />}
 
         {/* Extracted fields */}
@@ -494,7 +509,7 @@ export default function DocumentPage() {
             fields.length === 0 ? (
               <p className="text-xs text-gray-400">{t('No fields extracted')}</p>
             ) : (
-              <div className="space-y-1">
+              <div className={`space-y-1 ${pulse(waitingBody)}`}>
                 {fields.filter(f => f.group_no === null).map(renderField)}
                 {/* Fields that belong together (one prescription line) are shown together. */}
                 {groupsOf(fields).map(([no, members]) => (

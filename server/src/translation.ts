@@ -2,7 +2,7 @@ import { createHash } from 'crypto';
 import { getStore } from './store/index.js';
 import { getChatLlm } from './llm/index.js';
 import { KNOWN_FIELD_LABELS } from './llm/doc-types.js';
-import type { TranslationBundle } from './llm/types.js';
+import { LlmBlockedError, type TranslationBundle } from './llm/types.js';
 import { translationEnabled, llmConcurrency } from './config.js';
 import { mapLimit } from './concurrency.js';
 import { logger } from './logger.js';
@@ -113,6 +113,52 @@ function pieces(bundle: TranslationBundle, size = 100): TranslationBundle[] {
     out.push({ title: null, summary: null, notes: null, fields: [], measurements: bundle.measurements.slice(i, i + size), doctors: [] });
   }
   return out;
+}
+
+/** A bundle in two, by its separate texts (title, summary, notes, each field, result and specialty); null if it is one. */
+function halves(bundle: TranslationBundle): [TranslationBundle, TranslationBundle] | null {
+  const units: Array<(into: TranslationBundle) => void> = [];
+  if (bundle.title) units.push(b => { b.title = bundle.title; });
+  if (bundle.summary) units.push(b => { b.summary = bundle.summary; });
+  if (bundle.notes) units.push(b => { b.notes = bundle.notes; });
+  for (const f of bundle.fields) units.push(b => { b.fields.push(f); });
+  for (const m of bundle.measurements) units.push(b => { b.measurements.push(m); });
+  for (const d of bundle.doctors) units.push(b => { b.doctors.push(d); });
+  if (units.length < 2) return null;
+  const blank = (): TranslationBundle => ({ title: null, summary: null, notes: null, fields: [], measurements: [], doctors: [] });
+  const [a, b] = [blank(), blank()];
+  const mid = Math.ceil(units.length / 2);
+  units.forEach((add, i) => add(i < mid ? a : b));
+  return [a, b];
+}
+
+/**
+ * One piece translated. A reply the provider refused (a recitation block on boilerplate, say) or that was not usable
+ * JSON is asked again in halves, down to single texts, so one stubborn line costs that line and not the document; a
+ * text that still fails alone is left out and is shown in the original. Anything else (a 429, an outage) propagates.
+ */
+async function translatePiece(
+  piece: TranslationBundle,
+  translate: (bundle: TranslationBundle) => Promise<TranslationBundle | null>,
+): Promise<TranslationBundle | null> {
+  let answer: TranslationBundle | null = null;
+  try {
+    answer = await translate(piece);
+  } catch (err) {
+    if (!(err instanceof LlmBlockedError)) throw err;
+  }
+  if (answer) return answer;
+  const split = halves(piece);
+  if (!split) return null;
+  const [first, second] = [await translatePiece(split[0], translate), await translatePiece(split[1], translate)];
+  if (!first && !second) return null;
+  const empty = (): TranslationBundle => ({ title: null, summary: null, notes: null, fields: [], measurements: [], doctors: [], source_language: null });
+  const [x, y] = [first ?? empty(), second ?? empty()];
+  return {
+    title: x.title ?? y.title, summary: x.summary ?? y.summary, notes: x.notes ?? y.notes,
+    fields: [...x.fields, ...y.fields], measurements: [...x.measurements, ...y.measurements], doctors: [...x.doctors, ...y.doctors],
+    source_language: x.source_language ?? y.source_language ?? null,
+  };
 }
 
 /**
@@ -242,18 +288,17 @@ export async function translateDocument(
         let fromName = document.language ? (LANGUAGE_NAMES[document.language as SupportedLanguage] ?? document.language) : null;
         const ask = async (bundle: TranslationBundle): Promise<TranslationBundle | null> => {
           const parts = pieces(bundle);
-          const answers = await mapLimit(parts, llmConcurrency(), part => llm.translate(part, LANGUAGE_NAMES[language], fromName));
-          const results: TranslationBundle[] = [];
-          for (const answer of answers) {
-            if (!answer) return null; // part of it could not be translated
-            results.push(answer);
-          }
+          const answers = await mapLimit(parts, llmConcurrency(), part => translatePiece(part, b => llm.translate(b, LANGUAGE_NAMES[language], fromName)));
+          // A piece nothing could be got from is left out: what it held is asked for once more, then shown in the original.
+          const results = answers.filter((a): a is TranslationBundle => !!a);
+          if (results.length === 0) return null;
+          const lead = answers[0]; // the one that carries the title, summary, notes and specialties
           return {
-            title: results[0].title, summary: results[0].summary, notes: results[0].notes,
-            doctors: results[0].doctors,
+            title: lead?.title ?? null, summary: lead?.summary ?? null, notes: lead?.notes ?? null,
+            doctors: lead?.doctors ?? [],
             fields: results.flatMap(r => r.fields),
             measurements: results.flatMap(r => r.measurements),
-            source_language: results[0].source_language ?? null,
+            source_language: results.find(r => r.source_language)?.source_language ?? null,
           };
         };
         /** What came back sound is kept; what was left out or rambled is asked for again, once. */
@@ -312,6 +357,8 @@ export async function translateDocument(
         return shape(current, merged, language, 'translated');
       } catch (err) {
         logger.warn('a document could not be translated', { documentId, language, error: describeError(err) });
+        // A rate limit is the provider's quota: asking again at every view of the page spends more of it.
+        if (/status code 429/.test(describeError(err))) failures.set(key, Date.now());
         return null;
       } finally {
         resolveHead(null); // no effect if the head was already delivered

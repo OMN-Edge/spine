@@ -34,15 +34,16 @@ function page(bytes = 'fake-png-bytes'): string {
 
 function llmReturning(answer: unknown) {
   const received: unknown[] = [];
+  const tasksUsed: LlmTask[] = [];
   const client = (task: LlmTask) => RunnableLambda.from(async (input: unknown) => {
-    if (task === 'page') received.push(input);
+    if (task === 'page' || task === 'pageThinking') { received.push(input); tasksUsed.push(task); }
     if (answer instanceof Error) throw answer;
     return answer;
   });
   const clients: TaskClients = {
-    continuation: client('continuation'), extraction: client('extraction'), page: client('page'), stamps: client('stamps'), translation: client('translation'),
+    continuation: client('continuation'), extraction: client('extraction'), page: client('page'), pageThinking: client('pageThinking'), stamps: client('stamps'), translation: client('translation'), linking: client('linking'),
   };
-  return { llm: buildChatLlm(clients, config), received };
+  return { llm: buildChatLlm(clients, config), received, tasksUsed };
 }
 
 describe('readPage', () => {
@@ -58,6 +59,14 @@ describe('readPage', () => {
     expect(image.image_url.url).toBe(
       `data:image/png;base64,${Buffer.from('fake-png-bytes').toString('base64')}`,
     );
+  });
+
+  it('reads with the thinking client only when asked to', async () => {
+    const { llm, tasksUsed } = llmReturning({ regions: [] });
+    await llm.readPage(page());
+    await llm.readPage(page(), { thinking: false });
+    await llm.readPage(page(), { thinking: true });
+    expect(tasksUsed).toEqual(['page', 'page', 'pageThinking']);
   });
 
   it('returns the text the model read', async () => {

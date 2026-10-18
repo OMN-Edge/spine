@@ -3,13 +3,16 @@ import type { SourceFile } from '../../types.js';
 import type { NewSourceFile, SourceFileRepository, SourceFileSummary } from '../types.js';
 import { owner } from './owner.js';
 
+type RawUpload = Omit<SourceFile, 'grouping_confirmed'> & { grouping_confirmed: number };
+const asUpload = (row: RawUpload): SourceFile => ({ ...row, grouping_confirmed: row.grouping_confirmed === 1 });
+
 /** Every statement filters by `user_id` (SECURITY.md P12). */
 export function sourceFileRepository(db: Database): SourceFileRepository {
   // The list goes to the client, so: no `file_path` (an absolute server path), no
   // checksum, no user_id (S-8). `findFor` below returns the full row because the
   // pipeline needs the path — its callers must not send it on.
   const list = db.prepare(`
-    SELECT id, uploaded_at, original_filename, mime_type, page_count, status, error_message
+    SELECT id, uploaded_at, original_filename, mime_type, page_count, status, error_message, grouping_confirmed
     FROM source_files WHERE user_id = ? ORDER BY uploaded_at DESC
   `);
   const find = db.prepare('SELECT * FROM source_files WHERE id = ? AND user_id = ?');
@@ -21,6 +24,7 @@ export function sourceFileRepository(db: Database): SourceFileRepository {
   const setStatus = db.prepare(
     'UPDATE source_files SET status = ?, error_message = ? WHERE id = ? AND user_id = ?',
   );
+  const setConfirmed = db.prepare('UPDATE source_files SET grouping_confirmed = ? WHERE id = ? AND user_id = ?');
   const setPageCount = db.prepare(
     'UPDATE source_files SET page_count = ? WHERE id = ? AND user_id = ?',
   );
@@ -52,6 +56,15 @@ export function sourceFileRepository(db: Database): SourceFileRepository {
     DELETE FROM document_embeddings WHERE user_id = ?
       AND document_id IN (SELECT id FROM documents WHERE source_file_id = ? AND user_id = ?)
   `);
+  const deleteLinks = db.prepare(`
+    DELETE FROM document_links WHERE user_id = ?
+      AND (from_document_id IN (SELECT id FROM documents WHERE source_file_id = ? AND user_id = ?)
+        OR to_document_id IN (SELECT id FROM documents WHERE source_file_id = ? AND user_id = ?))
+  `);
+  const deleteRemoved = db.prepare(`
+    DELETE FROM removed_readings WHERE user_id = ?
+      AND document_id IN (SELECT id FROM documents WHERE source_file_id = ? AND user_id = ?)
+  `);
   const deleteDocuments = db.prepare('DELETE FROM documents WHERE source_file_id = ? AND user_id = ?');
   const deletePages = db.prepare('DELETE FROM pages WHERE source_file_id = ? AND user_id = ?');
   const clearDerived = db.transaction((userId: string, id: string) => {
@@ -61,6 +74,8 @@ export function sourceFileRepository(db: Database): SourceFileRepository {
     deleteDocumentTags.run(userId, id, userId);
     deleteTranslations.run(userId, id, userId);
     deleteEmbeddings.run(userId, id, userId);
+    deleteLinks.run(userId, id, userId, id, userId);
+    deleteRemoved.run(userId, id, userId);
     const removed = deleteDocuments.run(id, userId).changes;
     deletePages.run(id, userId);
     return removed;
@@ -73,15 +88,17 @@ export function sourceFileRepository(db: Database): SourceFileRepository {
 
   return {
     async listFor(userId) {
-      return list.all(owner(userId)) as SourceFileSummary[];
+      return list.all(owner(userId)).map(row => asUpload(row as RawUpload)) as SourceFileSummary[];
     },
 
     async findFor(userId, id) {
-      return (find.get(id, owner(userId)) as SourceFile | undefined) ?? null;
+      const row = find.get(id, owner(userId)) as RawUpload | undefined;
+      return row ? asUpload(row) : null;
     },
 
     async findByChecksumFor(userId, checksum) {
-      return (findByChecksum.get(checksum, owner(userId)) as SourceFile | undefined) ?? null;
+      const row = findByChecksum.get(checksum, owner(userId)) as RawUpload | undefined;
+      return row ? asUpload(row) : null;
     },
 
     async create(userId, input: NewSourceFile) {
@@ -98,6 +115,10 @@ export function sourceFileRepository(db: Database): SourceFileRepository {
 
     async setStatus(userId, id, status, errorMessage = null) {
       setStatus.run(status, errorMessage, id, owner(userId));
+    },
+
+    async setGroupingConfirmed(userId, id, confirmed) {
+      setConfirmed.run(confirmed ? 1 : 0, id, owner(userId));
     },
 
     async setPageCount(userId, id, pageCount) {

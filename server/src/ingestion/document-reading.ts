@@ -8,7 +8,9 @@ import { llmConcurrency, llmContextChars } from '../config.js';
 import { mapLimit } from '../concurrency.js';
 import { cleanLanguageCode } from '../languages.js';
 import { scheduleSync } from '../similarity/index.js';
+import { scheduleLinking } from '../linking/index.js';
 import type { ExtractionResult } from '../types.js';
+import { fieldKey, fieldSlot, measurementKey, measurementSlot } from '../store/reading-keys.js';
 
 /**
  * Reading one logical document: its pages' text goes to `extractFields` (text only, the
@@ -119,7 +121,9 @@ export async function readDocument(
   const extractions: ExtractionResult[] = [];
   // The person's own tags, so a category is not split into near-duplicates by the model's wording.
   const knownTags = (await store.tags.listFor(userId)).map(t => t.name);
-  for (const text of chunkPages(pages, llmContextChars())) extractions.push(await extractFields(text, knownTests, model, knownTags));
+  // What the owner wrote on this document helps a new reading, and is kept through it.
+  const ownerNotes = (await store.documents.findFor(userId, documentId))?.user_notes ?? null;
+  for (const text of chunkPages(pages, llmContextChars())) extractions.push(await extractFields(text, knownTests, model, knownTags, ownerNotes));
   const extraction = mergeExtractions(extractions);
 
   // Where on its page a supporting phrase is, as a box; null when it cannot be pinned down.
@@ -182,8 +186,23 @@ export async function readDocument(
  * doctors it names (added to the directory if new, and linked). Called inside the caller's transaction.
  */
 export async function storeReading(tx: Store, userId: string, documentId: string, reading: DocumentReading): Promise<void> {
-  for (const field of reading.fields) await tx.fields.create(userId, field);
-  for (const measurement of reading.measurements) await tx.measurements.create(userId, measurement);
+  // What the owner added, changed or removed is theirs: a new reading does not overwrite it, repeat it or bring it back.
+  const [heldFields, heldMeasurements, removedFields, removedMeasurements] = await Promise.all([
+    tx.fields.listForDocument(userId, documentId),
+    tx.measurements.listForDocument(userId, documentId),
+    tx.fields.removedKeys(userId, documentId),
+    tx.measurements.removedKeys(userId, documentId),
+  ]);
+  const fieldSlots = new Set(heldFields.map(f => fieldSlot(f.label, f.group_no)));
+  const measurementSlots = new Set(heldMeasurements.map(m => measurementSlot(m.canonical, m.taken_on)));
+  for (const field of reading.fields) {
+    if (removedFields.has(fieldKey(field.label, field.value)) || fieldSlots.has(fieldSlot(field.label, field.groupNo))) continue;
+    await tx.fields.create(userId, field);
+  }
+  for (const m of reading.measurements) {
+    if (removedMeasurements.has(measurementKey(m.canonical, m.valueText, m.takenOn)) || measurementSlots.has(measurementSlot(m.canonical, m.takenOn))) continue;
+    await tx.measurements.create(userId, m);
+  }
 
   const now = new Date().toISOString();
   for (const doctor of reading.extraction.doctors) {
@@ -219,29 +238,36 @@ async function readExisting(userId: string, documentId: string, model?: string):
 
 /**
  * Replaces what was read from a document before: title, date, provider, type, summary, tags and
- * fields. The owner's notes stay. It is left unreviewed, since what it holds changed. All
+ * fields, except what the owner set, added or changed by hand (and what they removed stays removed). The owner's notes stay. It is left unreviewed, since what it holds changed. All
  * writes, one transaction.
  */
 async function applyReading(userId: string, documentId: string, reading: DocumentReading): Promise<void> {
   const store = getStore();
   const { extraction } = reading;
   await store.transaction(async tx => {
-    await tx.documents.update(userId, documentId, {
+    // The headline the owner set by hand is theirs: only the rest is filled in again.
+    const edited = new Set(await tx.documents.editedColumns(userId, documentId));
+    const headline = {
       title: extraction.title?.trim() || undefined,
       doc_date: extraction.doc_date ?? undefined,
       provider: extraction.provider ?? undefined,
       doc_type: extraction.doc_type,
       ai_summary: extraction.ai_summary,
+    };
+    for (const column of Object.keys(headline) as Array<keyof typeof headline>) if (edited.has(column)) delete headline[column];
+    await tx.documents.update(userId, documentId, {
+      ...headline,
       language: cleanLanguageCode(extraction.language) ?? undefined,
       reviewed: false,
     });
     await tx.tags.setForDocument(userId, documentId, extraction.suggested_tags);
-    await tx.fields.deleteForDocument(userId, documentId);
-    await tx.measurements.deleteForDocument(userId, documentId);
+    await tx.fields.deleteUnedited(userId, documentId);
+    await tx.measurements.deleteUnedited(userId, documentId);
     await tx.doctors.unlinkRead(userId, documentId); // not what a signature stamp gave: that is not in the text
     await storeReading(tx, userId, documentId, reading);
   });
   scheduleSync(userId); // its meaning may have changed
+  scheduleLinking(userId, [documentId]);
 }
 
 /** Reads one document again and, if that worked, replaces what it held. */

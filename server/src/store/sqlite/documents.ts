@@ -9,7 +9,7 @@ import type {
 } from '../types.js';
 import { expectInserted, owner } from './owner.js';
 import { ftsQuery } from '../../search-query.js';
-import { NOT_SET_ASIDE } from './visibility.js';
+import { NOT_SET_ASIDE, VISIBLE } from './visibility.js';
 
 /**
  * The only columns a client may write. The caller passes a patch object, never
@@ -43,13 +43,17 @@ export function documentRepository(db: Database): DocumentRepository {
   const setRange = db.prepare('UPDATE documents SET page_start = ?, page_end = ? WHERE id = ? AND user_id = ?');
   const dropTranslations = db.prepare('DELETE FROM document_translations WHERE document_id = ? AND user_id = ?');
   const dropEmbeddings = db.prepare('DELETE FROM document_embeddings WHERE document_id = ? AND user_id = ?');
+  const dropLinks = db.prepare('DELETE FROM document_links WHERE (from_document_id = ? OR to_document_id = ?) AND user_id = ?');
+  const dropRemoved = db.prepare('DELETE FROM removed_readings WHERE document_id = ? AND user_id = ?');
+  const readEdited = db.prepare('SELECT owner_edited FROM documents WHERE id = ? AND user_id = ?');
+  const writeEdited = db.prepare('UPDATE documents SET owner_edited = ? WHERE id = ? AND user_id = ?');
   const remove = db.prepare('DELETE FROM documents WHERE id = ? AND user_id = ?');
 
   // A document the owner set aside is not shared, whatever the link's scope says.
-  const forShareAll = db.prepare(`SELECT ${COLUMNS} FROM documents d WHERE d.user_id = ? AND ${NOT_SET_ASIDE} ${ORDER}`);
+  const forShareAll = db.prepare(`SELECT ${COLUMNS} FROM documents d WHERE d.user_id = ? AND ${VISIBLE} ${ORDER}`);
   const forShareTag = db.prepare(`
     SELECT ${COLUMNS} FROM documents d
-    WHERE d.user_id = ? AND ${NOT_SET_ASIDE}
+    WHERE d.user_id = ? AND ${VISIBLE}
       AND d.id IN (
         SELECT dt.document_id FROM document_tags dt
         JOIN tags t ON t.id = dt.tag_id
@@ -59,7 +63,7 @@ export function documentRepository(db: Database): DocumentRepository {
   `);
   const forShareDateRange = db.prepare(`
     SELECT ${COLUMNS} FROM documents d
-    WHERE d.user_id = ? AND ${NOT_SET_ASIDE} AND d.doc_date >= ? AND d.doc_date <= ?
+    WHERE d.user_id = ? AND ${VISIBLE} AND d.doc_date >= ? AND d.doc_date <= ?
     ${ORDER}
   `);
 
@@ -69,7 +73,7 @@ export function documentRepository(db: Database): DocumentRepository {
     FROM measurements m1
     JOIN measurements m2 ON m2.canonical = m1.canonical AND m2.user_id = m1.user_id AND m2.document_id <> m1.document_id
     JOIN documents d ON d.id = m2.document_id AND d.user_id = m2.user_id
-    WHERE m1.document_id = ? AND m1.user_id = ? AND ${NOT_SET_ASIDE}) GROUP BY id
+    WHERE m1.document_id = ? AND m1.user_id = ? AND ${VISIBLE}) GROUP BY id
   `);
   const sharedDoctors = db.prepare(`
     SELECT id, GROUP_CONCAT(name, char(1)) AS names FROM (SELECT DISTINCT x2.document_id AS id, doc.name AS name
@@ -77,7 +81,7 @@ export function documentRepository(db: Database): DocumentRepository {
     JOIN document_doctors x2 ON x2.doctor_id = x1.doctor_id AND x2.user_id = x1.user_id AND x2.document_id <> x1.document_id
     JOIN doctors doc ON doc.id = x2.doctor_id AND doc.user_id = x2.user_id
     JOIN documents d ON d.id = x2.document_id AND d.user_id = x2.user_id
-    WHERE x1.document_id = ? AND x1.user_id = ? AND ${NOT_SET_ASIDE}) GROUP BY id
+    WHERE x1.document_id = ? AND x1.user_id = ? AND ${VISIBLE}) GROUP BY id
   `);
   const sharedTags = db.prepare(`
     SELECT id, GROUP_CONCAT(name, char(1)) AS names FROM (SELECT DISTINCT t2.document_id AS id, tg.name AS name
@@ -85,12 +89,12 @@ export function documentRepository(db: Database): DocumentRepository {
     JOIN document_tags t2 ON t2.tag_id = t1.tag_id AND t2.user_id = t1.user_id AND t2.document_id <> t1.document_id
     JOIN tags tg ON tg.id = t2.tag_id AND tg.user_id = t2.user_id
     JOIN documents d ON d.id = t2.document_id AND d.user_id = t2.user_id
-    WHERE t1.document_id = ? AND t1.user_id = ? AND ${NOT_SET_ASIDE}) GROUP BY id
+    WHERE t1.document_id = ? AND t1.user_id = ? AND ${VISIBLE}) GROUP BY id
   `);
   const sameProvider = db.prepare(`
     SELECT d.id FROM documents d, documents me
     WHERE me.id = ? AND me.user_id = ? AND me.provider IS NOT NULL AND me.provider <> ''
-      AND d.user_id = me.user_id AND d.id <> me.id AND d.provider = me.provider AND ${NOT_SET_ASIDE}
+      AND d.user_id = me.user_id AND d.id <> me.id AND d.provider = me.provider AND ${VISIBLE}
   `);
   const providerCounts = db.prepare(`
     SELECT provider AS name, COUNT(*) AS document_count FROM documents
@@ -139,7 +143,9 @@ export function documentRepository(db: Database): DocumentRepository {
       if (filter.dateFrom) { sql += ' AND d.doc_date >= ?'; params.push(filter.dateFrom); }
       if (filter.dateTo) { sql += ' AND d.doc_date <= ?'; params.push(filter.dateTo); }
       if (filter.sourceFileId) { sql += ' AND d.source_file_id = ?'; params.push(filter.sourceFileId); }
-      if (!filter.includeHidden) sql += ` AND ${NOT_SET_ASIDE}`;
+      if (filter.includeHidden) { /* everything */ }
+      else if (filter.includeUnconfirmed) sql += ` AND ${NOT_SET_ASIDE}`;
+      else sql += ` AND ${VISIBLE}`;
       if (filter.reviewed !== undefined) {
         sql += ' AND d.reviewed = ?';
         params.push(filter.reviewed ? 1 : 0);
@@ -205,6 +211,8 @@ export function documentRepository(db: Database): DocumentRepository {
       const uid = owner(userId);
       dropTranslations.run(id, uid); // they reference the document
       dropEmbeddings.run(id, uid);
+      dropLinks.run(id, id, uid);
+      dropRemoved.run(id, uid);
       remove.run(id, uid);
     },
 
@@ -222,6 +230,15 @@ export function documentRepository(db: Database): DocumentRepository {
       for (const r of sharedTags.all(documentId, uid) as Array<{ id: string; names: string | null }>) at(r.id).shared_tags = names(r.names);
       for (const r of sameProvider.all(documentId, uid) as Array<{ id: string }>) at(r.id).same_provider = true;
       return [...signals.values()];
+    },
+
+    async editedColumns(userId, id) {
+      const row = readEdited.get(id, owner(userId)) as { owner_edited: string } | undefined;
+      return row?.owner_edited ? row.owner_edited.split(',').filter(Boolean) : [];
+    },
+
+    async setEditedColumns(userId, id, columns) {
+      writeEdited.run([...new Set(columns)].join(','), id, owner(userId));
     },
 
     async providers(userId) {
@@ -263,7 +280,7 @@ export function documentRepository(db: Database): DocumentRepository {
           return db
             .prepare(
               `SELECT ${COLUMNS} FROM documents d
-               WHERE d.user_id = ? AND ${NOT_SET_ASIDE} AND d.id IN (${ids.map(() => '?').join(',')}) ${ORDER}`,
+               WHERE d.user_id = ? AND ${VISIBLE} AND d.id IN (${ids.map(() => '?').join(',')}) ${ORDER}`,
             )
             .all(uid, ...ids) as Document[];
         }

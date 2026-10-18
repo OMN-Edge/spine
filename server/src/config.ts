@@ -542,3 +542,12 @@ export function llmContextChars(env: NodeJS.ProcessEnv = process.env): number {
 export function translationEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return !/^(0|false|no|off)$/i.test(env.SPINE_TRANSLATION ?? '');
 }
+
+/**
+ * `SPINE_LINKING=off` stops the app looking for links between documents (a consultation and the tests it asked for, a
+ * follow-up). Looking sends the summary cards of up to seven documents per document to the LLM provider (SECURITY.md
+ * P8, M-16), so an operator who does not want that turns it off. Links the owner adds by hand still work. On by default.
+ */
+export function linkingEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return !/^(0|false|no|off)$/i.test(env.SPINE_LINKING ?? '');
+}

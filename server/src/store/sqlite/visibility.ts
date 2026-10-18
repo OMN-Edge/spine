@@ -13,3 +13,13 @@ export const NOT_SET_ASIDE = `NOT (
   EXISTS (SELECT 1 FROM pages p WHERE ${PAGES_OF_D})
   AND NOT EXISTS (SELECT 1 FROM pages p WHERE ${PAGES_OF_D} AND p.hidden = 0)
 )`;
+
+/**
+ * The documents of an upload are held back until the owner has confirmed how its pages were grouped: a grouping that may
+ * still change must not reach search, shares, trends, links or the review queue. The upload and regrouping screens ask for
+ * them anyway (`includeUnconfirmed`).
+ */
+export const UPLOAD_CONFIRMED = `EXISTS (SELECT 1 FROM source_files sf WHERE sf.id = d.source_file_id AND sf.user_id = d.user_id AND sf.grouping_confirmed = 1)`;
+
+/** What every listing of the owner's documents means by "shown": not set aside, and its upload's grouping confirmed. */
+export const VISIBLE = `(${NOT_SET_ASIDE} AND ${UPLOAD_CONFIRMED})`;

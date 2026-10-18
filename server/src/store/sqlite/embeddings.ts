@@ -1,14 +1,14 @@
 import type { Database } from 'better-sqlite3';
 import type { EmbeddingRepository, StoredEmbedding } from '../types.js';
 import { owner } from './owner.js';
-import { NOT_SET_ASIDE } from './visibility.js';
+import { VISIBLE } from './visibility.js';
 
 /** Every statement filters by `user_id` (SECURITY.md P12). A vector can be read back into the text it came from, so it is as private as the document. */
 export function embeddingRepository(db: Database): EmbeddingRepository {
   const list = db.prepare(`
     SELECT e.document_id, e.model, e.dims, e.text_hash, e.vector
     FROM document_embeddings e JOIN documents d ON d.id = e.document_id AND d.user_id = e.user_id
-    WHERE e.user_id = ? AND e.model = ? AND ${NOT_SET_ASIDE}
+    WHERE e.user_id = ? AND e.model = ? AND ${VISIBLE}
   `);
   const hashes = db.prepare('SELECT document_id, text_hash FROM document_embeddings WHERE user_id = ? AND model = ?');
   const upsert = db.prepare(`

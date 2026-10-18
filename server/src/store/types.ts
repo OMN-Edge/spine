@@ -60,6 +60,7 @@ export interface Store {
   shareLinks: ShareLinkRepository;
   translations: TranslationRepository;
   embeddings: EmbeddingRepository;
+  links: LinkRepository;
   maintenance: MaintenanceRepository;
 
   /**
@@ -177,6 +178,8 @@ export interface SourceFileRepository {
   create(userId: string, input: NewSourceFile): Promise<void>;
   setStatus(userId: string, id: string, status: SourceFile['status'], errorMessage?: string | null): Promise<void>;
   setPageCount(userId: string, id: string, pageCount: number): Promise<void>;
+  /** The owner confirming (or an upload being read, which unconfirms) how an upload's pages are grouped. */
+  setGroupingConfirmed(userId: string, id: string, confirmed: boolean): Promise<void>;
   /**
    * Removes what ingestion produced from this upload — its documents, their fields and
    * tag links, and its pages — and keeps the upload itself and the user's tags. Returns
@@ -274,6 +277,8 @@ export interface DocumentFilter {
   sourceFileId?: string;
   /** Also the documents whose every page the owner has hidden. Only the regrouping screen asks for them. */
   includeHidden?: boolean;
+  /** Also the documents of an upload whose grouping the owner has not confirmed yet (not the set-aside ones). For the upload screens. */
+  includeUnconfirmed?: boolean;
   limit: number;
   offset: number;
 }
@@ -302,6 +307,9 @@ export interface DocumentRepository {
    * and provider. Documents set aside are left out. For "related documents"; meaning is added by `similarity/`.
    */
   relatedSignals(userId: string, documentId: string): Promise<RelatedSignal[]>;
+  /** The headline columns (title, doc_date, provider, doc_type, ai_summary) the owner has set: a new reading leaves them alone. */
+  editedColumns(userId: string, id: string): Promise<string[]>;
+  setEditedColumns(userId: string, id: string, columns: string[]): Promise<void>;
   /** Each provider name used on the user's documents, with how many documents. */
   providers(userId: string): Promise<Array<{ name: string; document_count: number }>>;
   /** Every document of the user whose provider is `from` gets `to` (null clears it). How many changed. */
@@ -350,6 +358,10 @@ export interface ExtractedFieldRepository {
   reassignPage(userId: string, pageId: string, toDocumentId: string): Promise<void>;
   /** Before a document is read again, its old fields go. */
   deleteForDocument(userId: string, documentId: string): Promise<void>;
+  /** The same, except what the owner added or changed (and so keeps through a new reading). */
+  deleteUnedited(userId: string, documentId: string): Promise<void>;
+  /** Keys (`reading-keys.ts`) of the fields the owner removed, so a new reading does not bring them back. */
+  removedKeys(userId: string, documentId: string): Promise<Set<string>>;
   /** The owner correcting a field. False if it is not this user's, or not on this document. */
   update(userId: string, documentId: string, fieldId: string, change: { label: string; value: string }): Promise<boolean>;
   /** The owner removing a field. False if it is not this user's, or not on this document. */
@@ -367,6 +379,8 @@ export interface NewExtractedField {
   sourceSnippet: string | null;
   bbox: { x0: number; y0: number; x1: number; y1: number } | null;
   confidence: number | null;
+  /** Added or changed by the owner: reading the document again keeps it. */
+  ownerEdited?: boolean;
 }
 
 export interface NewMeasurement {
@@ -385,6 +399,8 @@ export interface NewMeasurement {
   sourceSnippet: string | null;
   bbox: { x0: number; y0: number; x1: number; y1: number } | null;
   confidence: number | null;
+  /** Added or changed by the owner: reading the document again keeps it. */
+  ownerEdited?: boolean;
 }
 
 /** What the owner can correct on a measurement. */
@@ -435,6 +451,10 @@ export interface MeasurementRepository {
   remove(userId: string, documentId: string, id: string): Promise<boolean>;
   /** Before a document is read again. */
   deleteForDocument(userId: string, documentId: string): Promise<void>;
+  /** The same, except what the owner added or changed (and so keeps through a new reading). */
+  deleteUnedited(userId: string, documentId: string): Promise<void>;
+  /** Keys (`reading-keys.ts`) of the values the owner removed, so a new reading does not bring them back. */
+  removedKeys(userId: string, documentId: string): Promise<Set<string>>;
   /** Merging two documents. */
   reassignDocument(userId: string, fromDocumentId: string, toDocumentId: string): Promise<void>;
   /** Splitting a document: the values on its pages from this one on go with them. */
@@ -607,6 +627,43 @@ export interface EmbeddingRepository {
   put(userId: string, embedding: StoredEmbedding, createdAt: string): Promise<void>;
   /** Vectors from any other model: after a switch is complete, the old space is not kept. How many. */
   pruneOtherModels(userId: string, keepModel: string): Promise<number>;
+}
+
+export const LINK_KINDS = ['requests', 'follow_up', 'same_episode'] as const;
+export type LinkKind = (typeof LINK_KINDS)[number];
+export type LinkState = 'proposed' | 'confirmed' | 'dismissed';
+
+/** `from` is the earlier document and `to` the later one (for `same_episode`, only an order). */
+export interface DocumentLink {
+  from_document_id: string;
+  to_document_id: string;
+  kind: LinkKind;
+  source: 'auto' | 'owner';
+  state: LinkState;
+  reason: string | null;
+  confidence: number | null;
+}
+
+export interface LinkRepository {
+  /** Every link with the document at either end, any state, whose other end is also not set aside. */
+  forDocument(userId: string, documentId: string): Promise<DocumentLink[]>;
+  /** Links whose two ends are both among these documents (the user's, not set aside); dismissed ones included, for the caller to filter. */
+  among(userId: string, documentIds: string[]): Promise<DocumentLink[]>;
+  /**
+   * Adds a link between two of the user's documents. A pair and kind that exist are left as they are, except that the owner
+   * adding one confirms it, even after a dismissal. False if either document is not the user's, or they are the same.
+   */
+  add(userId: string, link: Omit<DocumentLink, 'confidence'> & { confidence?: number | null }, createdAt: string): Promise<boolean>;
+  /** The owner's decision on a link. False if there is no such link. */
+  setState(userId: string, fromDocumentId: string, toDocumentId: string, kind: LinkKind, state: 'confirmed' | 'dismissed'): Promise<boolean>;
+  /**
+   * Removes the automatic links still waiting for an answer between the document and each of these others, in either
+   * direction: the pairs a search has just judged again. Confirmed and dismissed links, and suggestions about any other
+   * pair, are not touched. How many.
+   */
+  clearProposedBetween(userId: string, documentId: string, otherIds: string[]): Promise<number>;
+  /** Pairs the owner dismissed, in either direction and any kind, among these documents: never proposed again. */
+  dismissedPairs(userId: string, documentId: string): Promise<Set<string>>;
 }
 
 export interface MaintenanceRepository {

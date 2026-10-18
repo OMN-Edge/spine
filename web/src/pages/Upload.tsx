@@ -45,6 +45,8 @@ interface JobState {
   uploadedAt?: string;
   /** Documents set aside by hiding all their pages: not listed, but the card says so. */
   hiddenDocuments?: number;
+  /** False while the owner has not confirmed how the pages were grouped. */
+  groupingConfirmed?: boolean;
 }
 
 /** A row for an upload the server already knows about. */
@@ -60,6 +62,7 @@ function fromHistory(upload: UploadSummary): JobState {
     documents: upload.documents,
     uploadedAt: upload.uploaded_at,
     hiddenDocuments: upload.hidden_documents ?? 0,
+    groupingConfirmed: upload.grouping_confirmed ?? true,
   };
 }
 
@@ -134,6 +137,12 @@ function UploadRow({ job, onRetry, onDeleted }: { job: JobState; onRetry: () => 
           )}
         </ul>
       )}
+      {job.status === 'done' && job.groupingConfirmed === false && (job.documents.length > 0 || !!job.hiddenDocuments) && (
+        <div role="status" className="mt-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-900 flex flex-wrap items-center justify-between gap-2">
+          <span>{t('Check how the pages were grouped. These documents stay out of your timeline, search and shares until you confirm it.')}</span>
+          <Link to={`/uploads/${job.fileId}`} className="shrink-0 rounded-lg bg-blue-600 px-3 py-1 font-medium text-white hover:bg-blue-700">{t('Check the grouping')}</Link>
+        </div>
+      )}
       {job.documents.length === 0 && <p className="text-xs text-gray-400 mt-0.5">{job.step}</p>}
       {job.status === 'error' && <p className="text-xs text-red-500 mt-1">{t('This upload could not be read. Try again, and if it keeps failing the server log says why.')}</p>}
       {(job.documents.length > 0 || !!job.hiddenDocuments || job.status === 'done' || job.status === 'error') && (
@@ -182,7 +191,7 @@ export default function Upload() {
     const interval = setInterval(async () => {
       try {
         const s = await api.sourceFiles.status(fileId);
-        update(key, { status: s.status, progress: s.progress, step: s.step, error: s.error, documents: s.documents ?? [] });
+        update(key, { status: s.status, progress: s.progress, step: s.step, error: s.error, documents: s.documents ?? [], groupingConfirmed: s.grouping_confirmed ?? true });
         if (s.status === 'done' || s.status === 'error') clearInterval(interval);
       } catch {
         clearInterval(interval);

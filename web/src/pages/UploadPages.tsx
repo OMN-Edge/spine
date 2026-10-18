@@ -172,6 +172,21 @@ export default function UploadPages() {
     },
   });
 
+  const confirmGrouping = async () => {
+    if (!id) return;
+    setBusy(t('Confirming the grouping'));
+    setNotice('');
+    try {
+      await api.sourceFiles.confirmGrouping(id);
+      setNotice(<>{tx('Grouping confirmed. The documents are in your timeline and waiting in {review}.', { review: <Link to="/review" className="text-blue-600 hover:underline">{t('Review')}</Link> })}</>);
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : t('Could not confirm the grouping'));
+    } finally {
+      setBusy('');
+      load();
+    }
+  };
+
   const finish = async () => {
     if (!id || pending.length === 0) return;
     setBusy(t('Reading the changed documents'));
@@ -186,7 +201,9 @@ export default function UploadPages() {
       const hidden = skipped > 0 && <> {tn(skipped, '{n} document has every page hidden, so nothing was read for it.', '{n} documents have every page hidden, so nothing was read for them.')}</>;
       setNotice(
         failed.length === 0
-          ? <>{t('Done.')}{read > 0 && <> {tx('The changed documents were read again and are waiting in {review}.', { review: <Link to="/review" className="text-blue-600 hover:underline">{t('Review')}</Link> })}</>}{hidden}</>
+          ? <>{t('Done.')}{read > 0 && (layout?.grouping_confirmed === false
+              ? <> {t('The changed documents were read again. Confirm the grouping when it is right.')}</>
+              : <> {tx('The changed documents were read again and are waiting in {review}.', { review: <Link to="/review" className="text-blue-600 hover:underline">{t('Review')}</Link> })}</>)}{hidden}</>
           : <>{tn(failed.length, '{read} read again; {n} could not be, so its details are from before. Press Done to try again.', '{read} read again; {n} could not be, so their details are from before. Press Done to try again.', { read })}{hidden}</>,
       );
     } catch (err) {
@@ -230,6 +247,24 @@ export default function UploadPages() {
               {confirm.button}
             </button>
             <button type="button" onClick={() => setConfirm(null)} className="px-3 py-1.5 rounded-lg text-sm text-gray-600 border border-gray-300 hover:bg-white">{t('Cancel')}</button>
+          </div>
+        </div>
+      )}
+
+      {layout.status === 'done' && layout.grouping_confirmed === false && (
+        <div className="mb-4 bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm">
+          <p className="font-medium text-amber-900">{t('Is this grouping right?')}</p>
+          <p className="text-amber-900 mt-1">
+            {t('Look at which pages the documents hold. Split, join or move pages if it is wrong. Until you confirm it, these documents stay out of your timeline, search, shares and trends, and cannot be marked reviewed.')}
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <button
+              type="button" onClick={confirmGrouping} disabled={!!busy || pending.length > 0 || layout.documents.length === 0}
+              className="bg-blue-600 text-white rounded-lg px-4 py-1.5 text-sm hover:bg-blue-700 disabled:opacity-50"
+            >
+              {t('Grouping is right')}
+            </button>
+            {pending.length > 0 && <span className="text-xs text-amber-800">{t('Press Done below first, so the changed documents are read again.')}</span>}
           </div>
         </div>
       )}

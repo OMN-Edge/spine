@@ -50,8 +50,10 @@ function fakeClients(responses: unknown[]): Recorder {
       continuation: clientFor('continuation'),
       extraction: clientFor('extraction'),
       page: clientFor('page'),
+      pageThinking: clientFor('pageThinking'),
       stamps: clientFor('stamps'),
       translation: clientFor('translation'),
+      linking: clientFor('linking'),
     },
   };
 }
@@ -260,5 +262,16 @@ describe('getChatLlm with nothing injected', () => {
     const second = getChatLlm();
 
     expect(first).toBe(second);
+  });
+});
+
+describe('extraction prompt and the owner’s notes', () => {
+  it('gives the notes as context, never as a source of values, and says nothing without notes', async () => {
+    const { buildExtractionPrompt } = await import('../llm/prompts.js');
+    const withNotes = buildExtractionPrompt('page text', [], [], 'Control after the March visit');
+    expect(withNotes).toContain('Control after the March visit');
+    expect(withNotes).toContain('never from the notes');
+    expect(buildExtractionPrompt('page text')).not.toContain("owner's own notes");
+    expect(buildExtractionPrompt('page text', [], [], '   ')).not.toContain("owner's own notes");
   });
 });

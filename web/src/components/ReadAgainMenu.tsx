@@ -35,6 +35,7 @@ export default function ReadAgainMenu({
   const models = useModels();
   const [reading, setReading] = useState<Reading>(null);
   const [model, setModel] = useState<string | undefined>(undefined);
+  const [thinking, setThinking] = useState(false);
   const [menu, setMenu] = useState(false);
   const [action, setAction] = useState<Action | null>(null);
   const [error, setError] = useState('');
@@ -69,13 +70,13 @@ export default function ReadAgainMenu({
   };
   const replaces = `${t("The pages' text, then the title, date, provider, type, summary, tags and fields are replaced, and the document goes back to Review. The grouping and your notes are kept.")}${reviewed ? ` ${t('You have reviewed it; your edits will be replaced.')}` : ''}`;
 
-  const choose = (next: Action) => { setMenu(false); setError(''); setAction(next); };
+  const choose = (next: Action) => { setMenu(false); setError(''); setThinking(false); setAction(next); };
   const cancel = () => { setAction(null); setError(''); };
 
   const confirm = async () => {
     setError('');
     try {
-      if (action === 'page' && page) await start([page.id], model);
+      if (action === 'page' && page) await start([page.id], model, 'model', thinking);
       else if (action === 'document') await start(pages.map(p => p.id), model, 'configured');
       setAction(null);
     } catch (err) {
@@ -124,6 +125,15 @@ export default function ReadAgainMenu({
           </p>
           <p className="mt-1 text-xs text-gray-500">{replaces}</p>
           <ModelPicker models={models} value={model} onChange={setModel} />
+          {action === 'page' && (
+            <label className="mt-3 flex items-start gap-2 text-sm text-gray-700">
+              <input type="checkbox" checked={thinking} onChange={e => setThinking(e.target.checked)} className="mt-0.5" />
+              <span>
+                <span className="font-medium text-gray-900">{t('Think harder')}</span>
+                <span className="block text-xs text-gray-500">{t('The model thinks before it answers. Slower and it uses more of the model budget, but it can read handwriting and dense blocks better.')}</span>
+              </span>
+            </label>
+          )}
           {error && <p role="alert" className="mt-2 text-xs text-red-600">{error}</p>}
           <div className="mt-3 flex gap-2">
             <button

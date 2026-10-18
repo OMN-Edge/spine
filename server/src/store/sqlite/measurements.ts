@@ -8,7 +8,8 @@ import type {
   NewMeasurement,
 } from '../types.js';
 import { expectInserted, owner } from './owner.js';
-import { NOT_SET_ASIDE } from './visibility.js';
+import { measurementKey } from '../reading-keys.js';
+import { VISIBLE } from './visibility.js';
 
 /** Every statement filters by `user_id` (SECURITY.md P12). */
 export function measurementRepository(db: Database): MeasurementRepository {
@@ -21,18 +22,22 @@ export function measurementRepository(db: Database): MeasurementRepository {
   const insert = db.prepare(`
     INSERT INTO measurements (
       id, user_id, document_id, page_id, name, canonical, value_text, value_num, unit, ref_low, ref_high,
-      flag, taken_on, source_snippet, bbox_x0, bbox_y0, bbox_x1, bbox_y1, confidence
+      flag, taken_on, source_snippet, bbox_x0, bbox_y0, bbox_x1, bbox_y1, confidence, owner_edited
     )
-    SELECT ?, ?, d.id, p.id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+    SELECT ?, ?, d.id, p.id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
     FROM documents d, pages p
     WHERE d.id = ? AND d.user_id = ? AND p.id = ? AND p.user_id = ?
   `);
   const updateOne = db.prepare(`
     UPDATE measurements SET name = ?, canonical = ?, value_text = ?, value_num = ?, unit = ?,
-      ref_low = ?, ref_high = ?, flag = ?, taken_on = ?
+      ref_low = ?, ref_high = ?, flag = ?, taken_on = ?, owner_edited = 1
     WHERE id = ? AND document_id = ? AND user_id = ?
   `);
   const removeOne = db.prepare('DELETE FROM measurements WHERE id = ? AND document_id = ? AND user_id = ?');
+  const findOne = db.prepare('SELECT canonical, value_text, taken_on FROM measurements WHERE id = ? AND document_id = ? AND user_id = ?');
+  const remember = db.prepare("INSERT OR IGNORE INTO removed_readings (user_id, document_id, kind, key) VALUES (?, ?, 'measurement', ?)");
+  const removed = db.prepare("SELECT key FROM removed_readings WHERE document_id = ? AND user_id = ? AND kind = 'measurement'");
+  const deleteUnedited = db.prepare('DELETE FROM measurements WHERE document_id = ? AND user_id = ? AND owner_edited = 0');
   const deleteForDocument = db.prepare('DELETE FROM measurements WHERE document_id = ? AND user_id = ?');
   const reassign = db.prepare(`
     UPDATE measurements SET document_id = ?
@@ -56,7 +61,7 @@ export function measurementRepository(db: Database): MeasurementRepository {
   const all = db.prepare(`
     SELECT m.canonical, m.name, m.unit, m.value_text, m.taken_on, m.flag
     FROM measurements m JOIN documents d ON d.id = m.document_id AND d.user_id = m.user_id
-    WHERE m.user_id = ? AND ${NOT_SET_ASIDE}
+    WHERE m.user_id = ? AND ${VISIBLE}
     ORDER BY m.taken_on IS NULL, m.taken_on, m.rowid
   `);
   const aliasOf = db.prepare('SELECT canonical FROM measurement_aliases WHERE user_id = ? AND alias = ?');
@@ -86,7 +91,7 @@ export function measurementRepository(db: Database): MeasurementRepository {
     SELECT m.id, m.document_id, d.title AS document_title, m.taken_on, m.name, m.value_text, m.value_num,
            m.unit, m.ref_low, m.ref_high, m.flag
     FROM measurements m JOIN documents d ON d.id = m.document_id AND d.user_id = m.user_id
-    WHERE m.user_id = ? AND m.canonical = ? AND ${NOT_SET_ASIDE}
+    WHERE m.user_id = ? AND m.canonical = ? AND ${VISIBLE}
     ORDER BY m.taken_on IS NULL, m.taken_on, m.rowid
   `);
 
@@ -99,7 +104,7 @@ export function measurementRepository(db: Database): MeasurementRepository {
       const uid = owner(userId);
       const result = insert.run(
         m.id, uid, m.name, m.canonical, m.valueText, m.valueNum, m.unit, m.refLow, m.refHigh, m.flag, m.takenOn,
-        m.sourceSnippet, m.bbox?.x0 ?? null, m.bbox?.y0 ?? null, m.bbox?.x1 ?? null, m.bbox?.y1 ?? null, m.confidence,
+        m.sourceSnippet, m.bbox?.x0 ?? null, m.bbox?.y0 ?? null, m.bbox?.x1 ?? null, m.bbox?.y1 ?? null, m.confidence, m.ownerEdited ? 1 : 0,
         m.documentId, uid, m.pageId, uid,
       );
       expectInserted(result.changes, 'document or page');
@@ -113,7 +118,19 @@ export function measurementRepository(db: Database): MeasurementRepository {
     },
 
     async remove(userId, documentId, id) {
-      return removeOne.run(id, documentId, owner(userId)).changes === 1;
+      const uid = owner(userId);
+      const row = findOne.get(id, documentId, uid) as { canonical: string; value_text: string; taken_on: string | null } | undefined;
+      if (!row || removeOne.run(id, documentId, uid).changes !== 1) return false;
+      remember.run(uid, documentId, measurementKey(row.canonical, row.value_text, row.taken_on));
+      return true;
+    },
+
+    async deleteUnedited(userId, documentId) {
+      deleteUnedited.run(documentId, owner(userId));
+    },
+
+    async removedKeys(userId, documentId) {
+      return new Set((removed.all(documentId, owner(userId)) as Array<{ key: string }>).map(r => r.key));
     },
 
     async deleteForDocument(userId, documentId) {

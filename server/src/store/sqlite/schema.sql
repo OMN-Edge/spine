@@ -60,7 +60,10 @@ CREATE TABLE IF NOT EXISTS source_files (
   page_count INTEGER,
   checksum TEXT,
   status TEXT NOT NULL DEFAULT 'pending', -- 'pending' | 'processing' | 'done' | 'error'
-  error_message TEXT
+  error_message TEXT,
+  -- An upload's documents are held back (out of the timeline, search, shares and trends) from when it is read until the
+  -- owner confirms how its pages were grouped. 1 for uploads made before this, for restores and for anything the owner has confirmed.
+  grouping_confirmed INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS pages (
@@ -98,7 +101,10 @@ CREATE TABLE IF NOT EXISTS documents (
   ai_summary TEXT,
   user_notes TEXT,
   reviewed INTEGER DEFAULT 0,
-  language TEXT -- what the document is written in (a two-letter code), as extraction found it; null if unknown
+  language TEXT, -- what the document is written in (a two-letter code), as extraction found it; null if unknown
+  -- The headline columns (title, doc_date, provider, doc_type, ai_summary) the owner has set, comma separated. Reading the
+  -- document again leaves them as they are.
+  owner_edited TEXT NOT NULL DEFAULT ''
 );
 
 -- Numeric results (lab values, vitals): what trends over time are drawn from. A field is
@@ -122,7 +128,18 @@ CREATE TABLE IF NOT EXISTS measurements (
   bbox_y0 REAL,
   bbox_x1 REAL,
   bbox_y1 REAL,
-  confidence REAL
+  confidence REAL,
+  owner_edited INTEGER NOT NULL DEFAULT 0 -- 1: the owner added or changed it; reading the document again keeps it
+);
+
+-- What the owner removed from a document's reading, so reading it again does not bring it back. `key` says which value
+-- (store/reading-keys.ts); `kind` is 'field' or 'measurement'.
+CREATE TABLE IF NOT EXISTS removed_readings (
+  user_id TEXT NOT NULL REFERENCES users(id),
+  document_id TEXT NOT NULL REFERENCES documents(id),
+  kind TEXT NOT NULL,
+  key TEXT NOT NULL,
+  PRIMARY KEY (document_id, kind, key)
 );
 
 -- People who appear on documents, built up as documents are read. `key` is the name with
@@ -177,7 +194,8 @@ CREATE TABLE IF NOT EXISTS extracted_fields (
   bbox_y0 REAL,
   bbox_x1 REAL,
   bbox_y1 REAL,
-  confidence REAL
+  confidence REAL,
+  owner_edited INTEGER NOT NULL DEFAULT 0 -- 1: the owner added or changed it; reading the document again keeps it
 );
 
 -- Per-user vocabulary: a shared one would leak the existence of other users'
@@ -260,6 +278,27 @@ CREATE TABLE IF NOT EXISTS document_embeddings (
   created_at TEXT NOT NULL,
   PRIMARY KEY (document_id, model)
 );
+
+-- A link between two of the owner's documents: the earlier asked for the later (`requests`), the later follows up the
+-- earlier (`follow_up`), or both belong to one episode (`same_episode`, stored once with the earlier first). `source`
+-- says who made it; an automatic link starts `proposed` and the owner confirms or dismisses it, and a dismissed pair is
+-- never proposed again. Re-reading replaces only the proposed automatic links of a document. Regenerable except for the
+-- owner's decisions, so it is not exported.
+CREATE TABLE IF NOT EXISTS document_links (
+  user_id TEXT NOT NULL REFERENCES users(id),
+  from_document_id TEXT NOT NULL REFERENCES documents(id),
+  to_document_id TEXT NOT NULL REFERENCES documents(id),
+  kind TEXT NOT NULL CHECK (kind IN ('requests', 'follow_up', 'same_episode')),
+  source TEXT NOT NULL CHECK (source IN ('auto', 'owner')),
+  state TEXT NOT NULL CHECK (state IN ('proposed', 'confirmed', 'dismissed')),
+  reason TEXT,
+  confidence REAL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (from_document_id, to_document_id, kind),
+  CHECK (from_document_id <> to_document_id)
+);
+CREATE INDEX IF NOT EXISTS idx_document_links_user ON document_links(user_id);
+CREATE INDEX IF NOT EXISTS idx_document_links_to ON document_links(to_document_id);
 
 CREATE INDEX IF NOT EXISTS idx_source_files_user ON source_files(user_id);
 CREATE INDEX IF NOT EXISTS idx_documents_user ON documents(user_id, doc_date);

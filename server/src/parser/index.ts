@@ -41,12 +41,12 @@ export function createParser(config: ParserConfig, deps: ParserDeps): Parser {
   return factory(deps, config);
 }
 
-function realDeps(config: ParserConfig, model?: string): ParserDeps {
+function realDeps(config: ParserConfig, model?: string, thinking = false): ParserDeps {
   return {
     sidecar: parseDocument,
     imageSize: getPageImageDimensions,
     ocrPage: (imagePath, pageNumber) => ocrPage(imagePath, pageNumber, config.ocrLangs),
-    readPage: imagePath => getChatLlm(model).readPage(imagePath),
+    readPage: imagePath => getChatLlm(model).readPage(imagePath, { thinking }),
     logger,
   };
 }
@@ -82,13 +82,14 @@ export function getParser(model?: string): Parser {
  * for anything local to read. It is the same `multimodal` adapter and the same switch:
  * refused unless the operator has allowed images to leave.
  */
-export function getModelParser(model?: string): Parser {
-  if (model && !_modelParserReplaced) {
-    let parser = _modelParsers.get(model);
+export function getModelParser(model?: string, thinking = false): Parser {
+  if ((model || thinking) && !_modelParserReplaced) {
+    const key = `${model ?? ''}|${thinking}`;
+    let parser = _modelParsers.get(key);
     if (!parser) {
       const config = loadParserConfig();
-      parser = createParser({ ...config, mode: 'multimodal' }, realDeps(config, model));
-      _modelParsers.set(model, parser);
+      parser = createParser({ ...config, mode: 'multimodal' }, realDeps(config, model, thinking));
+      _modelParsers.set(key, parser);
     }
     return parser;
   }

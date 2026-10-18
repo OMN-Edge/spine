@@ -17,7 +17,7 @@ export const languageName = (code: string | null | undefined): string =>
 export function useTranslation(key: string | null, load: (lang: string, part: 'head' | 'full') => Promise<TranslatedDocument>) {
   const { lang } = useI18n();
   const [translation, setTranslation] = useState<TranslatedDocument | null>(null);
-  const [state, setState] = useState<'idle' | 'working' | 'failed'>('idle');
+  const [state, setState] = useState<'idle' | 'working' | 'failed' | 'partial'>('idle');
   const [showOriginal, setShowOriginal] = useState(false);
 
   useEffect(() => {
@@ -34,7 +34,7 @@ export function useTranslation(key: string | null, load: (lang: string, part: 'h
       .catch(() => {});
     load(lang, 'full')
       .then(result => { if (live) { setTranslation(result); setState('idle'); } })
-      .catch(() => { if (live) setState(delivered ? 'idle' : 'failed'); });
+      .catch(() => { if (live) setState(delivered ? 'partial' : 'failed'); });
     return () => { live = false; };
     // `load` is a new function each render; what identifies the request is the document and the language.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -49,6 +49,8 @@ export function useTranslation(key: string | null, load: (lang: string, part: 'h
     active,
     translating: state === 'working',
     failed: state === 'failed',
+    /** The title and summary were translated but the fields and results could not be. */
+    partial: state === 'partial',
     showOriginal,
     setShowOriginal,
   };

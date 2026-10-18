@@ -1,6 +1,8 @@
 import { ChatVertexAI } from '@langchain/google-vertexai';
+import { RunnableLambda } from '@langchain/core/runnables';
 import type { TaskClients, TaskSpecs } from '../tasks.js';
-import { LlmConfigError, type ChatLlmConfig } from '../types.js';
+import { logger } from '../../logger.js';
+import { LlmBlockedError, LlmConfigError, type ChatLlmConfig } from '../types.js';
 
 /**
  * Vertex AI — Gemini *and* Claude. "Vertex or Gemini" is a category error; the
@@ -85,21 +87,52 @@ export function createVertexChat(
   // One client per task: Google names the token cap `maxOutputTokens`, and it
   // is a constructor option. `endpoint` is the typed option name; `apiEndpoint`
   // also works at runtime but is not declared.
+  //
+  // Gemini counts its thinking against the output cap, so a task that needs none asks for it off. Models disagree
+  // on how: some take `thinkingBudget: 0` and refuse `thinkingLevel: MINIMAL` (a 400), and some do the reverse,
+  // or take the budget for text and refuse it beside an image. Which one a model wants is not something to
+  // guess from its name, so the budget goes first and a 400 is tried once more with the level; the one that
+  // worked is used from then on. Claude on Vertex has no such option.
+  const gemini = /^gemini/i.test(config.model);
+  const thinkingVariants: Array<Record<string, unknown>> = [{ thinkingBudget: thinkingBudgetFor(config.model) }, { thinkingLevel: 'MINIMAL' }];
+  let variant = 0;
+
   const clients = {} as TaskClients;
   for (const task of Object.values(tasks)) {
-    const model = new ChatVertexAI({
+    const clientWith = (thinking: Record<string, unknown>) => new ChatVertexAI({
       model: config.model,
       location: config.region,
       endpoint,
       maxOutputTokens: task.maxTokens,
-      ...(/^gemini/i.test(config.model) ? { safetySettings: SAFETY_SETTINGS } : {}),
-      // Gemini counts its thinking against the output cap. A budget of 0 turns it off: the model rejects
-      // `thinkingLevel: MINIMAL` (400) but accepts this. Claude on Vertex has no such option.
-      ...(task.reasoning === 'none' && /^gemini/i.test(config.model) ? { thinkingBudget: thinkingBudgetFor(config.model) } : {}),
+      ...(gemini ? { safetySettings: SAFETY_SETTINGS } : {}),
+      ...(task.reasoning === 'none' && gemini ? thinking : {}),
       maxRetries: config.maxRetries,
       authOptions: { projectId: config.project },
-    });
-    clients[task.name] = model.withStructuredOutput(task.jsonSchema, { name: task.name });
+    }).withStructuredOutput(task.jsonSchema, { name: task.name });
+    const structured = thinkingVariants.map(clientWith);
+    const canSwitch = task.reasoning === 'none' && gemini;
+
+    type Input = Parameters<(typeof structured)[number]['invoke']>[0];
+    const call = async (input: Input) => {
+      try {
+        return await structured[variant].invoke(input);
+      } catch (err) {
+        // The library throws these as an error of a class it does not export, worded "Finish reason: RECITATION",
+        // "Prompt blocked: SAFETY": the model refused these words. Said in the seam's terms.
+        if (err instanceof Error && /^(Finish reason|Prompt blocked): /.test(err.message)) throw new LlmBlockedError(err.message);
+        if (!canSwitch || !(err instanceof Error) || !/status code 400/.test(err.message)) throw err;
+        const other = 1 - variant;
+        try {
+          const result = await structured[other].invoke(input);
+          variant = other;
+          (config.logger ?? logger).info('the model took the other way of turning thinking off', { model: config.model, setting: Object.keys(thinkingVariants[other])[0] });
+          return result;
+        } catch {
+          throw err; // the request is wrong for another reason; the first error is the one that says so
+        }
+      }
+    };
+    clients[task.name] = RunnableLambda.from(call);
   }
 
   return clients;

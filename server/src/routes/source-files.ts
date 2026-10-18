@@ -8,6 +8,8 @@ import { importZip } from '../archive/import.js';
 import { similarityEnabled } from '../similarity/index.js';
 import { removeUploadFiles } from '../ingestion/remove-upload.js';
 import { rereadDocuments } from '../ingestion/document-reading.js';
+import { scheduleLinking } from '../linking/index.js';
+import { scheduleSync } from '../similarity/index.js';
 import { aiReadingAllowed, getParser } from '../parser/index.js';
 import { getAiReading, isReadingPages, startAiReading } from '../ingestion/ai-reading.js';
 import { loadLlmConfig, loadParserConfig } from '../config.js';
@@ -42,7 +44,8 @@ export async function sourceFileRoutes(app: FastifyInstance) {
     const uploads = await store.sourceFiles.listFor(req.userId);
     const withDocuments = await Promise.all(
       uploads.map(async upload => {
-        const filter = { sourceFileId: upload.id, limit: 1000, offset: 0 };
+        // The upload's own screens show its documents before the owner has confirmed the grouping; only set-aside ones are left out.
+        const filter = { sourceFileId: upload.id, limit: 1000, offset: 0, includeUnconfirmed: true };
         const documents = (await store.documents.listFor(req.userId, filter))
           .sort((a, b) => a.page_start - b.page_start)
           .map(documentSummary);
@@ -70,6 +73,7 @@ export async function sourceFileRoutes(app: FastifyInstance) {
       status: upload.status,
       error_message: upload.error_message,
       page_count: upload.page_count,
+      grouping_confirmed: upload.grouping_confirmed,
       pages: pages.map(p => ({
         id: p.id, page_number: p.page_number, image_width: p.image_width,
         image_height: p.image_height, extraction_source: p.extraction_source, hidden: !!p.hidden, source_page: p.source_page,
@@ -138,6 +142,24 @@ export async function sourceFileRoutes(app: FastifyInstance) {
     return reply.send({ deleted: true });
   });
 
+  // The owner has checked how the pages were grouped and it is right. Until then the upload's documents are out of the
+  // timeline, search, shares and trends. Now they appear, are embedded and are looked at for links.
+  app.post<{ Params: { id: string } }>('/api/source-files/:id/grouping/confirm', async (req, reply) => {
+    const { id } = req.params;
+    const store = getStore();
+    const file = await store.sourceFiles.findFor(req.userId, id);
+    if (!file) return reply.status(404).send({ error: 'not found' });
+    if (file.status !== 'done' || getJobStatus(id)?.status === 'processing' || isReadingPages(id)) {
+      return reply.status(409).send({ error: 'this file is not ready to be confirmed' });
+    }
+    if (!file.grouping_confirmed) {
+      await store.sourceFiles.setGroupingConfirmed(req.userId, id, true);
+      scheduleSync(req.userId);
+      scheduleLinking(req.userId, (await store.documents.listFor(req.userId, { sourceFileId: id, limit: 1000, offset: 0 })).map(d => d.id));
+    }
+    return reply.send({ confirmed: true });
+  });
+
   // Extract the details of some of an upload's documents again, from the text already read (no image
   // is sent). The "Done" of regrouping: the splits and joins were saved without reading, and this reads
   // every document they touched once.
@@ -188,7 +210,7 @@ export async function sourceFileRoutes(app: FastifyInstance) {
   // Read chosen pages with the model, then extract again the documents they belong to: the
   // page- and document-level "Read with AI". Only those pages' images are sent, so the same
   // operator switch applies as for every other route that sends one (SECURITY.md M-7).
-  app.post<{ Params: { id: string }; Body: { page_ids?: unknown; model?: unknown; strategy?: unknown } }>('/api/source-files/:id/ai-reading', async (req, reply) => {
+  app.post<{ Params: { id: string }; Body: { page_ids?: unknown; model?: unknown; strategy?: unknown; thinking?: unknown } }>('/api/source-files/:id/ai-reading', async (req, reply) => {
     const { id } = req.params;
     const store = getStore();
     const file = await store.sourceFiles.findFor(req.userId, id);
@@ -213,6 +235,9 @@ export async function sourceFileRoutes(app: FastifyInstance) {
     }
     const model = chooseModel(req.body?.model);
     if (model === null) return reply.status(400).send({ error: 'that model is not offered' });
+    // Let the model think before it answers. Only the page-by-page reading asks for it; the whole-document one reads as an upload does.
+    const thinking = req.body?.thinking ?? false;
+    if (typeof thinking !== 'boolean') return reply.status(400).send({ error: 'thinking must be true or false' });
     // Pages of another upload, or another user's, are reported the same as pages that do not exist.
     const known = new Set((await store.pages.listForSourceFile(req.userId, id)).map(p => p.id));
     if (!(pageIds as string[]).every(p => known.has(p))) {
@@ -223,7 +248,7 @@ export async function sourceFileRoutes(app: FastifyInstance) {
       return reply.status(409).send({ error: 'this file is still being processed' });
     }
 
-    return reply.status(202).send(startAiReading(req.userId, id, pageIds as string[], model, strategy));
+    return reply.status(202).send(startAiReading(req.userId, id, pageIds as string[], model, strategy, thinking && strategy === 'model'));
   });
 
   app.get<{ Params: { id: string } }>('/api/source-files/:id/ai-reading', async (req, reply) => {
@@ -243,7 +268,7 @@ export async function sourceFileRoutes(app: FastifyInstance) {
     // What the upload became, so the page can name it by its documents' titles rather
     // than the file name. Empty until processing has finished.
     const documents = row.status === 'done'
-      ? (await getStore().documents.listFor(req.userId, { sourceFileId: id, limit: 1000, offset: 0 }))
+      ? (await getStore().documents.listFor(req.userId, { sourceFileId: id, limit: 1000, offset: 0, includeUnconfirmed: true }))
           .sort((a, b) => a.page_start - b.page_start)
           .map(documentSummary)
       : [];
@@ -252,6 +277,7 @@ export async function sourceFileRoutes(app: FastifyInstance) {
       progress: job?.progress ?? (row.status === 'done' ? 100 : 0),
       step: job?.step ?? row.status,
       error: row.error_message,
+      grouping_confirmed: row.grouping_confirmed,
       documents,
     });
   });

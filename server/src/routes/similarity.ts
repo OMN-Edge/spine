@@ -1,6 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { getStore } from '../store/index.js';
 import { requireAuth } from './middleware.js';
+import { translationEnabled } from '../config.js';
+import { isSupportedLanguage } from '../languages.js';
+import { translateDocument, warmTranslations } from '../translation.js';
 import { embeddingStatus, hybridSearch, relatedTo, scheduleSync } from '../similarity/index.js';
 
 /** Related documents, and search by words and meaning together. Owner only; every call is scoped to the signed-in user. */
@@ -15,12 +18,30 @@ export async function similarityRoutes(app: FastifyInstance) {
   });
 
   // Documents related to this one, and why: the same test or doctor, and what reads alike.
-  app.get<{ Params: { id: string } }>('/api/documents/:id/related', async (req, reply) => {
+  app.get<{ Params: { id: string }; Querystring: { lang?: string } }>('/api/documents/:id/related', async (req, reply) => {
     if (!(await getStore().documents.findFor(req.userId, req.params.id))) return reply.status(404).send({ error: 'not found' });
     const status = await embeddingStatus(req.userId);
     if (status.enabled && status.embedded < status.documents) scheduleSync(req.userId);
+    const related = await relatedTo(req.userId, req.params.id);
+
+    // In a language: a title already translated comes with the document; the rest start translating in the background
+    // (nothing is recorded on the documents) and `translation_pending` tells the page to ask again shortly.
+    const language = req.query.lang;
+    let titled: Array<(typeof related)[number] & { translated_title: string | null }> = related.map(r => ({ ...r, translated_title: null }));
+    let pending = false;
+    if (isSupportedLanguage(language) && translationEnabled()) {
+      const missing: string[] = [];
+      titled = [];
+      for (const r of related) {
+        const done = await translateDocument(req.userId, r.id, language, { cachedOnly: true });
+        if (done === null || done === 'not_found') missing.push(r.id);
+        titled.push({ ...r, translated_title: done && done !== 'not_found' && done.status !== 'same' ? done.title : null });
+      }
+      if (missing.length > 0) { pending = true; warmTranslations(req.userId, missing, language); }
+    }
     return reply.header('Cache-Control', 'no-store').send({
-      related: await relatedTo(req.userId, req.params.id),
+      related: titled,
+      translation_pending: pending,
       meaning: { enabled: status.enabled, ready: status.enabled && status.embedded >= status.documents },
     });
   });

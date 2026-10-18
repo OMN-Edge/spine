@@ -58,7 +58,7 @@ async function wait(id: string) {
   }
   throw new Error('timed out');
 }
-const docsOf = async (sf: string) => (await getStore().documents.listFor(OWNER_ID, { limit: 100, offset: 0 })).filter(d => d.source_file_id === sf).sort((a, b) => a.page_start - b.page_start);
+const docsOf = async (sf: string) => (await getStore().documents.listFor(OWNER_ID, { limit: 100, offset: 0, includeUnconfirmed: true })).filter(d => d.source_file_id === sf).sort((a, b) => a.page_start - b.page_start);
 
 describe('doctors from stamps, in the pipeline', () => {
   const stamp = { name: 'Elena Marinescu', specialty: 'medic specialist cardiologie', code: 'X23456' };

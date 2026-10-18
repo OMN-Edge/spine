@@ -10,7 +10,7 @@ import { documentTitle } from '../titles';
  * because they are exact.
  */
 export default function RelatedDocuments({ documentId }: { documentId: string }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [data, setData] = useState<{ related: RelatedDocument[]; meaning: { enabled: boolean; ready: boolean } } | null>(null);
 
   useEffect(() => {
@@ -18,17 +18,17 @@ export default function RelatedDocuments({ documentId }: { documentId: string })
     let live = true;
     let timer: number | undefined;
     let tries = 0;
-    const load = () => api.documents.related(documentId)
+    const load = () => api.documents.related(documentId, lang)
       .then(next => {
         if (!live) return;
         setData(next);
-        // Vectors are made in the background after a change: ask again shortly, a few times.
-        if (next.meaning.enabled && !next.meaning.ready && tries++ < 6) timer = window.setTimeout(load, 4000);
+        // Vectors and translated titles are made in the background: ask again shortly, a few times.
+        if (((next.meaning.enabled && !next.meaning.ready) || next.translation_pending) && tries++ < 6) timer = window.setTimeout(load, 4000);
       })
       .catch(() => { if (live) setData({ related: [], meaning: { enabled: false, ready: true } }); });
     load();
     return () => { live = false; window.clearTimeout(timer); };
-  }, [documentId]);
+  }, [documentId, lang]);
 
   if (!data || (data.related.length === 0 && (!data.meaning.enabled || data.meaning.ready))) return null;
 
@@ -53,7 +53,7 @@ export default function RelatedDocuments({ documentId }: { documentId: string })
             <li key={r.id}>
               <Link to={`/documents/${r.id}`} className="block py-2 hover:bg-gray-50 rounded-lg px-1">
                 <span className="flex items-baseline justify-between gap-3">
-                  <span className="text-sm text-gray-900 truncate">{documentTitle(r, t)}</span>
+                  <span className="text-sm text-gray-900 truncate">{documentTitle({ ...r, title: r.translated_title || r.title }, t)}</span>
                   <span className="text-xs text-gray-400 shrink-0">{r.doc_date ?? ''}</span>
                 </span>
                 <span className="block text-xs text-gray-500 mt-0.5">

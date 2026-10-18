@@ -42,6 +42,8 @@ const columnsOf = (db: Database.Database, table: string): string[] =>
  *  - `documents.language`, `share_links.language`: the language a document is written in, and the one a share page starts in.
  *    Both may be null, so existing rows need nothing filled in.
  *  - `share_links.include_scans`: whether a link also shows the page images. Nothing names it but the queries.
+ *  - `documents.owner_edited`, `extracted_fields.owner_edited`, `measurements.owner_edited`, `source_files.grouping_confirmed`: what the
+ *    owner changed (kept through a re-reading) and whether an upload's grouping has been confirmed (every earlier upload counts as confirmed).
  *  - `pages.hidden`: pages the owner has set aside. The search view and one trigger name the column,
  *    and `CREATE ... IF NOT EXISTS` would keep the old versions, so they are dropped here and
  *    schema.sql, which runs next, makes them again.
@@ -73,6 +75,15 @@ function addColumnsInPlace(db: Database.Database): void {
 
   const documents = columnsOf(db, 'documents');
   if (documents.length > 0 && !documents.includes('language')) db.exec('ALTER TABLE documents ADD COLUMN language TEXT');
+  // What the owner edited stays through a re-reading, and an upload's grouping waits for the owner to confirm it. Existing
+  // rows get the defaults: nothing edited, and every earlier upload confirmed.
+  if (documents.length > 0 && !documents.includes('owner_edited')) db.exec("ALTER TABLE documents ADD COLUMN owner_edited TEXT NOT NULL DEFAULT ''");
+  for (const table of ['extracted_fields', 'measurements']) {
+    const columns = columnsOf(db, table);
+    if (columns.length > 0 && !columns.includes('owner_edited')) db.exec(`ALTER TABLE ${table} ADD COLUMN owner_edited INTEGER NOT NULL DEFAULT 0`);
+  }
+  const uploads = columnsOf(db, 'source_files');
+  if (uploads.length > 0 && !uploads.includes('grouping_confirmed')) db.exec('ALTER TABLE source_files ADD COLUMN grouping_confirmed INTEGER NOT NULL DEFAULT 1');
 }
 
 /**

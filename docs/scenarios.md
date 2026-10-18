@@ -78,9 +78,9 @@ The owner drops a 40-page scan on the Upload page. It was a stack of letters, re
 - When it finishes, the upload is listed under the documents it became, each with a title (the one printed on it, else a short generated one), never the file name.
 - A page numbered "1 / 1" after one numbered "3 / 3" starts a new document; a page numbered "2 / 3" continues the one before.
 - If the model cannot be reached, the upload is marked as failed with the reason; the original file is kept and nothing is half-written.
-- Every document starts **unreviewed**.
+- Every document starts **unreviewed**, and the upload starts with its grouping **unconfirmed** (see 2.5): its documents are listed on the Upload page but are not yet in the timeline, search, shares or trends.
 
-Status: auto (`pipeline`, `continuation`, `upload`); boundary quality on real scans: real model.
+Status: auto (`pipeline`, `continuation`, `upload`, `grouping-confirmation`); boundary quality on real scans: real model.
 
 ### 2.2 The same file twice, or a file that is not a document
 - A file already uploaded is refused as a duplicate and points at the existing one, unless that upload failed (see 2.7), in which case it is tried again.
@@ -124,7 +124,12 @@ The file is a PDF made by a scanner or a scanning app, so its pages are pictures
 
 Status: auto (`parser`, `ocr`, `read-page`); quality on real handwriting: real model.
 
-### 2.5 Fix how the pages were grouped
+### 2.5 Fix how the pages were grouped, and confirm it
+Every finished upload asks the owner to check how its pages were grouped into documents; this step is not optional. The upload shows "Check the grouping" on the Upload page and the Timeline says how many uploads are waiting. Until the owner presses **Grouping is right**, its documents are out of the timeline, search, review queue, shares, trends and related documents, cannot be marked reviewed (the document page says why and links back), and are not looked at for links or embedded. Uploads made before this step existed and restores from an export count as confirmed.
+
+- Pressing **Grouping is right** puts the documents in the timeline and the review queue and starts looking for their links. It is disabled while there are changes waiting for Done.
+- If the grouping is wrong, the owner fixes it first (below) and then confirms. A confirmed upload stays confirmed even if it is regrouped afterwards.
+
 The owner opens an upload's **Pages and grouping**. Pages 11 and 12 belong with the document before them.
 
 - Pages show as thumbnails grouped by document; clicking a page opens a large preview.
@@ -136,7 +141,7 @@ The owner opens an upload's **Pages and grouping**. Pages 11 and 12 belong with 
 - **Hide** under a page sets that page aside, and **Hide document** sets a whole document aside, however many pages it has. A hidden page is kept (with its image and text) but is left out of the document's view, search and the next reading. A document with every page hidden is left out of the timeline, search, review, share links, a doctor's list and the trends; on this screen it is dimmed with a banner and a **Show all pages** button, and the upload's card on the Upload page counts it ("1 hidden") so it can be opened and brought back.
 - Done skips a document with every page hidden, since there is nothing to read; it does not call that a failure.
 
-Status: auto (`regroup`, `structured`, `page-hiding`); screens: hand.
+Status: auto (`regroup`, `structured`, `page-hiding`, `grouping-confirmation`); screens: hand.
 
 ### 2.6 A very long document
 A 300-page discharge file that is one document.
@@ -178,8 +183,9 @@ The owner opens a document from the Timeline or the review queue. Reading mode s
 - Fields that belong together, such as one medicine's drug, dose and frequency, show together.
 - A document opened from the review queue starts in edit mode; from the Timeline, in reading mode.
 - A document that has been edited, regrouped or read again shows up as unreviewed.
+- **What the owner sets stays set.** Reading a document again fills in what the owner has not touched. A title, date, provider, type or summary the owner changed keeps their value (clearing it hands it back to the reading). A field or a result the owner added or changed stays, and the new reading does not repeat it: it holds its place, the same label in the same group, or the same test on the same day. A field or result the owner removed is not brought back, unless a later reading says something different. Tags and doctors are not kept: a new reading replaces them. The owner's notes are kept, and are given to the model when it reads again, as context only.
 
-Status: auto (`document-edit`, `structured`); screens: hand.
+Status: auto (`document-edit`, `structured`, `owner-edits`); screens: hand.
 
 ### 3.2 A page the machine could not read
 The owner opens a document, sees an empty text view for page 3, and asks for that page to be read with AI.
@@ -376,6 +382,19 @@ Where embeddings are on, Search offers "also find documents that mean the same".
 - With embeddings off, the option is not shown and nothing is sent anywhere.
 
 Status: auto (`similarity`); quality: real model.
+
+### 6.7 See the chain of care around a document
+On a document page, Care chain shows the consultations and tests around it as a timeline by date, the document itself marked. Under each document it says how it connects to an earlier one: "requested by", "follow-up of", "same episode as".
+
+- When the owner confirms an upload's grouping, and after a document is read again, the app looks for links in the background. Nothing is searched before the grouping is confirmed, so links are never judged against a grouping that may still change. A consultation that recommended tests and the laboratory report that followed come up as suggestions, marked "suggested", with Confirm and Not related.
+- The app only suggests when the data points to a candidate (the same test or doctor, a laboratory or imaging document within 90 days after a consultation); a conservative model then decides. A request never points backwards in time.
+- Not related removes the suggestion for good: that pair is not suggested again. Confirm keeps it; Remove on a confirmed link takes it away.
+- Look for links again asks for a new search of this document; it replaces only the waiting suggestions for the pairs it looks at again, never what was confirmed, added or dismissed, and never a suggestion about a pair it did not look at.
+- The notes the owner wrote on a document are shown to the model with it, as context, and are also given to the model when the document is read again (they are never a source of values and are kept through a re-reading).
+- Add a link lets the owner connect two documents by hand with one of five relations and a search for the other document. It works even when the server has linking switched off (`SPINE_LINKING=off`), in which case the card says so and offers no search.
+- A document the owner set aside, or another account's, is never in a chain, and deleting a document removes its links.
+
+Status: auto (`linking`); whether a real model finds the right links and how often it is wrong: real model; screens: not yet checked by hand.
 
 ---
 

@@ -58,7 +58,7 @@ export function resetAiReadings(): void {
  */
 export type ReadingStrategy = 'model' | 'configured';
 
-export function startAiReading(userId: string, sourceFileId: string, pageIds: string[], model?: string, strategy: ReadingStrategy = 'model'): AiReadingJob {
+export function startAiReading(userId: string, sourceFileId: string, pageIds: string[], model?: string, strategy: ReadingStrategy = 'model', thinking = false): AiReadingJob {
   const job: AiReadingJob = {
     source_file_id: sourceFileId,
     status: 'running',
@@ -71,7 +71,7 @@ export function startAiReading(userId: string, sourceFileId: string, pageIds: st
   };
   jobs.set(sourceFileId, job);
 
-  run(userId, sourceFileId, pageIds, job, model, strategy).catch(err => {
+  run(userId, sourceFileId, pageIds, job, model, strategy, thinking).catch(err => {
     job.status = 'failed';
     job.step = 'failed';
     job.error = describeError(err);
@@ -80,7 +80,7 @@ export function startAiReading(userId: string, sourceFileId: string, pageIds: st
   return job;
 }
 
-async function run(userId: string, sourceFileId: string, pageIds: string[], job: AiReadingJob, model?: string, strategy: ReadingStrategy = 'model'): Promise<void> {
+async function run(userId: string, sourceFileId: string, pageIds: string[], job: AiReadingJob, model?: string, strategy: ReadingStrategy = 'model', thinking = false): Promise<void> {
   const store = getStore();
   const upload = await store.sourceFiles.findFor(userId, sourceFileId);
   if (!upload) throw new Error('upload not found');
@@ -97,7 +97,7 @@ async function run(userId: string, sourceFileId: string, pageIds: string[], job:
   if (strategy === 'configured') {
     // The way an upload reads: one call for the pages together (a PDF is parsed once, not once a page), by the
     // configured parser; a photo has no text layer, so it goes to the model, as at upload.
-    const parser = upload.mime_type?.startsWith('image/') ? getModelParser(model) : getParser(model);
+    const parser = upload.mime_type?.startsWith('image/') ? getModelParser(model, thinking) : getParser(model);
     job.step = pages.length === 1 ? `reading page ${pages[0].page_number}` : `reading ${pages.length} pages`;
     job.progress = 5;
     const input = [];
@@ -121,7 +121,7 @@ async function run(userId: string, sourceFileId: string, pageIds: string[], job:
     job.progress = 70;
   } else {
     // One image per call, several calls at once.
-    const parser = getModelParser(model);
+    const parser = getModelParser(model, thinking);
     let done = 0;
     readings = await mapLimit(pages, llmConcurrency(), async page => {
       job.step = `reading ${pages.length === 1 ? `page ${page.page_number}` : `${pages.length} pages`}`;

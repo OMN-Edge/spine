@@ -68,7 +68,7 @@ async function insertSourceFile(id: string) {
 
 /** Documents produced for one upload, in page order. */
 async function documentsFor(sourceFileId: string) {
-  const all = await getStore().documents.listFor(OWNER_ID, { limit: 100, offset: 0 });
+  const all = await getStore().documents.listFor(OWNER_ID, { limit: 100, offset: 0, includeUnconfirmed: true });
   return all
     .filter(d => d.source_file_id === sourceFileId)
     .sort((a, b) => a.page_start - b.page_start);
@@ -103,6 +103,9 @@ describe('pipeline — single page document', () => {
     const job = await waitForJob(id);
 
     expect(job.status).toBe('done');
+    // Its documents wait, out of the timeline, until the owner confirms the grouping.
+    expect((await getStore().sourceFiles.findFor(OWNER_ID, id))!.grouping_confirmed).toBe(false);
+    expect(await getStore().documents.listFor(OWNER_ID, { sourceFileId: id, limit: 10, offset: 0 })).toEqual([]);
 
     const docs = await documentsFor(id);
     expect(docs).toHaveLength(1);
