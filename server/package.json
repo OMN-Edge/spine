@@ -12,7 +12,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "cli": "node --env-file=../.env dist/cli.js"
+    "cli": "node --env-file=../.env dist/cli.js",
+    "test:integration": "SPINE_INTEGRATION=1 vitest run -c vitest.integration.config.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^9.4.0",

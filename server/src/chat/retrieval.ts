@@ -28,6 +28,7 @@ const FILLER = new Set((
 
 const KEYWORDS = 8;
 const PER_KEYWORD = 20;
+const PER_KEYWORD_SHARED = 500;
 const K = 60;
 const stripAccents = (text: string) => text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
@@ -46,20 +47,25 @@ export function keywordsOf(question: string): string[] {
   return out.slice(0, KEYWORDS);
 }
 
-export async function documentsForQuestion(userId: string, question: string, k: number): Promise<Document[]> {
+/**
+ * `allowed`: only these documents may be returned. A share recipient's question is held to the link's documents here, before
+ * the ranking is cut, so the shared ones are not crowded out by the owner's others; a keyword is searched deeper then, because
+ * the search itself cannot be limited to a set.
+ */
+export async function documentsForQuestion(userId: string, question: string, k: number, allowed?: Set<string>): Promise<Document[]> {
   const store = getStore();
   const fused = new Map<string, { score: number; doc?: Document }>();
   const take = (id: string) => { let e = fused.get(id); if (!e) { e = { score: 0 }; fused.set(id, e); } return e; };
 
   for (const keyword of keywordsOf(question)) {
-    const found = await store.documents.listFor(userId, { q: keyword, limit: PER_KEYWORD, offset: 0 });
+    const found = (await store.documents.listFor(userId, { q: keyword, limit: allowed ? PER_KEYWORD_SHARED : PER_KEYWORD, offset: 0 })).filter(d => !allowed || allowed.has(d.id));
     found.forEach((doc, rank) => { const e = take(doc.id); e.score += 1 / (K + rank); e.doc = doc; });
   }
   const meaning = await searchByMeaning(userId, question, 40).catch(err => {
     logger.warn('search by meaning failed', { error: describeError(err) });
     return [];
   });
-  meaning.forEach((s, rank) => { take(s.id).score += 1 / (K + rank); });
+  meaning.filter(s => !allowed || allowed.has(s.id)).forEach((s, rank) => { take(s.id).score += 1 / (K + rank); });
 
   const out: Document[] = [];
   for (const [id, e] of [...fused.entries()].sort((a, b) => b[1].score - a[1].score).slice(0, k)) {

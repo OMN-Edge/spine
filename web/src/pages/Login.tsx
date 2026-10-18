@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { api, ApiError } from '../api';
 import { useAuth } from '../auth';
 import AuthCard, { buttonClass, inputClass, Notice } from '../components/AuthCard';
@@ -9,6 +9,10 @@ export default function Login() {
   const { t } = useI18n();
   const { setAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  // Router state set by the app itself, never the URL; still only an in-app path is followed.
+  const from = (location.state as { from?: unknown } | null)?.from;
+  const home = typeof from === 'string' && from.startsWith('/') && !from.startsWith('//') ? from : '/';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -36,7 +40,7 @@ export default function Login() {
         return;
       }
       setAuthenticated(true, result.email ?? email);
-      navigate('/');
+      navigate(home);
     } catch (err) {
       // The server's own words: "incorrect email or password", a rate-limit
       // notice, or that the address is not confirmed yet. It deliberately does
@@ -52,7 +56,7 @@ export default function Login() {
     try {
       const result = await api.auth.secondFactor(code);
       setAuthenticated(true, result.email);
-      navigate('/');
+      navigate(home);
     } catch (err) {
       // Too many wrong codes, or too long since the password: start again.
       if (err instanceof ApiError && err.code === 'login_expired') {

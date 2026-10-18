@@ -275,17 +275,79 @@ export interface ChatSource {
   section?: 'summary' | 'notes' | 'doctors' | 'results' | 'fields' | 'chain';
 }
 /** `answer` is null when no document matched the question: nothing was asked of the model. */
-export interface ChatReply { answer: string | null; sources: ChatSource[]; documents: number; looked?: string[]; conversation: { id: string; title: string } }
+/** A change the chat prepared. It has done nothing: the person confirms it, and Confirm sends `calls` (or, for a share link, what the card builds). */
+export interface DocRef { id: string; title: string | null; doc_type: Document['doc_type']; doc_date: string | null }
+export interface ProposedCall { method: 'POST' | 'PATCH' | 'DELETE'; path: string; body?: unknown }
+export type DetailChange =
+  | { what: 'title' | 'doc_date' | 'provider' | 'doc_type'; from: string | null; to: string | null }
+  | { what: 'field_update'; label: string; from: string; to: string }
+  | { what: 'field_add'; label: string; to: string }
+  | { what: 'field_remove'; label: string; from: string }
+  | { what: 'result_update'; name: string; from: string; to: string }
+  | { what: 'result_add'; name: string; to: string }
+  | { what: 'result_remove'; name: string; from: string };
+export interface LibraryEntry { id: number | null; name: string; count: number }
+export interface DoctorEntry { id: string; name: string; specialty: string | null; clinic: string | null; license_code: string | null; document_count: number }
+export interface TestEntry { canonical: string; name: string; count: number; units: string[] }
+export type Proposal = { id: string } & (
+  | { kind: 'share_link'; documents: DocRef[]; label: string | null; expires_days: number; language: string | null; require_approval: boolean; include_scans: boolean; allow_chat: boolean; approval_mail: boolean }
+  | { kind: 'add_note'; document: DocRef; text: string; calls: ProposedCall[] }
+  | { kind: 'edit_document'; document: DocRef; changes: DetailChange[]; calls: ProposedCall[] }
+  | { kind: 'tag_documents'; items: Array<{ document: DocRef; add: string[]; remove: string[] }>; calls: ProposedCall[] }
+  | { kind: 'mark_reviewed'; documents: DocRef[]; calls: ProposedCall[] }
+  | { kind: 'link_documents'; from: DocRef; to: DocRef; link_kind: 'requests' | 'follow_up' | 'same_episode'; calls: ProposedCall[] }
+  | { kind: 'merge_doctors'; groups: Array<{ keep: DoctorEntry; merge: DoctorEntry[]; final: { name: string; specialty: string | null; clinic: string | null; license_code: string | null } }> }
+  | { kind: 'merge_tests'; groups: Array<{ into: TestEntry; from: TestEntry[]; final_name: string }> }
+  | { kind: 'confirm_grouping'; upload: { id: string; file_name: string | null; uploaded_at: string }; documents: DocRef[]; calls: ProposedCall[] }
+  | { kind: 'analyse_pages'; upload: { id: string; file_name: string | null; uploaded_at: string }; pages: number; calls: ProposedCall[] }
+  | { kind: 'regroup'; upload: { id: string; file_name: string | null }; groups: Array<{ label: string; page_ids: string[]; page_numbers: number[]; title: string | null; confidence: number; status: 'validated' | 'uncertain' | 'unchecked'; reason: string; from: DocRef[] }> }
+  | { kind: 'reread_pages'; document: DocRef; page_numbers: number[]; strategy: 'model' | 'configured'; sends_images: boolean; calls: ProposedCall[] }
+  | { kind: 'merge_library'; library: 'tags' | 'providers'; groups: Array<{ keep: LibraryEntry; merge: LibraryEntry[]; final_name: string }> }
+  | { kind: 'update_share'; link: { id: string; label: string | null; expires_at: string }; label: { from: string | null; to: string | null } | null; expires: { from: string; to_days: number } | null; added: DocRef[]; removed: DocRef[]; total_after: number | null; calls: ProposedCall[] }
+  | { kind: 'revoke_share'; link: { id: string; label: string | null; expires_at: string }; calls: ProposedCall[] }
+);
+export interface ChatReply { answer: string | null; sources: ChatSource[]; documents: number; looked?: string[]; proposals?: Proposal[]; conversation: { id: string; title: string } }
 /** What the agent is looking at while it works; the page words it. */
-export interface ChatStep { kind: 'search' | 'open' | 'series' | 'tests' | 'connections'; detail?: string }
+export interface ChatStep { kind: 'search' | 'open' | 'series' | 'tests' | 'connections' | 'fields' | 'shares' | 'doctors' | 'uploads' | 'plan' | 'library' | 'propose'; detail?: string }
 export interface ChatStreamHandlers {
   step: (step: ChatStep) => void;
   delta: (text: string) => void;
   /** What was shown was a lead-in, not the answer: clear it. */
   reset: () => void;
 }
-export interface ConversationSummary { id: string; title: string; created_at: string; updated_at: string; message_count: number }
-export interface StoredMessage { id: string; role: 'user' | 'assistant'; content: string; sources: ChatSource[]; note: 'none' | 'failed' | 'off' | null; created_at: string }
+export interface ConversationSummary {
+  id: string; title: string; created_at: string; updated_at: string; message_count: number;
+  /** The app started it (an upload finished) and the person has not opened it. */
+  unread: boolean;
+  origin: 'upload' | 'regroup' | null;
+}
+/** What the app wrote when the analysis of a mixed upload finished. */
+export interface RegroupNotice {
+  upload_id: string; file_name: string | null; pages_considered: number; groups_changed: number; groups_validated: number; unchanged_groups: number;
+  groups: Array<{ page_numbers: number[]; title: string | null; status: string; confidence: number }>;
+}
+/** What the app wrote when an upload had been read; the page draws it in the person's language. */
+export interface UploadNotice {
+  upload_id: string; state: 'done' | 'failed'; file_name: string | null; pages: number;
+  documents: DocRef[]; more_documents: number; unread_pages: number; undated_documents: number; grouping_pending: boolean;
+  doctors_added: string[]; doctors_matched: number; possible_duplicates: Array<[string, string]>; tests_new: string[]; looks_mixed: boolean;
+  /** Matches waiting for an answer when the report was written; the page asks again, live, for the ones still open. */
+  matches_open?: number;
+}
+/** Something this upload brought that may be the same as something already held, or a professional code that differs: a question for the owner. */
+export interface MatchEntry { name: string; detail: string | null; count: number; doctor_id?: string; tag_id?: number; canonical?: string; units?: string[] }
+export interface MatchQuestion {
+  id: string; kind: 'doctor' | 'test' | 'tag' | 'provider' | 'code';
+  new: MatchEntry; existing: MatchEntry | null; keep: 'new' | 'existing';
+  reason: 'initial' | 'fuller_name' | 'punctuation' | 'legal_suffix' | 'contained' | 'spelling' | 'prefix' | 'different_code';
+  strength: 'likely' | 'unsure' | 'clash';
+  codes?: { directory: string; printed: string; documents: number };
+  unit_mismatch?: boolean;
+}
+/** A file attached in the chat, as it was accepted. */
+export interface AttachedFile { name: string | null; upload_id: string | null; state: 'reading' | 'already_held' | 'skipped'; reason: string | null }
+export interface AttachmentData { files: AttachedFile[] }
+export interface StoredMessage { id: string; role: 'user' | 'assistant'; content: string; sources: ChatSource[]; note: 'none' | 'failed' | 'off' | null; created_at: string; kind: 'upload' | 'regroup' | 'attachment' | null; data: UploadNotice | RegroupNotice | AttachmentData | null }
 
 export interface ShareLink {
   id: string;
@@ -301,7 +363,44 @@ export interface ShareLink {
   include_scans: boolean;
   /** The language the recipient's page starts in, if the owner chose one. */
   language: string | null;
+  /** A visitor's browser must be approved by the owner before it reads anything. */
+  require_approval: boolean;
+  /** The recipient may ask questions about what the link shares. */
+  allow_chat: boolean;
+  /** Browsers waiting to be let in. */
+  pending_requests: number;
 }
+
+/** A browser asking to open a link that needs approval. `note`, `ip_address` and `user_agent` are the visitor's own words. */
+export interface ShareRequest {
+  id: string;
+  share_link_id: string;
+  link_label: string | null;
+  /** The link can still be opened: approving a request on a dead link changes nothing. */
+  link_active: boolean;
+  status: 'pending' | 'approved' | 'denied';
+  note: string | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  requested_at: string;
+  decided_at: string | null;
+}
+
+/** What has happened to a link since it was made. `detail` is JSON: for `changed`, `{ changes: [{ field, from, to }] }`. */
+export interface ShareLinkEvent { at: string; kind: 'created' | 'changed' | 'revoked' | 'approved' | 'denied'; detail: string | null }
+export interface ShareLinkDetail {
+  link: ShareLink;
+  /** What it shares now, resolved the way a recipient's read resolves it. */
+  documents: Array<{ id: string; title: string | null; doc_date: string | null; doc_type: Document['doc_type']; provider: string | null }>;
+  scope_ok: boolean;
+  access: { total: number; first_at: string | null; last_at: string | null; addresses: Array<{ ip_address: string | null; count: number; last_at: string }>; recent: Array<{ accessed_at: string; ip_address: string | null }> };
+  requests: ShareRequest[];
+  events: ShareLinkEvent[];
+}
+export interface ShareLinkChange { label?: string | null; expires_days?: number; include_scans?: boolean; require_approval?: boolean; allow_chat?: boolean; language?: string | null; scope?: string; scope_value?: unknown }
+
+/** Where a visitor's browser stands with a link that needs approval. */
+export type ShareApproval = 'open' | 'needed' | 'pending' | 'denied';
 
 /** A document in the reader's language: the details and the owner's notes, translated and kept (see translation.ts). */
 export interface TranslatedDocument {
@@ -366,6 +465,42 @@ async function req<T>(url: string, options?: RequestInit): Promise<T> {
     throw new ApiError(err.error ?? res.statusText, res.status, err.code);
   }
   return res.json() as Promise<T>;
+}
+
+/**
+ * A question whose reply comes as JSON lines (NDJSON): what the agent is looking up (`step`), the answer as it is written (`delta`),
+ * `reset` when what was shown was a lead-in, then `done` with the reply or `error`. Nothing is trusted until `done`. Used by the
+ * owner's chat and by a share recipient's.
+ */
+async function readReplyStream<T>(url: string, body: unknown, handlers: ChatStreamHandlers, signal?: AbortSignal): Promise<T> {
+  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal, body: JSON.stringify(body) });
+  if (!res.ok || !res.body) {
+    const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string; code?: string };
+    throw new ApiError(err.error ?? res.statusText, res.status, err.code);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let reply: T | null = null;
+  const handle = (text: string) => {
+    if (!text.trim()) return;
+    const event = JSON.parse(text) as { type: string; text?: string; reply?: T; status?: number; error?: string } & Partial<ChatStep>;
+    if (event.type === 'step' && event.kind) handlers.step({ kind: event.kind, detail: event.detail });
+    else if (event.type === 'delta' && event.text) handlers.delta(event.text);
+    else if (event.type === 'reset') handlers.reset();
+    else if (event.type === 'done' && event.reply) reply = event.reply;
+    else if (event.type === 'error') throw new ApiError(event.error ?? 'could not answer', event.status ?? 502);
+  };
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (value) buffer += decoder.decode(value, { stream: !done });
+    let at;
+    while ((at = buffer.indexOf('\n')) >= 0) { handle(buffer.slice(0, at)); buffer = buffer.slice(at + 1); }
+    if (done) break;
+  }
+  handle(buffer);
+  if (!reply) throw new ApiError('could not answer', 502);
+  return reply;
 }
 
 const post = <T>(url: string, body: unknown) =>
@@ -448,43 +583,47 @@ export const api = {
      * The reply arrives as lines (steps, pieces of the answer, then the whole reply), so the page can show it as it is written.
      * Refusals before the first byte are ordinary errors; a failure after it comes as an `error` line.
      */
-    ask: async (question: string, conversationId: string | null, screen: Record<string, unknown> | undefined, handlers: ChatStreamHandlers, signal?: AbortSignal): Promise<ChatReply> => {
-      const res = await fetch('/api/chat', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, signal,
-        body: JSON.stringify({ question, conversation_id: conversationId ?? undefined, screen, stream: true }),
-      });
-      if (!res.ok || !res.body) {
+    ask: (question: string, conversationId: string | null, screen: Record<string, unknown> | undefined, handlers: ChatStreamHandlers, signal?: AbortSignal): Promise<ChatReply> =>
+      readReplyStream<ChatReply>('/api/chat', { question, conversation_id: conversationId ?? undefined, screen, stream: true }, handlers, signal),
+    conversations: () => req<ConversationSummary[]>('/api/chat/conversations'),
+    conversation: (id: string) => req<ConversationSummary & { messages: StoredMessage[] }>(`/api/chat/conversations/${id}`),
+    unread: () => req<{ count: number }>('/api/chat/unread'),
+    /** Attach files: the ordinary upload, tied to a conversation (a new one if none is named), which then hears what happens to them. */
+    attach: async (files: File[], conversationId: string | null): Promise<{ conversation: { id: string; title: string }; files: AttachedFile[] }> => {
+      const form = new FormData();
+      // The conversation goes first: the server reads it before the first file arrives.
+      if (conversationId) form.append('conversation_id', conversationId);
+      for (const file of files) form.append('files', file, file.name);
+      const res = await fetch('/api/chat/attachments', { method: 'POST', body: form });
+      if (!res.ok) {
         const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string; code?: string };
         throw new ApiError(err.error ?? res.statusText, res.status, err.code);
       }
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let reply: ChatReply | null = null;
-      const handle = (text: string) => {
-        if (!text.trim()) return;
-        const event = JSON.parse(text) as { type: string; text?: string; reply?: ChatReply; status?: number; error?: string } & Partial<ChatStep>;
-        if (event.type === 'step' && event.kind) handlers.step({ kind: event.kind, detail: event.detail });
-        else if (event.type === 'delta' && event.text) handlers.delta(event.text);
-        else if (event.type === 'reset') handlers.reset();
-        else if (event.type === 'done' && event.reply) reply = event.reply;
-        else if (event.type === 'error') throw new ApiError(event.error ?? 'could not answer', event.status ?? 502);
-      };
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (value) buffer += decoder.decode(value, { stream: !done });
-        let at;
-        while ((at = buffer.indexOf('\n')) >= 0) { handle(buffer.slice(0, at)); buffer = buffer.slice(at + 1); }
-        if (done) break;
-      }
-      handle(buffer);
-      if (!reply) throw new ApiError('could not answer', 502);
-      return reply;
+      return res.json();
     },
-    conversations: () => req<ConversationSummary[]>('/api/chat/conversations'),
-    conversation: (id: string) => req<ConversationSummary & { messages: StoredMessage[] }>(`/api/chat/conversations/${id}`),
+    markRead: (id: string) => post<{ ok: boolean }>(`/api/chat/conversations/${id}/read`, undefined),
     deleteConversation: (id: string) => del<{ ok: boolean }>(`/api/chat/conversations/${id}`),
     deleteAllConversations: () => del<{ removed: number }>('/api/chat/conversations'),
+    /**
+     * Confirm: sends one request a proposal carries. Only the shapes the chat prepares are run, whatever a reply says, so a
+     * proposal can reach nothing but the routes it is meant to.
+     */
+    run: <T = unknown>(call: ProposedCall) => {
+      const allowed =
+        (call.method === 'PATCH' && /^\/api\/documents\/[\w-]{1,64}$/.test(call.path)) ||
+        (call.method === 'POST' && call.path === '/api/document-links') ||
+        (call.method === 'POST' && /^\/api\/source-files\/[\w-]{1,64}\/(grouping\/confirm|ai-reading|regroup|regroup\/analyze|extract)$/.test(call.path)) ||
+        (call.method === 'POST' && /^\/api\/doctors\/[\w-]{1,64}\/merge$/.test(call.path)) ||
+        (call.method === 'PATCH' && /^\/api\/doctors\/[\w-]{1,64}$/.test(call.path)) ||
+        (call.method === 'POST' && (call.path === '/api/measurements/merge' || call.path === '/api/measurements/rename')) ||
+        (call.method === 'DELETE' && /^\/api\/share-links\/[\w-]{1,64}$/.test(call.path)) ||
+        (call.method === 'PATCH' && /^\/api\/share-links\/[\w-]{1,64}$/.test(call.path)) ||
+        (call.method === 'POST' && /^\/api\/tags\/\d{1,12}\/merge$/.test(call.path)) ||
+        (call.method === 'PATCH' && /^\/api\/tags\/\d{1,12}$/.test(call.path)) ||
+        (call.method === 'POST' && call.path === '/api/providers/rename');
+      if (!allowed) return Promise.reject(new ApiError('not a change the chat can make', 400));
+      return req<T>(call.path, { method: call.method, ...(call.body !== undefined ? { body: JSON.stringify(call.body) } : {}) });
+    },
   },
 
   documents: {
@@ -529,6 +668,13 @@ export const api = {
       req<{ hidden: boolean; document_ids: string[] }>(`/api/documents/${id}/hidden`, { method: 'PATCH', body: JSON.stringify({ hidden }) }),
     boundary: (id: string, body: ({ action: 'split'; at_page: number } | { action: 'merge'; with_document_id: string }) & { defer?: boolean }) =>
       req(`/api/documents/${id}/boundary`, { method: 'POST', body: JSON.stringify(body) }),
+  },
+
+  matches: {
+    /** The questions this upload left: what may be the same as something held, and codes that differ. Live: an answered one is not there. */
+    forUpload: (uploadId: string) => req<{ questions: MatchQuestion[] }>(`/api/source-files/${uploadId}/matches`),
+    /** "No, they are different" / "keep the directory's code": remembered, so it is not asked again. */
+    decide: (id: string, decision: 'different' | 'keep') => post<{ ok: boolean }>('/api/match-decisions', { id, decision }),
   },
 
   sourceFiles: {
@@ -584,12 +730,18 @@ export const api = {
 
   share: {
     list: () => req<ShareLink[]>('/api/share-links'),
-    create: (body: { label?: string; scope: string; scope_value?: unknown; expires_days?: number; include_scans?: boolean; language?: string | null }) =>
-      req<{ id: string; token: string; url: string; expires_at: string }>('/api/share-links', {
+    create: (body: { label?: string; scope: string; scope_value?: unknown; expires_days?: number; include_scans?: boolean; language?: string | null; require_approval?: boolean; allow_chat?: boolean }) =>
+      req<{ id: string; token: string; url: string; expires_at: string; approval_mail: boolean | null }>('/api/share-links', {
         method: 'POST',
         body: JSON.stringify(body),
       }),
     revoke: (id: string) => req(`/api/share-links/${id}`, { method: 'DELETE' }),
+    detail: (id: string) => req<ShareLinkDetail>(`/api/share-links/${id}`),
+    change: (id: string, change: ShareLinkChange) => req<{ ok: true }>(`/api/share-links/${id}`, { method: 'PATCH', body: JSON.stringify(change) }),
+    requests: () => req<ShareRequest[]>('/api/share-requests'),
+    request: (id: string) => req<ShareRequest>(`/api/share-requests/${id}`),
+    decide: (id: string, decision: 'approve' | 'deny') =>
+      req<{ ok: true; status: 'approved' | 'denied' }>(`/api/share-requests/${id}/decision`, { method: 'POST', body: JSON.stringify({ decision }) }),
   },
 
   publicShare: {
@@ -600,7 +752,12 @@ export const api = {
     /** Values over time, from the shared documents only. */
     trends: (token: string) => req<TrendName[]>(`/api/share/${token}/trends`),
     trendSeries: (token: string, canonical: string) => req<TrendSeries>(`/api/share/${token}/trends/series?name=${encodeURIComponent(canonical)}`),
-    meta: (token: string) => req<{ language: string | null; languages: string[]; translation: boolean }>(`/api/share/${token}/meta`),
+    meta: (token: string) => req<{ language: string | null; languages: string[]; translation: boolean; approval: ShareApproval; chat: boolean }>(`/api/share/${token}/meta`),
+    /** A recipient's question. `history` is the earlier turns of this page: nothing is stored on the server. */
+    chat: (token: string, body: { question: string; history: Array<{ role: 'user' | 'assistant'; content: string }>; document_id?: string }, handlers: ChatStreamHandlers, signal?: AbortSignal) =>
+      readReplyStream<{ answer: string | null; sources: ChatSource[]; documents: number }>(`/api/share/${token}/chat`, { ...body, stream: true }, handlers, signal),
+    /** Ask the owner to let this browser in. The first call gives the browser its cookie and tells the owner. */
+    requestAccess: (token: string, note: string) => req<{ approval: ShareApproval }>(`/api/share/${token}/access-request`, { method: 'POST', body: JSON.stringify({ note }) }),
   },
 
   tags: {

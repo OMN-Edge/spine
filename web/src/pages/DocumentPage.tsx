@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useOnDataChanged } from '../dataChanged';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, type Document, type DocumentTypeGuide, type ExtractedField, type Page } from '../api';
 import PageImageOverlay, { type Highlight } from '../components/PageImageOverlay';
@@ -156,6 +157,9 @@ export default function DocumentPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  // A change made from the chat (a note, a correction): read the document again, unless the person is editing it.
+  useOnDataChanged(() => { if (draft === null) void load(); });
+
   const editingNow = draft !== null;
   useEffect(() => {
     if (!editingNow) return;
@@ -181,7 +185,7 @@ export default function DocumentPage() {
   }, [selectedField, doc?.pages]);
 
   // The chat knows what is on this page: the document, whether it is being edited, and the field or result picked.
-  useScreen(doc ? { page: 'document', documentId: doc.id, editing: draft !== null, selectedId: selectedField?.id } : null);
+  useScreen(doc ? { page: 'document', documentId: doc.id, editing: draft !== null, selectedId: selectedField?.id, pageNumber: doc.pages?.[currentPageIdx]?.page_number } : null);
 
   // A link from the chat (or anywhere) can point at a part of the page: ?section=results scrolls there and lights it briefly.
   // Run again for the same part when the link is followed again, which is why the location's key is a dependency.

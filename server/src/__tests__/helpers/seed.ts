@@ -140,6 +140,8 @@ export async function seedShareLink(overrides: {
   revoked?: boolean;
   includeScans?: boolean;
   language?: string | null;
+  requireApproval?: boolean;
+  allowChat?: boolean;
 }) {
   const store = getStore();
   const id = uuidv4();
@@ -155,6 +157,8 @@ export async function seedShareLink(overrides: {
     expiresAt: overrides.expiresAt ?? new Date(Date.now() + 7 * 86_400_000).toISOString(),
     includeScans: overrides.includeScans ?? false,
     language: overrides.language ?? null,
+    requireApproval: overrides.requireApproval ?? false,
+    allowChat: overrides.allowChat ?? false,
   });
 
   if (overrides.revoked) await store.shareLinks.revoke(userId, id);

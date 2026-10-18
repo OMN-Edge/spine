@@ -1,6 +1,6 @@
 import { getStore } from '../store/index.js';
 import type { ChatRecord } from '../llm/types.js';
-import type { Document } from '../types.js';
+import type { Document, SourceFile } from '../types.js';
 
 /**
  * What the person is looking at, so a question like "what does this mean?" has something to mean. The browser sends
@@ -31,6 +31,8 @@ export interface ScreenContext {
   test?: string;
   /** A field or result the person selected on a document. */
   selectedId?: string;
+  /** The page of the file that is open on a document page (the file's numbering, as the page shows it). */
+  pageNumber?: number;
   editing?: boolean;
 }
 
@@ -53,6 +55,10 @@ export function checkScreen(value: unknown): ScreenContext | string {
     if (!Array.isArray(s.documentIds) || s.documentIds.length > MAX_IDS || !s.documentIds.every(isId)) return `screen.documentIds must be at most ${MAX_IDS} ids`;
     out.documentIds = s.documentIds as string[];
   }
+  if (s.pageNumber !== undefined) {
+    if (typeof s.pageNumber !== 'number' || !Number.isInteger(s.pageNumber) || s.pageNumber < 1 || s.pageNumber > 10_000) return 'screen.pageNumber must be a page number';
+    out.pageNumber = s.pageNumber;
+  }
   if (s.query !== undefined) { const q = text(s.query, 300); if (q === undefined) return 'screen.query is too long'; out.query = q; }
   if (s.test !== undefined) { const t = text(s.test, 120); if (t === undefined) return 'screen.test is too long'; out.test = t; }
   if (s.filters !== undefined) {
@@ -74,6 +80,8 @@ export interface ResolvedScreen {
   screen: ScreenContext;
   /** The document on a document page. It may be one whose upload is not confirmed yet: the owner is looking at it. */
   primary: Document | null;
+  /** The upload on screen (an upload's own screen, or a conversation the app began about it). */
+  upload: SourceFile | null;
   /** The other documents the screen lists or belongs to, in order. */
   listed: Document[];
   /** Plain lines about the screen that are not documents (an upload's state, a doctor, the selection). */
@@ -88,6 +96,7 @@ export async function resolveScreen(userId: string, screen: ScreenContext | null
   const facts: string[] = [];
   let primary: Document | null = null;
   let listed: Document[] = [];
+  let uploadOnScreen: SourceFile | null = null;
 
   if (screen.documentId) primary = await store.documents.findFor(userId, screen.documentId);
 
@@ -96,6 +105,7 @@ export async function resolveScreen(userId: string, screen: ScreenContext | null
   if (screen.uploadId) {
     const upload = await store.sourceFiles.findFor(userId, screen.uploadId);
     if (upload) {
+      uploadOnScreen = upload;
       const docs = (await store.documents.listFor(userId, { sourceFileId: upload.id, includeHidden: true, limit: 200, offset: 0 })).sort((a, b) => a.page_start - b.page_start);
       const pages = await store.pages.listForSourceFile(userId, upload.id);
       const sources = new Map<string, number>();
@@ -125,6 +135,8 @@ export async function resolveScreen(userId: string, screen: ScreenContext | null
     }
   }
 
+  if (primary && screen.pageNumber) facts.push(`page ${screen.pageNumber} of the file is open`);
+
   if (primary && screen.selectedId) {
     const field = (await store.fields.listForDocument(userId, primary.id)).find(f => f.id === screen.selectedId);
     const result = field ? null : (await store.measurements.listForDocument(userId, primary.id)).find(m => m.id === screen.selectedId);
@@ -134,7 +146,7 @@ export async function resolveScreen(userId: string, screen: ScreenContext | null
 
   // The primary is first; it is not repeated in the list.
   if (primary) listed = listed.filter(d => d.id !== primary!.id);
-  return { screen, primary, listed, facts };
+  return { screen, primary, upload: uploadOnScreen, listed, facts };
 }
 
 /** The words that say where the person is, with labels for the documents they are looking at. */

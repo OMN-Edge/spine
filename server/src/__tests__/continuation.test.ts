@@ -54,6 +54,7 @@ function fakeClients(responses: unknown[]): Recorder {
       stamps: clientFor('stamps'),
       translation: clientFor('translation'),
       linking: clientFor('linking'),
+      grouping: clientFor('grouping'),
       chat: clientFor('chat'),
       agent: clientFor('agent'),
     },

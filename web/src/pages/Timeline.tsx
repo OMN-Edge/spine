@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type Document } from '../api';
+import { useOnDataChanged } from '../dataChanged';
 import DocumentCard, { DOC_TYPE_LABELS } from '../components/DocumentCard';
 import SpineLog from '../components/SpineLog';
 import { useI18n } from '../i18n';
@@ -25,6 +26,9 @@ export default function Timeline() {
       .then(setDocs)
       .finally(() => setLoading(false));
   }, [filter]);
+
+  // A change made from the chat (a tag, a correction): the list is read again.
+  useOnDataChanged(() => { void api.documents.listAll(filter).then(setDocs).catch(() => undefined); });
 
   useScreen({ page: 'timeline', documentIds: docs.slice(0, 30).map(d => d.id), filters: Object.fromEntries(Object.entries(filter).filter(([, v]) => v)) as Record<string, string> });
 

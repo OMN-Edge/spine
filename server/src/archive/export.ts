@@ -12,7 +12,8 @@ import type { Document, SourceFile } from '../types.js';
  * Export: a zip holding the files and a manifest of what was read from them (see `manifest.ts`). Two sizes of the
  * same thing. One document is trimmed to its own pages, so what you hand someone is not the rest of the file it
  * was scanned with; the whole archive carries every upload as it was, with the grouping, the hidden pages and
- * your edits. Neither carries share links (a link is an access someone was given, and its token is not kept),
+ * your edits. The whole archive also carries how the documents are linked (the care chain, with the owner's decisions); one
+ * document does not, because a link needs both its ends. Neither carries share links (a link is an access someone was given, and its token is not kept),
  * translations (they are made again) or page images (made again from the file).
  */
 export interface ExportZip {
@@ -138,7 +139,7 @@ export async function exportDocument(userId: string, documentId: string): Promis
     pages: await Promise.all(pages.map(async (p, i) => pageEntry(store, userId, { ...p, hidden: false }, i + 1, i + 1))),
     documents: [await documentEntry(store, userId, doc, numbered, 1, pages.length)],
   };
-  const manifest: Manifest = { format: EXPORT_FORMAT, version: EXPORT_VERSION, exported_at: new Date().toISOString(), kind: 'document', files: [entry] };
+  const manifest: Manifest = { format: EXPORT_FORMAT, version: EXPORT_VERSION, exported_at: new Date().toISOString(), kind: 'document', files: [entry], links: [] };
   return {
     stream: zipOf(manifest, [{ path: entryName, from: content }]),
     filename: `spine-${slug(doc.title ?? '') || 'document'}-${stamp()}.zip`,
@@ -151,6 +152,8 @@ export async function exportArchive(userId: string): Promise<ExportZip | 'empty'
   const uploads = (await store.sourceFiles.listFor(userId)).filter(u => u.status === 'done');
   const entries: ManifestFile[] = [];
   const files: Array<{ path: string; from: string }> = [];
+  // Where each exported document sits in the manifest, which is how a link names it (ids are made again on import).
+  const placed = new Map<string, { file: number; document: number }>();
 
   for (const summary of uploads) {
     const upload: SourceFile | null = await store.sourceFiles.findFor(userId, summary.id);
@@ -171,12 +174,19 @@ export async function exportArchive(userId: string): Promise<ExportZip | 'empty'
       pages: await Promise.all(pages.map(p => pageEntry(store, userId, p, p.page_number, p.source_page))),
       documents: await Promise.all(documents.map(d => documentEntry(store, userId, d, numbered, d.page_start, d.page_end))),
     });
+    documents.forEach((d, document) => placed.set(d.id, { file: entries.length - 1, document }));
     files.push({ path: entryName, from: upload.file_path });
   }
 
   // The manifest schema asks for at least one file, so an empty archive is reported rather than written as a
   // manifest an import would refuse.
   if (entries.length === 0) return 'empty';
-  const manifest: Manifest = { format: EXPORT_FORMAT, version: EXPORT_VERSION, exported_at: new Date().toISOString(), kind: 'archive', files: entries };
+  // A link is kept when both its documents are in the export: all its states, the owner's decisions included (a dismissed pair
+  // stays dismissed), and those at a document that is set aside.
+  const links = (await store.links.all(userId)).flatMap(l => {
+    const from = placed.get(l.from_document_id); const to = placed.get(l.to_document_id);
+    return from && to ? [{ from, to, kind: l.kind, source: l.source, state: l.state, reason: l.reason, confidence: l.confidence }] : [];
+  });
+  const manifest: Manifest = { format: EXPORT_FORMAT, version: EXPORT_VERSION, exported_at: new Date().toISOString(), kind: 'archive', files: entries, links };
   return { stream: zipOf(manifest, files), filename: `spine-archive-${stamp()}.zip` };
 }

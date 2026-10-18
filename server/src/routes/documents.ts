@@ -43,7 +43,8 @@ interface ValidFieldEdits {
   add: Array<{ label: string; value: string; page_id: string }>;
 }
 
-const LIMITS = {
+/** Exported for the chat's proposals, which are checked against the same limits as the route they will call. */
+export const LIMITS = {
   title: 200, provider: 200, summary: 4000, notes: 10000, label: 80, value: 2000, tag: 60, tags: 30, fieldEdits: 200,
   measurementValue: 60, unit: 30, doctors: 20, doctorName: 120, specialty: 80,
 };
@@ -56,7 +57,7 @@ const text = (value: unknown, max: number): string | null =>
  * Checks the details a client may set. An empty date, title or provider means "clear
  * it"; a date has to be a real day, and a type one the app knows.
  */
-function checkDetails(patch: DocumentPatch): string | null {
+export function checkDetails(patch: DocumentPatch): string | null {
   const limit: Array<[keyof DocumentPatch, number, string]> = [
     ['title', LIMITS.title, 'title'], ['provider', LIMITS.provider, 'provider'],
     ['ai_summary', LIMITS.summary, 'summary'], ['user_notes', LIMITS.notes, 'notes'],
@@ -172,7 +173,7 @@ function checkDoctors(doctors: unknown): ValidDoctor[] | string {
   return out;
 }
 
-function checkTags(tags: unknown): string | null {
+export function checkTags(tags: unknown): string | null {
   if (tags === undefined) return null;
   if (!Array.isArray(tags) || tags.length > LIMITS.tags) return `tags must be a list of at most ${LIMITS.tags}`;
   for (const tag of tags) {

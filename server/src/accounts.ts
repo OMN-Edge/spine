@@ -73,6 +73,22 @@ export function resetMail(to: string, link: string): MailMessage {
   };
 }
 
+/**
+ * Tells the owner that a browser is waiting to open one of their share links. Neutral like the rest: no label, no
+ * note, nothing about what is shared (the label is the owner's own words and may name a doctor or a condition, the
+ * note is a stranger's). The link opens a page that asks them to sign in, so it grants nothing by itself.
+ */
+export function accessRequestMail(to: string, link: string, requestedAt: string, ip: string | null): MailMessage {
+  return {
+    to,
+    subject: 'Someone is waiting for your approval',
+    text:
+      `A link you shared was opened in a browser that is waiting for your approval:\n\n${link}\n\n` +
+      `Requested at ${requestedAt}${ip ? ` from ${ip}` : ''}.\n\n` +
+      `Sign in to approve or deny it. If you do not expect this, deny it, or revoke the link from the Share links page.\n`,
+  };
+}
+
 export interface DeletedAccount {
   uploads: number;
   documents: number;

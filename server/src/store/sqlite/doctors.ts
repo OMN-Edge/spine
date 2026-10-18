@@ -19,10 +19,18 @@ export function doctorRepository(db: Database): DoctorRepository {
 
   // Only if the document and the doctor are both the user's.
   const link = db.prepare(`
-    INSERT INTO document_doctors (user_id, document_id, doctor_id, role, source)
-    SELECT ?, d.id, k.id, ?, ? FROM documents d, doctors k
+    INSERT INTO document_doctors (user_id, document_id, doctor_id, role, source, printed_code)
+    SELECT ?, d.id, k.id, ?, ?, ? FROM documents d, doctors k
     WHERE d.id = ? AND d.user_id = ? AND k.id = ? AND k.user_id = ?
-    ON CONFLICT (document_id, doctor_id, role) DO UPDATE SET source = CASE WHEN excluded.source <> 'text' THEN excluded.source ELSE source END
+    ON CONFLICT (document_id, doctor_id, role) DO UPDATE SET
+      source = CASE WHEN excluded.source <> 'text' THEN excluded.source ELSE source END,
+      printed_code = COALESCE(excluded.printed_code, printed_code)
+  `);
+  // Documents that printed a code for a doctor other than the one the directory holds for them.
+  const clashes = db.prepare(`
+    SELECT k.id AS doctor_id, k.name, k.license_code AS directory_code, l.printed_code, l.document_id
+    FROM document_doctors l JOIN doctors k ON k.id = l.doctor_id AND k.user_id = l.user_id
+    WHERE l.user_id = ? AND l.printed_code IS NOT NULL AND k.license_code IS NOT NULL AND l.printed_code <> k.license_code
   `);
   const unlinkAll = db.prepare('DELETE FROM document_doctors WHERE document_id = ? AND user_id = ?');
   const unlinkRead = db.prepare("DELETE FROM document_doctors WHERE document_id = ? AND user_id = ? AND source = 'text'");
@@ -94,11 +102,23 @@ export function doctorRepository(db: Database): DoctorRepository {
       return id;
     },
 
-    async link(userId, documentId, doctorId, role, source = 'text') {
+    async link(userId, documentId, doctorId, role, source = 'text', printedCode = null) {
       const uid = owner(userId);
       // A repeat changes nothing (except a stamp taking over from text), so "did it link" is "do the rows exist".
-      link.run(uid, role, source, documentId, uid, doctorId, uid);
+      link.run(uid, role, source, printedCode, documentId, uid, doctorId, uid);
       return forDocument.all(documentId, uid).some(d => (d as { id: string }).id === doctorId);
+    },
+
+    async codeClashes(userId, documentIds) {
+      const wanted = new Set(documentIds);
+      const found = (clashes.all(owner(userId)) as Array<{ doctor_id: string; name: string; directory_code: string; printed_code: string; document_id: string }>).filter(r => wanted.has(r.document_id));
+      const byPair = new Map<string, { doctor_id: string; name: string; directory_code: string; printed_code: string; document_ids: string[] }>();
+      for (const r of found) {
+        const key = `${r.doctor_id}|${r.printed_code}`;
+        const held = byPair.get(key);
+        if (held) held.document_ids.push(r.document_id); else byPair.set(key, { doctor_id: r.doctor_id, name: r.name, directory_code: r.directory_code, printed_code: r.printed_code, document_ids: [r.document_id] });
+      }
+      return [...byPair.values()];
     },
 
     async unlinkAll(userId, documentId) {

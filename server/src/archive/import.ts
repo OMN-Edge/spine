@@ -6,6 +6,7 @@ import { detectFileKind, MIME_OF } from '../file-kind.js';
 import { logger } from '../logger.js';
 import { claimsToBeExport, documentFingerprint, EXPORT_VERSION, MANIFEST_NAME, MAX_MANIFEST_BYTES, manifestSchema, type Manifest } from './manifest.js';
 import { startRestore } from './import-file.js';
+import { LinkRestore } from './import-links.js';
 import { ZipReader, ZipTooLarge } from './zip-read.js';
 
 /**
@@ -78,8 +79,9 @@ async function importExport(userId: string, zip: ZipReader, filename: string | n
   const results: Entry[] = [];
   const summary = { kind: 'spine', filename, exported_at: manifest.exported_at, files: manifest.files.length, documents: 0, restored: 0, duplicates: 0, failed: 0 };
   let total = 0;
+  const links = new LinkRestore(userId, manifest.links);
 
-  for (const file of manifest.files) {
+  for (const [fileIndex, file] of manifest.files.entries()) {
     summary.documents += file.documents.length;
     const ext = path.extname(file.path).toLowerCase().slice(0, 8);
     const { fileId, filePath } = newUploadPath(userId, /^\.[a-z0-9]+$/.test(ext) ? ext : '.bin');
@@ -128,9 +130,12 @@ async function importExport(userId: string, zip: ZipReader, filename: string | n
     await store.sourceFiles.create(userId, {
       id: fileId, uploadedAt: new Date().toISOString(), originalFilename: file.original_filename, filePath, mimeType: MIME_OF[kind], checksum: saved.checksum,
     });
-    startRestore(userId, fileId, filePath, kind !== 'pdf', file, setAside);
+    links.expect();
+    startRestore(userId, fileId, filePath, kind !== 'pdf', file, setAside, ids => links.finished(fileIndex, ids));
     results.push({ id: fileId, status: 'processing', restored: true });
   }
+  // The links are written when the last file has been restored: one may join documents of two files.
+  links.sealed();
   return [{ zip: summary }, ...results];
 }
 

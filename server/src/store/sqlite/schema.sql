@@ -63,7 +63,18 @@ CREATE TABLE IF NOT EXISTS source_files (
   error_message TEXT,
   -- An upload's documents are held back (out of the timeline, search, shares and trends) from when it is read until the
   -- owner confirms how its pages were grouped. 1 for uploads made before this, for restores and for anything the owner has confirmed.
-  grouping_confirmed INTEGER NOT NULL DEFAULT 1
+  grouping_confirmed INTEGER NOT NULL DEFAULT 1,
+  -- The conversation the file was attached in, if it was attached in the chat: what happens to it is reported there.
+  chat_conversation_id TEXT
+);
+
+-- What the analysis of a mixed upload found: which pages belong together (JSON, see regroup/analyze.ts). One per upload, replaced
+-- when the analysis is run again and dropped when the upload is read again or regrouped, since its page ids would no longer mean the same.
+CREATE TABLE IF NOT EXISTS regroup_plans (
+  source_file_id TEXT PRIMARY KEY REFERENCES source_files(id),
+  user_id TEXT NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  plan TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS pages (
@@ -176,7 +187,20 @@ CREATE TABLE IF NOT EXISTS document_doctors (
   -- Where the link came from: 'text' (the document's text, or the owner) or 'stamp' (a signature stamp read
   -- from an image). Reading the text again replaces only the first, so it cannot erase what an image gave.
   source TEXT NOT NULL DEFAULT 'text',
+  -- The professional code this document printed for the doctor, if it did. The directory holds one code per doctor, so when a
+  -- document prints another the difference is only visible here; the owner is asked about it (matching/).
+  printed_code TEXT,
   PRIMARY KEY (document_id, doctor_id, role)
+);
+
+-- What the owner answered when asked whether two entries are the same: kept so the question is not asked again. `kind` is doctor,
+-- test, tag, provider or code (a doctor's code the owner chose to keep). `pair_key` names the pair (sorted, so order does not matter).
+CREATE TABLE IF NOT EXISTS match_decisions (
+  user_id TEXT NOT NULL REFERENCES users(id),
+  kind TEXT NOT NULL,
+  pair_key TEXT NOT NULL,
+  decided_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, kind, pair_key)
 );
 
 CREATE TABLE IF NOT EXISTS extracted_fields (
@@ -238,7 +262,37 @@ CREATE TABLE IF NOT EXISTS share_links (
   view_count INTEGER DEFAULT 0,
   last_accessed_at TEXT,
   include_scans INTEGER NOT NULL DEFAULT 0, -- 1: the recipient may also see the page images
-  language TEXT -- the language the recipient's page starts in, if the owner chose one
+  language TEXT, -- the language the recipient's page starts in, if the owner chose one
+  require_approval INTEGER NOT NULL DEFAULT 0, -- 1: a visitor's browser must be approved by the owner before it reads anything
+  allow_chat INTEGER NOT NULL DEFAULT 0 -- 1: the recipient may ask questions about what the link shares
+);
+
+-- A visitor's browser asking to open a link that needs approval. `visitor_hash` is sha256 of a random value held in
+-- that browser's cookie (never stored raw, P6): the approval belongs to that browser and works nowhere else. One row
+-- per link and browser. `note`, `ip_address` and `user_agent` come from the visitor and are shown to the owner as text.
+CREATE TABLE IF NOT EXISTS share_access_requests (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id), -- the link's owner
+  share_link_id TEXT NOT NULL REFERENCES share_links(id),
+  visitor_hash TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending', -- 'pending' | 'approved' | 'denied'
+  note TEXT,
+  ip_address TEXT,
+  user_agent TEXT,
+  requested_at TEXT NOT NULL,
+  decided_at TEXT,
+  UNIQUE (share_link_id, visitor_hash)
+);
+
+-- What happened to a link after it was made: changed (what, from, to), revoked, a request approved or denied. The owner reads it
+-- to see what access a link has had. `detail` is JSON of small values (never a token, a note or a document's text).
+CREATE TABLE IF NOT EXISTS share_link_events (
+  id INTEGER PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  share_link_id TEXT NOT NULL REFERENCES share_links(id),
+  at TEXT NOT NULL,
+  kind TEXT NOT NULL, -- 'created' | 'changed' | 'revoked' | 'approved' | 'denied'
+  detail TEXT
 );
 
 CREATE TABLE IF NOT EXISTS share_link_access_log (
@@ -308,7 +362,9 @@ CREATE TABLE IF NOT EXISTS chat_conversations (
   user_id TEXT NOT NULL REFERENCES users(id),
   title TEXT NOT NULL,
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  unread INTEGER NOT NULL DEFAULT 0, -- 1: the assistant started it (an upload finished) and the owner has not opened it
+  origin TEXT -- null: the owner started it; 'upload': the app did, when an upload finished
 );
 CREATE TABLE IF NOT EXISTS chat_messages (
   id TEXT PRIMARY KEY,
@@ -319,7 +375,9 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   content TEXT NOT NULL,
   sources TEXT,
   note TEXT,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  kind TEXT, -- null: ordinary text; 'upload': a notice the app wrote, drawn by the page from `data`
+  data TEXT -- JSON for a notice
 );
 CREATE INDEX IF NOT EXISTS idx_chat_conversations_user ON chat_conversations(user_id, updated_at);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation ON chat_messages(conversation_id, seq);
@@ -327,6 +385,8 @@ CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation ON chat_messages(conve
 CREATE INDEX IF NOT EXISTS idx_source_files_user ON source_files(user_id);
 CREATE INDEX IF NOT EXISTS idx_documents_user ON documents(user_id, doc_date);
 CREATE INDEX IF NOT EXISTS idx_share_links_user ON share_links(user_id);
+CREATE INDEX IF NOT EXISTS idx_share_events_link ON share_link_events(share_link_id, at);
+CREATE INDEX IF NOT EXISTS idx_share_requests_user ON share_access_requests(user_id, status);
 
 -- Search index. The view is what one document contributes; each trigger rebuilds the rows of the
 -- documents a change touches.

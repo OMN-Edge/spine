@@ -6,6 +6,7 @@ import {
   extractionSchema,
   chatAnswerSchema,
   linkingSchema,
+  groupingSchema,
   pageReadingSchema,
   stampReadingSchema,
   translationSchema,
@@ -22,7 +23,7 @@ import {
  * provider is constrained with and the zod schema the interface validates against
  * cannot drift apart.
  */
-export const LLM_TASKS = ['continuation', 'extraction', 'page', 'pageThinking', 'stamps', 'translation', 'linking', 'chat', 'agent'] as const;
+export const LLM_TASKS = ['continuation', 'extraction', 'page', 'pageThinking', 'stamps', 'translation', 'linking', 'grouping', 'chat', 'agent'] as const;
 export type LlmTask = (typeof LLM_TASKS)[number];
 
 export interface TaskSpec {
@@ -63,6 +64,7 @@ export const TASK_SCHEMAS = {
   stamps: stampReadingSchema,
   translation: translationSchema,
   linking: linkingSchema,
+  grouping: groupingSchema,
   chat: chatAnswerSchema,
   // The agent has no answer schema: it is the chat model itself, given tools, and it replies in prose. This only keeps the table whole.
   agent: z.object({}),
@@ -117,6 +119,13 @@ export function buildTaskSpecs(config: ChatLlmConfig): TaskSpecs {
       maxTokens: config.maxTokens.continuation,
       reasoning: 'none',
       jsonSchema: z.toJSONSchema(TASK_SCHEMAS.linking) as Record<string, unknown>,
+    },
+    // A verdict on a handful of pages: coherent or not, and how they divide. Short; the model is not asked to think.
+    grouping: {
+      name: 'grouping',
+      maxTokens: config.maxTokens.continuation,
+      reasoning: 'none',
+      jsonSchema: z.toJSONSchema(TASK_SCHEMAS.grouping) as Record<string, unknown>,
     },
     // An answer is a few paragraphs at most; the extraction ceiling is only a ceiling. The model may think first: reading
     // a series of results against a question is where it earns it.

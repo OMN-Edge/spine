@@ -114,9 +114,13 @@ export async function buildTestApp(options: TestAppOptions = {}) {
   await app.register(exportRoutes);
   await app.register(similarityRoutes);
   await app.register(linkRoutes);
-  await app.register(chatRoutes);
+  await app.register(chatRoutes, { askPerMinute: 1000 });
   await app.register(shareRoutes);
   await app.register(publicShareRoutes, {
+    requestPerSource: { max: 1000, timeWindow: '1 minute' },
+    requestPerLink: { max: 1000, windowMs: 60 * 1000 },
+    chatPerSource: { max: 1000, timeWindow: '1 minute' },
+    chatPerLink: { max: 1000, windowMs: 60 * 1000 },
     appShellPath:
       options.appShellPath === null
         ? path.join(tmpdir(), 'spine-no-such-build', 'index.html')

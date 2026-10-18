@@ -85,7 +85,7 @@ describe('the agent decides what to look up', () => {
     ]);
     expect(body.looked).toEqual(['searched “blood count”', 'opened D1']);
     expect(toolOutputs(model).join('\n')).toMatch(/Hemoglobina: 13\.5 g\/dL/);
-    expect(model.bound).toEqual(Object.keys(TOOL_KINDS));
+    expect([...model.bound].sort()).toEqual(Object.keys(TOOL_KINDS).sort());
   });
 
   it('keeps nothing of one question for the next, though the graph is built once', async () => {
@@ -241,7 +241,8 @@ describe('the limits of the loop', () => {
     const res = await ask({ question: 'blood' });
     expect(res.statusCode).toBe(200);
     expect(res.json().answer).toBe('Answering with what I have.');
-    expect(calls).toBeLessThanOrEqual(8);
+    // Eight rounds of tools, then the instruction, then the answer.
+    expect(calls).toBeLessThanOrEqual(11);
   });
 
   it('cuts what a tool returns and stops reading when the budget for the question is used', async () => {
@@ -281,8 +282,8 @@ describe('fallbacks and switches', () => {
 });
 
 describe('what is held to, in code', () => {
-  it('has no tool that changes anything', () => {
-    expect(Object.values(TOOL_KINDS).every(kind => kind === 'read')).toBe(true);
+  it('has no tool that changes anything: an action tool only proposes (chat-actions.test.ts runs them)', () => {
+    for (const [name, kind] of Object.entries(TOOL_KINDS)) expect(name.startsWith('propose_')).toBe(kind === 'action');
   });
 
   it('turns grouped citations into one marker each', () => {

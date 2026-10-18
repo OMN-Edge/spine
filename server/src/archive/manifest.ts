@@ -4,7 +4,7 @@ import { z } from 'zod';
 /**
  * The manifest in an export (`manifest.json` at the top of the zip). It names the files in the zip and
  * says, for each, what was read from it: pages (text, where each word sat), the documents they make up, and
- * what was extracted from each (details, results, doctors, tags, the owner's notes). Reading a Spine zip
+ * what was extracted from each (details, results, doctors, tags, the owner's notes), and how the documents are linked. Reading a Spine zip
  * back needs no model: it only has to turn the file into page images again.
  *
  * It is parsed with zod before anything is used, because an import takes a file the user was given. Nothing
@@ -94,6 +94,20 @@ const document = z.object({
   measurements: z.array(measurement).max(10_000),
 });
 
+/** A document in the export, by where it is in it: the file's place in `files`, then the document's in that file's `documents`. */
+const linkEnd = z.object({ file: z.number().int().min(0).max(19_999), document: z.number().int().min(0).max(99_999) });
+
+/** How two documents are connected, with the owner's decision on it (the care chain). */
+const link = z.object({
+  from: linkEnd,
+  to: linkEnd,
+  kind: z.enum(['requests', 'follow_up', 'same_episode']),
+  source: z.enum(['auto', 'owner']),
+  state: z.enum(['proposed', 'confirmed', 'dismissed']),
+  reason: text(10_000).nullable(),
+  confidence: z.number().min(0).max(1).nullable(),
+});
+
 const file = z.object({
   /** The entry in the zip that holds the file. Looked up by name; never used as a place to write. */
   path: text(300),
@@ -111,11 +125,16 @@ export const manifestSchema = z.object({
   /** One document, trimmed to its own pages, or a person's whole archive. Informational: import treats both alike. */
   kind: z.enum(['document', 'archive']),
   files: z.array(file).min(1).max(20_000),
+  /** Absent from exports made before links were kept, and from a single document's export (a link needs both ends). */
+  links: z.array(link).max(100_000).default([]),
 }).superRefine((manifest, ctx) => {
   // What a whole export may hold, however it is split into files.
   const documents = manifest.files.reduce((n, f) => n + f.documents.length, 0);
   const pages = manifest.files.reduce((n, f) => n + f.pages.length, 0);
   if (documents > 20_000 || pages > 200_000) ctx.addIssue({ code: 'custom', message: 'too many documents or pages' });
+  // A link names its documents by position, so a position that is not there is a manifest that does not hold together.
+  const there = (end: { file: number; document: number }) => end.document < (manifest.files[end.file]?.documents.length ?? 0);
+  if (manifest.links.some(l => !there(l.from) || !there(l.to))) ctx.addIssue({ code: 'custom', message: 'a link names a document that is not in the export' });
 });
 
 export type Manifest = z.infer<typeof manifestSchema>;

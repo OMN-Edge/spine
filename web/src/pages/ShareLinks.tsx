@@ -1,5 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
-import { api, type Document, type ShareLink } from '../api';
+import { Link } from 'react-router-dom';
+import { api, type Document, type ShareLink, type ShareRequest } from '../api';
+import { useOnDataChanged } from '../dataChanged';
+import ShareRequestCard from '../components/ShareRequestCard';
 import { LANGUAGES, useI18n } from '../i18n';
 import { languageName } from '../i18n/useTranslation';
 import { DOC_TYPE_LABELS } from '../components/DocumentCard';
@@ -9,7 +12,7 @@ const input = 'w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:
 const label = 'block text-xs font-medium text-gray-500 mb-1';
 
 /** What a link shares, in words: read from the stored scope, which is JSON for everything but `all`. */
-function describeScope(link: ShareLink, t: ReturnType<typeof useI18n>['t'], tn: ReturnType<typeof useI18n>['tn']): string {
+export function describeScope(link: ShareLink, t: ReturnType<typeof useI18n>['t'], tn: ReturnType<typeof useI18n>['tn']): string {
   try {
     const value = link.scope_value ? JSON.parse(link.scope_value) : null;
     if (link.scope === 'all') return t('All history');
@@ -21,7 +24,7 @@ function describeScope(link: ShareLink, t: ReturnType<typeof useI18n>['t'], tn: 
 }
 
 /** The documents to pick from, searchable, with the ones already chosen ticked. */
-function DocumentPicker({ docs, chosen, onChange }: { docs: Document[]; chosen: string[]; onChange: (ids: string[]) => void }) {
+export function DocumentPicker({ docs, chosen, onChange }: { docs: Document[]; chosen: string[]; onChange: (ids: string[]) => void }) {
   const { t } = useI18n();
   const [query, setQuery] = useState('');
   const [type, setType] = useState('');
@@ -83,18 +86,25 @@ export default function ShareLinks() {
   const [ids, setIds] = useState<string[]>([]);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
-  const [form, setForm] = useState({ label: '', expires_days: 7, include_scans: false, language: '' });
+  const [form, setForm] = useState({ label: '', expires_days: 7, include_scans: false, language: '', require_approval: false, allow_chat: false });
   const [tags, setTags] = useState<Array<{ id: number; name: string }>>([]);
   const [docs, setDocs] = useState<Document[] | null>(null);
   const [tagged, setTagged] = useState<number | null>(null);
   const [newUrl, setNewUrl] = useState('');
+  // Whether the owner is told of a request by mail; without a mailer it waits on this page.
+  const [mailNote, setMailNote] = useState<boolean | null>(null);
+  const [requests, setRequests] = useState<ShareRequest[]>([]);
   const [error, setError] = useState('');
 
   useEffect(() => {
     api.share.list().then(setLinks).finally(() => setLoading(false));
+    api.share.requests().then(setRequests).catch(() => {});
     api.tags.list().then(setTags).catch(() => {});
     api.documents.listAll().then(setDocs).catch(() => setDocs([]));
   }, []);
+
+  // A link made or revoked from the chat.
+  useOnDataChanged(() => { void api.share.list().then(setLinks).catch(() => undefined); });
 
   // How many documents a tag holds, so the owner sees what the link would share before making it.
   useEffect(() => {
@@ -120,8 +130,11 @@ export default function ShareLinks() {
         expires_days: form.expires_days,
         include_scans: form.include_scans,
         language: form.language || null,
+        require_approval: form.require_approval,
+        allow_chat: form.allow_chat,
       });
       setNewUrl(result.url);
+      setMailNote(result.approval_mail);
       setLinks(await api.share.list());
     } catch (err) {
       // The server rejects a scope it cannot fully resolve (P2), so the reason
@@ -217,6 +230,26 @@ export default function ShareLinks() {
             </span>
           </label>
 
+          <label className="flex items-start gap-2 text-sm text-gray-700">
+            <input type="checkbox" checked={form.allow_chat} onChange={e => setForm(f => ({ ...f, allow_chat: e.target.checked }))} className="mt-0.5" />
+            <span>
+              {t('Let the recipient ask questions')}
+              <span className="block text-xs text-gray-500">
+                {t("The recipient can ask an AI assistant about the documents in this link, and only those. Each question sends their words, parts of those documents (including your notes on them) and this link's label to the model provider. Nothing they ask is kept. Off by default.")}
+              </span>
+            </span>
+          </label>
+
+          <label className="flex items-start gap-2 text-sm text-gray-700">
+            <input type="checkbox" checked={form.require_approval} onChange={e => setForm(f => ({ ...f, require_approval: e.target.checked }))} className="mt-0.5" />
+            <span>
+              {t('Ask me before anyone opens it')}
+              <span className="block text-xs text-gray-500">
+                {t('Whoever opens the link must ask, and you approve or deny from your account. You are emailed when someone asks. Only the browser you approve can read it: the link copied elsewhere shows nothing.')}
+              </span>
+            </span>
+          </label>
+
           <div>
             <label htmlFor="s-lang" className={label}>{t('Language the page opens in')}</label>
             <select id="s-lang" value={form.language} onChange={e => setForm(f => ({ ...f, language: e.target.value }))} className={input}>
@@ -250,9 +283,19 @@ export default function ShareLinks() {
                 {t('Copy')}
               </button>
             </div>
+            {mailNote === false && <p className="text-xs text-amber-700 mt-2">{t('No email is set up on this server, so requests are not emailed. They wait on this page.')}</p>}
           </div>
         )}
       </div>
+
+      {requests.some(r => r.status === 'pending') && (
+        <div className="mb-6 space-y-2" aria-live="polite">
+          <h2 className="font-medium text-gray-900 mb-3">{t('Waiting for your approval')}</h2>
+          {requests.filter(r => r.status === 'pending').map(r => (
+            <ShareRequestCard key={r.id} request={r} onDecided={d => { setRequests(prev => prev.map(x => x.id === d.id ? d : x)); api.share.list().then(setLinks).catch(() => {}); }} />
+          ))}
+        </div>
+      )}
 
       {/* Existing links */}
       {!loading && links.length > 0 && (
@@ -274,13 +317,19 @@ export default function ShareLinks() {
                       {' · '}{tn(link.view_count, '{n} view', '{n} views')}
                       {' · '}{link.include_scans ? t('scans included') : t('details only')}
                       {link.language && <>{' · '}{languageName(link.language)}</>}
+                      {link.require_approval && <>{' · '}{t('needs your approval')}</>}
+                      {link.allow_chat && <>{' · '}{t('questions allowed')}</>}
+                      {link.pending_requests > 0 && <>{' · '}{t('{n} waiting', { n: link.pending_requests })}</>}
                     </p>
                   </div>
-                  {!link.revoked && !expired && (
-                    <button onClick={() => revoke(link.id)} className="text-xs text-red-500 hover:text-red-700 shrink-0">
-                      {t('Revoke')}
-                    </button>
-                  )}
+                  <div className="flex shrink-0 items-center gap-3">
+                    <Link to={`/share-links/${link.id}`} className="text-xs text-blue-600 hover:underline">{t('Manage')}</Link>
+                    {!link.revoked && !expired && (
+                      <button onClick={() => revoke(link.id)} className="text-xs text-red-500 hover:text-red-700">
+                        {t('Revoke')}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             );

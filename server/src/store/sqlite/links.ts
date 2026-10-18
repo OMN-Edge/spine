@@ -34,6 +34,7 @@ export function linkRepository(db: Database): LinkRepository {
     WHERE user_id = ? AND source = 'auto' AND state = 'proposed'
       AND ((from_document_id = ? AND to_document_id = ?) OR (from_document_id = ? AND to_document_id = ?))
   `);
+  const everything = db.prepare(`SELECT ${COLUMNS} FROM document_links l WHERE l.user_id = ?`);
   const dismissed = db.prepare(`
     SELECT from_document_id, to_document_id FROM document_links
     WHERE user_id = ? AND state = 'dismissed' AND (from_document_id = ? OR to_document_id = ?)
@@ -71,6 +72,18 @@ export function linkRepository(db: Database): LinkRepository {
       let removed = 0;
       for (const other of otherIds) removed += clearProposed.run(uid, documentId, other, other, documentId).changes;
       return removed;
+    },
+
+    async all(userId) {
+      return everything.all(owner(userId)) as DocumentLink[];
+    },
+
+    async restore(userId, link, createdAt) {
+      const uid = owner(userId);
+      if (!exists.get(link.from_document_id, uid, link.to_document_id, uid)) return false;
+      insert.run(uid, link.kind, link.source, link.state, link.reason, link.confidence ?? null, createdAt,
+        link.from_document_id, uid, link.to_document_id, uid);
+      return true;
     },
 
     async dismissedPairs(userId, documentId) {

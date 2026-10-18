@@ -18,12 +18,13 @@ export function sourceFileRepository(db: Database): SourceFileRepository {
   const find = db.prepare('SELECT * FROM source_files WHERE id = ? AND user_id = ?');
   const findByChecksum = db.prepare('SELECT * FROM source_files WHERE checksum = ? AND user_id = ?');
   const insert = db.prepare(`
-    INSERT INTO source_files (id, user_id, uploaded_at, original_filename, file_path, mime_type, checksum, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
+    INSERT INTO source_files (id, user_id, uploaded_at, original_filename, file_path, mime_type, checksum, status, chat_conversation_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
   `);
   const setStatus = db.prepare(
     'UPDATE source_files SET status = ?, error_message = ? WHERE id = ? AND user_id = ?',
   );
+  const setChat = db.prepare('UPDATE source_files SET chat_conversation_id = ? WHERE id = ? AND user_id = ? AND EXISTS (SELECT 1 FROM chat_conversations WHERE id = ? AND user_id = ?)');
   const setConfirmed = db.prepare('UPDATE source_files SET grouping_confirmed = ? WHERE id = ? AND user_id = ?');
   const setPageCount = db.prepare(
     'UPDATE source_files SET page_count = ? WHERE id = ? AND user_id = ?',
@@ -65,6 +66,7 @@ export function sourceFileRepository(db: Database): SourceFileRepository {
     DELETE FROM removed_readings WHERE user_id = ?
       AND document_id IN (SELECT id FROM documents WHERE source_file_id = ? AND user_id = ?)
   `);
+  const deletePlan = db.prepare('DELETE FROM regroup_plans WHERE source_file_id = ? AND user_id = ?');
   const deleteDocuments = db.prepare('DELETE FROM documents WHERE source_file_id = ? AND user_id = ?');
   const deletePages = db.prepare('DELETE FROM pages WHERE source_file_id = ? AND user_id = ?');
   const clearDerived = db.transaction((userId: string, id: string) => {
@@ -76,6 +78,7 @@ export function sourceFileRepository(db: Database): SourceFileRepository {
     deleteEmbeddings.run(userId, id, userId);
     deleteLinks.run(userId, id, userId, id, userId);
     deleteRemoved.run(userId, id, userId);
+    deletePlan.run(id, userId);
     const removed = deleteDocuments.run(id, userId).changes;
     deletePages.run(id, userId);
     return removed;
@@ -110,6 +113,7 @@ export function sourceFileRepository(db: Database): SourceFileRepository {
         input.filePath,
         input.mimeType,
         input.checksum,
+        input.chatConversationId ?? null,
       );
     },
 
@@ -119,6 +123,10 @@ export function sourceFileRepository(db: Database): SourceFileRepository {
 
     async setGroupingConfirmed(userId, id, confirmed) {
       setConfirmed.run(confirmed ? 1 : 0, id, owner(userId));
+    },
+
+    async setChatConversation(userId, id, conversationId) {
+      setChat.run(conversationId, id, owner(userId), conversationId, owner(userId));
     },
 
     async setPageCount(userId, id, pageCount) {

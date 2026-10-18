@@ -9,6 +9,7 @@ import { documentsForQuestion } from './retrieval.js';
 import { DOCUMENT_SECTIONS, describeScreen, resolveScreen, sectionRecords, type DocumentSection, type ScreenContext } from './screen.js';
 import { chainOf } from '../linking/index.js';
 import type { ChatRecord, ChatTurn } from '../llm/types.js';
+import type { Proposal } from './proposals.js';
 import type { Document, Measurement } from '../types.js';
 
 /**
@@ -39,7 +40,7 @@ export const MAX_TURNS = 6;
 export const MAX_TURN = 1500;
 
 /** What the agent is doing, for the person waiting: a kind the page words in its own language, and what it concerns. */
-export interface ChatStep { kind: 'search' | 'open' | 'series' | 'tests' | 'connections'; detail?: string }
+export interface ChatStep { kind: 'search' | 'open' | 'series' | 'tests' | 'connections' | 'fields' | 'shares' | 'doctors' | 'uploads' | 'plan' | 'library' | 'propose'; detail?: string }
 
 /** Progress of one question, for a caller that streams it. All optional: a caller that waits for the whole reply passes none. */
 export interface ChatProgress {
@@ -65,6 +66,8 @@ export interface ChatReply {
   documents: number;
   /** What the agent looked at, in words, so the person can see how the answer was reached. Absent for the fixed pipeline. */
   looked?: string[];
+  /** Changes the agent prepared for the owner to confirm. It has changed nothing. Absent when there are none. */
+  proposals?: Proposal[];
 }
 
 /** The conversation as the model gets it: only the last turns, text only, each cut. */

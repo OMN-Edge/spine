@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
+import { normaliseLicenseCode } from '../doctors.js';
 import { getStore, type NewExtractedField, type NewMeasurement, type PageSummary, type Store } from '../store/index.js';
 import { normaliseMeasurements } from './measurements.js';
 import { extractFields } from './extraction.js';
@@ -207,7 +208,7 @@ export async function storeReading(tx: Store, userId: string, documentId: string
   const now = new Date().toISOString();
   for (const doctor of reading.extraction.doctors) {
     const id = await tx.doctors.upsert(userId, { name: doctor.name, specialty: doctor.specialty, clinic: reading.extraction.provider, licenseCode: doctor.code }, now);
-    if (id) await tx.doctors.link(userId, documentId, id, doctor.role);
+    if (id) await tx.doctors.link(userId, documentId, id, doctor.role, 'text', normaliseLicenseCode(doctor.code));
   }
 }
 

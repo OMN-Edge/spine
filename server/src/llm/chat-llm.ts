@@ -5,7 +5,7 @@ import { OutputParserException } from '@langchain/core/output_parsers';
 import { z } from 'zod';
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import type { ContinuationResult, ExtractionResult } from '../types.js';
-import { buildContinuationPrompt, buildChatPrompt, buildExtractionPrompt, buildLinkingPrompt, buildPageReadingPrompt, buildStampReadingPrompt, buildTranslationPrompt } from './prompts.js';
+import { buildContinuationPrompt, buildChatPrompt, buildExtractionPrompt, buildGroupingPrompt, buildLinkingPrompt, buildPageReadingPrompt, buildStampReadingPrompt, buildTranslationPrompt } from './prompts.js';
 import type { BaseLanguageModelInput } from '@langchain/core/language_models/base';
 import { TASK_SCHEMAS, type LlmTask, type TaskClients } from './tasks.js';
 import {
@@ -14,6 +14,7 @@ import {
   type ChatLlm,
   type ChatLlmConfig,
   type ChatAnswer,
+  type GroupingJudgement,
   type LinkJudgement,
   type LlmLogger,
   type PageReading,
@@ -123,8 +124,27 @@ export function buildChatLlm(clients: TaskClients, config: ChatLlmConfig): ChatL
       const validated = await invokeValidated(clients, config, log, 'linking', buildLinkingPrompt(target, candidates), TASK_SCHEMAS.linking);
       if (!validated) return null;
       const labels = new Set(candidates.map(c => c.id));
+      // The prompt gives each label "in square brackets", and a model often writes it back that way ("[1]"): the label is what is inside.
+      // (Found by the first run against a real model, which proposed a correct link that was thrown away for its brackets.)
+      const labelOf = (written: string) => written.trim().replace(/^\[|\]$/g, '').trim();
       // A label the model made up is not an answer about any document we sent.
-      return validated.links.filter(l => labels.has(l.candidate.trim())).map(l => ({ ...l, candidate: l.candidate.trim(), reason: l.reason.trim() }));
+      return validated.links.filter(l => labels.has(labelOf(l.candidate))).map(l => ({ ...l, candidate: labelOf(l.candidate), reason: l.reason.trim() }));
+    },
+
+    async judgeGrouping(pages): Promise<GroupingJudgement | null> {
+      if (pages.length === 0) return null;
+      const validated = await invokeValidated(clients, config, log, 'grouping', buildGroupingPrompt(pages), TASK_SCHEMAS.grouping);
+      if (!validated) return null;
+      const known = new Set(pages.map(p => p.id));
+      const clean = (labels: string[]) => labels.map(l => l.trim().replace(/^\[|\]$/g, '')).filter(l => known.has(l));
+      const once = (labels: string[]) => [...new Set(labels)];
+      // A label the model made up names no page we sent; a page it left out is put back so none is lost.
+      const groups = validated.groups.map(g => once(clean(g))).filter(g => g.length > 0);
+      const placed = new Set(groups.flat());
+      for (const p of pages) if (!placed.has(p.id) && !validated.coherent) groups.push([p.id]);
+      const order = once(clean(validated.order));
+      for (const p of pages) if (!order.includes(p.id) && validated.coherent) order.push(p.id);
+      return { coherent: validated.coherent, confidence: validated.confidence, groups: validated.coherent ? [] : groups, order: validated.coherent ? order : [], title: validated.title?.trim() || null, reason: validated.reason.trim() };
     },
 
     async answerQuestion(question, records, history): Promise<ChatAnswer | null> {

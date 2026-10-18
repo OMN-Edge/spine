@@ -79,16 +79,16 @@ const upload = (who: string, filename: string, content: Buffer) => {
 };
 
 /** An upload of three pages, read as two documents: pages 1-2, then page 3. The first has everything a document can hold. */
-async function archive(userId = OWNER_ID) {
+async function archive(userId = OWNER_ID, tag = '') {
   const store = getStore();
   const file = path.join(dir, `${uuidv4()}.pdf`);
-  const pdf = makePdf(['First page of the lab report from the clinic', 'Second page continues the lab report results', 'Third page is a different prescription document']);
+  const pdf = makePdf(['First page of the lab report from the clinic', 'Second page continues the lab report results', 'Third page is a different prescription document'].map(t => `${t}${tag}`));
   writeFileSync(file, pdf);
   const sf = await seedSourceFile({ userId, status: 'done', filePath: file });
   await store.sourceFiles.setPageCount(userId, sf, 3);
 
   const ids: string[] = [];
-  for (const [i, text] of ['First page of the lab report from the clinic', 'Second page continues the lab report results', 'Third page is a different prescription document'].entries()) {
+  for (const [i, text] of ['First page of the lab report from the clinic', 'Second page continues the lab report results', 'Third page is a different prescription document'].map(t => `${t}${tag}`).entries()) {
     const id = uuidv4(); ids.push(id);
     await store.pages.create(userId, { id, sourceFileId: sf, pageNumber: i + 1, imagePath: '/tmp/none.png', imageWidth: 800, imageHeight: 1100, rawText: text, elements: [], extractionSource: 'native_text', isContinuation: null, continuationConfidence: null, continuationReasoning: null });
   }
@@ -277,6 +277,94 @@ describe.skipIf(!hasPoppler)('import of a Spine export', () => {
     expect(row.status).toBe('error');
     expect(await getStore().documents.listFor(otherId, { sourceFileId: row.id, limit: 10, offset: 0 })).toEqual([]);
     expect(getJobStatus(row.id)?.status).toBe('error');
+  });
+});
+
+describe.skipIf(!hasPoppler)('links in the whole export', () => {
+  /** Two uploads whose documents are linked: within one upload, across the two, and one pair the owner turned down. */
+  async function chain() {
+    const store = getStore();
+    const one = await archive(OWNER_ID, ' alpha');
+    const two = await archive(OWNER_ID, ' beta');
+    await store.documents.update(OWNER_ID, one.a, { title: 'Chain consultation' });
+    await store.documents.update(OWNER_ID, one.b, { title: 'Chain tests' });
+    await store.documents.update(OWNER_ID, two.a, { title: 'Chain later visit' });
+    const now = '2026-04-01T00:00:00.000Z';
+    await store.links.add(OWNER_ID, { from_document_id: one.a, to_document_id: one.b, kind: 'requests', source: 'owner', state: 'confirmed', reason: 'asked for the tests' }, now);
+    await store.links.add(OWNER_ID, { from_document_id: one.a, to_document_id: two.a, kind: 'follow_up', source: 'auto', state: 'proposed', reason: 'a later visit', confidence: 0.8 }, now);
+    await store.links.add(OWNER_ID, { from_document_id: one.b, to_document_id: two.a, kind: 'same_episode', source: 'owner', state: 'confirmed', reason: null }, now);
+    await store.links.setState(OWNER_ID, one.b, two.a, 'same_episode', 'dismissed'); // the owner's own decision, to turn it down
+    return { one, two };
+  }
+  const exportOf = async () => (await app.inject({ method: 'GET', url: '/api/export', headers: { cookie } })).rawPayload;
+
+  it('carries every link between exported documents, whatever its state, by where the documents are in the export', async () => {
+    await chain();
+    const { manifest, reader } = await unzip(await exportOf());
+    reader.close();
+    const titled = (end: { file: number; document: number }) => manifest.files[end.file].documents[end.document].title;
+    const mine = manifest.links.filter(l => (titled(l.from) ?? '').startsWith('Chain'));
+    expect(mine.map(l => [titled(l.from), titled(l.to), l.kind, l.source, l.state]).sort()).toEqual([
+      ['Chain consultation', 'Chain later visit', 'follow_up', 'auto', 'proposed'],
+      ['Chain consultation', 'Chain tests', 'requests', 'owner', 'confirmed'],
+      ['Chain tests', 'Chain later visit', 'same_episode', 'owner', 'dismissed'],
+    ]);
+    expect(mine.find(l => l.kind === 'follow_up')).toMatchObject({ reason: 'a later visit', confidence: 0.8 });
+  });
+
+  it('writes them back, with the owner\'s decisions as they were, once every file is restored', async () => {
+    await chain();
+    const exported = await exportOf();
+    const person = await createTestUser('links@spine.test');
+    const personCookie = await loginAs(app, person.email, person.password);
+    const results = (await upload(personCookie, 'everything.zip', exported)).json() as Array<Record<string, any>>;
+    for (const r of results.filter(x => x.restored)) await untilDone(person.id, r.id);
+
+    const store = getStore();
+    const docs = await store.documents.listFor(person.id, { limit: 100, offset: 0, includeHidden: true });
+    const byTitle = (title: string) => docs.find(d => d.title === title)!;
+    const [consult, tests, later] = [byTitle('Chain consultation'), byTitle('Chain tests'), byTitle('Chain later visit')];
+    expect([consult.id, tests.id, later.id].every(Boolean)).toBe(true);
+
+    // The links are written in the background after the last file; wait for them.
+    let found: Awaited<ReturnType<typeof store.links.all>> = [];
+    for (let i = 0; i < 50 && found.length < 3; i++) { found = await store.links.all(person.id); if (found.length < 3) await new Promise(r => setTimeout(r, 100)); }
+    const shape = found.map(l => [l.from_document_id === consult.id ? 'consult' : l.from_document_id === tests.id ? 'tests' : 'later', l.to_document_id === tests.id ? 'tests' : 'later', l.kind, l.source, l.state]).sort();
+    expect(shape).toEqual([
+      ['consult', 'later', 'follow_up', 'auto', 'proposed'],
+      ['consult', 'tests', 'requests', 'owner', 'confirmed'],
+      ['tests', 'later', 'same_episode', 'owner', 'dismissed'], // not turned into a confirmation by being restored
+    ]);
+    expect(found.find(l => l.kind === 'requests')!.reason).toBe('asked for the tests');
+    // They are that account's alone, and the exporter's are as they were.
+    expect(await store.links.all(otherId)).toEqual([]);
+    expect((await store.links.all(OWNER_ID)).length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('leaves out a link whose document was already in the archive, and a single document\'s export has none', async () => {
+    const { one } = await chain();
+    const single = await unzip((await app.inject({ method: 'GET', url: `/api/documents/${one.a}/export`, headers: { cookie } })).rawPayload);
+    expect(single.manifest.links).toEqual([]);
+    single.reader.close();
+
+    // Back into the account that has everything: nothing is restored, so there is nothing to join, and nothing doubles.
+    const before = (await getStore().links.all(OWNER_ID)).length;
+    const again = (await upload(cookie, 'mine.zip', await exportOf())).json() as Array<Record<string, any>>;
+    expect(again.filter(r => r.restored)).toEqual([]);
+    await new Promise(r => setTimeout(r, 200));
+    expect((await getStore().links.all(OWNER_ID)).length).toBe(before);
+  });
+
+  it('reads an export from before links were kept, and refuses a link to a document that is not in it', async () => {
+    const d = await archive(OWNER_ID, ' gamma');
+    const { manifest, reader } = await unzip((await app.inject({ method: 'GET', url: `/api/documents/${d.a}/export`, headers: { cookie } })).rawPayload);
+    reader.close();
+    const { links, ...old } = manifest;
+    void links;
+    expect(manifestSchema.parse(old).links).toEqual([]);
+    const end = { file: 0, document: 0 };
+    const bad = { ...manifest, links: [{ from: end, to: { file: 0, document: 5 }, kind: 'requests', source: 'auto', state: 'proposed', reason: null, confidence: null }] };
+    expect(manifestSchema.safeParse(bad).success).toBe(false);
   });
 });
 

@@ -1,9 +1,11 @@
 import { v4 as uuidv4 } from 'uuid';
+import { normaliseLicenseCode } from '../doctors.js';
 import { getStore } from '../store/index.js';
 import { rasterizePdf } from './rasterize.js';
 import { normalisePhoto } from './photo.js';
 import { readDigitalSigners, readSignatures } from './signatures.js';
 import { logger } from '../logger.js';
+import { announceUploadLater } from '../chat/notices.js';
 import { aiReadingAllowed, getModelParser, getParser } from '../parser/index.js';
 import { checkContinuation } from './continuation.js';
 import { readDocument, storeReading } from './document-reading.js';
@@ -201,7 +203,7 @@ async function runPipeline(
               for (const doctor of stamps.get(range.end) ?? []) {
                 // A stamp is a signature: whoever signed wrote it.
                 const id = await tx.doctors.upsert(userId, { name: doctor.name, specialty: doctor.specialty, clinic: extraction.provider, licenseCode: doctor.code }, now);
-                if (id) await tx.doctors.link(userId, docId, id, 'author', 'stamp');
+                if (id) await tx.doctors.link(userId, docId, id, 'author', 'stamp', normaliseLicenseCode(doctor.code));
               }
             }
           });
@@ -241,6 +243,7 @@ async function runPipeline(
     job.status = 'done';
     job.progress = 100;
     job.step = 'complete';
+    announceUploadLater(userId, sourceFileId);
   } catch (err) {
     const msg = describeError(err);
     logger.error('an upload failed', { sourceFileId, error: msg });
@@ -248,5 +251,6 @@ async function runPipeline(
     job.status = 'error';
     job.step = 'failed';
     job.error = msg;
+    announceUploadLater(userId, sourceFileId);
   }
 }

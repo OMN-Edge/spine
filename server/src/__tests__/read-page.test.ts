@@ -41,7 +41,7 @@ function llmReturning(answer: unknown) {
     return answer;
   });
   const clients: TaskClients = {
-    continuation: client('continuation'), extraction: client('extraction'), page: client('page'), pageThinking: client('pageThinking'), stamps: client('stamps'), translation: client('translation'), linking: client('linking'), chat: client('chat'), agent: client('agent'),
+    continuation: client('continuation'), extraction: client('extraction'), page: client('page'), pageThinking: client('pageThinking'), stamps: client('stamps'), translation: client('translation'), linking: client('linking'), grouping: client('grouping'), chat: client('chat'), agent: client('agent'),
   };
   return { llm: buildChatLlm(clients, config), received, tasksUsed };
 }

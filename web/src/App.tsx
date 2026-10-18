@@ -22,6 +22,8 @@ import ShareLinks from './pages/ShareLinks';
 import ChatPanel from './components/ChatPanel';
 import { ChatProvider, useChat } from './components/ChatProvider';
 import PublicShareView from './pages/PublicShareView';
+import ShareRequestPage from './pages/ShareRequest';
+import ShareLinkDetail from './pages/ShareLinkDetail';
 import { Wordmark } from './components/Logo';
 import { LanguageSwitcher, msg, useI18n } from './i18n';
 
@@ -120,7 +122,9 @@ function ReviewRedirect() {
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { authenticated } = useAuth();
-  return authenticated ? <Layout>{children}</Layout> : <Navigate to="/login" replace />;
+  const location = useLocation();
+  // Where they were going, so signing in lands there: a mailed link to a request is the case that matters.
+  return authenticated ? <Layout>{children}</Layout> : <Navigate to="/login" replace state={{ from: location.pathname }} />;
 }
 
 export default function App() {
@@ -165,6 +169,8 @@ export default function App() {
         <Route path="/doctors/:id" element={<PrivateRoute><DoctorPage /></PrivateRoute>} />
         <Route path="/search" element={<PrivateRoute><Search /></PrivateRoute>} />
         <Route path="/share" element={<PrivateRoute><ShareLinks /></PrivateRoute>} />
+        <Route path="/share-links/:id" element={<PrivateRoute><ShareLinkDetail /></PrivateRoute>} />
+        <Route path="/share-requests/:id" element={<PrivateRoute><ShareRequestPage /></PrivateRoute>} />
         <Route path="/account" element={<PrivateRoute><Account /></PrivateRoute>} />
       </Routes>
       </ChatProvider>

@@ -48,6 +48,12 @@ export interface ChatLlm {
    */
   link(target: LinkCard, candidates: LinkCard[]): Promise<LinkJudgement[] | null>;
   /**
+   * Whether these pages (the text read from them) form one coherent document, and if not how they divide. Page text goes to the
+   * configured provider, as it does for extraction (SECURITY.md P8, M-24); the text is data, not instructions. Null if the answer
+   * could not be used.
+   */
+  judgeGrouping(pages: GroupingPage[]): Promise<GroupingJudgement | null>;
+  /**
    * Answers a question from the owner's own records and nothing else. `records` are labelled summary cards with their
    * results (never pages or scans); the answer cites them by label. Text only, to the configured provider (SECURITY.md
    * P8, M-18). Null if the answer could not be used.
@@ -81,6 +87,23 @@ export interface ChatAnswer {
 export interface LinkCard {
   id: string;
   text: string;
+}
+
+/** A page as the grouping model sees it. The id is the caller's (a short label, not a database id). */
+export interface GroupingPage {
+  id: string;
+  text: string;
+}
+
+export interface GroupingJudgement {
+  coherent: boolean;
+  confidence: number;
+  /** When not coherent: the labels divided into groups that each hold together. */
+  groups: string[][];
+  /** The labels in reading order (all of them, once each). */
+  order: string[];
+  title: string | null;
+  reason: string;
 }
 
 export interface LinkJudgement {
@@ -270,6 +293,21 @@ export const linkingSchema = z.object({
     relation: z.enum(LINK_RELATIONS),
     reason: z.string(),
   })).default([]),
+});
+
+/**
+ * What judging a set of pages answers: whether they form one coherent document (one report, one visit, one admission), and if not,
+ * how they divide. Pages are named by the caller's labels. `order` is the order to read them in.
+ */
+export const groupingSchema = z.object({
+  coherent: z.boolean(),
+  confidence: z.number().min(0).max(1).default(0.5),
+  /** Only when coherent is false: the pages divided into groups that each hold together. Every label once. */
+  groups: z.array(z.array(z.string())).default([]),
+  order: z.array(z.string()).default([]),
+  /** A short title for the document, in its own language, if the pages are one document. */
+  title: z.string().nullish(),
+  reason: z.string().default(''),
 });
 
 /** What a question about the records answers: the text, citing records by label, and the labels it relied on. */

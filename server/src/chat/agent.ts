@@ -6,10 +6,13 @@ import { Annotation, StateGraph, MessagesAnnotation, START, END } from '@langcha
 import { ToolNode } from '@langchain/langgraph/prebuilt';
 import { getStore } from '../store/index.js';
 import { chainOf } from '../linking/index.js';
-import { buildAgentSystemPrompt } from '../llm/prompts.js';
+import { buildAgentSystemPrompt, buildSharedAgentSystemPrompt } from '../llm/prompts.js';
 import type { ChatTurn } from '../llm/types.js';
 import type { Document } from '../types.js';
 import { documentsForQuestion } from './retrieval.js';
+import { sharedTestNames } from './share-tests.js';
+import { buildActionTools } from './actions.js';
+import type { DoctorEntry, Proposal } from './proposals.js';
 import { DOCUMENT_SECTIONS, describeScreen, resolveScreen, sectionRecords, type DocumentSection, type ScreenContext } from './screen.js';
 import type { ChatProgress, ChatReply, ChatSource, ChatStep } from './index.js';
 
@@ -27,7 +30,13 @@ import type { ChatProgress, ChatReply, ChatSource, ChatStep } from './index.js';
  *    execute from here: they return a proposal that the person confirms in the interface, and the loop ends there;
  *  - documents are untrusted text, as in the fixed pipeline: the system prompt says so.
  */
-const MAX_ROUNDS = 5;
+/**
+ * Rounds of tool calls before the model is told to answer. The owner's agent needs room for a request that takes several steps (find the
+ * visits, follow them to their tests, read a plan, then propose): the first live run of "send both visits and the March tests" used all
+ * five and could not propose. A share recipient's questions are lookups, so theirs stay at five.
+ */
+const MAX_ROUNDS = 8;
+const MAX_ROUNDS_SHARED = 5;
 const PER_RESULT = 12_000;
 const TOTAL_BUDGET = 120_000;
 const SEARCH_LIMIT = 10;
@@ -41,12 +50,56 @@ export const TOOL_KINDS = {
   get_test_series: 'read',
   list_tests: 'read',
   get_connected_documents: 'read',
+  get_fields: 'read',
+  list_share_links: 'read',
+  list_doctors: 'read',
+  list_uploads: 'read',
+  get_upload: 'read',
+  get_regroup_plan: 'read',
+  get_results: 'read',
+  get_share_link: 'read',
+  list_library: 'read',
+  // An action tool prepares a proposal and nothing else (actions.ts); a test holds that the store is not written to.
+  propose_share_link: 'action',
+  propose_note: 'action',
+  propose_edit_document: 'action',
+  propose_tags: 'action',
+  propose_mark_reviewed: 'action',
+  propose_link: 'action',
+  propose_merge_doctors: 'action',
+  propose_merge_tests: 'action',
+  propose_confirm_grouping: 'action',
+  propose_reread_pages: 'action',
+  propose_analyse_pages: 'action',
+  propose_regroup: 'action',
+  propose_merge_library: 'action',
+  propose_update_share: 'action',
+  propose_revoke_share: 'action',
 } as const satisfies Record<string, 'read' | 'action'>;
+
+/**
+ * A question from the recipient of a share link rather than the owner: the documents the link shares, and no others. `userId` is
+ * still the owner's (the store needs an acting user), so this is what stands between a recipient and the rest of the archive:
+ * every tool that lists, searches or aggregates reads only through it, and a tool that could not be limited this way (the care
+ * chain: no share route returns one) is not given to them at all.
+ */
+interface Scope { docs: Document[]; ids: Set<string> }
 
 /** The documents one question has met, and the labels they were given. */
 class Registry {
   private byDoc = new Map<string, string>();
   private byLabel = new Map<string, Document>();
+  /** Fields and share links the model has been shown, by the labels it may use to propose a change to them (F3, L2). */
+  readonly fieldRefs = new Map<string, { id: string; documentId: string; label: string; value: string }>();
+  readonly linkRefs = new Map<string, { id: string; label: string | null; expires_at: string }>();
+  readonly doctorRefs = new Map<string, DoctorEntry>();
+  /** Results, tags and providers the model has been shown, by label (M3, TG2, PR1), so it can propose changing one. */
+  readonly resultRefs = new Map<string, { id: string; documentId: string; name: string; canonical: string; value_text: string; unit: string | null; ref_low: number | null; ref_high: number | null; taken_on: string | null }>();
+  readonly tagRefs = new Map<string, { id: number; name: string; count: number }>();
+  readonly providerRefs = new Map<string, { name: string; count: number }>();
+  /** Groups of a regrouping plan the model was shown (G1), by label. */
+  readonly groupRefs = new Map<string, { upload: string; page_ids: string[]; page_numbers: number[]; title: string | null; confidence: number; status: 'validated' | 'uncertain' | 'unchecked'; reason: string; from_documents: string[] }>();
+  readonly uploadRefs = new Map<string, { id: string; file_name: string | null; status: string; grouping_confirmed: boolean; uploaded_at: string }>();
   /** Record labels that have been shown to the model (D3, D3.results), the only ones it may cite. */
   readonly shown = new Set<string>();
   label(doc: Document): string {
@@ -91,6 +144,10 @@ const AgentState = Annotation.Root({
   looked: Annotation<string[]>(),
   /** Where steps and pieces of the answer go, if the caller wants them. */
   progress: Annotation<ChatProgress>(),
+  /** Set only for a share recipient's question. Null: the owner's own, over everything shown. */
+  scope: Annotation<Scope | null>(),
+  /** Changes prepared for the owner to confirm. Nothing in here has been done. */
+  proposals: Annotation<Proposal[]>(),
 });
 type RunState = typeof AgentState.State;
 
@@ -99,14 +156,14 @@ const stateOf = (runtime: ToolRuntime): RunState => runtime.state as unknown as 
 const UNKNOWN = (label: string) => `There is no document ${label} in this conversation. Search first, then use the labels it returns.`;
 
 /** The tools, defined once. Each reads who is asking, and what this question has seen, from the state of the graph. */
-function buildTools() {
+function buildTools(shared: boolean) {
 
   const searchDocuments = tool(async ({ query, doc_type, date_from, date_to, limit }, runtime: ToolRuntime) => {
-    const { userId, registry, budget, looked, progress } = stateOf(runtime);
+    const { userId, registry, budget, looked, progress, scope } = stateOf(runtime);
     const step = (x: ChatStep) => progress?.step?.(x);
     looked.push(`searched “${clip(query, 60)}”`);
     step({ kind: 'search', detail: clip(query, 60) });
-    const found = (await documentsForQuestion(userId, query, 40))
+    const found = (await documentsForQuestion(userId, query, 40, scope?.ids))
       .filter(d => (!doc_type || d.doc_type === doc_type) && (!date_from || (d.doc_date ?? '') >= date_from) && (!date_to || (d.doc_date ?? '9999') <= date_to))
       .slice(0, limit ?? SEARCH_LIMIT);
     if (found.length === 0) return 'No documents match.';
@@ -144,16 +201,17 @@ function buildTools() {
   });
 
   const getTestSeries = tool(async ({ test }, runtime: ToolRuntime) => {
-    const { userId, registry, budget, looked, progress } = stateOf(runtime);
+    const { userId, registry, budget, looked, progress, scope } = stateOf(runtime);
     const step = (x: ChatStep) => progress?.step?.(x);
     looked.push(`looked at the values of “${clip(test, 40)}”`);
     step({ kind: 'series', detail: clip(test, 40) });
     const asked = test.trim().toLowerCase();
-    const names = (await getStore().measurements.names(userId)).filter(n => n.canonical.toLowerCase().includes(asked) || n.name.toLowerCase().includes(asked) || asked.includes(n.canonical.toLowerCase()));
+    const known = scope ? await sharedTestNames(userId, scope.docs) : await getStore().measurements.names(userId);
+    const names = known.filter(n => n.canonical.toLowerCase().includes(asked) || n.name.toLowerCase().includes(asked) || asked.includes(n.canonical.toLowerCase()));
     if (names.length === 0) return `No test like “${test}”. Use list_tests to see the names.`;
     const out: string[] = [];
     for (const n of names.slice(0, 3)) {
-      const points = (await getStore().measurements.series(userId, n.canonical)).slice(-SERIES_POINTS);
+      const points = (await getStore().measurements.series(userId, n.canonical)).filter(p => !scope || scope.ids.has(p.document_id)).slice(-SERIES_POINTS);
       const lines: string[] = [];
       for (const p of points) {
         const doc = await getStore().documents.findFor(userId, p.document_id);
@@ -169,11 +227,11 @@ function buildTools() {
   });
 
   const listTests = tool(async (_input, runtime: ToolRuntime) => {
-    const { userId, budget, looked, progress } = stateOf(runtime);
+    const { userId, budget, looked, progress, scope } = stateOf(runtime);
     const step = (x: ChatStep) => progress?.step?.(x);
     looked.push('listed the tests');
     step({ kind: 'tests' });
-    const names = await getStore().measurements.names(userId);
+    const names = scope ? await sharedTestNames(userId, scope.docs) : await getStore().measurements.names(userId);
     if (names.length === 0) return 'No results have been read from any document.';
     return budget.take(names.slice(0, 120).map(n => `${n.name} (${n.canonical}): ${n.count} values, latest ${n.latest_value_text}${n.unit ? ` ${n.unit}` : ''}${n.latest_taken_on ? ` on ${n.latest_taken_on}` : ''}`).join('\n'));
   }, {
@@ -210,7 +268,11 @@ function buildTools() {
     schema: z.object({ label: z.string().describe('a document label such as D3') }),
   });
 
-  return [searchDocuments, getDocument, getTestSeries, listTests, connected];
+  // A recipient gets no care chain (links between documents are the owner's, and no share route returns one: M-16) and no tool
+  // that proposes a change: they have nothing to change.
+  if (shared) return [searchDocuments, getDocument, getTestSeries, listTests];
+  const actions = buildActionTools(runtime => stateOf(runtime) as never);
+  return [searchDocuments, getDocument, getTestSeries, listTests, connected, ...actions.read, ...actions.action];
 }
 
 /** The text of a model reply, whether it came as a string or as parts. */
@@ -253,8 +315,8 @@ async function callStreaming(model: BaseChatModel, messages: BaseMessage[], prog
 const countRounds = (messages: BaseMessage[]) => messages.filter(m => AIMessage.isInstance(m) && (m as AIMessage).tool_calls?.length).length;
 
 /** The agent as a graph: built once for a model and reused, because nothing in it belongs to a question (that is in the state). */
-function buildGraph(model: BaseChatModel) {
-  const tools = buildTools();
+function buildGraph(model: BaseChatModel, shared: boolean) {
+  const tools = buildTools(shared);
   const bound = (model as unknown as { bindTools(t: unknown[]): BaseChatModel }).bindTools(tools);
   return new StateGraph(AgentState)
     .addNode('agent', async state => ({ messages: [await callStreaming(bound, state.messages, state.progress)] }))
@@ -268,14 +330,19 @@ function buildGraph(model: BaseChatModel) {
     .addConditionalEdges('agent', state => {
       const last = state.messages.at(-1);
       if (!last || !AIMessage.isInstance(last) || !(last as AIMessage).tool_calls?.length) return END;
-      return countRounds(state.messages) > MAX_ROUNDS ? 'finish' : 'tools';
+      return countRounds(state.messages) > (shared ? MAX_ROUNDS_SHARED : MAX_ROUNDS) ? 'finish' : 'tools';
     })
     .addEdge('tools', 'agent')
     .addEdge('finish', END)
     .compile();
 }
-const graphs = new WeakMap<BaseChatModel, ReturnType<typeof buildGraph>>();
-const graphFor = (model: BaseChatModel) => { let g = graphs.get(model); if (!g) { g = buildGraph(model); graphs.set(model, g); } return g; };
+const graphs = new WeakMap<BaseChatModel, { owner?: ReturnType<typeof buildGraph>; shared?: ReturnType<typeof buildGraph> }>();
+const graphFor = (model: BaseChatModel, shared: boolean) => {
+  const held = graphs.get(model) ?? {};
+  graphs.set(model, held);
+  const key = shared ? 'shared' : 'owner';
+  return (held[key] ??= buildGraph(model, shared));
+};
 
 export async function askAgent(model: BaseChatModel, userId: string, question: string, history: ChatTurn[], screen: ScreenContext | null, progress: ChatProgress = {}): Promise<ChatReply | null> {
   const registry = new Registry();
@@ -290,6 +357,10 @@ export async function askAgent(model: BaseChatModel, userId: string, question: s
     for (const doc of onScreen.listed.slice(0, 8)) registry.label(doc);
     preload.push(`[S0]\n${describeScreen(onScreen, registry.labels())}`);
     if (onScreen.listed.length > 0) preload.push(`[S1] documents on screen:\n${onScreen.listed.slice(0, 8).map(d => `${registry.label(d)}: ${head(d)}`).join('\n')}`);
+    if (onScreen.upload) {
+      registry.uploadRefs.set('U1', { id: onScreen.upload.id, file_name: onScreen.upload.original_filename, status: onScreen.upload.status, grouping_confirmed: onScreen.upload.grouping_confirmed, uploaded_at: onScreen.upload.uploaded_at });
+      preload.push('[S2] The upload on screen is U1. Use get_upload to read its documents.');
+    }
     if (onScreen.primary) {
       for (const r of await sectionRecords(userId, onScreen.primary, registry.label(onScreen.primary), registry.labels())) { registry.shown.add(r.label); preload.push(`[${r.label}]\n${r.text}`); }
     }
@@ -302,8 +373,17 @@ export async function askAgent(model: BaseChatModel, userId: string, question: s
     new HumanMessage(`Question: ${question}`),
   ];
 
-  const result = await graphFor(model).invoke({ messages, userId, registry, budget, looked, progress }, { recursionLimit: MAX_ROUNDS * 2 + 6, signal: AbortSignal.any([AbortSignal.timeout(DEADLINE_MS), ...(progress.signal ? [progress.signal] : [])]) });
-  const answer = splitCitations(textOf(result.messages.at(-1)).trim());
+  return runGraph(model, false, messages, { userId, registry, budget, looked, progress, scope: null, proposals: [] });
+}
+
+interface RunInit { userId: string; registry: Registry; budget: Budget; looked: string[]; progress: ChatProgress; scope: Scope | null; proposals: Proposal[] }
+
+/** Runs the graph and ties the answer's citations back to the documents the model was shown. */
+async function runGraph(model: BaseChatModel, shared: boolean, messages: BaseMessage[], init: RunInit): Promise<ChatReply | null> {
+  const { registry, looked, progress } = init;
+  const result = await graphFor(model, shared).invoke({ messages, ...init }, { recursionLimit: MAX_ROUNDS * 2 + 6, signal: AbortSignal.any([AbortSignal.timeout(DEADLINE_MS), ...(progress.signal ? [progress.signal] : [])]) });
+  // A change was prepared but the model said nothing: the card still stands, with a plain line over it.
+  const answer = splitCitations(textOf(result.messages.at(-1)).trim()) || (init.proposals.length > 0 ? 'I prepared this for you to confirm.' : '');
   if (!answer) return null;
 
   // Sources: the labels the answer cites, if they were shown to the model; a section only if that section was.
@@ -317,8 +397,56 @@ export async function askAgent(model: BaseChatModel, userId: string, question: s
     seen.add(cited);
     sources.push({ label: cited, id: doc.id, title: doc.title, doc_type: doc.doc_type, doc_date: doc.doc_date, ...(known ? { section: known } : {}) });
   }
-  return { answer, sources, documents: registry.size, looked };
+  return { answer, sources, documents: registry.size, looked, ...(init.proposals.length > 0 ? { proposals: init.proposals } : {}) };
 }
+
+/** Owner-chosen text that goes into a prompt as context: one line, no control characters, cut. */
+export const promptLabel = (label: string | null): string | null => label?.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/["“”]/g, "'").replace(/\s+/g, ' ').trim().slice(0, 120) || null;
+
+/**
+ * A recipient's question about what a link shares. `docs` is what `listForShare` resolved for the link, the one list every
+ * tool is held to; `openDocumentId` is the document the recipient has open and is used only if it is in that list.
+ */
+export async function askSharedAgent(
+  model: BaseChatModel,
+  owner: string,
+  docs: Document[],
+  linkLabel: string | null,
+  question: string,
+  history: ChatTurn[],
+  openDocumentId: string | null,
+  progress: ChatProgress = {},
+): Promise<ChatReply | null> {
+  if (docs.length === 0) return { answer: null, sources: [], documents: 0 };
+  const scope: Scope = { docs, ids: new Set(docs.map(d => d.id)) };
+  const registry = new Registry();
+  const preload: string[] = [];
+
+  const open = openDocumentId ? docs.find(d => d.id === openDocumentId) ?? null : null;
+  if (open) {
+    registry.label(open);
+    preload.push(`[S0]\nThe recipient has this shared document open: ${registry.label(open)}. "This document", "here" and "this" mean it.`);
+    // Its sections, without the care chain: no share route returns one.
+    for (const r of await sectionRecords(owner, open, registry.label(open), registry.labels())) {
+      if (r.label.endsWith('.chain')) continue;
+      registry.shown.add(r.label);
+      preload.push(`[${r.label}]\n${r.text}`);
+    }
+  }
+  // What is shared, so the model knows what exists without searching for it.
+  const listed = docs.slice(0, 40);
+  preload.push(`[S1] ${tnShared(docs.length)}:\n${listed.map(d => `${registry.label(d)}: ${head(d)}`).join('\n')}${docs.length > listed.length ? `\n… and ${docs.length - listed.length} more (search for them)` : ''}`);
+
+  const messages: BaseMessage[] = [
+    new SystemMessage(buildSharedAgentSystemPrompt(promptLabel(linkLabel))),
+    ...history.map(t => (t.role === 'user' ? new HumanMessage(t.content) : new AIMessage(t.content))),
+    new HumanMessage(`What is shared with the recipient:\n\n${preload.join('\n\n')}`),
+    new HumanMessage(`Question: ${question}`),
+  ];
+  return runGraph(model, true, messages, { userId: owner, registry, budget: new Budget(), looked: [], progress, scope, proposals: [] });
+}
+
+const tnShared = (n: number) => (n === 1 ? 'The one document shared' : `The ${n} documents shared`);
 
 /** A cheap check for the caller: is there anything to look at? */
 export async function hasAnythingToRead(userId: string, screen: ScreenContext | null): Promise<boolean> {

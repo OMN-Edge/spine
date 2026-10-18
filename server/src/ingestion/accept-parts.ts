@@ -1,0 +1,68 @@
+import { rmSync } from 'fs';
+import path from 'path';
+import type { MultipartFile, MultipartValue } from '@fastify/multipart';
+import { importZip } from '../archive/import.js';
+import { acceptFile, newUploadPath, saveStream, type UploadOutcome } from './accept-upload.js';
+
+/** A document or a photo. */
+export const MAX_FILE_BYTES = 200 * 1024 * 1024;
+/** A zip of them, which the request limit in `index.ts` must allow. */
+export const MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;
+
+type Part = MultipartFile | MultipartValue;
+
+/** Thrown by `conversationFor` to stop before any file of the request is saved. */
+export class AttachRefused extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message);
+    this.name = 'AttachRefused';
+  }
+}
+
+/**
+ * The files of a multipart request become uploads, one result each (a zip several): the one place a file arriving from the
+ * browser is accepted, for the Upload page and for a file attached in the chat. Nothing about acceptance differs between them; the
+ * chat only says which conversation the file was attached in, so what happens to it is reported there.
+ *
+ * `conversationFor` is called once, with the form fields seen so far, when the first file arrives (so a field sent before the files
+ * can name the conversation); it returns the conversation to tie the files to, or null.
+ */
+export async function acceptParts(
+  userId: string,
+  parts: AsyncIterable<Part>,
+  options: { conversationFor?: (fields: Record<string, string>) => Promise<string | null> } = {},
+): Promise<Array<UploadOutcome | Record<string, unknown>>> {
+  const results: Array<UploadOutcome | Record<string, unknown>> = [];
+  const fields: Record<string, string> = {};
+  let conversation: string | null | undefined;
+
+  for await (const part of parts) {
+    if (part.type !== 'file') {
+      if (typeof part.value === 'string') fields[part.fieldname] = part.value;
+      continue;
+    }
+    if (conversation === undefined) conversation = options.conversationFor ? await options.conversationFor(fields) : null;
+
+    const ext = path.extname(part.filename ?? '.pdf') || '.pdf';
+    const { fileId, filePath } = newUploadPath(userId, ext);
+    // A zip may hold many files, so the request limit is its limit; anything else is one document or photo.
+    const { checksum, truncated, zip } = await saveStream(part.file, filePath, { zip: MAX_UPLOAD_BYTES, other: MAX_FILE_BYTES });
+
+    if (zip) {
+      try {
+        if (truncated) results.push({ skipped: true, reason: 'too_large', filename: part.filename ?? null });
+        else results.push(...(await importZip(userId, filePath, part.filename ?? null)));
+      } finally {
+        rmSync(filePath, { force: true }); // the zip itself is not kept: its contents are
+      }
+      continue;
+    }
+    if (truncated) {
+      rmSync(filePath, { force: true });
+      results.push({ skipped: true, reason: 'too_large', filename: part.filename ?? null });
+      continue;
+    }
+    results.push(await acceptFile(userId, { id: fileId, path: filePath, filename: part.filename ?? null, checksum, chatConversationId: conversation }));
+  }
+  return results;
+}

@@ -38,8 +38,9 @@ import type {
  * Four exceptions to the user-scoping rule, each named here so that a fifth
  * has to be argued for:
  *
- *  1. `shareLinks.findLiveByTokenHash` and `documents.listForShare` — scoped by
- *     the *link's* owner, resolved from the token, never from a session (P12).
+ *  1. `shareLinks.findLiveByTokenHash`, `shareLinks.findRequest`/`createRequest`
+ *     and `documents.listForShare` — scoped by the *link's* owner, resolved from
+ *     the token, never from a session (P12).
  *  2. `shareLinks.logAccess` — the caller is an unauthenticated reader by
  *     definition (P7).
  *  3. `maintenance.*` — boot-time operations across all rows, run by the
@@ -62,6 +63,8 @@ export interface Store {
   embeddings: EmbeddingRepository;
   links: LinkRepository;
   conversations: ConversationRepository;
+  regroupPlans: RegroupPlanRepository;
+  matchDecisions: MatchDecisionRepository;
   maintenance: MaintenanceRepository;
 
   /**
@@ -181,6 +184,8 @@ export interface SourceFileRepository {
   setPageCount(userId: string, id: string, pageCount: number): Promise<void>;
   /** The owner confirming (or an upload being read, which unconfirms) how an upload's pages are grouped. */
   setGroupingConfirmed(userId: string, id: string, confirmed: boolean): Promise<void>;
+  /** Ties a file to the conversation it was attached in. Nothing happens if either is not the user's. */
+  setChatConversation(userId: string, id: string, conversationId: string): Promise<void>;
   /**
    * Removes what ingestion produced from this upload — its documents, their fields and
    * tag links, and its pages — and keeps the upload itself and the user's tags. Returns
@@ -202,6 +207,8 @@ export interface NewSourceFile {
   filePath: string;
   mimeType: string | null;
   checksum: string;
+  /** Set when the file is attached in a chat conversation. */
+  chatConversationId?: string | null;
 }
 
 export interface PageRepository {
@@ -515,7 +522,12 @@ export interface DoctorRepository {
    * Names a doctor on a document. False if either is not the user's. `source` is where it came from: a
    * stamp wins over text if both name the same doctor in the same role.
    */
-  link(userId: string, documentId: string, doctorId: string, role: DoctorRole, source?: 'text' | 'stamp' | 'signature'): Promise<boolean>;
+  link(userId: string, documentId: string, doctorId: string, role: DoctorRole, source?: 'text' | 'stamp' | 'signature', printedCode?: string | null): Promise<boolean>;
+  /**
+   * Doctors whom one of these documents gave a professional code other than the one the directory holds (the directory keeps one per
+   * doctor, and a name match leaves it as it is). One row per doctor and printed code.
+   */
+  codeClashes(userId: string, documentIds: string[]): Promise<Array<{ doctor_id: string; name: string; directory_code: string; printed_code: string; document_ids: string[] }>>;
   /** Every link, however it was made: the owner replacing the list. */
   unlinkAll(userId: string, documentId: string): Promise<void>;
   /** Only the links made from the document's text, so reading the text again leaves what a stamp gave. */
@@ -534,6 +546,16 @@ export interface DoctorRepository {
   merge(userId: string, fromId: string, intoId: string): Promise<boolean>;
   /** Only a doctor no document names. */
   remove(userId: string, id: string): Promise<boolean>;
+}
+
+/** What the owner answered when asked whether two entries are the same. Kept so the question is not asked again. */
+export interface MatchDecisionRepository {
+  has(userId: string, kind: string, pairKey: string): Promise<boolean>;
+  add(userId: string, kind: string, pairKey: string, at: string): Promise<void>;
+  /** Every pair key decided for a kind, to filter a list of questions in one read. */
+  list(userId: string, kind: string): Promise<Set<string>>;
+  /** Forgets every answer, so the questions are asked afresh. */
+  removeAll(userId: string): Promise<number>;
 }
 
 export interface TagWithCount { id: number; name: string; document_count: number }
@@ -572,6 +594,91 @@ export interface ShareLinkRepository {
    * response for a leaked link is to read this.
    */
   accessLogFor(userId: string, linkId: string): Promise<AccessLogEntry[]>;
+
+  /**
+   * Approval of a visitor's browser (SECURITY.md M-19). The two methods without a user are the visitor's side and
+   * belong to the first exception above: they are keyed by a link that was resolved from its token and by the digest
+   * of a cookie, and they can reach only that one row. The rest are the owner's and take the acting user.
+   */
+  /** The visitor's request for this link, by the digest of their cookie. */
+  findRequest(linkId: string, visitorHash: string): Promise<ShareRequestState | null>;
+  /**
+   * Records a first request. False, and nothing written, when the link already holds `maxPending` waiting requests,
+   * so a token holder cannot make the owner's list or inbox grow without bound.
+   */
+  createRequest(linkId: string, request: NewShareRequest, maxPending: number): Promise<boolean>;
+  listRequests(userId: string, now: string, linkId?: string): Promise<ShareRequest[]>;
+  getRequest(userId: string, id: string, now: string): Promise<ShareRequest | null>;
+  /** False if the request is not the user's. Deciding again is allowed, so an approval can be withdrawn. */
+  decideRequest(userId: string, id: string, status: 'approved' | 'denied', at: string): Promise<boolean>;
+
+  /** One of the user's links, or null. */
+  findFor(userId: string, id: string): Promise<ShareLinkSummary | null>;
+  /**
+   * Changes a link after it was made. A revoked link cannot be changed. What changed is written to the link's history, and
+   * turning approval on drops the requests it already held, so a browser approved under an earlier setting is not let back in.
+   */
+  update(userId: string, id: string, patch: ShareLinkPatch, at: string): Promise<'ok' | 'not_found' | 'revoked'>;
+  /** Who has read the link: counts, addresses and the latest reads. */
+  accessSummary(userId: string, linkId: string): Promise<AccessSummary>;
+  /** What happened to the link, newest first. */
+  eventsFor(userId: string, linkId: string, limit: number): Promise<ShareLinkEvent[]>;
+}
+
+export interface ShareLinkPatch {
+  label?: string | null;
+  expiresAt?: string;
+  includeScans?: boolean;
+  requireApproval?: boolean;
+  allowChat?: boolean;
+  language?: string | null;
+  scope?: ShareLink['scope'];
+  scopeValue?: string | null;
+}
+
+export interface AccessSummary {
+  total: number;
+  first_at: string | null;
+  last_at: string | null;
+  /** The addresses that read it, most reads first. */
+  addresses: Array<{ ip_address: string | null; count: number; last_at: string }>;
+  recent: AccessLogEntry[];
+}
+
+export interface ShareLinkEvent {
+  at: string;
+  kind: 'created' | 'changed' | 'revoked' | 'approved' | 'denied';
+  /** JSON: for `changed`, `{ changes: [{ field, from, to }] }`. */
+  detail: string | null;
+}
+
+export interface ShareRequestState {
+  id: string;
+  status: 'pending' | 'approved' | 'denied';
+}
+
+export interface NewShareRequest {
+  id: string;
+  visitorHash: string;
+  note: string | null;
+  ipAddress: string | null;
+  userAgent: string | null;
+  requestedAt: string;
+}
+
+/** What the owner sees of a request. Never the visitor's digest. */
+export interface ShareRequest {
+  id: string;
+  share_link_id: string;
+  link_label: string | null;
+  /** The link can still be opened: not revoked, not expired. Approving a request on a dead link changes nothing. */
+  link_active: boolean;
+  status: 'pending' | 'approved' | 'denied';
+  note: string | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  requested_at: string;
+  decided_at: string | null;
 }
 
 export interface AccessLogEntry {
@@ -580,7 +687,7 @@ export interface AccessLogEntry {
 }
 
 /** What the owner's list view may see — never the token, not even hashed (S-8). */
-export type ShareLinkSummary = Omit<ShareLink, 'token'>;
+export type ShareLinkSummary = Omit<ShareLink, 'token'> & { pending_requests: number };
 
 export interface NewShareLink {
   id: string;
@@ -592,17 +699,23 @@ export interface NewShareLink {
   expiresAt: string;
   includeScans: boolean;
   language: string | null;
+  requireApproval: boolean;
+  allowChat: boolean;
 }
 
 /** A live link with its owner resolved, which is what scopes a share read. */
 export interface ResolvedShareLink {
   id: string;
+  /** The owner's own name for the link. Context for the shared chat; never shown to the recipient. */
+  label?: string | null;
   userId: string;
   scope: string;
   scopeValue: string | null;
   expiresAt: string;
   includeScans: boolean;
   language: string | null;
+  requireApproval: boolean;
+  allowChat: boolean;
 }
 
 /** A document's details in another language, kept until what was translated changes (see schema.sql). */
@@ -632,12 +745,24 @@ export interface EmbeddingRepository {
   pruneOtherModels(userId: string, keepModel: string): Promise<number>;
 }
 
+/** What the analysis of a mixed upload found, kept until the owner applies it or the upload changes. The plan is JSON the analysis owns. */
+export interface RegroupPlanRepository {
+  /** Replaces any earlier plan for the upload. Nothing is written if the upload is not the user's. */
+  save(userId: string, sourceFileId: string, plan: unknown, createdAt: string): Promise<boolean>;
+  get(userId: string, sourceFileId: string): Promise<{ plan: unknown; created_at: string } | null>;
+  remove(userId: string, sourceFileId: string): Promise<void>;
+}
+
 export interface ConversationSummary {
   id: string;
   title: string;
   created_at: string;
   updated_at: string;
   message_count: number;
+  /** The app started it and the owner has not opened it. */
+  unread: boolean;
+  /** Null: the owner started it. `upload`: the app did, when an upload finished. */
+  origin: 'upload' | 'regroup' | null;
 }
 
 export interface StoredMessage {
@@ -649,6 +774,9 @@ export interface StoredMessage {
   /** Set on a reply with nothing to say (nothing matched). */
   note: 'none' | 'failed' | 'off' | null;
   created_at: string;
+  /** `upload`: a notice the app wrote; the page draws it from `data`, and `content` says the same in English for the model. */
+  kind: 'upload' | 'regroup' | 'attachment' | null;
+  data: unknown | null;
 }
 
 export interface NewMessage {
@@ -658,6 +786,8 @@ export interface NewMessage {
   sources: unknown[];
   note: StoredMessage['note'];
   createdAt: string;
+  kind?: 'upload' | 'regroup' | 'attachment' | null;
+  data?: unknown;
 }
 
 /** The most conversations kept per person (the oldest go) and messages in one. */
@@ -678,6 +808,14 @@ export interface ConversationRepository {
   remove(userId: string, id: string): Promise<boolean>;
   /** Every conversation of the user. How many. */
   removeAll(userId: string): Promise<number>;
+  /** The app starts a conversation with one message from the assistant, unread. */
+  createNotice(userId: string, notice: { id: string; title: string; origin: 'upload' | 'regroup'; createdAt: string; message: { id: string; content: string; kind: 'upload' | 'regroup'; data: unknown } }): Promise<void>;
+  /** The app reports on something in a conversation the owner is already having (a file they attached): added there, and unread until they look. False if it is not the user's. */
+  appendNotice(userId: string, conversationId: string, message: { id: string; content: string; kind: 'upload' | 'regroup'; data: unknown; createdAt: string }): Promise<boolean>;
+  /** How many conversations the app started that the owner has not opened. */
+  unreadCount(userId: string): Promise<number>;
+  /** False if it is not the user's. */
+  markRead(userId: string, id: string): Promise<boolean>;
 }
 
 export const LINK_KINDS = ['requests', 'follow_up', 'same_episode'] as const;
@@ -715,6 +853,13 @@ export interface LinkRepository {
   clearProposedBetween(userId: string, documentId: string, otherIds: string[]): Promise<number>;
   /** Pairs the owner dismissed, in either direction and any kind, among these documents: never proposed again. */
   dismissedPairs(userId: string, documentId: string): Promise<Set<string>>;
+  /** Every link the user has, in any state, including those at a document that is set aside: for an export. */
+  all(userId: string): Promise<DocumentLink[]>;
+  /**
+   * Writes a link as it was exported, source and state as they were (`add` would confirm an owner's, even a dismissed one).
+   * A pair and kind that exist are left as they are. False if either document is not the user's, or they are the same.
+   */
+  restore(userId: string, link: DocumentLink, createdAt: string): Promise<boolean>;
 }
 
 export interface MaintenanceRepository {

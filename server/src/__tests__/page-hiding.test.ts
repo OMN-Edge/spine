@@ -209,7 +209,7 @@ describe('a document whose every page is hidden', () => {
 
   it('is not shared, whatever the link says', async () => {
     const { doc, pageIds } = await upload(['only page']);
-    const link = (scope: string, scopeValue: string | null) => ({ id: 'l', userId: OWNER_ID, scope, scopeValue, expiresAt: '2999-01-01', includeScans: false, language: null });
+    const link = (scope: string, scopeValue: string | null) => ({ id: 'l', userId: OWNER_ID, scope, scopeValue, expiresAt: '2999-01-01', includeScans: false, language: null, requireApproval: false, allowChat: false });
     const shared = async () => (await getStore().documents.listForShare(link('all', null))).map(d => d.id);
     const byId = async () => (await getStore().documents.listForShare(link('document_ids', JSON.stringify([doc])))).map(d => d.id);
     expect(await shared()).toContain(doc);
@@ -256,13 +256,14 @@ describe('a database from before pages could be hidden', () => {
     const schemaFile = path.join(path.dirname(fileURLToPath(import.meta.url)), '../store/sqlite/schema.sql');
     const old = readFileSync(schemaFile, 'utf8')
       .replace(/ {2}hidden INTEGER NOT NULL DEFAULT 0,.*\n/, '')
-      .replace(/last_accessed_at TEXT,\n {2}include_scans INTEGER NOT NULL DEFAULT 0,[^\n]*\n {2}language TEXT[^\n]*\n\);/, 'last_accessed_at TEXT\n);')
+      .replace(/last_accessed_at TEXT,\n {2}include_scans INTEGER NOT NULL DEFAULT 0,[^\n]*\n {2}language TEXT[^\n]*\n {2}require_approval[^\n]*\n {2}allow_chat[^\n]*\n\);/, 'last_accessed_at TEXT\n);')
       .replace(/reviewed INTEGER DEFAULT 0,\n {2}language TEXT[^\n]*\n\);/, 'reviewed INTEGER DEFAULT 0\n);')
       .replace(/ {2}source_page INTEGER NOT NULL DEFAULT 0,[^\n]*\n/, '')
       .replace(' AND p.hidden = 0', '')
       .replace('AFTER UPDATE OF raw_text, hidden ON pages', 'AFTER UPDATE OF raw_text ON pages');
     expect(old).not.toMatch(/hidden/);
     expect(old).not.toMatch(/include_scans/);
+    expect(old).not.toMatch(/require_approval INTEGER NOT NULL DEFAULT 0 --/); // the link's column; share_access_requests is a new table
     expect(old).not.toMatch(/source_page/);
     expect(old).not.toMatch(/language TEXT --/); // the two language columns; document_translations has its own, which is new
     const db = new Database(file);

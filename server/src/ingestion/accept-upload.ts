@@ -74,7 +74,7 @@ export type UploadOutcome =
  * A file that has just been written to `filePath` becomes an upload, or is refused and removed: only what can be
  * read is kept, and a copy of one already held is not. Shared by a file sent on its own and one found in a zip.
  */
-export async function acceptFile(userId: string, file: { id: string; path: string; filename: string | null; checksum: string }): Promise<UploadOutcome> {
+export async function acceptFile(userId: string, file: { id: string; path: string; filename: string | null; checksum: string; chatConversationId?: string | null }): Promise<UploadOutcome> {
   const store = getStore();
   const kind = detectFileKind(file.path);
   if (kind === null) {
@@ -105,6 +105,7 @@ export async function acceptFile(userId: string, file: { id: string; path: strin
     filePath: file.path,
     mimeType: MIME_OF[kind], // what it is, not what the browser called it
     checksum: file.checksum,
+    chatConversationId: file.chatConversationId ?? null,
   });
   startIngestionJob(file.id, userId);
   return { id: file.id, status: 'processing' };

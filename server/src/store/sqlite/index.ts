@@ -8,6 +8,8 @@ import { maintenanceRepository } from './maintenance.js';
 import { pageRepository } from './pages.js';
 import { shareLinkRepository } from './share-links.js';
 import { sourceFileRepository } from './source-files.js';
+import { regroupPlanRepository } from './regroup-plans.js';
+import { matchDecisionRepository } from './match-decisions.js';
 import { tagRepository } from './tags.js';
 import { translationRepository } from './translations.js';
 import { embeddingRepository } from './embeddings.js';
@@ -44,6 +46,8 @@ function storeOver(db: Database, depth: number): Store {
     embeddings: embeddingRepository(db),
     links: linkRepository(db),
     conversations: conversationRepository(db),
+    regroupPlans: regroupPlanRepository(db),
+    matchDecisions: matchDecisionRepository(db),
     maintenance: maintenanceRepository(db),
 
     /**

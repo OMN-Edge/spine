@@ -42,6 +42,11 @@ const columnsOf = (db: Database.Database, table: string): string[] =>
  *  - `documents.language`, `share_links.language`: the language a document is written in, and the one a share page starts in.
  *    Both may be null, so existing rows need nothing filled in.
  *  - `share_links.include_scans`: whether a link also shows the page images. Nothing names it but the queries.
+ *  - `share_links.require_approval`: whether a visitor's browser must be approved by the owner. Off for every earlier link.
+ *  - `share_links.allow_chat`: whether the recipient may ask questions about what the link shares. Off for every earlier link.
+ *  - `document_doctors.printed_code`: the code a document printed for a doctor, kept so a clash with the directory's can be asked about. Null for earlier links.
+ *  - `source_files.chat_conversation_id`: the conversation a file was attached in. Null for every earlier upload.
+ *  - `chat_conversations.unread`/`origin`, `chat_messages.kind`/`data`: conversations the app starts when an upload finishes, and the notice in them. Nothing earlier has them.
  *  - `documents.owner_edited`, `extracted_fields.owner_edited`, `measurements.owner_edited`, `source_files.grouping_confirmed`: what the
  *    owner changed (kept through a re-reading) and whether an upload's grouping has been confirmed (every earlier upload counts as confirmed).
  *  - `pages.hidden`: pages the owner has set aside. The search view and one trigger name the column,
@@ -72,6 +77,8 @@ function addColumnsInPlace(db: Database.Database): void {
     db.exec('ALTER TABLE share_links ADD COLUMN include_scans INTEGER NOT NULL DEFAULT 0');
   }
   if (links.length > 0 && !links.includes('language')) db.exec('ALTER TABLE share_links ADD COLUMN language TEXT');
+  if (links.length > 0 && !links.includes('allow_chat')) db.exec('ALTER TABLE share_links ADD COLUMN allow_chat INTEGER NOT NULL DEFAULT 0');
+  if (links.length > 0 && !links.includes('require_approval')) db.exec('ALTER TABLE share_links ADD COLUMN require_approval INTEGER NOT NULL DEFAULT 0');
 
   const documents = columnsOf(db, 'documents');
   if (documents.length > 0 && !documents.includes('language')) db.exec('ALTER TABLE documents ADD COLUMN language TEXT');
@@ -82,7 +89,17 @@ function addColumnsInPlace(db: Database.Database): void {
     const columns = columnsOf(db, table);
     if (columns.length > 0 && !columns.includes('owner_edited')) db.exec(`ALTER TABLE ${table} ADD COLUMN owner_edited INTEGER NOT NULL DEFAULT 0`);
   }
+  // Conversations the app starts (an upload finished) and the notices in them.
+  const conversations = columnsOf(db, 'chat_conversations');
+  if (conversations.length > 0 && !conversations.includes('unread')) db.exec('ALTER TABLE chat_conversations ADD COLUMN unread INTEGER NOT NULL DEFAULT 0');
+  if (conversations.length > 0 && !conversations.includes('origin')) db.exec('ALTER TABLE chat_conversations ADD COLUMN origin TEXT');
+  const chatMessages = columnsOf(db, 'chat_messages');
+  if (chatMessages.length > 0 && !chatMessages.includes('kind')) db.exec('ALTER TABLE chat_messages ADD COLUMN kind TEXT');
+  if (chatMessages.length > 0 && !chatMessages.includes('data')) db.exec('ALTER TABLE chat_messages ADD COLUMN data TEXT');
+  const doctorLinks = columnsOf(db, 'document_doctors');
+  if (doctorLinks.length > 0 && !doctorLinks.includes('printed_code')) db.exec('ALTER TABLE document_doctors ADD COLUMN printed_code TEXT');
   const uploads = columnsOf(db, 'source_files');
+  if (uploads.length > 0 && !uploads.includes('chat_conversation_id')) db.exec('ALTER TABLE source_files ADD COLUMN chat_conversation_id TEXT');
   if (uploads.length > 0 && !uploads.includes('grouping_confirmed')) db.exec('ALTER TABLE source_files ADD COLUMN grouping_confirmed INTEGER NOT NULL DEFAULT 1');
 }
 

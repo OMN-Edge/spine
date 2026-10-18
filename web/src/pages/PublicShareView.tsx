@@ -1,22 +1,85 @@
 import { useState, useEffect } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { api, type SharedDocument, type SharedListDocument, type TranslatedDocument, type TrendName, type TrendSeries } from '../api';
+import { api, ApiError, type ShareApproval, type SharedDocument, type SharedListDocument, type TranslatedDocument, type TrendName, type TrendSeries } from '../api';
 import { SeriesBody, TestList } from '../components/TrendViews';
 import DocumentCard, { DOC_TYPE_LABELS } from '../components/DocumentCard';
 import { DoctorsList } from '../components/DoctorsPanel';
 import { MeasurementsList } from '../components/MeasurementsPanel';
 import SpineLog from '../components/SpineLog';
+import SharedChat from '../components/SharedChat';
 import { LanguageSwitcher, useI18n } from '../i18n';
 import { languageName, useTranslation } from '../i18n/useTranslation';
 import { documentByline, documentTitle, fieldName, isSection, valueLines } from '../titles';
+
+/**
+ * A link the owner wants to approve is not opened until this browser is let in (SECURITY.md M-19). The page asks the
+ * server where the browser stands, offers to ask the owner, waits while they decide, and only then loads the documents.
+ * Nothing is requested from the documents' routes before that: they would answer 403.
+ */
+export default function PublicShareView() {
+  const { token } = useParams<{ token: string }>();
+  const { t } = useI18n();
+  const [approval, setApproval] = useState<ShareApproval | null>(null);
+  const [gone, setGone] = useState(false);
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!token) return;
+    let live = true;
+    let timer: number | undefined;
+    const check = () => api.publicShare.meta(token)
+      .then(m => { if (live) { setApproval(m.approval); if (m.approval === 'pending') timer = window.setTimeout(check, 5000); } })
+      .catch(err => { if (live && err instanceof ApiError && err.status === 410) setGone(true); else if (live) setApproval('open'); });
+    check();
+    return () => { live = false; window.clearTimeout(timer); };
+  }, [token, approval === 'pending']);
+
+  const ask = async () => {
+    if (!token) return;
+    setBusy(true);
+    setError('');
+    try {
+      setApproval((await api.publicShare.requestAccess(token, note)).approval);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('Could not send the request'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!token) return null;
+  if (approval === 'open' || gone) return <SharedContent token={token} />;
+  if (approval === null) return <div className="min-h-screen flex items-center justify-center text-gray-400">{t('Loading…')}</div>;
+
+  return (
+    <div className="min-h-screen flex items-center justify-center px-4">
+      <div className="max-w-sm w-full text-center">
+        <p className="text-gray-900 font-medium mb-2">{t('Approval needed')}</p>
+        {approval === 'needed' && (
+          <>
+            <p className="text-gray-500 text-sm mb-4">{t('The person who shared this asks to approve who opens it. Send them a request; it works in this browser only.')}</p>
+            <label htmlFor="req-note" className="block text-xs text-gray-500 text-left mb-1">{t('Who are you? (optional)')}</label>
+            <input id="req-note" value={note} maxLength={120} onChange={e => setNote(e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 mb-3" />
+            <button disabled={busy} onClick={ask} className="w-full bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50">{t('Ask for access')}</button>
+            {error && <p className="text-xs text-red-600 mt-3" role="alert">{error}</p>}
+          </>
+        )}
+        {approval === 'pending' && <p className="text-gray-500 text-sm" role="status">{t('Your request was sent. Keep this page open: it opens when the owner approves.')}</p>}
+        {approval === 'denied' && <p className="text-gray-500 text-sm" role="alert">{t('The owner did not approve this request.')}</p>}
+        <div className="mt-6 flex justify-center"><LanguageSwitcher /></div>
+      </div>
+    </div>
+  );
+}
 
 /**
  * What a recipient sees: the timeline and the document page of the archive, read-only. The list groups what was
  * shared by year, and opening a document (`?d=<id>`, so Back works) shows its details beside its scans when the owner
  * allowed them. No review, no reading again, no links into the owner's own pages.
  */
-export default function PublicShareView() {
-  const { token } = useParams<{ token: string }>();
+function SharedContent({ token }: { token: string }) {
   const [params, setParams] = useSearchParams();
   const { t, tn, lang, preferLang } = useI18n();
   const [docs, setDocs] = useState<SharedListDocument[]>([]);
@@ -25,6 +88,7 @@ export default function PublicShareView() {
   const [translating, setTranslating] = useState(true);
   const [original, setOriginal] = useState(false);
   const [metaReady, setMetaReady] = useState(false);
+  const [chatOn, setChatOn] = useState(false);
   const [type, setType] = useState('');
   const openId = params.get('d');
   const view = params.get('view') === 'trends' ? 'trends' : 'documents';
@@ -37,7 +101,7 @@ export default function PublicShareView() {
   // The page starts in the language the owner chose for this link, unless the reader has picked one here before.
   useEffect(() => {
     if (!token) return;
-    api.publicShare.meta(token).then(m => { setTranslating(m.translation); preferLang(m.language); }).catch(() => {}).finally(() => setMetaReady(true));
+    api.publicShare.meta(token).then(m => { setTranslating(m.translation); setChatOn(m.chat); preferLang(m.language); }).catch(() => {}).finally(() => setMetaReady(true));
   }, [token, preferLang]);
 
   // The list in the reader's language. Documents not yet translated come back as pending: ask again shortly, a few times.
@@ -117,6 +181,8 @@ export default function PublicShareView() {
             )}
           </p>
         )}
+
+        {chatOn && <SharedChat token={token} openId={openId} />}
 
         {!openId && view === 'trends' && token ? (
           <SharedTrends token={token} names={trendNames} name={params.get('name')} />

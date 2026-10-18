@@ -16,10 +16,14 @@ import type { DocType, UnstructuredElement } from '../types.js';
  * restore costs nothing and sends nothing off the host. Every id is made here (nothing in the manifest becomes one),
  * and the whole write is one transaction, so a manifest that does not fit its file leaves nothing behind.
  */
-export function startRestore(userId: string, sourceFileId: string, filePath: string, isPhoto: boolean, file: ManifestFile, setAside: Set<number>): void {
+export function startRestore(
+  userId: string, sourceFileId: string, filePath: string, isPhoto: boolean, file: ManifestFile, setAside: Set<number>,
+  /** Told once the upload is done: the new id of each of the file's documents in the manifest's order (null for one set aside), or null if it failed. */
+  finished: (documentIds: Array<string | null> | null) => void = () => {},
+): void {
   const job = beginJob(sourceFileId);
-  if (!job) return;
-  runQueued(() => restore(userId, sourceFileId, filePath, isPhoto, file, setAside, job)).catch(() => {});
+  if (!job) { finished(null); return; }
+  runQueued(() => restore(userId, sourceFileId, filePath, isPhoto, file, setAside, job, finished)).catch(() => {});
 }
 
 async function restore(
@@ -30,6 +34,7 @@ async function restore(
   file: ManifestFile,
   setAside: Set<number>,
   job: { status: string; progress: number; step: string; error?: string },
+  finished: (documentIds: Array<string | null> | null) => void,
 ): Promise<void> {
   const store = getStore();
   try {
@@ -53,6 +58,7 @@ async function restore(
 
     job.step = 'restoring';
     job.progress = 60;
+    const documentIds: Array<string | null> = [];
     await store.transaction(async tx => {
       // Rows go in by their place in the file; the owner's arrangement is applied after, as moving a page does.
       const idBySource = new Map<number, string>();
@@ -74,6 +80,7 @@ async function restore(
       const now = new Date().toISOString();
       for (const [index, d] of file.documents.entries()) {
         const docId = uuidv4();
+        documentIds.push(setAside.has(index) ? null : docId);
         await tx.documents.create(userId, {
           id: docId, sourceFileId, pageStart: d.page_start, pageEnd: d.page_end,
           title: d.title?.trim() || null, docDate: d.doc_date, provider: d.provider, docType: d.doc_type as DocType | null,
@@ -107,6 +114,7 @@ async function restore(
     job.status = 'done';
     job.progress = 100;
     job.step = 'complete';
+    finished(documentIds);
   } catch (err) {
     const message = describeError(err);
     logger.error('restoring an upload from an export failed', { sourceFileId, error: message });
@@ -114,5 +122,6 @@ async function restore(
     job.status = 'error';
     job.step = 'failed';
     job.error = message;
+    finished(null);
   }
 }

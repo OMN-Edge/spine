@@ -9,7 +9,21 @@ import { isSupportedLanguage, SUPPORTED_LANGUAGES } from '../languages.js';
 import { translateDocument, warmTranslations } from '../translation.js';
 import { translationEnabled } from '../config.js';
 import { buildSeries } from './trends.js';
-import type { MeasurementName } from '../store/index.js';
+import { approvalFor, startVisitor, visitorHashOf, type Approval } from '../share-visitor.js';
+import { accessRequestMail } from '../accounts.js';
+import { getMailer } from '../mail/index.js';
+import { windowLimiter } from '../rate-limit.js';
+import { v4 as uuidv4 } from 'uuid';
+import { streamReply } from './ndjson.js';
+import { chatEnabled, publicUrl } from '../config.js';
+import { getChatLlm } from '../llm/index.js';
+import { askSharedAgent } from '../chat/agent.js';
+import { MAX_QUESTION, MAX_TURN, MAX_TURNS, trimHistory } from '../chat/index.js';
+import { logger } from '../logger.js';
+import { describeError } from '../failure.js';
+import type { ChatTurn } from '../llm/types.js';
+import type { ChatProgress } from '../chat/index.js';
+import { sharedTestNames } from '../chat/share-tests.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -21,6 +35,12 @@ export interface PublicShareRouteOptions {
    * recipient's URL and it has to return the app, not JSON.
    */
   appShellPath?: string;
+  /** Access requests: per source, and per link. Options so tests drive the real limiters (as for login). */
+  requestPerSource?: { max: number; timeWindow: string };
+  requestPerLink?: { max: number; windowMs: number };
+  /** Questions from a recipient: per source, and per link. Each costs model calls, and anyone with the link can ask. */
+  chatPerSource?: { max: number; timeWindow: string };
+  chatPerLink?: { max: number; windowMs: number };
 }
 
 /**
@@ -44,6 +64,9 @@ async function logAccess(
   const ip = (req.headers['x-real-ip'] as string) ?? req.socket.remoteAddress ?? null;
   await store.shareLinks.logAccess(linkId, new Date().toISOString(), ip, countView);
 }
+
+/** Requests waiting on one link at once. */
+const MAX_WAITING = 5;
 
 const DEAD_LINK_PAGE =
   '<!doctype html><html lang="en"><head><meta charset="utf-8">' +
@@ -86,8 +109,11 @@ export async function publicShareRoutes(
 
     if (!link) return reply.status(410).send({ error: 'link expired or revoked' });
 
-    // Log every data access — this is where medical data actually flows
-    await logAccess(store, req, link.id, { countView: true });
+    // M-19: a link that needs approval reads nothing until this browser has been approved. Logged either way (P7),
+    // but only a read that was allowed counts as a view.
+    const approval = await approvalFor(store, req, link);
+    await logAccess(store, req, link.id, { countView: approval === 'open' });
+    if (approval !== 'open') return reply.status(403).send({ error: 'approval required', approval });
 
     // P2: an unresolvable scope returns nothing. This was S-1: the old chain
     // skipped every branch when scope_value was absent and ran the query
@@ -135,8 +161,57 @@ export async function publicShareRoutes(
     const link = await store.shareLinks.findLiveByTokenHash(hashShareToken(req.params.token));
     if (!link) return reply.status(410).send({ error: 'link expired or revoked' });
     await logAccess(store, req, link.id, { countView: false });
-    return reply.header('Cache-Control', 'no-store').send({ language: link.language, languages: SUPPORTED_LANGUAGES, translation: translationEnabled() });
+    // `approval` is what the page needs to decide between asking for access, waiting, and showing the documents.
+    const approval = await approvalFor(store, req, link);
+    return reply.header('Cache-Control', 'no-store').send({ language: link.language, languages: SUPPORTED_LANGUAGES, translation: translationEnabled(), approval, chat: link.allowChat && chatEnabled() });
   });
+
+  // A visitor asks to be let in. The first request from a browser gives it its cookie and tells the owner (by mail, if
+  // there is a mailer; the request is on the Share links page either way); asking again changes nothing and sends
+  // nothing. Bounded three ways: per source here, per link below, and a cap on how many wait at once (the store).
+  const perLink = windowLimiter(
+    opts.requestPerLink ?? { max: 10, windowMs: 60 * 60 * 1000 },
+    req => hashShareToken((req.params as { token?: string }).token ?? ''),
+    'too many requests for this link, try again later',
+  );
+  app.post<{ Params: { token: string }; Body: { note?: unknown } }>(
+    '/api/share/:token/access-request',
+    { config: { rateLimit: opts.requestPerSource ?? { max: 10, timeWindow: '1 minute' } }, preHandler: perLink },
+    async (req, reply) => {
+      const store = getStore();
+      const link = await store.shareLinks.findLiveByTokenHash(hashShareToken(req.params.token));
+      if (!link) return reply.status(410).send({ error: 'link expired or revoked' });
+      await logAccess(store, req, link.id, { countView: false });
+      if (!link.requireApproval) return reply.header('Cache-Control', 'no-store').send({ approval: 'open' as Approval });
+
+      const existing = await approvalFor(store, req, link);
+      if (existing !== 'needed') return reply.header('Cache-Control', 'no-store').send({ approval: existing });
+
+      // Text from a stranger: cut short, control characters out. The owner sees it as text and it is not in the mail.
+      const raw = typeof req.body?.note === 'string' ? req.body.note : '';
+      const note = raw.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 120) || null;
+      const userAgent = String(req.headers['user-agent'] ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 200) || null;
+      const ip = (req.headers['x-real-ip'] as string) ?? req.socket.remoteAddress ?? null;
+
+      const visitor = visitorHashOf(req) ?? startVisitor(reply);
+      const id = uuidv4();
+      const requestedAt = new Date().toISOString();
+      const created = await store.shareLinks.createRequest(link.id, { id, visitorHash: visitor, note, ipAddress: ip, userAgent, requestedAt }, MAX_WAITING);
+      if (!created) return reply.status(429).send({ error: 'too many requests are waiting for this link' });
+
+      // After the response, as for account mail: how long the provider takes is not the visitor's business.
+      const mailer = getMailer();
+      if (mailer.enabled) {
+        const owner = await store.users.findById(link.userId);
+        if (owner) {
+          void mailer.send(accessRequestMail(owner.email, publicUrl(`/share-requests/${id}`), requestedAt, ip)).catch(err => {
+            req.log.error({ shareLinkId: link.id, err: err instanceof Error ? err.message : String(err) }, 'could not send access request mail');
+          });
+        }
+      }
+      return reply.status(202).header('Cache-Control', 'no-store').send({ approval: 'pending' as Approval });
+    },
+  );
 
   /**
    * The live link for a presented token with its scope checked, logged first (P7), or null after the
@@ -152,7 +227,9 @@ export async function publicShareRoutes(
     const link = await store.shareLinks.findLiveByTokenHash(hashShareToken(req.params.token));
     if (!link) { reply.status(410).send({ error: 'link expired or revoked' }); return null; }
 
-    await logAccess(store, req, link.id, { countView });
+    const approval = await approvalFor(store, req, link);
+    await logAccess(store, req, link.id, { countView: countView && approval === 'open' });
+    if (approval !== 'open') { reply.status(403).send({ error: 'approval required', approval }); return null; }
     try {
       resolveStoredScope(link.scope, link.scopeValue);
     } catch (err) {
@@ -243,23 +320,7 @@ export async function publicShareRoutes(
       const opened = await openLink(req, reply, false);
       if (!opened) return;
       const { link, store } = opened;
-      const byName = new Map<string, MeasurementName>();
-      for (const doc of await store.documents.listForShare(link)) {
-        for (const m of await store.measurements.listForDocument(link.userId, doc.id)) {
-          const held = byName.get(m.canonical);
-          const newer = !held || (m.taken_on ?? '') >= (held.latest_taken_on ?? '');
-          byName.set(m.canonical, {
-            canonical: m.canonical,
-            name: newer ? m.name : held.name,
-            unit: newer ? m.unit : held.unit,
-            count: (held?.count ?? 0) + 1,
-            latest_value_text: newer ? m.value_text : held.latest_value_text,
-            latest_taken_on: newer ? m.taken_on : held.latest_taken_on,
-            latest_flag: newer ? m.flag : held.latest_flag,
-          });
-        }
-      }
-      return reply.header('Cache-Control', 'no-store').send([...byName.values()].sort((a, b) => a.name.localeCompare(b.name)));
+      return reply.header('Cache-Control', 'no-store').send(await sharedTestNames(link.userId, await store.documents.listForShare(link)));
     },
   );
 
@@ -277,6 +338,62 @@ export async function publicShareRoutes(
       const series = buildSeries(canonical, (await store.measurements.series(link.userId, canonical)).filter(p => shared.has(p.document_id)));
       if (!series) return reply.status(404).send({ error: 'not found' });
       return reply.header('Cache-Control', 'no-store').send(series);
+    },
+  );
+
+  // A recipient's question about what the link shares (SECURITY.md M-20). Only for a link the owner allowed chat on, and only
+  // once the link is open to this browser (approval, scope). The agent reads the owner's store, so it is held to
+  // `listForShare(link)` in code (`Scope`), not by its prompt; nothing is stored, and the earlier turns come from the page.
+  const chatPerLink = windowLimiter(
+    opts.chatPerLink ?? { max: 60, windowMs: 60 * 60 * 1000 },
+    req => hashShareToken((req.params as { token?: string }).token ?? ''),
+    'too many questions for this link, try again later',
+  );
+  app.post<{ Params: { token: string }; Body: { question?: unknown; history?: unknown; document_id?: unknown; stream?: unknown } }>(
+    '/api/share/:token/chat',
+    { config: { rateLimit: opts.chatPerSource ?? { max: 10, timeWindow: '1 minute' } }, preHandler: chatPerLink },
+    async (req, reply) => {
+      const { question, history: sent, document_id: documentId, stream } = req.body ?? {};
+      if (typeof question !== 'string' || !question.trim() || question.length > MAX_QUESTION) {
+        return reply.status(400).send({ error: `question is required, at most ${MAX_QUESTION} characters` });
+      }
+      let history: ChatTurn[] = [];
+      if (sent !== undefined) {
+        const ok = Array.isArray(sent) && sent.length <= MAX_TURNS * 2 && sent.every(t => t && (t.role === 'user' || t.role === 'assistant') && typeof t.content === 'string' && t.content.length <= MAX_TURN * 4);
+        if (!ok) return reply.status(400).send({ error: 'history must be a few earlier turns' });
+        history = trimHistory((sent as ChatTurn[]).map(t => ({ role: t.role, content: t.content })));
+      }
+      if (documentId !== undefined && (typeof documentId !== 'string' || documentId.length > 64)) return reply.status(400).send({ error: 'document_id must be an id' });
+
+      const opened = await openLink(req, reply, false);
+      if (!opened) return;
+      const { link, store } = opened;
+      // One 404 for "not on this link" and "switched off", as for a scan the link does not allow.
+      if (!link.allowChat || !chatEnabled()) return reply.status(404).send({ error: 'not found' });
+      const model = getChatLlm().agentModel?.() ?? null;
+      if (!model) return reply.status(409).send({ error: 'questions are not available right now' });
+
+      const docs = await store.documents.listForShare(link);
+      const ask = (progress: ChatProgress) => askSharedAgent(model, link.userId, docs, link.label ?? null, question.trim(), history, typeof documentId === 'string' ? documentId : null, progress);
+      // `looked` says what the agent searched for, in the recipient's own words; it is not for them.
+      const visible = (answered: Awaited<ReturnType<typeof ask>>) => { if (!answered) return null; const { looked: _looked, ...rest } = answered; return rest; };
+
+      // The same lines as the owner's chat (routes/ndjson.ts); all refusals are above, before the first byte.
+      if (stream === true) {
+        return streamReply(reply, async progress => {
+          const answered = visible(await ask(progress));
+          if (progress.signal?.aborted) return null;
+          return answered ? { type: 'done', reply: answered } : { type: 'error', status: 502, error: 'could not answer just now' };
+        }, 'answered for a share');
+      }
+      try {
+        const answered = visible(await ask({}));
+        if (!answered) return reply.status(502).send({ error: 'could not answer just now' });
+        return reply.header('Cache-Control', 'no-store').send(answered);
+      } catch (err) {
+        logger.warn('a shared question could not be answered', { shareLinkId: link.id, error: describeError(err) });
+        return reply.status(502).send({ error: 'could not answer just now' });
+      }
     },
   );
 

@@ -10,6 +10,8 @@ export interface SourceFile {
   error_message: string | null;
   /** False from when an upload is read until the owner confirms how its pages were grouped: its documents are held back meanwhile. */
   grouping_confirmed: boolean;
+  /** The conversation the file was attached in, if it was attached in the chat. */
+  chat_conversation_id: string | null;
 }
 
 export interface Page {
@@ -91,6 +93,10 @@ export interface ShareLink {
   include_scans: boolean;
   /** The language the recipient's page starts in, if the owner chose one. */
   language: string | null;
+  /** A visitor's browser must be approved by the owner before it reads anything. */
+  require_approval: boolean;
+  /** The recipient may ask questions about what the link shares. Off unless the owner ticked it. */
+  allow_chat: boolean;
 }
 
 export interface UnstructuredElement {

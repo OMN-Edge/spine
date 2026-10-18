@@ -3,8 +3,8 @@ import { rmSync } from 'fs';
 import path from 'path';
 import { getStore } from '../store/index.js';
 import { getJobStatus } from '../ingestion/pipeline.js';
-import { acceptFile, newUploadPath, retryFailedUpload, saveStream } from '../ingestion/accept-upload.js';
-import { importZip } from '../archive/import.js';
+import { retryFailedUpload } from '../ingestion/accept-upload.js';
+import { acceptParts } from '../ingestion/accept-parts.js';
 import { similarityEnabled } from '../similarity/index.js';
 import { removeUploadFiles } from '../ingestion/remove-upload.js';
 import { rereadDocuments } from '../ingestion/document-reading.js';
@@ -15,6 +15,10 @@ import { getAiReading, isReadingPages, startAiReading } from '../ingestion/ai-re
 import { loadLlmConfig, loadParserConfig } from '../config.js';
 import { chooseModel } from '../llm/index.js';
 import { requireAuth } from './middleware.js';
+import { v4 as uuidv4 } from 'uuid';
+import { applyRegroup, RegroupError } from '../ingestion/regroup.js';
+import { openQuestions } from '../matching/index.js';
+import { getRegroupJob, isAnalysingPages, startRegroupAnalysis } from '../regroup/jobs.js';
 import type { Document } from '../types.js';
 
 
@@ -25,11 +29,6 @@ function documentSummary(doc: Document) {
     page_start: doc.page_start, page_end: doc.page_end, reviewed: doc.reviewed,
   };
 }
-
-/** A document or a photo. */
-const MAX_FILE_BYTES = 200 * 1024 * 1024;
-/** A zip of them, which the request limit in `index.ts` must allow. */
-const MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;
 
 /** One request cannot ask for an unbounded number of images to be sent. */
 const MAX_PAGES_PER_READING = 200;
@@ -87,35 +86,7 @@ export async function sourceFileRoutes(app: FastifyInstance) {
   });
 
   app.post('/api/source-files/upload', async (req, reply) => {
-    const parts = req.parts();
-    const results: unknown[] = [];
-
-    for await (const part of parts) {
-      if (part.type !== 'file') continue;
-
-      const ext = path.extname(part.filename ?? '.pdf') || '.pdf';
-      const { fileId, filePath } = newUploadPath(req.userId, ext);
-      // A zip may hold many files, so the request limit is its limit; anything else is one document or photo.
-      const { checksum, truncated, zip } = await saveStream(part.file, filePath, { zip: MAX_UPLOAD_BYTES, other: MAX_FILE_BYTES });
-
-      if (zip) {
-        try {
-          if (truncated) results.push({ skipped: true, reason: 'too_large', filename: part.filename ?? null });
-          else results.push(...(await importZip(req.userId, filePath, part.filename ?? null)));
-        } finally {
-          rmSync(filePath, { force: true }); // the zip itself is not kept: its contents are
-        }
-        continue;
-      }
-      if (truncated) {
-        rmSync(filePath, { force: true });
-        results.push({ skipped: true, reason: 'too_large', filename: part.filename ?? null });
-        continue;
-      }
-      results.push(await acceptFile(req.userId, { id: fileId, path: filePath, filename: part.filename ?? null, checksum }));
-    }
-
-    return reply.send(results);
+    return reply.send(await acceptParts(req.userId, req.parts()));
   });
 
   // Try a failed upload again, as it was first read. No image is sent unless it would have been the first time.
@@ -249,6 +220,69 @@ export async function sourceFileRoutes(app: FastifyInstance) {
     }
 
     return reply.status(202).send(startAiReading(req.userId, id, pageIds as string[], model, strategy, thinking && strategy === 'model'));
+  });
+
+  // What this upload introduced that may be the same as something already held (a doctor, a test, a tag, a provider), and a code a
+  // document printed that is not the directory's: the questions the owner still has to answer (SECURITY.md M-26). Worked out now, from the
+  // current state, so an answered or merged pair is not there.
+  app.get<{ Params: { id: string } }>('/api/source-files/:id/matches', async (req, reply) => {
+    if (!(await getStore().sourceFiles.findFor(req.userId, req.params.id))) return reply.status(404).send({ error: 'not found' });
+    return reply.header('Cache-Control', 'no-store').send({ questions: await openQuestions(req.userId, req.params.id) });
+  });
+
+  // "No, these are different" (or "keep the directory's code"): remembered, so the same question is not asked again. "Yes" is the
+  // merge itself, made through the ordinary merge route.
+  app.post<{ Body: { id?: unknown; decision?: unknown } }>('/api/match-decisions', async (req, reply) => {
+    const { id, decision } = req.body ?? {};
+    const parsed = typeof id === 'string' && id.length <= 400 ? /^(doctor|test|tag|provider|code):(.+)$/.exec(id) : null;
+    if (!parsed) return reply.status(400).send({ error: 'id must be the id of a question' });
+    if (decision !== 'different' && decision !== 'keep') return reply.status(400).send({ error: 'decision must be different or keep' });
+    await getStore().matchDecisions.add(req.userId, parsed[1], parsed[2], new Date().toISOString());
+    return reply.send({ ok: true });
+  });
+
+  // Which pages of a mixed upload belong together (SECURITY.md M-24). The text read from the pages goes to the configured model
+  // provider, as it did to read the documents, one call per candidate group; it runs in the background, the plan is kept, and the
+  // app starts a conversation when it is ready. Nothing is changed by it.
+  app.post<{ Params: { id: string } }>('/api/source-files/:id/regroup/analyze', { config: { rateLimit: { max: 6, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const { id } = req.params;
+    const file = await getStore().sourceFiles.findFor(req.userId, id);
+    if (!file) return reply.status(404).send({ error: 'not found' });
+    if (file.status !== 'done' || getJobStatus(id)?.status === 'processing' || isReadingPages(id)) {
+      return reply.status(409).send({ error: 'this file is still being processed' });
+    }
+    return reply.status(202).send(startRegroupAnalysis(req.userId, id));
+  });
+
+  // The state of the analysis and the plan it found, if there is one.
+  app.get<{ Params: { id: string } }>('/api/source-files/:id/regroup', async (req, reply) => {
+    const { id } = req.params;
+    const store = getStore();
+    if (!(await store.sourceFiles.findFor(req.userId, id))) return reply.status(404).send({ error: 'not found' });
+    const saved = await store.regroupPlans.get(req.userId, id);
+    return reply.header('Cache-Control', 'no-store').send({ job: getRegroupJob(id) ?? { status: 'idle' }, plan: saved?.plan ?? null });
+  });
+
+  // Make the groups the owner chose: each is a list of page ids, in reading order. Pages not named stay with the pages they were with.
+  // The documents that changed are unreviewed and returned, to be read again (POST .../extract), as after any regrouping.
+  app.post<{ Params: { id: string }; Body: { groups?: unknown } }>('/api/source-files/:id/regroup', async (req, reply) => {
+    const { id } = req.params;
+    const store = getStore();
+    const file = await store.sourceFiles.findFor(req.userId, id);
+    if (!file) return reply.status(404).send({ error: 'not found' });
+    const groups = req.body?.groups;
+    if (!Array.isArray(groups) || groups.length === 0 || groups.length > 200 || !groups.every(g => Array.isArray(g) && g.length > 0 && g.length <= 500 && g.every(p => typeof p === 'string'))) {
+      return reply.status(400).send({ error: 'groups must be lists of page ids' });
+    }
+    if (file.status !== 'done' || getJobStatus(id)?.status === 'processing' || isReadingPages(id) || isAnalysingPages(id)) {
+      return reply.status(409).send({ error: 'this file is still being processed' });
+    }
+    try {
+      return reply.send(await applyRegroup(req.userId, id, groups as string[][], uuidv4));
+    } catch (err) {
+      if (err instanceof RegroupError) return reply.status(err.code === 'not_found' ? 404 : err.code === 'inconsistent' ? 409 : 400).send({ error: err.message });
+      throw err;
+    }
   });
 
   app.get<{ Params: { id: string } }>('/api/source-files/:id/ai-reading', async (req, reply) => {

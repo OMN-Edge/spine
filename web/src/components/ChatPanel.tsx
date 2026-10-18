@@ -5,6 +5,10 @@ import { useI18n } from '../i18n';
 import { documentTitle } from '../titles';
 import { PAGE_NAMES, useChat } from './ChatProvider';
 import Markdown from './Markdown';
+import ProposalCard from './ProposalCard';
+import { draftText, stepText } from './chatSteps';
+import UploadNoticeMessage, { RegroupNoticeMessage } from './UploadNoticeMessage';
+import AttachmentMessage from './AttachmentMessage';
 
 /** What a cited section is called on the page. */
 const SECTION_NAMES: Record<string, string> = {
@@ -29,14 +33,10 @@ function numbered(text: string, sources: ChatSource[]): ChatSource[] {
   return order;
 }
 
-/** The text of an answer still being written: citations are only numbered once the whole reply is in, so none shows half-made. */
-const draftText = (text: string) =>
-  text.replace(/\s*\[(?:[DTCS]\d+(?:\.[a-z]+)?[,;\s]*)+\]/g, '').replace(/\s*\[[^\]]*$/, '');
-
 /** Questions worth asking from where the person is. */
 function suggestionsFor(page: string, t: (s: string) => string): string[] {
   if (page === 'document') return [t('Explain this document in plain words'), t('Is anything outside the reference range?')];
-  return [t('What was my last hemoglobin, and how did it change?'), t('Which tests did the cardiologist ask for, and where are the results?')];
+  return [t('What was my last hemoglobin, and how did it change?'), t('Which tests did the cardiologist ask for, and where are the results?'), t('Prepare a link to share my latest cardiology visit and its tests')];
 }
 
 /**
@@ -48,6 +48,10 @@ export default function ChatPanel() {
   const { t, tn } = useI18n();
   const chat = useChat();
   const [text, setText] = useState('');
+  // Files waiting to be sent with the next message: pasted, dropped or chosen.
+  const [files, setFiles] = useState<File[]>([]);
+  const [dragging, setDragging] = useState(false);
+  const picker = useRef<HTMLInputElement>(null);
   // The conversation, or the list of them. Not remembered: the panel opens on the conversation.
   const [view, setView] = useState<'chat' | 'history'>('chat');
   // A delete asks again, in place: this is which one is waiting for the yes ('all' for every conversation).
@@ -76,37 +80,48 @@ export default function ChatPanel() {
 
   if (!chat || !chat.enabled) return null;
   const { turns, busy, conversations, draft } = chat;
-  const stepText = (step: ChatStep) => {
-    const what = step.detail ?? '';
-    switch (step.kind) {
-      case 'search': return t('Searching for “{what}”', { what });
-      case 'open': return t('Reading “{what}”', { what });
-      case 'series': return t('Looking at the values of “{what}”', { what });
-      case 'tests': return t('Checking which tests you have');
-      case 'connections': return t('Following the connections of “{what}”', { what });
-    }
-  };
+  const stepLine = (step: ChatStep) => stepText(t, step);
   // On a phone the panel covers the page, so following a citation closes it.
   const follow = () => { if (window.matchMedia('(max-width: 767px)').matches) chat.setOpen(false); };
 
   const send = async () => {
     const question = text.trim();
-    if (!question || busy) return;
-    setText('');
-    await chat.send(question);
+    if ((!question && files.length === 0) || busy) return;
+    const attached = files;
+    setText(''); setFiles([]);
+    if (attached.length > 0) await chat.attach(attached, question);
+    else await chat.send(question);
+  };
+  // Pasting a file (a screenshot or a document copied in Finder or Files), dropping one, or choosing one all add it to the message.
+  const addFiles = (list: FileList | File[] | null | undefined) => {
+    const added = Array.from(list ?? []).filter(f => f.size > 0);
+    if (added.length > 0) setFiles(prev => [...prev, ...added].slice(0, 20));
   };
 
   if (!open) {
+    // The app started a conversation (an upload finished): a note beside the button says so, and opens it.
+    const waiting = conversations?.find(c => c.unread) ?? null;
     return (
+      <>
+      {chat.unread > 0 && waiting && (
+        <button
+          type="button" onClick={() => { chat.setOpen(true); void chat.openConversation(waiting.id); }}
+          className="fixed bottom-16 right-5 z-30 max-w-[16rem] rounded-2xl rounded-br-md border border-blue-200 bg-white px-3.5 py-2 text-left text-sm text-gray-800 shadow-md transition hover:shadow-lg"
+        >
+          {t(waiting.title)} <span className="text-blue-600">· {t('take a look')}</span>
+        </button>
+      )}
       <button
-        type="button" onClick={() => chat.setOpen(true)} aria-label={t('Ask your records')}
+        type="button" onClick={() => chat.setOpen(true)} aria-label={chat.unread > 0 ? t('Ask your records') + ` (${chat.unread})` : t('Ask your records')}
         className="fixed bottom-5 right-5 z-30 flex items-center gap-2 rounded-full border border-gray-200 bg-white/95 py-2.5 pl-3.5 pr-4 text-sm text-gray-700 shadow-md backdrop-blur transition hover:shadow-lg hover:text-gray-900"
       >
         <svg viewBox="0 0 24 24" className="h-4 w-4 text-blue-600" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8L12 3zM18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8L18 15z" />
         </svg>
         {t('Ask')}
+        {chat.unread > 0 && <span className="ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-semibold text-white" aria-hidden="true">{chat.unread}</span>}
       </button>
+      </>
     );
   }
 
@@ -117,12 +132,16 @@ export default function ChatPanel() {
 
   return (
     <aside
+      onDragOver={e => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragging(true); } }}
+      onDragLeave={e => { if (e.currentTarget === e.target) setDragging(false); }}
+      onDrop={e => { if (e.dataTransfer.files.length > 0) { e.preventDefault(); addFiles(e.dataTransfer.files); } setDragging(false); }}
       role="complementary" aria-label={t('Ask your records')}
       className={`fixed inset-0 z-40 flex flex-col bg-white transition duration-200 ease-out sm:inset-auto sm:bottom-3 sm:right-3 sm:top-[4.25rem] sm:w-[25rem] sm:rounded-2xl sm:border sm:border-gray-200 sm:shadow-[0_10px_40px_-12px_rgba(15,23,42,0.2)] ${entered ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0'}`}
     >
+      {dragging && <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl border-2 border-dashed border-blue-400 bg-blue-50/80 text-sm font-medium text-blue-700">{t('Drop files to attach them')}</div>}
       <div className="flex items-start justify-between gap-3 px-4 pb-2 pt-3.5">
         <div className="min-w-0">
-          <h2 className="truncate text-[0.95rem] font-medium text-gray-900">{view === 'history' ? t('Conversations') : (chat.title ?? t('Ask your records'))}</h2>
+          <h2 className="truncate text-[0.95rem] font-medium text-gray-900">{view === 'history' ? t('Conversations') : (turns[0]?.notice || turns[0]?.regroupNotice ? t(chat.title ?? '') : (chat.title ?? t('Ask your records')))}</h2>
           <p className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-gray-400">
             <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden="true" />
             {t('Looking at: {page}', { page: t(PAGE_NAMES[chat.page] ?? PAGE_NAMES.other) })}
@@ -153,7 +172,7 @@ export default function ChatPanel() {
                 {conversations.map(c => (
                   <li key={c.id} className={`group flex items-center gap-1 rounded-lg ${c.id === chat.currentId ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
                     <button type="button" onClick={async () => { await chat.openConversation(c.id); setView('chat'); }} className="min-w-0 flex-1 px-3 py-2 text-left">
-                      <span className="block truncate text-sm text-gray-900">{c.title}</span>
+                      <span className={`block truncate text-sm text-gray-900 ${c.unread ? 'font-semibold' : ''}`}>{c.unread && <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-blue-600 align-middle" aria-label={t('Unread')} />}{c.origin ? t(c.title) : c.title}</span>
                       <span className="block text-xs text-gray-400">{c.updated_at.slice(0, 10)} · {tn(c.message_count, '{n} message', '{n} messages')}</span>
                     </button>
                     {confirming === c.id ? (
@@ -196,7 +215,13 @@ export default function ChatPanel() {
               <p className="text-xs leading-relaxed text-gray-400">{t('Each question sends your words and the summaries and results of the matching documents to the AI model this server uses. Your conversations are kept in your archive, in History, until you delete them.')}</p>
             </div>
           )}
-          {turns.map((turn, i) => turn.role === 'user' ? (
+          {turns.map((turn, i) => turn.attachment ? (
+            <AttachmentMessage key={i} files={turn.attachment.files} onSettled={() => void chat.reload()} />
+          ) : turn.regroupNotice ? (
+            <div key={i}><RegroupNoticeMessage notice={turn.regroupNotice} busy={busy} onAsk={q => void chat.send(q)} /></div>
+          ) : turn.notice ? (
+            <div key={i}><UploadNoticeMessage notice={turn.notice} busy={busy} onAsk={q => void chat.send(q)} /></div>
+          ) : turn.role === 'user' ? (
             <div key={i} className="flex justify-end">
               <p className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-blue-50 px-3.5 py-2 text-sm text-gray-900">{turn.content}</p>
             </div>
@@ -239,6 +264,7 @@ export default function ChatPanel() {
                           ))}
                         </ol>
                       )}
+                      {(turn.proposals ?? []).map(p => <ProposalCard key={p.id} proposal={p} />)}
                     </>
                   );
                 })()
@@ -250,7 +276,7 @@ export default function ChatPanel() {
               {draft.steps.length > 0 && (
                 <ul className="mb-2 space-y-0.5 text-xs text-gray-400">
                   {draft.steps.slice(-3).map((step, n, shown) => (
-                    <li key={draft.steps.length - shown.length + n} className={`truncate ${n === shown.length - 1 && !draft.text ? 'text-gray-500' : ''}`}>{stepText(step)}</li>
+                    <li key={draft.steps.length - shown.length + n} className={`truncate ${n === shown.length - 1 && !draft.text ? 'text-gray-500' : ''}`}>{stepLine(step)}</li>
                   ))}
                 </ul>
               )}
@@ -272,11 +298,27 @@ export default function ChatPanel() {
 
       {view === 'chat' && (
         <form onSubmit={e => { e.preventDefault(); void send(); }} className="px-3 pb-3 pt-1">
+          {chat.attachError && <p className="px-1 pb-1 text-xs text-red-600" role="alert">{t(chat.attachError)}</p>}
+          {files.length > 0 && (
+            <ul className="mb-1.5 flex flex-wrap gap-1.5" aria-label={t('Files to send')}>
+              {files.map((f, i) => (
+                <li key={`${f.name}-${i}`} className="flex max-w-full items-center gap-1 rounded-full border border-gray-200 bg-white py-0.5 pl-2.5 pr-1 text-xs text-gray-700">
+                  <span className="truncate">{f.name}</span>
+                  <button type="button" onClick={() => setFiles(prev => prev.filter((_, n) => n !== i))} aria-label={t('Remove this file')} title={t('Remove this file')} className="rounded-full px-1.5 text-gray-400 hover:text-red-600">×</button>
+                </li>
+              ))}
+            </ul>
+          )}
           <div className="flex items-end gap-2 rounded-2xl border border-gray-200 bg-gray-50/60 py-1.5 pl-3.5 pr-1.5 transition focus-within:border-blue-300 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100">
+            <input ref={picker} type="file" multiple accept=".pdf,.zip,application/pdf,application/zip,image/*" className="hidden" onChange={e => { addFiles(e.target.files); e.target.value = ''; }} />
+            <button type="button" onClick={() => picker.current?.click()} disabled={busy} title={t('Attach a file')} aria-label={t('Attach a file')} className="-ml-1.5 mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50">
+              <svg viewBox="0 0 24 24" className="h-4.5 w-4.5" width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 12.5l-8.6 8.6a5 5 0 0 1-7-7l9-9a3.3 3.3 0 0 1 4.7 4.7l-9 9a1.7 1.7 0 0 1-2.4-2.4l8.3-8.3" /></svg>
+            </button>
             <textarea
               ref={input} value={text} onChange={e => setText(e.target.value)} rows={1} maxLength={1000}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
-              aria-label={t('Your question')} placeholder={t('Ask about your records…')}
+              onPaste={e => { if (e.clipboardData.files.length > 0) { e.preventDefault(); addFiles(e.clipboardData.files); } }}
+              aria-label={t('Your question')} placeholder={files.length > 0 ? t('Add a message, or just send…') : t('Ask about your records, or paste a file…')}
               className="max-h-32 min-h-[2rem] flex-1 resize-none bg-transparent py-1.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none"
             />
             {busy ? (
@@ -284,7 +326,7 @@ export default function ChatPanel() {
                 <span className="h-2.5 w-2.5 rounded-sm bg-white" aria-hidden="true" />
               </button>
             ) : (
-              <button type="submit" disabled={!text.trim()} title={t('Ask')} aria-label={t('Ask')} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white transition hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400">
+              <button type="submit" disabled={!text.trim() && files.length === 0} title={t('Ask')} aria-label={t('Ask')} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white transition hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400">
                 <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
               </button>
             )}

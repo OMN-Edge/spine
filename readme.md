@@ -154,8 +154,9 @@ From the Share Links page, create a link scoped to all history, a tag, a date ra
 
 ```bash
 cd server
-npm test              # run all tests
+npm test                   # run all tests (no model is ever called)
 npm run test:coverage      # run with coverage report
+npm run test:integration   # the flows against the real model, sidecar and PDFs from .env (minutes, a few hundred model calls)
 ```
 
 Run `npm test` (or `npm run test:coverage`) in `server/`. Statement and branch coverage are both above 90%; the figures change with every commit, so they are not copied here.
@@ -189,9 +190,13 @@ Run `npm test` (or `npm run test:coverage`) in `server/`. Statement and branch c
 | Care chains | `linking.test.ts` | Candidates without a model, what the model is shown, the relation-to-link mapping and the date check, proposals replaced while confirmed and dismissed links stay, dismissed pairs not offered again, other users and set-aside documents excluded, cascade deletes, the routes' 404s |
 | Library | `management.test.ts` | Tags, providers and tests: counts, rename, merge, remove, share links following a tag, another user's entries |
 
+### Integration tests
+
+`npm run test:integration` runs whole flows with the model named in `.env`, the Python sidecar and poppler, on a fresh in-memory database and a temporary data directory (never your `data/`, never the real mailer): attach a mixed export in the chat and follow it to the end, ask about the records, ask the assistant to share, correct, tag and tidy, a recipient asking about a shared link, and the calls the pipeline makes. It asserts what must hold whatever the model says. See [docs/testing.md](docs/testing.md); each scenario in [docs/scenarios.md](docs/scenarios.md) says whether it is covered (`auto`, `live`, `hand`).
+
 ### What isn't covered
 
-- `ingestion-client.ts` — real HTTP call to the Python sidecar; needs a live sidecar. So the sidecar adapter's box scaling is tested against synthetic output, **not a real sidecar**
+- `ingestion-client.ts` — real HTTP call to the Python sidecar; the unit tests use synthetic output, and the integration suite (`journey.it.ts`) runs it against a real sidecar on text PDFs
 - `rasterize.ts` — PDF rasterizer; needs actual PDF files
 - the `invoke` paths in `llm/adapters/*` — need live provider credentials, so no real page has been read by a model; the image message was checked against both providers' request builders and the configuration refusals are covered
 
