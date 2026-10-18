@@ -502,14 +502,21 @@ describe('other ways in do not skip it', () => {
   });
 
   it('the only code path that issues a session is the login pair', async () => {
-    // A guard on the guard: any new route that assigns session.userId would need adding here
-    // and justifying in SECURITY.md, since it is a bypass unless it checks the factor.
+    // A guard on the guard: a session is assigned in one function (sessions.ts startSession), and only the
+    // two login steps in routes/auth.ts may call it. A new caller is a bypass unless it checks the factor,
+    // and needs adding here and justifying in SECURITY.md.
     const { readFileSync, readdirSync } = await import('fs');
-    const dir = new URL('../routes/', import.meta.url);
-    const assigners = readdirSync(dir)
+    const routes = new URL('../routes/', import.meta.url);
+    const assigners = readdirSync(routes)
       .filter(f => f.endsWith('.ts'))
-      .filter(f => /session\.userId\s*=/.test(readFileSync(new URL(f, dir), 'utf8')));
-    expect(assigners).toEqual(['auth.ts']);
+      .filter(f => /session\.userId\s*=/.test(readFileSync(new URL(f, routes), 'utf8')));
+    expect(assigners).toEqual([]);
+    expect(readFileSync(new URL('../sessions.ts', import.meta.url), 'utf8')).toMatch(/session\.userId\s*=/);
+
+    const callers = readdirSync(routes)
+      .filter(f => f.endsWith('.ts'))
+      .filter(f => /startSession\(/.test(readFileSync(new URL(f, routes), 'utf8')));
+    expect(callers).toEqual(['auth.ts']);
   });
 });
 

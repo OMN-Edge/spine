@@ -9,6 +9,7 @@ import path from 'path';
 import type { AuthRouteOptions } from '../../routes/auth.js';
 import type { AccountRouteOptions } from '../../routes/accounts.js';
 import type { TotpRouteOptions } from '../../routes/totp.js';
+import { TRUSTED_PROXIES } from '../../trust-proxy.js';
 import { OWNER_EMAIL, TEST_PASSWORD, createTestUser } from './seed.js';
 
 /**
@@ -58,7 +59,7 @@ export async function buildTestApp(options: TestAppOptions = {}) {
 
   // trustProxy matches production (index.ts): req.ip must come from
   // X-Forwarded-For so the per-source rate limiter keys on the real client.
-  const app = Fastify({ logger: false, trustProxy: true });
+  const app = Fastify({ logger: false, trustProxy: TRUSTED_PROXIES });
 
   const routes: RegisteredRoute[] = [];
   app.addHook('onRoute', route => {
@@ -80,6 +81,7 @@ export async function buildTestApp(options: TestAppOptions = {}) {
   const { authRoutes } = await import('../../routes/auth.js');
   const { accountRoutes } = await import('../../routes/accounts.js');
   const { totpRoutes } = await import('../../routes/totp.js');
+  const { sessionRoutes } = await import('../../routes/sessions.js');
   const { documentRoutes } = await import('../../routes/documents.js');
   const { sourceFileRoutes } = await import('../../routes/source-files.js');
   const { exportRoutes } = await import('../../routes/export.js');
@@ -101,6 +103,7 @@ export async function buildTestApp(options: TestAppOptions = {}) {
     ...options.auth,
   });
   await app.register(totpRoutes, options.totp ?? {});
+  await app.register(sessionRoutes);
   await app.register(accountRoutes, {
     registration: 'operator',
     // Generous by default so a test's own requests do not trip them; the tests

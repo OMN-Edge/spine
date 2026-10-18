@@ -9,6 +9,7 @@ import { pageRepository } from './pages.js';
 import { shareLinkRepository } from './share-links.js';
 import { sourceFileRepository } from './source-files.js';
 import { regroupPlanRepository } from './regroup-plans.js';
+import { sessionRepository } from './sessions.js';
 import { matchDecisionRepository } from './match-decisions.js';
 import { tagRepository } from './tags.js';
 import { translationRepository } from './translations.js';
@@ -48,6 +49,7 @@ function storeOver(db: Database, depth: number): Store {
     conversations: conversationRepository(db),
     regroupPlans: regroupPlanRepository(db),
     matchDecisions: matchDecisionRepository(db),
+    sessions: sessionRepository(db),
     maintenance: maintenanceRepository(db),
 
     /**

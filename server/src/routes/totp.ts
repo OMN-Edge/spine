@@ -1,3 +1,5 @@
+import { endOtherSessions } from '../sessions.js';
+import { mailAfter, securityChangeMail } from '../notify.js';
 import type { FastifyInstance } from 'fastify';
 import { getStore } from '../store/index.js';
 import { verifyPassword } from '../passwords.js';
@@ -91,6 +93,9 @@ export async function totpRoutes(app: FastifyInstance, opts: TotpRouteOptions = 
 
     // Ends the user's other sessions, which were issued without the factor (P13).
     (req.session as SessionData).authVersion = authVersion;
+    await endOtherSessions(req.userId, req.session as SessionData);
+    const account = await store.users.findById(req.userId);
+    if (account) mailAfter(req, req.userId, securityChangeMail(account.email, 'Two-factor sign-in was turned on', new Date().toISOString()), 'two-factor change');
     req.log.info({ userId: req.userId }, 'two-factor enabled');
     return reply.send({ ok: true, recovery_codes: codes });
   });
@@ -104,6 +109,8 @@ export async function totpRoutes(app: FastifyInstance, opts: TotpRouteOptions = 
 
       const authVersion = await getStore().users.disableTotp(user.id);
       (req.session as SessionData).authVersion = authVersion;
+      await endOtherSessions(user.id, req.session as SessionData);
+      mailAfter(req, user.id, securityChangeMail(user.email, 'Two-factor sign-in was turned off', new Date().toISOString()), 'two-factor change');
       req.log.info({ userId: user.id }, 'two-factor disabled');
       return reply.send({ ok: true });
     },

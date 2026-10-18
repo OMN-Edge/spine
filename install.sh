@@ -39,6 +39,22 @@ function install_deps() {
   echo "Node: $(node --version), npm: $(npm --version)"
 }
 
+# SECURITY.md S-32: a build with a known high or critical advisory in a runtime dependency stops.
+# SPINE_SKIP_AUDIT=1 skips it (offline build); the advisory database needs the network.
+function audit_dependencies() {
+  if [[ "${SPINE_SKIP_AUDIT:-}" == "1" ]]; then
+    echo "Skipping the dependency audit (SPINE_SKIP_AUDIT=1)"
+    return
+  fi
+  echo "Auditing dependencies..."
+  for dir in server web; do
+    (cd "${SPINE_DIR}/${dir}" && npm audit --omit=dev --audit-level=high) || {
+      echo "ERROR: ${dir} has a high or critical advisory (see above). Update it, or SPINE_SKIP_AUDIT=1 to build anyway." >&2
+      exit 1
+    }
+  done
+}
+
 function build() {
   echo "Building web app..."
   cd "${SPINE_DIR}/web"
@@ -49,6 +65,8 @@ function build() {
   cd "${SPINE_DIR}/server"
   npm ci
   npm run build
+
+  audit_dependencies
 
   echo "Setting up Python venv for ingestion service..."
   cd "${SPINE_DIR}/ingestion-service"

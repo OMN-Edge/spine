@@ -20,6 +20,7 @@ import Library from './pages/Library';
 import DoctorPage from './pages/DoctorPage';
 import ShareLinks from './pages/ShareLinks';
 import ChatPanel from './components/ChatPanel';
+import ReauthDialog from './components/ReauthDialog';
 import { ChatProvider, useChat } from './components/ChatProvider';
 import PublicShareView from './pages/PublicShareView';
 import ShareRequestPage from './pages/ShareRequest';
@@ -150,6 +151,7 @@ export default function App() {
   return (
     <AuthContext.Provider value={{ authenticated, email, setAuthenticated }}>
       <ChatProvider authenticated={authenticated}>
+      <ReauthDialog />
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />

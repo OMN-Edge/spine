@@ -3,6 +3,7 @@ import { api } from '../api';
 import { useAuth } from '../auth';
 import { buttonClass, inputClass, Notice } from '../components/AuthCard';
 import TwoFactor from '../components/TwoFactor';
+import Sessions from '../components/Sessions';
 import { useI18n } from '../i18n';
 
 export default function Account() {
@@ -47,6 +48,8 @@ export default function Account() {
       </form>
 
       <TwoFactor />
+
+      <Sessions />
     </div>
   );
 }

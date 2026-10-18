@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { existsSync, mkdtempSync } from 'fs';
 import { tmpdir } from 'os';
 import path from 'path';
@@ -23,7 +24,7 @@ Object.assign(process.env, {
   SPINE_DB_PATH: ':memory:',
   DATA_DIR: path.join(scratch, 'data'),
   SPINE_BACKUP_DIR: path.join(scratch, 'backups'),
-  SESSION_SECRET: 'integration-secret-that-is-at-least-32-characters-long',
+  SESSION_SECRET: randomBytes(32).toString('hex'), // throwaway: this run's database is in memory
   SPINE_MAILER: 'none',
   SPINE_REGISTRATION: 'operator',
   NODE_ENV: 'test',

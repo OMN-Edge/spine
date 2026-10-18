@@ -10,6 +10,8 @@ import {
 } from '../passwords.js';
 import { authenticate, requireAuth, type SessionData } from './middleware.js';
 import { windowLimiter } from '../rate-limit.js';
+import { startSession, endOtherSessions } from '../sessions.js';
+import { mailAfter, newSignInMail, securityChangeMail } from '../notify.js';
 import { checkSecondFactor, hasSecondFactor } from '../second-factor.js';
 
 /**
@@ -127,8 +129,8 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions = 
         return reply.send({ second_factor_required: true });
       }
 
-      session.userId = user.id;
-      session.authVersion = user.auth_version;
+      const device = await startSession(req, reply, user.id, user.auth_version);
+      if (device === 'new') mailAfter(req, user.id, newSignInMail(user.email, new Date().toISOString()), 'new sign-in');
 
       req.log.info({ ip: req.ip, userId: user.id }, 'login succeeded');
       return reply.send({ ok: true, email: user.email });
@@ -185,9 +187,8 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions = 
       }
 
       await req.session.regenerate();
-      const fresh = req.session as SessionData;
-      fresh.userId = user.id;
-      fresh.authVersion = user.auth_version;
+      const device = await startSession(req, reply, user.id, user.auth_version);
+      if (device === 'new') mailAfter(req, user.id, newSignInMail(user.email, new Date().toISOString()), 'new sign-in');
 
       req.log.info({ ip: req.ip, userId: user.id }, 'login succeeded with second factor');
       return reply.send({ ok: true, email: user.email });
@@ -195,6 +196,8 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions = 
   );
 
   app.post('/api/auth/logout', async (req, reply) => {
+    const { userId, sid } = req.session as SessionData;
+    if (userId && sid) await getStore().sessions.revoke(userId, sid);
     await req.session.destroy();
     return reply.send({ ok: true });
   });
@@ -233,6 +236,8 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions = 
 
       const authVersion = await store.users.setPassword(user.id, await hashPassword(next));
       (req.session as SessionData).authVersion = authVersion;
+      await endOtherSessions(user.id, req.session as SessionData);
+      mailAfter(req, user.id, securityChangeMail(user.email, 'Your password was changed', new Date().toISOString()), 'password change');
 
       req.log.info({ userId: user.id }, 'password changed');
       return reply.send({ ok: true });

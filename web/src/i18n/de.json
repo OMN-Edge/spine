@@ -825,5 +825,19 @@
  "tag": "Schlagwort",
  "test": "Untersuchung",
  "“{name}”: this document prints the professional code {printed}, but your directory has {directory}. Is it the same doctor?": "„{name}“: Dieses Dokument nennt den Berufscode {printed}, Ihr Verzeichnis hat {directory}. Ist es derselbe Arzt?",
- "Please check this match|Please check these {n} matches": "Bitte prüfen Sie diese Übereinstimmung|Bitte prüfen Sie diese {n} Übereinstimmungen"
+ "Please check this match|Please check these {n} matches": "Bitte prüfen Sie diese Übereinstimmung|Bitte prüfen Sie diese {n} Übereinstimmungen",
+ "Too many attempts, try again in a few minutes": "Zu viele Versuche, versuchen Sie es in einigen Minuten erneut",
+ "That did not match": "Das stimmt nicht überein",
+ "Confirm it is you": "Bestätigen Sie, dass Sie es sind",
+ "Type your password again to continue. This is asked before the whole archive is taken or a link shows page images.": "Geben Sie Ihr Passwort erneut ein, um fortzufahren. Das wird verlangt, bevor das ganze Archiv mitgenommen wird oder ein Link Seitenbilder zeigt.",
+ "Could not load your sign-ins": "Anmeldungen konnten nicht geladen werden",
+ "Could not end the sign-in": "Die Anmeldung konnte nicht beendet werden",
+ "Where you are signed in": "Wo Sie angemeldet sind",
+ "If you do not recognise one, end it and change your password.": "Wenn Sie eine nicht erkennen, beenden Sie sie und ändern Sie Ihr Passwort.",
+ "A browser": "Ein Browser",
+ "This browser": "Dieser Browser",
+ "Signed in {when}": "Angemeldet {when}",
+ "last used {when}": "zuletzt benutzt {when}",
+ "End": "Beenden",
+ "Sign out everywhere else": "Überall sonst abmelden"
 }

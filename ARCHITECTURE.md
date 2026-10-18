@@ -59,7 +59,7 @@ The author's instance is a Raspberry Pi with the SQLite adapter, the local parse
 Five. The third arrives with multi-user and is the one a routine change can break without anything failing.
 
 1. **Internet → nginx.** All inbound traffic is untrusted. nginx terminates TLS and is the only publicly bound listener.
-2. **nginx → Fastify.** Fastify trusts `X-Forwarded-*` (`trustProxy: true`), so it must never be directly reachable — otherwise those headers are attacker-controlled. It binds `127.0.0.1` unless `SPINE_HOST` overrides it (`config.ts`).
+2. **nginx → Fastify.** Fastify trusts `X-Forwarded-*` only from the loopback proxy (`trust-proxy.ts`) and nginx overwrites `X-Forwarded-For` with the peer it saw, so a client cannot choose the address the rate limits key on (SECURITY.md **S-31**); Fastify must still never be directly reachable — otherwise those headers are attacker-controlled. It binds `127.0.0.1` unless `SPINE_HOST` overrides it (`config.ts`).
 3. **User A ↔ User B.** Two authenticated users of the same instance. Neither may read, modify, or enumerate the other's source files, documents, pages, fields, tags or share links. **Enforced in the store layer, not in route handlers** — see [Multi-user model](#multi-user-model).
 4. **Authenticated user vs. share-token reader.** A token grants read-only access to a subset of *one* user's documents and nothing else.
 5. **Host → third parties.** The only egress: the inference provider, and the mail provider for account links. See [Egress](#egress-what-leaves-the-host).
@@ -282,7 +282,7 @@ Metadata still leaks: a sender, subject or domain naming a service tells the pro
 
 ### Identity
 
-**Local accounts only.** Email plus a password hashed with argon2id (12–256 characters, 19 MiB / 2 passes / 1 lane). No external identity provider: an instance must work with no internet reachability beyond its chosen inference provider. Sessions are server-side cookies holding a user id and that user's `auth_version`; every request re-resolves them against the database, so a changed password ends other sessions on the next request. Login issues a new session id, and an unknown email is indistinguishable from a wrong password in both answer and time.
+**Local accounts only.** Email plus a password hashed with argon2id (12–256 characters, 19 MiB / 2 passes / 1 lane). No external identity provider: an instance must work with no internet reachability beyond its chosen inference provider. Sessions are server-side cookies holding a user id, that user's `auth_version` and the id of a `user_sessions` row; every request re-resolves them against the database, so a changed password ends other sessions on the next request, an unused sign-in ends after 24 hours and any after 14 days, and the owner can list and end them from the account page (SECURITY.md **M-27**). The whole-archive export and a share link that shows page images ask for the password again. Login issues a new session id, and an unknown email is indistinguishable from a wrong password in both answer and time.
 
 **Second factor (optional, per user):** TOTP, so it too needs no external service. After a user enrols from the account page, the right password only starts a *pending* login (held in the session for five minutes), and a valid code or a recovery code completes it. Reset links do not bypass it. Details and residual risks: SECURITY.md **M-12**, **S-20**, **S-21**, **S-22**.
 

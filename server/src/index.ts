@@ -1,3 +1,5 @@
+import { sessionRoutes } from './routes/sessions.js';
+import { TRUSTED_PROXIES } from './trust-proxy.js';
 import Fastify from 'fastify';
 import fastifyCookie from '@fastify/cookie';
 import fastifySession from '@fastify/session';
@@ -27,7 +29,7 @@ import { hashLegacyShareTokens } from './hash-legacy-tokens.js';
 import { getStore } from './store/index.js';
 import { getChatLlm, LlmConfigError } from './llm/index.js';
 import { checkParserRequirements, getParser, ParserConfigError } from './parser/index.js';
-import { loadConfig, ConfigError, type Config } from './config.js';
+import { loadConfig, ConfigError, sessionLimits, type Config } from './config.js';
 import { useLogger } from './logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -49,7 +51,7 @@ const config = loadConfigOrExit();
 
 const app = Fastify({
   logger: true,
-  trustProxy: true, // nginx sits in front
+  trustProxy: TRUSTED_PROXIES, // nginx sits in front, on this host (S-31)
 });
 
 // From here on, modules that log without the app (the parser, the LLM) write to the
@@ -112,7 +114,7 @@ await app.register(fastifySession, {
   cookie: {
     secure: config.isProduction,
     httpOnly: true,
-    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+    maxAge: sessionLimits().absoluteMs, // the row in user_sessions ends it sooner when it is idle (S-33)
     sameSite: 'strict',
   },
 });
@@ -134,6 +136,7 @@ decorateAuth(app);
 // Register API routes
 await app.register(authRoutes);
 await app.register(totpRoutes);
+await app.register(sessionRoutes);
 await app.register(accountRoutes, { registration: config.registration });
 await app.register(documentRoutes);
 await app.register(sourceFileRoutes);

@@ -88,7 +88,7 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
         if (!isPlausibleEmail(address)) {
           return reply.status(400).send({ error: 'a valid email address is required' });
         }
-        const problem = checkPasswordPolicy(password);
+        const problem = checkPasswordPolicy(password, { email: address });
         if (problem) return reply.status(400).send({ error: problem });
 
         const store = getStore();
@@ -194,6 +194,7 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
       // Receiving the link proves the mailbox is theirs.
       await store.users.markVerified(userId, now);
       await store.users.invalidateTokens(userId, 'reset');
+      await store.sessions.revokeExcept(userId, null);
 
       req.log.info({ userId }, 'password reset by link');
       return reply.send({ ok: true });

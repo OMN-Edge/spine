@@ -237,6 +237,18 @@ describe('POST /api/auth/login — rate limiting (P5, S-2)', () => {
     expect((await from('203.0.113.2')).statusCode).toBe(401);
   });
 
+  it('keys the per-source limit on the address the proxy saw, not one the client wrote (S-31)', async () => {
+    limited = await buildTestApp({
+      auth: { loginRateLimit: { max: 2, timeWindow: '10 minutes' } },
+    });
+
+    // nginx would send "<what the client wrote>, <the real peer>"; only the last is the proxy's word.
+    const forged = (n: number) => ({ 'x-forwarded-for': `198.51.100.${n}, 203.0.113.7` });
+    expect((await attempt(limited, 'wrong-password-entirely', forged(1))).statusCode).toBe(401);
+    expect((await attempt(limited, 'wrong-password-entirely', forged(2))).statusCode).toBe(401);
+    expect((await attempt(limited, 'wrong-password-entirely', forged(3))).statusCode).toBe(429);
+  });
+
   it('does not rate limit logout or me', async () => {
     limited = await buildTestApp({
       auth: { loginRateLimit: { max: 1, timeWindow: '10 minutes' } },

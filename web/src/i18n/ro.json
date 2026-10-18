@@ -825,5 +825,19 @@
  "tag": "etichetă",
  "test": "analiză",
  "“{name}”: this document prints the professional code {printed}, but your directory has {directory}. Is it the same doctor?": "„{name}”: acest document tipărește codul profesional {printed}, dar directorul dvs. are {directory}. Este același medic?",
- "Please check this match|Please check these {n} matches": "Verificați această potrivire|Verificați aceste {n} potriviri|Verificați aceste {n} de potriviri"
+ "Please check this match|Please check these {n} matches": "Verificați această potrivire|Verificați aceste {n} potriviri|Verificați aceste {n} de potriviri",
+ "Too many attempts, try again in a few minutes": "Prea multe încercări, reîncercați peste câteva minute",
+ "That did not match": "Nu se potrivește",
+ "Confirm it is you": "Confirmați că sunteți dumneavoastră",
+ "Type your password again to continue. This is asked before the whole archive is taken or a link shows page images.": "Introduceți din nou parola pentru a continua. Se cere înainte de a lua întreaga arhivă sau de a arăta imaginile paginilor printr-un link.",
+ "Could not load your sign-ins": "Nu s-au putut încărca autentificările",
+ "Could not end the sign-in": "Nu s-a putut încheia autentificarea",
+ "Where you are signed in": "Unde sunteți autentificat",
+ "If you do not recognise one, end it and change your password.": "Dacă nu recunoașteți una, încheiați-o și schimbați parola.",
+ "A browser": "Un browser",
+ "This browser": "Acest browser",
+ "Signed in {when}": "Autentificat {when}",
+ "last used {when}": "folosit ultima dată {when}",
+ "End": "Încheie",
+ "Sign out everywhere else": "Deconectare de peste tot în rest"
 }

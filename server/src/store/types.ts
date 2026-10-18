@@ -65,6 +65,7 @@ export interface Store {
   conversations: ConversationRepository;
   regroupPlans: RegroupPlanRepository;
   matchDecisions: MatchDecisionRepository;
+  sessions: SessionRepository;
   maintenance: MaintenanceRepository;
 
   /**
@@ -556,6 +557,34 @@ export interface MatchDecisionRepository {
   list(userId: string, kind: string): Promise<Set<string>>;
   /** Forgets every answer, so the questions are asked afresh. */
   removeAll(userId: string): Promise<number>;
+}
+
+/** A sign-in the owner can see and end (SECURITY.md S-33). */
+export interface SessionRecord {
+  id: string;
+  created_at: string;
+  last_seen_at: string;
+  user_agent: string;
+  address: string;
+}
+
+export interface SessionRepository {
+  open(userId: string, session: { id: string; at: string; userAgent: string; address: string }): Promise<void>;
+  get(userId: string, id: string): Promise<SessionRecord | null>;
+  touch(userId: string, id: string, at: string): Promise<void>;
+  /** Newest activity first. */
+  list(userId: string): Promise<SessionRecord[]>;
+  /** False for one that is not the user's or is already gone. */
+  revoke(userId: string, id: string): Promise<boolean>;
+  /** Every session but one (a password change, a second-factor change); returns how many ended. */
+  revokeExcept(userId: string, keepId: string | null): Promise<number>;
+  /** Rows started before the cutoff or idle since it, so the table does not keep what could never be valid. */
+  prune(userId: string, startedBefore: string, idleSince: string): Promise<number>;
+  /**
+   * Records a browser by the digest of its device cookie. `first` when this account had none yet (nobody to tell),
+   * `known` when this browser has signed in before, `new` when others have but this one has not.
+   */
+  rememberDevice(userId: string, deviceHash: string, at: string): Promise<'first' | 'known' | 'new'>;
 }
 
 export interface TagWithCount { id: number; name: string; document_count: number }

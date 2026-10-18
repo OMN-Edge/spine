@@ -825,5 +825,19 @@
  "tag": "étiquette",
  "test": "examen",
  "“{name}”: this document prints the professional code {printed}, but your directory has {directory}. Is it the same doctor?": "« {name} » : ce document imprime le code professionnel {printed}, mais votre répertoire a {directory}. Est-ce le même médecin ?",
- "Please check this match|Please check these {n} matches": "Veuillez vérifier cette correspondance|Veuillez vérifier ces {n} correspondances"
+ "Please check this match|Please check these {n} matches": "Veuillez vérifier cette correspondance|Veuillez vérifier ces {n} correspondances",
+ "Too many attempts, try again in a few minutes": "Trop de tentatives, réessayez dans quelques minutes",
+ "That did not match": "Cela ne correspond pas",
+ "Confirm it is you": "Confirmez que c’est vous",
+ "Type your password again to continue. This is asked before the whole archive is taken or a link shows page images.": "Saisissez à nouveau votre mot de passe pour continuer. Il est demandé avant de prendre toute l’archive ou de montrer les images des pages par un lien.",
+ "Could not load your sign-ins": "Impossible de charger vos connexions",
+ "Could not end the sign-in": "Impossible de mettre fin à la connexion",
+ "Where you are signed in": "Où vous êtes connecté",
+ "If you do not recognise one, end it and change your password.": "Si vous n’en reconnaissez pas une, terminez-la et changez votre mot de passe.",
+ "A browser": "Un navigateur",
+ "This browser": "Ce navigateur",
+ "Signed in {when}": "Connecté {when}",
+ "last used {when}": "dernière utilisation {when}",
+ "End": "Terminer",
+ "Sign out everywhere else": "Se déconnecter partout ailleurs"
 }

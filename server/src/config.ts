@@ -561,3 +561,34 @@ export function chatEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return !/^(0|false|no|off)$/i.test(env.SPINE_CHAT ?? '');
 }
 
+
+export interface SessionLimits {
+  /** A sign-in unused for this long ends (`SPINE_SESSION_IDLE_HOURS`, default 24). */
+  idleMs: number;
+  /** A sign-in ends this long after it began, however much it is used (`SPINE_SESSION_DAYS`, default 14). */
+  absoluteMs: number;
+}
+
+/** How long a sign-in lasts (SECURITY.md S-33). A bad value falls back to the default rather than lengthening a session. */
+export function sessionLimits(env: NodeJS.ProcessEnv = process.env): SessionLimits {
+  const positive = (raw: string | undefined, fallback: number, max: number) => {
+    const n = Number(raw);
+    return raw !== undefined && raw !== '' && Number.isFinite(n) && n > 0 ? Math.min(n, max) : fallback;
+  };
+  return {
+    idleMs: positive(env.SPINE_SESSION_IDLE_HOURS, 24, 24 * 30) * 60 * 60 * 1000,
+    absoluteMs: positive(env.SPINE_SESSION_DAYS, 14, 90) * 24 * 60 * 60 * 1000,
+  };
+}
+
+/**
+ * Model calls allowed a day, whoever asks (`SPINE_LLM_DAILY_CALLS`, default 5000, 0 for no ceiling). The per-route
+ * limits bound one caller; this bounds the instance, so a leaked share link with chat on, or a loop, cannot run up
+ * the provider's bill unnoticed (SECURITY.md S-35). A bad value falls back to the default.
+ */
+export function llmDailyCalls(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.SPINE_LLM_DAILY_CALLS;
+  if (raw === undefined || raw === '') return 5000;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 0 ? n : 5000;
+}

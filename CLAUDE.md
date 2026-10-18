@@ -25,6 +25,9 @@ spine/
 │       ├── cli.ts          # operator commands: create-user, set-password, reset-link, disable-2fa, delete-user, list-users
 │       ├── accounts.ts     # verify/reset tokens and links, neutral mail text, deleteAccount()
 │       ├── rate-limit.ts   # windowLimiter(): per-key limits the Fastify plugin cannot stack
+│       ├── trust-proxy.ts  # the only addresses whose X-Forwarded-For is believed (loopback); limiters key on req.ip
+│       ├── sessions.ts     # startSession() (the one place a session is assigned), sessionIsLive(): idle/absolute expiry, device notices
+│       ├── notify.ts       # account mail (new browser, password or 2FA change); never records
 │       ├── parser/         # parser interface: types.ts (the contract), index.ts (registry), adapters/{sidecar,ocr,multimodal,hybrid}.ts (`sidecar.ts` is the `text` parser), ocr.ts (Tesseract)
 │       ├── logger.ts       # the logger for modules without the app; index.ts points it at the structured log
 │       ├── mail/           # mailer interface: types.ts, index.ts (registry), adapters/{none,brevo}.ts
@@ -37,7 +40,7 @@ spine/
 │       ├── share-scope.ts  # the only place a share-link scope is validated or resolved
 │       ├── share-token.ts  # token issuing + sha256-at-rest; shape predicates
 │       ├── share-visitor.ts # the visitor cookie and approvalFor(): whether this browser may read an approval-required link
-│       ├── llm/            # LLM interface: types.ts, prompts.ts, chat-llm.ts, index.ts (registry), adapters/
+│       ├── llm/            # LLM interface: types.ts, prompts.ts, chat-llm.ts, budget.ts (daily call allowance), index.ts (registry), adapters/
 │       ├── backup.ts       # VACUUM INTO snapshot + originals mirror; run by spine-backup.timer
 │       ├── store/         # store interface: types.ts (interfaces), index.ts (registry), sqlite/ (the only adapter)
 │       ├── hash-legacy-tokens.ts  # S-4 boot rewrite of plaintext share tokens
@@ -80,6 +83,9 @@ cd server && npm run cli -- list-users
 # Tests
 cd server && npm test
 cd server && npm run test:coverage
+
+# The checks CI runs (tests, typecheck, dependency audit, gitleaks, semgrep): needs `brew install gitleaks semgrep` for `scan`
+./scripts/check.sh [server|web|scan|all]
 ```
 
 ## Environment variables (`.env`)
@@ -100,6 +106,7 @@ cd server && npm run test:coverage
 | `SPINE_CHAT` | `off` removes the chat panel and the recipient's chat on share links. Default on: each question sends the question and the matching documents' summary cards, notes and results (never pages) to `SPINE_LLM_PROVIDER` (SECURITY.md **M-18**) |
 | `SPINE_LINKING` | `off` to stop looking for links between documents (a consultation and the tests it asked for, a follow-up). Default on: it sends the summary cards of up to seven documents per call to `SPINE_LLM_PROVIDER` (SECURITY.md **M-16**). Links added by hand still work |
 | `SPINE_LLM_CONCURRENCY` | Model calls in flight at once (1-16, default 4); DB writes stay sequential |
+| `SPINE_LLM_DAILY_CALLS` | Model calls allowed a day for the whole instance (default 5000, `0` for no ceiling); past it a call is refused before it reaches the provider (SECURITY.md **S-35**) |
 | `SPINE_LLM_MAX_RETRIES` | Retries inside the adapter (default 2) |
 | `SESSION_SECRET` | ≥32 char random string for cookie signing |
 | `SPINE_DOMAIN` | Domain nginx serves from (e.g. `spine.yourdomain.com`) |
@@ -115,6 +122,8 @@ cd server && npm run test:coverage
 | `SPINE_HOST` | Interface Fastify binds (default `127.0.0.1` — nginx is the only public listener) |
 | `SPINE_BACKUP_DIR` | Snapshot + originals mirror target (default beside `data/`; set it to removable or network storage to survive media loss) |
 | `SPINE_BACKUP_KEEP` | Snapshots to retain (default `7`) |
+| `SPINE_SESSION_IDLE_HOURS`, `SPINE_SESSION_DAYS` | A sign-in ends after this long unused (24) or this long in all (14 days); a bad value gives the default (SECURITY.md **M-27**) |
+| `SPINE_SKIP_AUDIT` | `1` lets `install.sh -b` build despite a high or critical dependency advisory (offline builds); default is to stop (**S-32**) |
 
 `SESSION_SECRET` (≥32 chars) is validated at startup and by `install.sh -s`: a missing, short or placeholder value stops the process rather than falling back to a default (SECURITY.md **P3**). There is no shared password: users sign in with an email and their own password.
 
@@ -177,6 +186,9 @@ Target architecture, trust boundaries, interfaces/adapters and the migration pat
 - **Care chains** — `document_links` (`from` earlier, `to` later; `requests` | `follow_up` | `same_episode`; `auto`/`owner`; `proposed`/`confirmed`/`dismissed`). `linking/` finds candidates from the data with no model (no candidate, no call), then one `linking` call judges the cards; **a model's answer is only ever a `proposed` link**, and code drops a request or follow-up that runs backwards in time. Re-searching replaces only the proposals for the pairs it judged again, and never a confirmed or dismissed link; the owner's notes go into the linking cards and into the extraction prompt (as context, never as a source of values); links are looked for only once the upload's grouping is confirmed (and after a re-reading); a dismissed pair is never proposed again. Restore calls no model, so it does not look for links; the whole-archive export carries the ones that exist (all states, so the owner's decisions survive) and a restore writes them back once every file is restored, those whose two documents were both restored. Owner only; deleted with the document, the upload and the account. ARCHITECTURE.md **Care chains**.
 - **Library** — tags, providers (`documents.provider`) and tests (`measurements.canonical` + `measurement_aliases`) are managed in `/library` (and doctors on their own page): rename (an existing name merges), remove. Tags always go through `cleanTag`; a tag rename/merge rewrites share links' tag scope in the same transaction. Extraction is given the person's tags and test names to prefer. ARCHITECTURE.md **The Library**.
 - **Share scoping is fail-closed** — `share-scope.ts` is the single place a scope is validated. Creation rejects a scope it cannot fully resolve; the read path re-resolves the stored row and serves nothing if it cannot. No branch there may widen a query (SECURITY.md **P2**).
+- **A sign-in is a row the owner can end** — `user_sessions` makes the cookie valid (`authenticate` checks it every request: idle 24 h, absolute 14 days); `startSession` is the only place `session.userId` is assigned and only the two login steps call it (a test fails otherwise); the whole-archive export and a share link with `include_scans` need `requireRecentAuth` (password typed in the last ten minutes, `POST /api/auth/reauth`; the web `req()` opens the dialog on a `reauth_required` 403). SECURITY.md **M-27**.
+- **Limits keyed on `req.ip` need a trusted proxy list, not `true`** — `trust-proxy.ts`, and nginx overwrites `X-Forwarded-For` with `$remote_addr`; either alone makes it safe. SECURITY.md **S-31**.
+- **Every model request is counted** — `spendModelCall()` in `llm/budget.ts` runs in `invokeValidated` and in the agent's `callStreaming`; a new path to a model must call it. **S-35**.
 - **Login is rate limited** — per source via `@fastify/rate-limit`, plus an instance-wide cap written by hand because the plugin only applies its first hook per request. Both are options on `authRoutes` so tests drive the real limiter.
 - **Interpolated SQL identifiers come from a whitelist** — `PATCH /api/documents/:id` builds its `SET` clause from column names, so request-body keys are checked against `UPDATABLE_COLUMNS` first. A `Body` type is not a runtime guard.
 

@@ -1,0 +1,33 @@
+# The same checks as scripts/check.sh (SECURITY.md S-32, S-36). Runs on GitLab.com shared runners or your own.
+stages: [test, scan]
+
+default:
+  image: node:22
+
+server:
+  stage: test
+  script: ./scripts/check.sh server
+
+web:
+  stage: test
+  script: ./scripts/check.sh web
+
+gitleaks:
+  stage: scan
+  image:
+    name: zricethezav/gitleaks:latest
+    entrypoint: [""]
+  variables:
+    GIT_DEPTH: 0
+  script: gitleaks detect --source . --redact
+
+semgrep:
+  stage: scan
+  image: semgrep/semgrep:latest
+  # Same rules and exclusions as scripts/check.sh (see the comment there); the image has no bash, so they are repeated here.
+  script: >
+    semgrep scan --error --metrics=off
+    --config p/typescript --config p/nodejs --config p/security-audit
+    --exclude-rule javascript.express.security.audit.xss.direct-response-write.direct-response-write
+    --exclude __tests__ --exclude __integration__
+    server/src web/src

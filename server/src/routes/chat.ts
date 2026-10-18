@@ -1,3 +1,4 @@
+import { ModelBudgetError } from '../llm/budget.js';
 import type { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
 import { requireAuth } from './middleware.js';
@@ -183,6 +184,7 @@ export async function chatRoutes(app: FastifyInstance, opts: ChatRouteOptions = 
         if (progress.signal?.aborted) return null;
         // A model's reply can quote the records; describeError drops the quote, so the log holds no medical text.
         logger.warn('a question could not be answered', { error: describeError(err) });
+        if (err instanceof ModelBudgetError) return { status: 429, error: 'the daily limit on model calls is reached; it starts again at midnight UTC' };
         return { status: 502, error: 'could not answer just now' };
       }
       if (!answered) return { status: 502, error: 'could not answer just now' };

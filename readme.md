@@ -201,3 +201,7 @@ Run `npm test` (or `npm run test:coverage`) in `server/`. Statement and branch c
 - the `invoke` paths in `llm/adapters/*` — need live provider credentials, so no real page has been read by a model; the image message was checked against both providers' request builders and the configuration refusals are covered
 
 Tests use in-memory SQLite (`SPINE_DB_PATH=:memory:`) with a `resetStore()` call between files so no state leaks across test files. Fixtures are built through the store interface, not raw SQL.
+
+## Licence
+
+GNU Affero General Public License v3.0 only (AGPL-3.0-only), see [LICENSE](LICENSE). Anyone who runs a modified version as a network service must offer its users the corresponding source. This is software for holding medical records, provided without warranty: read [SECURITY.md](SECURITY.md) before putting real records on an instance. Whoever runs an instance is the controller of its data.

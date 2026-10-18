@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { exportArchive, exportDocument, type ExportZip } from '../archive/export.js';
 import { logger } from '../logger.js';
-import { requireAuth } from './middleware.js';
+import { requireAuth, requireRecentAuth } from './middleware.js';
 
 /** The zip is built while it is sent, so a large archive never sits whole in memory. */
 function sendZip(reply: FastifyReply, zip: ExportZip) {
@@ -26,7 +26,7 @@ export async function exportRoutes(app: FastifyInstance) {
   });
 
   // Everything the person has.
-  app.get('/api/export', { config: { rateLimit: { max: 6, timeWindow: '1 minute' } } }, async (req, reply) => {
+  app.get('/api/export', { preHandler: requireRecentAuth, config: { rateLimit: { max: 6, timeWindow: '1 minute' } } }, async (req, reply) => {
     const result = await exportArchive(req.userId);
     if (result === 'empty') return reply.status(404).send({ error: 'there is nothing to export yet' });
     return sendZip(reply, result);

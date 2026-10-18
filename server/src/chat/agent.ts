@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { spendModelCall } from '../llm/budget.js';
 import { tool, type ToolRuntime } from '@langchain/core/tools';
 import { AIMessage, HumanMessage, SystemMessage, type AIMessageChunk, type BaseMessage } from '@langchain/core/messages';
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
@@ -299,6 +300,7 @@ export function splitCitations(answer: string): string {
  * stream still works: its whole reply is one piece.
  */
 async function callStreaming(model: BaseChatModel, messages: BaseMessage[], progress: ChatProgress): Promise<AIMessage> {
+  spendModelCall(); // the instance's daily allowance (S-35)
   let whole: AIMessageChunk | AIMessage | undefined;
   let tooling = false;
   let shown = false;

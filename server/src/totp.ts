@@ -147,7 +147,7 @@ export function encryptSecret(userId: string, secret: Buffer): string {
 export function decryptSecret(userId: string, stored: string): Buffer {
   if (!stored.startsWith('v1.')) throw new Error('unknown secret format');
   const raw = Buffer.from(stored.slice(3), 'base64');
-  const decipher = createDecipheriv('aes-256-gcm', key(), raw.subarray(0, 12));
+  const decipher = createDecipheriv('aes-256-gcm', key(), raw.subarray(0, 12), { authTagLength: 16 });
   decipher.setAAD(Buffer.from(userId));
   decipher.setAuthTag(raw.subarray(12, 28));
   return Buffer.concat([decipher.update(raw.subarray(28)), decipher.final()]);

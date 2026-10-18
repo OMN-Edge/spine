@@ -114,6 +114,8 @@ export function userRepository(db: Database): UserRepository {
     'regroup_plans',
     'source_files',
     'tags',
+    'user_sessions',
+    'user_devices',
     'user_tokens',
     'user_recovery_codes',
     'user_totp',

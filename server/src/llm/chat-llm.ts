@@ -1,3 +1,4 @@
+import { spendModelCall } from './budget.js';
 import { readFile } from 'fs/promises';
 import { logger } from '../logger.js';
 import { HumanMessage } from '@langchain/core/messages';
@@ -41,6 +42,7 @@ async function invokeValidated<T>(
   let raw: unknown;
   for (let attempt = 1; ; attempt++) {
     try {
+      spendModelCall();
       raw = await clients[task].invoke(prompt);
       break;
     } catch (err) {

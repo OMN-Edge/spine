@@ -486,3 +486,25 @@ CREATE TRIGGER IF NOT EXISTS doctors_fts_update AFTER UPDATE OF name ON doctors 
   SELECT id, title, doc_type, provider, ai_summary, user_notes, body FROM document_search_source
   WHERE id IN (SELECT d.rowid FROM documents d JOIN document_doctors l ON l.document_id = d.id WHERE l.doctor_id = new.id);
 END;
+
+-- A sign-in the owner can see and end (SECURITY.md S-33). The cookie session itself is in memory; this row is what
+-- makes it valid: a request whose session id has no row here, or whose row is past its idle or absolute limit, is
+-- signed out. `user_agent` and `address` are what the connection reported and prove nothing.
+CREATE TABLE IF NOT EXISTS user_sessions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  last_seen_at TEXT NOT NULL,
+  user_agent TEXT NOT NULL DEFAULT '',
+  address TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id);
+
+-- sha256 of a random cookie each browser holds, to tell "a browser this account has signed in from" from a new one,
+-- so a new one can be mailed about. Not a credential: it grants nothing by itself.
+CREATE TABLE IF NOT EXISTS user_devices (
+  user_id TEXT NOT NULL REFERENCES users(id),
+  device_hash TEXT NOT NULL,
+  first_seen_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, device_hash)
+);

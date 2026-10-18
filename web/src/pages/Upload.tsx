@@ -5,6 +5,7 @@ import SpineLog, { type VertebraState } from '../components/SpineLog';
 import { documentTitle } from '../titles';
 import { whereTo } from '../components/aiTarget';
 import DeleteUpload from '../components/DeleteUpload';
+import { askForPassword } from '../reauth';
 import { msg, useI18n } from '../i18n';
 import type { I18n } from '../i18n';
 
@@ -168,6 +169,16 @@ function UploadRow({ job, onRetry, onDeleted }: { job: JobState; onRetry: () => 
 export default function Upload() {
   const i18n = useI18n();
   const { t, tx } = i18n;
+  // The archive in one step is what a stolen session would take, so the password is asked for first (SECURITY.md S-33).
+  const exportEverything = async () => {
+    try {
+      const { fresh } = await api.auth.reauthStatus();
+      if (!fresh && !(await askForPassword())) return;
+    } catch {
+      return;
+    }
+    window.location.href = '/api/export';
+  };
   const [dragging, setDragging] = useState(false);
   const [jobs, setJobs] = useState<JobState[]>([]);
   // Files the server would not take, by name.
@@ -260,7 +271,7 @@ export default function Upload() {
     <div className="max-w-2xl mx-auto">
       <div className="flex items-baseline justify-between gap-4 mb-6">
         <h1 className="text-2xl font-semibold text-gray-900">{t('Upload')}</h1>
-        <a href="/api/export" download className="text-sm text-blue-600 hover:underline" title={t('Everything you have, as a ZIP you can restore here or keep as a backup')}>{t('Export everything')}</a>
+        <button type="button" onClick={exportEverything} className="text-sm text-blue-600 hover:underline" title={t('Everything you have, as a ZIP you can restore here or keep as a backup')}>{t('Export everything')}</button>
       </div>
 
       <div

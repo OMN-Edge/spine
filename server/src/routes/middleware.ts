@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { REAUTH_WINDOW_MS, sessionIsLive } from '../sessions.js';
 import { getStore, type UserRecord } from '../store/index.js';
 
 declare module 'fastify' {
@@ -24,6 +25,10 @@ export interface PendingLogin {
 export interface SessionData {
   userId?: string;
   authVersion?: number;
+  /** This sign-in's row in `user_sessions` (S-33). */
+  sid?: string;
+  /** When the password was last typed for this session, for actions that ask again (S-33). */
+  reauthAt?: number;
   pending?: PendingLogin;
 }
 
@@ -47,6 +52,11 @@ export async function authenticate(req: FastifyRequest): Promise<UserRecord | nu
     await req.session.destroy();
     return null;
   }
+  // The row is what makes the cookie valid: ended from the list, idle too long or too old, and it is not (S-33).
+  if (!(await sessionIsLive(user.id, session))) {
+    await req.session.destroy();
+    return null;
+  }
   return user;
 }
 
@@ -54,4 +64,21 @@ export async function requireAuth(req: FastifyRequest, reply: FastifyReply) {
   const user = await authenticate(req);
   if (!user) return reply.status(401).send({ error: 'not authenticated' });
   req.userId = user.id;
+}
+
+/** The reply that makes the page ask for the password again (SECURITY.md S-33). */
+export const REAUTH_REQUIRED = { error: 'type your password again to continue', code: 'reauth_required' } as const;
+
+/** Whether the password was typed for this sign-in within the last few minutes. */
+export function recentlyAuthenticated(req: FastifyRequest): boolean {
+  const at = (req.session as SessionData).reauthAt;
+  return typeof at === 'number' && Date.now() - at <= REAUTH_WINDOW_MS;
+}
+
+/**
+ * For the actions a stolen session cookie would use to take everything at once or to widen what a link shows: the
+ * whole-archive export, and a share link that shows page images. Run after `requireAuth`.
+ */
+export async function requireRecentAuth(req: FastifyRequest, reply: FastifyReply) {
+  if (!recentlyAuthenticated(req)) return reply.status(403).send(REAUTH_REQUIRED);
 }

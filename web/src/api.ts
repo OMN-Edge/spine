@@ -1,3 +1,4 @@
+import { askForPassword } from './reauth';
 export type DocType =
   | 'lab_result'
   | 'discharge_note'
@@ -449,7 +450,7 @@ export class ApiError extends Error {
   }
 }
 
-async function req<T>(url: string, options?: RequestInit): Promise<T> {
+async function req<T>(url: string, options?: RequestInit, retried = false): Promise<T> {
   const res = await fetch(url, {
     // Only a request that sends JSON says so. Fastify refuses an empty body that claims to
     // be JSON, so a POST with no body (sign out, extract again, read the whole file again)
@@ -462,6 +463,10 @@ async function req<T>(url: string, options?: RequestInit): Promise<T> {
       error?: string;
       code?: string;
     };
+    // A sensitive action asks for the password again; once it is typed the same request goes through (S-33).
+    if (res.status === 403 && err.code === 'reauth_required' && !retried && (await askForPassword())) {
+      return req<T>(url, options, true);
+    }
     throw new ApiError(err.error ?? res.statusText, res.status, err.code);
   }
   return res.json() as Promise<T>;
@@ -565,6 +570,14 @@ export const api = {
       post<{ ok: boolean }>('/api/auth/reset', { token, password }),
     changePassword: (current: string, next: string) =>
       post<{ ok: boolean }>('/api/auth/password', { current, next }),
+    /** Whether the password was typed recently enough for the actions that ask for it again. */
+    reauthStatus: () => req<{ fresh: boolean }>('/api/auth/reauth'),
+    reauth: (password: string, code?: string) => post<{ ok: boolean }>('/api/auth/reauth', code ? { password, code } : { password }),
+    sessions: {
+      list: () => req<Array<{ id: string; created_at: string; last_seen_at: string; user_agent: string; address: string; current: boolean }>>('/api/auth/sessions'),
+      end: (id: string) => req<{ ok: boolean }>(`/api/auth/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+      endOthers: () => post<{ ok: boolean; ended: number }>('/api/auth/sessions/end-others', {}),
+    },
     totp: {
       status: () => req<{ enabled: boolean; recovery_codes_left: number }>('/api/auth/totp'),
       setup: (password: string) =>

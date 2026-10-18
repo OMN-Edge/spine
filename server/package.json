@@ -1,6 +1,7 @@
 {
   "name": "spine-server",
   "version": "1.0.0",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "engines": {
     "node": ">=22"
@@ -16,21 +17,21 @@
     "test:integration": "SPINE_INTEGRATION=1 vitest run -c vitest.integration.config.ts"
   },
   "dependencies": {
-    "@fastify/cookie": "^9.4.0",
-    "@fastify/multipart": "^8.3.0",
-    "@fastify/rate-limit": "^9.1.0",
-    "@fastify/session": "^10.9.0",
-    "@fastify/static": "^7.0.4",
+    "@fastify/cookie": "^11.1.3",
+    "@fastify/multipart": "^10.1.4",
+    "@fastify/rate-limit": "^11.2.1",
+    "@fastify/session": "^11.1.4",
+    "@fastify/static": "^10.1.6",
     "@langchain/anthropic": "^1.5.12",
     "@langchain/core": "^1.2.17",
     "@langchain/google-vertexai": "^2.3.2",
     "@langchain/langgraph": "^1.5.1",
     "@node-rs/argon2": "^2.2.2",
     "better-sqlite3": "^13.0.3",
-    "fastify": "^4.28.0",
+    "fastify": "^5.12.7",
     "google-auth-library": "^11.3.1",
     "sharp": "^0.35.5",
-    "uuid": "^10.0.0",
+    "uuid": "^14.0.3",
     "yauzl": "^3.4.0",
     "yazl": "^3.3.1",
     "zod": "^4.6.5"
