@@ -4,11 +4,14 @@ import { api, type Document } from '../api';
 import { documentByline, documentTitle } from '../titles';
 import SpineLog from '../components/SpineLog';
 import { useI18n } from '../i18n';
+import { useScreen } from '../components/ChatProvider';
 
 export default function ReviewQueue() {
   const { t, tn } = useI18n();
   const [docs, setDocs] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
+
+  useScreen({ page: 'review', documentIds: docs.slice(0, 30).map(d => d.id) });
 
   useEffect(() => {
     api.documents.listAll({ reviewed: 'false' })

@@ -4,6 +4,7 @@ import { api, type Document } from '../api';
 import { documentByline, documentTitle } from '../titles';
 import SpineLog from '../components/SpineLog';
 import { msg, useI18n } from '../i18n';
+import { useScreen } from '../components/ChatProvider';
 
 /** The server marks each match with \u0001 … \u0002; they become emphasis here, and everything else stays plain text. */
 function Snippet({ text }: { text: string }) {
@@ -25,6 +26,8 @@ export default function Search() {
   const [canMeaning, setCanMeaning] = useState(false);
   const [byMeaning, setByMeaning] = useState(false);
   useEffect(() => { api.sourceFiles.capabilities().then(c => setCanMeaning(!!c.similarity?.enabled)).catch(() => {}); }, []);
+
+  useScreen({ page: 'search', query: query.trim().slice(0, 300) || undefined, documentIds: (docs ?? []).slice(0, 30).map(d => d.id), filters: Object.fromEntries(Object.entries(filters).filter(([, v]) => v)) as Record<string, string> });
 
   const search = useCallback(async () => {
     setLoading(true);

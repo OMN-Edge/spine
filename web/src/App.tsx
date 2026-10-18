@@ -19,6 +19,8 @@ import Doctors from './pages/Doctors';
 import Library from './pages/Library';
 import DoctorPage from './pages/DoctorPage';
 import ShareLinks from './pages/ShareLinks';
+import ChatPanel from './components/ChatPanel';
+import { ChatProvider, useChat } from './components/ChatProvider';
 import PublicShareView from './pages/PublicShareView';
 import { Wordmark } from './components/Logo';
 import { LanguageSwitcher, msg, useI18n } from './i18n';
@@ -40,6 +42,7 @@ function Layout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const chat = useChat();
 
   // A link was followed: the menu has done its job.
   useEffect(() => setMenuOpen(false), [location.pathname]);
@@ -102,7 +105,9 @@ function Layout({ children }: { children: React.ReactNode }) {
           </div>
         )}
       </nav>
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">{children}</main>
+      {/* With the chat open beside it, the page gives it room instead of sitting under it. */}
+      <main className={`max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 transition-[margin] duration-200 ${chat?.enabled && chat.open ? 'sm:mr-[26.5rem] sm:max-w-none' : ''}`}>{children}</main>
+      <ChatPanel />
     </div>
   );
 }
@@ -140,6 +145,7 @@ export default function App() {
 
   return (
     <AuthContext.Provider value={{ authenticated, email, setAuthenticated }}>
+      <ChatProvider authenticated={authenticated}>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
@@ -161,6 +167,7 @@ export default function App() {
         <Route path="/share" element={<PrivateRoute><ShareLinks /></PrivateRoute>} />
         <Route path="/account" element={<PrivateRoute><Account /></PrivateRoute>} />
       </Routes>
+      </ChatProvider>
     </AuthContext.Provider>
   );
 }

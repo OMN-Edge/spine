@@ -396,6 +396,20 @@ On a document page, Care chain shows the consultations and tests around it as a 
 
 Status: auto (`linking`); whether a real model finds the right links and how often it is wrong: real model; screens: not yet checked by hand.
 
+### 6.8 Ask a question of my records
+A round **Ask** button sits in the corner of every page. It opens a panel beside the page (there is no entry for it in the menu); the owner types a question in plain words and gets an answer built only from their own documents, and the conversation follows them from page to page.
+
+- The panel says what page the owner is on. On a document page, "what does this mean?" or "is this value normal?" is about the document on screen, and about the field or result they have selected. On the Timeline or Search it knows what is listed and which filters are on; on an upload's grouping screen it knows the pages and documents and whether the grouping is confirmed.
+- The model decides what to look up: it searches the documents, opens the ones it needs, reads a test's values over time, follows a consultation to the tests it asked for. - The answer is formatted (paragraphs, lists, bold) and cites its sources as small numbers in the text, with the numbered sources listed below it by document title and, for the document on screen, the part of it. Where the answer comes from a part of the document on screen, the link goes to that part: "Measurements", "Extracted fields", "Summary", "Notes", "Doctors", "Care chain"; the page scrolls there and the section is lit for a moment. On a phone the panel closes when a link is followed.
+- When no document matches, it says so. When the documents do not contain the answer, it says that, rather than guessing. It does not diagnose or advise treatment.
+- It reads only. It cannot change a document, a tag or a link.
+- The panel says the answer is a reading of the documents, not medical advice, and what each question sends.
+- **Conversations are kept.** Each is saved in the owner's archive with its answers' sources. The **History** button lists them, most recent first, with the date and how many messages; picking one reopens it to continue (even after a reload or on another device). **New conversation** starts another and leaves the old one in the history. A conversation is deleted from History (a second click confirms), or all of them at once; they also go with the account. A question that failed is not saved. A conversation holds at most 200 messages, after which the panel asks for a new one, and only the 200 most recent conversations are kept.
+- Another account's conversations are never listed or opened. They are not part of an export and a share link cannot reach them.
+- Documents set aside, in an upload whose grouping is not confirmed (other than the one the owner has open), or belonging to another account are never used. Share recipients have no chat. With `SPINE_CHAT=off` there is no button. If the model cannot look things up, or the lookup fails, it answers from a fixed set of documents instead.
+
+Status: auto (`chat`, `chat-agent`); whether a real model decides well what to look up, cites correctly, stays within the records and stays within its limits: real model; screens: not yet checked by hand.
+
 ---
 
 ## 7. Sharing with a doctor

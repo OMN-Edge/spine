@@ -14,11 +14,13 @@ export interface Highlight {
 
 interface Props {
   page: Page;
+  /** The page's place in its document, for the description; the file's own number if not given. */
+  number?: number;
   /** Anything read off the page with a box on it: a field or a measurement. */
   highlightField: Highlight | null;
 }
 
-export default function PageImageOverlay({ page, highlightField }: Props) {
+export default function PageImageOverlay({ page, number, highlightField }: Props) {
   const { t } = useI18n();
   const containerRef = useRef<HTMLDivElement>(null);
   const [imgSize, setImgSize] = useState<{ w: number; h: number } | null>(null);
@@ -49,7 +51,7 @@ export default function PageImageOverlay({ page, highlightField }: Props) {
     <div ref={containerRef} className="relative inline-block w-full">
       <img
         src={`/api/pages/${page.id}/image`}
-        alt={t('Page {n}', { n: page.page_number })}
+        alt={t('Page {n}', { n: number ?? page.page_number })}
         className="w-full rounded border border-gray-200 shadow-sm"
         draggable={false}
       />

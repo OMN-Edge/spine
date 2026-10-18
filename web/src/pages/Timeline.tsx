@@ -4,6 +4,7 @@ import { api, type Document } from '../api';
 import DocumentCard, { DOC_TYPE_LABELS } from '../components/DocumentCard';
 import SpineLog from '../components/SpineLog';
 import { useI18n } from '../i18n';
+import { useScreen } from '../components/ChatProvider';
 
 export default function Timeline() {
   const { t, tn } = useI18n();
@@ -24,6 +25,8 @@ export default function Timeline() {
       .then(setDocs)
       .finally(() => setLoading(false));
   }, [filter]);
+
+  useScreen({ page: 'timeline', documentIds: docs.slice(0, 30).map(d => d.id), filters: Object.fromEntries(Object.entries(filter).filter(([, v]) => v)) as Record<string, string> });
 
   // Group by year
   const byYear = docs.reduce<Record<string, Document[]>>((acc, doc) => {

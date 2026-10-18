@@ -4,6 +4,7 @@ import type { BaseLanguageModelInput } from '@langchain/core/language_models/bas
 import {
   continuationSchema,
   extractionSchema,
+  chatAnswerSchema,
   linkingSchema,
   pageReadingSchema,
   stampReadingSchema,
@@ -21,7 +22,7 @@ import {
  * provider is constrained with and the zod schema the interface validates against
  * cannot drift apart.
  */
-export const LLM_TASKS = ['continuation', 'extraction', 'page', 'pageThinking', 'stamps', 'translation', 'linking'] as const;
+export const LLM_TASKS = ['continuation', 'extraction', 'page', 'pageThinking', 'stamps', 'translation', 'linking', 'chat', 'agent'] as const;
 export type LlmTask = (typeof LLM_TASKS)[number];
 
 export interface TaskSpec {
@@ -62,6 +63,9 @@ export const TASK_SCHEMAS = {
   stamps: stampReadingSchema,
   translation: translationSchema,
   linking: linkingSchema,
+  chat: chatAnswerSchema,
+  // The agent has no answer schema: it is the chat model itself, given tools, and it replies in prose. This only keeps the table whole.
+  agent: z.object({}),
 } satisfies Record<LlmTask, z.ZodType>;
 
 export function buildTaskSpecs(config: ChatLlmConfig): TaskSpecs {
@@ -113,6 +117,22 @@ export function buildTaskSpecs(config: ChatLlmConfig): TaskSpecs {
       maxTokens: config.maxTokens.continuation,
       reasoning: 'none',
       jsonSchema: z.toJSONSchema(TASK_SCHEMAS.linking) as Record<string, unknown>,
+    },
+    // An answer is a few paragraphs at most; the extraction ceiling is only a ceiling. The model may think first: reading
+    // a series of results against a question is where it earns it.
+    chat: {
+      name: 'chat',
+      maxTokens: config.maxTokens.extraction,
+      reasoning: 'default',
+      jsonSchema: z.toJSONSchema(TASK_SCHEMAS.chat) as Record<string, unknown>,
+    },
+    // The tool-using chat agent (`chat/agent.ts`). Its client is the plain chat model, not bound to a schema, because tools
+    // are bound to it by the graph. The cap is per model reply; steps and tool output are capped by the graph.
+    agent: {
+      name: 'agent',
+      maxTokens: config.maxTokens.extraction,
+      reasoning: 'default',
+      jsonSchema: z.toJSONSchema(TASK_SCHEMAS.agent) as Record<string, unknown>,
     },
   };
 }

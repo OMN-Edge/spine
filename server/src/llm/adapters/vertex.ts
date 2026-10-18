@@ -1,5 +1,8 @@
 import { ChatVertexAI } from '@langchain/google-vertexai';
 import { RunnableLambda } from '@langchain/core/runnables';
+import { AIMessageChunk, type BaseMessage } from '@langchain/core/messages';
+import { ChatGenerationChunk } from '@langchain/core/outputs';
+import type { CallbackManagerForLLMRun } from '@langchain/core/callbacks/manager';
 import type { TaskClients, TaskSpecs } from '../tasks.js';
 import { logger } from '../../logger.js';
 import { LlmBlockedError, LlmConfigError, type ChatLlmConfig } from '../types.js';
@@ -54,6 +57,45 @@ const thinkingBudgetFor = (model: string): number => (/-pro\b/i.test(model) ? 12
 /** Environment variables whose mere presence can reroute Google traffic. */
 const API_KEY_VARS = ['GOOGLE_API_KEY', 'GEMINI_API_KEY', 'GOOGLE_GENAI_API_KEY'] as const;
 
+/**
+ * The agent's model, made safe to stream. Gemini 3 signs what it thought before a function call, and wants the signature sent
+ * back with the call when the tool's result is returned (without it: 400 "Function call is missing a thought_signature").
+ * The library keeps one signature per *part* of a message and sends them back only if their number equals the number of parts
+ * it builds from the message. Read in one piece that holds; read as a stream, every chunk brings its own list (the call's, and
+ * an empty one on the closing chunk), they are joined, and the count no longer matches, so the signature is dropped.
+ * Here the chunks go out without theirs, and one last chunk carries the list a single reply would have had: the text part's
+ * (if there is text) and each call's, in order. Found against the real service, not in a test double.
+ */
+class StreamSafeChatVertexAI extends ChatVertexAI {
+  override async *_streamResponseChunks(messages: BaseMessage[], options: this['ParsedCallOptions'], runManager?: CallbackManagerForLLMRun): AsyncGenerator<ChatGenerationChunk> {
+    let hasText = false;
+    let textSignature = '';
+    const callSignatures: string[] = [];
+    for await (const chunk of super._streamResponseChunks(messages, options, runManager)) {
+      const kwargs = chunk.message.additional_kwargs as { signatures?: unknown; tool_calls?: unknown[] };
+      const text = typeof chunk.text === 'string' && chunk.text.length > 0;
+      if (text) hasText = true;
+      if (Array.isArray(kwargs.signatures)) {
+        const signatures = kwargs.signatures as string[];
+        const calls = kwargs.tool_calls?.length ?? 0;
+        // A list that does not match this chunk's parts is not understood, and is left out rather than guessed at.
+        if (signatures.length === (text ? 1 : 0) + calls) {
+          if (text && signatures[0]) textSignature = signatures[0];
+          callSignatures.push(...signatures.slice(text ? 1 : 0));
+        }
+        delete kwargs.signatures;
+      }
+      yield chunk;
+    }
+    if (callSignatures.length > 0) {
+      yield new ChatGenerationChunk({
+        text: '',
+        message: new AIMessageChunk({ content: '', additional_kwargs: { signatures: [...(hasText ? [textSignature] : []), ...callSignatures] } }),
+      });
+    }
+  }
+}
+
 export function createVertexChat(
   config: ChatLlmConfig,
   tasks: TaskSpecs,
@@ -99,6 +141,19 @@ export function createVertexChat(
 
   const clients = {} as TaskClients;
   for (const task of Object.values(tasks)) {
+    // The agent is the chat model as it is, with its thinking left to it: the graph binds the tools and reads the replies.
+    if (task.name === 'agent') {
+      clients.agent = new StreamSafeChatVertexAI({
+        model: config.model,
+        location: config.region,
+        endpoint,
+        maxOutputTokens: task.maxTokens,
+        ...(gemini ? { safetySettings: SAFETY_SETTINGS } : {}),
+        maxRetries: config.maxRetries,
+        authOptions: { projectId: config.project },
+      }) as unknown as TaskClients['agent'];
+      continue;
+    }
     const clientWith = (thinking: Record<string, unknown>) => new ChatVertexAI({
       model: config.model,
       location: config.region,

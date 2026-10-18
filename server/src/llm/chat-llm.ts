@@ -3,8 +3,9 @@ import { logger } from '../logger.js';
 import { HumanMessage } from '@langchain/core/messages';
 import { OutputParserException } from '@langchain/core/output_parsers';
 import { z } from 'zod';
+import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import type { ContinuationResult, ExtractionResult } from '../types.js';
-import { buildContinuationPrompt, buildExtractionPrompt, buildLinkingPrompt, buildPageReadingPrompt, buildStampReadingPrompt, buildTranslationPrompt } from './prompts.js';
+import { buildContinuationPrompt, buildChatPrompt, buildExtractionPrompt, buildLinkingPrompt, buildPageReadingPrompt, buildStampReadingPrompt, buildTranslationPrompt } from './prompts.js';
 import type { BaseLanguageModelInput } from '@langchain/core/language_models/base';
 import { TASK_SCHEMAS, type LlmTask, type TaskClients } from './tasks.js';
 import {
@@ -12,6 +13,7 @@ import {
   EXTRACTION_FALLBACK,
   type ChatLlm,
   type ChatLlmConfig,
+  type ChatAnswer,
   type LinkJudgement,
   type LlmLogger,
   type PageReading,
@@ -123,6 +125,22 @@ export function buildChatLlm(clients: TaskClients, config: ChatLlmConfig): ChatL
       const labels = new Set(candidates.map(c => c.id));
       // A label the model made up is not an answer about any document we sent.
       return validated.links.filter(l => labels.has(l.candidate.trim())).map(l => ({ ...l, candidate: l.candidate.trim(), reason: l.reason.trim() }));
+    },
+
+    async answerQuestion(question, records, history): Promise<ChatAnswer | null> {
+      const validated = await invokeValidated(clients, config, log, 'chat', buildChatPrompt(question, records, history), TASK_SCHEMAS.chat);
+      if (!validated?.answer.trim()) return null;
+      // A section label (D1.results) is a record of its own; its document (D1) may be cited too.
+      const labels = new Set(records.flatMap(r => [r.label, r.label.split('.')[0]]));
+      // A label the model made up names no record we sent.
+      const sources = [...new Set(validated.sources.map(s => s.trim().replace(/^\[|\]$/g, '')))].filter(s => labels.has(s));
+      return { answer: validated.answer.trim(), sources };
+    },
+
+    agentModel() {
+      const model = clients.agent as unknown as BaseChatModel | undefined;
+      // A model that cannot be given tools is no agent: the caller answers without them.
+      return model && typeof (model as { bindTools?: unknown }).bindTools === 'function' ? model : null;
     },
 
     async readStamps(imagePaths): Promise<StampReading | null> {

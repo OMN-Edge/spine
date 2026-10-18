@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, type Document, type DocumentTypeGuide, type ExtractedField, type Page } from '../api';
 import PageImageOverlay, { type Highlight } from '../components/PageImageOverlay';
 import { MeasurementsEditor, MeasurementsList, draftMeasurement, type DraftMeasurement } from '../components/MeasurementsPanel';
@@ -10,6 +10,7 @@ import { SOURCE_CHIP } from '../components/pageSource';
 import PageTextPanel from '../components/PageTextPanel';
 import RelatedDocuments from '../components/RelatedDocuments';
 import CareChain from '../components/CareChain';
+import { useScreen } from '../components/ChatProvider';
 import { DOC_TYPE_NAMES, documentByline, documentTitle, fieldName, isSection, labelFromName, valueLines } from '../titles';
 import { LANGUAGES, useI18n } from '../i18n';
 import { languageName, useTranslation } from '../i18n/useTranslation';
@@ -116,6 +117,7 @@ export default function DocumentPage() {
   const { t, lang } = useI18n();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const [params] = useSearchParams();
   const [doc, setDoc] = useState<Document | null>(null);
   const [loading, setLoading] = useState(true);
@@ -177,6 +179,22 @@ export default function DocumentPage() {
     const idx = doc.pages.findIndex(p => p.id === selectedField.page_id);
     if (idx >= 0) setCurrentPageIdx(idx);
   }, [selectedField, doc?.pages]);
+
+  // The chat knows what is on this page: the document, whether it is being edited, and the field or result picked.
+  useScreen(doc ? { page: 'document', documentId: doc.id, editing: draft !== null, selectedId: selectedField?.id } : null);
+
+  // A link from the chat (or anywhere) can point at a part of the page: ?section=results scrolls there and lights it briefly.
+  // Run again for the same part when the link is followed again, which is why the location's key is a dependency.
+  useEffect(() => {
+    const section = new URLSearchParams(location.search).get('section');
+    if (!section || loading || !doc) return;
+    const el = document.getElementById(`section-${section}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    el.classList.add('ring-2', 'ring-blue-400');
+    const timer = window.setTimeout(() => el.classList.remove('ring-2', 'ring-blue-400'), 2200);
+    return () => { window.clearTimeout(timer); el.classList.remove('ring-2', 'ring-blue-400'); };
+  }, [location.key, location.search, loading, doc?.id]);
 
   // The document in the reader's language, once the model has had it; until then (and when it is already in that
   // language) the original shows. Not while editing: an edit is made to what was read, not to a translation of it.
@@ -303,8 +321,11 @@ export default function DocumentPage() {
   const renderField = (field: ExtractedField) => {
     // Where it was found: the page. A box on that page is drawn when there is an exact one, and not otherwise.
     const docPages = doc.pages ?? [];
-    const sourcePage = docPages.length > 1 ? docPages.find(p => p.id === field.page_id)?.page_number : undefined;
-    const unpinned = sourcePage !== undefined && <span className="text-[11px] text-gray-400 shrink-0" title={t('The page it was found on')}>{t('p. {n}', { n: sourcePage })}</span>;
+    // The page's place in this document (the first is 1); its place in the file is the tooltip.
+    const sourceAt = docPages.length > 1 ? docPages.findIndex(p => p.id === field.page_id) : -1;
+    const unpinned = sourceAt >= 0 && (
+      <span className="text-[11px] text-gray-400 shrink-0" title={`${t('The page it was found on')} · ${t('Page {n} of the file', { n: docPages[sourceAt].page_number })}`}>{t('p. {n}', { n: sourceAt + 1 })}</span>
+    );
     const select = {
       role: 'button' as const,
       tabIndex: 0,
@@ -349,7 +370,7 @@ export default function DocumentPage() {
     <div className="flex flex-col md:flex-row gap-6 md:h-[calc(100vh-8rem)]">
       {/* Left panel */}
       <div className="w-full md:w-96 shrink-0 md:overflow-y-auto flex flex-col gap-4">
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
+        <div id="section-summary" className="bg-white border border-gray-200 rounded-xl p-4 transition-shadow">
           <button onClick={() => navigate(-1)} className="text-xs text-gray-400 hover:text-gray-600 mb-3">← {t('Back')}</button>
 
           {doc.grouping_confirmed === false && (
@@ -388,7 +409,7 @@ export default function DocumentPage() {
               )}
               {summary && <p className={`text-sm text-gray-700 leading-relaxed mt-4 ${pulse(waitingHead)}`}>{summary}</p>}
               {notes && (
-                <div className="mt-4">
+                <div id="section-notes" className="mt-4 rounded-lg transition-shadow">
                   <p className={label}>{t('Notes')}</p>
                   <p className={`text-sm text-gray-700 whitespace-pre-wrap ${pulse(waitingHead)}`}>{notes}</p>
                 </div>
@@ -463,7 +484,7 @@ export default function DocumentPage() {
 
         {/* Who the document names */}
         {(editing || (doc.doctors ?? []).length > 0) && (
-          <div className="bg-white border border-gray-200 rounded-xl p-4">
+          <div id="section-doctors" className="bg-white border border-gray-200 rounded-xl p-4 transition-shadow">
             <h2 className="font-medium text-gray-900 mb-3 text-sm">{t('Doctors')}</h2>
             {!editing ? <div className={pulse(waitingHead)}><DoctorsList doctors={(doc.doctors ?? []).map(d => (shown && d.id in shown.doctors ? { ...d, specialty: shown.doctors[d.id] } : d))} /></div> : (
               <DoctorsEditor
@@ -476,7 +497,7 @@ export default function DocumentPage() {
 
         {/* Lab values and vitals: these are what the trends are drawn from */}
         {(editing || (doc.measurements ?? []).length > 0) && (
-          <div className="bg-white border border-gray-200 rounded-xl p-4">
+          <div id="section-results" className="bg-white border border-gray-200 rounded-xl p-4 transition-shadow">
             <h2 className="font-medium text-gray-900 mb-3 text-sm">{t('Measurements')}</h2>
             {!editing ? <div className={pulse(waitingBody)}><MeasurementsList items={(doc.measurements ?? []).map(m => ({ ...m, name: shown?.measurements[m.id] ?? m.name }))} selectedId={selectedField?.id} onSelect={m => setSelectedField(current => (current?.id === m.id ? null : m))} /></div> : (
               <MeasurementsEditor
@@ -498,11 +519,11 @@ export default function DocumentPage() {
           </>
         )}
 
-        {!editing && <CareChain documentId={doc.id} />}
+        {!editing && <div id="section-chain" className="rounded-xl transition-shadow"><CareChain documentId={doc.id} /></div>}
         {!editing && <RelatedDocuments documentId={doc.id} />}
 
         {/* Extracted fields */}
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
+        <div id="section-fields" className="bg-white border border-gray-200 rounded-xl p-4 transition-shadow">
           <h2 className="font-medium text-gray-900 mb-3 text-sm">{t('Extracted fields')}</h2>
 
           {!editing ? (
@@ -552,7 +573,7 @@ export default function DocumentPage() {
                           aria-label={t('Page this field is on')} className={`${input} mt-1`}
                           value={f.page_id} onChange={e => setField(f.key, { page_id: e.target.value })}
                         >
-                          {pages.map(p => <option key={p.id} value={p.id}>{t('Page {n}', { n: p.page_number })}</option>)}
+                          {pages.map((p, i) => <option key={p.id} value={p.id}>{t('Page {n}', { n: i + 1 })}</option>)}
                         </select>
                       )}
                     </li>
@@ -623,9 +644,10 @@ export default function DocumentPage() {
                     <button
                       key={p.id}
                       onClick={() => setCurrentPageIdx(i)}
+                      title={p.page_number !== i + 1 ? t('Page {n} of the file', { n: p.page_number }) : undefined}
                       className={`text-xs px-2 py-1 rounded ${i === currentPageIdx ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-300'}`}
                     >
-                      {p.page_number}
+                      {i + 1}
                     </button>
                   ))}
                 </div>
@@ -649,7 +671,7 @@ export default function DocumentPage() {
               </div>
             )}
 
-            {currentPage && view === 'scan' && <PageImageOverlay page={currentPage} highlightField={selectedField} />}
+            {currentPage && view === 'scan' && <PageImageOverlay page={currentPage} number={currentPageIdx + 1} highlightField={selectedField} />}
             {currentPage && view === 'text' && (
               <PageTextPanel
                 text={currentPage.raw_text}

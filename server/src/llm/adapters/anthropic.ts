@@ -26,7 +26,8 @@ export function createAnthropicChat(
       maxRetries: config.maxRetries,
       anthropicApiUrl: `https://${config.endpoint}`,
     });
-    clients[task.name] = model.withStructuredOutput(task.jsonSchema, { name: task.name });
+    // The agent is the chat model as it is: the graph binds its tools. Every other task is bound to its schema.
+    clients[task.name] = task.name === 'agent' ? (model as unknown as TaskClients[typeof task.name]) : model.withStructuredOutput(task.jsonSchema, { name: task.name });
   }
 
   return clients;

@@ -300,6 +300,30 @@ CREATE TABLE IF NOT EXISTS document_links (
 CREATE INDEX IF NOT EXISTS idx_document_links_user ON document_links(user_id);
 CREATE INDEX IF NOT EXISTS idx_document_links_to ON document_links(to_document_id);
 
+-- The owner's conversations with the chat. Questions and answers are medical text, so they are the owner's like their
+-- documents: scoped by user_id, deleted with the account, never in a share link, and not exported. `sources` is a JSON
+-- list of the documents an answer cited (id, title, section); `note` is set for a reply with nothing to say.
+CREATE TABLE IF NOT EXISTS chat_conversations (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  title TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  conversation_id TEXT NOT NULL REFERENCES chat_conversations(id),
+  seq INTEGER NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+  content TEXT NOT NULL,
+  sources TEXT,
+  note TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_chat_conversations_user ON chat_conversations(user_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation ON chat_messages(conversation_id, seq);
+
 CREATE INDEX IF NOT EXISTS idx_source_files_user ON source_files(user_id);
 CREATE INDEX IF NOT EXISTS idx_documents_user ON documents(user_id, doc_date);
 CREATE INDEX IF NOT EXISTS idx_share_links_user ON share_links(user_id);

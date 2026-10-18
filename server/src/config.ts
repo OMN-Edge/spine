@@ -300,7 +300,7 @@ function readEmbeddingConfig(env: NodeJS.ProcessEnv, problems: string[]): Embedd
   if (!Number.isInteger(dims) || dims < 128 || dims > 3072) problems.push(`SPINE_EMBEDDING_DIMS is "${rawDims}"; needs an integer 128-3072`);
   const config: EmbeddingEnvConfig = {
     adapter,
-    model: env.SPINE_EMBEDDING_MODEL || 'gemini-embedding-001',
+    model: env.SPINE_EMBEDDING_MODEL || 'gemini-embedding-2',
     dims,
     endpoint: inherit(env.SPINE_EMBEDDING_ENDPOINT, env.SPINE_LLM_ENDPOINT),
     region: inherit(env.SPINE_EMBEDDING_REGION, env.SPINE_LLM_REGION),
@@ -551,3 +551,13 @@ export function translationEnabled(env: NodeJS.ProcessEnv = process.env): boolea
 export function linkingEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return !/^(0|false|no|off)$/i.test(env.SPINE_LINKING ?? '');
 }
+
+/**
+ * `SPINE_CHAT=off` removes the page where the owner asks questions of their records. Each question sends the question and
+ * the summary cards and results of the records found for it to the LLM provider (SECURITY.md P8, M-18), so an operator who
+ * does not want that turns it off. On by default.
+ */
+export function chatEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return !/^(0|false|no|off)$/i.test(env.SPINE_CHAT ?? '');
+}
+

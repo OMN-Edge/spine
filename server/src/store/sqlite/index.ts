@@ -12,6 +12,7 @@ import { tagRepository } from './tags.js';
 import { translationRepository } from './translations.js';
 import { embeddingRepository } from './embeddings.js';
 import { linkRepository } from './links.js';
+import { conversationRepository } from './conversations.js';
 import { userRepository } from './users.js';
 import type { Store, StoreConfig } from '../types.js';
 
@@ -42,6 +43,7 @@ function storeOver(db: Database, depth: number): Store {
     translations: translationRepository(db),
     embeddings: embeddingRepository(db),
     links: linkRepository(db),
+    conversations: conversationRepository(db),
     maintenance: maintenanceRepository(db),
 
     /**

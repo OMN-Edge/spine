@@ -201,6 +201,17 @@ export async function runCli(args: string[], io: CliIo): Promise<number> {
         return 0;
       } catch (err) {
         io.err(`failed: ${err instanceof Error ? err.message : String(err)}`);
+        // Most often the model is not one this endpoint serves: ask it which are.
+        if (embedder.availableModels) {
+          try {
+            const served = await embedder.availableModels();
+            io.err(served.length > 0
+              ? `this endpoint serves these embedding models: ${served.join(', ')}. Set SPINE_EMBEDDING_MODEL to one of them.`
+              : 'this endpoint lists no embedding models for this project.');
+          } catch (listing) {
+            io.err(`could not list the endpoint's models either: ${listing instanceof Error ? listing.message : String(listing)}`);
+          }
+        }
         return 1;
       }
     }

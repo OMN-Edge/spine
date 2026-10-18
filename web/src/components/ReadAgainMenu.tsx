@@ -31,6 +31,8 @@ export default function ReadAgainMenu({
   reviewed: boolean;
 }) {
   const { t, tx } = useI18n();
+  // Which page of this document is in view (the first is 1), not its number in the file.
+  const position = Math.max(1, pages.findIndex(p => p.id === page?.id) + 1);
   const { target, busy, start } = useAiReading();
   const models = useModels();
   const [reading, setReading] = useState<Reading>(null);
@@ -104,7 +106,7 @@ export default function ReadAgainMenu({
             <button type="button" role="menuitem" disabled={!target || !page} onClick={() => choose('page')} className={item}>
               <span className="block font-medium text-gray-900">{t('Read page with AI')}</span>
               <span className="block text-xs text-gray-500">
-                {target ? t('Sends page {n} to a model', { n: page?.page_number ?? '' }) : t('Switched off on this server')}
+                {target ? t('Sends page {n} to a model', { n: position }) : t('Switched off on this server')}
               </span>
             </button>
             <button type="button" role="menuitem" disabled={pages.length === 0} onClick={() => choose('document')} className={`${item} border-t border-gray-100`}>
@@ -117,7 +119,7 @@ export default function ReadAgainMenu({
 
       {action && (
         <div className="basis-full rounded-xl border border-gray-200 bg-gray-50 p-3 text-left">
-          <p className="text-sm font-medium text-gray-900">{action === 'page' ? t('Read page {n} with AI', { n: page?.page_number ?? '' }) : t('Read whole document')}</p>
+          <p className="text-sm font-medium text-gray-900">{action === 'page' ? t('Read page {n} with AI', { n: position }) : t('Read whole document')}</p>
           <p className="mt-1 text-sm text-gray-700">
             {action === 'page'
               ? tx("This sends the page image to {where} and replaces the page's text with the model's reading.", { where: <strong>{where}</strong> })

@@ -85,6 +85,7 @@ export async function buildTestApp(options: TestAppOptions = {}) {
   const { exportRoutes } = await import('../../routes/export.js');
   const { similarityRoutes } = await import('../../routes/similarity.js');
   const { linkRoutes } = await import('../../routes/links.js');
+  const { chatRoutes } = await import('../../routes/chat.js');
   const { shareRoutes } = await import('../../routes/share.js');
   const { publicShareRoutes } = await import('../../routes/public-share.js');
   const { tagRoutes } = await import('../../routes/tags.js');
@@ -113,6 +114,7 @@ export async function buildTestApp(options: TestAppOptions = {}) {
   await app.register(exportRoutes);
   await app.register(similarityRoutes);
   await app.register(linkRoutes);
+  await app.register(chatRoutes);
   await app.register(shareRoutes);
   await app.register(publicShareRoutes, {
     appShellPath:

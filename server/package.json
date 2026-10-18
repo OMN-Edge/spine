@@ -23,6 +23,7 @@
     "@langchain/anthropic": "^1.5.12",
     "@langchain/core": "^1.2.17",
     "@langchain/google-vertexai": "^2.3.2",
+    "@langchain/langgraph": "^1.5.1",
     "@node-rs/argon2": "^2.2.2",
     "better-sqlite3": "^13.0.3",
     "fastify": "^4.28.0",

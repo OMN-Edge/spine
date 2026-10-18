@@ -249,6 +249,15 @@ export function documentRepository(db: Database): DocumentRepository {
       return renameProviderStmt.run(to, owner(userId), from).changes;
     },
 
+    async listShownByIds(userId, ids) {
+      if (ids.length === 0) return [];
+      const rows = db
+        .prepare(`SELECT ${COLUMNS} FROM documents d WHERE d.user_id = ? AND ${VISIBLE} AND d.id IN (${ids.map(() => '?').join(',')})`)
+        .all(owner(userId), ...ids) as Document[];
+      const byId = new Map(rows.map(d => [d.id, d]));
+      return ids.flatMap(id => (byId.has(id) ? [byId.get(id)!] : []));
+    },
+
     async ownedIds(userId, ids) {
       const uid = owner(userId);
       if (ids.length === 0) return [];

@@ -78,6 +78,34 @@ describe('the Vertex embedder', () => {
     expect(seen.at(-1)?.body.instances[0].task_type).toBe('RETRIEVAL_DOCUMENT');
   });
 
+  it('calls gemini-embedding-2 with embedContent, the task in a prefix and no task type, and reads either reply shape', async () => {
+    const seen: Array<{ url: string; body: any }> = [];
+    let reply: unknown = { embedding: { values: [3, 0, 4, 0] } };
+    const embedder = createVertexEmbedder({
+      ...config, model: 'gemini-embedding-2', tokenProvider: async () => 'tok',
+      fetchImpl: (async (url: string, init: RequestInit) => { seen.push({ url, body: JSON.parse(init.body as string) }); return new Response(JSON.stringify(reply), { status: 200 }); }) as typeof fetch,
+    });
+    expect(embedder.id).toBe('vertex:gemini-embedding-2:4');
+    const [a] = await embedder.embed(['my words'], 'query');
+    expect(seen[0].url).toBe('https://aiplatform.eu.rep.googleapis.com/v1/projects/p1/locations/eu/publishers/google/models/gemini-embedding-2:embedContent');
+    expect(seen[0].body).toEqual({ content: { parts: [{ text: 'task: search result | query: my words' }] }, outputDimensionality: 4 });
+    expect(Array.from(a)[2]).toBeCloseTo(0.8);
+    await embedder.embed(['a card'], 'document');
+    expect(seen[1].body.content.parts[0].text).toBe('title: none | text: a card');
+    reply = { embeddings: [{ values: [0, 0, 0, 2] }] };
+    expect(Array.from((await embedder.embed(['x'], 'document'))[0])).toEqual([0, 0, 0, 1]);
+  });
+
+  it('lists the embedding models its endpoint serves, and nothing else', async () => {
+    const seen: string[] = [];
+    const embedder = createVertexEmbedder({
+      ...config, tokenProvider: async () => 'tok',
+      fetchImpl: (async (url: string) => { seen.push(url); return new Response(JSON.stringify({ publisherModels: [{ name: 'publishers/google/models/gemini-3.5-flash' }, { name: 'publishers/google/models/gemini-embedding-2' }] }), { status: 200 }); }) as typeof fetch,
+    });
+    expect(await embedder.availableModels!()).toEqual(['gemini-embedding-2']);
+    expect(seen).toEqual(['https://aiplatform.eu.rep.googleapis.com/v1beta1/publishers/google/models?pageSize=200']);
+  });
+
   it('keeps the order of its answers whatever order they arrive in', async () => {
     const embedder = createVertexEmbedder({
       ...config, tokenProvider: async () => 't',
@@ -115,7 +143,7 @@ describe('the Vertex embedder', () => {
     expect(createEmbedder({ adapter: 'none', model: 'm', dims: 8 }).enabled).toBe(false);
     expect(() => loadEmbeddingConfig({ SPINE_EMBEDDINGS: 'vertex' })).toThrow(/endpoint/);
     expect(loadEmbeddingConfig({ SPINE_EMBEDDINGS: 'vertex', SPINE_LLM_PROVIDER: 'vertex', SPINE_LLM_ENDPOINT: 'e', SPINE_LLM_REGION: 'eu', SPINE_LLM_PROJECT: 'p' }))
-      .toMatchObject({ adapter: 'vertex', model: 'gemini-embedding-001', dims: 768, endpoint: 'e', region: 'eu', project: 'p' });
+      .toMatchObject({ adapter: 'vertex', model: 'gemini-embedding-2', dims: 768, endpoint: 'e', region: 'eu', project: 'p' });
     // An Anthropic chat model says nothing about where embeddings may go.
     expect(() => loadEmbeddingConfig({ SPINE_EMBEDDINGS: 'vertex', SPINE_LLM_ENDPOINT: 'e', SPINE_LLM_REGION: 'eu', SPINE_LLM_PROJECT: 'p' })).toThrow(/endpoint/);
     expect(() => loadEmbeddingConfig({ SPINE_EMBEDDING_DIMS: '5' })).toThrow(/128-3072/);

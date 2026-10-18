@@ -10,11 +10,13 @@ export type EmbedKind = 'document' | 'query';
 export interface Embedder {
   /** False for the `none` adapter. Callers check this rather than catching a throw. */
   readonly enabled: boolean;
-  /** The vector space, e.g. `vertex:gemini-embedding-001:768`. */
+  /** The vector space, e.g. `vertex:gemini-embedding-2:768`. */
   readonly id: string;
   readonly dims: number;
   /** One vector per text, unit length, in the order given. Rejects on any failure. */
   embed(texts: string[], kind: EmbedKind): Promise<Float32Array[]>;
+  /** The embedding models the configured endpoint says it serves, when the provider can list them. For diagnosing a failure. */
+  availableModels?(): Promise<string[]>;
 }
 
 export interface EmbedderConfig {

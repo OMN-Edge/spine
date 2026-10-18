@@ -269,6 +269,24 @@ export interface ChainNode { id: string; title: string | null; doc_type: DocType
 export interface ChainEdge { from: string; to: string; kind: LinkKind; state: 'proposed' | 'confirmed'; source: 'auto' | 'owner'; reason: string | null }
 export interface Chain { enabled: boolean; searching: boolean; nodes: ChainNode[]; edges: ChainEdge[] }
 
+export interface ChatSource {
+  label: string; id: string; title: string | null; doc_type: DocType | null; doc_date: string | null;
+  /** The part of the document page the answer came from, if it pointed at one. */
+  section?: 'summary' | 'notes' | 'doctors' | 'results' | 'fields' | 'chain';
+}
+/** `answer` is null when no document matched the question: nothing was asked of the model. */
+export interface ChatReply { answer: string | null; sources: ChatSource[]; documents: number; looked?: string[]; conversation: { id: string; title: string } }
+/** What the agent is looking at while it works; the page words it. */
+export interface ChatStep { kind: 'search' | 'open' | 'series' | 'tests' | 'connections'; detail?: string }
+export interface ChatStreamHandlers {
+  step: (step: ChatStep) => void;
+  delta: (text: string) => void;
+  /** What was shown was a lead-in, not the answer: clear it. */
+  reset: () => void;
+}
+export interface ConversationSummary { id: string; title: string; created_at: string; updated_at: string; message_count: number }
+export interface StoredMessage { id: string; role: 'user' | 'assistant'; content: string; sources: ChatSource[]; note: 'none' | 'failed' | 'off' | null; created_at: string }
+
 export interface ShareLink {
   id: string;
   label: string | null;
@@ -421,6 +439,52 @@ export const api = {
       newRecoveryCodes: (password: string, code: string) =>
         post<{ ok: boolean; recovery_codes: string[] }>('/api/auth/totp/recovery-codes', { password, code }),
     },
+  },
+
+  chat: {
+    status: () => req<{ enabled: boolean }>('/api/chat/status'),
+    /**
+     * In a conversation, or in a new one when `conversationId` is null; the server keeps both sides, once it has an answer.
+     * The reply arrives as lines (steps, pieces of the answer, then the whole reply), so the page can show it as it is written.
+     * Refusals before the first byte are ordinary errors; a failure after it comes as an `error` line.
+     */
+    ask: async (question: string, conversationId: string | null, screen: Record<string, unknown> | undefined, handlers: ChatStreamHandlers, signal?: AbortSignal): Promise<ChatReply> => {
+      const res = await fetch('/api/chat', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, signal,
+        body: JSON.stringify({ question, conversation_id: conversationId ?? undefined, screen, stream: true }),
+      });
+      if (!res.ok || !res.body) {
+        const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string; code?: string };
+        throw new ApiError(err.error ?? res.statusText, res.status, err.code);
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let reply: ChatReply | null = null;
+      const handle = (text: string) => {
+        if (!text.trim()) return;
+        const event = JSON.parse(text) as { type: string; text?: string; reply?: ChatReply; status?: number; error?: string } & Partial<ChatStep>;
+        if (event.type === 'step' && event.kind) handlers.step({ kind: event.kind, detail: event.detail });
+        else if (event.type === 'delta' && event.text) handlers.delta(event.text);
+        else if (event.type === 'reset') handlers.reset();
+        else if (event.type === 'done' && event.reply) reply = event.reply;
+        else if (event.type === 'error') throw new ApiError(event.error ?? 'could not answer', event.status ?? 502);
+      };
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (value) buffer += decoder.decode(value, { stream: !done });
+        let at;
+        while ((at = buffer.indexOf('\n')) >= 0) { handle(buffer.slice(0, at)); buffer = buffer.slice(at + 1); }
+        if (done) break;
+      }
+      handle(buffer);
+      if (!reply) throw new ApiError('could not answer', 502);
+      return reply;
+    },
+    conversations: () => req<ConversationSummary[]>('/api/chat/conversations'),
+    conversation: (id: string) => req<ConversationSummary & { messages: StoredMessage[] }>(`/api/chat/conversations/${id}`),
+    deleteConversation: (id: string) => del<{ ok: boolean }>(`/api/chat/conversations/${id}`),
+    deleteAllConversations: () => del<{ removed: number }>('/api/chat/conversations'),
   },
 
   documents: {

@@ -1,10 +1,12 @@
 import { z } from 'zod';
 import type { ContinuationResult, ExtractionResult } from '../types.js';
+import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import type { TaskClients, TaskSpecs } from './tasks.js';
 
 /**
- * The LLM interface. Two stateless, single-turn calls — no chaining, no agent loop,
- * no tool use, no multi-turn state (ARCHITECTURE.md). What looks like a chain
+ * The LLM interface. Stateless, single-turn calls — no chaining, no agent loop,
+ * no tool use, no multi-turn state (ARCHITECTURE.md) — with one exception: `agentModel()` hands the
+ * chat agent (`chat/agent.ts`) the model itself, to bind its read-only tools to. What looks like a chain
  * is a data pipeline: continuation results decide how pages are grouped, and
  * the grouping decides what text each extraction call receives.
  *
@@ -45,6 +47,34 @@ export interface ChatLlm {
    * `candidate` in an answer is the id the caller gave. Null if the answer could not be used.
    */
   link(target: LinkCard, candidates: LinkCard[]): Promise<LinkJudgement[] | null>;
+  /**
+   * Answers a question from the owner's own records and nothing else. `records` are labelled summary cards with their
+   * results (never pages or scans); the answer cites them by label. Text only, to the configured provider (SECURITY.md
+   * P8, M-18). Null if the answer could not be used.
+   */
+  answerQuestion(question: string, records: ChatRecord[], history: ChatTurn[]): Promise<ChatAnswer | null>;
+  /**
+   * The chat model itself, for an agent that binds tools to it (`chat/agent.ts`). Provider-neutral: LangChain's own base class.
+   * Null where the implementation cannot offer one (a test double), and the caller then answers without tools.
+   */
+  agentModel(): BaseChatModel | null;
+}
+
+/** A record as the chat model sees it. The label is the caller's ("D1"), not a database id. */
+export interface ChatRecord {
+  label: string;
+  text: string;
+}
+
+export interface ChatTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface ChatAnswer {
+  answer: string;
+  /** Labels of the records the answer relied on, only ones the caller sent. */
+  sources: string[];
 }
 
 /** A document as the linking model sees it. The id is the caller's (a short label, not a database id). */
@@ -240,6 +270,12 @@ export const linkingSchema = z.object({
     relation: z.enum(LINK_RELATIONS),
     reason: z.string(),
   })).default([]),
+});
+
+/** What a question about the records answers: the text, citing records by label, and the labels it relied on. */
+export const chatAnswerSchema = z.object({
+  answer: z.string(),
+  sources: z.array(z.string()).default([]),
 });
 
 /** What a stamp reading answers: nothing for an image that is not a doctor's stamp. */

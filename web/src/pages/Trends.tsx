@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api, type TrendName, type TrendSeries } from '../api';
 import { SeriesBody, TestList } from '../components/TrendViews';
 import { useI18n } from '../i18n';
+import { useScreen } from '../components/ChatProvider';
 
 /** For a test written two ways by two labs: count this one as another, and remember it for later documents. */
 function MergeTest({ canonical, others }: { canonical: string; others: TrendName[] }) {
@@ -62,6 +63,7 @@ export default function Trends() {
   const [params] = useSearchParams();
   const name = params.get('name');
   const [names, setNames] = useState<TrendName[] | null>(null);
+  useScreen({ page: 'trends', test: name ?? undefined });
 
   // Again whenever the page changes: a merge leaves one name fewer.
   useEffect(() => { api.trends.names().then(setNames).catch(() => setNames([])); }, [name]);

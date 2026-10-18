@@ -61,6 +61,7 @@ export interface Store {
   translations: TranslationRepository;
   embeddings: EmbeddingRepository;
   links: LinkRepository;
+  conversations: ConversationRepository;
   maintenance: MaintenanceRepository;
 
   /**
@@ -314,6 +315,8 @@ export interface DocumentRepository {
   providers(userId: string): Promise<Array<{ name: string; document_count: number }>>;
   /** Every document of the user whose provider is `from` gets `to` (null clears it). How many changed. */
   renameProvider(userId: string, from: string, to: string | null): Promise<number>;
+  /** Those of these documents that are the user's and shown (not set aside, grouping confirmed), in the order given. */
+  listShownByIds(userId: string, ids: string[]): Promise<Document[]>;
   /** Which of these ids are the user's. For checking a share link names only their own. */
   ownedIds(userId: string, ids: string[]): Promise<string[]>;
   /** Resolved from a share token and scoped by the link's owner — P12's exception. */
@@ -627,6 +630,54 @@ export interface EmbeddingRepository {
   put(userId: string, embedding: StoredEmbedding, createdAt: string): Promise<void>;
   /** Vectors from any other model: after a switch is complete, the old space is not kept. How many. */
   pruneOtherModels(userId: string, keepModel: string): Promise<number>;
+}
+
+export interface ConversationSummary {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
+}
+
+export interface StoredMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  /** The documents an answer cited, as it showed them. */
+  sources: unknown[];
+  /** Set on a reply with nothing to say (nothing matched). */
+  note: 'none' | 'failed' | 'off' | null;
+  created_at: string;
+}
+
+export interface NewMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  sources: unknown[];
+  note: StoredMessage['note'];
+  createdAt: string;
+}
+
+/** The most conversations kept per person (the oldest go) and messages in one. */
+export const MAX_CONVERSATIONS = 200;
+export const MAX_MESSAGES = 200;
+
+export interface ConversationRepository {
+  /** Most recently active first. */
+  list(userId: string, limit: number): Promise<ConversationSummary[]>;
+  find(userId: string, id: string): Promise<ConversationSummary | null>;
+  /** Starts a conversation; the oldest beyond `MAX_CONVERSATIONS` are removed with their messages. */
+  create(userId: string, conversation: { id: string; title: string; createdAt: string }): Promise<void>;
+  /** All of a conversation's messages in order, or only the last few. Empty if it is not the user's. */
+  messages(userId: string, id: string, last?: number): Promise<StoredMessage[]>;
+  /** Adds messages and marks the conversation as active now. False, and nothing written, if it is not the user's. */
+  append(userId: string, id: string, messages: NewMessage[]): Promise<boolean>;
+  rename(userId: string, id: string, title: string): Promise<boolean>;
+  remove(userId: string, id: string): Promise<boolean>;
+  /** Every conversation of the user. How many. */
+  removeAll(userId: string): Promise<number>;
 }
 
 export const LINK_KINDS = ['requests', 'follow_up', 'same_episode'] as const;

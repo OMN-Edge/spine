@@ -110,7 +110,7 @@ export function MeasurementsEditor({ rows, pages, currentPageId, onChange, onAdd
             />
             {pages.length > 1 && (
               <select aria-label={t('Page')} className={cell} value={r.page_id} onChange={e => onChange(r.key, { page_id: e.target.value })} disabled={!!r.id}>
-                {pages.map(p => <option key={p.id} value={p.id}>{t('Page {n}', { n: p.page_number })}</option>)}
+                {pages.map((p, i) => <option key={p.id} value={p.id}>{t('Page {n}', { n: i + 1 })}</option>)}
               </select>
             )}
           </div>
