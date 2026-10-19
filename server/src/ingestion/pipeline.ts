@@ -1,20 +1,17 @@
 import { v4 as uuidv4 } from 'uuid';
-import { normaliseLicenseCode } from '../doctors.js';
 import { getStore } from '../store/index.js';
 import { rasterizePdf } from './rasterize.js';
 import { normalisePhoto } from './photo.js';
-import { readDigitalSigners, readSignatures } from './signatures.js';
+import { readsByModel } from '../file-kind.js';
 import { logger } from '../logger.js';
 import { announceUploadLater } from '../chat/notices.js';
 import { aiReadingAllowed, getModelParser, getParser } from '../parser/index.js';
 import { checkContinuation } from './continuation.js';
-import { readDocument, storeReading } from './document-reading.js';
 import { llmConcurrency } from '../config.js';
 import { mapLimit } from '../concurrency.js';
 import { beginJob, getJobStatus, runQueued } from './jobs.js';
 import type { JobStatus, UnstructuredElement } from '../types.js';
 import { describeError } from '../failure.js';
-import { cleanLanguageCode } from '../languages.js';
 
 export { getJobStatus };
 
@@ -63,7 +60,8 @@ async function runPipeline(
     // A photo is one page that has no text to find locally, so it goes straight to the model; it is
     // not tried against OCR first. That sends the image off the host, which only the operator's switch allows.
     const isPhoto = sourceFile.mime_type?.startsWith('image/') ?? false;
-    if (isPhoto && !aiReadingAllowed()) {
+    const byModel = readsByModel(sourceFile); // a photo, or photos bundled into a PDF
+    if (byModel && !aiReadingAllowed()) {
       throw new Error('a photo can only be read by the model, and image reading is switched off on this server');
     }
 
@@ -80,7 +78,7 @@ async function runPipeline(
     // way: one entry per page image, boxes in that image's pixel space.
     job.step = 'parsing';
     job.progress = 20;
-    const parser = isPhoto ? getModelParser() : getParser();
+    const parser = byModel ? getModelParser() : getParser();
     const parseResult = await parser.parse({
       sourceFileId,
       filePath: sourceFile.file_path,
@@ -149,94 +147,17 @@ async function runPipeline(
     }
     if (currentDoc) documentRanges.push(currentDoc);
 
-    // Step 5: Read each document. The reads wait on the model and are independent, so they run
-    // several at a time; each document, its tags and its fields are then written as one unit,
-    // one after another, so no partial write leaves a document with no fields and no error.
-    job.step = 'extracting fields';
-    let read = 0;
-    const readings = await mapLimit(documentRanges, concurrency, async range => {
-      const docId = uuidv4();
-      const reading = await readDocument(
-        userId,
-        docId,
-        allPages.filter(p => p.page_number >= range.start && p.page_number <= range.end),
-      );
-      read += 1;
-      job.progress = 60 + Math.floor((read / documentRanges.length) * 30);
-      return { docId, range, ...reading };
-    });
-
-    for (const [di, { docId, range, ...reading }] of readings.entries()) {
-      const { extraction } = reading;
-      await store.transaction(async tx => {
-        await tx.documents.create(userId, {
-          id: docId,
-          sourceFileId,
-          pageStart: range.start,
-          pageEnd: range.end,
-          // An empty title is no title: the UI then falls back to type and provider.
-          title: extraction.title?.trim() || null,
-          docDate: extraction.doc_date,
-          provider: extraction.provider,
-          docType: extraction.doc_type,
-          aiSummary: extraction.ai_summary,
-          language: cleanLanguageCode(extraction.language),
-        });
-
-        await tx.tags.setForDocument(userId, docId, extraction.suggested_tags);
-        await storeReading(tx, userId, docId, reading);
-      });
-
-      job.progress = 90 + Math.floor(((di + 1) / readings.length) * 8);
-    }
-
-    // Step 6: Doctors from signature stamps, which are pictures. Only a PDF has them as embedded images;
-    // a photo has no separate stamp to cut out. With image reading off, or if anything fails, this adds nothing.
-    if (!isPhoto) {
-      job.step = 'reading signatures';
-      try {
-        const stamps = await readSignatures(sourceFile.file_path, readings.map(r => r.range.end));
-        if (stamps.size > 0) {
-          await store.transaction(async tx => {
-            const now = new Date().toISOString();
-            for (const { docId, range, extraction } of readings) {
-              for (const doctor of stamps.get(range.end) ?? []) {
-                // A stamp is a signature: whoever signed wrote it.
-                const id = await tx.doctors.upsert(userId, { name: doctor.name, specialty: doctor.specialty, clinic: extraction.provider, licenseCode: doctor.code }, now);
-                if (id) await tx.doctors.link(userId, docId, id, 'author', 'stamp', normaliseLicenseCode(doctor.code));
-              }
-            }
-          });
-        }
-      } catch (err) {
-        // The documents are already stored; a signature that could not be filed is not a failed upload.
-        logger.warn('could not file the doctors read from signature stamps', { sourceFileId, error: describeError(err) });
-      }
-    }
-
-    // Step 7: Doctors who digitally signed the PDF. Local, so it does not need the image switch. The signature
-    // is on the whole file, so it names an author of each document in it.
-    if (!isPhoto) {
-      try {
-        const signers = await readDigitalSigners(sourceFile.file_path);
-        if (signers.length > 0) {
-          await store.transaction(async tx => {
-            const now = new Date().toISOString();
-            for (const { docId, extraction } of readings) {
-              for (const signer of signers) {
-                const id = await tx.doctors.upsert(userId, { name: signer.name, clinic: extraction.provider }, now);
-                if (id) await tx.doctors.link(userId, docId, id, 'author', 'signature');
-              }
-            }
-          });
-        }
-      } catch (err) {
-        logger.warn('could not file the doctors who signed the PDF', { sourceFileId, error: describeError(err) });
-      }
+    // Step 5: The documents, as the pages were grouped. Nothing is read from their text yet: that is the second stage
+    // (read-upload.ts), once the owner has confirmed the grouping, so a grouping that is fixed by hand is not read
+    // several times. Until then a document has no title or details, only its pages.
+    job.step = 'making documents';
+    job.progress = 90;
+    for (const range of documentRanges) {
+      await store.documents.create(userId, { id: uuidv4(), sourceFileId, pageStart: range.start, pageEnd: range.end, needsReading: true });
     }
 
     // The documents wait, out of the timeline, search and shares, until the owner has checked how the pages were grouped
-    // (POST /api/source-files/:id/grouping/confirm); that is also when vectors are made and links are looked for. Set
+    // (POST /api/source-files/:id/grouping/confirm); that is also when the documents are read, vectors are made and links are looked for. Set
     // before the upload counts as done, so there is no moment when it is done and shown.
     await store.sourceFiles.setGroupingConfirmed(userId, sourceFileId, false);
     await store.sourceFiles.setStatus(userId, sourceFileId, 'done');

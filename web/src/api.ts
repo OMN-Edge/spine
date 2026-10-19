@@ -154,6 +154,10 @@ export interface UploadDocument {
   reviewed: boolean | number;
   /** Only on the regrouping screen: every page of this document is hidden, so it is left out everywhere else. */
   hidden?: boolean;
+  /** Nothing has been read from its text yet: that happens when the grouping is confirmed. */
+  needs_reading?: boolean;
+  /** Until then, the first line of its first page, as a label to recognise it by. */
+  title_guess?: string | null;
 }
 
 export interface UploadSummary {
@@ -170,6 +174,8 @@ export interface UploadSummary {
 }
 
 export interface UploadLayout extends UploadSummary {
+  /** The documents are read after the grouping is confirmed: how far that is, if it has started. */
+  reading?: { status: 'running' | 'done' | 'failed'; step: string; progress: number; documents: number; read: number; error?: string } | null;
   pages: Array<{ id: string; page_number: number; image_width: number; image_height: number; extraction_source: string | null; hidden: boolean; source_page: number }>;
 }
 
@@ -195,7 +201,7 @@ export interface DocumentEdit {
     add?: Array<MeasurementInput & { page_id: string }>;
   };
   /** The document's doctors: this list replaces the current one. */
-  doctors?: Array<{ name: string; specialty: string | null; role: DoctorRole }>;
+  doctors?: Array<{ id?: string; new?: boolean; name: string; specialty: string | null; role: DoctorRole }>;
 }
 
 export interface MeasurementInput {
@@ -270,6 +276,12 @@ export interface ChainNode { id: string; title: string | null; doc_type: DocType
 export interface ChainEdge { from: string; to: string; kind: LinkKind; state: 'proposed' | 'confirmed'; source: 'auto' | 'owner'; reason: string | null }
 export interface Chain { enabled: boolean; searching: boolean; nodes: ChainNode[]; edges: ChainEdge[] }
 
+/** What a recipient sees around a shared document: confirmed links (direction and kind only) and similar shared documents. */
+export interface SharedConnections {
+  chain: { nodes: ChainNode[]; edges: Array<{ from: string; to: string; kind: LinkKind }> } | null;
+  related: Array<ChainNode & { reasons: Array<{ kind: 'tests' | 'doctors'; names: string[] } | { kind: 'meaning' }> }>;
+}
+
 export interface ChatSource {
   label: string; id: string; title: string | null; doc_type: DocType | null; doc_date: string | null;
   /** The part of the document page the answer came from, if it pointed at one. */
@@ -277,7 +289,7 @@ export interface ChatSource {
 }
 /** `answer` is null when no document matched the question: nothing was asked of the model. */
 /** A change the chat prepared. It has done nothing: the person confirms it, and Confirm sends `calls` (or, for a share link, what the card builds). */
-export interface DocRef { id: string; title: string | null; doc_type: Document['doc_type']; doc_date: string | null }
+export interface DocRef { id: string; title: string | null; doc_type: Document['doc_type']; doc_date: string | null; page_start?: number; page_end?: number }
 export interface ProposedCall { method: 'POST' | 'PATCH' | 'DELETE'; path: string; body?: unknown }
 export type DetailChange =
   | { what: 'title' | 'doc_date' | 'provider' | 'doc_type'; from: string | null; to: string | null }
@@ -300,6 +312,9 @@ export type Proposal = { id: string } & (
   | { kind: 'merge_doctors'; groups: Array<{ keep: DoctorEntry; merge: DoctorEntry[]; final: { name: string; specialty: string | null; clinic: string | null; license_code: string | null } }> }
   | { kind: 'merge_tests'; groups: Array<{ into: TestEntry; from: TestEntry[]; final_name: string }> }
   | { kind: 'confirm_grouping'; upload: { id: string; file_name: string | null; uploaded_at: string }; documents: DocRef[]; calls: ProposedCall[] }
+  | { kind: 'move_page'; upload: { id: string; file_name: string | null }; page: { id: string; number: number }; from: DocRef; to: DocRef | null; before_page: number | null; calls: ProposedCall[] }
+  | { kind: 'merge_documents'; upload: { id: string; file_name: string | null }; into: DocRef; from: DocRef; page_numbers: number[]; calls: ProposedCall[] }
+  | { kind: 'decide_links'; items: Array<{ label: string; from: DocRef; to: DocRef; link_kind: LinkKind; decision: 'confirm' | 'dismiss'; reason: string | null }>; calls: ProposedCall[] }
   | { kind: 'analyse_pages'; upload: { id: string; file_name: string | null; uploaded_at: string }; pages: number; calls: ProposedCall[] }
   | { kind: 'regroup'; upload: { id: string; file_name: string | null }; groups: Array<{ label: string; page_ids: string[]; page_numbers: number[]; title: string | null; confidence: number; status: 'validated' | 'uncertain' | 'unchecked'; reason: string; from: DocRef[] }> }
   | { kind: 'reread_pages'; document: DocRef; page_numbers: number[]; strategy: 'model' | 'configured'; sends_images: boolean; calls: ProposedCall[] }
@@ -331,6 +346,8 @@ export interface RegroupNotice {
 export interface UploadNotice {
   upload_id: string; state: 'done' | 'failed'; file_name: string | null; pages: number;
   documents: DocRef[]; more_documents: number; unread_pages: number; undated_documents: number; grouping_pending: boolean;
+  /** The documents have not been read yet: that happens when the grouping is confirmed. */
+  reading_pending?: boolean;
   doctors_added: string[]; doctors_matched: number; possible_duplicates: Array<[string, string]>; tests_new: string[]; looks_mixed: boolean;
   /** Matches waiting for an answer when the report was written; the page asks again, live, for the ones still open. */
   matches_open?: number;
@@ -624,8 +641,9 @@ export const api = {
     run: <T = unknown>(call: ProposedCall) => {
       const allowed =
         (call.method === 'PATCH' && /^\/api\/documents\/[\w-]{1,64}$/.test(call.path)) ||
-        (call.method === 'POST' && call.path === '/api/document-links') ||
+        (call.method === 'POST' && (call.path === '/api/document-links' || call.path === '/api/document-links/state')) ||
         (call.method === 'POST' && /^\/api\/source-files\/[\w-]{1,64}\/(grouping\/confirm|ai-reading|regroup|regroup\/analyze|extract)$/.test(call.path)) ||
+        (call.method === 'POST' && /^\/api\/pages\/[\w-]{1,64}\/move$/.test(call.path)) ||
         (call.method === 'POST' && /^\/api\/doctors\/[\w-]{1,64}\/merge$/.test(call.path)) ||
         (call.method === 'PATCH' && /^\/api\/doctors\/[\w-]{1,64}$/.test(call.path)) ||
         (call.method === 'POST' && (call.path === '/api/measurements/merge' || call.path === '/api/measurements/rename')) ||
@@ -641,6 +659,8 @@ export const api = {
 
   documents: {
     /** Documents that share a test or a doctor with this one, or read like it, and why. */
+    /** Titles in a language for some of the owner's documents; `pending` while the rest are being translated. */
+    titles: (ids: string[], lang: string) => req<{ titles: Record<string, string | null>; pending: boolean }>(`/api/translations/titles?lang=${lang}&ids=${ids.map(encodeURIComponent).join(',')}`),
     related: (id: string, lang?: string) => req<{ related: RelatedDocument[]; translation_pending?: boolean; meaning: { enabled: boolean; ready: boolean } }>(`/api/documents/${id}/related${lang ? `?lang=${lang}` : ''}`),
     /** The documents around this one: what asked for it, what it asked for, what follows it up. */
     chain: (id: string) => req<Chain>(`/api/documents/${id}/chain`),
@@ -694,7 +714,7 @@ export const api = {
     /** Every upload, newest first, with the documents it became. */
     list: () => req<UploadSummary[]>('/api/source-files'),
     /** The grouping is right: the upload's documents appear in the timeline and are looked at for links. */
-    confirmGrouping: (id: string) => post<{ confirmed: boolean }>(`/api/source-files/${id}/grouping/confirm`, {}),
+    confirmGrouping: (id: string) => post<{ confirmed: boolean; reading?: unknown }>(`/api/source-files/${id}/grouping/confirm`, {}),
     /** What was read from one page, and how. */
     /** Move a page: into a document at a place (before a page of it, or last), or out into a document of its own. */
     movePage: (pageId: string, body: { document_id: string; before_page_id: string | null } | { new_document: true; before_document_id: string | null }) =>
@@ -727,17 +747,23 @@ export const api = {
       }>('/api/capabilities'),
     /** Extract the details of some of an upload's documents again, from the text already read. */
     extract: (id: string, documentIds: string[]) =>
-      req<{ results: Array<{ id: string; reread: 'done' | 'failed' | 'skipped' }> }>(`/api/source-files/${id}/extract`, {
+      req<{ results: Array<{ id: string; reread: 'done' | 'failed' | 'skipped' | 'deferred' }> }>(`/api/source-files/${id}/extract`, {
         method: 'POST', body: JSON.stringify({ document_ids: documentIds }),
       }),
     /** Delete an upload and everything made from it: documents, pages, the original and its backup copy. */
     remove: (id: string) => req<{ deleted: true }>(`/api/source-files/${id}`, { method: 'DELETE' }),
     /** Run a failed upload again, as it was first read. */
     retry: (id: string) => req<{ id: string; status: string }>(`/api/source-files/${id}/retry`, { method: 'POST' }),
-    upload: (files: FileList) => {
+    upload: (files: FileList | File[]) => {
       const form = new FormData();
       for (const f of Array.from(files)) form.append('files', f);
       return fetch('/api/source-files/upload', { method: 'POST', body: form }).then(r => r.json());
+    },
+    /** Several photos of one document, in the order given: one upload whose pages they are. */
+    uploadPhotos: (files: File[]) => {
+      const form = new FormData();
+      for (const f of files) form.append('files', f);
+      return fetch('/api/source-files/upload-photos', { method: 'POST', body: form }).then(r => r.json());
     },
   },
 
@@ -762,6 +788,8 @@ export const api = {
     document: (token: string, id: string) => req<SharedDocument>(`/api/share/${token}/documents/${id}`),
     translation: (token: string, id: string, lang: string, part: 'head' | 'full' = 'full') => req<TranslatedDocument>(`/api/share/${token}/documents/${id}/translation?lang=${lang}&part=${part}`),
     /** The language the owner started the page in, the ones it can offer, and whether translating is on. */
+    /** The documents the owner linked to this one and those that read alike, each only if the link shares it too. */
+    connections: (token: string, id: string) => req<SharedConnections>(`/api/share/${token}/documents/${id}/connections`),
     /** Values over time, from the shared documents only. */
     trends: (token: string) => req<TrendName[]>(`/api/share/${token}/trends`),
     trendSeries: (token: string, canonical: string) => req<TrendSeries>(`/api/share/${token}/trends/series?name=${encodeURIComponent(canonical)}`),

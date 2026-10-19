@@ -12,6 +12,8 @@ export interface SourceFile {
   grouping_confirmed: boolean;
   /** The conversation the file was attached in, if it was attached in the chat. */
   chat_conversation_id: string | null;
+  /** Several photos bundled into one PDF: no text layer, so a model reads it as it reads a single photo. */
+  photo_set: boolean;
 }
 
 export interface Page {
@@ -51,6 +53,8 @@ export interface Document {
   reviewed: boolean;
   /** What it is written in (a two-letter code), as extraction found it; null if unknown. */
   language: string | null;
+  /** Not read yet: its upload's grouping waits for the owner, or its pages changed since it was read. */
+  needs_reading: boolean;
 }
 
 export type DocType =

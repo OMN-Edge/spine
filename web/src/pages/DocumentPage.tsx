@@ -4,7 +4,8 @@ import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'reac
 import { api, type Document, type DocumentTypeGuide, type ExtractedField, type Page } from '../api';
 import PageImageOverlay, { type Highlight } from '../components/PageImageOverlay';
 import { MeasurementsEditor, MeasurementsList, draftMeasurement, type DraftMeasurement } from '../components/MeasurementsPanel';
-import { DoctorsEditor, DoctorsList, draftDoctor, type DraftDoctor } from '../components/DoctorsPanel';
+import { Combobox, ChipPicker } from '../components/Combobox';
+import { DoctorsEditor, DoctorsList, draftDoctor, type DoctorChoice, type DraftDoctor } from '../components/DoctorsPanel';
 import { AiReadingBanner, AiReadingProvider, useAiReading } from '../components/AiReading';
 import ReadAgainMenu from '../components/ReadAgainMenu';
 import { SOURCE_CHIP } from '../components/pageSource';
@@ -128,7 +129,9 @@ export default function DocumentPage() {
   const [notice, setNotice] = useState('');
   const [selectedField, setSelectedField] = useState<Highlight | null>(null);
   // Offered while editing: the doctors already in the directory, and what each type of document usually holds.
-  const [knownDoctors, setKnownDoctors] = useState<string[]>([]);
+  const [knownDoctors, setKnownDoctors] = useState<DoctorChoice[]>([]);
+  const [knownTags, setKnownTags] = useState<string[]>([]);
+  const [knownProviders, setKnownProviders] = useState<Array<{ name: string; document_count: number }>>([]);
   const [guides, setGuides] = useState<DocumentTypeGuide[]>([]);
   const [currentPageIdx, setCurrentPageIdx] = useState(0);
   // What the right panel shows for the page: the scan, or the text read from it.
@@ -164,7 +167,9 @@ export default function DocumentPage() {
   useEffect(() => {
     if (!editingNow) return;
     // Suggestions only: if either call fails, editing works without them.
-    api.doctors.list().then(list => setKnownDoctors(list.map(d => d.name))).catch(() => {});
+    api.doctors.list().then(list => setKnownDoctors(list.map(d => ({ id: d.id, name: d.name, specialty: d.specialty, license_code: d.license_code })))).catch(() => {});
+    api.tags.list().then(list => setKnownTags(list.map(x => x.name))).catch(() => {});
+    api.providers.list().then(setKnownProviders).catch(() => {});
     api.documentTypes().then(setGuides).catch(() => {});
   }, [editingNow]);
 
@@ -223,6 +228,10 @@ export default function DocumentPage() {
   const fields: ExtractedField[] = doc.fields ?? [];
   const currentPage = pages[currentPageIdx];
   const editing = draft !== null;
+  // What a field can be called here: the labels this type of document usually holds.
+  const fieldLabelOptions = editing
+    ? [...new Set(guides.filter(g => g.type === draft.doc_type).flatMap(g => [...g.fields, ...g.grouped]))].map(l => ({ value: fieldName(l, t), label: fieldName(l, t) }))
+    : [];
   const reviewed = !!doc.reviewed;
 
   const set = (patch: Partial<Draft>) => setDraft(d => (d ? { ...d, ...patch } : d));
@@ -303,7 +312,7 @@ export default function DocumentPage() {
           remove: draft.measurements.filter(m => m.removed && m.id).map(m => m.id!),
           add: keptM.filter(m => !m.id).map(m => ({ ...asInput(m), page_id: m.page_id })),
         },
-        ...(doctorsChanged ? { doctors: keptD.map(d => ({ name: d.name.trim(), specialty: d.specialty.trim() || null, role: d.role })) } : {}),
+        ...(doctorsChanged ? { doctors: keptD.map(d => ({ ...(d.id ? { id: d.id } : {}), ...(d.isNew ? { new: true } : {}), name: d.name.trim(), specialty: d.specialty.trim() || null, role: d.role })) } : {}),
         fields: {
           update: rows
             .filter(f => f.id && (original.get(f.id)!.label !== f.label.trim() || original.get(f.id)!.value !== f.value.trim()))
@@ -453,18 +462,22 @@ export default function DocumentPage() {
                 </div>
                 <div>
                   <label htmlFor="d-type" className={label}>{t('Type')}</label>
-                  <select id="d-type" className={input} value={draft.doc_type} onChange={e => set({ doc_type: e.target.value })}>
-                    {Object.entries(DOC_TYPE_NAMES).map(([value, name]) => <option key={value} value={value}>{t(name)}</option>)}
-                  </select>
+                  <Combobox id="d-type" options={Object.entries(DOC_TYPE_NAMES).map(([value, name]) => ({ value, label: t(name) }))} value={draft.doc_type} onChange={v => set({ doc_type: v })} />
                 </div>
               </div>
               <div className="mb-3">
                 <label htmlFor="d-provider" className={label}>{t('Provider')}</label>
-                <input id="d-provider" className={input} value={draft.provider} onChange={e => set({ provider: e.target.value })} />
+                <Combobox
+                  id="d-provider" options={knownProviders.map(p => ({ value: p.name, label: p.name, hint: String(p.document_count) }))} value={draft.provider}
+                  onChange={v => set({ provider: v })} newLabel={name => t('Use “{name}”', { name })}
+                />
               </div>
               <div className="mb-3">
-                <label htmlFor="d-tags" className={label}>{t('Tags (separated by commas)')}</label>
-                <input id="d-tags" className={input} value={draft.tags} onChange={e => set({ tags: e.target.value })} />
+                <label htmlFor="d-tags" className={label}>{t('Tags')}</label>
+                <ChipPicker
+                  id="d-tags" options={knownTags.map(name => ({ value: name, label: name }))} value={parseTags(draft.tags)}
+                  onChange={list => set({ tags: list.join(', ') })} placeholder={t('Search or add a tag')} newLabel={name => t('Add the tag “{name}”', { name })}
+                />
               </div>
               <div className="mb-3">
                 <label htmlFor="d-summary" className={label}>{t('Summary')}</label>
@@ -472,11 +485,10 @@ export default function DocumentPage() {
               </div>
               <div className="mb-3">
                 <label htmlFor="d-language" className={label}>{t('Written in')}</label>
-                <select id="d-language" className={input} value={draft.language} onChange={e => set({ language: e.target.value })}>
-                  <option value="">{t('Not known')}</option>
-                  {LANGUAGES.map(l => <option key={l.code} value={l.code}>{l.name}</option>)}
-                  {draft.language && !LANGUAGES.some(l => l.code === draft.language) && <option value={draft.language}>{draft.language}</option>}
-                </select>
+                <Combobox
+                  id="d-language" value={draft.language} onChange={v => set({ language: v })}
+                  options={[{ value: '', label: t('Not known') }, ...LANGUAGES.map(l => ({ value: l.code, label: l.name }))]}
+                />
               </div>
               <div>
                 <label htmlFor="d-notes" className={label}>{t('Notes')}</label>
@@ -492,7 +504,7 @@ export default function DocumentPage() {
             <h2 className="font-medium text-gray-900 mb-3 text-sm">{t('Doctors')}</h2>
             {!editing ? <div className={pulse(waitingHead)}><DoctorsList doctors={(doc.doctors ?? []).map(d => (shown && d.id in shown.doctors ? { ...d, specialty: shown.doctors[d.id] } : d))} /></div> : (
               <DoctorsEditor
-                rows={draft.doctors} known={knownDoctors} listId="known-doctors"
+                rows={draft.doctors} known={knownDoctors}
                 onChange={setDoctor} onAdd={addDoctor} onRemove={removeDoctor}
               />
             )}
@@ -505,7 +517,7 @@ export default function DocumentPage() {
             <h2 className="font-medium text-gray-900 mb-3 text-sm">{t('Measurements')}</h2>
             {!editing ? <div className={pulse(waitingBody)}><MeasurementsList items={(doc.measurements ?? []).map(m => ({ ...m, name: shown?.measurements[m.id] ?? m.name }))} selectedId={selectedField?.id} onSelect={m => setSelectedField(current => (current?.id === m.id ? null : m))} /></div> : (
               <MeasurementsEditor
-                rows={draft.measurements} pages={pages} currentPageId={currentPage?.id ?? ''} listId="measurement-names"
+                rows={draft.measurements} pages={pages} currentPageId={currentPage?.id ?? ''} knownNames={[...new Set((doc.measurements ?? []).map(m => m.name))]}
                 onChange={setMeasurement} onAdd={addMeasurement}
               />
             )}
@@ -514,12 +526,6 @@ export default function DocumentPage() {
 
         {editing && (
           <>
-            <datalist id="field-labels">
-              {[...new Set(guides.filter(g => g.type === draft.doc_type).flatMap(g => [...g.fields, ...g.grouped]))].map(l => <option key={l} value={fieldName(l, t)} />)}
-            </datalist>
-            <datalist id="measurement-names">
-              {[...new Set((doc.measurements ?? []).map(m => m.name))].map(n => <option key={n} value={n} />)}
-            </datalist>
           </>
         )}
 
@@ -556,9 +562,10 @@ export default function DocumentPage() {
                       className={`p-2 ${fieldRowClass(source)}`}
                     >
                       <div className="flex items-center gap-2 mb-1">
-                        <input
-                          aria-label={t('Field label')} placeholder={t('Label')} list="field-labels" className={`${input} font-medium`}
-                          value={fieldName(f.label, t)} onChange={e => setField(f.key, { label: labelFromName(e.target.value) })}
+                        <Combobox
+                          ariaLabel={t('Field label')} placeholder={t('Label')} className={`${input} font-medium`}
+                          options={fieldLabelOptions} value={fieldName(f.label, t)} onChange={v => setField(f.key, { label: labelFromName(v) })}
+                          newLabel={name => t('Use “{name}”', { name })}
                         />
                         <button
                           type="button" onClick={() => setField(f.key, { removed: true })}
@@ -573,12 +580,10 @@ export default function DocumentPage() {
                         value={f.value} onChange={e => setField(f.key, { value: e.target.value })}
                       />
                       {!f.id && pages.length > 1 && (
-                        <select
-                          aria-label={t('Page this field is on')} className={`${input} mt-1`}
-                          value={f.page_id} onChange={e => setField(f.key, { page_id: e.target.value })}
-                        >
-                          {pages.map((p, i) => <option key={p.id} value={p.id}>{t('Page {n}', { n: i + 1 })}</option>)}
-                        </select>
+                        <Combobox
+                          ariaLabel={t('Page this field is on')} className={input} wrapperClassName="relative w-full mt-1"
+                          options={pages.map((p, i) => ({ value: p.id, label: t('Page {n}', { n: i + 1 }) }))} value={f.page_id} onChange={v => setField(f.key, { page_id: v })}
+                        />
                       )}
                     </li>
                   );

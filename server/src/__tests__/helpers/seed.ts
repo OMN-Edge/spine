@@ -45,6 +45,7 @@ export async function seedSourceFile(
     status?: 'pending' | 'processing' | 'done' | 'error';
     mimeType?: string;
     filePath?: string;
+    photoSet?: boolean;
   } = {},
 ) {
   const store = getStore();
@@ -58,6 +59,7 @@ export async function seedSourceFile(
     filePath: overrides.filePath ?? '/tmp/x.pdf',
     mimeType: overrides.mimeType ?? 'application/pdf',
     checksum: overrides.checksum ?? uuidv4(),
+    photoSet: overrides.photoSet,
   });
 
   if (overrides.status && overrides.status !== 'pending') {

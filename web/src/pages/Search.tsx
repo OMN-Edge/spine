@@ -5,6 +5,8 @@ import { documentByline, documentTitle } from '../titles';
 import SpineLog from '../components/SpineLog';
 import { msg, useI18n } from '../i18n';
 import { useScreen } from '../components/ChatProvider';
+import { Combobox } from '../components/Combobox';
+import { DOC_TYPE_LABELS } from '../components/DocumentCard';
 
 /** The server marks each match with \u0001 … \u0002; they become emphasis here, and everything else stays plain text. */
 function Snippet({ text }: { text: string }) {
@@ -25,6 +27,8 @@ export default function Search() {
   // Documents can be found by what they mean as well as by their words, where the server has that switched on.
   const [canMeaning, setCanMeaning] = useState(false);
   const [byMeaning, setByMeaning] = useState(false);
+  const [tags, setTags] = useState<string[]>([]);
+  useEffect(() => { api.tags.list().then(list => setTags(list.map(x => x.name))).catch(() => {}); }, []);
   useEffect(() => { api.sourceFiles.capabilities().then(c => setCanMeaning(!!c.similarity?.enabled)).catch(() => {}); }, []);
 
   useScreen({ page: 'search', query: query.trim().slice(0, 300) || undefined, documentIds: (docs ?? []).slice(0, 30).map(d => d.id), filters: Object.fromEntries(Object.entries(filters).filter(([, v]) => v)) as Record<string, string> });
@@ -76,22 +80,27 @@ export default function Search() {
         </label>
       )}
 
-      <div className={`flex flex-wrap gap-2 mb-6 ${byMeaning ? 'hidden' : ''}`}>
-        {[
-          ['tag', msg('Tag'), ''],
-          ['doc_type', msg('Type'), ''],
-          ['date_from', msg('From'), ''],
-          ['date_to', msg('To'), ''],
-        ].map(([key, label]) => (
-          <div key={key} className="flex items-center gap-1">
+      <div className={`grid grid-cols-2 sm:flex sm:flex-wrap gap-x-3 gap-y-2 mb-6 ${byMeaning ? 'hidden' : ''}`}>
+        {([['tag', msg('Tag')], ['doc_type', msg('Type')], ['date_from', msg('From')], ['date_to', msg('To')]] as const).map(([key, label]) => (
+          <div key={key} className="flex flex-col sm:flex-row sm:items-center gap-1 min-w-0">
             <label className="text-xs text-gray-500">{t(label)}</label>
-            <input
-              type={key.startsWith('date') ? 'date' : 'text'}
-              value={filters[key] ?? ''}
-              onChange={e => setFilters(f => ({ ...f, [key]: e.target.value || undefined! }))}
-              className="text-sm border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder={key === 'tag' ? t('e.g. allergy') : key === 'doc_type' ? t('e.g. lab_result') : ''}
-            />
+            {key === 'tag' || key === 'doc_type' ? (
+              <Combobox
+                ariaLabel={t(label)} wrapperClassName="relative w-full sm:w-44" value={filters[key] ?? ''}
+                onChange={v => setFilters(f => ({ ...f, [key]: v || undefined! }))}
+                className="w-full text-sm border border-gray-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                options={[
+                  { value: '', label: key === 'tag' ? t('Any tag') : t('All types') },
+                  ...(key === 'tag' ? tags.map(name => ({ value: name, label: name })) : Object.entries(DOC_TYPE_LABELS).map(([k, v]) => ({ value: k, label: t(v) }))),
+                ]}
+              />
+            ) : (
+              <input
+                type="date" value={filters[key] ?? ''} aria-label={t(label)}
+                onChange={e => setFilters(f => ({ ...f, [key]: e.target.value || undefined! }))}
+                className="w-full text-sm border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            )}
           </div>
         ))}
       </div>

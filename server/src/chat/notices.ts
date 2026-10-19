@@ -1,3 +1,4 @@
+import { guessTitle } from '../ingestion/title-guess.js';
 import { v4 as uuidv4 } from 'uuid';
 import { chatEnabled } from '../config.js';
 import { getStore } from '../store/index.js';
@@ -32,6 +33,8 @@ export interface UploadNoticeData {
   undated_documents: number;
   /** Whether the grouping still waits for the owner to confirm it. */
   grouping_pending: boolean;
+  /** Whether the documents still have to be read (the first notice of an upload: that waits for the grouping to be confirmed). */
+  reading_pending: boolean;
   /** Doctors this upload added to the directory, and how many it found already there (matched by name or professional code). */
   doctors_added: string[];
   doctors_matched: number;
@@ -47,7 +50,15 @@ export interface UploadNoticeData {
 
 const LISTED = 12;
 
-export async function announceUpload(userId: string, sourceFileId: string): Promise<void> {
+/** What an unread document looks like from its first page, for the notice: a guess, or nothing. */
+const firstLine = (d: { needs_reading?: unknown; title: string | null; page_start: number; page_end: number }, pages: Array<{ page_number: number; raw_text: string | null; hidden?: boolean | number }>) =>
+  d.needs_reading && !d.title ? guessTitle(pages.find(p => p.page_number >= d.page_start && p.page_number <= d.page_end && !p.hidden)?.raw_text) : null;
+
+/**
+ * `grouped`: the pages are read and grouped, nothing has been read from the documents yet. `read`: the documents have been read, which
+ * happens after the owner confirms the grouping. A failed upload is reported the first way.
+ */
+export async function announceUpload(userId: string, sourceFileId: string, stage: 'grouped' | 'read' = 'grouped'): Promise<void> {
   if (!chatEnabled()) return;
   const store = getStore();
   const file = await store.sourceFiles.findFor(userId, sourceFileId);
@@ -57,17 +68,25 @@ export async function announceUpload(userId: string, sourceFileId: string): Prom
   const docs = file.status === 'done'
     ? (await store.documents.listFor(userId, { sourceFileId, includeUnconfirmed: true, limit: 1000, offset: 0 })).sort((a, b) => a.page_start - b.page_start)
     : [];
-  const extras = file.status === 'done' ? await whatItFound(userId, sourceFileId, file.uploaded_at, docs, pages) : { doctors_added: [], doctors_matched: 0, possible_duplicates: [] as Array<[string, string]>, tests_new: [], looks_mixed: false, matches_open: 0 };
+  const waiting = file.status === 'done' && docs.some(d => d.needs_reading);
+  // Before the documents are read there are no doctors, tests or dates to report, but whether the pages look mixed is a look at their own
+  // text and is exactly what the owner needs now, to decide whether to have the grouping checked.
+  const unreadExtras = {
+    doctors_added: [] as string[], doctors_matched: 0, possible_duplicates: [] as Array<[string, string]>, tests_new: [] as string[], matches_open: 0,
+    looks_mixed: looksMixed(pages, docs.map(d => ({ id: d.id, page_ids: pages.filter(p => p.page_number >= d.page_start && p.page_number <= d.page_end).map(p => p.id) }))).mixed,
+  };
+  const extras = file.status === 'done' && waiting ? unreadExtras : file.status === 'done' ? await whatItFound(userId, sourceFileId, file.uploaded_at, docs, pages) : { doctors_added: [], doctors_matched: 0, possible_duplicates: [] as Array<[string, string]>, tests_new: [], looks_mixed: false, matches_open: 0 };
   const data: UploadNoticeData = {
     upload_id: sourceFileId,
     state: file.status === 'done' ? 'done' : 'failed',
     file_name: file.original_filename,
     pages: pages.length,
-    documents: docs.slice(0, LISTED).map(refOf),
+    documents: docs.slice(0, LISTED).map(d => ({ ...refOf(d), title: d.title ?? firstLine(d, pages) })),
     more_documents: Math.max(0, docs.length - LISTED),
     unread_pages: pages.filter(p => !p.hidden && !p.raw_text?.trim()).length,
-    undated_documents: docs.filter(d => !d.doc_date).length,
+    undated_documents: waiting ? 0 : docs.filter(d => !d.doc_date).length,
     grouping_pending: file.status === 'done' && !file.grouping_confirmed,
+    reading_pending: waiting,
     ...extras,
   };
 
@@ -76,8 +95,10 @@ export async function announceUpload(userId: string, sourceFileId: string): Prom
   const content = data.state === 'failed'
     ? `The upload ${name} could not be read. The owner can try it again from the Upload page.`
     : [
-      `The upload ${name} has been read: ${docs.length} document${docs.length === 1 ? '' : 's'} from ${pages.length} page${pages.length === 1 ? '' : 's'}.`,
-      docs.length > 0 ? `They are: ${docs.slice(0, LISTED).map(d => d.title ?? 'untitled').join('; ')}${data.more_documents ? `; and ${data.more_documents} more` : ''}.` : '',
+      stage === 'read'
+        ? `The documents of the upload ${name} have been read: ${docs.length} document${docs.length === 1 ? '' : 's'} from ${pages.length} page${pages.length === 1 ? '' : 's'}.`
+        : `The pages of the upload ${name} have been read and grouped into ${docs.length} document${docs.length === 1 ? '' : 's'} from ${pages.length} page${pages.length === 1 ? '' : 's'}.`,
+      waiting ? `Nothing has been read from the documents yet: their titles, dates, fields and results are read once the owner confirms the grouping. They cover pages ${docs.slice(0, LISTED).map(d => `${d.page_start}-${d.page_end}${firstLine(d, pages) ? ` (starts with “${firstLine(d, pages)}”)` : ''}`).join('; ')}${data.more_documents ? `, and ${data.more_documents} more` : ''}.` : docs.length > 0 ? `They are: ${docs.slice(0, LISTED).map(d => d.title ?? 'untitled').join('; ')}${data.more_documents ? `; and ${data.more_documents} more` : ''}.` : '',
       data.grouping_pending ? 'The grouping is waiting for the owner to confirm it; until then the documents are out of the timeline and search.' : '',
       data.unread_pages ? `${data.unread_pages} page${data.unread_pages === 1 ? ' has' : 's have'} no text that could be read.` : '',
       data.undated_documents ? `${data.undated_documents} document${data.undated_documents === 1 ? ' has' : 's have'} no date.` : '',
@@ -91,7 +112,7 @@ export async function announceUpload(userId: string, sourceFileId: string): Prom
   if (file.chat_conversation_id && await store.conversations.appendNotice(userId, file.chat_conversation_id, { id: uuidv4(), content, kind: 'upload', data, createdAt: new Date().toISOString() })) return;
   await store.conversations.createNotice(userId, {
     id: uuidv4(),
-    title: data.state === 'failed' ? 'Upload failed' : 'Upload finished',
+    title: data.state === 'failed' ? 'Upload failed' : stage === 'read' ? 'Documents read' : 'Upload finished',
     origin: 'upload',
     createdAt: new Date().toISOString(),
     message: { id: uuidv4(), content, kind: 'upload', data },
@@ -99,8 +120,8 @@ export async function announceUpload(userId: string, sourceFileId: string): Prom
 }
 
 /** Fire and forget from the pipeline: a notice that cannot be written never fails an upload. */
-export function announceUploadLater(userId: string, sourceFileId: string): void {
-  void announceUpload(userId, sourceFileId).catch(err => logger.warn('could not write the upload notice', { sourceFileId, error: describeError(err) }));
+export function announceUploadLater(userId: string, sourceFileId: string, stage: 'grouped' | 'read' = 'grouped'): void {
+  void announceUpload(userId, sourceFileId, stage).catch(err => logger.warn('could not write the upload notice', { sourceFileId, error: describeError(err) }));
 }
 
 /** What the notice says about a finished analysis of a mixed upload. */
@@ -115,7 +136,11 @@ export interface RegroupNoticeData {
   groups: Array<{ page_numbers: number[]; title: string | null; status: string; confidence: number }>;
 }
 
-export async function announceRegroup(userId: string, sourceFileId: string): Promise<void> {
+/**
+ * Tells the owner an analysis is ready: in the conversation they asked for it in (`conversationId`, which must be theirs), else the one the
+ * upload came in with, else a conversation of its own.
+ */
+export async function announceRegroup(userId: string, sourceFileId: string, conversationId: string | null = null): Promise<void> {
   if (!chatEnabled()) return;
   const store = getStore();
   const file = await store.sourceFiles.findFor(userId, sourceFileId);
@@ -135,7 +160,9 @@ export async function announceRegroup(userId: string, sourceFileId: string): Pro
   const content = plan.groups.length === 0
     ? `The analysis of ${name} is finished: the pages already sit with the pages they belong to, nothing would change.`
     : `The analysis of ${name} is finished: ${plan.groups.length} group${plan.groups.length === 1 ? '' : 's'} of pages would change the grouping (${data.groups_validated} confirmed by the model, the rest uncertain or unchecked), and ${plan.unchanged_groups} already hold together. Nothing has been changed; the owner decides.`;
-  if (file.chat_conversation_id && await store.conversations.appendNotice(userId, file.chat_conversation_id, { id: uuidv4(), content, kind: 'regroup', data, createdAt: new Date().toISOString() })) return;
+  for (const target of [conversationId, file.chat_conversation_id]) {
+    if (target && await store.conversations.appendNotice(userId, target, { id: uuidv4(), content, kind: 'regroup', data, createdAt: new Date().toISOString() })) return;
+  }
   await store.conversations.createNotice(userId, {
     id: uuidv4(),
     title: plan.groups.length === 0 ? 'Nothing to regroup' : 'Regrouping suggestions',
@@ -145,8 +172,8 @@ export async function announceRegroup(userId: string, sourceFileId: string): Pro
   });
 }
 
-export function announceRegroupLater(userId: string, sourceFileId: string): void {
-  void announceRegroup(userId, sourceFileId).catch(err => logger.warn('could not write the regrouping notice', { sourceFileId, error: describeError(err) }));
+export function announceRegroupLater(userId: string, sourceFileId: string, conversationId: string | null = null): void {
+  void announceRegroup(userId, sourceFileId, conversationId).catch(err => logger.warn('could not write the regrouping notice', { sourceFileId, error: describeError(err) }));
 }
 
 /**

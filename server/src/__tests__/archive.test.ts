@@ -11,6 +11,8 @@ import { getStore } from '../store/index.js';
 import { ZipReader } from '../archive/zip-read.js';
 import { documentFingerprint, manifestSchema, type Manifest } from '../archive/manifest.js';
 import { getJobStatus } from '../ingestion/jobs.js';
+import { pairKey } from '../matching/index.js';
+import { exportArchive } from '../archive/export.js';
 
 // A plain zip hands its PDFs to the ordinary upload path, which would read them with a model.
 const mockStartJob = vi.hoisted(() => vi.fn());
@@ -365,6 +367,127 @@ describe.skipIf(!hasPoppler)('links in the whole export', () => {
     const end = { file: 0, document: 0 };
     const bad = { ...manifest, links: [{ from: end, to: { file: 0, document: 5 }, kind: 'requests', source: 'auto', state: 'proposed', reason: null, confidence: null }] };
     expect(manifestSchema.safeParse(bad).success).toBe(false);
+  });
+});
+
+describe.skipIf(!hasPoppler)('what the owner keeps beside the documents', () => {
+  /** A document with everything an owner can change on it, two people of one name, and a directory, tag, alias and answers no document holds. */
+  async function kept() {
+    const store = getStore();
+    const d = await archive(OWNER_ID, ' kept');
+    await store.documents.update(OWNER_ID, d.a, { title: 'Kept report' });
+    await store.documents.setEditedColumns(OWNER_ID, d.a, ['title', 'user_notes']);
+    const [field] = await store.fields.listForDocument(OWNER_ID, d.a);
+    await store.fields.update(OWNER_ID, d.a, field.id, { label: 'diagnosis', value: 'Iron deficiency anaemia' });
+    await store.measurements.create(OWNER_ID, { id: uuidv4(), documentId: d.a, pageId: d.pageIds[0], name: 'Ferritin', canonical: 'ferritin', valueText: '8', valueNum: 8, unit: 'ng/mL', refLow: 15, refHigh: 150, flag: 'low', takenOn: '2026-03-01', sourceSnippet: null, bbox: null, confidence: 1 });
+    const ferritin = (await store.measurements.listForDocument(OWNER_ID, d.a)).find(m => m.canonical === 'ferritin')!;
+    await store.measurements.remove(OWNER_ID, d.a, ferritin.id); // what the owner took away stays away
+    const now = '2026-03-01T00:00:00.000Z';
+    const first = (await store.doctors.upsert(OWNER_ID, { name: 'Ana Marin', licenseCode: 'AM111' }, now))!;
+    const second = (await store.doctors.upsert(OWNER_ID, { name: 'Ana Marin', licenseCode: 'AM222', newPerson: true }, now))!;
+    await store.doctors.upsert(OWNER_ID, { name: 'Unused Doctor', specialty: 'neurology' }, now);
+    await store.doctors.link(OWNER_ID, d.a, first, 'prescriber', 'stamp', 'AM999');
+    await store.doctors.link(OWNER_ID, d.b, second, 'author');
+    await store.tags.ensure(OWNER_ID, ['lonely tag', 'pair one', 'pair two']);
+    await store.measurements.addAlias(OWNER_ID, 'hb', 'hemoglobin');
+    const tags = await store.tags.listFor(OWNER_ID);
+    const tagId = (name: string) => String(tags.find(t => t.name === name)!.id);
+    await store.matchDecisions.add(OWNER_ID, 'doctor', pairKey(first, second), now);
+    await store.matchDecisions.add(OWNER_ID, 'code', `${first}|AM999`, now);
+    await store.matchDecisions.add(OWNER_ID, 'tag', pairKey(tagId('pair one'), tagId('pair two')), now);
+    await store.matchDecisions.add(OWNER_ID, 'test', pairKey('ferritin', 'transferrin'), now);
+    await store.matchDecisions.add(OWNER_ID, 'provider', pairKey('clinic one', 'clinic two'), now);
+    return d;
+  }
+
+  /** The whole archive built directly: the route's limit of six a minute is for people, not for a suite. */
+  async function wholeArchive(): Promise<Buffer> {
+    const made = await exportArchive(OWNER_ID);
+    if (made === 'empty') throw new Error('nothing to export');
+    const chunks: Buffer[] = [];
+    for await (const chunk of made.stream) chunks.push(chunk as Buffer);
+    return Buffer.concat(chunks);
+  }
+
+  async function restoreInto(email: string, exported: Buffer) {
+    const person = await createTestUser(email);
+    const personCookie = await loginAs(app, person.email, person.password);
+    const results = (await upload(personCookie, 'everything.zip', exported)).json() as Array<Record<string, any>>;
+    for (const r of results.filter(x => x.restored)) await untilDone(person.id, r.id);
+    return person;
+  }
+
+  it('is in the manifest: what was edited and removed, each doctor\'s source and code, the directory, every tag, merged test names and the answers', async () => {
+    await kept();
+    const { manifest, reader } = await unzip(await wholeArchive());
+    reader.close();
+    expect(manifest.version).toBe(2);
+    const doc = manifest.files.flatMap(f => f.documents).find(x => x.title === 'Kept report')!;
+    expect(doc.owner_edited).toEqual(['title', 'user_notes']);
+    expect(doc.fields.map(f => f.owner_edited)).toEqual([true]);
+    expect(doc.measurements.map(m => m.owner_edited)).toEqual([false]);
+    expect(doc.removed_measurements).toEqual(['ferritin|8|2026-03-01']);
+    expect(doc.doctors.find(x => x.name === 'Ana Marin')).toMatchObject({ license_code: 'AM111', role: 'prescriber', source: 'stamp', printed_code: 'AM999' });
+    expect(manifest.people.filter(p => p.name === 'Ana Marin').map(p => p.license_code).sort()).toEqual(['AM111', 'AM222']);
+    expect(manifest.people.find(p => p.name === 'Unused Doctor')).toMatchObject({ specialty: 'neurology' });
+    expect(doc.doctors.find(x => x.name === 'Ana Marin')!.person).toBe(manifest.people.findIndex(p => p.license_code === 'AM111'));
+    expect(manifest.tags).toEqual(expect.arrayContaining(['lonely tag', 'pair one', 'pair two']));
+    expect(manifest.test_aliases).toContainEqual({ alias: 'hb', canonical: 'hemoglobin' });
+    expect(manifest.decisions.map(d => d.kind).sort()).toEqual(expect.arrayContaining(['code', 'doctor', 'provider', 'tag', 'test']));
+    expect(manifest.decisions.find(d => d.kind === 'tag')).toMatchObject({ a: expect.stringMatching(/^pair /), b: expect.stringMatching(/^pair /) });
+  });
+
+  it('is put back by a restore: edits stay edited, removals stay removed, two people of one name stay two, and the directory, tags and answers come too', async () => {
+    await kept();
+    const person = await restoreInto('keeper@spine.test', await wholeArchive());
+    const store = getStore();
+    const docs = await store.documents.listFor(person.id, { limit: 1000, offset: 0, includeHidden: true });
+    const doc = docs.find(x => x.title === 'Kept report')!;
+    expect(await store.documents.editedColumns(person.id, doc.id)).toEqual(['title', 'user_notes']);
+    const [field] = await store.fields.listForDocument(person.id, doc.id);
+    expect(await store.fields.editedIds(person.id, doc.id)).toEqual(new Set([field.id]));
+    expect(await store.measurements.removedKeys(person.id, doc.id)).toEqual(new Set(['ferritin|8|2026-03-01']));
+    expect(await store.measurements.editedIds(person.id, doc.id)).toEqual(new Set());
+
+    const directory = await store.doctors.listFor(person.id);
+    const anas = directory.filter(x => x.name === 'Ana Marin');
+    expect(anas.map(x => x.license_code).sort()).toEqual(['AM111', 'AM222']);
+    expect(directory.find(x => x.name === 'Unused Doctor')).toMatchObject({ specialty: 'neurology', document_count: 0 });
+    const link = (await store.doctors.linkInfo(person.id, doc.id)).find(l => l.source === 'stamp')!;
+    expect(link).toMatchObject({ role: 'prescriber', source: 'stamp', printed_code: 'AM999', doctor_id: anas.find(x => x.license_code === 'AM111')!.id });
+
+    const tags = await store.tags.listFor(person.id);
+    expect(tags.map(t => t.name)).toEqual(expect.arrayContaining(['lonely tag', 'pair one', 'pair two']));
+    expect(await store.measurements.aliases(person.id)).toContainEqual({ alias: 'hb', canonical: 'hemoglobin' });
+    const [x, y] = anas.map(a => a.id);
+    expect(await store.matchDecisions.has(person.id, 'doctor', pairKey(x, y))).toBe(true);
+    expect(await store.matchDecisions.has(person.id, 'code', `${link.doctor_id}|AM999`)).toBe(true);
+    const tagId = (name: string) => String(tags.find(t => t.name === name)!.id);
+    expect(await store.matchDecisions.has(person.id, 'tag', pairKey(tagId('pair one'), tagId('pair two')))).toBe(true);
+    expect(await store.matchDecisions.has(person.id, 'test', pairKey('ferritin', 'transferrin'))).toBe(true);
+    expect(await store.matchDecisions.has(person.id, 'provider', pairKey('clinic one', 'clinic two'))).toBe(true);
+    // Nothing leaked the other way: the exporter's answers and the restorer's are two sets.
+    expect(await store.matchDecisions.has(otherId, 'test', pairKey('ferritin', 'transferrin'))).toBe(false);
+  });
+
+  it('still reads a version 1 export, which has none of it', async () => {
+    const d = await archive(OWNER_ID, ' old');
+    const { manifest, reader } = await unzip((await app.inject({ method: 'GET', url: `/api/documents/${d.a}/export`, headers: { cookie } })).rawPayload);
+    const old: Record<string, unknown> = { ...manifest, version: 1 };
+    for (const key of ['people', 'tags', 'test_aliases', 'decisions']) delete old[key];
+    for (const f of old.files as Array<{ documents: Array<Record<string, any>> }>) for (const x of f.documents) {
+      for (const key of ['owner_edited', 'removed_fields', 'removed_measurements']) delete x[key];
+      for (const doctor of x.doctors) { delete doctor.person; delete doctor.source; delete doctor.printed_code; }
+    }
+    const entry = (old.files as Array<{ path: string }>)[0].path;
+    const zip = await zipOf([{ name: 'manifest.json', data: Buffer.from(JSON.stringify(old)) }, { name: entry, data: await reader.readBuffer(entry, 50_000_000) }]);
+    reader.close();
+    const person = await restoreInto('old-export@spine.test', zip);
+    const store = getStore();
+    const [doc] = await store.documents.listFor(person.id, { limit: 10, offset: 0 });
+    expect(doc.title).toBe('Lab report');
+    expect((await store.doctors.forDocument(person.id, doc.id))[0]).toMatchObject({ name: 'Ion Popescu' });
+    expect(await store.documents.editedColumns(person.id, doc.id)).toEqual([]);
   });
 });
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type Chain, type ChainEdge, type ChainNode, type Document, type LinkKind } from '../api';
 import { useI18n } from '../i18n';
+import { Combobox } from './Combobox';
 import { documentTitle } from '../titles';
 
 /** How the document being added relates to this one. `from` is the earlier of the two in the stored link. */
@@ -68,7 +69,7 @@ export default function CareChain({ documentId }: { documentId: string }) {
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-4">
       <div className="flex items-center justify-between gap-3 mb-3">
-        <h2 className="font-medium text-gray-900 text-sm">{t('Care chain')}</h2>
+        <h2 className="font-medium text-gray-900 text-sm">{t('Connected documents')}</h2>
         <div className="flex items-center gap-3 text-xs">
           {chain.enabled && (
             <button type="button" onClick={search} disabled={chain.searching} className="text-blue-600 hover:text-blue-800 disabled:text-gray-400">
@@ -155,13 +156,16 @@ function AddLink({ documentId, onDone }: { documentId: string; onDone: () => voi
 
   return (
     <div className="mt-4 pt-3 border-t border-gray-100 space-y-2">
-      <select value={relation} onChange={e => setRelation(e.target.value as Relation)} className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm bg-white">
-        <option value="this_requested">{t('This document asked for…')}</option>
-        <option value="requested_this">{t('This document was asked for by…')}</option>
-        <option value="this_follows">{t('This document is a follow-up of…')}</option>
-        <option value="followed_by_this">{t('This document was followed up by…')}</option>
-        <option value="same_episode">{t('This document is part of the same episode as…')}</option>
-      </select>
+      <Combobox
+        ariaLabel={t('How the documents are connected')} value={relation} onChange={v => setRelation(v as Relation)}
+        options={[
+          { value: 'this_requested', label: t('This document asked for…') },
+          { value: 'requested_this', label: t('This document was asked for by…') },
+          { value: 'this_follows', label: t('This document is a follow-up of…') },
+          { value: 'followed_by_this', label: t('This document was followed up by…') },
+          { value: 'same_episode', label: t('This document is part of the same episode as…') },
+        ]}
+      />
       {picked ? (
         <div className="flex items-center justify-between gap-2 text-sm">
           <span className="truncate">{documentTitle(picked, t)} <span className="text-xs text-gray-400">{picked.doc_date ?? ''}</span></span>

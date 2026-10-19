@@ -30,7 +30,7 @@ interface ZipSummary {
 }
 
 /** Why a file was not added, for the reasons the server gives. */
-const REFUSAL_REASONS = ['not_pdf', 'photo_needs_ai', 'too_large', 'zip_unreadable', 'zip_empty', 'export_invalid', 'export_version', 'export_file_missing'];
+const REFUSAL_REASONS = ['not_pdf', 'photo_needs_ai', 'too_large', 'zip_unreadable', 'zip_empty', 'export_invalid', 'export_version', 'export_file_missing', 'too_many'];
 
 interface JobState {
   /** Unique per row: a duplicate reuses the existing upload's id. */
@@ -168,7 +168,7 @@ function UploadRow({ job, onRetry, onDeleted }: { job: JobState; onRetry: () => 
 
 export default function Upload() {
   const i18n = useI18n();
-  const { t, tx } = i18n;
+  const { t } = i18n;
   // The archive in one step is what a stolen session would take, so the password is asked for first (SECURITY.md S-33).
   const exportEverything = async () => {
     try {
@@ -237,11 +237,16 @@ export default function Upload() {
       .catch(() => {});
   }, [pollStatus]);
 
-  const handleFiles = useCallback(async (fileList: FileList) => {
-    const results: UploadResult[] = await api.sourceFiles.upload(fileList);
+  // Several photos chosen together: asked whether they are pages of one document before anything is sent.
+  const [pending, setPending] = useState<{ photos: File[]; others: File[]; previews: string[] } | null>(null);
+  useEffect(() => () => { pending?.previews.forEach(url => URL.revokeObjectURL(url)); }, [pending]);
+
+  const handleResults = useCallback((results: UploadResult[], replace = true) => {
     const newJobs: JobState[] = [];
-    setRefused(results.filter(r => r.skipped && r.reason && REFUSAL_REASONS.includes(r.reason)).map(r => ({ name: r.filename || t('A file'), reason: r.reason! })));
-    setZips(results.flatMap(r => (r.zip ? [r.zip] : [])));
+    const refusals = results.filter(r => r.skipped && r.reason && REFUSAL_REASONS.includes(r.reason)).map(r => ({ name: r.filename || t('A file'), reason: r.reason! }));
+    const zipped = results.flatMap(r => (r.zip ? [r.zip] : []));
+    setRefused(prev => (replace ? refusals : [...prev, ...refusals]));
+    setZips(prev => (replace ? zipped : [...prev, ...zipped]));
 
     results.forEach((r, i) => {
       const key = `${Date.now()}-${i}`;
@@ -260,6 +265,25 @@ export default function Upload() {
 
     setJobs(prev => [...newJobs.reverse(), ...prev]);
   }, [pollStatus, update, t]);
+
+  const handleFiles = useCallback(async (fileList: FileList) => {
+    const files = Array.from(fileList);
+    const photoFiles = photos?.enabled ? files.filter(f => f.type === 'image/jpeg' || f.type === 'image/png') : [];
+    if (photoFiles.length < 2) { handleResults(await api.sourceFiles.upload(files)); return; }
+    setPending({ photos: photoFiles, others: files.filter(f => !photoFiles.includes(f)), previews: photoFiles.map(f => URL.createObjectURL(f)) });
+  }, [photos?.enabled, handleResults]);
+
+  // The photos are pages of one document, or each its own; whatever else was chosen goes as it always did.
+  const sendPending = useCallback(async (together: boolean) => {
+    if (!pending) return;
+    const { photos: chosen, others } = pending;
+    setPending(null);
+    const results: UploadResult[] = [];
+    if (others.length > 0) results.push(...(await api.sourceFiles.upload(others)));
+    if (together) results.push(...(await api.sourceFiles.uploadPhotos(chosen)));
+    else results.push(...(await api.sourceFiles.upload(chosen)));
+    handleResults(results);
+  }, [pending, handleResults]);
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -292,12 +316,6 @@ export default function Upload() {
         <p className="text-sm text-gray-400">
           <span className="hidden sm:inline">{t('or click to browse')} — </span>{t('up to 200 MB per file')}
         </p>
-        <p className="text-xs text-gray-400 mt-1">{t('A ZIP works too: a Spine export is restored, and the PDFs in any other ZIP are added.')}</p>
-        {photos?.enabled && (
-          <p className="text-xs text-gray-400 mt-3">
-            {tx('A photo is sent to {where} to be read: it has no text for this machine to read.', { where: <strong>{photos.where}</strong> })}
-          </p>
-        )}
         <input
           ref={fileRef}
           type="file"
@@ -312,6 +330,26 @@ export default function Upload() {
           }}
         />
       </div>
+
+      {pending && (
+        <div role="group" aria-label={t('Photos')} className="mt-4 bg-white border border-gray-200 rounded-xl p-4">
+          <p className="text-sm font-medium text-gray-900">{t('You chose {n} photos. Are they pages of one document?', { n: pending.photos.length })}</p>
+          <p className="text-xs text-gray-500 mt-0.5">{t('As one document, they become its pages in this order.')}</p>
+          <ol className="mt-3 flex gap-2 overflow-x-auto pb-1">
+            {pending.previews.map((url, i) => (
+              <li key={url} className="relative shrink-0">
+                <img src={url} alt={t('Photo {n}', { n: i + 1 })} className="h-20 w-16 rounded-lg border border-gray-200 object-cover" />
+                <span className="absolute left-1 top-1 rounded-full bg-gray-900/80 px-1.5 text-[10px] font-medium text-white">{i + 1}</span>
+              </li>
+            ))}
+          </ol>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" onClick={() => { void sendPending(true); }} className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">{t('One document')}</button>
+            <button type="button" onClick={() => { void sendPending(false); }} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">{t('Separate documents')}</button>
+            <button type="button" onClick={() => setPending(null)} className="px-2 py-1.5 text-sm text-gray-500 hover:text-gray-700">{t('Cancel')}</button>
+          </div>
+        </div>
+      )}
 
       {zips.length > 0 && (
         <div role="status" className="mt-4 bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm text-blue-900 space-y-1">
@@ -329,7 +367,9 @@ export default function Upload() {
         <div role="alert" className="mt-4 bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-900">
           {refused.map((r, i) => (
             <p key={i}>
-              {r.reason === 'too_large'
+              {r.reason === 'too_many'
+                ? t('Too many photos for one document: choose fewer, or add them as separate documents.')
+                : r.reason === 'too_large'
                 ? t('{name} was not added: it is too large.', { name: r.name })
                 : r.reason === 'zip_unreadable'
                 ? t('{name} could not be opened as a ZIP.', { name: r.name })

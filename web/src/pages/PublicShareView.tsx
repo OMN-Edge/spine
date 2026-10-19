@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { api, ApiError, type ShareApproval, type SharedDocument, type SharedListDocument, type TranslatedDocument, type TrendName, type TrendSeries } from '../api';
 import { SeriesBody, TestList } from '../components/TrendViews';
 import DocumentCard, { DOC_TYPE_LABELS } from '../components/DocumentCard';
@@ -7,7 +7,9 @@ import { DoctorsList } from '../components/DoctorsPanel';
 import { MeasurementsList } from '../components/MeasurementsPanel';
 import SpineLog from '../components/SpineLog';
 import SharedChat from '../components/SharedChat';
+import SharedConnections from '../components/SharedConnections';
 import { LanguageSwitcher, useI18n } from '../i18n';
+import { Combobox } from '../components/Combobox';
 import { languageName, useTranslation } from '../i18n/useTranslation';
 import { documentByline, documentTitle, fieldName, isSection, valueLines } from '../titles';
 
@@ -182,25 +184,22 @@ function SharedContent({ token }: { token: string }) {
           </p>
         )}
 
-        {chatOn && <SharedChat token={token} openId={openId} />}
+        {chatOn && <SharedChat token={token} openId={openId} titleOf={source => (original ? null : docs.find(d => d.id === source.id)?.translation?.title)} />}
 
         {!openId && view === 'trends' && token ? (
           <SharedTrends token={token} names={trendNames} name={params.get('name')} />
         ) : openId && token ? (
-          <SharedDocumentView token={token} id={openId} translating={translating} original={original} onBack={() => setParams({}, { replace: false })} />
+          <SharedDocumentView token={token} id={openId} translating={translating} original={original} titleOf={docId => (original ? null : docs.find(d => d.id === docId)?.translation?.title)} onBack={() => setParams({}, { replace: false })} />
         ) : docs.length === 0 ? (
           <p className="text-gray-400">{t('No documents in this share.')}</p>
         ) : (
           <>
             {types.length > 1 && (
               <div className="flex justify-end mb-4">
-                <select
-                  aria-label={t('All types')} value={type} onChange={e => setType(e.target.value)}
-                  className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">{t('All types')}</option>
-                  {types.map(x => <option key={x} value={x}>{t(DOC_TYPE_LABELS[x] ?? x)}</option>)}
-                </select>
+                <Combobox
+                  ariaLabel={t('All types')} wrapperClassName="relative w-44" value={type} onChange={setType}
+                  options={[{ value: '', label: t('All types') }, ...types.map(x => ({ value: x, label: t(DOC_TYPE_LABELS[x] ?? x) }))]}
+                />
               </div>
             )}
             <div className="space-y-8">
@@ -231,7 +230,7 @@ function SharedContent({ token }: { token: string }) {
 const label = 'block text-xs font-medium text-gray-500 mb-1';
 
 /** One shared document: the document page without the editing, the details beside the scans when the link allows them. */
-function SharedDocumentView({ token, id, translating, original, onBack }: { token: string; id: string; translating: boolean; original: boolean; onBack: () => void }) {
+function SharedDocumentView({ token, id, translating, original, titleOf, onBack }: { token: string; id: string; translating: boolean; original: boolean; titleOf: (id: string) => string | null | undefined; onBack: () => void }) {
   const { t } = useI18n();
   const [data, setData] = useState<SharedDocument | null>(null);
   const [error, setError] = useState('');
@@ -245,6 +244,20 @@ function SharedDocumentView({ token, id, translating, original, onBack }: { toke
     setPageIdx(0);
     api.publicShare.document(token, id).then(setData).catch(err => setError(err.message ?? t('Could not open this document.')));
   }, [token, id, t]);
+
+  // A link from the assistant's answer can point at a part of the page: ?section=results scrolls there and lights it briefly.
+  // Again for the same part when the link is followed again, which is why the location's key is a dependency.
+  const location = useLocation();
+  useEffect(() => {
+    const section = new URLSearchParams(location.search).get('section');
+    if (!section || !data) return;
+    const el = document.getElementById(`section-${section}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    el.classList.add('ring-2', 'ring-blue-400');
+    const timer = window.setTimeout(() => el.classList.remove('ring-2', 'ring-blue-400'), 2200);
+    return () => { window.clearTimeout(timer); el.classList.remove('ring-2', 'ring-blue-400'); };
+  }, [location.key, location.search, data]);
 
   const back = <button type="button" onClick={onBack} className="text-sm text-gray-500 hover:text-gray-800 mb-4">← {t('All documents')}</button>;
   if (error) return <div>{back}<p className="text-sm text-red-600">{error}</p></div>;
@@ -268,7 +281,7 @@ function SharedDocumentView({ token, id, translating, original, onBack }: { toke
       {back}
       <div className="flex flex-col md:flex-row gap-6">
         <div className={`w-full shrink-0 flex flex-col gap-4 ${data.scans && pages.length > 0 ? 'md:w-96' : 'md:max-w-2xl'}`}>
-          <div className="bg-white border border-gray-200 rounded-xl p-4">
+          <div id="section-summary" className="bg-white border border-gray-200 rounded-xl p-4 transition-shadow">
             <h2 className="text-lg font-semibold text-gray-900 break-words">{documentTitle({ ...doc, title }, t)}</h2>
             <p className="text-sm text-gray-500">{documentByline(doc, t)}</p>
             {tags.length > 0 && (
@@ -288,7 +301,7 @@ function SharedDocumentView({ token, id, translating, original, onBack }: { toke
             )}
             {summary && <p className="text-sm text-gray-700 leading-relaxed mt-4">{summary}</p>}
             {notes && (
-              <div className="mt-4">
+              <div id="section-notes" className="mt-4 rounded-lg transition-shadow">
                 <p className={label}>{t('Notes')}</p>
                 <p className="text-sm text-gray-700 whitespace-pre-wrap">{notes}</p>
               </div>
@@ -296,21 +309,21 @@ function SharedDocumentView({ token, id, translating, original, onBack }: { toke
           </div>
 
           {doctors.length > 0 && (
-            <div className="bg-white border border-gray-200 rounded-xl p-4">
+            <div id="section-doctors" className="bg-white border border-gray-200 rounded-xl p-4 transition-shadow">
               <h3 className="font-medium text-gray-900 mb-3 text-sm">{t('Doctors')}</h3>
               <DoctorsList plain doctors={doctors.map(d => ({ ...d, role: d.role as 'author', specialty: useIt && d.id in useIt.doctors ? useIt.doctors[d.id] : d.specialty }))} />
             </div>
           )}
 
           {measurements.length > 0 && (
-            <div className="bg-white border border-gray-200 rounded-xl p-4">
+            <div id="section-results" className="bg-white border border-gray-200 rounded-xl p-4 transition-shadow">
               <h3 className="font-medium text-gray-900 mb-3 text-sm">{t('Measurements')}</h3>
               <MeasurementsList plain items={measurements.map(m => ({ ...m, flag: m.flag as 'low' | 'high' | 'normal' | null, name: useIt?.measurements[m.id] ?? m.name }))} />
             </div>
           )}
 
           {fields.length > 0 && (
-            <div className="bg-white border border-gray-200 rounded-xl p-4">
+            <div id="section-fields" className="bg-white border border-gray-200 rounded-xl p-4 transition-shadow">
               <h3 className="font-medium text-gray-900 mb-3 text-sm">{t('Details')}</h3>
               <div className="space-y-1">
                 {single.map(field)}
@@ -322,6 +335,8 @@ function SharedDocumentView({ token, id, translating, original, onBack }: { toke
               </div>
             </div>
           )}
+
+          <SharedConnections token={token} id={id} titleOf={titleOf} />
         </div>
 
         {data.scans && pages.length > 0 && (

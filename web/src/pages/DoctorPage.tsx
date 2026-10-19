@@ -4,6 +4,7 @@ import { api, type DoctorDetail, type DoctorEntry } from '../api';
 import { ROLE_LABELS } from '../components/DoctorsPanel';
 import { documentTitle } from '../titles';
 import { useI18n } from '../i18n';
+import { Combobox } from '../components/Combobox';
 
 const input = 'w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500';
 const label = 'block text-xs font-medium text-gray-500 mb-1';
@@ -117,10 +118,10 @@ export default function DoctorPage() {
           <h2 className="font-medium text-gray-900 mb-1 text-sm">{t('Same person under another name?')}</h2>
           <p className="text-xs text-gray-500 mb-3">{t('Names are matched without titles, accents or word order, but not initials. Pick the other entry and its documents move here.')}</p>
           <div className="flex gap-2">
-            <select aria-label={t('Merge this entry into this doctor')} className={input} value={mergeFrom} onChange={e => setMergeFrom(e.target.value)}>
-              <option value="">{t('Choose a doctor…')}</option>
-              {others.map(o => <option key={o.id} value={o.id}>{o.name}{o.specialty ? ` (${o.specialty})` : ''}</option>)}
-            </select>
+            <Combobox
+              ariaLabel={t('Merge this entry into this doctor')} className={input} value={mergeFrom} onChange={setMergeFrom} placeholder={t('Choose a doctor…')}
+              options={others.map(o => ({ value: o.id, label: o.name, hint: [o.specialty, o.license_code].filter(Boolean).join(' · ') || undefined }))}
+            />
             <button onClick={merge} disabled={!mergeFrom || busy} className="shrink-0 px-4 py-1.5 rounded-lg text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50">{t('Merge')}</button>
           </div>
         </div>

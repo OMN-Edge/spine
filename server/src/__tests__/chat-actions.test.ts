@@ -448,3 +448,97 @@ describe('what keeps an action a proposal', () => {
     expect(system).toMatch(/ask one short question first/);
   });
 });
+
+describe('reviewing the connections the app suggested', () => {
+  const suggest = async (from: string, to: string, kind: 'requests' | 'follow_up' | 'same_episode' = 'requests', userId = OWNER_ID) =>
+    getStore().links.add(userId, { from_document_id: from, to_document_id: to, kind, source: 'auto', state: 'proposed', reason: 'Asked for these tests.' }, new Date().toISOString());
+  const stateOf = async (from: string, to: string) => (await getStore().links.among(OWNER_ID, [from, to])).find(l => l.from_document_id === from)?.state;
+
+  it('lists the ones waiting across the archive, and not confirmed, dismissed, or those of an unconfirmed upload', async () => {
+    const visit = await doc('Cardiology visit', 'Consultation', '2026-03-01', OWNER_ID, 'consultation_note');
+    const labs = await doc('Lipid panel', 'Cholesterol', '2026-03-05');
+    const old = await doc('Old visit', 'Consultation', '2025-03-01', OWNER_ID, 'consultation_note');
+    const oldLabs = await doc('Old labs', 'Cholesterol', '2025-03-04');
+    const held = await doc('Held back', 'Not yet confirmed', '2026-03-06');
+    await suggest(visit.id, labs.id);
+    await suggest(old.id, oldLabs.id);
+    await getStore().links.setState(OWNER_ID, old.id, oldLabs.id, 'requests', 'confirmed');
+    await suggest(visit.id, held.id, 'follow_up');
+    await getStore().sourceFiles.setGroupingConfirmed(OWNER_ID, (await getStore().documents.findFor(OWNER_ID, held.id))!.source_file_id, false);
+
+    await run([{ tools: [{ name: 'list_suggested_links', args: {} }] }, { say: 'One suggestion is waiting.' }], 'what new connections are waiting?');
+    const text = toolText();
+    expect(text).toMatch(/1 suggested connection waiting/);
+    expect(text).toMatch(/K1: D\d asked for D\d/);
+    expect(text).toContain('Asked for these tests.');
+    expect(text).not.toContain('Old visit');
+    expect(text).not.toContain('Held back');
+  });
+
+  it('says so when nothing is waiting, and never shows another user’s suggestions', async () => {
+    await doc('My only document', 'Something of mine', '2026-03-01');
+    const theirs1 = await doc('Their visit', 'x', '2026-03-01', otherId, 'consultation_note');
+    const theirs2 = await doc('Their labs', 'y', '2026-03-02', otherId);
+    await suggest(theirs1.id, theirs2.id, 'requests', otherId);
+    await run([{ tools: [{ name: 'list_suggested_links', args: {} }] }, { say: 'Nothing is waiting.' }]);
+    expect(toolText()).toMatch(/No suggested connections are waiting/);
+    expect(toolText()).not.toContain('Their');
+  });
+
+  it('proposes confirming one and dismissing another, changes nothing until Confirm, and the requests are accepted by the real route', async () => {
+    const visit = await doc('Cardiology visit', 'Consultation', '2026-03-01', OWNER_ID, 'consultation_note');
+    const labs = await doc('Lipid panel', 'Cholesterol', '2026-03-05');
+    const other = await doc('Unrelated knee scan', 'Knee', '2026-03-09');
+    await suggest(visit.id, labs.id);
+    await suggest(visit.id, other.id, 'same_episode');
+
+    const reply = await run([
+      { tools: [{ name: 'list_suggested_links', args: {} }] },
+      { tools: [{ name: 'propose_decide_links', args: { links: [{ label: 'K1', decision: 'confirm' }, { label: 'K2', decision: 'dismiss' }] } }] },
+      { say: 'I would keep the first and drop the second.' },
+    ]);
+    const [p] = reply.proposals!;
+    expect(p.kind).toBe('decide_links');
+    expect(await stateOf(visit.id, labs.id)).toBe('proposed');
+    expect(await stateOf(visit.id, other.id)).toBe('proposed');
+
+    for (const r of await confirm(p as never)) expect(r.statusCode).toBe(200);
+    const states = [await stateOf(visit.id, labs.id), await stateOf(visit.id, other.id)].sort();
+    expect(states).toEqual(['confirmed', 'dismissed']);
+  });
+
+  it('an answer that cites a suggestion label cites the two documents it joins, so there are sources to open', async () => {
+    const visit = await doc('Cardiology visit', 'Consultation', '2026-03-01', OWNER_ID, 'consultation_note');
+    const labs = await doc('Lipid panel', 'Cholesterol', '2026-03-05');
+    await suggest(visit.id, labs.id);
+    const reply = await run([
+      { tools: [{ name: 'list_suggested_links', args: {} }] },
+      { say: 'One connection is waiting: the visit asked for the lipid panel [K1]. A made-up one [K9] is not shown, and handles like [U1] or [G2] are not citations.' },
+    ]) as unknown as { answer: string; sources: Array<{ id: string }> };
+    expect(reply.answer).not.toMatch(/\[(K|U|G)\d+\]/);
+    expect(reply.answer).toMatch(/\[D\d\]\[D\d\]/);
+    expect(reply.sources.map(s => s.id).sort()).toEqual([visit.id, labs.id].sort());
+  });
+
+  it('refuses a label it was not given, and one that was answered since it was listed', async () => {
+    const visit = await doc('Cardiology visit', 'Consultation', '2026-03-01', OWNER_ID, 'consultation_note');
+    const labs = await doc('Lipid panel', 'Cholesterol', '2026-03-05');
+    await suggest(visit.id, labs.id);
+    const first = await run([{ tools: [{ name: 'propose_decide_links', args: { links: [{ label: 'K1', decision: 'confirm' }] } }] }, { say: 'Could not.' }]);
+    expect(first.proposals ?? []).toEqual([]);
+    expect(toolText()).toMatch(/Call list_suggested_links first/);
+
+    const second = await run([
+      { tools: [{ name: 'list_suggested_links', args: {} }] },
+      { tools: [{ name: 'propose_decide_links', args: { links: [{ label: 'K1', decision: 'confirm' }] } }] },
+      { say: 'Done.' },
+    ]);
+    expect(second.proposals).toHaveLength(1);
+    await getStore().links.setState(OWNER_ID, visit.id, labs.id, 'requests', 'dismissed');
+    const third = await run([
+      { tools: [{ name: 'list_suggested_links', args: {} }] },
+      { say: 'Nothing waits now.' },
+    ]);
+    expect(third.proposals ?? []).toEqual([]);
+  });
+});

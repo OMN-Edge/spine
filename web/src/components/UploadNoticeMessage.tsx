@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api, type MatchQuestion } from '../api';
+import { api, ApiError, type MatchQuestion } from '../api';
 import { announceChange } from '../dataChanged';
 import type { RegroupNotice, UploadNotice } from '../api';
 import { msg, useI18n } from '../i18n';
@@ -27,11 +27,13 @@ export default function UploadNoticeMessage({ notice, busy, onAsk }: { notice: U
   const count = notice.documents.length + notice.more_documents;
   return (
     <div className="text-sm text-gray-900">
-      <p>{t('“{name}” has been read: {documents} from {pages}.', { name, documents: tn(count, '{n} document', '{n} documents'), pages: tn(notice.pages, '{n} page', '{n} pages') })}</p>
+      <p>{notice.reading_pending
+        ? t('The pages of “{name}” have been read and grouped: {documents} from {pages}. Nothing is read from the documents until you confirm the grouping.', { name, documents: tn(count, '{n} document', '{n} documents'), pages: tn(notice.pages, '{n} page', '{n} pages') })
+        : t('“{name}” has been read: {documents} from {pages}.', { name, documents: tn(count, '{n} document', '{n} documents'), pages: tn(notice.pages, '{n} page', '{n} pages') })}</p>
       {notice.documents.length > 0 && (
         <ul className="mt-2 space-y-0.5 text-xs text-gray-600">
           {notice.documents.map(d => (
-            <li key={d.id} className="truncate">· <Link to={`/documents/${d.id}`} className="hover:text-blue-700 hover:underline">{documentTitle(d, t)}</Link>{d.doc_date ? ` (${d.doc_date})` : ''}</li>
+            <li key={d.id} className="truncate">· <Link to={`/documents/${d.id}`} className="hover:text-blue-700 hover:underline">{notice.reading_pending && d.page_start != null ? `${d.title ? `${d.title} · ` : ''}${t('pages {pages}', { pages: d.page_start === d.page_end ? String(d.page_start) : `${d.page_start}–${d.page_end}` })}` : documentTitle(d, t)}</Link>{d.doc_date ? ` (${d.doc_date})` : ''}</li>
           ))}
           {notice.more_documents > 0 && <li>· {tn(notice.more_documents, 'and {n} more', 'and {n} more')}</li>}
         </ul>
@@ -128,6 +130,8 @@ function MatchQuestions({ uploadId }: { uploadId: string }) {
   const { t, tn } = useI18n();
   const [questions, setQuestions] = useState<MatchQuestion[] | null>(null);
   const [answers, setAnswers] = useState<Record<string, Answer | 'working'>>({});
+  // Why a change was refused, when the server says it is a conflict (the printed code already belongs to another entry).
+  const [conflicts, setConflicts] = useState<Record<string, true>>({});
 
   useEffect(() => { api.matches.forUpload(uploadId).then(r => setQuestions(r.questions)).catch(() => setQuestions([])); }, [uploadId]);
   if (!questions || questions.length === 0) return null;
@@ -152,7 +156,16 @@ function MatchQuestions({ uploadId }: { uploadId: string }) {
   };
   const useCode = async (q: MatchQuestion) => {
     set(q.id, 'working');
-    try { await api.chat.run({ method: 'PATCH', path: `/api/doctors/${q.new.doctor_id}`, body: { license_code: q.codes!.printed } }); set(q.id, 'changed'); announceChange(); } catch { set(q.id, 'failed'); }
+    setConflicts(prev => { const { [q.id]: _gone, ...rest } = prev; return rest; });
+    try {
+      await api.chat.run({ method: 'PATCH', path: `/api/doctors/${q.new.doctor_id}`, body: { license_code: q.codes!.printed } });
+      set(q.id, 'changed');
+      announceChange();
+    } catch (err) {
+      // 409: another doctor in the directory already has that code, so the two entries are probably one person.
+      if (err instanceof ApiError && err.status === 409) setConflicts(prev => ({ ...prev, [q.id]: true }));
+      set(q.id, 'failed');
+    }
   };
 
   const label = (kind: MatchQuestion['kind']) => kind === 'doctor' ? t('doctor') : kind === 'test' ? t('test') : kind === 'tag' ? t('tag') : t('clinic or laboratory');
@@ -193,7 +206,13 @@ function MatchQuestions({ uploadId }: { uploadId: string }) {
                   ) : null}
                 </>
               )}
-              {answer === 'failed' && <p className="mt-1 text-red-600" role="alert">{t('Could not save that. Try again.')}</p>}
+              {answer === 'failed' && conflicts[q.id] && (
+                <p className="mt-1 text-red-600" role="alert">
+                  {t('Another doctor in your directory already has the code {code}: they are probably the same person. Merge them in the doctors list, then this question goes away.', { code: q.codes!.printed })}{' '}
+                  <Link to="/doctors" className="underline">{t('Open the doctors')}</Link>
+                </p>
+              )}
+              {answer === 'failed' && !conflicts[q.id] && <p className="mt-1 text-red-600" role="alert">{t('Could not save that. Try again.')}</p>}
               {answer === 'merged' && <p className="mt-1 font-medium text-green-700" role="status">{t('Merged')}</p>}
               {answer === 'changed' && <p className="mt-1 font-medium text-green-700" role="status">{t('The directory now has that code')}</p>}
               {(answer === 'different' || answer === 'kept') && <p className="mt-1 text-gray-500" role="status">{answer === 'different' ? t('Kept separate; I will not ask again.') : t('Kept as it was; I will not ask again.')}</p>}

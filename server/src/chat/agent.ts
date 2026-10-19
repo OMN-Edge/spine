@@ -58,6 +58,8 @@ export const TOOL_KINDS = {
   get_upload: 'read',
   get_regroup_plan: 'read',
   get_results: 'read',
+  read_pages: 'read',
+  list_suggested_links: 'read',
   get_share_link: 'read',
   list_library: 'read',
   // An action tool prepares a proposal and nothing else (actions.ts); a test holds that the store is not written to.
@@ -73,6 +75,9 @@ export const TOOL_KINDS = {
   propose_reread_pages: 'action',
   propose_analyse_pages: 'action',
   propose_regroup: 'action',
+  propose_move_page: 'action',
+  propose_decide_links: 'action',
+  propose_merge_documents: 'action',
   propose_merge_library: 'action',
   propose_update_share: 'action',
   propose_revoke_share: 'action',
@@ -100,6 +105,8 @@ class Registry {
   readonly providerRefs = new Map<string, { name: string; count: number }>();
   /** Groups of a regrouping plan the model was shown (G1), by label. */
   readonly groupRefs = new Map<string, { upload: string; page_ids: string[]; page_numbers: number[]; title: string | null; confidence: number; status: 'validated' | 'uncertain' | 'unchecked'; reason: string; from_documents: string[] }>();
+  /** Suggested connections the model has been shown (K1), by label, so it can propose confirming or dismissing them. */
+  readonly suggestionRefs = new Map<string, { from: string; to: string; kind: 'requests' | 'follow_up' | 'same_episode'; reason: string | null }>();
   readonly uploadRefs = new Map<string, { id: string; file_name: string | null; status: string; grouping_confirmed: boolean; uploaded_at: string }>();
   /** Record labels that have been shown to the model (D3, D3.results), the only ones it may cite. */
   readonly shown = new Set<string>();
@@ -286,6 +293,19 @@ export function textOf(message: BaseMessage | undefined): string {
 
 const LABEL = /^D\d+(?:\.[a-z]+)?$/i;
 
+/**
+ * A suggestion label (K1) is a handle for proposing a decision, not something an answer can cite. When the model writes one anyway, the
+ * citation is the two documents it connects, which are what the person can open; a K label it was never given is dropped.
+ */
+export function withDocumentLabels(answer: string, registry: { suggestionRefs: Map<string, { from: string; to: string }>; labels(): Map<string, string> }): string {
+  return answer.replace(/\s*\[K(\d+)\]/gi, (_whole, n: string) => {
+    const ref = registry.suggestionRefs.get(`K${n}`);
+    if (!ref) return '';
+    const labels = [ref.from, ref.to].map(id => registry.labels().get(id)).filter((l): l is string => !!l);
+    return labels.length > 0 ? ` ${labels.map(l => `[${l}]`).join('')}` : '';
+  }).replace(/\s*\[(?:F|M|L|P|U|G|TG|PR)\d+\]/g, ''); // the other handles for proposing a change (a field, a result, a link, a doctor, an upload, a group…) are not citations either
+}
+
 /** `[D1, D2.results]` becomes `[D1][D2.results]`, so each citation is one marker the page can turn into a link. */
 export function splitCitations(answer: string): string {
   return answer.replace(/\[([^\]]+)\]/g, (whole, inner: string) => {
@@ -385,7 +405,7 @@ async function runGraph(model: BaseChatModel, shared: boolean, messages: BaseMes
   const { registry, looked, progress } = init;
   const result = await graphFor(model, shared).invoke({ messages, ...init }, { recursionLimit: MAX_ROUNDS * 2 + 6, signal: AbortSignal.any([AbortSignal.timeout(DEADLINE_MS), ...(progress.signal ? [progress.signal] : [])]) });
   // A change was prepared but the model said nothing: the card still stands, with a plain line over it.
-  const answer = splitCitations(textOf(result.messages.at(-1)).trim()) || (init.proposals.length > 0 ? 'I prepared this for you to confirm.' : '');
+  const answer = splitCitations(withDocumentLabels(textOf(result.messages.at(-1)).trim(), init.registry)) || (init.proposals.length > 0 ? 'I prepared this for you to confirm.' : '');
   if (!answer) return null;
 
   // Sources: the labels the answer cites, if they were shown to the model; a section only if that section was.

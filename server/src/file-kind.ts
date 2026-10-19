@@ -41,3 +41,6 @@ export function isZip(filePath: string): boolean {
   }
   return read === 4 && buffer[0] === 0x50 && buffer[1] === 0x4b && ((buffer[2] === 3 && buffer[3] === 4) || (buffer[2] === 5 && buffer[3] === 6));
 }
+
+/** Whether a model reads this upload because it has no text layer: a single photo, or several bundled into a PDF. */
+export const readsByModel = (file: { mime_type: string | null; photo_set?: boolean }): boolean => !!file.photo_set || (file.mime_type?.startsWith('image/') ?? false);

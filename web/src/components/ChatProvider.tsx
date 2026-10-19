@@ -63,7 +63,7 @@ export function screenFromPath(pathname: string): ScreenInfo {
 }
 
 /** Titles of the conversations the app starts, so their translations are found (the title is stored in English). */
-export const NOTICE_TITLES = [msg('Upload finished'), msg('Upload failed'), msg('Regrouping suggestions'), msg('Nothing to regroup')];
+export const NOTICE_TITLES = [msg('Upload finished'), msg('Documents read'), msg('Upload failed'), msg('Regrouping suggestions'), msg('Nothing to regroup')];
 
 /** Names of pages for the panel's "Looking at" line. */
 export const PAGE_NAMES: Record<string, string> = {

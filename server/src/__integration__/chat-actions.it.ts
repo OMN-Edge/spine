@@ -135,4 +135,18 @@ describeLive('asking the assistant to share, note, correct and tidy', () => {
     expect(reply.proposals).toBeUndefined();
     expect((await links()).length).toBe(before);
   });
+  it('lists the connections the app suggested and nobody has answered, and confirms one on request', async () => {
+    const store = getStore();
+    await store.links.add(OWNER_ID, { from_document_id: year.labOld.id, to_document_id: year.labNew.id, kind: 'follow_up', source: 'auto', state: 'proposed', reason: 'The March blood tests repeat the October ones.' }, new Date().toISOString());
+    const seen = await ask(w, 'What new connections between my documents has the app suggested that I have not approved yet?');
+    expect(seen.answer ?? '').toMatch(/october|octombrie|oct/i);
+    expect(seen.proposals).toBeUndefined();
+    expect((await store.links.among(OWNER_ID, [year.labOld.id, year.labNew.id])).find(l => l.from_document_id === year.labOld.id && l.kind === 'follow_up')!.state).toBe('proposed');
+
+    const reply = await ask(w, 'Yes, the March blood tests do follow up the October ones. Confirm that connection.', { conversation: seen.conversation.id });
+    const decide = proposalOf(reply, 'decide_links');
+    expect(decide.items.map(i => [i.from.id, i.to.id, i.decision])).toEqual([[year.labOld.id, year.labNew.id, 'confirm']]);
+    await confirm(w, decide);
+    expect((await store.links.among(OWNER_ID, [year.labOld.id, year.labNew.id])).find(l => l.from_document_id === year.labOld.id && l.kind === 'follow_up')!.state).toBe('confirmed');
+  });
 });

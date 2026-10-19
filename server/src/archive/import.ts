@@ -4,9 +4,10 @@ import { getStore } from '../store/index.js';
 import { acceptFile, newUploadPath } from '../ingestion/accept-upload.js';
 import { detectFileKind, MIME_OF } from '../file-kind.js';
 import { logger } from '../logger.js';
-import { claimsToBeExport, documentFingerprint, EXPORT_VERSION, MANIFEST_NAME, MAX_MANIFEST_BYTES, manifestSchema, type Manifest } from './manifest.js';
+import { claimsToBeExport, documentFingerprint, READABLE_VERSIONS, MANIFEST_NAME, MAX_MANIFEST_BYTES, manifestSchema, type Manifest } from './manifest.js';
 import { startRestore } from './import-file.js';
 import { LinkRestore } from './import-links.js';
+import { restoreDirectory } from './directory.js';
 import { ZipReader, ZipTooLarge } from './zip-read.js';
 
 /**
@@ -69,7 +70,7 @@ async function importExport(userId: string, zip: ZipReader, filename: string | n
   const claim = claimsToBeExport(parsed);
   if (!claim) return null;
   // A newer export may mean something this version would misread: refuse rather than guess.
-  if (claim.version !== EXPORT_VERSION) return [{ skipped: true, reason: 'export_version', filename }];
+  if (!READABLE_VERSIONS.includes(claim.version)) return [{ skipped: true, reason: 'export_version', filename }];
   const checked = manifestSchema.safeParse(parsed);
   if (!checked.success) return [{ skipped: true, reason: 'export_invalid', filename }];
   const manifest: Manifest = checked.data;
@@ -80,6 +81,8 @@ async function importExport(userId: string, zip: ZipReader, filename: string | n
   const summary = { kind: 'spine', filename, exported_at: manifest.exported_at, files: manifest.files.length, documents: 0, restored: 0, duplicates: 0, failed: 0 };
   let total = 0;
   const links = new LinkRestore(userId, manifest.links);
+  // The directory goes back first, so a document names the same person whichever file it is in.
+  const people = await restoreDirectory(userId, manifest);
 
   for (const [fileIndex, file] of manifest.files.entries()) {
     summary.documents += file.documents.length;
@@ -128,10 +131,10 @@ async function importExport(userId: string, zip: ZipReader, filename: string | n
     for (const p of prints) if (p) known.set(p, { sourceFileId: fileId }); // two copies inside one zip are one document
 
     await store.sourceFiles.create(userId, {
-      id: fileId, uploadedAt: new Date().toISOString(), originalFilename: file.original_filename, filePath, mimeType: MIME_OF[kind], checksum: saved.checksum,
+      id: fileId, uploadedAt: new Date().toISOString(), originalFilename: file.original_filename, filePath, mimeType: MIME_OF[kind], checksum: saved.checksum, photoSet: file.photo_set,
     });
     links.expect();
-    startRestore(userId, fileId, filePath, kind !== 'pdf', file, setAside, ids => links.finished(fileIndex, ids));
+    startRestore(userId, fileId, filePath, kind !== 'pdf', file, setAside, people, ids => links.finished(fileIndex, ids));
     results.push({ id: fileId, status: 'processing', restored: true });
   }
   // The links are written when the last file has been restored: one may join documents of two files.

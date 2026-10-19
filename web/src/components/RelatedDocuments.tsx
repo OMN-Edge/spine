@@ -44,7 +44,7 @@ export default function RelatedDocuments({ documentId }: { documentId: string })
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-4">
-      <h2 className="font-medium text-gray-900 mb-3 text-sm">{t('Related documents')}</h2>
+      <h2 className="font-medium text-gray-900 mb-3 text-sm">{t('Similar documents')}</h2>
       {data.related.length === 0 ? (
         <p className="text-xs text-gray-400">{t('Looking for documents that read alike…')}</p>
       ) : (

@@ -12,7 +12,9 @@ import { z } from 'zod';
  * zip is read by entry name, never extracted by it (SECURITY.md **M-14**).
  */
 export const EXPORT_FORMAT = 'spine-export';
-export const EXPORT_VERSION = 1;
+/** 2 adds what the owner edited and removed, the doctors' directory, tags no document carries, merged test names and the answers to "same one?". 1 is still read: those fields are absent. */
+export const EXPORT_VERSION = 2;
+export const READABLE_VERSIONS: readonly unknown[] = [1, 2];
 export const MANIFEST_NAME = 'manifest.json';
 /** A manifest larger than this is not read (it is parsed into memory on a small machine): a thousand pages with their words is a few MB. */
 export const MAX_MANIFEST_BYTES = 64 * 1024 * 1024;
@@ -49,6 +51,11 @@ const doctor = z.object({
   clinic: text(300).nullable(),
   license_code: text(100).nullable(),
   role: z.enum(['author', 'prescriber', 'referrer', 'other']),
+  /** Which entry of the manifest's `people` this is, so two people of one name stay two. Absent from version 1. */
+  person: z.number().int().min(0).max(49_999).nullable().default(null),
+  /** Where the document read the doctor from, and the code it printed (what a code clash is asked about). */
+  source: z.enum(['text', 'stamp', 'signature']).default('text'),
+  printed_code: text(100).nullable().default(null),
 });
 
 const field = z.object({
@@ -59,6 +66,8 @@ const field = z.object({
   source_snippet: text(10_000).nullable(),
   bbox: box.nullable(),
   confidence: z.number().min(0).max(1).nullable(),
+  /** Added or changed by the owner, so a new reading keeps it. */
+  owner_edited: z.boolean().default(false),
 });
 
 const measurement = z.object({
@@ -75,6 +84,7 @@ const measurement = z.object({
   source_snippet: text(10_000).nullable(),
   bbox: box.nullable(),
   confidence: z.number().min(0).max(1).nullable(),
+  owner_edited: z.boolean().default(false),
 });
 
 const document = z.object({
@@ -92,6 +102,26 @@ const document = z.object({
   doctors: z.array(doctor).max(200),
   fields: z.array(field).max(10_000),
   measurements: z.array(measurement).max(10_000),
+  /** The headline columns the owner changed, which a new reading keeps. */
+  owner_edited: z.array(z.enum(['title', 'doc_date', 'provider', 'doc_type', 'ai_summary', 'user_notes', 'language'])).max(7).default([]),
+  /** What the owner removed (`store/reading-keys.ts`), so a new reading does not bring it back. */
+  removed_fields: z.array(text(100_500)).max(10_000).default([]),
+  removed_measurements: z.array(text(1_000)).max(10_000).default([]),
+});
+
+/** A person in the doctors' directory. Documents name them by position in `people`. */
+const person = z.object({
+  name: text(300),
+  specialty: text(300).nullable(),
+  clinic: text(300).nullable(),
+  license_code: text(100).nullable(),
+});
+
+/** "These two are not the same", as the owner answered when asked. Doctors by position in `people` (as text), tags and providers by name, tests by canonical name; a code clash is the doctor's position and the printed code. */
+const decision = z.object({
+  kind: z.enum(['doctor', 'code', 'tag', 'test', 'provider']),
+  a: text(600),
+  b: text(600),
 });
 
 /** A document in the export, by where it is in it: the file's place in `files`, then the document's in that file's `documents`. */
@@ -113,6 +143,8 @@ const file = z.object({
   path: text(300),
   original_filename: text(500).nullable(),
   sha256: z.string().regex(/^[0-9a-f]{64}$/),
+  /** Several photos bundled into a PDF, so a model reads it again as it would a photo. Absent from earlier exports. */
+  photo_set: z.boolean().default(false),
   page_count: z.number().int().min(1).max(100_000),
   pages: z.array(page).min(1).max(100_000),
   documents: z.array(document).max(100_000),
@@ -120,13 +152,20 @@ const file = z.object({
 
 export const manifestSchema = z.object({
   format: z.literal(EXPORT_FORMAT),
-  version: z.literal(EXPORT_VERSION),
+  version: z.union([z.literal(1), z.literal(2)]),
   exported_at: text(40),
   /** One document, trimmed to its own pages, or a person's whole archive. Informational: import treats both alike. */
   kind: z.enum(['document', 'archive']),
   files: z.array(file).min(1).max(20_000),
   /** Absent from exports made before links were kept, and from a single document's export (a link needs both ends). */
   links: z.array(link).max(100_000).default([]),
+  /** The doctors' directory, those no document names included. Absent from version 1 and carried whole by an archive, trimmed to the document's own by a single document's. */
+  people: z.array(person).max(50_000).default([]),
+  /** Every tag, those no document carries included. */
+  tags: z.array(text(100)).max(10_000).default([]),
+  /** Tests that were merged under another name: later documents filed under the old name land under the new one. */
+  test_aliases: z.array(z.object({ alias: text(300), canonical: text(300) })).max(100_000).default([]),
+  decisions: z.array(decision).max(100_000).default([]),
 }).superRefine((manifest, ctx) => {
   // What a whole export may hold, however it is split into files.
   const documents = manifest.files.reduce((n, f) => n + f.documents.length, 0);
@@ -134,6 +173,9 @@ export const manifestSchema = z.object({
   if (documents > 20_000 || pages > 200_000) ctx.addIssue({ code: 'custom', message: 'too many documents or pages' });
   // A link names its documents by position, so a position that is not there is a manifest that does not hold together.
   const there = (end: { file: number; document: number }) => end.document < (manifest.files[end.file]?.documents.length ?? 0);
+  if (manifest.files.some(f => f.documents.some(d => d.doctors.some(x => x.person !== null && x.person >= manifest.people.length)))) {
+    ctx.addIssue({ code: 'custom', message: 'a doctor names a person that is not in the export' });
+  }
   if (manifest.links.some(l => !there(l.from) || !there(l.to))) ctx.addIssue({ code: 'custom', message: 'a link names a document that is not in the export' });
 });
 

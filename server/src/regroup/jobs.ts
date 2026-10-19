@@ -34,7 +34,7 @@ async function embedPages(texts: string[]): Promise<Float32Array[]> {
   return out;
 }
 
-export function startRegroupAnalysis(userId: string, sourceFileId: string): RegroupJob {
+export function startRegroupAnalysis(userId: string, sourceFileId: string, conversationId: string | null = null): RegroupJob {
   const running = jobs.get(sourceFileId);
   if (running?.status === 'running') return running;
   const job: RegroupJob = { status: 'running', step: 'reading the pages', progress: 0, started_at: new Date().toISOString() };
@@ -64,7 +64,7 @@ export function startRegroupAnalysis(userId: string, sourceFileId: string): Regr
       job.status = 'done'; job.progress = 100; job.step = 'ready'; job.finished_at = new Date().toISOString();
       // Counts only, no page text: tuning the thresholds is done from these.
       logger.info('regrouping analysed', { sourceFileId, pages: plan.pages_considered, unreadable: plan.pages_unreadable, proposed: plan.groups.length, unchanged: plan.unchanged_groups, calls: plan.model_calls, embeddings: plan.embeddings });
-      announceRegroupLater(userId, sourceFileId);
+      announceRegroupLater(userId, sourceFileId, conversationId);
     } catch (err) {
       logger.warn('regrouping analysis failed', { sourceFileId, error: describeError(err) });
       job.status = 'failed'; job.step = 'failed'; job.finished_at = new Date().toISOString();

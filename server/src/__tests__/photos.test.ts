@@ -200,6 +200,26 @@ describe('the pipeline for a photo', () => {
     expect(modelParse).not.toHaveBeenCalled();
   });
 
+  it('sends photos bundled into a PDF to the model, one entry per page, and fails if image reading is off', async () => {
+    mockRasterizePdf.mockResolvedValue([{ page_number: 1, image_path: '/tmp/set-1.png' }, { page_number: 2, image_path: '/tmp/set-2.png' }]);
+    modelParse.mockResolvedValue({ pages: [1, 2].map(n => ({ ...reading.pages[0], page_number: n, elements: [{ ...reading.pages[0].elements[0], page_number: n }] })) });
+    const id = uuidv4();
+    await seedSourceFile({ id, photoSet: true });
+    startIngestionJob(id, OWNER_ID);
+    expect((await wait(id)).status).toBe('done');
+    expect(mockRasterizePdf).toHaveBeenCalled();
+    expect(sidecarParse).not.toHaveBeenCalled();
+    expect((modelParse.mock.calls[0][0] as { pages: unknown[] }).pages).toHaveLength(2);
+
+    mockAllowed.mockReturnValue(false);
+    modelParse.mockClear();
+    const off = uuidv4();
+    await seedSourceFile({ id: off, photoSet: true });
+    startIngestionJob(off, OWNER_ID);
+    expect((await wait(off)).status).toBe('error');
+    expect(modelParse).not.toHaveBeenCalled();
+  });
+
   it('never sends a PDF to the model just because image reading is on', async () => {
     mockRasterizePdf.mockResolvedValue([{ page_number: 1, image_path: '/tmp/page-1.png' }]);
     const id = uuidv4();

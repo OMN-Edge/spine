@@ -19,6 +19,7 @@ const field = 'w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs fo
 
 export default function ProposalCard({ proposal }: { proposal: Proposal }) {
   const { t, tn } = useI18n();
+  const currentId = useChat()?.currentId ?? null;
   const [state, setState] = useState<State>('waiting');
   const [error, setError] = useState('');
   const title = (d: DocRef) => documentTitle(d, t);
@@ -27,20 +28,23 @@ export default function ProposalCard({ proposal }: { proposal: Proposal }) {
   const confirmCalls = async (calls: Array<Parameters<typeof api.chat.run>[0]>) => {
     setState('working'); setError('');
     try {
-      for (const call of calls) await api.chat.run(call);
+      for (const call of calls) {
+        await api.chat.run(call);
+        // After each request, so the page behind shows pages moving as they move and not only when a slow last step (a reading) is over.
+        announceChange();
+      }
       setState('done');
-      announceChange();
     } catch (err) {
       setState('waiting');
       setError(err instanceof Error ? err.message : t('Could not make this change.'));
     }
   };
 
-  const shell = (heading: string, body: React.ReactNode, footer?: React.ReactNode) => (
+  const shell = (heading: string, body: React.ReactNode, footer?: React.ReactNode, doneText?: string) => (
     <section className="mt-3 rounded-xl border border-blue-100 bg-blue-50/40 p-3 text-xs text-gray-700" aria-label={heading}>
       <p className="mb-2 text-[0.8rem] font-medium text-gray-900">{heading}</p>
       {body}
-      {state === 'done' && <p className="mt-2 font-medium text-green-700" role="status">{t('Done')}</p>}
+      {state === 'done' && <p className="mt-2 font-medium text-green-700" role="status">{doneText ?? t('Done')}</p>}
       {state === 'cancelled' && <p className="mt-2 text-gray-500">{t('Cancelled')}</p>}
       {error && <p className="mt-2 text-red-600" role="alert">{error}</p>}
       {(state === 'waiting' || state === 'working') && footer}
@@ -55,7 +59,7 @@ export default function ProposalCard({ proposal }: { proposal: Proposal }) {
   );
 
   const docList = (docs: DocRef[]) => (
-    <ul className="space-y-0.5">{docs.map(d => <li key={d.id} className="truncate">· {title(d)}{d.doc_date ? ` (${d.doc_date})` : ''}</li>)}</ul>
+    <ul className="space-y-0.5">{docs.map(d => <li key={d.id} className="truncate">· {d.title || d.doc_type || d.page_start == null ? title(d) : t('pages {pages}', { pages: d.page_start === d.page_end ? String(d.page_start) : `${d.page_start}–${d.page_end}` })}{d.doc_date ? ` (${d.doc_date})` : ''}</li>)}</ul>
   );
 
   const detailName = (what: 'title' | 'doc_date' | 'provider' | 'doc_type') =>
@@ -112,7 +116,46 @@ export default function ProposalCard({ proposal }: { proposal: Proposal }) {
 
     case 'confirm_grouping':
       return shell(t('Confirm the grouping of “{name}”', { name: proposal.upload.file_name ?? proposal.upload.uploaded_at.slice(0, 10) }),
-        <div className="space-y-1"><p>{t('These documents then appear in the timeline and search:')}</p>{docList(proposal.documents)}</div>,
+        <div className="space-y-1">
+          <p>{t('Their fields and results are read now, once, and then they appear in the timeline and search:')}</p>{docList(proposal.documents)}
+          <p className="text-gray-500">{t('Reading takes a while; I will not ask for anything else meanwhile.')}</p>
+        </div>,
+        confirmBar(proposal.calls),
+        t('Started. The documents are read first, then they appear.'));
+
+    case 'move_page':
+      return shell(t('Move page {n} of “{name}”', { n: proposal.page.number, name: proposal.upload.file_name ?? '' }),
+        <div className="space-y-1">
+          <p>{proposal.to
+            ? t('From “{from}” to “{to}”.', { from: title(proposal.from), to: title(proposal.to) })
+            : t('From “{from}” into a document of its own.', { from: title(proposal.from) })}</p>
+          <p className="text-gray-500">{t('The documents involved go back to review. Press Done on the upload’s grouping screen to read them again.')}</p>
+        </div>,
+        confirmBar(proposal.calls));
+
+    case 'merge_documents':
+      return shell(t('Combine two documents of “{name}”', { name: proposal.upload.file_name ?? '' }),
+        <div className="space-y-1">
+          <p>{t('“{from}” (pages {pages}) is added to the end of “{into}”, and the two become one.', { from: title(proposal.from), pages: proposal.page_numbers.join(', '), into: title(proposal.into) })}</p>
+          <p className="text-gray-500">{t('The combined document is then read again once; what you edited is kept.')}</p>
+        </div>,
+        confirmBar(proposal.calls));
+
+    case 'decide_links':
+      return shell(tn(proposal.items.length, 'Confirm or dismiss {n} suggested connection', 'Confirm or dismiss {n} suggested connections'),
+        <ul className="space-y-2">
+          {proposal.items.map(i => (
+            <li key={i.label} className="rounded-lg bg-white p-2">
+              <p className="text-gray-900">
+                {i.link_kind === 'requests' ? t('“{a}” asked for “{b}”', { a: title(i.from), b: title(i.to) })
+                  : i.link_kind === 'follow_up' ? t('“{b}” is a follow-up of “{a}”', { a: title(i.from), b: title(i.to) })
+                  : t('“{a}” and “{b}” are one episode', { a: title(i.from), b: title(i.to) })}
+              </p>
+              <p className={i.decision === 'confirm' ? 'font-medium text-green-700' : 'font-medium text-gray-600'}>{i.decision === 'confirm' ? t('Keep this connection') : t('Not related: do not suggest it again')}</p>
+              {i.reason && <p className="text-gray-500">{i.reason}</p>}
+            </li>
+          ))}
+        </ul>,
         confirmBar(proposal.calls));
 
     case 'analyse_pages':
@@ -121,7 +164,9 @@ export default function ProposalCard({ proposal }: { proposal: Proposal }) {
           <p>{t('The text of its {n} pages is compared on this server, then the AI model is asked to check each group of pages that look alike. The text goes to the model provider, as it did when the pages were read.', { n: proposal.pages })}</p>
           <p className="text-gray-500">{t('Nothing is changed. It runs in the background, and I will message you when the suggestions are ready.')}</p>
         </div>,
-        confirmBar(proposal.calls));
+        // The report is written in this conversation, not in a new one.
+        confirmBar(proposal.calls.map(call => ({ ...call, body: { conversation_id: currentId } }))),
+        t('Started. I will write here when the suggestions are ready.'));
 
     case 'regroup':
       return <RegroupCard proposal={proposal} state={state} setState={setState} shell={shell} />;
@@ -132,7 +177,8 @@ export default function ProposalCard({ proposal }: { proposal: Proposal }) {
           <p>{proposal.sends_images ? t('The page image is sent to the AI model to be read. The document is then extracted again; your edits are kept.') : t('The text is read again on this server. The document is then extracted again; your edits are kept.')}</p>
           <p className="text-gray-500">{t('It runs in the background; the page updates when it is done.')}</p>
         </div>,
-        confirmBar(proposal.calls));
+        confirmBar(proposal.calls),
+        t('Started. The page updates when it is done.'));
 
     case 'merge_doctors':
       return <MergeDoctorsCard proposal={proposal} state={state} setState={setState} shell={shell} />;

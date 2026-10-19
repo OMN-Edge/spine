@@ -195,8 +195,10 @@ describe('finding links', () => {
     relation = 'same_episode';
     await findLinks(OWNER_ID, consult.id);
     const states = Object.fromEntries((await linksOf(consult.id)).map(l => [`${l.to_document_id === lab.id ? 'lab' : 'other'}:${l.kind}`, l.state]));
-    // The confirmed request stays, the dismissed one stays dismissed, and no episode is proposed for the dismissed pair.
-    expect(states).toMatchObject({ 'lab:requests': 'confirmed', 'lab:same_episode': 'proposed' });
+    // The confirmed request stays, the dismissed one stays dismissed, and no episode is proposed for either pair: for the first a request
+    // already says more, for the second the owner said no.
+    expect(states['lab:requests']).toBe('confirmed');
+    expect(states['lab:same_episode']).toBeUndefined();
     expect(states['other:same_episode']).toBeUndefined();
     expect((await linksOf(consult.id)).find(l => l.to_document_id === other.id)?.state).toBe('dismissed');
   });
@@ -424,5 +426,50 @@ describe('deleting', () => {
     await getStore().links.add(user.id, { from_document_id: consult.id, to_document_id: lab.id, kind: 'requests', source: 'owner', state: 'confirmed', reason: null }, '2026-07-01T00:00:00Z');
     await getStore().users.delete(user.id);
     expect(await getStore().users.findByEmail('leaving@spine.test')).toBeNull();
+  });
+});
+
+describe('links that repeat each other', () => {
+  const store = () => getStore();
+
+  it('does not suggest "same episode" for a pair a confirmed request already covers', async () => {
+    const { consult, lab } = await consultAndLab();
+    await store().links.add(OWNER_ID, { from_document_id: consult.id, to_document_id: lab.id, kind: 'requests', source: 'auto', state: 'confirmed', reason: 'asked' }, new Date().toISOString());
+    relation = 'same_episode';
+    expect(await findLinks(OWNER_ID, lab.id)).toBe(0);
+    expect((await linksOf(lab.id)).map(l => l.kind)).toEqual(['requests']);
+  });
+
+  it('draws one line for a pair and no "same episode" inside a group, though more are stored', async () => {
+    const { consult, lab } = await consultAndLab();
+    const second = await doc('Second lab', 'lab_result', '2026-04-10');
+    const now = new Date().toISOString();
+    for (const [a, b, kind] of [[consult.id, lab.id, 'requests'], [consult.id, second.id, 'requests'], [lab.id, second.id, 'same_episode'], [consult.id, lab.id, 'same_episode']] as const) {
+      await store().links.add(OWNER_ID, { from_document_id: a, to_document_id: b, kind, source: 'auto', state: 'confirmed', reason: null }, now);
+    }
+    const { chainOf } = await import('../linking/index.js');
+    const chain = (await chainOf(OWNER_ID, consult.id))!;
+    expect(chain.edges.map(e => e.kind).sort()).toEqual(['requests', 'requests']);
+    expect(await store().links.all(OWNER_ID)).toHaveLength(4); // reading is not tidying
+  });
+
+  it('tidying removes the automatic repeats, keeps the owner’s and the dismissed, and is safe to run twice', async () => {
+    const { consult, lab } = await consultAndLab();
+    const second = await doc('Second lab', 'lab_result', '2026-04-10');
+    const now = new Date().toISOString();
+    const add = (a: string, b: string, kind: 'requests' | 'follow_up' | 'same_episode', state: 'proposed' | 'confirmed' | 'dismissed', source: 'auto' | 'owner' = 'auto') =>
+      store().links.add(OWNER_ID, { from_document_id: a, to_document_id: b, kind, source, state, reason: null }, now);
+    await add(consult.id, lab.id, 'requests', 'confirmed');
+    await add(consult.id, lab.id, 'same_episode', 'confirmed');
+    await add(consult.id, second.id, 'requests', 'confirmed');
+    await add(lab.id, second.id, 'same_episode', 'proposed');
+    await add(consult.id, second.id, 'follow_up', 'dismissed');
+    await add(lab.id, second.id, 'follow_up', 'confirmed', 'owner');
+
+    const { tidyLinks } = await import('../linking/index.js');
+    expect(await tidyLinks(OWNER_ID)).toBe(2); // the pair's weaker kind, and the episode inside the group
+    const left = (await store().links.all(OWNER_ID)).map(l => `${l.kind}:${l.state}:${l.source}`).sort();
+    expect(left).toEqual(['follow_up:confirmed:owner', 'follow_up:dismissed:auto', 'requests:confirmed:auto', 'requests:confirmed:auto']);
+    expect(await tidyLinks(OWNER_ID)).toBe(0);
   });
 });

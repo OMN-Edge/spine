@@ -62,7 +62,6 @@ export async function doctorRoutes(app: FastifyInstance) {
       const result = await getStore().doctors.update(req.userId, req.params.id, change);
       if (result === 'not_found') return reply.status(404).send({ error: 'not found' });
       if (result === 'code_taken') return reply.status(409).send({ error: 'another doctor already has that code; merge them instead' });
-      if (result === 'name_taken') return reply.status(409).send({ error: 'another doctor already has that name; merge them instead' });
       return reply.send({ ok: true });
     },
   );

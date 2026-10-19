@@ -4,6 +4,7 @@ import { linkingEnabled } from '../config.js';
 import { logger } from '../logger.js';
 import { describeError } from '../failure.js';
 import { cardOf } from '../similarity/card.js';
+import { reduceLinks } from './reduce.js';
 import { similarTo, similarityEnabled } from '../similarity/index.js';
 import type { Store } from '../store/index.js';
 import type { Document, DocType } from '../types.js';
@@ -139,6 +140,10 @@ export async function findLinks(userId: string, documentId: string): Promise<num
     // Only the pairs judged again are replaced: a suggestion made from the other document's side, about a pair this
     // search did not look at, stays, and what the owner confirmed or dismissed is never touched.
     await tx.links.clearProposedBetween(userId, documentId, candidates.map(c => c.id));
+    // What a suggestion would add must not repeat what is already there (or what this same search just suggested):
+    // the same pair under another kind, or another "same episode" inside a group that is one already.
+    const standing = (await tx.links.among(userId, [documentId, ...candidates.map(c => c.id)])).filter(l => l.state !== 'dismissed');
+    const fresh: Array<{ from_document_id: string; to_document_id: string; kind: LinkKind; state: 'proposed'; source: 'auto'; reason: string | null }> = [];
     const seen = new Set<string>();
     for (const j of judgements) {
       const candidate = byLabel.get(j.candidate);
@@ -147,7 +152,12 @@ export async function findLinks(userId: string, documentId: string): Promise<num
       const key = `${link.from.id}|${link.to.id}|${link.kind}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      if (await tx.links.add(userId, { from_document_id: link.from.id, to_document_id: link.to.id, kind: link.kind, source: 'auto', state: 'proposed', reason: j.reason.slice(0, 400) || null }, now)) proposed++;
+      fresh.push({ from_document_id: link.from.id, to_document_id: link.to.id, kind: link.kind, state: 'proposed', source: 'auto', reason: j.reason.slice(0, 400) || null });
+    }
+    const { keep } = reduceLinks([...standing, ...fresh]);
+    for (const f of fresh) {
+      if (!keep.includes(f)) continue;
+      if (await tx.links.add(userId, f, now)) proposed++;
     }
   });
   return proposed;
@@ -168,6 +178,7 @@ async function drain(userId: string): Promise<void> {
       try { await findLinks(userId, next.value); }
       catch (err) { logger.warn('could not look for links', { error: describeError(err) }); }
     }
+    await tidyLinks(userId).catch(err => logger.warn('could not tidy links', { error: describeError(err) }));
   } finally {
     pending.delete(userId);
     running.delete(userId);
@@ -232,7 +243,8 @@ export async function chainOf(userId: string, documentId: string): Promise<{ nod
   }
 
   const ids = [...included];
-  const edges = (await store.links.among(userId, ids))
+  // Shown without what repeats itself: one line for a pair, and no "same episode" between documents a group already joins.
+  const edges = reduceLinks(await store.links.among(userId, ids)).keep
     .filter((l): l is typeof l & { state: 'proposed' | 'confirmed' } => l.state !== 'dismissed')
     .map(l => ({ from: l.from_document_id, to: l.to_document_id, kind: l.kind, state: l.state, source: l.source, reason: l.reason }));
   const nodes: ChainNode[] = [];
@@ -242,4 +254,57 @@ export async function chainOf(userId: string, documentId: string): Promise<{ nod
   }
   nodes.sort((a, b) => (a.doc_date ?? '9999').localeCompare(b.doc_date ?? '9999') || a.id.localeCompare(b.id));
   return { nodes, edges };
+}
+
+export interface SharedChain {
+  nodes: Array<{ id: string; title: string | null; doc_type: ChainNode['doc_type']; doc_date: string | null; provider: string | null }>;
+  /** Direction and kind only: not who made the link, not why, not whether it was ever a suggestion. */
+  edges: Array<{ from: string; to: string; kind: ChainEdge['kind'] }>;
+}
+
+/**
+ * The chain around a document as a share recipient may see it: only links the owner has confirmed, and only between documents the
+ * link shares (`shared`, from `listForShare`). A link to a document outside the share is not followed, so it neither appears nor
+ * leads anywhere. Reads only.
+ */
+export async function sharedChainOf(userId: string, documentId: string, shared: ReadonlyMap<string, ChainNode>): Promise<SharedChain | null> {
+  if (!shared.has(documentId)) return null;
+  const store = getStore();
+  const included = new Set<string>([documentId]);
+  let frontier = [documentId];
+  while (frontier.length > 0 && included.size < MAX_NODES) {
+    const next: string[] = [];
+    for (const id of frontier) {
+      for (const l of await store.links.forDocument(userId, id)) {
+        if (l.state !== 'confirmed' || !shared.has(l.from_document_id) || !shared.has(l.to_document_id)) continue;
+        for (const other of [l.from_document_id, l.to_document_id]) {
+          if (included.size < MAX_NODES && !included.has(other)) { included.add(other); next.push(other); }
+        }
+      }
+    }
+    frontier = next;
+  }
+  const ids = [...included];
+  const edges = (await store.links.among(userId, ids))
+    .filter(l => l.state === 'confirmed' && shared.has(l.from_document_id) && shared.has(l.to_document_id))
+    .map(l => ({ from: l.from_document_id, to: l.to_document_id, kind: l.kind }));
+  const nodes = ids.map(id => shared.get(id)!).map(d => ({ id: d.id, title: d.title, doc_type: d.doc_type, doc_date: d.doc_date, provider: d.provider }));
+  nodes.sort((a, b) => (a.doc_date ?? '9999').localeCompare(b.doc_date ?? '9999') || a.id.localeCompare(b.id));
+  return { nodes, edges };
+}
+
+/**
+ * Deletes the automatic links that repeat others (see `reduceLinks`): never an owner's link and never a dismissed one. What the owner
+ * confirmed from a suggestion goes only when a link they have at least as strong already says it. How many were removed.
+ */
+export async function tidyLinks(userId: string): Promise<number> {
+  const store = getStore();
+  const shown = new Set((await store.documents.listFor(userId, { limit: MANY, offset: 0 })).map(d => d.id));
+  const live = (await store.links.all(userId)).filter(l => shown.has(l.from_document_id) && shown.has(l.to_document_id));
+  let removed = 0;
+  for (const l of reduceLinks(live).redundant) {
+    if (await store.links.removeAuto(userId, l.from_document_id, l.to_document_id, l.kind)) removed++;
+  }
+  if (removed > 0) logger.info('redundant links removed', { removed });
+  return removed;
 }

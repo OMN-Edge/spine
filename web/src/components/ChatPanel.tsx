@@ -2,36 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { type ChatSource, type ChatStep } from '../api';
 import { useI18n } from '../i18n';
-import { documentTitle } from '../titles';
 import { PAGE_NAMES, useChat } from './ChatProvider';
 import Markdown from './Markdown';
 import ProposalCard from './ProposalCard';
 import { draftText, stepText } from './chatSteps';
 import UploadNoticeMessage, { RegroupNoticeMessage } from './UploadNoticeMessage';
 import AttachmentMessage from './AttachmentMessage';
-
-/** What a cited section is called on the page. */
-const SECTION_NAMES: Record<string, string> = {
-  summary: 'Summary', notes: 'Notes', doctors: 'Doctors', results: 'Measurements', fields: 'Extracted fields', chain: 'Care chain',
-};
+import AnswerSources, { chipClass, numbered, sourceFor, useSourceName } from './AnswerSources';
 
 const hrefOf = (s: ChatSource) => `/documents/${s.id}${s.section ? `?section=${s.section}` : ''}`;
-
-/** The source a citation in the text stands for: the exact label, or the document if only a section was shown. */
-function sourceFor(label: string, sources: ChatSource[]): ChatSource | undefined {
-  return sources.find(s => s.label === label) ?? sources.find(s => s.label.split('.')[0] === label.split('.')[0]);
-}
-
-/** Sources in the order the answer first cites them, then any it did not cite; each gets the number the text shows. */
-function numbered(text: string, sources: ChatSource[]): ChatSource[] {
-  const order: ChatSource[] = [];
-  for (const [, label] of text.matchAll(/\[([DTCS]\d+(?:\.[a-z]+)?)\]/g)) {
-    const source = sourceFor(label, sources);
-    if (source && !order.includes(source)) order.push(source);
-  }
-  for (const source of sources) if (!order.includes(source)) order.push(source);
-  return order;
-}
 
 /** Questions worth asking from where the person is. */
 function suggestionsFor(page: string, t: (s: string) => string): string[] {
@@ -46,6 +25,7 @@ function suggestionsFor(page: string, t: (s: string) => string): string[] {
  */
 export default function ChatPanel() {
   const { t, tn } = useI18n();
+  const nameOf = useSourceName();
   const chat = useChat();
   const [text, setText] = useState('');
   // Files waiting to be sent with the next message: pasted, dropped or chosen.
@@ -60,6 +40,14 @@ export default function ChatPanel() {
   const [entered, setEntered] = useState(false);
   const end = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
+
+  // The box grows with what is typed (up to a limit, then it scrolls) and shrinks back once the message is sent.
+  useEffect(() => {
+    const box = input.current;
+    if (!box) return;
+    box.style.height = 'auto';
+    box.style.height = `${Math.min(box.scrollHeight, 192)}px`;
+  }, [text, view, chat?.open]);
 
   const open = chat?.open ?? false;
   useEffect(() => {
@@ -244,26 +232,15 @@ export default function ChatPanel() {
                     const source = sourceFor(label, turn.sources ?? []);
                     return source ? (
                       <Link
-                        to={hrefOf(source)} onClick={follow} title={`${documentTitle(source, t)}${source.section ? ` · ${t(SECTION_NAMES[source.section] ?? source.section)}` : ''}`}
-                        className="mx-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded bg-blue-50 px-1 align-text-top text-[10px] font-semibold text-blue-700 hover:bg-blue-100"
+                        to={hrefOf(source)} onClick={follow} title={nameOf(source)}
+                        className={`mx-0.5 align-text-top hover:bg-blue-100 ${chipClass}`}
                       >{numberOf(source)}</Link>
                     ) : null;
                   };
                   return (
                     <>
                       <div className="text-gray-900"><Markdown text={turn.content} cite={cite} /></div>
-                      {sources.length > 0 && (
-                        <ol className="mt-3 flex flex-wrap gap-1.5">
-                          {sources.map((s, n) => (
-                            <li key={s.label}>
-                              <Link to={hrefOf(s)} onClick={follow} className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-gray-200 py-0.5 pl-1 pr-2.5 text-xs text-gray-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700">
-                                <span className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-blue-50 px-1 text-[10px] font-semibold text-blue-700">{n + 1}</span>
-                                <span className="truncate">{documentTitle(s, t)}{s.section ? ` · ${t(SECTION_NAMES[s.section] ?? s.section)}` : ''}</span>
-                              </Link>
-                            </li>
-                          ))}
-                        </ol>
-                      )}
+                      <AnswerSources sources={sources} hrefOf={hrefOf} onFollow={follow} owner />
                       {(turn.proposals ?? []).map(p => <ProposalCard key={p.id} proposal={p} />)}
                     </>
                   );
@@ -316,10 +293,11 @@ export default function ChatPanel() {
             </button>
             <textarea
               ref={input} value={text} onChange={e => setText(e.target.value)} rows={1} maxLength={1000}
-              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
+              // A keyboard sends on Enter (Shift+Enter is a new line); a touch screen has no Shift, so there Enter is a new line and the arrow sends.
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && !window.matchMedia('(pointer: coarse)').matches) { e.preventDefault(); void send(); } }}
               onPaste={e => { if (e.clipboardData.files.length > 0) { e.preventDefault(); addFiles(e.clipboardData.files); } }}
               aria-label={t('Your question')} placeholder={files.length > 0 ? t('Add a message, or just send…') : t('Ask about your records, or paste a file…')}
-              className="max-h-32 min-h-[2rem] flex-1 resize-none bg-transparent py-1.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none"
+              className="max-h-48 min-h-[2rem] flex-1 resize-none overflow-y-auto bg-transparent py-1.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none"
             />
             {busy ? (
               <button type="button" onClick={chat.stop} title={t('Stop')} aria-label={t('Stop')} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-800 text-white transition hover:bg-gray-700">

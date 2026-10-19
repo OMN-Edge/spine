@@ -1,3 +1,10 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Phones: a form field under 16px makes iOS zoom the page when it is focused, and the page never zooms back. */
+@media (max-width: 767px) {
+  input:not([type='checkbox']):not([type='radio']), textarea, select { font-size: 16px !important; }
+}
+html { -webkit-text-size-adjust: 100%; }
+img, svg, video { max-width: 100%; }

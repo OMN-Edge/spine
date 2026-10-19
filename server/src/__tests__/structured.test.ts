@@ -571,12 +571,31 @@ describe('the directory', () => {
     expect(await store.doctors.merge(OWNER_ID, keep, keep)).toBe(false);
   });
 
-  it('renames, refuses a name that is already another doctor, and only removes a doctor no document names', async () => {
+  it('renames (even to a name another doctor has), and only removes a doctor no document names', async () => {
     const store = getStore(); const now = new Date().toISOString();
     const a = await store.doctors.upsert(OWNER_ID, { name: 'Alpha Rename' }, now); const b = await store.doctors.upsert(OWNER_ID, { name: 'Beta Rename' }, now);
-    expect(await store.doctors.update(OWNER_ID, a!, { name: 'Dr. Beta Rename' })).toBe('name_taken');
+    expect(await store.doctors.update(OWNER_ID, a!, { name: 'Dr. Beta Rename' })).toBe('ok');
+    expect(await store.doctors.find(OWNER_ID, b!)).toMatchObject({ name: 'Beta Rename' });
     expect(await store.doctors.update(OWNER_ID, a!, { name: 'Gamma Rename', specialty: 'dermatology' })).toBe('ok');
     expect((await store.doctors.find(OWNER_ID, a!))).toMatchObject({ name: 'Gamma Rename', specialty: 'dermatology' });
+
+    // Two people of one name are two entries, and the keys stay unique.
+    const c = await store.doctors.upsert(OWNER_ID, { name: 'Beta Rename', newPerson: true }, now);
+    const d = await store.doctors.upsert(OWNER_ID, { name: 'Rename Beta', newPerson: true }, now);
+    expect(new Set([b, c, d]).size).toBe(3);
+    // Reading a name picks the namesake without a code, then the oldest.
+    await store.doctors.update(OWNER_ID, b!, { licenseCode: 'ZB12345' });
+    expect(await store.doctors.upsert(OWNER_ID, { name: 'Dr. Beta Rename' }, now)).toBe(c);
+    expect(await store.doctors.upsert(OWNER_ID, { name: 'Beta Rename', licenseCode: 'ZB12345' }, now)).toBe(b);
+    // An exact entry is taken as it is, whatever its name.
+    expect(await store.doctors.upsert(OWNER_ID, { name: 'whoever', id: d! }, now)).toBe(d);
+    // A restore's code that differs from the only namesake's is another person; a read one is left to the question.
+    await store.doctors.update(OWNER_ID, c!, { licenseCode: 'ZC12345' });
+    await store.doctors.update(OWNER_ID, d!, { licenseCode: 'ZD12345' });
+    expect(await store.doctors.upsert(OWNER_ID, { name: 'Beta Rename', licenseCode: 'ZE12345' }, now)).toBe(b);
+    const e = await store.doctors.upsert(OWNER_ID, { name: 'Beta Rename', licenseCode: 'ZE12345', exactCode: true }, now);
+    expect([b, c, d]).not.toContain(e);
+    await store.doctors.merge(OWNER_ID, c!, b!); await store.doctors.merge(OWNER_ID, d!, b!); await store.doctors.merge(OWNER_ID, e!, b!);
 
     const { docId } = await upload();
     await store.doctors.link(OWNER_ID, docId, b!, 'author');

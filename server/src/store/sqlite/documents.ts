@@ -27,7 +27,7 @@ const ORDER = 'ORDER BY d.doc_date DESC NULLS LAST';
  */
 const COLUMNS =
   'd.id, d.source_file_id, d.page_start, d.page_end, d.title, d.doc_date, d.provider, ' +
-  'd.doc_type, d.ai_summary, d.user_notes, d.reviewed, d.language';
+  'd.doc_type, d.ai_summary, d.user_notes, d.reviewed, d.language, d.needs_reading';
 
 /** Every statement filters by `user_id` (SECURITY.md P12). */
 export function documentRepository(db: Database): DocumentRepository {
@@ -35,8 +35,8 @@ export function documentRepository(db: Database): DocumentRepository {
 
   // Inserts only if the source file is the user's.
   const insert = db.prepare(`
-    INSERT INTO documents (id, user_id, source_file_id, page_start, page_end, title, doc_date, provider, doc_type, ai_summary, language)
-    SELECT ?, ?, id, ?, ?, ?, ?, ?, ?, ?, ?
+    INSERT INTO documents (id, user_id, source_file_id, page_start, page_end, title, doc_date, provider, doc_type, ai_summary, language, needs_reading)
+    SELECT ?, ?, id, ?, ?, ?, ?, ?, ?, ?, ?, ?
     FROM source_files WHERE id = ? AND user_id = ?
   `);
   const setPageEnd = db.prepare('UPDATE documents SET page_end = ? WHERE id = ? AND user_id = ?');
@@ -182,6 +182,7 @@ export function documentRepository(db: Database): DocumentRepository {
         doc.docType ?? null,
         doc.aiSummary ?? null,
         doc.language ?? null,
+        doc.needsReading ? 1 : 0,
         doc.sourceFileId,
         uid,
       );
@@ -191,13 +192,13 @@ export function documentRepository(db: Database): DocumentRepository {
     async update(userId, id, patch: DocumentPatch) {
       const uid = owner(userId);
       const columns = (Object.keys(patch) as Array<keyof DocumentPatch>).filter(
-        (key): key is UpdatableColumn | 'reviewed' =>
-          key === 'reviewed' || (UPDATABLE_COLUMNS as readonly string[]).includes(key),
+        (key): key is UpdatableColumn | 'reviewed' | 'needs_reading' =>
+          key === 'reviewed' || key === 'needs_reading' || (UPDATABLE_COLUMNS as readonly string[]).includes(key),
       );
       if (columns.length === 0) return;
 
       const values = columns.map(key =>
-        key === 'reviewed' ? (patch.reviewed ? 1 : 0) : (patch[key] as string | null),
+        key === 'reviewed' ? (patch.reviewed ? 1 : 0) : key === 'needs_reading' ? (patch.needs_reading ? 1 : 0) : (patch[key] as string | null),
       );
       const sets = columns.map(key => `${key} = ?`).join(', ');
       db.prepare(`UPDATE documents SET ${sets} WHERE id = ? AND user_id = ?`).run(...values, id, uid);

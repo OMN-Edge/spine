@@ -97,6 +97,11 @@ export function tagRepository(db: Database): TagRepository {
       return removeOne(owner(userId), id);
     },
 
+    async ensure(userId, names) {
+      const uid = owner(userId);
+      for (const name of names) { const clean = cleanTag(name); if (clean) ensure.run(uid, clean); }
+    },
+
     async namesForDocument(userId, documentId) {
       const uid = owner(userId);
       return (namesForDocument.all(documentId, uid, uid) as Array<{ name: string }>).map(

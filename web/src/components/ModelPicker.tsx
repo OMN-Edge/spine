@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { ModelChoice } from '../api';
 import { loadModels } from './aiTarget';
 import { useI18n } from '../i18n';
+import { Combobox } from './Combobox';
 
 /**
  * The models a reading can be run with, as a list to pick from. Nothing is shown when the operator offers
@@ -28,13 +29,12 @@ export default function ModelPicker({
   return (
     <label className="block text-xs text-gray-700 mt-2">
       {t('Model')}
-      <select
-        value={chosen} disabled={disabled}
-        onChange={e => onChange(models.find(m => m.id === e.target.value)?.default ? undefined : e.target.value)}
-        className="ml-2 rounded-md border border-gray-300 bg-white px-2 py-1 text-xs"
-      >
-        {models.map(m => <option key={m.id} value={m.id}>{m.label}{m.default ? ` (${t('default')})` : ''}</option>)}
-      </select>
+      <Combobox
+        ariaLabel={t('Model')} value={chosen} disabled={disabled} wrapperClassName="relative mt-1 w-full max-w-xs"
+        onChange={v => onChange(models.find(m => m.id === v)?.default ? undefined : v)}
+        className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-xs"
+        options={models.map(m => ({ value: m.id, label: `${m.label}${m.default ? ` (${t('default')})` : ''}` }))}
+      />
       {endpoint && <span className="block mt-1 text-[11px] text-gray-500">{t('Runs at {endpoint}', { endpoint })}</span>}
     </label>
   );

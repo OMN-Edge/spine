@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type ChatSource, type ChatStep } from '../api';
 import { useI18n } from '../i18n';
-import { documentTitle } from '../titles';
 import Markdown from './Markdown';
+import AnswerSources, { chipClass, numbered, sourceFor, useSourceName } from './AnswerSources';
 import { draftText, stepText } from './chatSteps';
 
 interface Turn { role: 'user' | 'assistant'; content: string; sources?: ChatSource[]; note?: 'none' | 'failed' | 'stopped' }
@@ -16,7 +16,7 @@ const withoutCitations = (text: string) => text.replace(/\s*\[[DTCS]\d+(?:\.[a-z
  * conversation lives in this page and nowhere else (nothing is stored, a reload starts again), there is no history, and a
  * citation links to the shared document in this same page.
  */
-export default function SharedChat({ token, openId }: { token: string; openId: string | null }) {
+export default function SharedChat({ token, openId, titleOf }: { token: string; openId: string | null; titleOf: (source: ChatSource) => string | null | undefined }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -100,15 +100,7 @@ export default function SharedChat({ token, openId }: { token: string; openId: s
             {turn.note === 'none' ? t('Nothing in this share matches this. Try other words.') : turn.note === 'stopped' ? t('Stopped.') : t('Could not answer just now. Try again.')}
           </p>
         ) : (
-          <div key={i} className="text-sm text-gray-900">
-            <Markdown text={turn.content} cite={label => {
-              const source = (turn.sources ?? []).find(s => s.label === label) ?? (turn.sources ?? []).find(s => s.label.split('.')[0] === label.split('.')[0]);
-              if (!source) return null;
-              const n = (turn.sources ?? []).indexOf(source) + 1;
-              return <Link to={`?d=${source.id}`} title={documentTitle(source, t)} onClick={() => { if (window.matchMedia('(max-width: 767px)').matches) setOpen(false); }}
-                className="mx-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded bg-blue-50 px-1 align-text-top text-[10px] font-semibold text-blue-700 hover:bg-blue-100">{n}</Link>;
-            }} />
-          </div>
+          <AnswerWithSources key={i} turn={turn} titleOf={titleOf} onOpen={() => { if (window.matchMedia('(max-width: 767px)').matches) setOpen(false); }} />
         ))}
         {busy && (
           <div className="text-sm" role="status" aria-live="polite">
@@ -138,3 +130,26 @@ export default function SharedChat({ token, openId }: { token: string; openId: s
     </aside>
   );
 }
+
+/**
+ * An answer with each citation as a number, and under it the list those numbers refer to (the same as in the owner's chat): the
+ * document, named in the reader's language where it has been translated, and the part of it that was cited.
+ */
+function AnswerWithSources({ turn, titleOf, onOpen }: { turn: Turn; titleOf: (source: ChatSource) => string | null | undefined; onOpen: () => void }) {
+  const nameOf = useSourceName(titleOf);
+  const all = turn.sources ?? [];
+  const sources = numbered(turn.content, all);
+  return (
+    <div className="text-sm text-gray-900">
+      <Markdown text={turn.content} cite={label => {
+        const source = sourceFor(label, all);
+        if (!source) return null;
+        return <Link to={hrefOf(source)} title={nameOf(source)} onClick={onOpen} className={`mx-0.5 align-text-top hover:bg-blue-100 ${chipClass}`}>{sources.indexOf(source) + 1}</Link>;
+      }} />
+      <AnswerSources sources={sources} hrefOf={hrefOf} onFollow={onOpen} titleOf={titleOf} />
+    </div>
+  );
+}
+
+/** The shared document, and the part of it if one was cited: the page scrolls there. */
+const hrefOf = (source: ChatSource) => `?d=${source.id}${source.section ? `&section=${source.section}` : ''}`;

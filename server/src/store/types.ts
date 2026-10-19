@@ -210,6 +210,8 @@ export interface NewSourceFile {
   checksum: string;
   /** Set when the file is attached in a chat conversation. */
   chatConversationId?: string | null;
+  /** Several photos bundled into one PDF. */
+  photoSet?: boolean;
 }
 
 export interface PageRepository {
@@ -342,6 +344,8 @@ export interface NewDocument {
   docType?: DocType | null;
   aiSummary?: string | null;
   language?: string | null;
+  /** Made from the pages' grouping alone: nothing is read from its text until the owner confirms the grouping. */
+  needsReading?: boolean;
 }
 
 export interface DocumentPatch {
@@ -353,6 +357,7 @@ export interface DocumentPatch {
   user_notes?: string | null;
   reviewed?: boolean;
   language?: string | null;
+  needs_reading?: boolean;
 }
 
 export interface ExtractedFieldRepository {
@@ -373,6 +378,10 @@ export interface ExtractedFieldRepository {
   deleteUnedited(userId: string, documentId: string): Promise<void>;
   /** Keys (`reading-keys.ts`) of the fields the owner removed, so a new reading does not bring them back. */
   removedKeys(userId: string, documentId: string): Promise<Set<string>>;
+  /** Ids of the fields the owner added or changed, which a new reading keeps (for an export, which carries the flag). */
+  editedIds(userId: string, documentId: string): Promise<Set<string>>;
+  /** Fields the owner removed, restored from an export so a new reading still does not bring them back. */
+  rememberRemoved(userId: string, documentId: string, keys: string[]): Promise<void>;
   /** The owner correcting a field. False if it is not this user's, or not on this document. */
   update(userId: string, documentId: string, fieldId: string, change: { label: string; value: string }): Promise<boolean>;
   /** The owner removing a field. False if it is not this user's, or not on this document. */
@@ -466,6 +475,14 @@ export interface MeasurementRepository {
   deleteUnedited(userId: string, documentId: string): Promise<void>;
   /** Keys (`reading-keys.ts`) of the values the owner removed, so a new reading does not bring them back. */
   removedKeys(userId: string, documentId: string): Promise<Set<string>>;
+  /** Ids of the values the owner added or changed, which a new reading keeps (for an export, which carries the flag). */
+  editedIds(userId: string, documentId: string): Promise<Set<string>>;
+  /** Values the owner removed, restored from an export so a new reading still does not bring them back. */
+  rememberRemoved(userId: string, documentId: string, keys: string[]): Promise<void>;
+  /** Every name the person merged into another (`alias` is filed under `canonical`), for an export. */
+  aliases(userId: string): Promise<Array<{ alias: string; canonical: string }>>;
+  /** An alias restored from an export. An alias that is already held keeps the owner's choice. */
+  addAlias(userId: string, alias: string, canonical: string): Promise<void>;
   /** Merging two documents. */
   reassignDocument(userId: string, fromDocumentId: string, toDocumentId: string): Promise<void>;
   /** Splitting a document: the values on its pages from this one on go with them. */
@@ -517,8 +534,11 @@ export interface DoctorRepository {
    * The directory entry for this name, made if there is none. A name that reduces to the same key as an
    * existing doctor is that doctor, and so is a doctor with the same professional code under another spelling
    * (the code wins); a blank specialty, clinic or code is filled in from what is now known, never overwritten.
+   * Two people may share a name: with several of that name the one without a code is taken, then the oldest.
+   * `id` is exactly that entry (the owner chose it), `newPerson` makes another entry even though the name is held, and
+   * `exactCode` says a code that differs from the namesake's is a different person (a restore).
    */
-  upsert(userId: string, doctor: { name: string; specialty?: string | null; clinic?: string | null; licenseCode?: string | null }, now: string): Promise<string | null>;
+  upsert(userId: string, doctor: { name: string; specialty?: string | null; clinic?: string | null; licenseCode?: string | null; id?: string; newPerson?: boolean; exactCode?: boolean }, now: string): Promise<string | null>;
   /**
    * Names a doctor on a document. False if either is not the user's. `source` is where it came from: a
    * stamp wins over text if both name the same doctor in the same role.
@@ -530,6 +550,8 @@ export interface DoctorRepository {
    */
   codeClashes(userId: string, documentIds: string[]): Promise<Array<{ doctor_id: string; name: string; directory_code: string; printed_code: string; document_ids: string[] }>>;
   /** Every link, however it was made: the owner replacing the list. */
+  /** How each doctor is tied to the document now: the role, where it was read (text, a stamp, a signature) and the code the document printed. For keeping them through an edit. */
+  linkInfo(userId: string, documentId: string): Promise<Array<{ doctor_id: string; role: DoctorRole; source: 'text' | 'stamp' | 'signature'; printed_code: string | null }>>;
   unlinkAll(userId: string, documentId: string): Promise<void>;
   /** Only the links made from the document's text, so reading the text again leaves what a stamp gave. */
   unlinkRead(userId: string, documentId: string): Promise<void>;
@@ -541,8 +563,8 @@ export interface DoctorRepository {
   listFor(userId: string): Promise<DoctorWithCounts[]>;
   find(userId: string, id: string): Promise<Doctor | null>;
   documentsFor(userId: string, doctorId: string): Promise<DoctorDocument[]>;
-  /** 'name_taken' or 'code_taken' if the new name or code is another doctor's. */
-  update(userId: string, id: string, change: { name?: string; specialty?: string | null; clinic?: string | null; licenseCode?: string | null }): Promise<'ok' | 'not_found' | 'name_taken' | 'code_taken'>;
+  /** 'code_taken' if the new code is another doctor's. A name may be another's: two people can share one. */
+  update(userId: string, id: string, change: { name?: string; specialty?: string | null; clinic?: string | null; licenseCode?: string | null }): Promise<'ok' | 'not_found' | 'code_taken'>;
   /** Two entries for one person become one. False if either is not the user's, or they are the same. */
   merge(userId: string, fromId: string, intoId: string): Promise<boolean>;
   /** Only a doctor no document names. */
@@ -607,6 +629,8 @@ export interface TagRepository {
   /** Replaces the document's tags, creating any that do not exist yet. */
   setForDocument(userId: string, documentId: string, names: string[]): Promise<void>;
   removeAllForDocument(userId: string, documentId: string): Promise<void>;
+  /** Adds tags to the vocabulary with no document (a restore brings the ones no document carries). Existing ones are left. */
+  ensure(userId: string, names: string[]): Promise<void>;
 }
 
 export interface ShareLinkRepository {
@@ -880,6 +904,8 @@ export interface LinkRepository {
    * pair, are not touched. How many.
    */
   clearProposedBetween(userId: string, documentId: string, otherIds: string[]): Promise<number>;
+  /** Deletes one automatic link (never an owner's, never a dismissed one: that is a decision). False if there is none. For tidying redundant ones. */
+  removeAuto(userId: string, fromDocumentId: string, toDocumentId: string, kind: LinkKind): Promise<boolean>;
   /** Pairs the owner dismissed, in either direction and any kind, among these documents: never proposed again. */
   dismissedPairs(userId: string, documentId: string): Promise<Set<string>>;
   /** Every link the user has, in any state, including those at a document that is set aside: for an export. */

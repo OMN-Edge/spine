@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Combobox } from '../components/Combobox';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, type UploadDocument, type UploadLayout } from '../api';
+import { useOnDataChanged } from '../dataChanged';
 import SpineLog from '../components/SpineLog';
 import PagePreview from '../components/PagePreview';
 import { sourceLabel } from '../components/pageSource';
@@ -32,6 +34,9 @@ export default function UploadPages() {
   const [pending, setPending] = useState<string[]>(() => {
     try { return JSON.parse(sessionStorage.getItem(pendingKey) ?? '[]') as string[]; } catch { return []; }
   });
+  // Before the grouping is confirmed nothing is read, so there is nothing to press Done for: the server marks the documents it changes.
+  const unconfirmed = layout?.grouping_confirmed === false;
+  const track = (update: (prev: string[]) => string[]) => { if (!unconfirmed) setPending(update); };
   useEffect(() => {
     try { sessionStorage.setItem(pendingKey, JSON.stringify(pending)); } catch { /* the list still works without it */ }
   }, [pendingKey, pending]);
@@ -53,6 +58,8 @@ export default function UploadPages() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
   useEffect(load, [load]);
+  // A change made from the chat (a page moved, documents combined, a grouping confirmed): read the layout again.
+  useOnDataChanged(load);
 
   /** Splits or joins. If a document that was reviewed is affected, ask first: it is read again, which replaces its details. */
   const ask = (label: string, docId: string, body: Parameters<typeof api.documents.boundary>[1], affected: UploadDocument[]) => {
@@ -65,8 +72,8 @@ export default function UploadPages() {
   type MoveBody = Parameters<typeof api.sourceFiles.movePage>[1];
 
   /** Dropping a page. Moving it sends the documents it leaves and joins back to review, so a reviewed one is asked about first. */
-  const dropPage = (target: MoveBody) => {
-    const pageId = dragging;
+  const dropPage = (target: MoveBody, chosen?: string) => {
+    const pageId = chosen ?? dragging;
     setDragging(null);
     setOver(null);
     if (!pageId || !layout) return;
@@ -88,11 +95,11 @@ export default function UploadPages() {
       if (!result.moved) {
         setNotice(t('The page is already there.'));
       } else {
-        setPending(prev => [...new Set([...prev, ...result.touched])].filter(docId => !result.deleted.includes(docId)));
+        track(prev => [...new Set([...prev, ...result.touched])].filter(docId => !result.deleted.includes(docId)));
         setNotice(
           result.deleted.length > 0
-            ? t('Page moved. Its document had no other pages, so it was folded into where the page went. Press Done to read the changed documents.')
-            : t('Page moved. Keep going, then press Done to read the changed documents.'),
+            ? (unconfirmed ? t('Page moved. Its document had no other pages, so it was folded into where the page went. Keep going, then confirm the grouping when it is right.') : t('Page moved. Its document had no other pages, so it was folded into where the page went. Press Done to read the changed documents.'))
+            : (unconfirmed ? t('Saved. Keep grouping, then confirm the grouping when it is right.') : t('Page moved. Keep going, then press Done to read the changed documents.')),
         );
       }
     } catch (err) {
@@ -111,8 +118,8 @@ export default function UploadPages() {
       const result = (await api.documents.boundary(docId, { ...body, defer: true })) as { split_into?: string[]; merged?: string };
       const touched = result.split_into ?? (result.merged ? [result.merged] : []);
       const absorbed = body.action === 'merge' ? body.with_document_id : null;
-      setPending(prev => [...new Set([...prev, ...touched])].filter(docId => docId !== absorbed));
-      setNotice(t('Saved. Keep grouping, then press Done to read the changed documents.'));
+      track(prev => [...new Set([...prev, ...touched])].filter(docId => docId !== absorbed));
+      setNotice(unconfirmed ? t('Saved. Keep grouping, then confirm the grouping when it is right.') : t('Saved. Keep grouping, then press Done to read the changed documents.'));
     } catch (err) {
       setNotice(err instanceof Error ? err.message : t('Could not change the grouping'));
     } finally {
@@ -126,8 +133,8 @@ export default function UploadPages() {
     setNotice('');
     try {
       const result = await api.sourceFiles.setPageHidden(pageId, hidden);
-      setPending(prev => [...new Set([...prev, ...result.document_ids])]);
-      setNotice(hidden ? t('Page set aside. Press Done to read the document again without it.') : t('Page brought back. Press Done to read the document again with it.'));
+      track(prev => [...new Set([...prev, ...result.document_ids])]);
+      setNotice(unconfirmed ? t('Saved. Keep grouping, then confirm the grouping when it is right.') : hidden ? t('Page set aside. Press Done to read the document again without it.') : t('Page brought back. Press Done to read the document again with it.'));
     } catch (err) {
       setNotice(err instanceof Error ? err.message : t('Could not change the page'));
     } finally {
@@ -142,7 +149,7 @@ export default function UploadPages() {
     try {
       await api.documents.setHidden(doc.id, hidden);
       // Hidden, there is nothing left to read. Shown again, its pages may differ from what its details were read from.
-      setPending(prev => hidden ? prev.filter(docId => docId !== doc.id) : [...new Set([...prev, doc.id])]);
+      track(prev => hidden ? prev.filter(docId => docId !== doc.id) : [...new Set([...prev, doc.id])]);
       setNotice(hidden
         ? t('Document hidden. It is left out of the timeline, search and shares. Use Show all pages to bring it back.')
         : t('Pages shown. Press Done to read the document again with them.'));
@@ -172,13 +179,32 @@ export default function UploadPages() {
     },
   });
 
+  // After "Grouping is right" the documents are read, which takes a while; the screen asks again until it is over.
+  const reading = layout?.reading ?? null;
+  const started = useRef(false);
+  useEffect(() => {
+    if (reading?.status !== 'running') return;
+    const timer = window.setTimeout(load, 2500);
+    return () => window.clearTimeout(timer);
+  }, [reading?.status, reading?.read, layout, load]);
+  useEffect(() => {
+    if (started.current && reading?.status === 'done' && layout?.grouping_confirmed) {
+      started.current = false;
+      setNotice(<>{tx('Grouping confirmed. The documents were read and are in your timeline and waiting in {review}.', { review: <Link to="/review" className="text-blue-600 hover:underline">{t('Review')}</Link> })}</>);
+    }
+  }, [reading?.status, layout?.grouping_confirmed, tx, t]);
+
   const confirmGrouping = async () => {
     if (!id) return;
     setBusy(t('Confirming the grouping'));
     setNotice('');
     try {
-      await api.sourceFiles.confirmGrouping(id);
-      setNotice(<>{tx('Grouping confirmed. The documents are in your timeline and waiting in {review}.', { review: <Link to="/review" className="text-blue-600 hover:underline">{t('Review')}</Link> })}</>);
+      const result = await api.sourceFiles.confirmGrouping(id);
+      if (result.confirmed) {
+        setNotice(<>{tx('Grouping confirmed. The documents are in your timeline and waiting in {review}.', { review: <Link to="/review" className="text-blue-600 hover:underline">{t('Review')}</Link> })}</>);
+      } else {
+        started.current = true;
+      }
     } catch (err) {
       setNotice(err instanceof Error ? err.message : t('Could not confirm the grouping'));
     } finally {
@@ -227,7 +253,7 @@ export default function UploadPages() {
       <p className="text-sm text-gray-500 mt-1 mb-6">
         {t('Uploaded {date}', { date: layout.uploaded_at.slice(0, 10) })} · {tn(layout.pages.length, '{n} page', '{n} pages')} ·{' '}
         {tn(layout.documents.length, '{n} document', '{n} documents')}.{' '}
-        {t('Split a document between two pages, join it to the one before, or drag a page to another place or document. Nothing is read again until you press Done.')}
+        {unconfirmed ? t('Split a document between two pages, join it to the one before, or drag a page to another place or document. Nothing is read until you confirm the grouping.') : t('Split a document between two pages, join it to the one before, or drag a page to another place or document. Nothing is read again until you press Done.')}
       </p>
       <div className="flex flex-wrap text-sm -mt-4 mb-6">
         <DeleteUpload fileId={layout.id} documents={layout.documents.length} label={t('Delete this upload')} onDeleted={() => navigate('/upload')} />
@@ -257,9 +283,16 @@ export default function UploadPages() {
           <p className="text-amber-900 mt-1">
             {t('Look at which pages the documents hold. Split, join or move pages if it is wrong. Until you confirm it, these documents stay out of your timeline, search, shares and trends, and cannot be marked reviewed.')}
           </p>
+          <p className="text-amber-900 mt-1">{t('Nothing is read from the documents until you confirm, so changing the grouping costs nothing.')}</p>
+          {reading?.status === 'running' && (
+            <p className="mt-2 text-blue-800" role="status">{t('Reading the documents… {read} of {total}', { read: reading.read, total: reading.documents })}</p>
+          )}
+          {reading?.status === 'failed' && (
+            <p className="mt-2 text-red-600" role="alert">{t('The documents could not be read. Press “Grouping is right” to try again.')}</p>
+          )}
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <button
-              type="button" onClick={confirmGrouping} disabled={!!busy || pending.length > 0 || layout.documents.length === 0}
+              type="button" onClick={confirmGrouping} disabled={!!busy || pending.length > 0 || layout.documents.length === 0 || reading?.status === 'running'}
               className="bg-blue-600 text-white rounded-lg px-4 py-1.5 text-sm hover:bg-blue-700 disabled:opacity-50"
             >
               {t('Grouping is right')}
@@ -322,7 +355,7 @@ export default function UploadPages() {
                 <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
                   <div className="min-w-0">
                     <Link to={`/documents/${doc.id}`} className={`text-sm font-medium hover:text-blue-700 ${doc.hidden ? 'text-gray-600' : 'text-gray-900'}`}>
-                      {documentTitle(doc, t)}
+                      {doc.needs_reading && !doc.title && doc.title_guess ? <span className="italic" title={t('A guess from the first line of its first page. The real title comes when the document is read.')}>{doc.title_guess}</span> : documentTitle(doc, t)}
                     </Link>
                     <p className="text-xs text-gray-500 mt-0.5">
                       {[documentByline(doc, t), doc.page_start === doc.page_end ? t('page {n}', { n: doc.page_start }) : t('pages {from}–{to}', { from: doc.page_start, to: doc.page_end })]
@@ -440,6 +473,7 @@ export default function UploadPages() {
                     </button>
                   )}
                   {pending.includes(doc.id) && <span className="text-xs text-amber-700">{t('Changed, waiting for Done')}</span>}
+                  {unconfirmed && doc.needs_reading && <span className="text-xs text-gray-500">{t('Not read yet')}</span>}
                 </div>
                 </div>
               </div>
@@ -466,11 +500,29 @@ export default function UploadPages() {
           extras={page => {
             const doc = layout.documents.find(d => page.page_number >= d.page_start && page.page_number <= d.page_end);
             // The preview only shows. What was extracted from the page, and reading it again, are on the document.
-            return doc ? (
-              <Link to={`/documents/${doc.id}?page=${page.page_number}`} className="text-sm text-blue-300 hover:text-blue-200">
-                {t('Open this page in its document')} →
-              </Link>
-            ) : null;
+            return (
+              <div className="flex flex-col items-center gap-3 w-full max-w-sm">
+                {doc && (
+                  <Link to={`/documents/${doc.id}?page=${page.page_number}`} className="text-sm text-blue-300 hover:text-blue-200">
+                    {t('Open this page in its document')} →
+                  </Link>
+                )}
+                {/* Dragging does not work on a touch screen: this is the same move, chosen from a list. */}
+                {!busy && (
+                  <Combobox
+                    className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm bg-white text-gray-900" ariaLabel={t('Move this page to…')} placeholder={t('Move this page to…')} value=""
+                    options={[
+                      ...layout.documents.filter(d => d.id !== doc?.id).map(d => ({ value: d.id, label: documentTitle(d, t), hint: `${d.page_start}–${d.page_end}` })),
+                      { value: '__own__', label: t('A document of its own') },
+                    ]}
+                    onChange={v => {
+                      setPreview(null);
+                      dropPage(v === '__own__' ? { new_document: true, before_document_id: null } : { document_id: v, before_page_id: null }, page.id);
+                    }}
+                  />
+                )}
+              </div>
+            );
           }}
           caption={page => {
             const doc = layout.documents.find(d => page.page_number >= d.page_start && page.page_number <= d.page_end);

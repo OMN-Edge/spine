@@ -36,9 +36,10 @@ describePipeline('attach a mixed export and follow it to the end', () => {
     expect(notice.pages).toBe(6);
     expect(notice.documents.length).toBeGreaterThanOrEqual(2);
     expect(notice.grouping_pending).toBe(true);
-    // Report-level facts from reading: the doctors on the pages were filed, and the tests are new.
-    expect(notice.doctors_added.join(' ')).toMatch(/popescu/i);
-    expect(notice.tests_new.join(' ')).toMatch(/hemoglobin/i);
+    // The first report is about the grouping: nothing has been read from the documents yet (M-29), so no doctors, no tests.
+    expect((notice as unknown as { reading_pending: boolean }).reading_pending).toBe(true);
+    expect(notice.doctors_added).toEqual([]);
+    expect(notice.tests_new).toEqual([]);
     // The pages of the lab report and the discharge note are apart, and the signals say so.
     expect(notice.looks_mixed).toBe(true);
     expect((await store.conversations.find(OWNER_ID, conversation))!.unread).toBe(true);
@@ -73,12 +74,25 @@ describePipeline('attach a mixed export and follow it to the end', () => {
     const applied = await w.app.inject({ method: 'POST', url: `/api/source-files/${upload}/regroup`, headers: { cookie: w.cookie }, payload: { groups: kept.map(g => g.page_ids) } });
     expect(applied.statusCode).toBe(200);
     const { touched } = applied.json() as { touched: string[] };
-    step('reading the changed documents again');
+    step('the changed documents are marked, and nothing is read before the grouping is confirmed');
     const reread = await w.app.inject({ method: 'POST', url: `/api/source-files/${upload}/extract`, headers: { cookie: w.cookie }, payload: { document_ids: touched } });
     expect(reread.statusCode).toBe(200);
+    expect((reread.json() as { results: Array<{ reread: string }> }).results.every(r => r.reread === 'deferred')).toBe(true);
 
+    // 4. The grouping is right: the assistant proposes confirming it, and Confirm puts the documents in the archive.
+    step('confirming the grouping through the assistant');
+    const confirming = await ask(w, 'The grouping looks right now. Please confirm it.', { conversation });
+    await confirm(w, proposalOf(confirming, 'confirm_grouping'));
+    // Confirming starts the reading of every document, once; they appear when it is over.
+    await until('the documents to be read and the grouping confirmed', async () => (await store.sourceFiles.findFor(OWNER_ID, upload))!.grouping_confirmed);
     const docs = await store.documents.listFor(OWNER_ID, { sourceFileId: upload, includeUnconfirmed: true, limit: 50, offset: 0 });
     console.log(`[journey] documents: ${docs.map(d => `${d.page_start}-${d.page_end} ${d.doc_type} "${d.title}"`).join(' | ')}`);
+    expect(docs.every(d => !d.needs_reading)).toBe(true);
+    // A second report says what the reading found: the doctors on the pages were filed, and the tests are new.
+    const second = await until('the report of the reading', async () => (await store.conversations.messages(OWNER_ID, conversation)).filter(m => m.kind === 'upload').find(m => (m.data as { reading_pending?: boolean } | null)?.reading_pending === false), 60_000, 2000);
+    const read = second.data as unknown as { doctors_added: string[]; tests_new: string[] };
+    expect(read.doctors_added.join(' ')).toMatch(/popescu/i);
+    expect(read.tests_new.join(' ')).toMatch(/hemoglobin/i);
     const lab = docs.find(d => d.page_start <= 1 && d.page_end >= 2) ?? docs.find(d => d.doc_type === 'lab_result');
     expect(lab).toBeTruthy();
     // The lab report was read from its two pages together: the value, the date and the provider are the ones on the pages.
@@ -89,12 +103,6 @@ describePipeline('attach a mixed export and follow it to the end', () => {
     expect(lab!.provider ?? '').toMatch(FACTS.lab.provider);
     const discharge = docs.find(d => d.doc_type === 'discharge_note');
     expect(discharge).toBeTruthy();
-
-    // 4. The grouping is right: the assistant proposes confirming it, and Confirm puts the documents in the archive.
-    step('confirming the grouping through the assistant');
-    const confirming = await ask(w, 'The grouping looks right now. Please confirm it.', { conversation });
-    await confirm(w, proposalOf(confirming, 'confirm_grouping'));
-    expect((await store.sourceFiles.findFor(OWNER_ID, upload))!.grouping_confirmed).toBe(true);
     const timeline = (await w.app.inject({ method: 'GET', url: '/api/documents', headers: { cookie: w.cookie } })).json() as Array<{ id: string }>;
     expect(timeline.length).toBeGreaterThanOrEqual(3);
 

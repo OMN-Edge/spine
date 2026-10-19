@@ -5,6 +5,7 @@ import { useChat } from '../components/ChatProvider';
 import ShareRequestCard from '../components/ShareRequestCard';
 import { announceChange, useOnDataChanged } from '../dataChanged';
 import { LANGUAGES, useI18n } from '../i18n';
+import { Combobox } from '../components/Combobox';
 import { languageName } from '../i18n/useTranslation';
 import { documentTitle } from '../titles';
 import { describeScope, DocumentPicker } from './ShareLinks';
@@ -145,10 +146,10 @@ export default function ShareLinkDetail() {
           {chat?.enabled && <label className="flex items-start gap-2 text-sm text-gray-700"><input type="checkbox" checked={form.ask} disabled={!editable} onChange={e => setForm(f => ({ ...f, ask: e.target.checked }))} className="mt-0.5" /><span>{t('Let the recipient ask questions')}</span></label>}
           <div>
             <label htmlFor="d-lang" className="block text-xs font-medium text-gray-500 mb-1">{t('Language the page opens in')}</label>
-            <select id="d-lang" value={form.language} disabled={!editable} onChange={e => setForm(f => ({ ...f, language: e.target.value }))} className={input}>
-              <option value="">{t('Not set: the reader chooses')}</option>
-              {LANGUAGES.map(l => <option key={l.code} value={l.code}>{l.name}</option>)}
-            </select>
+            <Combobox
+              id="d-lang" value={form.language} disabled={!editable} onChange={v => setForm(f => ({ ...f, language: v }))} className={input}
+              options={[{ value: '', label: t('Not set: the reader chooses') }, ...LANGUAGES.map(l => ({ value: l.code, label: l.name }))]}
+            />
           </div>
         </div>
         <div className="mt-4 flex items-center gap-3">

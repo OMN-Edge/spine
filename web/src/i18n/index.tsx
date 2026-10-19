@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import ro from './ro.json';
 import fr from './fr.json';
 import de from './de.json';
+import { Combobox } from '../components/Combobox';
 
 /**
  * The interface in four languages. The source of every string is its English text, written where it is used:
@@ -113,11 +114,10 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 export function LanguageSwitcher({ className = '' }: { className?: string }) {
   const { lang, setLang, t } = useI18n();
   return (
-    <select
-      value={lang} aria-label={t('Language')} onChange={e => setLang(e.target.value as LanguageCode)}
-      className={`rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 ${className}`}
-    >
-      {LANGUAGES.map(l => <option key={l.code} value={l.code}>{l.name}</option>)}
-    </select>
+    <Combobox
+      value={lang} ariaLabel={t('Language')} onChange={v => setLang(v as LanguageCode)} wrapperClassName={`relative w-28 ${className}`}
+      className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700"
+      options={LANGUAGES.map(l => ({ value: l.code, label: l.name }))}
+    />
   );
 }

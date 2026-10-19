@@ -55,6 +55,7 @@ export interface DoctorForSuggestion {
   name: string;
   specialty: string | null;
   document_count: number;
+  license_code?: string | null;
 }
 
 const norm = (text: string | null | undefined) => (text ?? '').trim().toLowerCase();
@@ -98,6 +99,8 @@ export function suggestDuplicates<T extends DoctorForSuggestion>(doctors: T[]): 
     for (let j = i + 1; j < doctors.length; j++) {
       const a = doctors[i], b = doctors[j];
       if (norm(a.specialty) && norm(b.specialty) && norm(a.specialty) !== norm(b.specialty)) continue;
+      // Two different printed codes are two people, whatever the names.
+      if (a.license_code && b.license_code && a.license_code !== b.license_code) continue;
       if (!couldBeSamePerson(a.name, b.name)) continue;
       const aKeeps = words(a) !== words(b) ? words(a) > words(b) : a.document_count !== b.document_count ? a.document_count > b.document_count : a.id < b.id;
       out.push(aKeeps ? { keep: a, other: b } : { keep: b, other: a });

@@ -226,3 +226,62 @@ describe('the store refuses on its own, whatever the route checked', () => {
     expect((await store.fields.listForDocument(OWNER_ID, id)).map(f => f.label)).toEqual(['l']);
   });
 });
+
+describe('editing a document’s doctors keeps what ties them to it', () => {
+  async function withDoctor(name: string, code: string | null, source: 'text' | 'stamp' | 'signature', printed: string | null) {
+    const store = getStore();
+    const sf = await seedSourceFile({ status: 'done' });
+    await seedPage(sf, { pageNumber: 1 });
+    const id = uuidv4();
+    await store.documents.create(OWNER_ID, { id, sourceFileId: sf, pageStart: 1, pageEnd: 1, title: 'Visit', docDate: '2026-02-01' });
+    const doctor = (await store.doctors.upsert(OWNER_ID, { name, specialty: 'cardiology', licenseCode: code }, '2026-01-01'))!;
+    await store.doctors.link(OWNER_ID, id, doctor, 'author', source, printed);
+    return { id, doctor };
+  }
+  const patch = async (id: string, doctors: object[]) => (await app.inject({ method: 'PATCH', url: `/api/documents/${id}`, payload: { doctors }, headers: { cookie } }));
+
+  it('a doctor left as they were stays the same entry, with the code and where they were read', async () => {
+    const { id, doctor } = await withDoctor('Elena Marinescu', 'X12345', 'stamp', 'X12345');
+    const res = await patch(id, [{ id: doctor, name: 'Elena Marinescu', specialty: 'cardiology and internal medicine', role: 'author' }]);
+    expect(res.statusCode).toBe(200);
+    const [link] = await getStore().doctors.linkInfo(OWNER_ID, id);
+    expect(link).toEqual({ doctor_id: doctor, role: 'author', source: 'stamp', printed_code: 'X12345' });
+    expect((await getStore().doctors.find(OWNER_ID, doctor))!.license_code).toBe('X12345');
+  });
+
+  it('a spelling fixed to a name the directory has points at that entry; the old entry keeps its code and is not renamed', async () => {
+    const { id, doctor: typo } = await withDoctor('Radu Tipescu', 'T55555', 'text', null);
+    const real = (await getStore().doctors.upsert(OWNER_ID, { name: 'Radu Tipescu-Dan', specialty: null, licenseCode: null }, '2026-01-02'))!;
+    const res = await patch(id, [{ id: typo, name: 'Radu Tipescu-Dan', specialty: null, role: 'author' }]);
+    expect(res.statusCode).toBe(200);
+    expect((await getStore().doctors.linkInfo(OWNER_ID, id)).map(l => l.doctor_id)).toEqual([real]);
+    const old = await getStore().doctors.find(OWNER_ID, typo);
+    expect(old).toMatchObject({ name: 'Radu Tipescu', license_code: 'T55555' });
+  });
+
+  it('a name that is new makes a new entry without the old one’s code', async () => {
+    const { id, doctor } = await withDoctor('Maria Kovacs', 'K98765', 'text', null);
+    await patch(id, [{ id: doctor, name: 'Vlad Ionescu', specialty: null, role: 'author' }]);
+    const [link] = await getStore().doctors.linkInfo(OWNER_ID, id);
+    expect(link.doctor_id).not.toBe(doctor);
+    expect((await getStore().doctors.find(OWNER_ID, link.doctor_id))!.license_code).toBeNull();
+    expect((await getStore().doctors.find(OWNER_ID, doctor))!.license_code).toBe('K98765');
+    // Reading the same name again finds that entry.
+    const again = await getStore().doctors.upsert(OWNER_ID, { name: 'ionescu VLAD', specialty: null }, '2026-03-01');
+    expect(again).toBe(link.doctor_id);
+  });
+
+  it('two people of one name: the entry chosen stays, and “new” adds another person', async () => {
+    const { id, doctor: first } = await withDoctor('Andrei Lupu', 'L11111', 'text', null);
+    const second = (await getStore().doctors.upsert(OWNER_ID, { name: 'Andrei Lupu', licenseCode: 'L22222', newPerson: true }, '2026-01-03'))!;
+    expect(second).not.toBe(first);
+    // Choosing the second by id keeps it, though the name matches the first.
+    await patch(id, [{ id: second, name: 'Andrei Lupu', specialty: null, role: 'author' }]);
+    expect((await getStore().doctors.linkInfo(OWNER_ID, id)).map(l => l.doctor_id)).toEqual([second]);
+    // A row with no id and `new` is a third person.
+    await patch(id, [{ id: second, name: 'Andrei Lupu', specialty: null, role: 'author' }, { name: 'Andrei Lupu', specialty: null, role: 'referrer', new: true }]);
+    const held = (await getStore().doctors.linkInfo(OWNER_ID, id)).map(l => l.doctor_id);
+    expect(held).toHaveLength(2);
+    expect(new Set([first, second, ...held]).size).toBe(3);
+  });
+});

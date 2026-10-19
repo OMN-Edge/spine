@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
+import { doctorKey } from '../doctors.js';
 import { createReadStream, existsSync, statSync } from 'fs';
 import { extname } from 'path';
 import { getStore, type DocumentPatch, type MeasurementChange, type NewMeasurement } from '../store/index.js';
@@ -168,7 +169,8 @@ function checkDoctors(doctors: unknown): ValidDoctor[] | string {
     const specialty = d.specialty == null || d.specialty === '' ? null : text(d.specialty, LIMITS.specialty);
     if (d.specialty != null && d.specialty !== '' && specialty === null) return `a specialty is at most ${LIMITS.specialty} characters`;
     if (!(DOCTOR_ROLES as readonly string[]).includes(String(d.role))) return `a doctor's role must be one of ${DOCTOR_ROLES.join(', ')}`;
-    out.push({ name: name.trim(), specialty: specialty?.trim() || null, role: d.role as DoctorRole });
+    if (d.id != null && (typeof d.id !== 'string' || d.id.length > 64)) return 'a doctor id must be text';
+    out.push({ id: typeof d.id === 'string' ? d.id : null, new: d.new === true, name: name.trim(), specialty: specialty?.trim() || null, role: d.role as DoctorRole });
   }
   return out;
 }
@@ -238,8 +240,8 @@ interface MeasurementEdits {
   remove?: unknown[];
   add?: Array<{ name?: unknown; canonical?: unknown; value?: unknown; unit?: unknown; ref_low?: unknown; ref_high?: unknown; taken_on?: unknown; page_id?: unknown }>;
 }
-interface DoctorEdit { name?: unknown; specialty?: unknown; role?: unknown }
-interface ValidDoctor { name: string; specialty: string | null; role: DoctorRole }
+interface DoctorEdit { id?: unknown; new?: unknown; name?: unknown; specialty?: unknown; role?: unknown }
+interface ValidDoctor { id: string | null; new: boolean; name: string; specialty: string | null; role: DoctorRole }
 interface ValidMeasurementEdits {
   update: Array<{ id: string; change: MeasurementChange }>;
   remove: string[];
@@ -400,11 +402,20 @@ export async function documentRoutes(app: FastifyInstance) {
       }
       if (doctorEdits) {
         // The list sent is the document's doctors: replace, adding anyone new to the directory.
+        // What ties each doctor to this document (where it was read, the code it printed) is kept through the edit for everyone who stays.
+        const held = await tx.doctors.linkInfo(req.userId, id);
         await tx.doctors.unlinkAll(req.userId, id);
         const now = new Date().toISOString();
         for (const d of doctorEdits) {
-          const doctorId = await tx.doctors.upsert(req.userId, { name: d.name, specialty: d.specialty, clinic: doc.provider }, now);
-          if (doctorId) await tx.doctors.link(req.userId, id, doctorId, d.role);
+          // A doctor left under the name they had stays that entry, found by its code if it has one; a name that was changed is looked up
+          // as a name (an existing doctor of that name, or a new entry), and the entry it was before is not renamed.
+          const was = d.id ? await tx.doctors.find(req.userId, d.id) : null;
+          const same = was && doctorKey(was.name) === doctorKey(d.name);
+          // The owner chose this entry (its id with its own name), or says this is another person of a name already held (`new`).
+          const doctorId = await tx.doctors.upsert(req.userId, { name: d.name, specialty: d.specialty, clinic: doc.provider, id: same ? was.id : undefined, newPerson: d.new }, now);
+          if (!doctorId) continue;
+          const before = held.find(h => h.doctor_id === doctorId && h.role === d.role) ?? held.find(h => h.doctor_id === doctorId);
+          await tx.doctors.link(req.userId, id, doctorId, d.role, before?.source ?? 'text', before?.printed_code ?? null);
         }
       }
       if (edits) {
@@ -487,7 +498,7 @@ export async function documentRoutes(app: FastifyInstance) {
         await tx.measurements.reassignFromPage(req.userId, id, newId, at_page);
         await tx.doctors.copyLinks(req.userId, id, newId);
         await tx.tags.setForDocument(req.userId, newId, tags);
-        await tx.documents.update(req.userId, id, { reviewed: false });
+        await tx.documents.update(req.userId, id, { reviewed: false, needs_reading: true });
       });
 
       // `defer`: the grouping is saved and nothing is read, so a run of changes costs one reading,
@@ -516,7 +527,7 @@ export async function documentRoutes(app: FastifyInstance) {
         await tx.doctors.moveLinks(req.userId, other.id, id);
         await tx.tags.removeAllForDocument(req.userId, other.id);
         await tx.documents.delete(req.userId, other.id);
-        await tx.documents.update(req.userId, id, { reviewed: false });
+        await tx.documents.update(req.userId, id, { reviewed: false, needs_reading: true });
       });
 
       if (body.defer) return reply.send({ merged: id, reread: 'deferred' });
@@ -540,7 +551,7 @@ export async function documentRoutes(app: FastifyInstance) {
 
     const documentIds = await store.transaction(async tx => {
       const held = await tx.pages.setHidden(req.userId, req.params.id, hidden);
-      for (const documentId of held ?? []) await tx.documents.update(req.userId, documentId, { reviewed: false });
+      for (const documentId of held ?? []) await tx.documents.update(req.userId, documentId, { reviewed: false, needs_reading: true });
       return held;
     });
     if (documentIds === null) return reply.status(404).send({ error: 'not found' });
@@ -613,7 +624,7 @@ export async function documentRoutes(app: FastifyInstance) {
 
     await store.transaction(async tx => {
       await tx.pages.setHiddenForDocument(req.userId, req.params.id, hidden);
-      await tx.documents.update(req.userId, req.params.id, { reviewed: false });
+      await tx.documents.update(req.userId, req.params.id, { reviewed: false, needs_reading: true });
     });
     return reply.send({ hidden, document_ids: [req.params.id] });
   });

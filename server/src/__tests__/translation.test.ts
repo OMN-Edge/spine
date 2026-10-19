@@ -424,3 +424,44 @@ describe('the routes', () => {
     void vi; void seedShareLink; void hashShareToken;
   });
 });
+
+describe('titles of the owner’s documents in a language (the chat’s sources)', () => {
+  const titles = (ids: string[], lang = 'en', who = cookie) =>
+    app.inject({ method: 'GET', url: `/api/translations/titles?lang=${lang}&ids=${ids.join(',')}`, headers: { cookie: who } });
+
+  it('gives a translated title once it is cached, and asks again until then', async () => {
+    const d = await romanian();
+    const first = await titles([d.id]);
+    expect(first.statusCode).toBe(200);
+    expect(first.json()).toEqual({ titles: {}, pending: true }); // translating has started in the background
+
+    await translateDocument(OWNER_ID, d.id, 'en');
+    expect((await titles([d.id])).json()).toEqual({ titles: { [d.id]: 'EN[Buletin de analize]' }, pending: false });
+  });
+
+  it('says null for a document already in that language, and nothing for one that is not theirs', async () => {
+    const d = await romanian();
+    expect((await titles([d.id], 'ro')).json().titles[d.id] ?? null).toBeNull();
+
+    const stranger = await createTestUser('stranger@spine.test');
+    const theirs = await romanian(stranger.id);
+    const res = await titles([theirs.id]);
+    expect(res.json()).toEqual({ titles: {}, pending: false });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('does nothing when translating is off or the language is unknown, and caps the list', async () => {
+    const d = await romanian();
+    expect((await titles([d.id], 'xx')).json()).toEqual({ titles: {}, pending: false });
+    process.env.SPINE_TRANSLATION = 'off';
+    expect((await titles([d.id])).json()).toEqual({ titles: {}, pending: false });
+    expect(calls).toHaveLength(0);
+    process.env.SPINE_TRANSLATION = 'on';
+    const many = Array.from({ length: 40 }, (_, i) => `id-${i}`);
+    expect((await titles(many)).statusCode).toBe(200);
+  });
+
+  it('needs a session', async () => {
+    expect((await app.inject({ method: 'GET', url: '/api/translations/titles?lang=en&ids=x' })).statusCode).toBe(401);
+  });
+});

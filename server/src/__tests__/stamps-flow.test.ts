@@ -30,6 +30,7 @@ vi.mock('../parser/index.js', () => ({
 }));
 
 import { startIngestionJob, getJobStatus } from '../ingestion/pipeline.js';
+import { readUpload } from '../ingestion/read-upload.js';
 import { rereadDocument } from '../ingestion/document-reading.js';
 import { getStore } from '../store/index.js';
 import { buildTestApp, loginSession } from './helpers/app.js';
@@ -53,7 +54,11 @@ async function wait(id: string) {
   const deadline = Date.now() + 5000;
   while (Date.now() < deadline) {
     const job = getJobStatus(id);
-    if (job?.status === 'done' || job?.status === 'error') return job;
+    if (job?.status === 'done' || job?.status === 'error') {
+      // The pipeline stops at the grouping; the documents are read when the owner confirms it (M-29), which is what these tests look at.
+      if (job.status === 'done') await readUpload(OWNER_ID, id, false);
+      return job;
+    }
     await new Promise(r => setTimeout(r, 20));
   }
   throw new Error('timed out');

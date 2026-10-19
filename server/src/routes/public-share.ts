@@ -1,3 +1,5 @@
+import { sharedChainOf } from '../linking/index.js';
+import { relatedTo } from '../similarity/index.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { createReadStream, existsSync, readFileSync, statSync } from 'fs';
 import path, { extname } from 'path';
@@ -321,6 +323,34 @@ export async function publicShareRoutes(
       if (!opened) return;
       const { link, store } = opened;
       return reply.header('Cache-Control', 'no-store').send(await sharedTestNames(link.userId, await store.documents.listForShare(link)));
+    },
+  );
+
+  // The documents around one shared document: those the owner linked to it (confirmed links only) and those that read alike
+  // (the same test or doctor, or close in meaning), each only if the link shares it too. Reads and computes; writes nothing
+  // (R-4). Titles and dates are what the list already shows; no reason text, no score, no word of who made a link.
+  app.get<{ Params: { token: string; id: string } }>(
+    '/api/share/:token/documents/:id/connections',
+    { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
+    async (req, reply) => {
+      const opened = await openLink(req, reply, false);
+      if (!opened) return;
+      const { link, store } = opened;
+
+      const shared = new Map((await store.documents.listForShare(link)).map(d => [d.id, d]));
+      if (!shared.has(req.params.id)) return reply.status(404).send({ error: 'not found' });
+
+      const [chain, related] = await Promise.all([
+        sharedChainOf(link.userId, req.params.id, shared),
+        relatedTo(link.userId, req.params.id, 8, new Set(shared.keys())),
+      ]);
+      return reply.header('Cache-Control', 'no-store').send({
+        chain: chain && chain.edges.length > 0 ? chain : null,
+        related: related.map(r => ({
+          id: r.id, title: r.title, doc_type: r.doc_type, doc_date: r.doc_date, provider: r.provider,
+          reasons: r.reasons.flatMap((x): Array<{ kind: 'tests' | 'doctors'; names: string[] } | { kind: 'meaning' }> => (x.kind === 'tests' || x.kind === 'doctors' ? [{ kind: x.kind, names: x.names }] : x.kind === 'meaning' ? [{ kind: 'meaning' }] : [])),
+        })),
+      });
     },
   );
 

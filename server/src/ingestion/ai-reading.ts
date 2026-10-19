@@ -1,3 +1,5 @@
+import { isReadingUpload } from './read-upload.js';
+import { readsByModel } from '../file-kind.js';
 import { getStore } from '../store/index.js';
 import { getModelParser, getParser } from '../parser/index.js';
 import { rereadDocuments } from './document-reading.js';
@@ -41,8 +43,9 @@ export function getAiReading(sourceFileId: string): AiReadingJob | null {
   return jobs.get(sourceFileId) ?? null;
 }
 
+/** Whether pages or documents of the upload are being read, either by the person's request or after they confirmed the grouping: nothing may be regrouped meanwhile. */
 export function isReadingPages(sourceFileId: string): boolean {
-  return jobs.get(sourceFileId)?.status === 'running';
+  return jobs.get(sourceFileId)?.status === 'running' || isReadingUpload(sourceFileId);
 }
 
 /** Tests only. */
@@ -97,7 +100,7 @@ async function run(userId: string, sourceFileId: string, pageIds: string[], job:
   if (strategy === 'configured') {
     // The way an upload reads: one call for the pages together (a PDF is parsed once, not once a page), by the
     // configured parser; a photo has no text layer, so it goes to the model, as at upload.
-    const parser = upload.mime_type?.startsWith('image/') ? getModelParser(model, thinking) : getParser(model);
+    const parser = readsByModel(upload) ? getModelParser(model, thinking) : getParser(model);
     job.step = pages.length === 1 ? `reading page ${pages[0].page_number}` : `reading ${pages.length} pages`;
     job.progress = 5;
     const input = [];

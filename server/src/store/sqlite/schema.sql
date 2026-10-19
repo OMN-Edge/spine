@@ -65,7 +65,9 @@ CREATE TABLE IF NOT EXISTS source_files (
   -- owner confirms how its pages were grouped. 1 for uploads made before this, for restores and for anything the owner has confirmed.
   grouping_confirmed INTEGER NOT NULL DEFAULT 1,
   -- The conversation the file was attached in, if it was attached in the chat: what happens to it is reported there.
-  chat_conversation_id TEXT
+  chat_conversation_id TEXT,
+  -- Several photos made into one PDF at upload (one page each): a model reads it, as it reads a single photo, because the pages have no text layer.
+  photo_set INTEGER NOT NULL DEFAULT 0
 );
 
 -- What the analysis of a mixed upload found: which pages belong together (JSON, see regroup/analyze.ts). One per upload, replaced
@@ -115,7 +117,10 @@ CREATE TABLE IF NOT EXISTS documents (
   language TEXT, -- what the document is written in (a two-letter code), as extraction found it; null if unknown
   -- The headline columns (title, doc_date, provider, doc_type, ai_summary) the owner has set, comma separated. Reading the
   -- document again leaves them as they are.
-  owner_edited TEXT NOT NULL DEFAULT ''
+  owner_edited TEXT NOT NULL DEFAULT '',
+  -- 1: its fields, results and summary have not been read from its pages' text yet (or the pages changed since). Reading waits for
+  -- the owner to confirm how the upload's pages are grouped (SECURITY.md M-29); every earlier document counts as read.
+  needs_reading INTEGER NOT NULL DEFAULT 0
 );
 
 -- Numeric results (lab values, vitals): what trends over time are drawn from. A field is

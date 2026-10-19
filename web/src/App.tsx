@@ -109,7 +109,7 @@ function Layout({ children }: { children: React.ReactNode }) {
         )}
       </nav>
       {/* With the chat open beside it, the page gives it room instead of sitting under it. */}
-      <main className={`max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 transition-[margin] duration-200 ${chat?.enabled && chat.open ? 'sm:mr-[26.5rem] sm:max-w-none' : ''}`}>{children}</main>
+      <main className={`max-w-6xl mx-auto px-4 sm:px-6 py-6 pb-24 sm:py-8 transition-[margin] duration-200 ${chat?.enabled && chat.open ? 'sm:mr-[26.5rem] sm:max-w-none' : ''}`}>{children}</main>
       <ChatPanel />
     </div>
   );

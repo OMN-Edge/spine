@@ -572,7 +572,7 @@ The owner pastes a file (a PDF, a photo, or a zip of them; on a Mac or an iPhone
 Status: auto (`chat-attachments`); live (`journey.it.ts`); screens (paste, drop, progress): not yet checked by hand, and not on a phone.
 
 ### 12.2 The app tells me an upload is read
-When an upload is read (or fails), the conversation gets a message, written by the app and not by a model: the documents found, how many pages had no text and how many documents no date, **which doctors it added and which it found already there, which tests no other document has**, and whether the pages look cut from mixed pages. If the panel is closed the Ask button shows a badge and a note beside it that opens the conversation.
+When an upload's pages are read and grouped (or it fails), the conversation gets a message, written by the app and not by a model: the documents found by their page ranges, how many pages had no text, and whether the pages look cut from mixed pages. Nothing has been read from the documents yet. When the owner confirms the grouping the documents are read (once), and a second message says what came out: the documents, how many have no date, **which doctors it added and which it found already there, which tests no other document has**. If the panel is closed the Ask button shows a badge and a note beside it that opens the conversation.
 
 - Buttons offer the likely next steps: *What was read from it?*, *The grouping looks right*, *Read the empty pages again*, and, if the pages look mixed, **Check the pages with AI** (12.4), with what it sends beside it.
 - The grouping still waits for the owner: until they confirm it the documents are out of the timeline and search.

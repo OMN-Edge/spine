@@ -26,6 +26,7 @@ vi.mock('../ingestion/extraction.js', () => ({
 }));
 
 import { startIngestionJob, getJobStatus } from '../ingestion/pipeline.js';
+import { readUpload } from '../ingestion/read-upload.js';
 import { getStore } from '../store/index.js';
 import { resetParser } from '../parser/index.js';
 import { seedSourceFile, createTestUser, OWNER_ID } from './helpers/seed.js';
@@ -78,7 +79,11 @@ async function waitForJob(id: string, timeoutMs = 5000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const job = getJobStatus(id);
-    if (job?.status === 'done' || job?.status === 'error') return job;
+    if (job?.status === 'done' || job?.status === 'error') {
+      // The pipeline stops at the grouping; the documents are read when the owner confirms it (M-29), which is what these tests look at.
+      if (job.status === 'done') await readUpload(OWNER_ID, id, false);
+      return job;
+    }
     await new Promise(r => setTimeout(r, 20));
   }
   throw new Error('Job timed out');
@@ -450,12 +455,14 @@ describe('pipeline — model calls in parallel', () => {
 
 describe('pipeline — trying a failed upload again', () => {
   const failFirstThenRead = async (id: string) => {
-    // The first attempt gets as far as storing pages and then cannot read the document's details.
+    // The first attempt gets as far as storing the pages and the documents, and then fails (the upload is marked failed, as a
+    // crash after the pages were stored would leave it). Reading the documents is the second stage and no longer part of it.
     mockRasterizePdf.mockResolvedValueOnce([makePageImage(1)]);
     mockParseDocument.mockResolvedValueOnce(makeParseResult(1));
     mockExtractFields.mockRejectedValueOnce(new Error('provider unavailable'));
     startIngestionJob(id, OWNER_ID);
-    expect((await waitForJob(id)).status).toBe('error');
+    expect((await waitForJob(id)).status).toBe('done');
+    await getStore().sourceFiles.setStatus(OWNER_ID, id, 'error', 'provider unavailable');
   };
 
   it('reads it again and replaces what the failed attempt left, without duplicating pages', async () => {
@@ -463,7 +470,7 @@ describe('pipeline — trying a failed upload again', () => {
     await insertSourceFile(id);
     await failFirstThenRead(id);
     expect(await getStore().pages.listForSourceFile(OWNER_ID, id)).toHaveLength(1);
-    expect(await documentsFor(id)).toHaveLength(0);
+    expect(await documentsFor(id)).toHaveLength(1); // made by the failed attempt, replaced by the next
 
     mockRasterizePdf.mockResolvedValueOnce([makePageImage(1)]);
     mockParseDocument.mockResolvedValueOnce(makeParseResult(1));

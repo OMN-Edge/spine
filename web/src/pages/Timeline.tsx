@@ -5,6 +5,7 @@ import { useOnDataChanged } from '../dataChanged';
 import DocumentCard, { DOC_TYPE_LABELS } from '../components/DocumentCard';
 import SpineLog from '../components/SpineLog';
 import { useI18n } from '../i18n';
+import { Combobox } from '../components/Combobox';
 import { useScreen } from '../components/ChatProvider';
 
 export default function Timeline() {
@@ -45,25 +46,16 @@ export default function Timeline() {
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <h1 className="text-2xl font-semibold text-gray-900">{t('Timeline')}</h1>
         <div className="flex flex-wrap gap-2">
-          <select
-            className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            value={filter.doc_type ?? ''}
-            onChange={e => setFilter(f => ({ ...f, doc_type: e.target.value || undefined! }))}
-          >
-            <option value="">{t('All types')}</option>
-            {Object.entries(DOC_TYPE_LABELS).map(([k, v]) => (
-              <option key={k} value={k}>{t(v)}</option>
-            ))}
-          </select>
-          <select
-            className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            value={filter.reviewed ?? ''}
-            onChange={e => setFilter(f => ({ ...f, reviewed: e.target.value || undefined! }))}
-          >
-            <option value="">{t('All')}</option>
-            <option value="false">{t('Unreviewed')}</option>
-            <option value="true">{t('Reviewed')}</option>
-          </select>
+          <Combobox
+            ariaLabel={t('All types')} wrapperClassName="relative w-40" value={filter.doc_type ?? ''}
+            onChange={v => setFilter(f => ({ ...f, doc_type: v || undefined! }))}
+            options={[{ value: '', label: t('All types') }, ...Object.entries(DOC_TYPE_LABELS).map(([k, v]) => ({ value: k, label: t(v) }))]}
+          />
+          <Combobox
+            ariaLabel={t('All')} wrapperClassName="relative w-36" value={filter.reviewed ?? ''}
+            onChange={v => setFilter(f => ({ ...f, reviewed: v || undefined! }))}
+            options={[{ value: '', label: t('All') }, { value: 'false', label: t('Unreviewed') }, { value: 'true', label: t('Reviewed') }]}
+          />
         </div>
       </div>
 

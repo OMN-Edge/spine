@@ -96,6 +96,22 @@ describe('a recipient asking about a shared link', () => {
     expect((await app.inject({ method: 'GET', url: `/api/share/${token}/meta` })).json().chat).toBe(false);
   });
 
+  it('a citation names the document it was written for: the open one and another, each with its own id', async () => {
+    const open = await doc('Ankle x-ray', 'Ankle x-ray, no fracture');
+    const other = await doc('Knee MRI', 'Knee MRI, small effusion');
+    model = new ScriptedModel([{ tools: [{ name: 'search_documents', args: { query: 'MRI' } }] }, { say: 'The ankle film shows no fracture [D1.summary]. The knee scan found a small effusion [D2].' }]);
+    resetChatLlm(llmWith(model));
+    const { token } = await link([open.id, other.id]);
+
+    const res = await ask(token, { question: 'What do these show?', document_id: open.id });
+    expect(res.statusCode).toBe(200);
+    const sources = res.json().sources as Array<{ label: string; id: string; title: string }>;
+    expect(sources.map(s => [s.label, s.id, s.title])).toEqual([
+      ['D1.summary', open.id, 'Ankle x-ray'],
+      ['D2', other.id, 'Knee MRI'],
+    ]);
+  });
+
   it('answers from the shared documents, with sources that are shared documents, and keeps nothing', async () => {
     const shared = await doc('Ankle x-ray', 'Ankle x-ray, no fracture');
     model = new ScriptedModel([{ tools: [{ name: 'search_documents', args: { query: 'ankle' } }] }, { say: 'No fracture is described [D1].' }]);

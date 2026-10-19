@@ -58,6 +58,7 @@ export function extractedFieldRepository(db: Database): ExtractedFieldRepository
   const findOne = db.prepare('SELECT label, value FROM extracted_fields WHERE id = ? AND document_id = ? AND user_id = ?');
   const remember = db.prepare("INSERT OR IGNORE INTO removed_readings (user_id, document_id, kind, key) VALUES (?, ?, 'field', ?)");
   const removed = db.prepare("SELECT key FROM removed_readings WHERE document_id = ? AND user_id = ? AND kind = 'field'");
+  const edited = db.prepare('SELECT id FROM extracted_fields WHERE document_id = ? AND user_id = ? AND owner_edited = 1');
 
   return {
     async listForDocument(userId, documentId) {
@@ -112,6 +113,15 @@ export function extractedFieldRepository(db: Database): ExtractedFieldRepository
 
     async removedKeys(userId, documentId) {
       return new Set((removed.all(documentId, owner(userId)) as Array<{ key: string }>).map(r => r.key));
+    },
+
+    async editedIds(userId, documentId) {
+      return new Set((edited.all(documentId, owner(userId)) as Array<{ id: string }>).map(r => r.id));
+    },
+
+    async rememberRemoved(userId, documentId, keys) {
+      const uid = owner(userId);
+      for (const key of keys) remember.run(uid, documentId, key);
     },
 
     async update(userId, documentId, fieldId, change) {

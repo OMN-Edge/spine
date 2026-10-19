@@ -2,7 +2,8 @@ import { rmSync } from 'fs';
 import path from 'path';
 import type { MultipartFile, MultipartValue } from '@fastify/multipart';
 import { importZip } from '../archive/import.js';
-import { acceptFile, newUploadPath, saveStream, type UploadOutcome } from './accept-upload.js';
+import { MAX_PHOTOS_IN_SET } from './photo-set.js';
+import { acceptFile, acceptPhotoSet, newUploadPath, saveStream, type UploadOutcome } from './accept-upload.js';
 
 /** A document or a photo. */
 export const MAX_FILE_BYTES = 200 * 1024 * 1024;
@@ -65,4 +66,28 @@ export async function acceptParts(
     results.push(await acceptFile(userId, { id: fileId, path: filePath, filename: part.filename ?? null, checksum, chatConversationId: conversation }));
   }
   return results;
+}
+
+/**
+ * Several photos of one document (a request whose files are all photos, in the order sent) become one upload whose pages they are.
+ * Each is saved to a name of its own and checked by what is in it; if any is not a photo, is too large, or the operator has not
+ * allowed images to be read by a model, nothing is made and the one result says why.
+ */
+export async function acceptPhotoParts(userId: string, parts: AsyncIterable<Part>): Promise<Array<UploadOutcome | Record<string, unknown>>> {
+  const saved: Array<{ path: string; filename: string | null }> = [];
+  let refusal: Record<string, unknown> | null = null;
+  try {
+    for await (const part of parts) {
+      if (part.type !== 'file') continue;
+      if (saved.length > MAX_PHOTOS_IN_SET) { part.file.resume(); continue; } // one past the limit says "too many"; the rest are not kept
+      const { filePath } = newUploadPath(userId, '.photo');
+      saved.push({ path: filePath, filename: part.filename ?? null });
+      const { truncated } = await saveStream(part.file, filePath, { zip: MAX_FILE_BYTES, other: MAX_FILE_BYTES });
+      if (truncated && !refusal) refusal = { skipped: true, reason: 'too_large', filename: part.filename ?? null };
+    }
+    if (refusal) return [refusal];
+    return [await acceptPhotoSet(userId, saved)];
+  } finally {
+    for (const file of saved) rmSync(file.path, { force: true });
+  }
 }

@@ -186,7 +186,7 @@ describe('the doctors directory', () => {
     expect((await get('/api/doctors/no-such-doctor')).statusCode).toBe(404);
   });
 
-  it('edits a name, specialty and clinic, and says when a name belongs to another doctor', async () => {
+  it('edits a name, specialty and clinic, and lets a name be shared by two people', async () => {
     const tag = uuidv4().slice(0, 6);
     const a = (await make(`Dr. Edit A ${tag}`))!; const b = (await make(`Dr. Edit B ${tag}`))!;
     expect((await send('PATCH', `/api/doctors/${a}`, { specialty: 'urology', clinic: 'MedLife' })).statusCode).toBe(200);
@@ -195,9 +195,9 @@ describe('the doctors directory', () => {
     expect((await get(`/api/doctors/${a}`)).json()).toMatchObject({ specialty: null, clinic: 'MedLife' });
 
     const clash = await send('PATCH', `/api/doctors/${a}`, { name: `Dr. Edit B ${tag}` });
-    expect(clash.statusCode).toBe(409);
-    expect((await get(`/api/doctors/${a}`)).json()).toMatchObject({ name: `Edit A ${tag}` });
-    expect(b).toBeTruthy();
+    expect(clash.statusCode).toBe(200);
+    expect((await get(`/api/doctors/${a}`)).json()).toMatchObject({ name: `Edit B ${tag}` });
+    expect((await get(`/api/doctors/${b}`)).json()).toMatchObject({ name: `Edit B ${tag}` });
   });
 
   it('sets, normalises and clears a professional code, and refuses a short one or another doctor’s', async () => {
@@ -347,5 +347,18 @@ describe('entries that are probably one person', () => {
     const body = (await get('/api/doctors/duplicates')).body;
     expect(body).not.toContain('user_id');
     expect(body).not.toContain('"key"');
+  });
+});
+
+describe('a printed code that another directory entry already holds', () => {
+  it('is refused with a 409 that says the two should be merged, and changes nothing', async () => {
+    const store = getStore();
+    const kept = (await store.doctors.upsert(OWNER_ID, { name: 'Ana Exemplu', specialty: null, licenseCode: 'XA123456' }, '2026-01-01'))!;
+    const typo = (await store.doctors.upsert(OWNER_ID, { name: 'Bianca Altcineva', specialty: null, licenseCode: 'XA123450' }, '2026-01-01'))!;
+    const res = await send('PATCH', `/api/doctors/${typo}`, { license_code: 'XA123456' });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toMatch(/merge them instead/);
+    expect((await store.doctors.listFor(OWNER_ID)).find(d => d.id === typo)?.license_code).toBe('XA123450');
+    expect(kept).not.toBe(typo);
   });
 });

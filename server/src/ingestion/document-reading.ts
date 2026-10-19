@@ -260,6 +260,7 @@ async function applyReading(userId: string, documentId: string, reading: Documen
       ...headline,
       language: cleanLanguageCode(extraction.language) ?? undefined,
       reviewed: false,
+      needs_reading: false,
     });
     await tx.tags.setForDocument(userId, documentId, extraction.suggested_tags);
     await tx.fields.deleteUnedited(userId, documentId);

@@ -150,7 +150,7 @@ export async function applyRegroup(userId: string, sourceFileId: string, named: 
       await tx.documents.setRange(userId, g.documentId, at, at + g.pageIds.length - 1);
       at += g.pageIds.length;
     }
-    for (const id of plan.touched) await tx.documents.update(userId, id, { reviewed: false });
+    for (const id of plan.touched) await tx.documents.update(userId, id, { reviewed: false, needs_reading: true });
     // The plan was about the arrangement that has just changed.
     await tx.regroupPlans.remove(userId, sourceFileId);
     return { touched: plan.touched, created, deleted: plan.deleted, unchanged: plan.unchanged.length };

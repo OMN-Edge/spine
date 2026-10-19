@@ -8,6 +8,8 @@ import { resolveDataDir } from '../config.js';
 import { detectFileKind, isImage, MIME_OF } from '../file-kind.js';
 import { aiReadingAllowed } from '../parser/index.js';
 import { getJobStatus, startIngestionJob } from './pipeline.js';
+import { bundlePhotos, MAX_PHOTOS_IN_SET } from './photo-set.js';
+import { sha256OfFileSync } from './checksum.js';
 
 /** Where a new original goes: per user, so a filesystem mistake cannot cross users as easily as a query mistake (M-9). The id is ours, never input. */
 export function newUploadPath(userId: string, ext: string): { fileId: string; filePath: string } {
@@ -67,7 +69,7 @@ export async function retryFailedUpload(userId: string, id: string): Promise<'st
 
 export type UploadOutcome =
   | { id: string; status: 'processing'; retried?: true }
-  | { skipped: true; reason: 'not_pdf' | 'photo_needs_ai' | 'too_large'; filename: string | null }
+  | { skipped: true; reason: 'not_pdf' | 'photo_needs_ai' | 'too_large' | 'too_many'; filename: string | null }
   | { skipped: true; reason: 'duplicate'; existing_id: string };
 
 /**
@@ -109,4 +111,41 @@ export async function acceptFile(userId: string, file: { id: string; path: strin
   });
   startIngestionJob(file.id, userId);
   return { id: file.id, status: 'processing' };
+}
+
+/**
+ * Photos already written to `files`, in the order they are pages, become one upload: one PDF, a page each, that a model reads like a
+ * single photo. The set is refused as a whole if any file is not a photo, if reading by a model is not allowed, or if there are
+ * too many; one already held (the same photos in the same order) is a duplicate.
+ */
+export async function acceptPhotoSet(userId: string, files: Array<{ path: string; filename: string | null }>): Promise<UploadOutcome> {
+  const store = getStore();
+  if (files.length === 0) return { skipped: true, reason: 'not_pdf', filename: null };
+  if (files.length > MAX_PHOTOS_IN_SET) return { skipped: true, reason: 'too_many', filename: null };
+  if (!aiReadingAllowed()) return { skipped: true, reason: 'photo_needs_ai', filename: files[0].filename };
+  for (const file of files) {
+    if (!isImage(detectFileKind(file.path))) return { skipped: true, reason: 'not_pdf', filename: file.filename };
+  }
+
+  const { fileId, filePath } = newUploadPath(userId, '.pdf');
+  try {
+    await bundlePhotos(files.map(f => f.path), filePath);
+  } catch {
+    rmSync(filePath, { force: true });
+    return { skipped: true, reason: 'not_pdf', filename: files[0].filename }; // a photo that cannot be decoded is not one
+  }
+  const checksum = sha256OfFileSync(filePath);
+  const existing = await store.sourceFiles.findByChecksumFor(userId, checksum);
+  if (existing) {
+    rmSync(filePath, { force: true });
+    if (existing.status === 'error' && (await retryFailedUpload(userId, existing.id)) === 'started') return { id: existing.id, status: 'processing', retried: true };
+    return { skipped: true, reason: 'duplicate', existing_id: existing.id };
+  }
+  const first = (files[0].filename ?? 'photo').replace(/\.[^.]*$/, '').slice(0, 80) || 'photo';
+  await store.sourceFiles.create(userId, {
+    id: fileId, uploadedAt: new Date().toISOString(), originalFilename: `${first} (${files.length} photos).pdf`,
+    filePath, mimeType: MIME_OF.pdf, checksum, photoSet: true,
+  });
+  startIngestionJob(fileId, userId);
+  return { id: fileId, status: 'processing' };
 }

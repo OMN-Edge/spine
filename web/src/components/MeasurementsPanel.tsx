@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import type { Measurement, Page } from '../api';
 import { useI18n } from '../i18n';
+import { Combobox } from './Combobox';
 
 /** One row of the review form. `id` is absent for a row added in this session. */
 export interface DraftMeasurement {
@@ -43,31 +44,43 @@ export function MeasurementsList<T extends MeasurementRow>({ items, selectedId, 
   const { t } = useI18n();
   return (
     <div className="space-y-1">
-      {items.map(m => (
-        <div
-          key={m.id}
-          role={onSelect ? 'button' : undefined} tabIndex={onSelect ? 0 : undefined} aria-pressed={onSelect ? selectedId === m.id : undefined}
-          onClick={() => onSelect?.(m)}
-          onKeyDown={e => { if (onSelect && (e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) { e.preventDefault(); onSelect(m); } }}
-          className={`flex items-baseline justify-between gap-3 p-2 text-xs rounded-lg border transition-colors ${onSelect ? 'cursor-pointer' : ''} ${selectedId === m.id ? 'bg-yellow-50 border-yellow-200' : 'border-transparent hover:bg-gray-50'}`}
-        >
-          <span className="min-w-0">
-            {!plain && m.value_num != null && m.canonical ? (
-              <Link to={`/trends?name=${encodeURIComponent(m.canonical)}`} className="font-medium text-gray-700 hover:text-blue-600 break-words">{m.name}</Link>
-            ) : (
-              <span className="font-medium text-gray-700 break-words">{m.name}</span>
-            )}
-            {range(m) && <span className="block text-gray-400">{t('ref')} {range(m)}{m.unit ? ` ${m.unit}` : ''}</span>}
-          </span>
-          <span className="text-right shrink-0">
-            <span className="text-gray-900">{m.value_text}</span>
-            {m.unit && <span className="text-gray-400"> {m.unit}</span>}
-            {m.flag && m.flag !== 'normal' && (
-              <span className={`ml-2 px-1.5 py-0.5 rounded-full font-medium ${FLAG_STYLE[m.flag]}`}>{m.flag}</span>
-            )}
-          </span>
-        </div>
-      ))}
+      {items.map(m => {
+        // A result that is words rather than a number (a culture's findings, "no growth") is long: it goes under the name and wraps,
+        // as a long value does on the details. A number stays beside its name.
+        const wordy = m.value_num == null && (m.value_text ?? '').trim().length > 20;
+        const value = (m.value_text ?? '').trim();
+        return (
+          <div
+            key={m.id}
+            role={onSelect ? 'button' : undefined} tabIndex={onSelect ? 0 : undefined} aria-pressed={onSelect ? selectedId === m.id : undefined}
+            onClick={() => onSelect?.(m)}
+            onKeyDown={e => { if (onSelect && (e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) { e.preventDefault(); onSelect(m); } }}
+            className={`flex ${wordy ? 'flex-col gap-1' : 'items-baseline justify-between gap-3'} p-2 text-xs rounded-lg border transition-colors ${onSelect ? 'cursor-pointer' : ''} ${selectedId === m.id ? 'bg-yellow-50 border-yellow-200' : 'border-transparent hover:bg-gray-50'}`}
+          >
+            <span className="min-w-0">
+              {!plain && m.value_num != null && m.canonical ? (
+                <Link to={`/trends?name=${encodeURIComponent(m.canonical)}`} className="font-medium text-gray-700 hover:text-blue-600 break-words">{m.name}</Link>
+              ) : (
+                <span className="font-medium text-gray-700 break-words">{m.name}</span>
+              )}
+              {range(m) && <span className="block text-gray-400">{t('ref')} {range(m)}{m.unit ? ` ${m.unit}` : ''}</span>}
+            </span>
+            <span className={wordy ? 'min-w-0 text-gray-900 break-words leading-relaxed' : 'text-right shrink-0'}>
+              {wordy ? (
+                <span>{value}</span>
+              ) : value ? (
+                <span className="text-gray-900">{value}</span>
+              ) : (
+                <span className="text-gray-400" title={t('No value was read')}>—</span>
+              )}
+              {m.unit && <span className="text-gray-400"> {m.unit}</span>}
+              {m.flag && m.flag !== 'normal' && (
+                <span className={`ml-2 px-1.5 py-0.5 rounded-full font-medium ${FLAG_STYLE[m.flag]}`}>{m.flag}</span>
+              )}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -75,13 +88,13 @@ export function MeasurementsList<T extends MeasurementRow>({ items, selectedId, 
 const cell = 'w-full text-xs border border-gray-200 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500';
 
 /** Review mode: every part of a result is editable; the flag is worked out again on save. */
-export function MeasurementsEditor({ rows, pages, currentPageId, onChange, onAdd, listId }: {
+export function MeasurementsEditor({ rows, pages, currentPageId, onChange, onAdd, knownNames }: {
   rows: DraftMeasurement[];
   pages: Page[];
   currentPageId: string;
   onChange: (key: string, patch: Partial<DraftMeasurement>) => void;
   onAdd: () => void;
-  listId: string;
+  knownNames: string[];
 }) {
   const { t } = useI18n();
   const live = rows.filter(r => !r.removed);
@@ -90,10 +103,11 @@ export function MeasurementsEditor({ rows, pages, currentPageId, onChange, onAdd
       {live.map(r => (
         <div key={r.key} className="border border-gray-100 rounded-lg p-2 space-y-2">
           <div className="flex gap-2">
-            <input
-              aria-label={t('Test name')} placeholder={t('Test')} list={listId} className={`${cell} font-medium`}
+            <Combobox
+              ariaLabel={t('Test name')} placeholder={t('Test')} className={`${cell} font-medium`}
+              options={knownNames.map(n => ({ value: n, label: n }))} newLabel={name => t('Use “{name}”', { name })} commitOnBlur
               // A renamed test is a different test: let the server derive its trend name from the new one.
-              value={r.name} onChange={e => onChange(r.key, { name: e.target.value, canonical: '' })}
+              value={r.name} onChange={v => onChange(r.key, { name: v, canonical: '' })}
             />
             <button type="button" aria-label={t('Remove measurement')} className="text-gray-400 hover:text-red-600 px-1" onClick={() => onChange(r.key, { removed: true })}>✕</button>
           </div>
@@ -109,9 +123,10 @@ export function MeasurementsEditor({ rows, pages, currentPageId, onChange, onAdd
               pattern="\d{4}-\d{2}(-\d{2})?" value={r.taken_on} onChange={e => onChange(r.key, { taken_on: e.target.value })}
             />
             {pages.length > 1 && (
-              <select aria-label={t('Page')} className={cell} value={r.page_id} onChange={e => onChange(r.key, { page_id: e.target.value })} disabled={!!r.id}>
-                {pages.map((p, i) => <option key={p.id} value={p.id}>{t('Page {n}', { n: i + 1 })}</option>)}
-              </select>
+              <Combobox
+                ariaLabel={t('Page')} className={cell} value={r.page_id} onChange={v => onChange(r.key, { page_id: v })} disabled={!!r.id}
+                options={pages.map((p, i) => ({ value: p.id, label: t('Page {n}', { n: i + 1 }) }))}
+              />
             )}
           </div>
         </div>

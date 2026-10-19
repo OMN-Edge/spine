@@ -18,12 +18,14 @@ import type { DocType, UnstructuredElement } from '../types.js';
  */
 export function startRestore(
   userId: string, sourceFileId: string, filePath: string, isPhoto: boolean, file: ManifestFile, setAside: Set<number>,
+  /** The doctor of this archive each person of the export is (`restoreDirectory`). Empty for a version 1 export, whose doctors are found by name. */
+  people: Array<string | null>,
   /** Told once the upload is done: the new id of each of the file's documents in the manifest's order (null for one set aside), or null if it failed. */
   finished: (documentIds: Array<string | null> | null) => void = () => {},
 ): void {
   const job = beginJob(sourceFileId);
   if (!job) { finished(null); return; }
-  runQueued(() => restore(userId, sourceFileId, filePath, isPhoto, file, setAside, job, finished)).catch(() => {});
+  runQueued(() => restore(userId, sourceFileId, filePath, isPhoto, file, setAside, people, job, finished)).catch(() => {});
 }
 
 async function restore(
@@ -33,6 +35,7 @@ async function restore(
   isPhoto: boolean,
   file: ManifestFile,
   setAside: Set<number>,
+  people: Array<string | null>,
   job: { status: string; progress: number; step: string; error?: string },
   finished: (documentIds: Array<string | null> | null) => void,
 ): Promise<void> {
@@ -87,22 +90,27 @@ async function restore(
           aiSummary: d.ai_summary, language: cleanLanguageCode(d.language),
         });
         await tx.documents.update(userId, docId, { user_notes: d.user_notes, reviewed: d.reviewed });
+        if (d.owner_edited.length > 0) await tx.documents.setEditedColumns(userId, docId, d.owner_edited);
+        await tx.fields.rememberRemoved(userId, docId, d.removed_fields);
+        await tx.measurements.rememberRemoved(userId, docId, d.removed_measurements);
         await tx.tags.setForDocument(userId, docId, d.tags);
         // A field or result names a page by its place in the upload; one outside the document's range goes on its first page.
         const pageId = (n: number) => idByNumber.get(n >= d.page_start && n <= d.page_end ? n : d.page_start)!;
         for (const f of d.fields) {
-          await tx.fields.create(userId, { id: uuidv4(), documentId: docId, pageId: pageId(f.page), label: f.label, value: f.value, groupNo: f.group_no, sourceSnippet: f.source_snippet, bbox: f.bbox, confidence: f.confidence });
+          await tx.fields.create(userId, { id: uuidv4(), documentId: docId, pageId: pageId(f.page), label: f.label, value: f.value, groupNo: f.group_no, sourceSnippet: f.source_snippet, bbox: f.bbox, confidence: f.confidence, ownerEdited: f.owner_edited });
         }
         for (const m of d.measurements) {
           await tx.measurements.create(userId, {
             id: uuidv4(), documentId: docId, pageId: pageId(m.page), name: m.name, canonical: await tx.measurements.resolveCanonical(userId, m.canonical),
             valueText: m.value_text, valueNum: m.value_num, unit: m.unit, refLow: m.ref_low, refHigh: m.ref_high, flag: m.flag, takenOn: m.taken_on,
-            sourceSnippet: m.source_snippet, bbox: m.bbox, confidence: m.confidence,
+            sourceSnippet: m.source_snippet, bbox: m.bbox, confidence: m.confidence, ownerEdited: m.owner_edited,
           });
         }
         for (const doctor of d.doctors) {
-          const id = await tx.doctors.upsert(userId, { name: doctor.name, specialty: doctor.specialty, clinic: doctor.clinic, licenseCode: doctor.license_code }, now);
-          if (id) await tx.doctors.link(userId, docId, id, doctor.role);
+          // A version 2 export says which person of its directory this is; a version 1 one is found by name and code.
+          const id = (doctor.person !== null ? people[doctor.person] : null)
+            ?? await tx.doctors.upsert(userId, { name: doctor.name, specialty: doctor.specialty, clinic: doctor.clinic, licenseCode: doctor.license_code, exactCode: true }, now);
+          if (id) await tx.doctors.link(userId, docId, id, doctor.role, doctor.source, doctor.printed_code);
         }
         // A document already in the archive is kept out of sight rather than twice in the timeline, search and trends.
         if (setAside.has(index)) await tx.pages.setHiddenForDocument(userId, docId, true);

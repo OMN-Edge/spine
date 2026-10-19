@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useI18n } from '../i18n';
+import { Combobox } from './Combobox';
 
 export interface ManagedItem {
   key: string;
@@ -54,7 +55,6 @@ export default function ManageList({ items, filterLabel, removeLabel, removeWarn
       {error && <p className="text-sm text-red-600 mb-3" role="alert">{error}</p>}
       {shown.length === 0 ? <p className="text-sm text-gray-400">{t('Nothing matches.')}</p> : (
         <ul className="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100">
-          <datalist id="manage-names">{items.map(i => <option key={i.key} value={i.name} />)}</datalist>
           {shown.map(item => (
             <li key={item.key} className="px-4 py-3">
               <div className="flex items-center justify-between gap-3">
@@ -73,9 +73,11 @@ export default function ManageList({ items, filterLabel, removeLabel, removeWarn
               {editing?.key === item.key && (
                 <form className="mt-3" onSubmit={e => { e.preventDefault(); void run(() => onRename(item, editing.name)); }}>
                   <div className="flex gap-2">
-                    <input
-                      autoFocus list="manage-names" value={editing.name} onChange={e => setEditing({ key: item.key, name: e.target.value })}
-                      aria-label={t('New name')} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    <Combobox
+                      ariaLabel={t('New name')} value={editing.name} commitOnBlur
+                      onChange={v => setEditing({ key: item.key, name: v })} newLabel={name => t('Rename to “{name}”', { name })}
+                      options={items.filter(i => i.key !== item.key).map(i => ({ value: i.name, label: i.name, hint: String(i.count) }))}
+                      className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                     <button type="submit" disabled={busy || editing.name.trim() === '' || editing.name === item.name} className="shrink-0 bg-blue-600 text-white rounded-lg px-3 py-1.5 text-sm disabled:opacity-50">{t('Save')}</button>
                     <button type="button" onClick={() => setEditing(null)} className="shrink-0 px-2 text-sm text-gray-500">{t('Cancel')}</button>

@@ -1,10 +1,11 @@
 import type { FastifyInstance } from 'fastify';
+import { readsByModel } from '../file-kind.js';
 import { rmSync } from 'fs';
 import path from 'path';
 import { getStore } from '../store/index.js';
 import { getJobStatus } from '../ingestion/pipeline.js';
 import { retryFailedUpload } from '../ingestion/accept-upload.js';
-import { acceptParts } from '../ingestion/accept-parts.js';
+import { acceptParts, acceptPhotoParts } from '../ingestion/accept-parts.js';
 import { similarityEnabled } from '../similarity/index.js';
 import { removeUploadFiles } from '../ingestion/remove-upload.js';
 import { rereadDocuments } from '../ingestion/document-reading.js';
@@ -18,6 +19,8 @@ import { requireAuth } from './middleware.js';
 import { v4 as uuidv4 } from 'uuid';
 import { applyRegroup, RegroupError } from '../ingestion/regroup.js';
 import { openQuestions } from '../matching/index.js';
+import { guessTitle } from '../ingestion/title-guess.js';
+import { getReadingJob, startReadingUpload } from '../ingestion/read-upload.js';
 import { getRegroupJob, isAnalysingPages, startRegroupAnalysis } from '../regroup/jobs.js';
 import type { Document } from '../types.js';
 
@@ -26,7 +29,7 @@ import type { Document } from '../types.js';
 function documentSummary(doc: Document) {
   return {
     id: doc.id, title: doc.title, doc_type: doc.doc_type, doc_date: doc.doc_date, provider: doc.provider,
-    page_start: doc.page_start, page_end: doc.page_end, reviewed: doc.reviewed,
+    page_start: doc.page_start, page_end: doc.page_end, reviewed: doc.reviewed, needs_reading: !!doc.needs_reading,
   };
 }
 
@@ -73,6 +76,8 @@ export async function sourceFileRoutes(app: FastifyInstance) {
       error_message: upload.error_message,
       page_count: upload.page_count,
       grouping_confirmed: upload.grouping_confirmed,
+      // The documents are read after the grouping is confirmed: how far that is.
+      reading: getReadingJob(upload.id) ?? null,
       pages: pages.map(p => ({
         id: p.id, page_number: p.page_number, image_width: p.image_width,
         image_height: p.image_height, extraction_source: p.extraction_source, hidden: !!p.hidden, source_page: p.source_page,
@@ -80,13 +85,20 @@ export async function sourceFileRoutes(app: FastifyInstance) {
       // Every document, with whether the owner has hidden all of its pages: this screen is where that is undone.
       documents: documents.sort((a, b) => a.page_start - b.page_start).map(doc => {
         const held = pages.filter(p => p.page_number >= doc.page_start && p.page_number <= doc.page_end);
-        return { ...documentSummary(doc), hidden: held.length > 0 && held.every(p => p.hidden) };
+        // A document nothing has been read from yet is recognised by the first line of its first page (a guess, never stored).
+        const guess = doc.needs_reading && !doc.title ? guessTitle(held.find(p => !p.hidden)?.raw_text) : null;
+        return { ...documentSummary(doc), hidden: held.length > 0 && held.every(p => p.hidden), title_guess: guess };
       }),
     });
   });
 
   app.post('/api/source-files/upload', async (req, reply) => {
     return reply.send(await acceptParts(req.userId, req.parts()));
+  });
+
+  // Several photos of one document, in the order they are sent: one upload whose pages they are.
+  app.post('/api/source-files/upload-photos', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
+    return reply.send(await acceptPhotoParts(req.userId, req.parts()));
   });
 
   // Try a failed upload again, as it was first read. No image is sent unless it would have been the first time.
@@ -123,11 +135,16 @@ export async function sourceFileRoutes(app: FastifyInstance) {
     if (file.status !== 'done' || getJobStatus(id)?.status === 'processing' || isReadingPages(id)) {
       return reply.status(409).send({ error: 'this file is not ready to be confirmed' });
     }
-    if (!file.grouping_confirmed) {
-      await store.sourceFiles.setGroupingConfirmed(req.userId, id, true);
-      scheduleSync(req.userId);
-      scheduleLinking(req.userId, (await store.documents.listFor(req.userId, { sourceFileId: id, limit: 1000, offset: 0 })).map(d => d.id));
-    }
+    if (file.grouping_confirmed) return reply.send({ confirmed: true });
+
+    // The documents are read now, once, for the grouping the owner approved (SECURITY.md M-29); they appear when that is over.
+    // An upload with nothing left to read (an older one, a restored one) is confirmed at once.
+    const waiting = (await store.documents.listFor(req.userId, { sourceFileId: id, includeHidden: true, includeUnconfirmed: true, limit: 1000, offset: 0 })).some(d => d.needs_reading);
+    if (waiting) return reply.status(202).send({ confirmed: false, reading: startReadingUpload(req.userId, id, true) });
+
+    await store.sourceFiles.setGroupingConfirmed(req.userId, id, true);
+    scheduleSync(req.userId);
+    scheduleLinking(req.userId, (await store.documents.listFor(req.userId, { sourceFileId: id, limit: 1000, offset: 0 })).map(d => d.id));
     return reply.send({ confirmed: true });
   });
 
@@ -150,6 +167,12 @@ export async function sourceFileRoutes(app: FastifyInstance) {
     for (const documentId of ids as string[]) {
       const doc = await store.documents.findFor(req.userId, documentId);
       if (!doc || doc.source_file_id !== id) return reply.status(404).send({ error: 'document not found in this upload' });
+    }
+
+    // While the grouping is not confirmed nothing is read: the documents are marked, and read once when it is (SECURITY.md M-29).
+    if (!file.grouping_confirmed) {
+      for (const documentId of ids as string[]) await store.documents.update(req.userId, documentId, { needs_reading: true });
+      return reply.send({ results: (ids as string[]).map(documentId => ({ id: documentId, reread: 'deferred' })) });
     }
 
     // A document whose every page is hidden has nothing to read: it is skipped, not failed, and stays as it is.
@@ -194,7 +217,7 @@ export async function sourceFileRoutes(app: FastifyInstance) {
     if (strategy !== 'model' && strategy !== 'configured') {
       return reply.status(400).send({ error: 'strategy must be model or configured' });
     }
-    const sendsImages = strategy === 'model' || !!file.mime_type?.startsWith('image/') || getParser().imageEgress;
+    const sendsImages = strategy === 'model' || readsByModel(file) || getParser().imageEgress;
     if (sendsImages && !aiReadingAllowed()) {
       return reply.status(409).send({ error: 'AI reading is not enabled on this server' });
     }
@@ -244,14 +267,17 @@ export async function sourceFileRoutes(app: FastifyInstance) {
   // Which pages of a mixed upload belong together (SECURITY.md M-24). The text read from the pages goes to the configured model
   // provider, as it did to read the documents, one call per candidate group; it runs in the background, the plan is kept, and the
   // app starts a conversation when it is ready. Nothing is changed by it.
-  app.post<{ Params: { id: string } }>('/api/source-files/:id/regroup/analyze', { config: { rateLimit: { max: 6, timeWindow: '1 minute' } } }, async (req, reply) => {
+  app.post<{ Params: { id: string }; Body: { conversation_id?: unknown } | undefined }>('/api/source-files/:id/regroup/analyze', { config: { rateLimit: { max: 6, timeWindow: '1 minute' } } }, async (req, reply) => {
     const { id } = req.params;
     const file = await getStore().sourceFiles.findFor(req.userId, id);
     if (!file) return reply.status(404).send({ error: 'not found' });
     if (file.status !== 'done' || getJobStatus(id)?.status === 'processing' || isReadingPages(id)) {
       return reply.status(409).send({ error: 'this file is still being processed' });
     }
-    return reply.status(202).send(startRegroupAnalysis(req.userId, id));
+    // The conversation it was asked for in, if the chat sent one: the report is written there (and only if it is theirs).
+    const asked = req.body?.conversation_id;
+    const conversationId = typeof asked === 'string' && asked.length > 0 && asked.length <= 64 ? asked : null;
+    return reply.status(202).send(startRegroupAnalysis(req.userId, id, conversationId));
   });
 
   // The state of the analysis and the plan it found, if there is one.

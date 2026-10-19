@@ -46,6 +46,24 @@ export async function similarityRoutes(app: FastifyInstance) {
     });
   });
 
+  // Titles of some of the owner's documents in a language, for lists that name documents (the chat's sources). Only what is cached comes
+  // back at once; the rest start translating in the background and `pending` tells the page to ask again shortly.
+  app.get<{ Querystring: { ids?: string; lang?: string } }>('/api/translations/titles', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const language = req.query.lang;
+    const ids = [...new Set((req.query.ids ?? '').split(',').map(x => x.trim()).filter(Boolean))].slice(0, 20);
+    if (!isSupportedLanguage(language) || !translationEnabled() || ids.length === 0) return reply.header('Cache-Control', 'no-store').send({ titles: {}, pending: false });
+    const titles: Record<string, string | null> = {};
+    const missing: string[] = [];
+    for (const id of ids) {
+      const done = await translateDocument(req.userId, id, language, { cachedOnly: true });
+      if (done === 'not_found') continue; // not the caller's, or gone: the same as an id that never existed
+      if (done === null) { missing.push(id); continue; }
+      titles[id] = done.status !== 'same' ? done.title : null;
+    }
+    if (missing.length > 0) warmTranslations(req.userId, missing, language);
+    return reply.header('Cache-Control', 'no-store').send({ titles, pending: missing.length > 0 });
+  });
+
   // The documents that match some words, or mean something like them, merged by rank.
   app.get<{ Querystring: { q?: string; limit?: string } }>('/api/search/hybrid', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (req, reply) => {
     const q = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 500) : '';

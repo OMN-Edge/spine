@@ -9,8 +9,8 @@ import type { Document } from '../types.js';
  *
  * Proposals are not stored: they are part of the reply that made them, and a conversation reopened later has the words only.
  */
-export interface DocRef { id: string; title: string | null; doc_type: Document['doc_type']; doc_date: string | null }
-export const refOf = (d: Document): DocRef => ({ id: d.id, title: d.title, doc_type: d.doc_type, doc_date: d.doc_date });
+export interface DocRef { id: string; title: string | null; doc_type: Document['doc_type']; doc_date: string | null; page_start?: number; page_end?: number }
+export const refOf = (d: Document): DocRef => ({ id: d.id, title: d.title, doc_type: d.doc_type, doc_date: d.doc_date, page_start: d.page_start, page_end: d.page_end });
 
 /** A request Confirm will send, exactly. The page runs only paths of the shapes it knows. */
 export interface ProposedCall { method: 'POST' | 'PATCH' | 'DELETE'; path: string; body?: unknown }
@@ -62,6 +62,32 @@ export type ProposalBody =
       groups: Array<{ into: TestEntry; from: TestEntry[]; final_name: string }>;
     }
   | { kind: 'confirm_grouping'; upload: { id: string; file_name: string | null; uploaded_at: string }; documents: DocRef[]; calls: ProposedCall[] }
+  | {
+      /** One page to another place in its upload: into a document (before a page of it, or at its end) or out into a document of its own. */
+      kind: 'move_page';
+      upload: { id: string; file_name: string | null };
+      page: { id: string; number: number };
+      from: DocRef;
+      /** Null: a document of its own. */
+      to: DocRef | null;
+      before_page: number | null;
+      calls: ProposedCall[];
+    }
+  | {
+      /** All of one document's pages to the end of another of the same upload, so two documents become one; the combined one is then read again. */
+      kind: 'merge_documents';
+      upload: { id: string; file_name: string | null };
+      into: DocRef;
+      from: DocRef;
+      page_numbers: number[];
+      calls: ProposedCall[];
+    }
+  | {
+      /** Suggested connections between documents (found by the app, not yet confirmed), each to be confirmed or marked not related. */
+      kind: 'decide_links';
+      items: Array<{ label: string; from: DocRef; to: DocRef; link_kind: 'requests' | 'follow_up' | 'same_episode'; decision: 'confirm' | 'dismiss'; reason: string | null }>;
+      calls: ProposedCall[];
+    }
   | { kind: 'analyse_pages'; upload: { id: string; file_name: string | null; uploaded_at: string }; pages: number; calls: ProposedCall[] }
   | {
       /** Groups of pages found to belong together, to be made into documents. The page builds the requests, from the groups the person keeps. */

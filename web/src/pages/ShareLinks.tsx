@@ -4,6 +4,7 @@ import { api, type Document, type ShareLink, type ShareRequest } from '../api';
 import { useOnDataChanged } from '../dataChanged';
 import ShareRequestCard from '../components/ShareRequestCard';
 import { LANGUAGES, useI18n } from '../i18n';
+import { Combobox } from '../components/Combobox';
 import { languageName } from '../i18n/useTranslation';
 import { DOC_TYPE_LABELS } from '../components/DocumentCard';
 import { documentByline, documentTitle } from '../titles';
@@ -45,10 +46,11 @@ export function DocumentPicker({ docs, chosen, onChange }: { docs: Document[]; c
           placeholder={t('Search documents…')} className={input}
         />
         {types.length > 1 && (
-          <select value={type} onChange={e => setType(e.target.value)} aria-label={t('All types')} className="text-sm border border-gray-200 rounded-lg px-2 py-2 shrink-0">
-            <option value="">{t('All types')}</option>
-            {types.map(x => <option key={x} value={x}>{t(DOC_TYPE_LABELS[x] ?? x)}</option>)}
-          </select>
+          <Combobox
+            ariaLabel={t('All types')} wrapperClassName="relative w-40 shrink-0" value={type} onChange={setType}
+            className="w-full text-sm border border-gray-200 rounded-lg px-2 py-2 bg-white"
+            options={[{ value: '', label: t('All types') }, ...types.map(x => ({ value: x, label: t(DOC_TYPE_LABELS[x] ?? x) }))]}
+          />
         )}
       </div>
       <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
@@ -169,12 +171,10 @@ export default function ShareLinks() {
 
           <div>
             <label htmlFor="s-scope" className={label}>{t('What to share')}</label>
-            <select id="s-scope" value={scope} onChange={e => setScope(e.target.value as ShareLink['scope'])} className={input}>
-              <option value="all">{t('All history')}</option>
-              <option value="tag">{t('Documents with a tag')}</option>
-              <option value="document_ids">{t('Documents I pick')}</option>
-              <option value="date_range">{t('A date range')}</option>
-            </select>
+            <Combobox
+              id="s-scope" value={scope} onChange={v => setScope(v as ShareLink['scope'])} className={input}
+              options={[{ value: 'all', label: t('All history') }, { value: 'tag', label: t('Documents with a tag') }, { value: 'document_ids', label: t('Documents I pick') }, { value: 'date_range', label: t('A date range') }]}
+            />
           </div>
 
           {scope === 'tag' && (
@@ -183,10 +183,10 @@ export default function ShareLinks() {
               {tags.length === 0 ? (
                 <p className="text-sm text-gray-400">{t('No tags yet. They are added as documents are read.')}</p>
               ) : (
-                <select id="s-tag" value={tag} onChange={e => setTag(e.target.value)} className={input}>
-                  <option value="">{t('Choose a tag…')}</option>
-                  {tags.map(x => <option key={x.id} value={x.name}>{x.name}</option>)}
-                </select>
+                <Combobox
+                  id="s-tag" value={tag} onChange={setTag} className={input} placeholder={t('Choose a tag…')}
+                  options={tags.map(x => ({ value: x.name, label: x.name }))}
+                />
               )}
             </div>
           )}
@@ -252,10 +252,10 @@ export default function ShareLinks() {
 
           <div>
             <label htmlFor="s-lang" className={label}>{t('Language the page opens in')}</label>
-            <select id="s-lang" value={form.language} onChange={e => setForm(f => ({ ...f, language: e.target.value }))} className={input}>
-              <option value="">{t('Not set: the reader chooses')}</option>
-              {LANGUAGES.map(l => <option key={l.code} value={l.code}>{l.name}</option>)}
-            </select>
+            <Combobox
+              id="s-lang" value={form.language} onChange={v => setForm(f => ({ ...f, language: v }))} className={input}
+              options={[{ value: '', label: t('Not set: the reader chooses') }, ...LANGUAGES.map(l => ({ value: l.code, label: l.name }))]}
+            />
             <p className="text-xs text-gray-500 mt-1">{t('The reader can still switch language on the page. Extracted details and your notes are translated by the model provider.')}</p>
           </div>
 

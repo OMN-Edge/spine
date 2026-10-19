@@ -1,9 +1,16 @@
 import { Link } from 'react-router-dom';
 import type { DoctorOnDocument, DoctorRole } from '../api';
 import { msg, useI18n } from '../i18n';
+import { Combobox } from './Combobox';
 
 export interface DraftDoctor {
   key: string;
+  /** The directory entry this row is, if it came from the document; kept when the name is left as it was. */
+  id?: string;
+  /** Its professional code, shown beside the name (not edited here: it belongs to the directory entry). */
+  code?: string | null;
+  /** Typed as a person not in the directory, even if the name is: a second doctor of that name. */
+  isNew?: boolean;
   name: string;
   specialty: string;
   role: DoctorRole;
@@ -16,10 +23,10 @@ export const ROLE_LABELS: Record<DoctorRole, string> = {
   other: msg('Mentioned'),
 };
 
-export const draftDoctor = (d: DoctorOnDocument): DraftDoctor => ({ key: `${d.id}-${d.role}`, name: d.name, specialty: d.specialty ?? '', role: d.role });
+export const draftDoctor = (d: DoctorOnDocument): DraftDoctor => ({ key: `${d.id}-${d.role}`, id: d.id, code: d.license_code, name: d.name, specialty: d.specialty ?? '', role: d.role });
 
 /** Reading mode: who this document names, each linking to their page in the directory. */
-export function DoctorsList({ doctors, plain = false }: { doctors: Array<Pick<DoctorOnDocument, 'id' | 'name' | 'specialty' | 'role'>>; plain?: boolean }) {
+export function DoctorsList({ doctors, plain = false }: { doctors: Array<Pick<DoctorOnDocument, 'id' | 'name' | 'specialty' | 'role'> & { license_code?: string | null }>; plain?: boolean }) {
   const { t } = useI18n();
   return (
     <div className="space-y-1">
@@ -29,6 +36,8 @@ export function DoctorsList({ doctors, plain = false }: { doctors: Array<Pick<Do
             <span className="min-w-0">
               <span className="font-medium text-gray-900 break-words">{d.name}</span>
               {d.specialty && <span className="block text-gray-400">{d.specialty}</span>}
+              {/* The code is the owner's to see on their own pages; a recipient's list never carries it. */}
+              {!plain && d.license_code && <span className="block text-gray-400" title={t('Professional code')}>{t('Code {code}', { code: d.license_code })}</span>}
             </span>
             <span className="text-gray-500 shrink-0">{t(ROLE_LABELS[d.role] ?? ROLE_LABELS.other)}</span>
           </>
@@ -45,33 +54,48 @@ export function DoctorsList({ doctors, plain = false }: { doctors: Array<Pick<Do
 
 const cell = 'w-full text-xs border border-gray-200 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500';
 
+/** A doctor in the directory, as the editor offers them. */
+export interface DoctorChoice { id: string; name: string; specialty: string | null; license_code: string | null }
+
 /**
- * Review mode. The names already in the directory are offered as you type, so a doctor you have
- * met before is chosen rather than spelled a second way.
+ * Review mode. Each row is a doctor chosen from the directory (search by name, specialty or code), or a new
+ * one typed in: that is also how a second person with a name already held is added.
  */
-export function DoctorsEditor({ rows, known, onChange, onAdd, onRemove, listId }: {
+export function DoctorsEditor({ rows, known, onChange, onAdd, onRemove }: {
   rows: DraftDoctor[];
-  known: string[];
+  known: DoctorChoice[];
   onChange: (key: string, patch: Partial<DraftDoctor>) => void;
   onAdd: () => void;
   onRemove: (key: string) => void;
-  listId: string;
 }) {
   const { t } = useI18n();
+  const options = known.map(d => ({ value: d.id, label: d.name, hint: [d.specialty, d.license_code].filter(Boolean).join(' · ') || undefined }));
   return (
     <div className="space-y-3">
-      <datalist id={listId}>{known.map(n => <option key={n} value={n} />)}</datalist>
       {rows.map(r => (
         <div key={r.key} className="border border-gray-100 rounded-lg p-2 space-y-2">
           <div className="flex gap-2">
-            <input aria-label={t('Doctor name')} placeholder={t('Name')} list={listId} className={`${cell} font-medium`} value={r.name} onChange={e => onChange(r.key, { name: e.target.value })} />
+            <Combobox
+              ariaLabel={t('Doctor name')} placeholder={t('Search or add a doctor')} className={`${cell} font-medium`}
+              // A row not in the directory yet shows its typed name; one that is shows the entry's.
+              options={r.id && !known.some(d => d.id === r.id) ? [...options, { value: r.id, label: r.name }] : options}
+              value={r.id ?? r.name}
+              onChange={(v, isNew) => {
+                if (isNew) return onChange(r.key, { id: undefined, code: null, isNew: true, name: v });
+                const d = known.find(x => x.id === v);
+                if (d) onChange(r.key, { id: d.id, code: d.license_code, isNew: false, name: d.name, specialty: d.specialty ?? '' });
+              }}
+              newLabel={name => t('Add “{name}” as a new doctor', { name })}
+            />
             <button type="button" aria-label={t('Remove doctor')} className="text-gray-400 hover:text-red-600 px-1" onClick={() => onRemove(r.key)}>✕</button>
           </div>
+          {r.code && <p className="text-xs text-gray-400" title={t('Professional code')}>{t('Code {code}', { code: r.code })}</p>}
           <div className="grid grid-cols-2 gap-2">
             <input aria-label={t('Specialty')} placeholder={t('Specialty')} className={cell} value={r.specialty} onChange={e => onChange(r.key, { specialty: e.target.value })} />
-            <select aria-label={t('Role')} className={cell} value={r.role} onChange={e => onChange(r.key, { role: e.target.value as DoctorRole })}>
-              {(Object.keys(ROLE_LABELS) as DoctorRole[]).map(role => <option key={role} value={role}>{t(ROLE_LABELS[role])}</option>)}
-            </select>
+            <Combobox
+              ariaLabel={t('Role')} className={cell} value={r.role} onChange={v => onChange(r.key, { role: v as DoctorRole })}
+              options={(Object.keys(ROLE_LABELS) as DoctorRole[]).map(role => ({ value: role, label: t(ROLE_LABELS[role]) }))}
+            />
           </div>
         </div>
       ))}

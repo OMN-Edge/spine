@@ -49,6 +49,8 @@ const columnsOf = (db: Database.Database, table: string): string[] =>
  *  - `chat_conversations.unread`/`origin`, `chat_messages.kind`/`data`: conversations the app starts when an upload finishes, and the notice in them. Nothing earlier has them.
  *  - `documents.owner_edited`, `extracted_fields.owner_edited`, `measurements.owner_edited`, `source_files.grouping_confirmed`: what the
  *    owner changed (kept through a re-reading) and whether an upload's grouping has been confirmed (every earlier upload counts as confirmed).
+ *  - `source_files.photo_set`: an upload made of several photos bundled into one PDF, which a model reads. Earlier uploads are not.
+ *  - `documents.needs_reading`: a document whose fields have not been read yet because its upload's grouping is not confirmed. Earlier documents were read.
  *  - `pages.hidden`: pages the owner has set aside. The search view and one trigger name the column,
  *    and `CREATE ... IF NOT EXISTS` would keep the old versions, so they are dropped here and
  *    schema.sql, which runs next, makes them again.
@@ -85,6 +87,8 @@ function addColumnsInPlace(db: Database.Database): void {
   // What the owner edited stays through a re-reading, and an upload's grouping waits for the owner to confirm it. Existing
   // rows get the defaults: nothing edited, and every earlier upload confirmed.
   if (documents.length > 0 && !documents.includes('owner_edited')) db.exec("ALTER TABLE documents ADD COLUMN owner_edited TEXT NOT NULL DEFAULT ''");
+  // Reading a document waits for the grouping to be confirmed; every earlier document was read when it was made.
+  if (documents.length > 0 && !documents.includes('needs_reading')) db.exec('ALTER TABLE documents ADD COLUMN needs_reading INTEGER NOT NULL DEFAULT 0');
   for (const table of ['extracted_fields', 'measurements']) {
     const columns = columnsOf(db, table);
     if (columns.length > 0 && !columns.includes('owner_edited')) db.exec(`ALTER TABLE ${table} ADD COLUMN owner_edited INTEGER NOT NULL DEFAULT 0`);
@@ -100,6 +104,7 @@ function addColumnsInPlace(db: Database.Database): void {
   if (doctorLinks.length > 0 && !doctorLinks.includes('printed_code')) db.exec('ALTER TABLE document_doctors ADD COLUMN printed_code TEXT');
   const uploads = columnsOf(db, 'source_files');
   if (uploads.length > 0 && !uploads.includes('chat_conversation_id')) db.exec('ALTER TABLE source_files ADD COLUMN chat_conversation_id TEXT');
+  if (uploads.length > 0 && !uploads.includes('photo_set')) db.exec('ALTER TABLE source_files ADD COLUMN photo_set INTEGER NOT NULL DEFAULT 0');
   if (uploads.length > 0 && !uploads.includes('grouping_confirmed')) db.exec('ALTER TABLE source_files ADD COLUMN grouping_confirmed INTEGER NOT NULL DEFAULT 1');
 }
 

@@ -147,6 +147,8 @@ describe('P1 — deny by default', () => {
     'GET /api/share/:token/documents/:id/translation',
     'GET /api/share/:token/trends',
     'GET /api/share/:token/trends/series',
+    // Public on purpose, and scoped by the link (its documents only, confirmed links only): share-connections.test.ts.
+    'GET /api/share/:token/documents/:id/connections',
     // Public on purpose: a visitor asks to be let in. It writes one request for the link the token names (share-approval.test.ts).
     'POST /api/share/:token/access-request',
     // Public on purpose, and scoped by the link: share-chat.test.ts.

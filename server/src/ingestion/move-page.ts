@@ -139,7 +139,7 @@ export async function movePage(userId: string, pageId: string, target: MoveTarge
     }
 
     const touched = [...new Set([plan.origin, plan.destination])].filter(id => id !== plan.emptied);
-    for (const id of touched) await tx.documents.update(userId, id, { reviewed: false });
+    for (const id of touched) await tx.documents.update(userId, id, { reviewed: false, needs_reading: true });
     return { moved: true, touched, deleted: plan.emptied ? [plan.emptied] : [], created: plan.created };
   });
 }

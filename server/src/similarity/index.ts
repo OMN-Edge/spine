@@ -160,9 +160,12 @@ export interface RelatedDocument {
  * first because they are exact and never drift; meaning, when embeddings are on, adds documents that read alike and
  * strengthens the others.
  */
-export async function relatedTo(userId: string, documentId: string, k = 8): Promise<RelatedDocument[]> {
+export async function relatedTo(userId: string, documentId: string, k = 8, within?: ReadonlySet<string>): Promise<RelatedDocument[]> {
   const store = getStore();
-  const [signals, similar] = await Promise.all([store.documents.relatedSignals(userId, documentId), similarTo(userId, documentId, 20)]);
+  // `within`: only these documents may appear (a share link's), applied before ranking so nothing else is read into a result.
+  const [allSignals, allSimilar] = await Promise.all([store.documents.relatedSignals(userId, documentId), similarTo(userId, documentId, within ? 500 : 20)]);
+  const signals = within ? allSignals.filter(s => within.has(s.document_id)) : allSignals;
+  const similar = within ? allSimilar.filter(s => within.has(s.id)) : allSimilar;
   const byId = new Map<string, { score: number; reasons: RelatedReason[] }>();
   const at = (id: string) => { let e = byId.get(id); if (!e) { e = { score: 0, reasons: [] }; byId.set(id, e); } return e; };
 

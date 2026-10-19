@@ -38,6 +38,9 @@ export function measurementRepository(db: Database): MeasurementRepository {
   const remember = db.prepare("INSERT OR IGNORE INTO removed_readings (user_id, document_id, kind, key) VALUES (?, ?, 'measurement', ?)");
   const removed = db.prepare("SELECT key FROM removed_readings WHERE document_id = ? AND user_id = ? AND kind = 'measurement'");
   const deleteUnedited = db.prepare('DELETE FROM measurements WHERE document_id = ? AND user_id = ? AND owner_edited = 0');
+  const edited = db.prepare('SELECT id FROM measurements WHERE document_id = ? AND user_id = ? AND owner_edited = 1');
+  const allAliases = db.prepare('SELECT alias, canonical FROM measurement_aliases WHERE user_id = ? ORDER BY alias');
+  const keepAlias = db.prepare('INSERT OR IGNORE INTO measurement_aliases (user_id, alias, canonical) VALUES (?, ?, ?)');
   const deleteForDocument = db.prepare('DELETE FROM measurements WHERE document_id = ? AND user_id = ?');
   const reassign = db.prepare(`
     UPDATE measurements SET document_id = ?
@@ -127,6 +130,23 @@ export function measurementRepository(db: Database): MeasurementRepository {
 
     async deleteUnedited(userId, documentId) {
       deleteUnedited.run(documentId, owner(userId));
+    },
+
+    async editedIds(userId, documentId) {
+      return new Set((edited.all(documentId, owner(userId)) as Array<{ id: string }>).map(r => r.id));
+    },
+
+    async rememberRemoved(userId, documentId, keys) {
+      const uid = owner(userId);
+      for (const key of keys) remember.run(uid, documentId, key);
+    },
+
+    async aliases(userId) {
+      return allAliases.all(owner(userId)) as Array<{ alias: string; canonical: string }>;
+    },
+
+    async addAlias(userId, alias, canonical) {
+      keepAlias.run(owner(userId), alias, canonical);
     },
 
     async removedKeys(userId, documentId) {

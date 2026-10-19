@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api, type TrendName, type TrendSeries } from '../api';
 import { SeriesBody, TestList } from '../components/TrendViews';
 import { useI18n } from '../i18n';
+import { Combobox } from '../components/Combobox';
 import { useScreen } from '../components/ChatProvider';
 
 /** For a test written two ways by two labs: count this one as another, and remember it for later documents. */
@@ -32,10 +33,10 @@ function MergeTest({ canonical, others }: { canonical: string; others: TrendName
         {t('Labs name a test differently. Choose the one this should be counted with: these values move there, and a later document that uses this name is filed there too. To split them again, edit the values in their documents.')}
       </p>
       <div className="flex gap-2">
-        <select aria-label={t('Count this test as')} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5" value={into} onChange={e => setInto(e.target.value)}>
-          <option value="">{t('Choose a test…')}</option>
-          {others.map(o => <option key={o.canonical} value={o.canonical}>{o.name} ({o.count})</option>)}
-        </select>
+        <Combobox
+          ariaLabel={t('Count this test as')} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white" value={into} onChange={setInto} placeholder={t('Choose a test…')}
+          options={others.map(o => ({ value: o.canonical, label: o.name, hint: String(o.count) }))}
+        />
         <button onClick={merge} disabled={!into || busy} className="shrink-0 px-4 py-1.5 rounded-lg text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50">{t('Merge')}</button>
       </div>
       {error && <p className="text-sm text-red-600 mt-2" role="alert">{error}</p>}

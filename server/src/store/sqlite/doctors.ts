@@ -1,6 +1,6 @@
 import type { Database } from 'better-sqlite3';
 import { v4 as uuidv4 } from 'uuid';
-import type { Doctor } from '../../types.js';
+import type { Doctor, DoctorRole } from '../../types.js';
 import type { DoctorDocument, DoctorOnDocument, DoctorRepository, DoctorWithCounts } from '../types.js';
 import { doctorDisplayName, doctorKey, MAX_DOCTOR_TEXT, normaliseLicenseCode } from '../../doctors.js';
 import { owner } from './owner.js';
@@ -10,7 +10,16 @@ import { VISIBLE } from './visibility.js';
 export function doctorRepository(db: Database): DoctorRepository {
   const COLUMNS = 'id, name, specialty, clinic, license_code, created_at'; // not `key` or `user_id`: S-8
 
-  const findByKey = db.prepare('SELECT id FROM doctors WHERE user_id = ? AND key = ?');
+  // `key` is an identity, not the name: the first "Ion Popescu" is `ion popescu`, a second person of that name `ion popescu#2`.
+  // The unique index stays, and a name is looked for as its key and every numbered one.
+  const findByName = db.prepare("SELECT id, license_code FROM doctors WHERE user_id = ? AND (key = ? OR key LIKE ? || '#%') ORDER BY created_at, rowid");
+  const keyHeld = db.prepare('SELECT 1 FROM doctors WHERE user_id = ? AND key = ? AND id <> ?');
+  const keyFor = (uid: string, base: string, exceptId: string): string => {
+    for (let n = 1; ; n++) {
+      const key = n === 1 ? base : `${base}#${n}`;
+      if (!keyHeld.get(uid, key, exceptId)) return key;
+    }
+  };
   const findByCode = db.prepare('SELECT id FROM doctors WHERE user_id = ? AND license_code = ?');
   const insert = db.prepare('INSERT INTO doctors (id, user_id, name, key, specialty, clinic, license_code, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
   const fill = db.prepare('UPDATE doctors SET specialty = COALESCE(specialty, ?), clinic = COALESCE(clinic, ?) WHERE id = ? AND user_id = ?');
@@ -33,6 +42,7 @@ export function doctorRepository(db: Database): DoctorRepository {
     WHERE l.user_id = ? AND l.printed_code IS NOT NULL AND k.license_code IS NOT NULL AND l.printed_code <> k.license_code
   `);
   const unlinkAll = db.prepare('DELETE FROM document_doctors WHERE document_id = ? AND user_id = ?');
+  const linkInfo = db.prepare('SELECT doctor_id, role, source, printed_code FROM document_doctors WHERE document_id = ? AND user_id = ? ORDER BY rowid');
   const unlinkRead = db.prepare("DELETE FROM document_doctors WHERE document_id = ? AND user_id = ? AND source = 'text'");
   const forDocument = db.prepare(`
     SELECT k.id, k.name, k.specialty, k.clinic, k.license_code, k.created_at, l.role
@@ -57,7 +67,6 @@ export function doctorRepository(db: Database): DoctorRepository {
     FROM document_doctors l JOIN documents d ON d.id = l.document_id AND d.user_id = l.user_id
     WHERE l.doctor_id = ? AND l.user_id = ? AND ${VISIBLE} ORDER BY d.doc_date DESC NULLS LAST, d.rowid DESC
   `);
-  const keyTaken = db.prepare('SELECT id FROM doctors WHERE user_id = ? AND key = ? AND id <> ?');
   const rename = db.prepare('UPDATE doctors SET name = ?, key = ? WHERE id = ? AND user_id = ?');
   const setDetails = db.prepare('UPDATE doctors SET specialty = ?, clinic = ?, license_code = ? WHERE id = ? AND user_id = ?');
   const codeTaken = db.prepare('SELECT id FROM doctors WHERE user_id = ? AND license_code = ? AND id <> ?');
@@ -81,24 +90,41 @@ export function doctorRepository(db: Database): DoctorRepository {
   return {
     async upsert(userId, doctor, now) {
       const uid = owner(userId);
-      const name = doctorDisplayName(doctor.name).slice(0, MAX_DOCTOR_TEXT).trim();
       const specialty = doctor.specialty?.trim().slice(0, MAX_DOCTOR_TEXT) || null;
       const clinic = doctor.clinic?.trim().slice(0, MAX_DOCTOR_TEXT) || null;
-      const key = doctorKey(name);
-      if (!name || !key) return null;
-
       const code = normaliseLicenseCode(doctor.licenseCode);
+
+      // This very entry, chosen by the owner: nothing is looked up by name.
+      if (doctor.id) {
+        if (!find.get(doctor.id, uid)) return null;
+        fill.run(specialty, clinic, doctor.id, uid);
+        if (code) fillCode.run(code, doctor.id, uid);
+        return doctor.id;
+      }
+
+      const name = doctorDisplayName(doctor.name).slice(0, MAX_DOCTOR_TEXT).trim();
+      const base = doctorKey(name);
+      if (!name || !base) return null;
+
       // The code first: it names a person, where a name is only how this document spelled it.
       const byCode = code ? (findByCode.get(uid, code) as { id: string } | undefined) : undefined;
-      const existing = byCode ?? (findByKey.get(uid, key) as { id: string } | undefined);
-      if (existing) {
-        fill.run(specialty, clinic, existing.id, uid);
-        // Only a doctor with no code yet takes one: a name match whose code differs is left as it is.
-        if (code) fillCode.run(code, existing.id, uid);
-        return existing.id;
+      if (byCode) {
+        fill.run(specialty, clinic, byCode.id, uid);
+        return byCode.id;
+      }
+      if (!doctor.newPerson) {
+        const named = findByName.all(uid, base, base) as Array<{ id: string; license_code: string | null }>;
+        // Of several people with one name, one who has no code yet is the likeliest, then the oldest. A code that differs from the
+        // only one held is left to the report's question, unless the caller knows the codes are exact (a restore).
+        const open = named.find(n => !n.license_code) ?? (doctor.exactCode && code ? undefined : named[0]);
+        if (open) {
+          fill.run(specialty, clinic, open.id, uid);
+          if (code) fillCode.run(code, open.id, uid);
+          return open.id;
+        }
       }
       const id = uuidv4();
-      insert.run(id, uid, name, key, specialty, clinic, code, now);
+      insert.run(id, uid, name, keyFor(uid, base, id), specialty, clinic, code, now);
       return id;
     },
 
@@ -119,6 +145,10 @@ export function doctorRepository(db: Database): DoctorRepository {
         if (held) held.document_ids.push(r.document_id); else byPair.set(key, { doctor_id: r.doctor_id, name: r.name, directory_code: r.directory_code, printed_code: r.printed_code, document_ids: [r.document_id] });
       }
       return [...byPair.values()];
+    },
+
+    async linkInfo(userId, documentId) {
+      return linkInfo.all(documentId, owner(userId)) as Array<{ doctor_id: string; role: DoctorRole; source: 'text' | 'stamp' | 'signature'; printed_code: string | null }>;
     },
 
     async unlinkAll(userId, documentId) {
@@ -163,10 +193,9 @@ export function doctorRepository(db: Database): DoctorRepository {
 
       if (change.name !== undefined) {
         const name = doctorDisplayName(change.name);
-        const key = doctorKey(name);
-        if (!name || !key) return 'name_taken';
-        if (keyTaken.get(uid, key, id)) return 'name_taken';
-        rename.run(name, key, id, uid);
+        const base = doctorKey(name);
+        if (!name || !base) return 'not_found';
+        rename.run(name, keyFor(uid, base, id), id, uid);
       }
       if (change.specialty !== undefined || change.clinic !== undefined || change.licenseCode !== undefined) {
         const code = change.licenseCode === undefined ? current.license_code : normaliseLicenseCode(change.licenseCode);
