@@ -44,6 +44,8 @@ const mailArrives = (count: number) => vi.waitFor(() => expect(sent).toHaveLengt
 const tokenIn = (message: MailMessage) => /#([A-Za-z0-9_-]{43})/.exec(message.text)![1];
 
 const NEW_PASSWORD = 'a-brand-new-password';
+/** What the sign-up form sends when both boxes are ticked: consent to the use of health data, and acceptance of the terms, apart. */
+const CONSENT = { consent_health_data: true, accept_terms: true };
 
 describe('GET /api/auth/options', () => {
   it('tells the sign-in page what is available', async () => {
@@ -62,7 +64,7 @@ describe('GET /api/auth/options', () => {
         .toMatchObject({ registration: 'operator' });
       const res = await closed.inject({
         method: 'POST', url: '/api/auth/register',
-        payload: { email: 'x@example.com', password: NEW_PASSWORD },
+        payload: { email: 'x@example.com', password: NEW_PASSWORD, ...CONSENT },
       });
       expect(res.statusCode).toBe(404);
     } finally { await closed.close(); }
@@ -71,7 +73,7 @@ describe('GET /api/auth/options', () => {
 
 describe('POST /api/auth/register', () => {
   it('creates an unverified account and mails one link', async () => {
-    const res = await post('/api/auth/register', { email: 'New@Example.com', password: NEW_PASSWORD });
+    const res = await post('/api/auth/register', { email: 'New@Example.com', password: NEW_PASSWORD, ...CONSENT });
     expect(res.statusCode).toBe(200);
 
     await mailArrives(1);
@@ -84,8 +86,8 @@ describe('POST /api/auth/register', () => {
   });
 
   it('answers a taken address exactly as it answers a new one, and mails nothing', async () => {
-    const fresh = await post('/api/auth/register', { email: 'fresh@example.com', password: NEW_PASSWORD });
-    const taken = await post('/api/auth/register', { email: OWNER_EMAIL, password: NEW_PASSWORD });
+    const fresh = await post('/api/auth/register', { email: 'fresh@example.com', password: NEW_PASSWORD, ...CONSENT });
+    const taken = await post('/api/auth/register', { email: OWNER_EMAIL, password: NEW_PASSWORD, ...CONSENT });
 
     expect(taken.statusCode).toBe(fresh.statusCode);
     expect(taken.json()).toEqual(fresh.json());
@@ -96,7 +98,7 @@ describe('POST /api/auth/register', () => {
   });
 
   it('does not change the password of an account that already exists', async () => {
-    await post('/api/auth/register', { email: OWNER_EMAIL, password: NEW_PASSWORD });
+    await post('/api/auth/register', { email: OWNER_EMAIL, password: NEW_PASSWORD, ...CONSENT });
 
     const user = await getStore().users.findByEmail(OWNER_EMAIL);
     expect(await verifyPassword(user!.password_hash, TEST_PASSWORD)).toBe(true);
@@ -104,9 +106,9 @@ describe('POST /api/auth/register', () => {
   });
 
   it('refuses a weak password or a bad address and creates nothing', async () => {
-    expect((await post('/api/auth/register', { email: 'a@example.com', password: 'short' })).statusCode).toBe(400);
-    expect((await post('/api/auth/register', { email: 'not-an-email', password: NEW_PASSWORD })).statusCode).toBe(400);
-    expect((await post('/api/auth/register', { password: NEW_PASSWORD })).statusCode).toBe(400);
+    expect((await post('/api/auth/register', { email: 'a@example.com', password: 'short', ...CONSENT })).statusCode).toBe(400);
+    expect((await post('/api/auth/register', { email: 'not-an-email', password: NEW_PASSWORD, ...CONSENT })).statusCode).toBe(400);
+    expect((await post('/api/auth/register', { password: NEW_PASSWORD, ...CONSENT })).statusCode).toBe(400);
 
     expect(await getStore().users.findByEmail('a@example.com')).toBeNull();
     expect(sent).toHaveLength(0);
@@ -114,7 +116,7 @@ describe('POST /api/auth/register', () => {
 
   it('still answers 200 when the mail provider is down, and does not crash', async () => {
     failSending = true;
-    const res = await post('/api/auth/register', { email: 'down@example.com', password: NEW_PASSWORD });
+    const res = await post('/api/auth/register', { email: 'down@example.com', password: NEW_PASSWORD, ...CONSENT });
 
     expect(res.statusCode).toBe(200);
     await new Promise(r => setTimeout(r, 50));
@@ -125,14 +127,14 @@ describe('POST /api/auth/register', () => {
 
 describe('an unverified account', () => {
   async function register(email = 'pending@example.com') {
-    await post('/api/auth/register', { email, password: NEW_PASSWORD });
+    await post('/api/auth/register', { email, password: NEW_PASSWORD, ...CONSENT });
     await mailArrives(1);
     return tokenIn(sent[0]);
   }
 
   it('cannot sign in, and gets no session', async () => {
     await register();
-    const res = await post('/api/auth/login', { email: 'pending@example.com', password: NEW_PASSWORD });
+    const res = await post('/api/auth/login', { email: 'pending@example.com', password: NEW_PASSWORD, ...CONSENT });
 
     expect(res.statusCode).toBe(403);
     expect(res.json()).toMatchObject({ code: 'email_not_verified' });
@@ -151,13 +153,13 @@ describe('an unverified account', () => {
     const token = await register();
     expect((await post('/api/auth/verify', { token })).statusCode).toBe(200);
 
-    expect((await post('/api/auth/login', { email: 'pending@example.com', password: NEW_PASSWORD })).statusCode).toBe(200);
+    expect((await post('/api/auth/login', { email: 'pending@example.com', password: NEW_PASSWORD, ...CONSENT })).statusCode).toBe(200);
   });
 });
 
 describe('POST /api/auth/verify', () => {
   it('works once', async () => {
-    await post('/api/auth/register', { email: 'once@example.com', password: NEW_PASSWORD });
+    await post('/api/auth/register', { email: 'once@example.com', password: NEW_PASSWORD, ...CONSENT });
     await mailArrives(1);
     const token = tokenIn(sent[0]);
 
@@ -187,7 +189,7 @@ describe('POST /api/auth/verify', () => {
     const verify = await issueUserToken(user.id, 'verify', 60_000);
 
     expect((await post('/api/auth/verify', { token: reset })).statusCode).toBe(400);
-    expect((await post('/api/auth/reset', { token: verify, password: NEW_PASSWORD })).statusCode).toBe(400);
+    expect((await post('/api/auth/reset', { token: verify, password: NEW_PASSWORD, ...CONSENT })).statusCode).toBe(400);
   });
 
   it('stores only a hash of the token (P6)', async () => {
@@ -215,7 +217,7 @@ describe('POST /api/auth/verify', () => {
 
 describe('POST /api/auth/resend-verification', () => {
   it('sends a new link to an unverified account and kills the old one', async () => {
-    await post('/api/auth/register', { email: 'again@example.com', password: NEW_PASSWORD });
+    await post('/api/auth/register', { email: 'again@example.com', password: NEW_PASSWORD, ...CONSENT });
     await mailArrives(1);
     const first = tokenIn(sent[0]);
 
@@ -276,11 +278,11 @@ describe('password recovery by email', () => {
   it('sets the new password, once, and the old one stops working', async () => {
     const token = await requestReset();
 
-    expect((await post('/api/auth/reset', { token, password: NEW_PASSWORD })).statusCode).toBe(200);
+    expect((await post('/api/auth/reset', { token, password: NEW_PASSWORD, ...CONSENT })).statusCode).toBe(200);
     expect((await post('/api/auth/reset', { token, password: 'another-new-password' })).statusCode).toBe(400);
 
     expect((await post('/api/auth/login', { email: OWNER_EMAIL, password: TEST_PASSWORD })).statusCode).toBe(401);
-    expect((await post('/api/auth/login', { email: OWNER_EMAIL, password: NEW_PASSWORD })).statusCode).toBe(200);
+    expect((await post('/api/auth/login', { email: OWNER_EMAIL, password: NEW_PASSWORD, ...CONSENT })).statusCode).toBe(200);
   });
 
   it('ends every existing session (P13)', async () => {
@@ -288,7 +290,7 @@ describe('password recovery by email', () => {
     expect((await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie } })).statusCode).toBe(200);
 
     const token = await requestReset();
-    await post('/api/auth/reset', { token, password: NEW_PASSWORD });
+    await post('/api/auth/reset', { token, password: NEW_PASSWORD, ...CONSENT });
 
     expect((await app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie } })).statusCode).toBe(401);
   });
@@ -300,37 +302,37 @@ describe('password recovery by email', () => {
     expect(weak.statusCode).toBe(400);
     expect(weak.json().error).toMatch(/at least 12/);
 
-    expect((await post('/api/auth/reset', { token, password: NEW_PASSWORD })).statusCode).toBe(200);
+    expect((await post('/api/auth/reset', { token, password: NEW_PASSWORD, ...CONSENT })).statusCode).toBe(200);
   });
 
   it('is replaced by a newer request', async () => {
     const older = await requestReset();
     const newer = await requestReset();
 
-    expect((await post('/api/auth/reset', { token: older, password: NEW_PASSWORD })).statusCode).toBe(400);
-    expect((await post('/api/auth/reset', { token: newer, password: NEW_PASSWORD })).statusCode).toBe(200);
+    expect((await post('/api/auth/reset', { token: older, password: NEW_PASSWORD, ...CONSENT })).statusCode).toBe(400);
+    expect((await post('/api/auth/reset', { token: newer, password: NEW_PASSWORD, ...CONSENT })).statusCode).toBe(200);
   });
 
   it('refuses an expired link', async () => {
     const user = await getStore().users.findByEmail(OWNER_EMAIL);
     const token = await issueUserToken(user!.id, 'reset', -1000);
-    expect((await post('/api/auth/reset', { token, password: NEW_PASSWORD })).statusCode).toBe(400);
+    expect((await post('/api/auth/reset', { token, password: NEW_PASSWORD, ...CONSENT })).statusCode).toBe(400);
   });
 
   it('confirms the address too: receiving the link proves the mailbox', async () => {
     const pending = await createTestUser('pending-reset@example.com', { verified: false });
     const token = await issueUserToken(pending.id, 'reset', 60_000);
 
-    await post('/api/auth/reset', { token, password: NEW_PASSWORD });
+    await post('/api/auth/reset', { token, password: NEW_PASSWORD, ...CONSENT });
 
     expect((await getStore().users.findById(pending.id))?.email_verified_at).not.toBeNull();
-    expect((await post('/api/auth/login', { email: pending.email, password: NEW_PASSWORD })).statusCode).toBe(200);
+    expect((await post('/api/auth/login', { email: pending.email, password: NEW_PASSWORD, ...CONSENT })).statusCode).toBe(200);
   });
 
   it('lets exactly one of two simultaneous requests spend the link', async () => {
     const token = await requestReset();
     const results = await Promise.all([
-      post('/api/auth/reset', { token, password: NEW_PASSWORD }),
+      post('/api/auth/reset', { token, password: NEW_PASSWORD, ...CONSENT }),
       post('/api/auth/reset', { token, password: 'a-different-new-password' }),
     ]);
     expect(results.map(r => r.statusCode).sort()).toEqual([200, 400]);
@@ -367,7 +369,7 @@ describe('rate limits on the public account endpoints', () => {
     await app.close();
     app = await buildTestApp({ accounts: { registration: 'open', perSource: { max: 1, timeWindow: '1 minute' } } });
 
-    const register = (n: number) => post('/api/auth/register', { email: `r${n}@example.com`, password: NEW_PASSWORD });
+    const register = (n: number) => post('/api/auth/register', { email: `r${n}@example.com`, password: NEW_PASSWORD, ...CONSENT });
     expect((await register(1)).statusCode).toBe(200);
     expect((await register(2)).statusCode).toBe(429);
   });

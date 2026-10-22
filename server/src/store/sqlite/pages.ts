@@ -8,6 +8,7 @@ import type {
   PageWithoutPath,
 } from '../types.js';
 import { expectInserted, owner } from './owner.js';
+import { rotateBox, type Turn } from '../../geometry.js';
 
 /** Every statement filters by `user_id` (SECURITY.md P12). */
 export function pageRepository(db: Database): PageRepository {
@@ -27,7 +28,7 @@ export function pageRepository(db: Database): PageRepository {
     'UPDATE pages SET raw_text = ?, elements = ?, extraction_source = ? WHERE id = ? AND user_id = ?',
   );
   const listForSourceFile = db.prepare(`
-    SELECT id, page_number, source_page, raw_text, is_continuation, image_width, image_height, extraction_source, hidden
+    SELECT id, page_number, source_page, raw_text, is_continuation, image_width, image_height, extraction_source, hidden, rotation
     FROM pages WHERE source_file_id = ? AND user_id = ? ORDER BY page_number
   `);
 
@@ -36,7 +37,7 @@ export function pageRepository(db: Database): PageRepository {
   const listForDocument = db.prepare(`
     SELECT p.id, p.source_file_id, p.page_number, p.source_page, p.image_width, p.image_height, p.raw_text,
            p.elements, p.extraction_source, p.is_continuation, p.continuation_confidence,
-           p.continuation_reasoning, p.reviewed, p.hidden
+           p.continuation_reasoning, p.reviewed, p.hidden, p.rotation
     FROM documents d
     JOIN pages p
       ON p.source_file_id = d.source_file_id
@@ -70,6 +71,14 @@ export function pageRepository(db: Database): PageRepository {
   const findGrounding = db.prepare(
     'SELECT elements, image_width, image_height FROM pages WHERE id = ? AND user_id = ?',
   );
+  const findRotationState = db.prepare('SELECT elements, rotation FROM pages WHERE id = ? AND user_id = ?');
+  const setRotation = db.prepare('UPDATE pages SET elements = ?, image_width = ?, image_height = ?, rotation = ? WHERE id = ? AND user_id = ?');
+  // The boxes of what was read from a page move with it. Both tables name the page and carry the same four columns.
+  const boxed = (table: 'extracted_fields' | 'measurements') => ({
+    list: db.prepare(`SELECT id, bbox_x0 AS x0, bbox_y0 AS y0, bbox_x1 AS x1, bbox_y1 AS y1 FROM ${table} WHERE page_id = ? AND user_id = ? AND bbox_x0 IS NOT NULL`),
+    set: db.prepare(`UPDATE ${table} SET bbox_x0 = ?, bbox_y0 = ?, bbox_x1 = ?, bbox_y1 = ? WHERE id = ? AND user_id = ?`),
+  });
+  const boxedTables = [boxed('extracted_fields'), boxed('measurements')];
   const findImagePath = db.prepare('SELECT image_path FROM pages WHERE id = ? AND user_id = ?');
 
   return {
@@ -95,10 +104,29 @@ export function pageRepository(db: Database): PageRepository {
       expectInserted(result.changes, 'source file');
     },
 
+    async rotate(userId, pageId, turn: Turn, size) {
+      const uid = owner(userId);
+      const row = findRotationState.get(pageId, uid) as { elements: string | null; rotation: number } | undefined;
+      if (!row) return false;
+      const elements = (row.elements ? JSON.parse(row.elements) : []) as UnstructuredElement[];
+      const moved = elements.map(e => (e.bbox ? { ...e, bbox: rotateBox(e.bbox, turn) } : e));
+      setRotation.run(JSON.stringify(moved), size.width, size.height, (row.rotation + turn) % 360, pageId, uid);
+      for (const table of boxedTables) {
+        for (const b of table.list.all(pageId, uid) as Array<{ id: string; x0: number; y0: number; x1: number; y1: number }>) {
+          const n = rotateBox(b, turn);
+          table.set.run(n.x0, n.y0, n.x1, n.y1, b.id, uid);
+        }
+      }
+      return true;
+    },
+
     async updateReading(userId, pageId, reading) {
-      return updateReading.run(
-        reading.rawText, JSON.stringify(reading.elements), reading.extractionSource, pageId, owner(userId),
-      ).changes === 1;
+      const uid = owner(userId);
+      // A reading of the PDF's own text layer comes back in the file's orientation; the image may have been turned since. Boxes
+      // from OCR are of the image as it is, and a model's reading has none.
+      const turned = (findRotationState.get(pageId, uid) as { rotation: number } | undefined)?.rotation ?? 0;
+      const elements = turned === 0 ? reading.elements : reading.elements.map(e => (e.bbox && e.source === 'native_text' ? { ...e, bbox: rotateBox(e.bbox, turned as Turn) } : e));
+      return updateReading.run(reading.rawText, JSON.stringify(elements), reading.extractionSource, pageId, uid).changes === 1;
     },
 
     async listForSourceFile(userId, sourceFileId) {

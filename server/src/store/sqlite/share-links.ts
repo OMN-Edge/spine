@@ -44,15 +44,15 @@ export function shareLinkRepository(db: Database): ShareLinkRepository {
 
   // The log row carries the link's owner, read from the link itself.
   const insertAccess = db.prepare(`
-    INSERT INTO share_link_access_log (user_id, share_link_id, accessed_at, ip_address)
-    SELECT user_id, id, ?, ? FROM share_links WHERE id = ?
+    INSERT INTO share_link_access_log (user_id, share_link_id, accessed_at, ip_address, country, document_id)
+    SELECT user_id, id, ?, ?, ?, ? FROM share_links WHERE id = ?
   `);
   const bumpViewCount = db.prepare(
     'UPDATE share_links SET view_count = view_count + 1, last_accessed_at = ? WHERE id = ?',
   );
 
   const accessLog = db.prepare(`
-    SELECT accessed_at, ip_address FROM share_link_access_log
+    SELECT accessed_at, ip_address, country, document_id FROM share_link_access_log
     WHERE share_link_id = ? AND user_id = ? ORDER BY accessed_at
   `);
 
@@ -99,10 +99,10 @@ export function shareLinkRepository(db: Database): ShareLinkRepository {
   const clearRequests = db.prepare('DELETE FROM share_access_requests WHERE share_link_id = ? AND user_id = ?');
   const accessTotals = db.prepare('SELECT COUNT(*) AS total, MIN(accessed_at) AS first_at, MAX(accessed_at) AS last_at FROM share_link_access_log WHERE share_link_id = ? AND user_id = ?');
   const accessByAddress = db.prepare(`
-    SELECT ip_address, COUNT(*) AS count, MAX(accessed_at) AS last_at FROM share_link_access_log
+    SELECT ip_address, MAX(country) AS country, COUNT(*) AS count, MAX(accessed_at) AS last_at FROM share_link_access_log
     WHERE share_link_id = ? AND user_id = ? GROUP BY ip_address ORDER BY count DESC, last_at DESC LIMIT 20
   `);
-  const accessRecent = db.prepare('SELECT accessed_at, ip_address FROM share_link_access_log WHERE share_link_id = ? AND user_id = ? ORDER BY accessed_at DESC, id DESC LIMIT 50');
+  const accessRecent = db.prepare('SELECT accessed_at, ip_address, country, document_id FROM share_link_access_log WHERE share_link_id = ? AND user_id = ? ORDER BY accessed_at DESC, id DESC LIMIT 50');
   const updateTx = db.transaction((uid: string, id: string, patch: ShareLinkPatch, at: string): 'ok' | 'not_found' | 'revoked' => {
     const row = current.get(id, uid) as { label: string | null; scope: string; scope_value: string | null; expires_at: string; revoked: number; include_scans: number; language: string | null; require_approval: number; allow_chat: number } | undefined;
     if (!row) return 'not_found';
@@ -206,8 +206,8 @@ export function shareLinkRepository(db: Database): ShareLinkRepository {
       return resolved;
     },
 
-    async logAccess(linkId, accessedAt, ipAddress, countView) {
-      insertAccess.run(accessedAt, ipAddress, linkId);
+    async logAccess(linkId, accessedAt, ipAddress, countView, where = {}) {
+      insertAccess.run(accessedAt, ipAddress, where.country ?? null, where.documentId ?? null, linkId);
       if (countView) bumpViewCount.run(accessedAt, linkId);
     },
 

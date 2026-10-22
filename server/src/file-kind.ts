@@ -1,4 +1,5 @@
 import { closeSync, openSync, readSync } from 'fs';
+import { loadParserConfig } from './config.js';
 
 /** What a file is by what is in it, never by its name or the type a browser reported. */
 export type FileKind = 'pdf' | 'jpeg' | 'png';
@@ -42,5 +43,15 @@ export function isZip(filePath: string): boolean {
   return read === 4 && buffer[0] === 0x50 && buffer[1] === 0x4b && ((buffer[2] === 3 && buffer[3] === 4) || (buffer[2] === 5 && buffer[3] === 6));
 }
 
-/** Whether a model reads this upload because it has no text layer: a single photo, or several bundled into a PDF. */
-export const readsByModel = (file: { mime_type: string | null; photo_set?: boolean }): boolean => !!file.photo_set || (file.mime_type?.startsWith('image/') ?? false);
+/**
+ * Whether local OCR is what reads a PDF made of photos: the parser is `ocr` or `hybrid` with Tesseract on. A scan session's pages are
+ * straightened and cleaned on the device, which is what OCR needs, so nothing has to leave the host to read them. (`hybrid` still
+ * sends a page to a model if OCR cannot read it and image reading is allowed, as for any scan.)
+ */
+export function localOcrReadsPhotoSets(): boolean {
+  const c = loadParserConfig();
+  return (c.mode === 'ocr' || c.mode === 'hybrid') && c.ocrEnabled;
+}
+
+/** Whether a model reads this upload because it has no text layer: a single photo, or photos bundled into a PDF unless local OCR reads those. */
+export const readsByModel = (file: { mime_type: string | null; photo_set?: boolean }): boolean => (file.photo_set ? !localOcrReadsPhotoSets() : false) || (file.mime_type?.startsWith('image/') ?? false);

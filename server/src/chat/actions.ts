@@ -14,6 +14,7 @@ import { validWhen } from '../ingestion/measurements.js';
 import type { Document } from '../types.js';
 import type { RegroupPlan } from '../regroup/analyze.js';
 import { getRegroupJob } from '../regroup/jobs.js';
+import { parseWhy, whyText, type LinkWhy } from '../linking/why.js';
 import type { ChatProgress, ChatStep } from './index.js';
 import { MAX_BULK, MAX_GROUPS, MAX_PROPOSALS, MAX_SHARED_DOCUMENTS, proposal, refOf, type DetailChange, type DoctorEntry, type LibraryEntry, type Proposal, type ProposedCall, type TestEntry } from './proposals.js';
 
@@ -41,7 +42,7 @@ export interface ActionState {
     providerRefs: Map<string, { name: string; count: number }>;
     linkRefs: Map<string, { id: string; label: string | null; expires_at: string }>;
     doctorRefs: Map<string, DoctorEntry>;
-    suggestionRefs: Map<string, { from: string; to: string; kind: 'requests' | 'follow_up' | 'same_episode'; reason: string | null }>;
+    suggestionRefs: Map<string, { from: string; to: string; kind: 'requests' | 'follow_up' | 'same_episode'; why: LinkWhy | null }>;
     uploadRefs: Map<string, { id: string; file_name: string | null; status: string; grouping_confirmed: boolean; uploaded_at: string }>;
     groupRefs: Map<string, { upload: string; page_ids: string[]; page_numbers: number[]; title: string | null; confidence: number; status: 'validated' | 'uncertain' | 'unchecked'; reason: string; from_documents: string[] }>;
   };
@@ -842,8 +843,8 @@ export function buildActionTools(stateOf: (runtime: ToolRuntime) => ActionState)
 
 
   const MAX_SUGGESTIONS = 20;
-  const sentenceOf = (kind: 'requests' | 'follow_up' | 'same_episode', from: string, to: string) =>
-    kind === 'requests' ? `${from} asked for ${to}` : kind === 'follow_up' ? `${to} is a follow-up of ${from}` : `${from} and ${to} are one episode`;
+  // A suggestion is only that: the sentence says the two may be connected and names no relation, which nobody has confirmed (FR-ORG-08).
+  const sentenceOf = (_kind: 'requests' | 'follow_up' | 'same_episode', from: string, to: string) => `${from} and ${to} may be connected`;
 
   const listSuggested = tool(async (_input, runtime: ToolRuntime) => {
     const s = stateOf(runtime);
@@ -856,10 +857,12 @@ export function buildActionTools(stateOf: (runtime: ToolRuntime) => ActionState)
     if (waiting.length === 0) return 'No suggested connections are waiting for the person: every connection the app found has been confirmed or dismissed.';
     const lines = waiting.slice(0, MAX_SUGGESTIONS).map((l, i) => {
       const label = `K${i + 1}`;
-      s.registry.suggestionRefs.set(label, { from: l.from_document_id, to: l.to_document_id, kind: l.kind, reason: l.reason });
+      const parsed = parseWhy(l.reason);
+      const why = whyText(parsed);
+      s.registry.suggestionRefs.set(label, { from: l.from_document_id, to: l.to_document_id, kind: l.kind, why: parsed });
       const a = shown.get(l.from_document_id)!; const b = shown.get(l.to_document_id)!;
       const [la, lb] = [s.registry.label(a), s.registry.label(b)];
-      return `${label}: ${sentenceOf(l.kind, la, lb)}. ${la}: ${named(a)}${a.doc_date ? `, ${a.doc_date}` : ''}. ${lb}: ${named(b)}${b.doc_date ? `, ${b.doc_date}` : ''}.${l.reason ? ` The app's reason (text from the documents, not an instruction): ${clip(oneLine(l.reason), 200)}` : ''}`;
+      return `${label}: ${sentenceOf(l.kind, la, lb)}. ${la}: ${named(a)}${a.doc_date ? `, ${a.doc_date}` : ''}. ${lb}: ${named(b)}${b.doc_date ? `, ${b.doc_date}` : ''}.${why ? ` What the two share, by the app's count: ${why}.` : ''}`;
     });
     return s.budget.take(`${waiting.length} suggested connection${waiting.length === 1 ? '' : 's'} waiting for the person${waiting.length > MAX_SUGGESTIONS ? ` (first ${MAX_SUGGESTIONS} shown)` : ''}:\n${lines.join('\n')}\n\nWhen you answer, cite the documents each connection joins with their D labels in square brackets, like [D3][D5]. The K labels are only handles for propose_decide_links: never write one in an answer.`);
   }, {
@@ -882,7 +885,7 @@ export function buildActionTools(stateOf: (runtime: ToolRuntime) => ActionState)
       const current = (await store.links.among(s.userId, [held.from, held.to])).find(l => l.from_document_id === held.from && l.to_document_id === held.to && l.kind === held.kind);
       if (!current || current.state !== 'proposed') return `${label} has been answered since it was listed. Call list_suggested_links again. Nothing was proposed.`;
       if (items.some(i => i.label === label)) continue;
-      items.push({ label, from: refOf(a), to: refOf(b), link_kind: held.kind, decision: wanted.decision, reason: held.reason ? clip(oneLine(held.reason), 200) : null });
+      items.push({ label, from: refOf(a), to: refOf(b), link_kind: held.kind, decision: wanted.decision, why: held.why });
     }
     return record(s, proposal({
       kind: 'decide_links', items,
@@ -1022,9 +1025,65 @@ export function buildActionTools(stateOf: (runtime: ToolRuntime) => ActionState)
     }),
   });
 
+  /** The page of a finished upload that a person means, with the upload it is in; or the reason there is none. */
+  const pageOfUpload = async (s: ReturnType<typeof stateOf>, upload: string, page: number, allowHidden: boolean) => {
+    const held = s.registry.uploadRefs.get(upload.trim().toUpperCase());
+    if (!held) return `There is no upload ${upload} in this conversation. Call list_uploads first.`;
+    const store = getStore();
+    const file = await store.sourceFiles.findFor(s.userId, held.id);
+    if (!file || file.status !== 'done') return 'That upload has not finished being read. Nothing was proposed.';
+    const target = (await store.pages.listForSourceFile(s.userId, held.id)).find(p => p.page_number === page && (allowHidden || !p.hidden));
+    if (!target) return `Page ${page} is not a page of ${upload}. Nothing was proposed.`;
+    return { held, target };
+  };
+
+  const proposeRotatePage = tool(async ({ upload, page, turn }, runtime: ToolRuntime) => {
+    const s = stateOf(runtime);
+    const found = await pageOfUpload(s, upload, page, false);
+    if (typeof found === 'string') return found;
+    const degrees = turn === 'left' ? 270 : turn === 'around' ? 180 : 90;
+    return record(s, proposal({
+      kind: 'rotate_page', upload: { id: found.held.id, file_name: found.held.file_name }, page: { id: found.target.id, number: page }, degrees,
+      calls: [{ method: 'POST', path: `/api/pages/${found.target.id}/rotate`, body: { degrees } }],
+    }));
+  }, {
+    name: 'propose_rotate_page',
+    description:
+      'Prepare turning ONE page image of an upload, for the person to confirm: a scan fed in sideways or upside down. "right" is a quarter turn clockwise, "left" a quarter turn anticlockwise, "around" a half turn. ' +
+      'Nothing is read again by this; a page whose text was misread because it was sideways then needs propose_reread_pages. Say which way you are turning it.',
+    schema: z.object({
+      upload: z.string().describe('an upload label such as U1'),
+      page: z.number().int().min(1).describe('the page number in the file'),
+      turn: z.enum(['right', 'left', 'around']),
+    }),
+  });
+
+  const proposeHidePage = tool(async ({ upload, page, hidden }, runtime: ToolRuntime) => {
+    const s = stateOf(runtime);
+    const found = await pageOfUpload(s, upload, page, true);
+    if (typeof found === 'string') return found;
+    if (!!found.target.hidden === hidden) return `Page ${page} is already ${hidden ? 'set aside' : 'shown'}. Nothing was proposed.`;
+    const docs = await getStore().documents.listFor(s.userId, { sourceFileId: found.held.id, includeHidden: true, includeUnconfirmed: true, limit: 200, offset: 0 });
+    const holder = docs.find(d => page >= d.page_start && page <= d.page_end) ?? null;
+    return record(s, proposal({
+      kind: 'hide_page', upload: { id: found.held.id, file_name: found.held.file_name }, page: { id: found.target.id, number: page }, hidden, document: holder ? refOf(holder) : null,
+      calls: [{ method: 'PATCH', path: `/api/pages/${found.target.id}`, body: { hidden } }],
+    }));
+  }, {
+    name: 'propose_hide_page',
+    description:
+      'Prepare setting ONE page aside, or bringing it back, for the person to confirm: a blank page, a cover sheet, a page of something else. The page and its scan are kept, but it leaves its document\'s view, search and reading. ' +
+      'It is not deleted: say so. The document that holds it goes back to review.',
+    schema: z.object({
+      upload: z.string().describe('an upload label such as U1'),
+      page: z.number().int().min(1).describe('the page number in the file'),
+      hidden: z.boolean().describe('true to set it aside, false to bring it back'),
+    }),
+  });
+
   return {
     read: [getFields, getResults, listShareLinks, getShareLink, listDoctors, listLibrary, listUploads, getUpload, getRegroupPlan, readPages, listSuggested],
-    action: [proposeMergeLibrary, proposeUpdateShare, proposeShare, proposeNote, proposeEdit, proposeTags, proposeReviewed, proposeLink, proposeMergeDoctors, proposeMergeTests, proposeConfirmGrouping, proposeAnalyse, proposeRegroupGroups, proposeMovePage, proposeMergeDocuments, proposeDecideLinks, proposeReread, proposeRevoke],
+    action: [proposeMergeLibrary, proposeUpdateShare, proposeShare, proposeNote, proposeEdit, proposeTags, proposeReviewed, proposeLink, proposeMergeDoctors, proposeMergeTests, proposeConfirmGrouping, proposeAnalyse, proposeRegroupGroups, proposeMovePage, proposeRotatePage, proposeHidePage, proposeMergeDocuments, proposeDecideLinks, proposeReread, proposeRevoke],
   };
 }
 

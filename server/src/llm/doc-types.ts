@@ -58,7 +58,7 @@ export const DOC_TYPE_GUIDES: Record<DocType, DocTypeGuide> = {
   discharge_note: {
     label: 'Discharge note',
     about: 'a hospital discharge summary ("bilet de externare", "scrisoare medicala")',
-    fields: ['report_number', 'admission_date', 'discharge_date', 'diagnosis', 'diagnosis_code', 'procedure', 'follow_up'],
+    fields: ['report_number', 'admission_date', 'discharge_date', 'diagnosis', 'diagnosis_code', 'procedure', 'allergies', 'follow_up'],
     grouped: ['discharge_drug', 'discharge_dose', 'discharge_frequency'],
     measurements: 'lab values and vitals the note quotes, each with the date it was taken if the text gives one',
     doctors: 'the attending doctor (author) and the referring doctor (referrer)',
@@ -69,7 +69,7 @@ export const DOC_TYPE_GUIDES: Record<DocType, DocTypeGuide> = {
       'a doctor\'s consultation or visit note, including a clinic\'s "raport medical", which can list several services (a consult, an ultrasound), each with its own result',
     fields: [
       'report_number', 'service', 'specialty', 'reason_for_visit', 'symptoms', 'examination',
-      'family_history', 'personal_history', 'habits', 'current_treatment', 'investigations',
+      'family_history', 'personal_history', 'allergies', 'habits', 'current_treatment', 'investigations',
       'diagnosis', 'diagnosis_code', 'diagnosis_uncoded', 'recommended_tests', 'recommended_vaccines',
       'prevention', 'recommended_medication', 'lifestyle_advice', 'follow_up',
     ],

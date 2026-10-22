@@ -64,7 +64,7 @@ describe('attaching a file in the chat', () => {
       { field: ['conversation_id', start.conversation.id] },
       { file: { name: 'two.pdf', content: pdf('two') } },
       { file: { name: 'one-again.pdf', content: pdf('one') } },
-      { file: { name: 'notes.txt', content: Buffer.from('just text') } },
+      { file: { name: 'notes.txt', content: Buffer.from([0, 1, 2, 255]) } },
     ]);
     expect(res.statusCode).toBe(200);
     expect(res.json().conversation.id).toBe(start.conversation.id);

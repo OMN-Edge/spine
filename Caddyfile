@@ -1,0 +1,39 @@
+# The public listener of the Docker Compose setup: TLS from Let's Encrypt, and the same headers as nginx/spine.conf.
+# SPINE_DOMAIN comes from .env through compose.yaml.
+{$SPINE_DOMAIN} {
+	encode zstd gzip
+	request_body {
+		max_size 200MB
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		Permissions-Policy "accelerometer=(), camera=(), display-capture=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; font-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+		-Server
+	}
+
+	@share path /share/*
+	header @share {
+		X-Robots-Tag "noindex, nofollow"
+		Cache-Control "no-store"
+	}
+
+	@dotfiles {
+		path_regexp \/\.
+		not path /.well-known/*
+	}
+	respond @dotfiles 403
+
+	# Caddy replaces X-Forwarded-For with the client's address, which is what SPINE_TRUSTED_PROXIES relies on (SECURITY.md S-31).
+	reverse_proxy web:3000 {
+		flush_interval -1
+		transport http {
+			response_header_timeout 300s
+			read_timeout 300s
+		}
+	}
+}

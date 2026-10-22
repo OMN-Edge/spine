@@ -5,11 +5,12 @@ import type { Readable } from 'stream';
 import { v4 as uuidv4 } from 'uuid';
 import { getStore } from '../store/index.js';
 import { resolveDataDir } from '../config.js';
-import { detectFileKind, isImage, MIME_OF } from '../file-kind.js';
+import { detectFileKind, isImage, localOcrReadsPhotoSets, MIME_OF } from '../file-kind.js';
 import { aiReadingAllowed } from '../parser/index.js';
 import { getJobStatus, startIngestionJob } from './pipeline.js';
 import { bundlePhotos, MAX_PHOTOS_IN_SET } from './photo-set.js';
 import { sha256OfFileSync } from './checksum.js';
+import { convertUpload, looksLikeHeic } from './convert.js';
 
 /** Where a new original goes: per user, so a filesystem mistake cannot cross users as easily as a query mistake (M-9). The id is ours, never input. */
 export function newUploadPath(userId: string, ext: string): { fileId: string; filePath: string } {
@@ -78,6 +79,17 @@ export type UploadOutcome =
  */
 export async function acceptFile(userId: string, file: { id: string; path: string; filename: string | null; checksum: string; chatConversationId?: string | null }): Promise<UploadOutcome> {
   const store = getStore();
+  // A HEIC photo, a Word document or a text file is made into a JPEG or a PDF first; the file kept is the converted one,
+  // the checksum stays that of what was sent so a repeat is still recognised.
+  if (detectFileKind(file.path) === null) {
+    try {
+      const converted = await convertUpload(file.path);
+      if (converted) file = { ...file, path: converted.path };
+    } catch {
+      rmSync(file.path, { force: true });
+      return { skipped: true, reason: 'not_pdf', filename: file.filename };
+    }
+  }
   const kind = detectFileKind(file.path);
   if (kind === null) {
     rmSync(file.path, { force: true });
@@ -122,8 +134,17 @@ export async function acceptPhotoSet(userId: string, files: Array<{ path: string
   const store = getStore();
   if (files.length === 0) return { skipped: true, reason: 'not_pdf', filename: null };
   if (files.length > MAX_PHOTOS_IN_SET) return { skipped: true, reason: 'too_many', filename: null };
-  if (!aiReadingAllowed()) return { skipped: true, reason: 'photo_needs_ai', filename: files[0].filename };
+  if (!aiReadingAllowed() && !localOcrReadsPhotoSets()) return { skipped: true, reason: 'photo_needs_ai', filename: files[0].filename };
   for (const file of files) {
+    // An iPhone's HEIC photo is made a JPEG first; sharp has no decoder for it.
+    if (detectFileKind(file.path) === null && looksLikeHeic(file.path)) {
+      try {
+        const converted = await convertUpload(file.path);
+        if (converted) file.path = converted.path;
+      } catch {
+        return { skipped: true, reason: 'not_pdf', filename: file.filename };
+      }
+    }
     if (!isImage(detectFileKind(file.path))) return { skipped: true, reason: 'not_pdf', filename: file.filename };
   }
 

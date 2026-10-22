@@ -65,6 +65,9 @@ function addColumnsInPlace(db: Database.Database): void {
     })();
   }
 
+  // How far the owner has turned the page image. Every earlier page is as its file has it.
+  if (pages.length > 0 && !pages.includes('rotation')) db.exec('ALTER TABLE pages ADD COLUMN rotation INTEGER NOT NULL DEFAULT 0');
+
   // The index of a page in its file, kept apart from its place in the upload so pages can be moved: the
   // parser, the sidecar and the stamp reader all count pages of the file. Every page was in file order until now.
   if (pages.length > 0 && !pages.includes('source_page')) {
@@ -74,6 +77,12 @@ function addColumnsInPlace(db: Database.Database): void {
     })();
   }
 
+  // Consent and acceptance, recorded with the version shown. Accounts from before are asked at their next sign-in.
+  const accounts = columnsOf(db, 'users');
+  for (const column of ['health_consent_at', 'health_consent_version', 'terms_accepted_at', 'terms_version']) {
+    if (accounts.length > 0 && !accounts.includes(column)) db.exec(`ALTER TABLE users ADD COLUMN ${column} TEXT`);
+  }
+
   const links = columnsOf(db, 'share_links');
   if (links.length > 0 && !links.includes('include_scans')) {
     db.exec('ALTER TABLE share_links ADD COLUMN include_scans INTEGER NOT NULL DEFAULT 0');
@@ -81,6 +90,11 @@ function addColumnsInPlace(db: Database.Database): void {
   if (links.length > 0 && !links.includes('language')) db.exec('ALTER TABLE share_links ADD COLUMN language TEXT');
   if (links.length > 0 && !links.includes('allow_chat')) db.exec('ALTER TABLE share_links ADD COLUMN allow_chat INTEGER NOT NULL DEFAULT 0');
   if (links.length > 0 && !links.includes('require_approval')) db.exec('ALTER TABLE share_links ADD COLUMN require_approval INTEGER NOT NULL DEFAULT 0');
+
+  // Where a read came from and which document it opened, for the owner's view of who read a link (FR-SHR-04). Earlier rows have neither.
+  const accessLog = columnsOf(db, 'share_link_access_log');
+  if (accessLog.length > 0 && !accessLog.includes('country')) db.exec('ALTER TABLE share_link_access_log ADD COLUMN country TEXT');
+  if (accessLog.length > 0 && !accessLog.includes('document_id')) db.exec('ALTER TABLE share_link_access_log ADD COLUMN document_id TEXT');
 
   const documents = columnsOf(db, 'documents');
   if (documents.length > 0 && !documents.includes('language')) db.exec('ALTER TABLE documents ADD COLUMN language TEXT');
@@ -105,6 +119,10 @@ function addColumnsInPlace(db: Database.Database): void {
   const uploads = columnsOf(db, 'source_files');
   if (uploads.length > 0 && !uploads.includes('chat_conversation_id')) db.exec('ALTER TABLE source_files ADD COLUMN chat_conversation_id TEXT');
   if (uploads.length > 0 && !uploads.includes('photo_set')) db.exec('ALTER TABLE source_files ADD COLUMN photo_set INTEGER NOT NULL DEFAULT 0');
+  // Sample records are told apart from real ones so they can be removed together. Every earlier upload is real.
+  if (uploads.length > 0 && !uploads.includes('sample')) db.exec('ALTER TABLE source_files ADD COLUMN sample INTEGER NOT NULL DEFAULT 0');
+  // How many unprocessed photos an upload keeps beside its PDF (a scan session). Earlier uploads keep none.
+  if (uploads.length > 0 && !uploads.includes('raw_count')) db.exec('ALTER TABLE source_files ADD COLUMN raw_count INTEGER NOT NULL DEFAULT 0');
   if (uploads.length > 0 && !uploads.includes('grouping_confirmed')) db.exec('ALTER TABLE source_files ADD COLUMN grouping_confirmed INTEGER NOT NULL DEFAULT 1');
 }
 

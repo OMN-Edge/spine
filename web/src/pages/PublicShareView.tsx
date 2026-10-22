@@ -11,7 +11,8 @@ import SharedConnections from '../components/SharedConnections';
 import { LanguageSwitcher, useI18n } from '../i18n';
 import { Combobox } from '../components/Combobox';
 import { languageName, useTranslation } from '../i18n/useTranslation';
-import { documentByline, documentTitle, fieldName, isSection, valueLines } from '../titles';
+import AiLabel from '../components/AiLabel';
+import { documentByline, documentTitle, fieldName, isCriticalField, isSection, valueLines } from '../titles';
 
 /**
  * A link the owner wants to approve is not opened until this browser is let in (SECURITY.md M-19). The page asks the
@@ -90,6 +91,7 @@ function SharedContent({ token }: { token: string }) {
   const [translating, setTranslating] = useState(true);
   const [original, setOriginal] = useState(false);
   const [metaReady, setMetaReady] = useState(false);
+  const [landingUrl, setLandingUrl] = useState<string | null>(null);
   const [chatOn, setChatOn] = useState(false);
   const [type, setType] = useState('');
   const openId = params.get('d');
@@ -103,7 +105,7 @@ function SharedContent({ token }: { token: string }) {
   // The page starts in the language the owner chose for this link, unless the reader has picked one here before.
   useEffect(() => {
     if (!token) return;
-    api.publicShare.meta(token).then(m => { setTranslating(m.translation); setChatOn(m.chat); preferLang(m.language); }).catch(() => {}).finally(() => setMetaReady(true));
+    api.publicShare.meta(token).then(m => { setTranslating(m.translation); setChatOn(m.chat); setLandingUrl(m.landing_url); preferLang(m.language); }).catch(() => {}).finally(() => setMetaReady(true));
   }, [token, preferLang]);
 
   // The list in the reader's language. Documents not yet translated come back as pending: ask again shortly, a few times.
@@ -222,6 +224,11 @@ function SharedContent({ token }: { token: string }) {
         <p className="text-xs text-gray-300 text-center mt-10">
           {t('This link was shared for a specific consultation and expires automatically.')}
         </p>
+        <p className="text-xs text-gray-400 text-center mt-2">
+          {landingUrl
+            ? <a href={landingUrl} target="_blank" rel="noopener noreferrer" className="hover:underline">{t('Shared securely via Spine')}</a>
+            : t('Shared securely via Spine')}
+        </p>
       </div>
     </div>
   );
@@ -273,7 +280,11 @@ function SharedDocumentView({ token, id, translating, original, titleOf, onBack 
   const currentPage = pages[pageIdx];
 
   const field = (f: SharedDocument['fields'][number]) => (
-    <FieldRow key={f.id} label={useIt?.fields[f.id]?.label ?? fieldName(f.label, t)} stored={f.label} value={useIt?.fields[f.id]?.value ?? f.value} />
+    <FieldRow
+      key={f.id} label={useIt?.fields[f.id]?.label ?? fieldName(f.label, t)} stored={f.label} value={useIt?.fields[f.id]?.value ?? f.value}
+      original={useIt && useIt.fields[f.id] && useIt.fields[f.id].value !== f.value ? f.value : null}
+      critical={!!useIt && isCriticalField(f.label)}
+    />
   );
 
   return (
@@ -291,7 +302,7 @@ function SharedDocumentView({ token, id, translating, original, titleOf, onBack 
             )}
             {translating && (tr.translating || tr.active) && (
               <p className="text-xs text-gray-500 mt-2" role="status">
-                {tr.translating ? t('Translating…') : t('Translated from {language}.', { language: languageName(tr.translation?.source_language ?? doc.language) || t('the original language') })}{' '}
+                {tr.translating ? t('Translating…') : t('Machine translation from {language}. The original document prevails: check it before relying on a detail.', { language: languageName(tr.translation?.source_language ?? doc.language) || t('the original language') })}{' '}
                 {tr.active && (
                   <button type="button" onClick={() => setShowOriginal(o => !o)} className="text-blue-600 hover:underline">
                     {showOriginal ? t('Show translation') : t('Show original')}
@@ -299,11 +310,13 @@ function SharedDocumentView({ token, id, translating, original, titleOf, onBack 
                 )}
               </p>
             )}
-            {summary && <p className="text-sm text-gray-700 leading-relaxed mt-4">{summary}</p>}
+            {summary && <p className="text-sm text-gray-700 leading-relaxed mt-4"><AiLabel className="mr-1.5" />{summary}</p>}
+            {useIt && doc.ai_summary && summary !== doc.ai_summary && <Original text={doc.ai_summary} />}
             {notes && (
               <div id="section-notes" className="mt-4 rounded-lg transition-shadow">
                 <p className={label}>{t('Notes')}</p>
                 <p className="text-sm text-gray-700 whitespace-pre-wrap">{notes}</p>
+                {useIt && doc.user_notes && notes !== doc.user_notes && <Original text={doc.user_notes} />}
               </div>
             )}
           </div>
@@ -369,22 +382,43 @@ function SharedDocumentView({ token, id, translating, original, titleOf, onBack 
 }
 
 /** The same rows as the document page: a short value beside its name, a long one under it. */
-function FieldRow({ label: name, stored, value }: { label: string; stored: string; value: string }) {
+function FieldRow({ label: name, stored, value, original = null, critical = false }: { label: string; stored: string; value: string; original?: string | null; critical?: boolean }) {
+  const { t } = useI18n();
+  // In a translation: the original under the translated value, and allergies, medicines and doses marked to be checked against it.
+  const mark = critical ? 'bg-amber-50 border border-amber-300 rounded-lg' : '';
+  const was = original && (
+    <p className="mt-1 text-gray-500 break-words">{critical && <span className="font-medium text-amber-800">{t('Check against the original')}: </span>}{t('Original')}: {original}</p>
+  );
   if (isSection(value)) {
     return (
-      <div className="p-2 text-xs">
+      <div className={`p-2 text-xs ${mark}`}>
         <span className="font-medium text-gray-500">{name}</span>
         <div className="mt-1 space-y-1 text-gray-900 leading-relaxed break-words">
           {valueLines(stored, value).map((line, i) => <p key={i}>{line}</p>)}
         </div>
+        {was}
       </div>
     );
   }
   return (
-    <div className="flex items-start justify-between gap-3 p-2 text-xs">
-      <span className="font-medium text-gray-500 shrink-0">{name}</span>
-      <span className="text-gray-900 text-right break-words min-w-0">{value}</span>
+    <div className={`p-2 text-xs ${mark}`}>
+      <div className="flex items-start justify-between gap-3">
+        <span className="font-medium text-gray-500 shrink-0">{name}</span>
+        <span className="text-gray-900 text-right break-words min-w-0">{value}</span>
+      </div>
+      {was}
     </div>
+  );
+}
+
+/** The document's own words under their translation. */
+function Original({ text }: { text: string }) {
+  const { t } = useI18n();
+  return (
+    <details className="mt-2 text-xs text-gray-500">
+      <summary className="cursor-pointer">{t('Original text')}</summary>
+      <p className="mt-1 whitespace-pre-wrap">{text}</p>
+    </details>
   );
 }
 

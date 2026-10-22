@@ -113,11 +113,10 @@ describe('POST /api/source-files/upload', () => {
 
   it.each([
     ['a Word document', 'report.docx', Buffer.from('PK\u0003\u0004 not a pdf'), 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
-    ['a GIF', 'anim.gif', Buffer.from('GIF89a......'), 'image/gif'],
-    ['plain text', 'notes.txt', Buffer.from('just some notes'), 'text/plain'],
+    ['a GIF', 'anim.gif', Buffer.from([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x01, 0x00, 0x01, 0x00, 0x80, 0x00, 0x00]), 'image/gif'],
     ['an empty file', 'empty.pdf', Buffer.alloc(0), 'application/pdf'],
     ['a two-byte stub of a JPEG', 'stub.jpg', Buffer.from([0xff, 0xd8]), 'image/jpeg'],
-    ['a PDF signature past the first kilobyte', 'late.pdf', Buffer.concat([Buffer.alloc(2000, 0x20), Buffer.from('%PDF-1.4')]), 'application/pdf'],
+    ['a PDF signature past the first kilobyte', 'late.pdf', Buffer.concat([Buffer.alloc(2000, 0x20), Buffer.from('%PDF-1.4'), Buffer.from([0, 1, 2])]), 'application/pdf'],
   ])('refuses %s, keeps nothing, and starts no reading', async (_name, filename, content, contentType) => {
     const before = heldFiles();
     mockStartJob.mockClear();
@@ -177,6 +176,15 @@ describe('POST /api/source-files/upload', () => {
     });
   });
 
+  it('makes a text file a PDF with its words as text, and keeps that as the original', async () => {
+    mockStartJob.mockClear();
+    const res = await upload('notes.txt', Buffer.from('Control în 3 luni, fără alergii cunoscute. ' + Math.random()), 'text/plain');
+    const [result] = res.json() as Array<{ id: string; status: string }>;
+    expect(result.status).toBe('processing');
+    expect(mockStartJob).toHaveBeenCalledWith(result.id, OWNER_ID);
+    expect(await getStore().sourceFiles.findFor(OWNER_ID, result.id)).toMatchObject({ mime_type: 'application/pdf', original_filename: 'notes.txt' });
+  });
+
   it('goes by what is in the file, not its name or the type the browser gave', async () => {
     const res = await upload('scan.jpg', Buffer.from('%PDF-1.7 content with a misleading name ' + Math.random()), 'image/jpeg');
     expect((res.json() as Array<{ status?: string }>)[0].status).toBe('processing');
@@ -203,7 +211,7 @@ describe('POST /api/source-files/upload', () => {
     const res = await app.inject({
       method: 'POST', url: '/api/source-files/upload',
       headers: { cookie, 'content-type': `multipart/form-data; boundary=${boundary}` },
-      payload: part('notes.txt', 'text/plain', 'words') + part('good.pdf', 'application/pdf', '%PDF-1.4 good ' + Math.random()) + `--${boundary}--\r\n`,
+      payload: part('notes.bin', 'application/octet-stream', '\u0000\u0001words') + part('good.pdf', 'application/pdf', '%PDF-1.4 good ' + Math.random()) + `--${boundary}--\r\n`,
     });
     const results = res.json() as Array<{ reason?: string; status?: string }>;
     expect(results.map(r => r.reason ?? r.status)).toEqual(['not_pdf', 'processing']);

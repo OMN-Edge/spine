@@ -65,3 +65,26 @@ describe('loadConfig — bind address', () => {
     expect(loadConfig({ ...valid, SPINE_HOST: '0.0.0.0' }).host).toBe('0.0.0.0');
   });
 });
+
+describe('landingUrl', () => {
+  it('is an https address or nothing', async () => {
+    const { landingUrl } = await import('../config.js');
+    expect(landingUrl({})).toBeNull();
+    expect(landingUrl({ SPINE_LANDING_URL: 'https://spine.example.com' })).toBe('https://spine.example.com/');
+    for (const bad of ['http://spine.example.com', 'javascript:alert(1)', 'not a url', '  ']) expect(landingUrl({ SPINE_LANDING_URL: bad })).toBeNull();
+  });
+});
+
+describe('trustedProxies', () => {
+  it('is loopback, plus an address named for a proxy elsewhere', async () => {
+    const { trustedProxies } = await import('../trust-proxy.js');
+    expect(trustedProxies({})).toEqual(['127.0.0.1', '::1']);
+    expect(trustedProxies({ SPINE_TRUSTED_PROXIES: '172.30.0.10, 10.0.0.0/24' })).toEqual(['127.0.0.1', '::1', '172.30.0.10', '10.0.0.0/24']);
+  });
+  it('refuses a range that would trust the world, and anything that is not an address', async () => {
+    const { trustedProxies } = await import('../trust-proxy.js');
+    for (const bad of ['true', '*', '0.0.0.0/0', '::/0', '10.0.0.0/7', '1.2.3.4/33', 'proxy.local', '1.2.3.4/x']) {
+      expect(() => trustedProxies({ SPINE_TRUSTED_PROXIES: bad })).toThrow(/SPINE_TRUSTED_PROXIES/);
+    }
+  });
+});

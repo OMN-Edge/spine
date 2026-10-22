@@ -37,10 +37,20 @@ const range = (m: Pick<Measurement, 'ref_low' | 'ref_high'>) =>
     : m.ref_high !== null ? `≤ ${shown(m.ref_high)}`
       : m.ref_low !== null ? `≥ ${shown(m.ref_low)}` : '';
 
-/** Reading mode: each result with its range and flag. A numeric one links to its trend. */
-export type MeasurementRow = Pick<Measurement, 'id' | 'name' | 'value_text' | 'unit' | 'ref_low' | 'ref_high' | 'flag'> & Partial<Pick<Measurement, 'canonical' | 'value_num'>>;
+/** A value the model was not sure of, to be checked against the page (FR-EXT-04). Shown until the owner reviews the document. */
+export function CheckBadge() {
+  const { t } = useI18n();
+  return (
+    <span className="ml-2 px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[11px] font-medium" title={t('Read with low confidence, often from handwriting or a faded line: check this against the page')}>
+      {t('Check')}
+    </span>
+  );
+}
 
-export function MeasurementsList<T extends MeasurementRow>({ items, selectedId, onSelect, plain = false }: { items: T[]; selectedId?: string; onSelect?: (m: T) => void; plain?: boolean }) {
+/** Reading mode: each result with its range and flag. A numeric one links to its trend. */
+export type MeasurementRow = Pick<Measurement, 'id' | 'name' | 'value_text' | 'unit' | 'ref_low' | 'ref_high' | 'flag'> & Partial<Pick<Measurement, 'canonical' | 'value_num' | 'needs_check'>>;
+
+export function MeasurementsList<T extends MeasurementRow>({ items, selectedId, onSelect, plain = false, markCheck = false }: { items: T[]; selectedId?: string; onSelect?: (m: T) => void; plain?: boolean; markCheck?: boolean }) {
   const { t } = useI18n();
   return (
     <div className="space-y-1">
@@ -63,6 +73,7 @@ export function MeasurementsList<T extends MeasurementRow>({ items, selectedId, 
               ) : (
                 <span className="font-medium text-gray-700 break-words">{m.name}</span>
               )}
+              {markCheck && m.needs_check && <CheckBadge />}
               {range(m) && <span className="block text-gray-400">{t('ref')} {range(m)}{m.unit ? ` ${m.unit}` : ''}</span>}
             </span>
             <span className={wordy ? 'min-w-0 text-gray-900 break-words leading-relaxed' : 'text-right shrink-0'}>

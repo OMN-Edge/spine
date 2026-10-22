@@ -274,6 +274,7 @@ export default function ChatPanel() {
       )}
 
       {view === 'chat' && (
+        <>
         <form onSubmit={e => { e.preventDefault(); void send(); }} className="px-3 pb-3 pt-1">
           {chat.attachError && <p className="px-1 pb-1 text-xs text-red-600" role="alert">{t(chat.attachError)}</p>}
           {files.length > 0 && (
@@ -287,7 +288,7 @@ export default function ChatPanel() {
             </ul>
           )}
           <div className="flex items-end gap-2 rounded-2xl border border-gray-200 bg-gray-50/60 py-1.5 pl-3.5 pr-1.5 transition focus-within:border-blue-300 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100">
-            <input ref={picker} type="file" multiple accept=".pdf,.zip,application/pdf,application/zip,image/*" className="hidden" onChange={e => { addFiles(e.target.files); e.target.value = ''; }} />
+            <input ref={picker} type="file" multiple accept=".pdf,.zip,.docx,.txt,.heic,.heif,application/pdf,application/zip,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,image/*" className="hidden" onChange={e => { addFiles(e.target.files); e.target.value = ''; }} />
             <button type="button" onClick={() => picker.current?.click()} disabled={busy} title={t('Attach a file')} aria-label={t('Attach a file')} className="-ml-1.5 mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50">
               <svg viewBox="0 0 24 24" className="h-4.5 w-4.5" width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 12.5l-8.6 8.6a5 5 0 0 1-7-7l9-9a3.3 3.3 0 0 1 4.7 4.7l-9 9a1.7 1.7 0 0 1-2.4-2.4l8.3-8.3" /></svg>
             </button>
@@ -310,6 +311,8 @@ export default function ChatPanel() {
             )}
           </div>
         </form>
+        <p className="px-4 pb-2 text-[11px] leading-snug text-gray-400">{t('Answers are written by an AI model from your documents and can be wrong: check what matters against the original. It does not say what a result means; ask your doctor.')}</p>
+        </>
       )}
     </aside>
   );

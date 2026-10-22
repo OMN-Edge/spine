@@ -1,5 +1,5 @@
 import { sessionRoutes } from './routes/sessions.js';
-import { TRUSTED_PROXIES } from './trust-proxy.js';
+import { trustedProxies } from './trust-proxy.js';
 import Fastify from 'fastify';
 import fastifyCookie from '@fastify/cookie';
 import fastifySession from '@fastify/session';
@@ -17,6 +17,10 @@ import { exportRoutes } from './routes/export.js';
 import { getEmbedder, EmbedderConfigError } from './embedding/index.js';
 import { similarityRoutes } from './routes/similarity.js';
 import { linkRoutes } from './routes/links.js';
+import { episodeRoutes } from './routes/episodes.js';
+import { demoRoutes } from './routes/demo.js';
+import { ownAccountRoutes } from './routes/own-account.js';
+import { passkeyRoutes } from './routes/passkeys.js';
 import { chatRoutes } from './routes/chat.js';
 import { shareRoutes } from './routes/share.js';
 import { publicShareRoutes } from './routes/public-share.js';
@@ -51,7 +55,7 @@ const config = loadConfigOrExit();
 
 const app = Fastify({
   logger: true,
-  trustProxy: TRUSTED_PROXIES, // nginx sits in front, on this host (S-31)
+  trustProxy: trustedProxies(), // nginx sits in front, on this host, or the proxy named in SPINE_TRUSTED_PROXIES (S-31)
 });
 
 // From here on, modules that log without the app (the parser, the LLM) write to the
@@ -143,6 +147,10 @@ await app.register(sourceFileRoutes);
 await app.register(exportRoutes);
 await app.register(similarityRoutes);
 await app.register(linkRoutes);
+await app.register(episodeRoutes);
+await app.register(demoRoutes);
+await app.register(ownAccountRoutes);
+await app.register(passkeyRoutes);
 await app.register(chatRoutes);
 await app.register(shareRoutes);
 // The share entry route serves the SPA shell, so it needs the build's path.

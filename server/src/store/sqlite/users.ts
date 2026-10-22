@@ -1,12 +1,25 @@
 import type { Database } from 'better-sqlite3';
-import type { NewUser, TotpRecord, UserRecord, UserRepository, UserTokenKind } from '../types.js';
+import type { NewUser, PasskeyRecord, TotpRecord, UserRecord, UserRepository, UserTokenKind } from '../types.js';
 
 import { STARTER_TAGS } from '../../tags.js';
 
 export function userRepository(db: Database): UserRepository {
-  const insert = db.prepare(
-    'INSERT INTO users (id, email, password_hash, created_at, email_verified_at) VALUES (?, ?, ?, ?, ?)',
-  );
+  const insert = db.prepare(`
+    INSERT INTO users (id, email, password_hash, created_at, email_verified_at, health_consent_at, health_consent_version, terms_accepted_at, terms_version)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const listPasskeys = db.prepare('SELECT * FROM user_passkeys WHERE user_id = ? ORDER BY created_at, id');
+  const findPasskey = db.prepare('SELECT * FROM user_passkeys WHERE id = ?');
+  const addPasskey = db.prepare('INSERT OR IGNORE INTO user_passkeys (id, user_id, public_key, counter, transports, name, backed_up, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+  const touchPasskey = db.prepare('UPDATE user_passkeys SET counter = MAX(counter, ?), last_used_at = ? WHERE id = ?');
+  const renamePasskey = db.prepare('UPDATE user_passkeys SET name = ? WHERE id = ? AND user_id = ?');
+  const removePasskey = db.prepare('DELETE FROM user_passkeys WHERE id = ? AND user_id = ?');
+  const asPasskey = (r: Record<string, unknown>): PasskeyRecord => ({
+    id: r.id as string, user_id: r.user_id as string, public_key: r.public_key as string, counter: r.counter as number,
+    transports: r.transports ? (JSON.parse(r.transports as string) as string[]) : null, name: r.name as string,
+    backed_up: r.backed_up === 1, created_at: r.created_at as string, last_used_at: (r.last_used_at as string | null) ?? null,
+  });
+  const setConsent = db.prepare('UPDATE users SET health_consent_at = ?, health_consent_version = ?, terms_accepted_at = ?, terms_version = ? WHERE id = ?');
   const insertTag = db.prepare('INSERT OR IGNORE INTO tags (user_id, name) VALUES (?, ?)');
   const findByEmail = db.prepare('SELECT * FROM users WHERE email = ?');
   const findById = db.prepare('SELECT * FROM users WHERE id = ?');
@@ -85,7 +98,8 @@ export function userRepository(db: Database): UserRepository {
   // transaction helper is fine here — unlike Store.transaction, which wraps
   // async callbacks.
   const createWithTags = db.transaction((user: NewUser) => {
-    insert.run(user.id, user.email, user.passwordHash, user.createdAt, user.verifiedAt);
+    const c = user.consent;
+    insert.run(user.id, user.email, user.passwordHash, user.createdAt, user.verifiedAt, c ? user.createdAt : null, c?.healthVersion ?? null, c ? user.createdAt : null, c?.termsVersion ?? null);
     for (const name of STARTER_TAGS) insertTag.run(user.id, name);
   });
 
@@ -107,6 +121,8 @@ export function userRepository(db: Database): UserRepository {
     'chat_messages',
     'chat_conversations',
     'document_links',
+    'episode_documents',
+    'episodes',
     'removed_readings',
     'documents',
     'doctors',
@@ -117,6 +133,7 @@ export function userRepository(db: Database): UserRepository {
     'user_sessions',
     'user_devices',
     'user_tokens',
+    'user_passkeys',
     'user_recovery_codes',
     'user_totp',
   ];
@@ -134,6 +151,35 @@ export function userRepository(db: Database): UserRepository {
 
     async findByEmail(email) {
       return (findByEmail.get(email) as UserRecord | undefined) ?? null;
+    },
+
+    async listPasskeys(userId) {
+      return (listPasskeys.all(userId) as Array<Record<string, unknown>>).map(asPasskey);
+    },
+
+    async findPasskey(credentialId) {
+      const row = findPasskey.get(credentialId) as Record<string, unknown> | undefined;
+      return row ? asPasskey(row) : null;
+    },
+
+    async addPasskey(userId, p) {
+      return addPasskey.run(p.id, userId, p.public_key, p.counter, p.transports ? JSON.stringify(p.transports) : null, p.name, p.backed_up ? 1 : 0, p.created_at).changes === 1;
+    },
+
+    async touchPasskey(credentialId, counter, at) {
+      touchPasskey.run(counter, at, credentialId);
+    },
+
+    async renamePasskey(userId, id, name) {
+      return renamePasskey.run(name, id, userId).changes === 1;
+    },
+
+    async removePasskey(userId, id) {
+      return removePasskey.run(id, userId).changes === 1;
+    },
+
+    async recordConsent(id, consent, at) {
+      setConsent.run(at, consent.healthVersion, at, consent.termsVersion, id);
     },
 
     async findById(id) {

@@ -50,7 +50,7 @@ export default function PageImageOverlay({ page, number, highlightField }: Props
   return (
     <div ref={containerRef} className="relative inline-block w-full">
       <img
-        src={`/api/pages/${page.id}/image`}
+        src={`/api/pages/${page.id}/image?r=${page.rotation ?? 0}`}
         alt={t('Page {n}', { n: number ?? page.page_number })}
         className="w-full rounded border border-gray-200 shadow-sm"
         draggable={false}

@@ -1,4 +1,5 @@
 import { askForPassword } from './reauth';
+import { startAuthentication, startRegistration, type PublicKeyCredentialCreationOptionsJSON, type PublicKeyCredentialRequestOptionsJSON } from '@simplewebauthn/browser';
 export type DocType =
   | 'lab_result'
   | 'discharge_note'
@@ -22,9 +23,12 @@ export interface Document {
   ai_summary: string | null;
   user_notes: string | null;
   reviewed: boolean;
+  /** Values read with low confidence and not yet confirmed or edited; 0 once the document is reviewed. */
+  to_check?: number;
   /** What it is written in (a two-letter code), if known. */
   language: string | null;
   // populated by GET /api/documents/:id
+  episode?: Pick<Episode, 'id' | 'title' | 'state' | 'first_date' | 'last_date' | 'provider'> | null;
   fields?: ExtractedField[];
   tags?: string[];
   pages?: Page[];
@@ -57,6 +61,22 @@ export interface Measurement {
   bbox_x1: number | null;
   bbox_y1: number | null;
   confidence: number | null;
+  /** Low confidence and not edited by the owner: marked "check" until the document is reviewed. */
+  needs_check?: boolean;
+}
+
+/** Documents the owner groups as belonging together; the app proposes them from the data and the owner confirms (FR-ORG-01). */
+export interface Episode {
+  id: string;
+  /** Empty means untitled: shown as the provider and the dates (`episodeName`). */
+  title: string;
+  state: 'proposed' | 'confirmed' | 'dismissed';
+  source: 'auto' | 'owner';
+  created_at: string;
+  document_ids: string[];
+  first_date: string | null;
+  last_date: string | null;
+  provider: string | null;
 }
 
 export interface DoctorOnDocument {
@@ -176,7 +196,7 @@ export interface UploadSummary {
 export interface UploadLayout extends UploadSummary {
   /** The documents are read after the grouping is confirmed: how far that is, if it has started. */
   reading?: { status: 'running' | 'done' | 'failed'; step: string; progress: number; documents: number; read: number; error?: string } | null;
-  pages: Array<{ id: string; page_number: number; image_width: number; image_height: number; extraction_source: string | null; hidden: boolean; source_page: number }>;
+  pages: Array<{ id: string; page_number: number; image_width: number; image_height: number; extraction_source: string | null; hidden: boolean; source_page: number; rotation: number }>;
 }
 
 /** One edit session: the details, the tags and the extracted fields, saved together. */
@@ -230,6 +250,8 @@ export interface Page {
   id: string;
   source_file_id: string;
   page_number: number;
+  /** Degrees clockwise the image has been turned; also makes a turned image a new address, so no copy of the old one is shown. */
+  rotation?: number;
   image_width: number;
   image_height: number;
   raw_text: string | null;
@@ -255,6 +277,7 @@ export interface ExtractedField {
   bbox_x1: number | null;
   bbox_y1: number | null;
   confidence: number | null;
+  needs_check?: boolean;
 }
 
 export type RelatedReason =
@@ -273,7 +296,9 @@ export type LinkKind = 'requests' | 'follow_up' | 'same_episode';
 
 export interface ChainNode { id: string; title: string | null; doc_type: DocType | null; doc_date: string | null; provider: string | null }
 /** `from` is the earlier document. A `proposed` link was found by the app and waits for the owner. */
-export interface ChainEdge { from: string; to: string; kind: LinkKind; state: 'proposed' | 'confirmed'; source: 'auto' | 'owner'; reason: string | null }
+export interface ChainEdge { from: string; to: string; kind: LinkKind; state: 'proposed' | 'confirmed'; source: 'auto' | 'owner'; why: LinkWhy | null }
+/** The signals behind a suggested connection (shared tests, doctors, tags, provider, days apart, closeness in meaning). */
+export interface LinkWhy { tests?: string[]; doctors?: string[]; tags?: string[]; same_provider?: true; days_apart?: number; similarity?: number }
 export interface Chain { enabled: boolean; searching: boolean; nodes: ChainNode[]; edges: ChainEdge[] }
 
 /** What a recipient sees around a shared document: confirmed links (direction and kind only) and similar shared documents. */
@@ -312,9 +337,11 @@ export type Proposal = { id: string } & (
   | { kind: 'merge_doctors'; groups: Array<{ keep: DoctorEntry; merge: DoctorEntry[]; final: { name: string; specialty: string | null; clinic: string | null; license_code: string | null } }> }
   | { kind: 'merge_tests'; groups: Array<{ into: TestEntry; from: TestEntry[]; final_name: string }> }
   | { kind: 'confirm_grouping'; upload: { id: string; file_name: string | null; uploaded_at: string }; documents: DocRef[]; calls: ProposedCall[] }
+  | { kind: 'rotate_page'; upload: { id: string; file_name: string | null }; page: { id: string; number: number }; degrees: 90 | 180 | 270; calls: ProposedCall[] }
+  | { kind: 'hide_page'; upload: { id: string; file_name: string | null }; page: { id: string; number: number }; hidden: boolean; document: DocRef | null; calls: ProposedCall[] }
   | { kind: 'move_page'; upload: { id: string; file_name: string | null }; page: { id: string; number: number }; from: DocRef; to: DocRef | null; before_page: number | null; calls: ProposedCall[] }
   | { kind: 'merge_documents'; upload: { id: string; file_name: string | null }; into: DocRef; from: DocRef; page_numbers: number[]; calls: ProposedCall[] }
-  | { kind: 'decide_links'; items: Array<{ label: string; from: DocRef; to: DocRef; link_kind: LinkKind; decision: 'confirm' | 'dismiss'; reason: string | null }>; calls: ProposedCall[] }
+  | { kind: 'decide_links'; items: Array<{ label: string; from: DocRef; to: DocRef; link_kind: LinkKind; decision: 'confirm' | 'dismiss'; why: LinkWhy | null }>; calls: ProposedCall[] }
   | { kind: 'analyse_pages'; upload: { id: string; file_name: string | null; uploaded_at: string }; pages: number; calls: ProposedCall[] }
   | { kind: 'regroup'; upload: { id: string; file_name: string | null }; groups: Array<{ label: string; page_ids: string[]; page_numbers: number[]; title: string | null; confidence: number; status: 'validated' | 'uncertain' | 'unchecked'; reason: string; from: DocRef[] }> }
   | { kind: 'reread_pages'; document: DocRef; page_numbers: number[]; strategy: 'model' | 'configured'; sends_images: boolean; calls: ProposedCall[] }
@@ -370,7 +397,7 @@ export interface StoredMessage { id: string; role: 'user' | 'assistant'; content
 export interface ShareLink {
   id: string;
   label: string | null;
-  scope: 'all' | 'tag' | 'document_ids' | 'date_range';
+  scope: 'all' | 'tag' | 'document_ids' | 'date_range' | 'episode';
   scope_value: string | null;
   created_at: string;
   expires_at: string;
@@ -411,11 +438,11 @@ export interface ShareLinkDetail {
   /** What it shares now, resolved the way a recipient's read resolves it. */
   documents: Array<{ id: string; title: string | null; doc_date: string | null; doc_type: Document['doc_type']; provider: string | null }>;
   scope_ok: boolean;
-  access: { total: number; first_at: string | null; last_at: string | null; addresses: Array<{ ip_address: string | null; count: number; last_at: string }>; recent: Array<{ accessed_at: string; ip_address: string | null }> };
+  access: { total: number; first_at: string | null; last_at: string | null; addresses: Array<{ ip_address: string | null; country: string | null; count: number; last_at: string }>; recent: Array<{ accessed_at: string; ip_address: string | null; country: string | null; document_id: string | null }> };
   requests: ShareRequest[];
   events: ShareLinkEvent[];
 }
-export interface ShareLinkChange { label?: string | null; expires_days?: number; include_scans?: boolean; require_approval?: boolean; allow_chat?: boolean; language?: string | null; scope?: string; scope_value?: unknown }
+export interface ShareLinkChange { label?: string | null; expires_days?: number; expires_hours?: number; include_scans?: boolean; require_approval?: boolean; allow_chat?: boolean; language?: string | null; scope?: string; scope_value?: unknown }
 
 /** Where a visitor's browser stands with a link that needs approval. */
 export type ShareApproval = 'open' | 'needed' | 'pending' | 'denied';
@@ -575,10 +602,27 @@ export const api = {
     secondFactor: (code: string) =>
       post<{ ok: boolean; email: string }>('/api/auth/login/second-factor', { code }),
     logout: () => req('/api/auth/logout', { method: 'POST' }),
-    me: () => req<{ authenticated: boolean; email: string; second_factor_enabled?: boolean }>('/api/auth/me'),
+    me: () => req<{ authenticated: boolean; email: string; second_factor_enabled?: boolean; consent_needed?: { health: boolean; terms: boolean } }>('/api/auth/me'),
     options: () => req<{ registration: 'operator' | 'open'; recovery: boolean }>('/api/auth/options'),
-    register: (email: string, password: string) =>
-      post<{ ok: boolean; message: string }>('/api/auth/register', { email, password }),
+    register: (email: string, password: string, consent: { health_data: boolean; terms: boolean }) =>
+      post<{ ok: boolean; message: string }>('/api/auth/register', { email, password, consent_health_data: consent.health_data, accept_terms: consent.terms }),
+    /** Passkeys: sign in with the device; manage them from the account page. */
+    passkeys: {
+      supported: () => typeof window !== 'undefined' && !!window.PublicKeyCredential,
+      list: () => req<Array<{ id: string; name: string; backed_up: boolean; created_at: string; last_used_at: string | null }>>('/api/auth/passkeys'),
+      add: async (name: string) => {
+        const options = await post<PublicKeyCredentialCreationOptionsJSON>('/api/auth/passkeys/options', {});
+        const response = await startRegistration({ optionsJSON: options });
+        return post<{ ok: boolean }>('/api/auth/passkeys', { response, name });
+      },
+      rename: (id: string, name: string) => patch<{ ok: boolean }>(`/api/auth/passkeys/${encodeURIComponent(id)}`, { name }),
+      remove: (id: string) => del<{ ok: boolean }>(`/api/auth/passkeys/${encodeURIComponent(id)}`),
+      signIn: async () => {
+        const options = await post<PublicKeyCredentialRequestOptionsJSON>('/api/auth/passkey/options', {});
+        const response = await startAuthentication({ optionsJSON: options });
+        return post<{ ok: boolean; email: string }>('/api/auth/passkey/login', { response });
+      },
+    },
     verify: (token: string) => post<{ ok: boolean }>('/api/auth/verify', { token }),
     resendVerification: (email: string) =>
       post<{ ok: boolean; message: string }>('/api/auth/resend-verification', { email }),
@@ -643,7 +687,8 @@ export const api = {
         (call.method === 'PATCH' && /^\/api\/documents\/[\w-]{1,64}$/.test(call.path)) ||
         (call.method === 'POST' && (call.path === '/api/document-links' || call.path === '/api/document-links/state')) ||
         (call.method === 'POST' && /^\/api\/source-files\/[\w-]{1,64}\/(grouping\/confirm|ai-reading|regroup|regroup\/analyze|extract)$/.test(call.path)) ||
-        (call.method === 'POST' && /^\/api\/pages\/[\w-]{1,64}\/move$/.test(call.path)) ||
+        (call.method === 'POST' && /^\/api\/pages\/[\w-]{1,64}\/(move|rotate)$/.test(call.path)) ||
+        (call.method === 'PATCH' && /^\/api\/pages\/[\w-]{1,64}$/.test(call.path)) ||
         (call.method === 'POST' && /^\/api\/doctors\/[\w-]{1,64}\/merge$/.test(call.path)) ||
         (call.method === 'PATCH' && /^\/api\/doctors\/[\w-]{1,64}$/.test(call.path)) ||
         (call.method === 'POST' && (call.path === '/api/measurements/merge' || call.path === '/api/measurements/rename')) ||
@@ -722,6 +767,9 @@ export const api = {
     /** Set a page aside, or bring it back. Returns the documents that hold it, which go back to review. */
     setPageHidden: (pageId: string, hidden: boolean) =>
       req<{ hidden: boolean; document_ids: string[] }>(`/api/pages/${pageId}`, { method: 'PATCH', body: JSON.stringify({ hidden }) }),
+    /** Turn a page image clockwise. Boxes drawn on it move with it; nothing is read again. */
+    rotatePage: (pageId: string, degrees: 90 | 180 | 270) =>
+      req<{ rotation: number; image_width: number; image_height: number }>(`/api/pages/${pageId}/rotate`, { method: 'POST', body: JSON.stringify({ degrees }) }),
     pageText: (pageId: string) =>
       req<{ id: string; page_number: number; raw_text: string | null; extraction_source: string | null }>(`/api/pages/${pageId}`),
     /** Read chosen pages with the model, then extract the documents they belong to again. */
@@ -744,6 +792,8 @@ export const api = {
         models: ModelChoice[];
         /** Whether documents can be found by meaning on this server. */
         similarity?: { enabled: boolean };
+        /** Which features send content to the model provider on this server. */
+        features?: { translation: boolean; chat: boolean; linking: boolean };
       }>('/api/capabilities'),
     /** Extract the details of some of an upload's documents again, from the text already read. */
     extract: (id: string, documentIds: string[]) =>
@@ -759,6 +809,13 @@ export const api = {
       for (const f of Array.from(files)) form.append('files', f);
       return fetch('/api/source-files/upload', { method: 'POST', body: form }).then(r => r.json());
     },
+    /** A scan session: the finished pages, in order, and the photos as they were taken, kept beside the document as its originals. */
+    uploadScan: (pages: File[], originals: File[]) => {
+      const form = new FormData();
+      for (const f of pages) form.append('files', f);
+      for (const f of originals) form.append('originals', f);
+      return fetch('/api/source-files/upload-photos', { method: 'POST', body: form }).then(r => r.json() as Promise<Array<{ id?: string; reason?: string }>>);
+    },
     /** Several photos of one document, in the order given: one upload whose pages they are. */
     uploadPhotos: (files: File[]) => {
       const form = new FormData();
@@ -769,7 +826,7 @@ export const api = {
 
   share: {
     list: () => req<ShareLink[]>('/api/share-links'),
-    create: (body: { label?: string; scope: string; scope_value?: unknown; expires_days?: number; include_scans?: boolean; language?: string | null; require_approval?: boolean; allow_chat?: boolean }) =>
+    create: (body: { label?: string; scope: string; scope_value?: unknown; expires_days?: number; expires_hours?: number; include_scans?: boolean; language?: string | null; require_approval?: boolean; allow_chat?: boolean }) =>
       req<{ id: string; token: string; url: string; expires_at: string; approval_mail: boolean | null }>('/api/share-links', {
         method: 'POST',
         body: JSON.stringify(body),
@@ -793,7 +850,7 @@ export const api = {
     /** Values over time, from the shared documents only. */
     trends: (token: string) => req<TrendName[]>(`/api/share/${token}/trends`),
     trendSeries: (token: string, canonical: string) => req<TrendSeries>(`/api/share/${token}/trends/series?name=${encodeURIComponent(canonical)}`),
-    meta: (token: string) => req<{ language: string | null; languages: string[]; translation: boolean; approval: ShareApproval; chat: boolean }>(`/api/share/${token}/meta`),
+    meta: (token: string) => req<{ language: string | null; languages: string[]; translation: boolean; approval: ShareApproval; chat: boolean; landing_url: string | null }>(`/api/share/${token}/meta`),
     /** A recipient's question. `history` is the earlier turns of this page: nothing is stored on the server. */
     chat: (token: string, body: { question: string; history: Array<{ role: 'user' | 'assistant'; content: string }>; document_id?: string }, handlers: ChatStreamHandlers, signal?: AbortSignal) =>
       readReplyStream<{ answer: string | null; sources: ChatSource[]; documents: number }>(`/api/share/${token}/chat`, { ...body, stream: true }, handlers, signal),
@@ -806,6 +863,34 @@ export const api = {
     /** A name another tag has makes the two one (`merged`). */
     rename: (id: number, name: string) => patch<{ result: 'ok' | 'merged' }>(`/api/tags/${id}`, { name }),
     remove: (id: number) => del<{ removed: boolean }>(`/api/tags/${id}`),
+  },
+
+  /** A legal text (the privacy notice, the terms, what Spine is for), public. */
+  legal: (doc: 'privacy' | 'terms' | 'purpose') => req<{ doc: string; version: string; markdown: string }>(`/api/legal/${doc}`),
+
+  account: {
+    /** Agree to the use of health data and the terms, given apart. */
+    consent: (healthData: boolean, terms: boolean) => post<{ ok: boolean }>('/api/account/consent', { health_data: healthData, terms }),
+    /** Delete the account and everything in it. Asks for the password again if it has not been typed lately. */
+    remove: (confirm: string) => post<{ deleted: boolean }>('/api/account/delete', { confirm }),
+  },
+
+  /** Sample records to explore before uploading anything real. */
+  demo: {
+    state: () => req<{ loaded: boolean; processing: boolean }>('/api/demo'),
+    load: (language: 'en' | 'ro') => post<{ loaded: boolean; processing: boolean }>('/api/demo', { language }),
+    remove: () => del<{ removed: boolean }>('/api/demo'),
+  },
+
+  episodes: {
+    /** Proposed and confirmed by default; `all` includes the ones the owner said are not episodes. */
+    list: (state?: 'proposed' | 'confirmed' | 'dismissed' | 'all') => req<Episode[]>(`/api/episodes${state ? `?state=${state}` : ''}`),
+    create: (title: string, documentIds: string[]) => post<Episode>('/api/episodes', { title, document_ids: documentIds }),
+    update: (id: string, change: { title?: string; document_ids?: string[] }) => patch<Episode>(`/api/episodes/${id}`, change),
+    setState: (id: string, state: 'confirmed' | 'dismissed') => post<{ ok: boolean }>(`/api/episodes/${id}/state`, { state }),
+    remove: (id: string) => del<{ ok: boolean }>(`/api/episodes/${id}`),
+    /** Look again at what could be grouped. */
+    propose: () => post<{ proposed: number }>('/api/episodes/propose', {}),
   },
 
   providers: {

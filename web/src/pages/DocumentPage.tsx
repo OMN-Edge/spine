@@ -3,7 +3,9 @@ import { useOnDataChanged } from '../dataChanged';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, type Document, type DocumentTypeGuide, type ExtractedField, type Page } from '../api';
 import PageImageOverlay, { type Highlight } from '../components/PageImageOverlay';
-import { MeasurementsEditor, MeasurementsList, draftMeasurement, type DraftMeasurement } from '../components/MeasurementsPanel';
+import { episodeName } from '../components/episode';
+import AiLabel from '../components/AiLabel';
+import { CheckBadge, MeasurementsEditor, MeasurementsList, draftMeasurement, type DraftMeasurement } from '../components/MeasurementsPanel';
 import { Combobox, ChipPicker } from '../components/Combobox';
 import { DoctorsEditor, DoctorsList, draftDoctor, type DoctorChoice, type DraftDoctor } from '../components/DoctorsPanel';
 import { AiReadingBanner, AiReadingProvider, useAiReading } from '../components/AiReading';
@@ -357,7 +359,7 @@ export default function DocumentPage() {
       return (
         <div key={field.id} {...select} className={`p-2 text-xs cursor-pointer ${fieldRowClass(field)}`}>
           <div className="flex items-center justify-between gap-3">
-            <span className="font-medium text-gray-500">{name}</span>
+            <span className="font-medium text-gray-500">{name}{markCheck(field) && <CheckBadge />}</span>
             {unpinned}
           </div>
           <div className="mt-1 space-y-1 text-gray-900 leading-relaxed break-words">
@@ -368,12 +370,14 @@ export default function DocumentPage() {
     }
     return (
       <div key={field.id} {...select} className={`flex items-start justify-between gap-3 p-2 text-xs cursor-pointer ${fieldRowClass(field)}`}>
-        <span className="font-medium text-gray-500 shrink-0">{name}</span>
+        <span className="font-medium text-gray-500 shrink-0">{name}{markCheck(field) && <CheckBadge />}</span>
         <span className="text-gray-900 text-right break-words min-w-0">{value}</span>
         {unpinned}
       </div>
     );
   };
+
+  const markCheck = (f: { needs_check?: boolean }) => !reviewed && !!f.needs_check;
 
   const fieldRowClass = (f: Highlight | undefined) =>
     `rounded-lg transition-colors ${f && selectedField?.id === f.id ? 'bg-yellow-50 border border-yellow-200' : 'border border-transparent hover:bg-gray-50'}`;
@@ -402,6 +406,13 @@ export default function DocumentPage() {
                 </span>
               </div>
               <p className="text-sm text-gray-500">{documentByline(doc, t)}</p>
+              {doc.episode && (
+                <p className="text-xs mt-1">
+                  <Link to={doc.episode.state === 'confirmed' ? `/?episode=${doc.episode.id}` : '/episodes'} className="text-blue-600 hover:underline">
+                    {doc.episode.state === 'confirmed' ? t('Episode: {name}', { name: episodeName(doc.episode, t) }) : t('May belong to an episode: {name}', { name: episodeName(doc.episode, t) })}
+                  </Link>
+                </p>
+              )}
               {needsTranslation && (tr.translating || tr.active) && (
                 <p className="text-xs text-gray-500 mt-1 flex flex-wrap items-center gap-1.5" role="status">
                   {tr.translating && <span aria-hidden="true" className="inline-block h-3 w-3 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />}
@@ -420,7 +431,7 @@ export default function DocumentPage() {
                   {doc.tags!.map(tag => <span key={tag} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{tag}</span>)}
                 </div>
               )}
-              {summary && <p className={`text-sm text-gray-700 leading-relaxed mt-4 ${pulse(waitingHead)}`}>{summary}</p>}
+              {summary && <p className={`text-sm text-gray-700 leading-relaxed mt-4 ${pulse(waitingHead)}`}><AiLabel className="mr-1.5" />{summary}</p>}
               {notes && (
                 <div id="section-notes" className="mt-4 rounded-lg transition-shadow">
                   <p className={label}>{t('Notes')}</p>
@@ -515,7 +526,7 @@ export default function DocumentPage() {
         {(editing || (doc.measurements ?? []).length > 0) && (
           <div id="section-results" className="bg-white border border-gray-200 rounded-xl p-4 transition-shadow">
             <h2 className="font-medium text-gray-900 mb-3 text-sm">{t('Measurements')}</h2>
-            {!editing ? <div className={pulse(waitingBody)}><MeasurementsList items={(doc.measurements ?? []).map(m => ({ ...m, name: shown?.measurements[m.id] ?? m.name }))} selectedId={selectedField?.id} onSelect={m => setSelectedField(current => (current?.id === m.id ? null : m))} /></div> : (
+            {!editing ? <div className={pulse(waitingBody)}><MeasurementsList markCheck={!reviewed} items={(doc.measurements ?? []).map(m => ({ ...m, name: shown?.measurements[m.id] ?? m.name }))} selectedId={selectedField?.id} onSelect={m => setSelectedField(current => (current?.id === m.id ? null : m))} /></div> : (
               <MeasurementsEditor
                 rows={draft.measurements} pages={pages} currentPageId={currentPage?.id ?? ''} knownNames={[...new Set((doc.measurements ?? []).map(m => m.name))]}
                 onChange={setMeasurement} onAdd={addMeasurement}

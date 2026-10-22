@@ -16,6 +16,22 @@ import {
 } from '../share-scope.js';
 
 /**
+ * How long a link lives, from `expires_hours` (1 to 720) or `expires_days` (1 to 30), not both; seven days when neither is given
+ * (FR-SHR-02: from one hour to thirty days). Whole numbers only, so a typo cannot make a link that already ended.
+ */
+function lifetimeMs(body: { expires_days?: unknown; expires_hours?: unknown }): { ms: number } | { error: string } {
+  const { expires_days: days, expires_hours: hours } = body;
+  if (days !== undefined && hours !== undefined) return { error: 'give expires_days or expires_hours, not both' };
+  if (hours !== undefined) {
+    if (typeof hours !== 'number' || !Number.isInteger(hours) || hours < 1 || hours > 720) return { error: 'expires_hours must be 1-720' };
+    return { ms: hours * 3_600_000 };
+  }
+  if (days === undefined) return { ms: 7 * 86_400_000 };
+  if (typeof days !== 'number' || !Number.isInteger(days) || days < 1 || days > 30) return { error: 'expires_days must be 1-30' };
+  return { ms: days * 86_400_000 };
+}
+
+/**
  * A scope that can be stored: P2 (a link whose scope cannot be fully resolved must not exist, which is what stops a `tag` link
  * with no tag from being read as "every document", S-1) and M-5 (a link may name only the owner's own documents, with one message
  * for "not yours" and "does not exist" so it cannot probe for another user's ids). Creating and changing a link both use it.
@@ -27,6 +43,11 @@ async function checkScope(userId: string, scope: unknown, scopeValue: unknown): 
   } catch (err) {
     if (err instanceof ScopeError) return { error: err.message };
     throw err;
+  }
+  if (resolved.scope === 'episode') {
+    // Confirmed episodes of the owner's only; "not yours" and "does not exist" are the same answer (M-5).
+    const unique = [...new Set(resolved.ids)];
+    if ((await getStore().episodes.confirmedAmong(userId, unique)).length !== unique.length) return { error: 'one or more episodes were not found' };
   }
   if (resolved.scope === 'document_ids') {
     const unique = [...new Set(resolved.ids)];
@@ -49,18 +70,18 @@ export async function shareRoutes(app: FastifyInstance) {
       scope: 'all' | 'tag' | 'document_ids' | 'date_range';
       scope_value?: unknown;
       expires_days?: number;
+      expires_hours?: number;
       include_scans?: unknown;
       language?: unknown;
       require_approval?: unknown;
       allow_chat?: unknown;
     };
   }>('/api/share-links', async (req, reply) => {
-    const { label, scope, scope_value, expires_days = 7, include_scans = false, language = null, require_approval = false, allow_chat = false } = req.body ?? {};
+    const { label, scope, scope_value, include_scans = false, language = null, require_approval = false, allow_chat = false } = req.body ?? {};
 
     if (!scope) return reply.status(400).send({ error: 'scope required' });
-    if (expires_days < 1 || expires_days > 30) {
-      return reply.status(400).send({ error: 'expires_days must be 1-30' });
-    }
+    const lifetime = lifetimeMs(req.body ?? {});
+    if ('error' in lifetime) return reply.status(400).send({ error: lifetime.error });
     if (typeof include_scans !== 'boolean') return reply.status(400).send({ error: 'include_scans must be true or false' });
     // Page images are the whole document, so showing them asks for the password again (S-33).
     if (include_scans && !recentlyAuthenticated(req)) return reply.status(403).send(REAUTH_REQUIRED);
@@ -78,7 +99,7 @@ export async function shareRoutes(app: FastifyInstance) {
     const token = createShareToken();
     const id = uuidv4();
     const now = new Date();
-    const expires = new Date(now.getTime() + expires_days * 86_400_000);
+    const expires = new Date(now.getTime() + lifetime.ms);
 
     await getStore().shareLinks.create(req.userId, {
       id,
@@ -162,9 +183,9 @@ export async function shareRoutes(app: FastifyInstance) {
     return reply.header('Cache-Control', 'no-store').send({ link, documents, scope_ok: scopeOk, access, requests, events });
   });
 
-  // Change a link after it was made. The same checks as making one; a revoked link stays revoked. `expires_days` counts from now,
+  // Change a link after it was made. The same checks as making one; a revoked link stays revoked. `expires_days` or `expires_hours` counts from now,
   // so it extends or shortens.
-  const PATCHABLE = ['label', 'expires_days', 'include_scans', 'require_approval', 'allow_chat', 'language', 'scope', 'scope_value'];
+  const PATCHABLE = ['label', 'expires_days', 'expires_hours', 'include_scans', 'require_approval', 'allow_chat', 'language', 'scope', 'scope_value'];
   app.patch<{ Params: { id: string }; Body: Record<string, unknown> }>('/api/share-links/:id', async (req, reply) => {
     const body = req.body ?? {};
     const unknown = Object.keys(body).filter(k => !PATCHABLE.includes(k));
@@ -177,9 +198,10 @@ export async function shareRoutes(app: FastifyInstance) {
       if (body.label !== null && (typeof body.label !== 'string' || body.label.length > 80)) return reply.status(400).send({ error: 'label must be text of at most 80 characters' });
       patch.label = typeof body.label === 'string' && body.label.trim() ? body.label.trim() : null;
     }
-    if (body.expires_days !== undefined) {
-      if (typeof body.expires_days !== 'number' || !Number.isInteger(body.expires_days) || body.expires_days < 1 || body.expires_days > 30) return reply.status(400).send({ error: 'expires_days must be 1-30' });
-      patch.expiresAt = new Date(Date.now() + body.expires_days * 86_400_000).toISOString();
+    if (body.expires_days !== undefined || body.expires_hours !== undefined) {
+      const lifetime = lifetimeMs(body);
+      if ('error' in lifetime) return reply.status(400).send({ error: lifetime.error });
+      patch.expiresAt = new Date(Date.now() + lifetime.ms).toISOString();
     }
     for (const [key, field] of [['include_scans', 'includeScans'], ['require_approval', 'requireApproval'], ['allow_chat', 'allowChat']] as const) {
       if (body[key] === undefined) continue;

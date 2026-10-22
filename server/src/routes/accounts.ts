@@ -1,3 +1,4 @@
+import { HEALTH_CONSENT_VERSION, TERMS_VERSION } from '../legal.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
 import { getStore } from '../store/index.js';
@@ -79,14 +80,19 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
   });
 
   if (registration === 'open') {
-    app.post<{ Body: { email?: string; password?: string } }>(
+    app.post<{ Body: { email?: string; password?: string; consent_health_data?: unknown; accept_terms?: unknown } }>(
       '/api/auth/register',
       { preHandler: [perSource, perAddress] },
       async (req, reply) => {
-        const { email, password } = req.body ?? {};
+        const { email, password, consent_health_data: health, accept_terms: terms } = req.body ?? {};
         const address = typeof email === 'string' ? normaliseEmail(email) : '';
         if (!isPlausibleEmail(address)) {
           return reply.status(400).send({ error: 'a valid email address is required' });
+        }
+        // Two separate acts, each ticked by the person (GDPR Art. 9(2)(a) and Art. 7): consent to the use of health data is not
+        // folded into accepting the terms, and an account is not made on a half answer.
+        if (health !== true || terms !== true) {
+          return reply.status(400).send({ error: 'consent to the use of your health data and acceptance of the terms are both needed, and given separately' });
         }
         const problem = checkPasswordPolicy(password, { email: address });
         if (problem) return reply.status(400).send({ error: problem });
@@ -104,6 +110,7 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
               passwordHash,
               createdAt: new Date().toISOString(),
               verifiedAt: null, // holds nothing and gets no session until confirmed
+              consent: { healthVersion: HEALTH_CONSENT_VERSION, termsVersion: TERMS_VERSION },
             });
             const token = await issueUserToken(id, 'verify', VERIFY_TTL_MS);
             sendLater(req, id, verificationMail(address, verificationLink(token)), 'verification');

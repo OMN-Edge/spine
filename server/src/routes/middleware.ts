@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { REAUTH_WINDOW_MS, sessionIsLive } from '../sessions.js';
 import { getStore, type UserRecord } from '../store/index.js';
+import { consentCurrent } from '../legal.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -30,6 +31,8 @@ export interface SessionData {
   /** When the password was last typed for this session, for actions that ask again (S-33). */
   reauthAt?: number;
   pending?: PendingLogin;
+  /** A passkey challenge the server made and the device has yet to sign: single use, short lived. */
+  passkey?: { kind: 'register' | 'login'; challenge: string; expiresAt: number };
 }
 
 /** Declares the request property; call once on the root instance, before routes. */
@@ -60,9 +63,19 @@ export async function authenticate(req: FastifyRequest): Promise<UserRecord | nu
   return user;
 }
 
+/**
+ * What an account may do before it has agreed to the current texts: sign out and change the sign-in (`/api/auth/`), say what it
+ * agrees to, and leave by deleting the account. Everything else holds medical records, which are not touched without consent.
+ */
+const BEFORE_CONSENT = ['/api/auth/', '/api/account/consent', '/api/account/delete'];
+
 export async function requireAuth(req: FastifyRequest, reply: FastifyReply) {
   const user = await authenticate(req);
   if (!user) return reply.status(401).send({ error: 'not authenticated' });
+  if (!consentCurrent(user)) {
+    const path = req.url.split('?')[0];
+    if (!BEFORE_CONSENT.some(p => path.startsWith(p))) return reply.status(403).send({ error: 'agree to the terms and the use of your health data first', code: 'consent_required' });
+  }
   req.userId = user.id;
 }
 

@@ -19,7 +19,7 @@ const fakeLlm = {
   link: async (target: LinkCard, candidates: LinkCard[]): Promise<LinkJudgement[] | null> => {
     calls.push({ target, candidates });
     if (broken) return null;
-    return relation ? candidates.map(c => ({ candidate: c.id, relation: relation!, reason: 'Asked for these tests.' })) : [];
+    return relation ? candidates.map(c => ({ candidate: c.id, relation: relation!, reason: 'A sentence a model should not be asked for, and which is ignored if it sends one.' })) : [];
   },
 } as unknown as ChatLlm;
 
@@ -129,13 +129,13 @@ describe('the model’s answer', () => {
     const { buildChatLlm } = await import('../llm/chat-llm.js');
     const { RunnableLambda } = await import('@langchain/core/runnables');
     const answer = { links: [
-      { candidate: ' 1 ', relation: 'same_episode', reason: ' one episode ' },
+      { candidate: ' 1 ', relation: 'same_episode', reason: ' a free-text reason is dropped ' },
       { candidate: '9', relation: 'same_episode', reason: 'no such candidate' },
     ] };
     const silent = RunnableLambda.from(async () => answer);
     const clients = Object.fromEntries(['continuation', 'extraction', 'page', 'pageThinking', 'stamps', 'translation', 'linking'].map(t => [t, silent]));
     const llm = buildChatLlm(clients as never, { provider: 'x', model: 'y', maxTokens: { continuation: 1, extraction: 1, page: 1 }, maxRetries: 0, contextChars: 1000, logger: { info() {}, warn() {} } });
-    expect(await llm.link({ id: 'target', text: 't' }, [{ id: '1', text: 'c' }])).toEqual([{ candidate: '1', relation: 'same_episode', reason: 'one episode' }]);
+    expect(await llm.link({ id: 'target', text: 't' }, [{ id: '1', text: 'c' }])).toEqual([{ candidate: '1', relation: 'same_episode' }]);
     expect(await llm.link({ id: 'target', text: 't' }, [])).toEqual([]);
   });
 });
@@ -172,8 +172,10 @@ describe('finding links', () => {
     const { consult, lab } = await consultAndLab();
     expect(await findLinks(OWNER_ID, lab.id)).toBe(1);
     expect(await linksOf(lab.id)).toEqual([{
-      from_document_id: consult.id, to_document_id: lab.id, kind: 'requests', source: 'auto', state: 'proposed', reason: 'Asked for these tests.', confidence: null,
+      from_document_id: consult.id, to_document_id: lab.id, kind: 'requests', source: 'auto', state: 'proposed', reason: '{"days_apart":35}', confidence: null,
     }]);
+    // What the owner is shown is the signals, not a sentence a model wrote.
+    expect(JSON.stringify(await linksOf(lab.id))).not.toContain('should not be asked');
   });
 
   it('drops a relation that contradicts the dates', async () => {

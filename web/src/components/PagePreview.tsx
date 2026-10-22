@@ -5,6 +5,7 @@ import { useI18n } from '../i18n';
 export interface PreviewPage {
   id: string;
   page_number: number;
+  rotation?: number;
 }
 
 /**
@@ -50,7 +51,7 @@ export default function PagePreview({
   // Warm the neighbours, so moving along the pages does not wait on each image.
   useEffect(() => {
     for (const neighbour of [pages[index - 1], pages[index + 1]]) {
-      if (neighbour) new Image().src = `/api/pages/${neighbour.id}/image`;
+      if (neighbour) new Image().src = `/api/pages/${neighbour.id}/image?r=${neighbour.rotation ?? 0}`;
     }
   }, [pages, index]);
 
@@ -90,7 +91,7 @@ export default function PagePreview({
         >
           <img
             key={page.id}
-            src={`/api/pages/${page.id}/image`}
+            src={`/api/pages/${page.id}/image?r=${page.rotation ?? 0}`}
             alt={t('Page {n}', { n: page.page_number })}
             onClick={() => setZoomed(z => !z)}
             className={`bg-white rounded shadow-lg select-none ${

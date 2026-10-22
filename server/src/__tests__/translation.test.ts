@@ -396,7 +396,7 @@ describe('the routes', () => {
     expect((await get(`/api/share/${token}/documents/${d.id}/translation?lang=en`, null)).json()).toMatchObject({ status: 'cached' });
 
     const meta = (await get(`/api/share/${token}/meta`, null)).json();
-    expect(meta).toEqual({ language: 'en', languages: ['en', 'ro', 'fr', 'de'], translation: true, approval: 'open', chat: false });
+    expect(meta).toEqual({ language: 'en', languages: ['en', 'ro', 'fr', 'de'], translation: true, approval: 'open', chat: false, landing_url: null });
     const plain = await link('document_ids', [d.id]);
     expect((await get(`/api/share/${plain.token}/meta`, null)).json().language).toBeNull();
     expect((await get(`/api/share/${uuidv4()}/meta`, null)).statusCode).toBe(410);

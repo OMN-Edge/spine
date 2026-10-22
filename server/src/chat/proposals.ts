@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { Document } from '../types.js';
+import type { LinkWhy } from '../linking/why.js';
 
 /**
  * What an action tool hands back instead of doing anything. The agent never changes a record: it *proposes*, the page shows the
@@ -63,6 +64,24 @@ export type ProposalBody =
     }
   | { kind: 'confirm_grouping'; upload: { id: string; file_name: string | null; uploaded_at: string }; documents: DocRef[]; calls: ProposedCall[] }
   | {
+      /** One page image turned, for a scan that is sideways or upside down. Nothing is read again. */
+      kind: 'rotate_page';
+      upload: { id: string; file_name: string | null };
+      page: { id: string; number: number };
+      degrees: 90 | 180 | 270;
+      calls: ProposedCall[];
+    }
+  | {
+      /** One page set aside (kept, but out of its document's view, search and reading) or brought back. */
+      kind: 'hide_page';
+      upload: { id: string; file_name: string | null };
+      page: { id: string; number: number };
+      hidden: boolean;
+      /** The document that holds it. */
+      document: DocRef | null;
+      calls: ProposedCall[];
+    }
+  | {
       /** One page to another place in its upload: into a document (before a page of it, or at its end) or out into a document of its own. */
       kind: 'move_page';
       upload: { id: string; file_name: string | null };
@@ -85,7 +104,7 @@ export type ProposalBody =
   | {
       /** Suggested connections between documents (found by the app, not yet confirmed), each to be confirmed or marked not related. */
       kind: 'decide_links';
-      items: Array<{ label: string; from: DocRef; to: DocRef; link_kind: 'requests' | 'follow_up' | 'same_episode'; decision: 'confirm' | 'dismiss'; reason: string | null }>;
+      items: Array<{ label: string; from: DocRef; to: DocRef; link_kind: 'requests' | 'follow_up' | 'same_episode'; decision: 'confirm' | 'dismiss'; why: LinkWhy | null }>;
       calls: ProposedCall[];
     }
   | { kind: 'analyse_pages'; upload: { id: string; file_name: string | null; uploaded_at: string }; pages: number; calls: ProposedCall[] }

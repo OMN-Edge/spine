@@ -12,9 +12,9 @@ import { z } from 'zod';
  * zip is read by entry name, never extracted by it (SECURITY.md **M-14**).
  */
 export const EXPORT_FORMAT = 'spine-export';
-/** 2 adds what the owner edited and removed, the doctors' directory, tags no document carries, merged test names and the answers to "same one?". 1 is still read: those fields are absent. */
-export const EXPORT_VERSION = 2;
-export const READABLE_VERSIONS: readonly unknown[] = [1, 2];
+/** 2 adds what the owner edited and removed, the doctors' directory, tags no document carries, merged test names and the answers to "same one?". 3 adds episodes. 1 and 2 are still read: those fields are absent. */
+export const EXPORT_VERSION = 3;
+export const READABLE_VERSIONS: readonly unknown[] = [1, 2, 3];
 export const MANIFEST_NAME = 'manifest.json';
 /** A manifest larger than this is not read (it is parsed into memory on a small machine): a thousand pages with their words is a few MB. */
 export const MAX_MANIFEST_BYTES = 64 * 1024 * 1024;
@@ -138,6 +138,14 @@ const link = z.object({
   confidence: z.number().min(0).max(1).nullable(),
 });
 
+/** A group of documents the owner confirmed or the app suggested, naming its documents by place in the manifest. */
+const episode = z.object({
+  title: text(120),
+  state: z.enum(['proposed', 'confirmed', 'dismissed']),
+  source: z.enum(['auto', 'owner']),
+  documents: z.array(linkEnd).min(1).max(1000),
+});
+
 const file = z.object({
   /** The entry in the zip that holds the file. Looked up by name; never used as a place to write. */
   path: text(300),
@@ -152,13 +160,15 @@ const file = z.object({
 
 export const manifestSchema = z.object({
   format: z.literal(EXPORT_FORMAT),
-  version: z.union([z.literal(1), z.literal(2)]),
+  version: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   exported_at: text(40),
   /** One document, trimmed to its own pages, or a person's whole archive. Informational: import treats both alike. */
   kind: z.enum(['document', 'archive']),
   files: z.array(file).min(1).max(20_000),
   /** Absent from exports made before links were kept, and from a single document's export (a link needs both ends). */
   links: z.array(link).max(100_000).default([]),
+  /** Absent before version 3, and from a single document's export. */
+  episodes: z.array(episode).max(50_000).default([]),
   /** The doctors' directory, those no document names included. Absent from version 1 and carried whole by an archive, trimmed to the document's own by a single document's. */
   people: z.array(person).max(50_000).default([]),
   /** Every tag, those no document carries included. */
@@ -176,6 +186,7 @@ export const manifestSchema = z.object({
   if (manifest.files.some(f => f.documents.some(d => d.doctors.some(x => x.person !== null && x.person >= manifest.people.length)))) {
     ctx.addIssue({ code: 'custom', message: 'a doctor names a person that is not in the export' });
   }
+  if (manifest.episodes.some(e => e.documents.some(d => !there(d)))) ctx.addIssue({ code: 'custom', message: 'an episode names a document that is not in the export' });
   if (manifest.links.some(l => !there(l.from) || !there(l.to))) ctx.addIssue({ code: 'custom', message: 'a link names a document that is not in the export' });
 });
 

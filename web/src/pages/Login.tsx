@@ -67,6 +67,19 @@ export default function Login() {
     }
   };
 
+  // Signing in with the device's fingerprint, face or PIN. The browser shows its own sheet; cancelling it is not an error.
+  const withPasskey = async () => {
+    setError('');
+    try {
+      const result = await api.auth.passkeys.signIn();
+      setAuthenticated(true, result.email);
+      navigate(home);
+    } catch (err) {
+      if (err instanceof Error && err.name === 'NotAllowedError') return;
+      setError(err instanceof Error ? err.message : t('Could not sign in'));
+    }
+  };
+
   const resend = async () => {
     try {
       setResent((await api.auth.resendVerification(email)).message);
@@ -118,6 +131,11 @@ export default function Login() {
         )}
         {resent && <Notice kind="ok">{resent}</Notice>}
         <button type="submit" className={buttonClass}>{t('Sign in')}</button>
+        {api.auth.passkeys.supported() && (
+          <button type="button" onClick={withPasskey} className="w-full mt-3 border border-gray-300 text-gray-700 rounded-lg px-4 py-2 font-medium hover:bg-gray-50">
+            {t('Sign in with a passkey')}
+          </button>
+        )}
       </form>
       )}
     </AuthCard>

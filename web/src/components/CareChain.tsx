@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api, type Chain, type ChainEdge, type ChainNode, type Document, type LinkKind } from '../api';
 import { useI18n } from '../i18n';
 import { Combobox } from './Combobox';
+import LinkWhyLine from './LinkWhy';
 import { documentTitle } from '../titles';
 
 /** How the document being added relates to this one. `from` is the earlier of the two in the stored link. */
@@ -58,6 +59,8 @@ export default function CareChain({ documentId }: { documentId: string }) {
   const name = (n: ChainNode | undefined) => (n ? documentTitle(n, t) : '');
   const phrase = (e: ChainEdge): string => {
     const other = name(byId.get(e.from));
+    // A suggestion claims no relation: that is for the owner to confirm (FR-ORG-08).
+    if (e.state === 'proposed') return t('possibly connected to {document}', { document: other });
     switch (e.kind) {
       case 'requests': return t('requested by {document}', { document: other });
       case 'follow_up': return t('follow-up of {document}', { document: other });
@@ -109,7 +112,7 @@ export default function CareChain({ documentId }: { documentId: string }) {
                     {e.state === 'confirmed' && (
                       <button type="button" onClick={() => decide(e, 'dismissed')} className="ml-2 not-italic text-gray-400 hover:text-gray-600 hover:underline">{t('Remove')}</button>
                     )}
-                    {e.reason && e.state === 'proposed' && <div className="text-gray-400">{e.reason}</div>}
+                    {e.why && e.state === 'proposed' && <div className="text-gray-400"><LinkWhyLine why={e.why} /></div>}
                   </div>
                 ))}
               </li>

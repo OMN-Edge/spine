@@ -13,7 +13,13 @@ CREATE TABLE IF NOT EXISTS users (
   -- NULL until the address is confirmed. An unverified account never gets a
   -- session. Accounts the operator creates are verified at creation.
   email_verified_at TEXT,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  -- Consent to process health data (GDPR Art. 9(2)(a)) and acceptance of the terms: separate acts, each with the version of the
+  -- text that was shown. NULL until given; an account without them is held at the consent screen (FR-GDPR-01).
+  health_consent_at TEXT,
+  health_consent_version TEXT,
+  terms_accepted_at TEXT,
+  terms_version TEXT
 );
 
 -- One-time links for email verification and password reset. Only the sha256 of
@@ -41,6 +47,22 @@ CREATE TABLE IF NOT EXISTS user_totp (
 );
 
 -- sha256 of each recovery code. A code is spent by one atomic UPDATE.
+-- A passkey (WebAuthn credential) the person signed up on a device with. The public key is all that is kept; the private key never
+-- leaves the device. `id` is the credential id (base64url), unique across accounts. A passkey with user verification (a fingerprint,
+-- a face, a device PIN) is a sign-in in itself and stands in for the password and the second factor together.
+CREATE TABLE IF NOT EXISTS user_passkeys (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  public_key TEXT NOT NULL, -- COSE key, base64url
+  counter INTEGER NOT NULL DEFAULT 0,
+  transports TEXT,          -- JSON array or NULL
+  name TEXT NOT NULL,
+  backed_up INTEGER NOT NULL DEFAULT 0, -- synced between the person's devices (iCloud Keychain, Google Password Manager)
+  created_at TEXT NOT NULL,
+  last_used_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_user_passkeys_user ON user_passkeys(user_id);
+
 CREATE TABLE IF NOT EXISTS user_recovery_codes (
   user_id TEXT NOT NULL REFERENCES users(id),
   code_hash TEXT NOT NULL,
@@ -67,7 +89,11 @@ CREATE TABLE IF NOT EXISTS source_files (
   -- The conversation the file was attached in, if it was attached in the chat: what happens to it is reported there.
   chat_conversation_id TEXT,
   -- Several photos made into one PDF at upload (one page each): a model reads it, as it reads a single photo, because the pages have no text layer.
-  photo_set INTEGER NOT NULL DEFAULT 0
+  photo_set INTEGER NOT NULL DEFAULT 0,
+  -- Made by "explore with sample records": invented records the person can remove again in one step.
+  sample INTEGER NOT NULL DEFAULT 0,
+  -- Photos the upload was made from, kept as they came (before straightening and enhancing) beside the PDF: the original stays the original.
+  raw_count INTEGER NOT NULL DEFAULT 0
 );
 
 -- What the analysis of a mixed upload found: which pages belong together (JSON, see regroup/analyze.ts). One per upload, replaced
@@ -90,6 +116,7 @@ CREATE TABLE IF NOT EXISTS pages (
   raw_text TEXT,
   elements TEXT, -- JSON array of UnstructuredElement[]
   hidden INTEGER NOT NULL DEFAULT 0, -- 1: kept, but left out of the document's view, search and reading
+  rotation INTEGER NOT NULL DEFAULT 0, -- degrees clockwise (0, 90, 180, 270) the stored image has been turned from the file's own orientation
   source_page INTEGER NOT NULL DEFAULT 0, -- the page's index in the file, which reading it again needs; page_number is its place in the upload, which the owner can change
   extraction_source TEXT, -- 'native_text' | 'ocr' | 'mixed' | 'multimodal' | 'unread' (the model could not read it and nothing else did)
   is_continuation INTEGER, -- SQLite boolean
@@ -259,7 +286,7 @@ CREATE TABLE IF NOT EXISTS share_links (
   user_id TEXT NOT NULL REFERENCES users(id),
   token TEXT UNIQUE NOT NULL, -- sha256 of the token, never the token (P6)
   label TEXT,
-  scope TEXT NOT NULL, -- 'all' | 'tag' | 'document_ids' | 'date_range'
+  scope TEXT NOT NULL, -- 'all' | 'tag' | 'document_ids' | 'date_range' | 'episode'
   scope_value TEXT, -- JSON
   created_at TEXT NOT NULL,
   expires_at TEXT NOT NULL,
@@ -305,7 +332,9 @@ CREATE TABLE IF NOT EXISTS share_link_access_log (
   user_id TEXT NOT NULL REFERENCES users(id), -- the link's owner
   share_link_id TEXT REFERENCES share_links(id),
   accessed_at TEXT NOT NULL,
-  ip_address TEXT
+  ip_address TEXT,
+  country TEXT,     -- ISO 3166-1 alpha-2 from the address, null when unknown (FR-SHR-04)
+  document_id TEXT  -- the shared document this read opened, null for a read of the list or a page of the app
 );
 
 -- A document's extracted details and the owner's notes, translated into another language, kept so the
@@ -343,6 +372,26 @@ CREATE TABLE IF NOT EXISTS document_embeddings (
 -- says who made it; an automatic link starts `proposed` and the owner confirms or dismisses it, and a dismissed pair is
 -- never proposed again. Re-reading replaces only the proposed automatic links of a document. Regenerable except for the
 -- owner's decisions, so it is not exported.
+-- Episodes: documents the owner groups as belonging together (FR-ORG-01). The app proposes them from the data and the owner
+-- confirms, renames or dismisses; an empty title is shown as the provider and dates, so nothing is written that the documents
+-- do not say. A document is in at most one proposed or confirmed episode (kept by the repository, in one transaction).
+CREATE TABLE IF NOT EXISTS episodes (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  title TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('proposed', 'confirmed', 'dismissed')),
+  source TEXT NOT NULL CHECK (source IN ('auto', 'owner')),
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS episode_documents (
+  episode_id TEXT NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
+  document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  PRIMARY KEY (episode_id, document_id)
+);
+CREATE INDEX IF NOT EXISTS idx_episodes_user ON episodes(user_id);
+CREATE INDEX IF NOT EXISTS idx_episode_documents_document ON episode_documents(document_id);
+
 CREATE TABLE IF NOT EXISTS document_links (
   user_id TEXT NOT NULL REFERENCES users(id),
   from_document_id TEXT NOT NULL REFERENCES documents(id),

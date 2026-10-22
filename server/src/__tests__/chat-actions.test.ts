@@ -451,7 +451,7 @@ describe('what keeps an action a proposal', () => {
 
 describe('reviewing the connections the app suggested', () => {
   const suggest = async (from: string, to: string, kind: 'requests' | 'follow_up' | 'same_episode' = 'requests', userId = OWNER_ID) =>
-    getStore().links.add(userId, { from_document_id: from, to_document_id: to, kind, source: 'auto', state: 'proposed', reason: 'Asked for these tests.' }, new Date().toISOString());
+    getStore().links.add(userId, { from_document_id: from, to_document_id: to, kind, source: 'auto', state: 'proposed', reason: JSON.stringify({ tests: ['cholesterol'], days_apart: 5 }) }, new Date().toISOString());
   const stateOf = async (from: string, to: string) => (await getStore().links.among(OWNER_ID, [from, to])).find(l => l.from_document_id === from)?.state;
 
   it('lists the ones waiting across the archive, and not confirmed, dismissed, or those of an unconfirmed upload', async () => {
@@ -469,8 +469,9 @@ describe('reviewing the connections the app suggested', () => {
     await run([{ tools: [{ name: 'list_suggested_links', args: {} }] }, { say: 'One suggestion is waiting.' }], 'what new connections are waiting?');
     const text = toolText();
     expect(text).toMatch(/1 suggested connection waiting/);
-    expect(text).toMatch(/K1: D\d asked for D\d/);
-    expect(text).toContain('Asked for these tests.');
+    expect(text).toMatch(/K1: D\d and D\d may be connected/);
+    expect(text).not.toMatch(/asked for|follow-up of/);
+    expect(text).toContain('results for the same tests (cholesterol); 5 days apart');
     expect(text).not.toContain('Old visit');
     expect(text).not.toContain('Held back');
   });

@@ -1,0 +1,75 @@
+# One-command self-host:  cp .env.example .env  (set SESSION_SECRET and SPINE_DOMAIN)  &&  docker compose up -d
+# Then create the first account:  docker compose exec web node dist/cli.js create-user you@example.com
+# See docs/self-host.md.
+name: spine
+
+services:
+  web:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+      INGESTION_URL: http://ingestion:8000
+      # Reachable only from the proxy on this private network; the proxy is the one address whose X-Forwarded-For is believed.
+      SPINE_HOST: 0.0.0.0
+      SPINE_TRUSTED_PROXIES: 172.30.0.10
+    volumes:
+      - data:/data
+    depends_on:
+      - ingestion
+    networks:
+      spine: {}
+
+  ingestion:
+    build: ./ingestion-service
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    volumes:
+      - data:/data:ro
+    networks:
+      spine: {}
+
+  # The daily snapshot (SECURITY.md, Backups): the database and the originals, into the backups volume.
+  backup:
+    build: .
+    restart: unless-stopped
+    entrypoint: ["sh", "-c", "while true; do node dist/backup.js; sleep 86400; done"]
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+      SPINE_BACKUP_DIR: /backups
+    volumes:
+      - data:/data
+      - backups:/backups
+    networks:
+      spine: {}
+
+  proxy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SPINE_DOMAIN: ${SPINE_DOMAIN:?set SPINE_DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on:
+      - web
+    networks:
+      spine:
+        ipv4_address: 172.30.0.10
+
+networks:
+  spine:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+
+volumes:
+  data:
+  backups:
+  caddy-data:

@@ -7,6 +7,7 @@ import { msg, useI18n } from '../i18n';
 import { useScreen } from '../components/ChatProvider';
 import { Combobox } from '../components/Combobox';
 import { DOC_TYPE_LABELS } from '../components/DocumentCard';
+import DocumentFilters from '../components/DocumentFilters';
 
 /** The server marks each match with \u0001 … \u0002; they become emphasis here, and everything else stays plain text. */
 function Snippet({ text }: { text: string }) {
@@ -103,6 +104,8 @@ export default function Search() {
             )}
           </div>
         ))}
+        <DocumentFilters value={filters} onChange={(key, v) => setFilters(f => ({ ...f, [key]: v || undefined! }))} wrapperClassName="relative w-full sm:w-44"
+          className="w-full text-sm border border-gray-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
       </div>
 
       {loading && <p className="text-gray-400 text-sm">{t('Searching…')}</p>}

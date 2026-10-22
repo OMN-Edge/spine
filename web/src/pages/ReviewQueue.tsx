@@ -47,7 +47,7 @@ export default function ReviewQueue() {
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-gray-900 truncate">{documentTitle(doc, t)}</p>
                   <p className="text-xs text-gray-500 mt-0.5 truncate">
-                    {[documentByline(doc, t), t('pages {from}–{to}', { from: doc.page_start, to: doc.page_end })].filter(Boolean).join(' · ')}
+                    {[documentByline(doc, t), t('pages {from}–{to}', { from: doc.page_start, to: doc.page_end }), doc.to_check ? tn(doc.to_check, '{n} value to check', '{n} values to check') : ''].filter(Boolean).join(' · ')}
                   </p>
                 </div>
                 <span className="shrink-0 text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">

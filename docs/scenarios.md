@@ -72,6 +72,37 @@ Status: auto (`auth`, `second-factor`).
 
 ## 2. Getting documents in
 
+### 1.y Passkeys
+- On the account page, Add a passkey on this device asks the device for a fingerprint, face or PIN and saves a key for this site; the sign-in page then offers Sign in with a passkey, which needs no password and no code.
+- Adding and removing ask for the password again and are mailed. Removing a passkey on one device does not remove it on another.
+- A passkey made for one address does not work at another, and cancelling the device's sheet is not an error.
+
+Status: auto (`passkeys`); the device's own sheet: hand.
+
+### 1.x Agreeing, and leaving
+- Signing up asks for two separate ticks: consent to the use of health data (with the privacy notice), and acceptance of the terms. Neither is implied by the other and the account is not made on one.
+- An account the operator made, or any account after a text changed, sees a screen asking for what is missing before anything else, and can leave from it by deleting the account.
+- The privacy notice, the terms and what Spine is for are public pages, linked from every sign-in page.
+- The account page lists which features send what to which model provider, exports everything, and deletes the account after the password is typed again and the address is written out.
+
+Status: auto (`own-account`, `accounts`); screens: hand.
+
+### 2.1 Scan paper with the camera
+- Scan opens the camera (or a phone's own camera, or a chosen photo where there is no camera to open), outlines the page it finds in green and takes the picture when the page has been still for a moment, or when the button is pressed.
+- The four corners can be moved by hand; the page is then straightened and, unless turned off for that page, cleaned up (shadows and fading flattened, handwriting kept). All of it happens on the device.
+- Pages are taken one after another, then reviewed: reordered, removed, their corners redone, and saved as one document. The photos as taken are kept beside it.
+- Where neither image reading nor local OCR is switched on, Scan says so instead of filling the archive with pages nobody can search.
+
+Status: auto (`scan`, web algorithms; `photo-set`); screens and the camera itself: hand.
+
+### 2.0 Look around before uploading
+- On an empty timeline, Explore with sample records adds five invented documents (English or Romanian, by the interface language) about nobody: a consultation, two blood tests with the same five tests, a prescription and a chest X-ray. Nothing is read by a model and nothing leaves the host.
+- A banner says they are samples. Remove the sample records takes away exactly them, not anything uploaded since.
+- They are that account's own records: they can be searched, charted, shared and edited like any other, and no other account sees them.
+
+Status: auto (`demo`); screens: hand.
+
+
 ### 2.1 Upload a PDF that holds several documents
 Status: live (`journey.it.ts`: a six-page export of four documents is read by the real sidecar and model; titles, dates, providers, results and doctors come out as printed).
 
@@ -270,6 +301,16 @@ Status: auto (`test-names`); screens: hand; whether a real model reuses names we
 Status: auto (`structured`); the range choice on real reports: real model.
 
 ---
+
+### 4.x Group documents into episodes
+- Open Episodes. Spine suggests groups of documents that may belong together: ones linked to each other, and ones from the same provider within two weeks. A suggestion has no title of its own; it is shown as the provider and the dates.
+- Confirm a suggestion, or say it is not an episode (it is not suggested again). Rename a confirmed episode, take a document out, add one, or remove the episode. Or make one by hand: tick the documents.
+- A document is in one episode at a time: putting it in another takes it out of the first.
+- The timeline can be narrowed to one episode, and each document says which episode it is in. Facility and specialty narrow the timeline and the search the same way.
+- A share link can name episodes; it then shares what they hold when it is opened (7.x).
+- Episodes travel in the whole export and come back with a restore.
+
+Status: auto (`episodes`, `archive`).
 
 ## 5. People
 
@@ -600,6 +641,11 @@ A physician's export has tens of pages from many documents, in no order. The own
 
 Status: auto (`regroup-analyze`, `regroup-apply`); live (`journey.it.ts`: both mixed documents found and sure, regrouped, read again with the right values); screens: not yet checked by hand. The thresholds are first guesses, tested on invented pages only.
 
+### 12.5a Turn or set aside a page by talking
+- "Page 4 is sideways" prepares a card to turn that page a quarter (or a half) turn; "that page is blank" prepares setting it aside, which keeps it and takes it out of its document's view, search and reading. Nothing happens until Confirm; the card says that a page misread because it was sideways needs reading again afterwards.
+
+Status: auto (`chat-notices`).
+
 ### 12.5 Review an upload by talking
 In the conversation of an upload the assistant is looking at that upload even when the owner is on another page. The owner asks, or answers the report.
 
@@ -664,4 +710,4 @@ Still open:
 
 ## Not covered yet
 
-Things people will reasonably ask for that no scenario above promises: several photos as one document (each photo is its own upload), other photo formats such as HEIC or WebP, signed exports (an imported export is believed; SECURITY.md S-26), deleting an account from the app itself (today the operator does it), reminders for follow-ups the documents mention, sharing a chart, and merging two uploads' history. Add a scenario when one is wanted.
+Things people will reasonably ask for that no scenario above promises: other photo formats such as WebP, signed exports (an imported export is believed; SECURITY.md S-26), deleting an account from the app itself (today the operator does it), reminders for follow-ups the documents mention, sharing a chart, and merging two uploads' history. Add a scenario when one is wanted.

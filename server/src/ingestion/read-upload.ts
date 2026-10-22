@@ -7,6 +7,7 @@ import { normaliseLicenseCode } from '../doctors.js';
 import { announceUploadLater } from '../chat/notices.js';
 import { scheduleSync } from '../similarity/index.js';
 import { scheduleLinking } from '../linking/index.js';
+import { scheduleEpisodes } from '../episodes/index.js';
 import { rereadDocuments } from './document-reading.js';
 import { readDigitalSigners, readSignatures } from './signatures.js';
 
@@ -97,6 +98,7 @@ async function run(userId: string, sourceFileId: string, confirm: boolean, job: 
         await store.sourceFiles.setGroupingConfirmed(userId, sourceFileId, true);
         scheduleSync(userId);
         scheduleLinking(userId, (await store.documents.listFor(userId, { sourceFileId, limit: 1000, offset: 0 })).map(d => d.id));
+        scheduleEpisodes(userId);
       }
       job.status = 'done'; job.step = 'complete'; job.progress = 100; job.finished_at = new Date().toISOString();
       logger.info('an upload was read', { sourceFileId, documents: todo.length, read: readIds.length });

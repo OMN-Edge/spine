@@ -388,6 +388,54 @@ describe('looking at pages and moving one by talking', () => {
     expect(upload).toBeTruthy();
   });
 
+  it('proposes turning a page and setting one aside, changes nothing until confirmed, and the requests are accepted by the real routes', async () => {
+    const sharp = (await import('sharp')).default;
+    const { mkdtempSync } = await import('fs');
+    const { tmpdir } = await import('os');
+    const { join } = await import('path');
+    const dir = mkdtempSync(join(tmpdir(), 'spine-chat-turn-'));
+    const imagePath = join(dir, 'p.png');
+    await sharp({ create: { width: 40, height: 20, channels: 3, background: '#fff' } }).png().toFile(imagePath);
+    const upload = await seedSourceFile({ status: 'done' });
+    const pageId = await seedPage(upload, { pageNumber: 1, rawText: 'a sideways page of a report', imagePath });
+    await getStore().documents.create(OWNER_ID, { id: 'doc-turn', sourceFileId: upload, pageStart: 1, pageEnd: 1, title: 'Sideways', docDate: '2026-03-12' });
+
+    const { reply } = await talk([
+      { tools: [{ name: 'list_uploads', args: {} }] },
+      { tools: [{ name: 'get_upload', args: { upload: 'U1' } }] },
+      { tools: [{ name: 'propose_rotate_page', args: { upload: 'U1', page: 1, turn: 'left' } }, { name: 'propose_hide_page', args: { upload: 'U1', page: 1, hidden: true } }] },
+      { say: 'I can turn it a quarter to the left, or set it aside.' },
+    ]);
+    expect(reply.proposals!.map(p => p.kind)).toEqual(['rotate_page', 'hide_page']);
+    const [turn, hide] = reply.proposals!;
+    expect(turn.calls[0]).toMatchObject({ method: 'POST', path: `/api/pages/${pageId}/rotate`, body: { degrees: 270 } });
+    expect(hide.calls[0]).toMatchObject({ method: 'PATCH', path: `/api/pages/${pageId}`, body: { hidden: true } });
+    expect((await sharp(imagePath).metadata()).width).toBe(40); // nothing turned yet
+
+    const send = (c: { method: string; path: string; body?: unknown }) => app.inject({ method: c.method as 'POST', url: c.path, payload: c.body as object, headers: { cookie } });
+    expect((await send(turn.calls[0])).statusCode).toBe(200);
+    expect((await sharp(imagePath).metadata()).width).toBe(20);
+    expect((await send(hide.calls[0])).statusCode).toBe(200);
+    expect((await getStore().pages.listForSourceFile(OWNER_ID, upload))[0].hidden).toBeTruthy();
+  });
+
+  it('will not propose turning or setting aside a page that is not there, or setting aside one already aside', async () => {
+    await cutUpload();
+    const { model, reply } = await talk([
+      { tools: [{ name: 'list_uploads', args: {} }] },
+      { tools: [{ name: 'get_upload', args: { upload: 'U1' } }] },
+      { tools: [
+        { name: 'propose_rotate_page', args: { upload: 'U1', page: 99, turn: 'right' } },
+        { name: 'propose_hide_page', args: { upload: 'U1', page: 99, hidden: true } },
+        { name: 'propose_hide_page', args: { upload: 'U1', page: 1, hidden: false } },
+      ] },
+      { say: 'None of those can be proposed.' },
+    ]);
+    expect(reply.proposals ?? []).toEqual([]);
+    expect(toolText(model)).toMatch(/Page 99 is not a page of U1/);
+    expect(toolText(model)).toMatch(/already shown/);
+  });
+
   it('refuses a page or a document that is not in that upload, and a move that changes nothing', async () => {
     await cutUpload();
     const other = await seedSourceFile({ status: 'done' });

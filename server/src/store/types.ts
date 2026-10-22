@@ -1,3 +1,4 @@
+import type { Turn } from '../geometry.js';
 import type {
   Doctor,
   DoctorRole,
@@ -62,6 +63,7 @@ export interface Store {
   translations: TranslationRepository;
   embeddings: EmbeddingRepository;
   links: LinkRepository;
+  episodes: EpisodeRepository;
   conversations: ConversationRepository;
   regroupPlans: RegroupPlanRepository;
   matchDecisions: MatchDecisionRepository;
@@ -90,6 +92,22 @@ export interface UserRecord {
   auth_version: number;
   email_verified_at: string | null;
   created_at: string;
+  health_consent_at: string | null;
+  health_consent_version: string | null;
+  terms_accepted_at: string | null;
+  terms_version: string | null;
+}
+
+export interface PasskeyRecord {
+  id: string;
+  user_id: string;
+  public_key: string;
+  counter: number;
+  transports: string[] | null;
+  name: string;
+  backed_up: boolean;
+  created_at: string;
+  last_used_at: string | null;
 }
 
 export interface NewUser {
@@ -100,6 +118,8 @@ export interface NewUser {
   createdAt: string;
   /** Null for a self-registered account that has not confirmed its address yet. */
   verifiedAt: string | null;
+  /** Given at sign-up, by the person; absent for an account the operator creates, which is asked at its first sign-in. */
+  consent?: { healthVersion: string; termsVersion: string };
 }
 
 /** A user's TOTP enrolment. `confirmed_at` is null until a first code has been accepted. */
@@ -140,6 +160,18 @@ export interface UserRepository {
   consumeToken(tokenHash: string, kind: UserTokenKind, now: string): Promise<string | null>;
   /** Spends every unspent token of a kind, so a newer one replaces older ones. */
   invalidateTokens(userId: string, kind: UserTokenKind): Promise<void>;
+  /** The user's passkeys, oldest first. The public keys are for the server; a client gets only the name and dates. */
+  listPasskeys(userId: string): Promise<PasskeyRecord[]>;
+  /** The passkey with this credential id, whoever's it is: sign-in finds the account from it, so it has no acting user. */
+  findPasskey(credentialId: string): Promise<PasskeyRecord | null>;
+  /** False if the credential id is already registered (to anyone). */
+  addPasskey(userId: string, passkey: Omit<PasskeyRecord, 'user_id' | 'last_used_at'>): Promise<boolean>;
+  /** After a sign-in: the counter the authenticator reported and when. Only ever moves a counter forward. */
+  touchPasskey(credentialId: string, counter: number, at: string): Promise<void>;
+  renamePasskey(userId: string, id: string, name: string): Promise<boolean>;
+  removePasskey(userId: string, id: string): Promise<boolean>;
+  /** Records consent to process health data and acceptance of the terms, each with the version of the text shown. */
+  recordConsent(id: string, consent: { healthVersion: string; termsVersion: string }, at: string): Promise<void>;
   /** Removes the user and everything they own. Files on disk are the caller's. */
   delete(id: string): Promise<void>;
 
@@ -176,6 +208,8 @@ export type SourceFileSummary = Omit<SourceFile, 'file_path' | 'checksum'>;
 
 export interface SourceFileRepository {
   listFor(userId: string): Promise<SourceFileSummary[]>;
+  /** How many unprocessed photos are kept beside this upload's PDF. */
+  setRawCount(userId: string, id: string, count: number): Promise<void>;
   /** The full row, including the server path. For the pipeline — not for a response. */
   findFor(userId: string, id: string): Promise<SourceFile | null>;
   /** Upload de-duplication. Per user: the same scan may reach two accounts. */
@@ -212,6 +246,8 @@ export interface NewSourceFile {
   chatConversationId?: string | null;
   /** Several photos bundled into one PDF. */
   photoSet?: boolean;
+  /** One of the invented sample records. */
+  sample?: boolean;
 }
 
 export interface PageRepository {
@@ -240,6 +276,12 @@ export interface PageRepository {
   findGroundingContext(userId: string, pageId: string): Promise<GroundingContext | null>;
   /** The absolute path is never returned to a client (S-8); this is for streaming. */
   findImagePathFor(userId: string, pageId: string): Promise<string | null>;
+  /**
+   * The page image was turned clockwise by `turn` (the file is already rewritten; this is the caller's transaction): its size
+   * is now `width` by `height`, the boxes drawn on it (its text elements, and the fields and results read from it) are moved
+   * with it, and it remembers how far it has turned. False if it is not the user's.
+   */
+  rotate(userId: string, pageId: string, turn: Turn, size: { width: number; height: number }): Promise<boolean>;
   /** A page read again: its text, where it is, and how it was read. False if it is not the user's. */
   updateReading(
     userId: string,
@@ -265,7 +307,7 @@ export interface NewPage {
 
 export type PageSummary = Pick<
   Page,
-  'id' | 'page_number' | 'source_page' | 'raw_text' | 'is_continuation' | 'image_width' | 'image_height' | 'extraction_source' | 'hidden'
+  'id' | 'page_number' | 'source_page' | 'raw_text' | 'is_continuation' | 'image_width' | 'image_height' | 'extraction_source' | 'hidden' | 'rotation'
 >;
 export type PageWithoutPath = Omit<Page, 'image_path'>;
 
@@ -280,12 +322,17 @@ export interface DocumentFilter {
   q?: string;
   tag?: string;
   docType?: string;
+  /** The facility (the document's provider), a part of its name. */
   provider?: string;
+  /** A specialty (a part of its name) of a doctor named on the document. */
+  specialty?: string;
   dateFrom?: string;
   dateTo?: string;
   reviewed?: boolean;
   /** The documents one upload produced. */
   sourceFileId?: string;
+  /** The documents of one episode. */
+  episodeId?: string;
   /** Also the documents whose every page the owner has hidden. Only the regrouping screen asks for them. */
   includeHidden?: boolean;
   /** Also the documents of an upload whose grouping the owner has not confirmed yet (not the set-aside ones). For the upload screens. */
@@ -641,7 +688,7 @@ export interface ShareLinkRepository {
   /** By digest, never by raw token (P6). No user: the token *is* the identity. */
   findLiveByTokenHash(tokenHash: string): Promise<ResolvedShareLink | null>;
   /** P7. The reader is unauthenticated by definition. */
-  logAccess(linkId: string, accessedAt: string, ipAddress: string | null, countView: boolean): Promise<void>;
+  logAccess(linkId: string, accessedAt: string, ipAddress: string | null, countView: boolean, where?: { country?: string | null; documentId?: string | null }): Promise<void>;
   /**
    * The audit trail for one of the owner's links. SECURITY.md's operational
    * response for a leaked link is to read this.
@@ -694,7 +741,7 @@ export interface AccessSummary {
   first_at: string | null;
   last_at: string | null;
   /** The addresses that read it, most reads first. */
-  addresses: Array<{ ip_address: string | null; count: number; last_at: string }>;
+  addresses: Array<{ ip_address: string | null; country: string | null; count: number; last_at: string }>;
   recent: AccessLogEntry[];
 }
 
@@ -737,6 +784,10 @@ export interface ShareRequest {
 export interface AccessLogEntry {
   accessed_at: string;
   ip_address: string | null;
+  /** ISO 3166-1 alpha-2, from the address; null when unknown or from before countries were recorded. */
+  country: string | null;
+  /** The shared document this read opened; null for any other read. */
+  document_id: string | null;
 }
 
 /** What the owner's list view may see — never the token, not even hashed (S-8). */
@@ -884,6 +935,43 @@ export interface DocumentLink {
   state: LinkState;
   reason: string | null;
   confidence: number | null;
+}
+
+export type EpisodeState = 'proposed' | 'confirmed' | 'dismissed';
+
+export interface Episode {
+  id: string;
+  /** Empty means untitled: shown as the provider and the dates, which the documents themselves give. */
+  title: string;
+  state: EpisodeState;
+  source: 'auto' | 'owner';
+  created_at: string;
+  /** Its documents that are shown (not set aside), oldest first. */
+  document_ids: string[];
+  /** The earliest and latest dates among them, and the provider most of them share. */
+  first_date: string | null;
+  last_date: string | null;
+  provider: string | null;
+}
+
+export interface EpisodeRepository {
+  /** The user's episodes, in the states asked for (all by default), most recent first. */
+  list(userId: string, states?: EpisodeState[]): Promise<Episode[]>;
+  find(userId: string, id: string): Promise<Episode | null>;
+  /**
+   * Makes an episode of these documents, which must all be the user's. A document already in a proposed or confirmed episode
+   * leaves it for this one (and an episode left with fewer than one document goes). Returns false, changing nothing, if a
+   * document is not the user's.
+   */
+  create(userId: string, episode: { id: string; title: string; state: EpisodeState; source: 'auto' | 'owner'; documentIds: string[] }, createdAt: string): Promise<boolean>;
+  /** The title (may be empty). False if the episode is not the user's. */
+  rename(userId: string, id: string, title: string): Promise<boolean>;
+  setState(userId: string, id: string, state: EpisodeState): Promise<boolean>;
+  /** Replaces its documents; the same rules as `create`. False if the episode or a document is not the user's. */
+  setDocuments(userId: string, id: string, documentIds: string[]): Promise<boolean>;
+  remove(userId: string, id: string): Promise<boolean>;
+  /** Of these ids, the ones that are the user's confirmed episodes (what a share link may name). */
+  confirmedAmong(userId: string, ids: string[]): Promise<string[]>;
 }
 
 export interface LinkRepository {

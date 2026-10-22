@@ -1,3 +1,4 @@
+import { LOW_CONFIDENCE } from '../../confidence.js';
 import type { Database } from 'better-sqlite3';
 import type { Measurement } from '../../types.js';
 import type {
@@ -15,7 +16,8 @@ import { VISIBLE } from './visibility.js';
 export function measurementRepository(db: Database): MeasurementRepository {
   // Explicit columns: user_id is not for clients (S-8).
   const COLUMNS = `id, document_id, page_id, name, canonical, value_text, value_num, unit, ref_low, ref_high,
-    flag, taken_on, source_snippet, bbox_x0, bbox_y0, bbox_x1, bbox_y1, confidence`;
+    flag, taken_on, source_snippet, bbox_x0, bbox_y0, bbox_x1, bbox_y1, confidence,
+    (confidence < ${LOW_CONFIDENCE} AND owner_edited = 0) AS needs_check`;
   const listForDocument = db.prepare(`SELECT ${COLUMNS} FROM measurements WHERE document_id = ? AND user_id = ? ORDER BY rowid`);
 
   // Only if both the document and the page are the user's.

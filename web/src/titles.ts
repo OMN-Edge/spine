@@ -12,7 +12,7 @@
 export const FIELD_NAMES: Record<string, string> = {
   report_number: 'Report number', service: 'Service', specialty: 'Specialty',
   reason_for_visit: 'Reason for visit', symptoms: 'Symptoms', examination: 'Examination',
-  family_history: 'Family history', personal_history: 'Personal history', habits: 'Habits',
+  family_history: 'Family history', personal_history: 'Personal history', allergies: 'Allergies', habits: 'Habits',
   current_treatment: 'Current treatment', investigations: 'Investigations',
   diagnosis: 'Diagnosis', diagnosis_code: 'Diagnosis code (ICD)', diagnosis_uncoded: 'Diagnosis without a code',
   recommended_tests: 'Recommended tests', recommended_vaccines: 'Recommended vaccines',
@@ -45,6 +45,13 @@ const LABEL_OF_NAME = new Map(Object.entries(FIELD_NAMES).map(([label, name]) =>
 export function labelFromName(typed: string): string {
   return LABEL_OF_NAME.get(typed.trim().toLowerCase()) ?? typed;
 }
+
+/**
+ * Fields a reader of a translation must check against the original (FR-TR-03): allergies, the medicines and their doses.
+ * A wrong word here is the kind of error that harms; the rest of the page is context.
+ */
+const CRITICAL_FIELDS = /^(allerg|drug|dose|frequency|duration|discharge_drug|discharge_dose|discharge_frequency|current_treatment|recommended_medication|medication)/;
+export const isCriticalField = (label: string): boolean => CRITICAL_FIELDS.test(label);
 
 /** A value this long, or with line breaks, is shown under its name as a section instead of beside it. */
 const SECTION_LENGTH = 60;

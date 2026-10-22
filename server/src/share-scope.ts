@@ -11,14 +11,16 @@
  * row (so a row written before this existed, or by hand, still fails closed).
  */
 
-export const SHARE_SCOPES = ['all', 'tag', 'document_ids', 'date_range'] as const;
+export const SHARE_SCOPES = ['all', 'tag', 'document_ids', 'date_range', 'episode'] as const;
 export type ShareScope = (typeof SHARE_SCOPES)[number];
 
 export type ResolvedScope =
   | { scope: 'all' }
   | { scope: 'tag'; tag: string }
   | { scope: 'document_ids'; ids: string[] }
-  | { scope: 'date_range'; from: string; to: string };
+  | { scope: 'date_range'; from: string; to: string }
+  /** The documents of these confirmed episodes, as they are when the link is read (an episode since dismissed or removed shares nothing). */
+  | { scope: 'episode'; ids: string[] };
 
 export class ScopeError extends Error {
   constructor(message: string) {
@@ -30,6 +32,7 @@ export class ScopeError extends Error {
 const MAX_TAG_LENGTH = 100;
 /** Keeps the generated IN (...) well under SQLite's bound-parameter ceiling. */
 const MAX_DOCUMENT_IDS = 500;
+const MAX_EPISODE_IDS = 50;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function isShareScope(scope: unknown): scope is ShareScope {
@@ -92,6 +95,20 @@ export function resolveScope(scope: unknown, scopeValue: unknown): ResolvedScope
       return { scope: 'document_ids', ids };
     }
 
+    case 'episode': {
+      if (!Array.isArray(scopeValue) || scopeValue.length === 0) {
+        throw new ScopeError('scope "episode" requires a non-empty array of episode ids');
+      }
+      if (scopeValue.length > MAX_EPISODE_IDS) {
+        throw new ScopeError(`scope "episode" accepts at most ${MAX_EPISODE_IDS} ids`);
+      }
+      const ids = scopeValue.map(id => {
+        if (typeof id !== 'string' || id.trim().length === 0) throw new ScopeError('every episode id must be a non-empty string');
+        return id;
+      });
+      return { scope: 'episode', ids };
+    }
+
     case 'date_range': {
       if (typeof scopeValue !== 'object' || scopeValue === null || Array.isArray(scopeValue)) {
         throw new ScopeError('scope "date_range" requires { from, to }');
@@ -118,6 +135,7 @@ export function serializeScopeValue(resolved: ResolvedScope): string | null {
     case 'tag':
       return JSON.stringify(resolved.tag);
     case 'document_ids':
+    case 'episode':
       return JSON.stringify(resolved.ids);
     case 'date_range':
       return JSON.stringify({ from: resolved.from, to: resolved.to });

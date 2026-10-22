@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getStore } from '../../store/index.js';
 import { hashPassword } from '../../passwords.js';
 import type { DocType } from '../../types.js';
+import { HEALTH_CONSENT_VERSION, TERMS_VERSION } from '../../legal.js';
 
 /**
  * The account every test file starts with. A fixed id, so tests that do not care
@@ -14,7 +15,7 @@ export const TEST_PASSWORD = 'a-long-test-password';
 /** Creates an account. The default owner is created by `buildTestApp`. */
 export async function createTestUser(
   email = OWNER_EMAIL,
-  options: { id?: string; password?: string; verified?: boolean } = {},
+  options: { id?: string; password?: string; verified?: boolean; consent?: boolean } = {},
 ): Promise<{ id: string; email: string; password: string }> {
   const id = options.id ?? (email === OWNER_EMAIL ? OWNER_ID : uuidv4());
   const password = options.password ?? TEST_PASSWORD;
@@ -24,6 +25,8 @@ export async function createTestUser(
     passwordHash: await hashPassword(password),
     createdAt: new Date().toISOString(),
     verifiedAt: options.verified === false ? null : new Date().toISOString(),
+    // Most tests are not about consent: their accounts have given it, as a person who signed up would have.
+    consent: options.consent === false ? undefined : { healthVersion: HEALTH_CONSENT_VERSION, termsVersion: TERMS_VERSION },
   });
   return { id, email, password };
 }

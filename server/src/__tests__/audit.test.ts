@@ -85,7 +85,7 @@ describe('a manifest is data we were given', () => {
 
   it('refuses another format or version, and an export that claims more than any archive holds', () => {
     expect(manifestSchema.safeParse(base({ format: 'something-else' })).success).toBe(false);
-    expect(manifestSchema.safeParse(base({ version: 3 })).success).toBe(false);
+    expect(manifestSchema.safeParse(base({ version: 4 })).success).toBe(false);
     const file = base().files[0];
     const many = { ...file, documents: Array.from({ length: 20_001 }, () => file.documents[0]) };
     expect(manifestSchema.safeParse(base({ files: [many] })).success).toBe(false);

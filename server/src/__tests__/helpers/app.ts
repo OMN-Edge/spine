@@ -9,6 +9,7 @@ import path from 'path';
 import type { AuthRouteOptions } from '../../routes/auth.js';
 import type { AccountRouteOptions } from '../../routes/accounts.js';
 import type { TotpRouteOptions } from '../../routes/totp.js';
+import type { PasskeyRouteOptions } from '../../routes/passkeys.js';
 import { TRUSTED_PROXIES } from '../../trust-proxy.js';
 import { OWNER_EMAIL, TEST_PASSWORD, createTestUser } from './seed.js';
 
@@ -47,6 +48,8 @@ export interface TestAppOptions {
   accounts?: AccountRouteOptions;
   /** Managing the second factor. */
   totp?: TotpRouteOptions;
+  /** Passkey sign-in limits. */
+  passkeys?: PasskeyRouteOptions;
 }
 
 export async function buildTestApp(options: TestAppOptions = {}) {
@@ -87,6 +90,10 @@ export async function buildTestApp(options: TestAppOptions = {}) {
   const { exportRoutes } = await import('../../routes/export.js');
   const { similarityRoutes } = await import('../../routes/similarity.js');
   const { linkRoutes } = await import('../../routes/links.js');
+  const { episodeRoutes } = await import('../../routes/episodes.js');
+  const { demoRoutes } = await import('../../routes/demo.js');
+  const { ownAccountRoutes } = await import('../../routes/own-account.js');
+  const { passkeyRoutes } = await import('../../routes/passkeys.js');
   const { chatRoutes } = await import('../../routes/chat.js');
   const { shareRoutes } = await import('../../routes/share.js');
   const { publicShareRoutes } = await import('../../routes/public-share.js');
@@ -117,6 +124,10 @@ export async function buildTestApp(options: TestAppOptions = {}) {
   await app.register(exportRoutes);
   await app.register(similarityRoutes);
   await app.register(linkRoutes);
+  await app.register(episodeRoutes);
+  await app.register(demoRoutes);
+  await app.register(ownAccountRoutes);
+  await app.register(passkeyRoutes, { perSource: 100_000, instanceWide: 100_000, ...options.passkeys });
   await app.register(chatRoutes, { askPerMinute: 1000 });
   await app.register(shareRoutes);
   await app.register(publicShareRoutes, {

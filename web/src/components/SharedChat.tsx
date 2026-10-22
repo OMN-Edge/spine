@@ -127,6 +127,7 @@ export default function SharedChat({ token, openId, titleOf }: { token: string; 
             : <button type="submit" disabled={!text.trim()} aria-label={t('Ask')} className="h-8 shrink-0 rounded-full bg-blue-600 px-3 text-sm text-white disabled:opacity-50">{t('Ask')}</button>}
         </div>
       </form>
+      <p className="px-4 pb-2 text-[11px] leading-snug text-gray-400">{t('Answers are written by an AI model from the shared documents and can be wrong: check what matters against the original. It does not say what a result means.')}</p>
     </aside>
   );
 }

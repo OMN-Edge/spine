@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { readsByModel } from '../file-kind.js';
-import { rmSync } from 'fs';
+import { createReadStream, rmSync } from 'fs';
 import path from 'path';
 import { getStore } from '../store/index.js';
 import { getJobStatus } from '../ingestion/pipeline.js';
@@ -8,12 +8,13 @@ import { retryFailedUpload } from '../ingestion/accept-upload.js';
 import { acceptParts, acceptPhotoParts } from '../ingestion/accept-parts.js';
 import { similarityEnabled } from '../similarity/index.js';
 import { removeUploadFiles } from '../ingestion/remove-upload.js';
+import { rawPhotoPath } from '../ingestion/raw-originals.js';
 import { rereadDocuments } from '../ingestion/document-reading.js';
 import { scheduleLinking } from '../linking/index.js';
 import { scheduleSync } from '../similarity/index.js';
 import { aiReadingAllowed, getParser } from '../parser/index.js';
 import { getAiReading, isReadingPages, startAiReading } from '../ingestion/ai-reading.js';
-import { loadLlmConfig, loadParserConfig } from '../config.js';
+import { chatEnabled, linkingEnabled, loadLlmConfig, loadParserConfig, translationEnabled } from '../config.js';
 import { chooseModel } from '../llm/index.js';
 import { requireAuth } from './middleware.js';
 import { v4 as uuidv4 } from 'uuid';
@@ -112,6 +113,14 @@ export async function sourceFileRoutes(app: FastifyInstance) {
   // Delete an upload and everything made from it: its documents, fields and measurements, the page
   // images, the original and the backup mirror's copy. Not while it is being read, which would write rows
   // for an upload that no longer exists.
+  // The photos of a scan session as the camera gave them, before straightening and enhancing; owner only, like the page images.
+  app.get<{ Params: { id: string; n: string } }>('/api/source-files/:id/originals/:n', async (req, reply) => {
+    const upload = await getStore().sourceFiles.findFor(req.userId, req.params.id);
+    const found = upload ? rawPhotoPath(req.userId, upload, Number(req.params.n)) : null;
+    if (!found) return reply.status(404).send({ error: 'not found' });
+    return reply.type(found.type).header('Cache-Control', 'private, no-store').send(createReadStream(found.file));
+  });
+
   app.delete<{ Params: { id: string } }>('/api/source-files/:id', async (req, reply) => {
     const { id } = req.params;
     const store = getStore();
@@ -193,6 +202,8 @@ export async function sourceFileRoutes(app: FastifyInstance) {
       aiReading: { enabled: aiReadingAllowed(), provider: llm.provider, endpoint: llm.endpoint ?? null },
       // Whether documents can be found by meaning (embeddings are on), for the search page to offer it.
       similarity: { enabled: similarityEnabled() },
+      // Which features send content to the model provider (the account page lists them, so no call is a surprise).
+      features: { translation: translationEnabled(), chat: chatEnabled(), linking: linkingEnabled() },
       // How an upload is read here, so "Read whole document" can say what it will do.
       reading: { mode: parser.mode, ocr: parser.ocrEnabled, images: parser.mode === 'hybrid' || parser.mode === 'multimodal' },
       // What a person can pick for a reading; the first is what uploads use.

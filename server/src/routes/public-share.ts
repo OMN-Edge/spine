@@ -17,7 +17,8 @@ import { getMailer } from '../mail/index.js';
 import { windowLimiter } from '../rate-limit.js';
 import { v4 as uuidv4 } from 'uuid';
 import { streamReply } from './ndjson.js';
-import { chatEnabled, publicUrl } from '../config.js';
+import { chatEnabled, landingUrl, publicUrl } from '../config.js';
+import { countryOf } from '../geo.js';
 import { getChatLlm } from '../llm/index.js';
 import { askSharedAgent } from '../chat/agent.js';
 import { MAX_QUESTION, MAX_TURN, MAX_TURNS, trimHistory } from '../chat/index.js';
@@ -61,10 +62,11 @@ async function logAccess(
   store: Store,
   req: FastifyRequest,
   linkId: string,
-  { countView }: { countView: boolean },
+  { countView, documentId = null }: { countView: boolean; documentId?: string | null },
 ): Promise<void> {
-  const ip = (req.headers['x-real-ip'] as string) ?? req.socket.remoteAddress ?? null;
-  await store.shareLinks.logAccess(linkId, new Date().toISOString(), ip, countView);
+  // `req.ip` is the address the trusted proxy saw (S-31), the same in front of nginx and in front of Caddy.
+  const ip = req.ip ?? null;
+  await store.shareLinks.logAccess(linkId, new Date().toISOString(), ip, countView, { country: await countryOf(ip), documentId });
 }
 
 /** Requests waiting on one link at once. */
@@ -165,7 +167,7 @@ export async function publicShareRoutes(
     await logAccess(store, req, link.id, { countView: false });
     // `approval` is what the page needs to decide between asking for access, waiting, and showing the documents.
     const approval = await approvalFor(store, req, link);
-    return reply.header('Cache-Control', 'no-store').send({ language: link.language, languages: SUPPORTED_LANGUAGES, translation: translationEnabled(), approval, chat: link.allowChat && chatEnabled() });
+    return reply.header('Cache-Control', 'no-store').send({ language: link.language, languages: SUPPORTED_LANGUAGES, translation: translationEnabled(), approval, chat: link.allowChat && chatEnabled(), landing_url: landingUrl() });
   });
 
   // A visitor asks to be let in. The first request from a browser gives it its cookie and tells the owner (by mail, if
@@ -193,7 +195,7 @@ export async function publicShareRoutes(
       const raw = typeof req.body?.note === 'string' ? req.body.note : '';
       const note = raw.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 120) || null;
       const userAgent = String(req.headers['user-agent'] ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 200) || null;
-      const ip = (req.headers['x-real-ip'] as string) ?? req.socket.remoteAddress ?? null;
+      const ip = req.ip ?? null;
 
       const visitor = visitorHashOf(req) ?? startVisitor(reply);
       const id = uuidv4();
@@ -224,13 +226,16 @@ export async function publicShareRoutes(
     req: FastifyRequest<{ Params: { token: string } }>,
     reply: import('fastify').FastifyReply,
     countView: boolean,
+    documentId: string | null = null,
   ): Promise<{ link: ResolvedShareLink; store: Store } | null> {
     const store = getStore();
     const link = await store.shareLinks.findLiveByTokenHash(hashShareToken(req.params.token));
     if (!link) { reply.status(410).send({ error: 'link expired or revoked' }); return null; }
 
     const approval = await approvalFor(store, req, link);
-    await logAccess(store, req, link.id, { countView: countView && approval === 'open' });
+    // Only a document the link really shares is recorded as opened: the id comes from the recipient.
+    const opened = approval === 'open' && documentId && (await store.documents.listForShare(link)).some(d => d.id === documentId) ? documentId : null;
+    await logAccess(store, req, link.id, { countView: countView && approval === 'open', documentId: opened });
     if (approval !== 'open') { reply.status(403).send({ error: 'approval required', approval }); return null; }
     try {
       resolveStoredScope(link.scope, link.scopeValue);
@@ -253,7 +258,7 @@ export async function publicShareRoutes(
     '/api/share/:token/documents/:id',
     { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
     async (req, reply) => {
-      const opened = await openLink(req, reply, true);
+      const opened = await openLink(req, reply, true, req.params.id);
       if (!opened) return;
       const { link, store } = opened;
 

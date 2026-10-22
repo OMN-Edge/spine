@@ -296,6 +296,7 @@ describe.skipIf(!hasPoppler)('links in the whole export', () => {
     await store.links.add(OWNER_ID, { from_document_id: one.a, to_document_id: two.a, kind: 'follow_up', source: 'auto', state: 'proposed', reason: 'a later visit', confidence: 0.8 }, now);
     await store.links.add(OWNER_ID, { from_document_id: one.b, to_document_id: two.a, kind: 'same_episode', source: 'owner', state: 'confirmed', reason: null }, now);
     await store.links.setState(OWNER_ID, one.b, two.a, 'same_episode', 'dismissed'); // the owner's own decision, to turn it down
+    await store.episodes.create(OWNER_ID, { id: crypto.randomUUID(), title: 'Chain episode', state: 'confirmed', source: 'owner', documentIds: [one.a, one.b] }, now);
     return { one, two };
   }
   const exportOf = async () => (await app.inject({ method: 'GET', url: '/api/export', headers: { cookie } })).rawPayload;
@@ -312,6 +313,9 @@ describe.skipIf(!hasPoppler)('links in the whole export', () => {
       ['Chain tests', 'Chain later visit', 'same_episode', 'owner', 'dismissed'],
     ]);
     expect(mine.find(l => l.kind === 'follow_up')).toMatchObject({ reason: 'a later visit', confidence: 0.8 });
+    const episode = manifest.episodes.find(e => e.title === 'Chain episode')!;
+    expect(episode).toMatchObject({ state: 'confirmed', source: 'owner' });
+    expect(episode.documents.map(titled).sort()).toEqual(['Chain consultation', 'Chain tests']);
   });
 
   it('writes them back, with the owner\'s decisions as they were, once every file is restored', async () => {
@@ -338,6 +342,11 @@ describe.skipIf(!hasPoppler)('links in the whole export', () => {
       ['tests', 'later', 'same_episode', 'owner', 'dismissed'], // not turned into a confirmation by being restored
     ]);
     expect(found.find(l => l.kind === 'requests')!.reason).toBe('asked for the tests');
+    let restored: Awaited<ReturnType<typeof store.episodes.list>> = [];
+    for (let i = 0; i < 50 && restored.length < 1; i++) { restored = await store.episodes.list(person.id); if (restored.length < 1) await new Promise(r => setTimeout(r, 100)); }
+    expect(restored).toHaveLength(1);
+    expect(restored[0]).toMatchObject({ title: 'Chain episode', state: 'confirmed', source: 'owner' });
+    expect(restored[0].document_ids.sort()).toEqual([consult.id, tests.id].sort());
     // They are that account's alone, and the exporter's are as they were.
     expect(await store.links.all(otherId)).toEqual([]);
     expect((await store.links.all(OWNER_ID)).length).toBeGreaterThanOrEqual(3);
@@ -421,7 +430,7 @@ describe.skipIf(!hasPoppler)('what the owner keeps beside the documents', () => 
     await kept();
     const { manifest, reader } = await unzip(await wholeArchive());
     reader.close();
-    expect(manifest.version).toBe(2);
+    expect(manifest.version).toBe(3);
     const doc = manifest.files.flatMap(f => f.documents).find(x => x.title === 'Kept report')!;
     expect(doc.owner_edited).toEqual(['title', 'user_notes']);
     expect(doc.fields.map(f => f.owner_edited)).toEqual([true]);
@@ -497,7 +506,7 @@ describe('import of an ordinary zip', () => {
     const one = makePdf(['one']); const two = makePdf(['two']);
     const zip = await zipOf([
       { name: 'folder/one.pdf', data: one }, { name: 'two.pdf', data: two },
-      { name: 'notes.txt', data: Buffer.from('not a pdf') }, { name: '__MACOSX/._one.pdf', data: Buffer.from('junk') },
+      { name: 'notes.txt', data: Buffer.from([0, 1, 2, 3, 255]) }, { name: '__MACOSX/._one.pdf', data: Buffer.from('junk') },
     ]);
     const results = (await upload(cookie, 'scans.zip', zip)).json() as Array<Record<string, any>>;
     expect(results[0].zip).toMatchObject({ kind: 'plain', files: 3, accepted: 2, refused: 1 });

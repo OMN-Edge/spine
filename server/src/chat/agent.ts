@@ -16,6 +16,7 @@ import { buildActionTools } from './actions.js';
 import type { DoctorEntry, Proposal } from './proposals.js';
 import { DOCUMENT_SECTIONS, describeScreen, resolveScreen, sectionRecords, type DocumentSection, type ScreenContext } from './screen.js';
 import type { ChatProgress, ChatReply, ChatSource, ChatStep } from './index.js';
+import type { LinkWhy } from '../linking/why.js';
 
 /**
  * The chat as an agent (LangGraph): the model is given read-only tools and decides what to look up, instead of code deciding
@@ -76,6 +77,8 @@ export const TOOL_KINDS = {
   propose_analyse_pages: 'action',
   propose_regroup: 'action',
   propose_move_page: 'action',
+  propose_rotate_page: 'action',
+  propose_hide_page: 'action',
   propose_decide_links: 'action',
   propose_merge_documents: 'action',
   propose_merge_library: 'action',
@@ -106,7 +109,7 @@ class Registry {
   /** Groups of a regrouping plan the model was shown (G1), by label. */
   readonly groupRefs = new Map<string, { upload: string; page_ids: string[]; page_numbers: number[]; title: string | null; confidence: number; status: 'validated' | 'uncertain' | 'unchecked'; reason: string; from_documents: string[] }>();
   /** Suggested connections the model has been shown (K1), by label, so it can propose confirming or dismissing them. */
-  readonly suggestionRefs = new Map<string, { from: string; to: string; kind: 'requests' | 'follow_up' | 'same_episode'; reason: string | null }>();
+  readonly suggestionRefs = new Map<string, { from: string; to: string; kind: 'requests' | 'follow_up' | 'same_episode'; why: LinkWhy | null }>();
   readonly uploadRefs = new Map<string, { id: string; file_name: string | null; status: string; grouping_confirmed: boolean; uploaded_at: string }>();
   /** Record labels that have been shown to the model (D3, D3.results), the only ones it may cite. */
   readonly shown = new Set<string>();

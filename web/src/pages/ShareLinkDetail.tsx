@@ -1,3 +1,4 @@
+import { LIFETIMES } from '../lifetimes';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, type Document, type ShareLinkChange, type ShareLinkDetail as Detail, type ShareLinkEvent } from '../api';
@@ -5,6 +6,7 @@ import { useChat } from '../components/ChatProvider';
 import ShareRequestCard from '../components/ShareRequestCard';
 import { announceChange, useOnDataChanged } from '../dataChanged';
 import { LANGUAGES, useI18n } from '../i18n';
+import { countryName } from '../i18n/useTranslation';
 import { Combobox } from '../components/Combobox';
 import { languageName } from '../i18n/useTranslation';
 import { documentTitle } from '../titles';
@@ -21,13 +23,13 @@ const primary = 'bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-medium
  */
 export default function ShareLinkDetail() {
   const { id } = useParams<{ id: string }>();
-  const { t, tn } = useI18n();
+  const { t, tn, lang } = useI18n();
   const chat = useChat();
   const [data, setData] = useState<Detail | null>(null);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState('');
   const [busy, setBusy] = useState(false);
-  const [form, setForm] = useState({ label: '', days: 7, scans: false, approval: false, ask: false, language: '' });
+  const [form, setForm] = useState({ label: '', hours: 0, scans: false, approval: false, ask: false, language: '' });
   const [picking, setPicking] = useState(false);
   const [chosen, setChosen] = useState<string[]>([]);
   const [all, setAll] = useState<Document[] | null>(null);
@@ -38,7 +40,7 @@ export default function ShareLinkDetail() {
     try {
       const d = await api.share.detail(id);
       setData(d);
-      setForm({ label: d.link.label ?? '', days: 0, scans: d.link.include_scans, approval: d.link.require_approval, ask: d.link.allow_chat, language: d.link.language ?? '' });
+      setForm({ label: d.link.label ?? '', hours: 0, scans: d.link.include_scans, approval: d.link.require_approval, ask: d.link.allow_chat, language: d.link.language ?? '' });
     } catch {
       setError(t('This link was not found.'));
     }
@@ -74,7 +76,7 @@ export default function ShareLinkDetail() {
     if (form.approval !== link.require_approval) change.require_approval = form.approval;
     if (form.ask !== link.allow_chat) change.allow_chat = form.ask;
     if (form.language !== (link.language ?? '')) change.language = form.language || null;
-    if (form.days > 0) change.expires_days = form.days;
+    if (form.hours > 0) change.expires_hours = form.hours;
     if (Object.keys(change).length === 0) { setSaved(t('Nothing to change.')); return; }
     void save(change);
   };
@@ -133,7 +135,10 @@ export default function ShareLinkDetail() {
           <div>
             <label htmlFor="d-days" className="block text-xs font-medium text-gray-500 mb-1">{t('Works until {date}', { date: link.expires_at.slice(0, 10) })}</label>
             <span className="text-sm text-gray-600">{t('Change to')}{' '}
-              <input id="d-days" type="number" min={0} max={30} value={form.days || ''} placeholder="—" disabled={!editable} onChange={e => setForm(f => ({ ...f, days: Math.min(30, Math.max(0, parseInt(e.target.value) || 0)) }))} className={`${input} w-20`} /> {t('days from now (max 30)')}
+              <select id="d-days" value={form.hours} disabled={!editable} onChange={e => setForm(f => ({ ...f, hours: parseInt(e.target.value) }))} className={`${input} w-40`}>
+                <option value={0}>{t('Keep')}</option>
+                {LIFETIMES.map(l => <option key={l.hours} value={l.hours}>{t('{time} from now', { time: t(l.label) })}</option>)}
+              </select>
             </span>
           </div>
           <label className="flex items-start gap-2 text-sm text-gray-700"><input type="checkbox" checked={form.scans} disabled={!editable} onChange={e => setForm(f => ({ ...f, scans: e.target.checked }))} className="mt-0.5" /><span>{t('Include scans of the original pages')}</span></label>
@@ -191,12 +196,12 @@ export default function ShareLinkDetail() {
               {tn(link.view_count, 'Opened {n} time', 'Opened {n} times')} · {t('first {date}', { date: when(access.first_at!) })} · {t('last {date}', { date: when(access.last_at!) })}
             </p>
             <table className="w-full text-xs mb-3">
-              <thead><tr className="text-left text-gray-500"><th className="font-medium py-1">{t('Address')}</th><th className="font-medium py-1">{t('Reads')}</th><th className="font-medium py-1">{t('Last')}</th></tr></thead>
-              <tbody>{access.addresses.map(a => <tr key={a.ip_address ?? 'none'} className="border-t border-gray-100"><td className="py-1">{a.ip_address ?? t('unknown')}</td><td>{a.count}</td><td>{when(a.last_at)}</td></tr>)}</tbody>
+              <thead><tr className="text-left text-gray-500"><th className="font-medium py-1">{t('Address')}</th><th className="font-medium py-1">{t('Country')}</th><th className="font-medium py-1">{t('Reads')}</th><th className="font-medium py-1">{t('Last')}</th></tr></thead>
+              <tbody>{access.addresses.map(a => <tr key={a.ip_address ?? 'none'} className="border-t border-gray-100"><td className="py-1">{a.ip_address ?? t('unknown')}</td><td>{countryName(a.country, lang) ?? t('unknown')}</td><td>{a.count}</td><td>{when(a.last_at)}</td></tr>)}</tbody>
             </table>
             <button type="button" onClick={() => setShowReads(s => !s)} className="text-xs text-blue-600 hover:underline">{showReads ? t('Hide the latest reads') : t('Show the latest reads')}</button>
-            {showReads && <ul className="mt-2 space-y-0.5 text-xs text-gray-600">{access.recent.map((r, i) => <li key={i}>{when(r.accessed_at)} · {r.ip_address ?? t('unknown')}</li>)}</ul>}
-            <p className="mt-3 text-xs text-gray-500">{t('Addresses are what the visitor’s connection showed. They do not prove who it was.')}</p>
+            {showReads && <ul className="mt-2 space-y-0.5 text-xs text-gray-600">{access.recent.map((r, i) => <li key={i}>{when(r.accessed_at)} · {r.ip_address ?? t('unknown')} · {countryName(r.country, lang) ?? t('unknown')} · {r.document_id ? t('opened {title}', { title: documents.find(d => d.id === r.document_id)?.title || t('a document') }) : t('read the list')}</li>)}</ul>}
+            <p className="mt-3 text-xs text-gray-500">{t('Addresses are what the visitor’s connection showed, and the country is worked out from the address. They do not prove who it was.')}</p>
           </>
         )}
       </section>

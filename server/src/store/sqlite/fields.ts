@@ -1,3 +1,4 @@
+import { LOW_CONFIDENCE } from '../../confidence.js';
 import type { Database } from 'better-sqlite3';
 import type { ExtractedField } from '../../types.js';
 import type { ExtractedFieldRepository, NewExtractedField } from '../types.js';
@@ -9,7 +10,8 @@ export function extractedFieldRepository(db: Database): ExtractedFieldRepository
   // Explicit columns: user_id is not for clients (S-8).
   const listForDocument = db.prepare(`
     SELECT id, document_id, page_id, label, value, group_no, source_snippet,
-           bbox_x0, bbox_y0, bbox_x1, bbox_y1, confidence
+           bbox_x0, bbox_y0, bbox_x1, bbox_y1, confidence,
+           (confidence < ${LOW_CONFIDENCE} AND owner_edited = 0) AS needs_check
     FROM extracted_fields WHERE document_id = ? AND user_id = ? ORDER BY rowid
   `);
 

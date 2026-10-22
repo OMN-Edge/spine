@@ -503,7 +503,7 @@ describe('other ways in do not skip it', () => {
 
   it('the only code path that issues a session is the login pair', async () => {
     // A guard on the guard: a session is assigned in one function (sessions.ts startSession), and only the
-    // two login steps in routes/auth.ts may call it. A new caller is a bypass unless it checks the factor,
+    // two login steps in routes/auth.ts, and the passkey login, may call it. A new caller is a bypass unless it checks the factor,
     // and needs adding here and justifying in SECURITY.md.
     const { readFileSync, readdirSync } = await import('fs');
     const routes = new URL('../routes/', import.meta.url);
@@ -516,7 +516,9 @@ describe('other ways in do not skip it', () => {
     const callers = readdirSync(routes)
       .filter(f => f.endsWith('.ts'))
       .filter(f => /startSession\(/.test(readFileSync(new URL(f, routes), 'utf8')));
-    expect(callers).toEqual(['auth.ts']);
+    // routes/passkeys.ts is the second, justified in SECURITY.md M-33: a passkey is used with user verification required, so it
+    // is the password and the second factor together.
+    expect(callers).toEqual(['auth.ts', 'passkeys.ts']);
   });
 });
 

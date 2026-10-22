@@ -80,7 +80,7 @@ async function importExport(userId: string, zip: ZipReader, filename: string | n
   const results: Entry[] = [];
   const summary = { kind: 'spine', filename, exported_at: manifest.exported_at, files: manifest.files.length, documents: 0, restored: 0, duplicates: 0, failed: 0 };
   let total = 0;
-  const links = new LinkRestore(userId, manifest.links);
+  const links = new LinkRestore(userId, manifest.links, manifest.episodes);
   // The directory goes back first, so a document names the same person whichever file it is in.
   const people = await restoreDirectory(userId, manifest);
 

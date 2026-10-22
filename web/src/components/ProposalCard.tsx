@@ -4,6 +4,7 @@ import { announceChange } from '../dataChanged';
 import { useI18n } from '../i18n';
 import { documentTitle } from '../titles';
 import { useChat } from './ChatProvider';
+import LinkWhyLine from './LinkWhy';
 
 /**
  * A change the chat prepared, waiting for the person. The words are written here, from the proposal's data, in the person's
@@ -123,6 +124,22 @@ export default function ProposalCard({ proposal }: { proposal: Proposal }) {
         confirmBar(proposal.calls),
         t('Started. The documents are read first, then they appear.'));
 
+    case 'rotate_page':
+      return shell(t('Turn page {n} of “{name}”', { n: proposal.page.number, name: proposal.upload.file_name ?? '' }),
+        <div className="space-y-1">
+          <p>{proposal.degrees === 90 ? t('A quarter turn clockwise.') : proposal.degrees === 270 ? t('A quarter turn anticlockwise.') : t('A half turn.')}</p>
+          <p className="text-gray-500">{t('Nothing is read again. If the page was misread because it was sideways, read it again after.')}</p>
+        </div>,
+        confirmBar(proposal.calls));
+
+    case 'hide_page':
+      return shell(proposal.hidden ? t('Set aside page {n} of “{name}”', { n: proposal.page.number, name: proposal.upload.file_name ?? '' }) : t('Bring back page {n} of “{name}”', { n: proposal.page.number, name: proposal.upload.file_name ?? '' }),
+        <div className="space-y-1">
+          {proposal.document && <p>{proposal.hidden ? t('It leaves “{doc}”, its search and its next reading. It is kept, not deleted.', { doc: title(proposal.document) }) : t('It returns to “{doc}”.', { doc: title(proposal.document) })}</p>}
+          <p className="text-gray-500">{t('The document goes back to review.')}</p>
+        </div>,
+        confirmBar(proposal.calls));
+
     case 'move_page':
       return shell(t('Move page {n} of “{name}”', { n: proposal.page.number, name: proposal.upload.file_name ?? '' }),
         <div className="space-y-1">
@@ -147,12 +164,10 @@ export default function ProposalCard({ proposal }: { proposal: Proposal }) {
           {proposal.items.map(i => (
             <li key={i.label} className="rounded-lg bg-white p-2">
               <p className="text-gray-900">
-                {i.link_kind === 'requests' ? t('“{a}” asked for “{b}”', { a: title(i.from), b: title(i.to) })
-                  : i.link_kind === 'follow_up' ? t('“{b}” is a follow-up of “{a}”', { a: title(i.from), b: title(i.to) })
-                  : t('“{a}” and “{b}” are one episode', { a: title(i.from), b: title(i.to) })}
+                {t('“{a}” and “{b}” may be connected', { a: title(i.from), b: title(i.to) })}
               </p>
               <p className={i.decision === 'confirm' ? 'font-medium text-green-700' : 'font-medium text-gray-600'}>{i.decision === 'confirm' ? t('Keep this connection') : t('Not related: do not suggest it again')}</p>
-              {i.reason && <p className="text-gray-500">{i.reason}</p>}
+              {i.why && <p className="text-gray-500"><LinkWhyLine why={i.why} /></p>}
             </li>
           ))}
         </ul>,

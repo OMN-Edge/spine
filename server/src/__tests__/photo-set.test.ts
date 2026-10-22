@@ -36,12 +36,12 @@ async function photo(name: string, opts: { width?: number; height?: number; shad
   return file;
 }
 
-function multipartOf(files: Array<{ name: string; data: Buffer }>) {
+function multipartOf(files: Array<{ name: string; data: Buffer; field?: string }>) {
   const boundary = 'PhotoSetBoundary42';
-  const parts = files.flatMap(f => [Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="files"; filename="${f.name}"\r\nContent-Type: application/octet-stream\r\n\r\n`), f.data, Buffer.from('\r\n')]);
+  const parts = files.flatMap(f => [Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${f.field ?? 'files'}"; filename="${f.name}"\r\nContent-Type: application/octet-stream\r\n\r\n`), f.data, Buffer.from('\r\n')]);
   return { boundary, payload: Buffer.concat([...parts, Buffer.from(`--${boundary}--`)]) };
 }
-const send = async (files: Array<{ name: string; data: Buffer }>) => {
+const send = async (files: Array<{ name: string; data: Buffer; field?: string }>) => {
   const { boundary, payload } = multipartOf(files);
   return app.inject({ method: 'POST', url: '/api/source-files/upload-photos', headers: { cookie, 'content-type': `multipart/form-data; boundary=${boundary}` }, payload });
 };
@@ -109,5 +109,66 @@ describe.skipIf(!hasPoppler)('the upload of several photos', () => {
     const { boundary, payload } = multipartOf([{ name: 'a.jpg', data: Buffer.from('x') }]);
     const res = await app.inject({ method: 'POST', url: '/api/source-files/upload-photos', headers: { 'content-type': `multipart/form-data; boundary=${boundary}` }, payload });
     expect(res.statusCode).toBe(401);
+  });
+});
+
+describe.skipIf(!hasPoppler)('a scan session keeps the photos as they were taken', () => {
+  it('stores them beside the PDF, serves them to the owner only, and removes them with the upload', async () => {
+    const processedA = await photo('pa.jpg', { shade: 31 }); const processedB = await photo('pb.jpg', { shade: 33 });
+    const rawA = await photo('ra.jpg', { shade: 5, width: 300, height: 200 }); const rawB = await photo('rb.jpg', { shade: 6, width: 300, height: 200 });
+    const res = await send([
+      { name: 'page-1.jpg', data: bytesOf(processedA) }, { name: 'page-2.jpg', data: bytesOf(processedB) },
+      { name: 'raw-1.jpg', data: bytesOf(rawA), field: 'originals' }, { name: 'raw-2.jpg', data: bytesOf(rawB), field: 'originals' },
+      { name: 'notes.txt', data: Buffer.from('not a photo'), field: 'originals' },
+    ]);
+    const [result] = res.json() as Array<{ id: string; status: string }>;
+    expect(result.status).toBe('processing');
+
+    const upload = (await getStore().sourceFiles.findFor(OWNER_ID, result.id))!;
+    expect(upload.raw_count).toBe(2); // the text file was not kept
+    const get = (n: number, c = cookie) => app.inject({ method: 'GET', url: `/api/source-files/${result.id}/originals/${n}`, headers: c ? { cookie: c } : {} });
+    const first = await get(1);
+    expect(first.statusCode).toBe(200);
+    expect(first.headers['content-type']).toContain('image/jpeg');
+    expect((await sharp(first.rawPayload).metadata()).width).toBe(300); // as taken, not as processed
+    expect((await get(2)).statusCode).toBe(200);
+    for (const n of [0, 3, -1]) expect((await get(n)).statusCode).toBe(404);
+    expect((await get(1, '')).statusCode).toBe(401);
+
+    const { createTestUser } = await import('./helpers/seed.js');
+    const { loginAs } = await import('./helpers/app.js');
+    const other = await createTestUser('photographer@spine.test');
+    expect((await get(1, await loginAs(app, other.email, other.password))).statusCode).toBe(404);
+
+    // They go with the upload.
+    const rawDir = upload.file_path.replace(/\.pdf$/, '.raw');
+    const { existsSync } = await import('fs');
+    expect(existsSync(rawDir)).toBe(true);
+    await getStore().sourceFiles.setStatus(OWNER_ID, result.id, 'done');
+    expect((await app.inject({ method: 'DELETE', url: `/api/source-files/${result.id}`, headers: { cookie } })).statusCode).toBe(200);
+    expect(existsSync(rawDir)).toBe(false);
+  });
+});
+
+describe('a scan session when only local OCR can read it', () => {
+  it('is read by local OCR when the parser is ocr, or hybrid with Tesseract on, and otherwise by a model', async () => {
+    const { localOcrReadsPhotoSets, readsByModel } = await import('../file-kind.js');
+    const keys = ['SPINE_PARSER', 'SPINE_OCR', 'SPINE_MULTIMODAL_ENABLED'] as const;
+    const was = Object.fromEntries(keys.map(k => [k, process.env[k]]));
+    try {
+      // hybrid is a parser that can send images, which is a second switch of its own.
+      process.env.SPINE_MULTIMODAL_ENABLED = 'true';
+      for (const [mode, ocr, expected] of [['text', undefined, false], ['ocr', undefined, true], ['hybrid', undefined, true], ['hybrid', 'off', false]] as const) {
+        process.env.SPINE_PARSER = mode;
+        if (ocr) process.env.SPINE_OCR = ocr; else delete process.env.SPINE_OCR;
+        expect(localOcrReadsPhotoSets(), `${mode} ${ocr ?? ''}`).toBe(expected);
+        expect(readsByModel({ mime_type: 'application/pdf', photo_set: true })).toBe(!expected);
+      }
+      // A single photo is still the model's: there is no PDF for the text layer or OCR route to start from.
+      process.env.SPINE_PARSER = 'ocr'; delete process.env.SPINE_OCR;
+      expect(readsByModel({ mime_type: 'image/jpeg' })).toBe(true);
+    } finally {
+      for (const k of keys) { if (was[k] === undefined) delete process.env[k]; else process.env[k] = was[k]; }
+    }
   });
 });

@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { msg, useI18n } from '../i18n';
+import AiLabel from './AiLabel';
 import { documentTitle } from '../titles';
 
 export const DOC_TYPE_LABELS: Record<string, string> = {
@@ -23,12 +24,12 @@ const DOC_TYPE_COLORS: Record<string, string> = {
 };
 
 export default function DocumentCard({ doc, to, owner = true }: {
-  doc: { title: string | null; doc_type: string | null; provider: string | null; doc_date: string | null; ai_summary: string | null; page_start: number; page_end: number; reviewed?: boolean };
+  doc: { title: string | null; doc_type: string | null; provider: string | null; doc_date: string | null; ai_summary: string | null; page_start: number; page_end: number; reviewed?: boolean; to_check?: number };
   to: string;
   /** The owner sees whether a document is reviewed and where it sits in the upload; a recipient has no use for either. */
   owner?: boolean;
 }) {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
   const typeLabel = doc.doc_type ? t(DOC_TYPE_LABELS[doc.doc_type] ?? doc.doc_type) : t('Unknown');
   const typeColor = doc.doc_type ? DOC_TYPE_COLORS[doc.doc_type] ?? 'bg-gray-100 text-gray-600' : 'bg-gray-100 text-gray-600';
 
@@ -46,11 +47,16 @@ export default function DocumentCard({ doc, to, owner = true }: {
                 {t('Unreviewed')}
               </span>
             )}
+            {owner && !!doc.to_check && (
+              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700" title={t('Read with low confidence, often from handwriting or a faded line: check these against the page')}>
+                {tn(doc.to_check, '{n} value to check', '{n} values to check')}
+              </span>
+            )}
           </div>
           <p className="text-sm font-medium text-gray-900 truncate">{documentTitle(doc, t)}</p>
           {doc.title && doc.provider && <p className="text-xs text-gray-500 truncate">{doc.provider}</p>}
           {doc.ai_summary && (
-            <p className="text-sm text-gray-500 mt-1 line-clamp-2">{doc.ai_summary}</p>
+            <p className="text-sm text-gray-500 mt-1 line-clamp-2"><AiLabel className="mr-1.5" />{doc.ai_summary}</p>
           )}
         </div>
         <div className="text-right shrink-0">

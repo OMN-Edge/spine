@@ -109,7 +109,6 @@ export interface GroupingJudgement {
 export interface LinkJudgement {
   candidate: string;
   relation: LinkRelation;
-  reason: string;
 }
 
 /** What is translated for one document. Ids are the caller's, and come back unchanged. */
@@ -286,12 +285,11 @@ export const LINK_RELATIONS = [
 ] as const;
 export type LinkRelation = (typeof LINK_RELATIONS)[number];
 
-/** What a linking answers: only the candidates that are related, each with the relation and one sentence on why. */
+/** What a linking answers: only the candidates that are related, each with the relation. It gives no reason: what is shown as one is made from the data (`linking/why.ts`). */
 export const linkingSchema = z.object({
   links: z.array(z.object({
     candidate: z.string(),
     relation: z.enum(LINK_RELATIONS),
-    reason: z.string(),
   })).default([]),
 });
 

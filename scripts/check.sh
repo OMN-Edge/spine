@@ -5,7 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 server() { (cd server && npm ci && npx tsc --noEmit && npm test && npm audit --omit=dev --audit-level=high); }
-web()    { (cd web && npm ci && npm run build && npm audit --omit=dev --audit-level=high); }
+web()    { (cd web && npm ci && npm test && npm run build && npm audit --omit=dev --audit-level=high); }
 scan() {
   command -v gitleaks >/dev/null || { echo "gitleaks is not installed (brew install gitleaks)" >&2; exit 1; }
   command -v semgrep  >/dev/null || { echo "semgrep is not installed (brew install semgrep)" >&2; exit 1; }

@@ -87,6 +87,7 @@ export async function runCli(args: string[], io: CliIo): Promise<number> {
       });
 
       io.out(`created ${email}`);
+      io.out('the account agrees to the privacy notice and the terms at its first sign-in (docs/legal/)');
       if (generated) io.out(`password (shown once): ${password}`);
       return 0;
     }

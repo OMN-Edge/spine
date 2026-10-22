@@ -30,6 +30,9 @@ interface ZipSummary {
 }
 
 /** Why a file was not added, for the reasons the server gives. */
+/** What the file chooser offers besides photos. The server checks what a file is by its contents, not by this list. */
+const DOCUMENT_TYPES = '.pdf,.zip,.docx,.txt,application/pdf,application/zip,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain';
+
 const REFUSAL_REASONS = ['not_pdf', 'photo_needs_ai', 'too_large', 'zip_unreadable', 'zip_empty', 'export_invalid', 'export_version', 'export_file_missing', 'too_many'];
 
 interface JobState {
@@ -268,7 +271,7 @@ export default function Upload() {
 
   const handleFiles = useCallback(async (fileList: FileList) => {
     const files = Array.from(fileList);
-    const photoFiles = photos?.enabled ? files.filter(f => f.type === 'image/jpeg' || f.type === 'image/png') : [];
+    const photoFiles = photos?.enabled ? files.filter(f => f.type === 'image/jpeg' || f.type === 'image/png') : []; // a HEIC photo has no preview in a browser, so it goes as its own upload
     if (photoFiles.length < 2) { handleResults(await api.sourceFiles.upload(files)); return; }
     setPending({ photos: photoFiles, others: files.filter(f => !photoFiles.includes(f)), previews: photoFiles.map(f => URL.createObjectURL(f)) });
   }, [photos?.enabled, handleResults]);
@@ -320,7 +323,7 @@ export default function Upload() {
           ref={fileRef}
           type="file"
           multiple
-          accept={photos?.enabled ? '.pdf,.zip,application/pdf,application/zip,image/jpeg,image/png' : '.pdf,.zip,application/pdf,application/zip'}
+          accept={photos?.enabled ? DOCUMENT_TYPES + ',image/jpeg,image/png,image/heic,image/heif,.heic,.heif' : DOCUMENT_TYPES}
           className="hidden"
           onChange={e => {
             if (e.target.files?.length) handleFiles(e.target.files);
@@ -330,6 +333,11 @@ export default function Upload() {
           }}
         />
       </div>
+
+      <p className="mt-3 text-sm text-gray-500">
+        <Link to="/scan" className="text-blue-600 hover:underline">{t('Scan with the camera')}</Link>
+        <span className="text-gray-400"> — {t('straightened and cleaned up on this device, page after page')}</span>
+      </p>
 
       {pending && (
         <div role="group" aria-label={t('Photos')} className="mt-4 bg-white border border-gray-200 rounded-xl p-4">
@@ -384,8 +392,8 @@ export default function Upload() {
                 : r.reason === 'photo_needs_ai'
                 ? t('{name} was not added: a photo can only be read by sending it to the AI model, and that is switched off on this server. A scanning app that saves a PDF works without it.', { name: r.name })
                 : photos?.enabled
-                  ? t('{name} was not added: it is not a PDF or a JPEG or PNG photo.', { name: r.name })
-                  : t('{name} was not added: it is not a PDF.', { name: r.name })}
+                  ? t('{name} was not added: it is not a PDF, a photo, a Word document or a text file.', { name: r.name })
+                  : t('{name} was not added: it is not a PDF, a Word document or a text file.', { name: r.name })}
             </p>
           ))}
         </div>

@@ -5,12 +5,17 @@ export interface AuthContextValue {
   /** Who is signed in — shown in the nav, since an instance can have several users. */
   email: string;
   setAuthenticated: (v: boolean, email?: string) => void;
+  /** What the account still has to agree to before the app shows anything; null when it has agreed. */
+  consentNeeded: { health: boolean; terms: boolean } | null | undefined;
+  consentGiven: () => void;
 }
 
 export const AuthContext = createContext<AuthContextValue>({
   authenticated: false,
   email: '',
   setAuthenticated: () => {},
+  consentNeeded: null,
+  consentGiven: () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);

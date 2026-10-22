@@ -130,7 +130,7 @@ export function buildChatLlm(clients: TaskClients, config: ChatLlmConfig): ChatL
       // (Found by the first run against a real model, which proposed a correct link that was thrown away for its brackets.)
       const labelOf = (written: string) => written.trim().replace(/^\[|\]$/g, '').trim();
       // A label the model made up is not an answer about any document we sent.
-      return validated.links.filter(l => labels.has(labelOf(l.candidate))).map(l => ({ ...l, candidate: labelOf(l.candidate), reason: l.reason.trim() }));
+      return validated.links.filter(l => labels.has(labelOf(l.candidate))).map(l => ({ ...l, candidate: labelOf(l.candidate) }));
     },
 
     async judgeGrouping(pages): Promise<GroupingJudgement | null> {

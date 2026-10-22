@@ -4,6 +4,8 @@ import { useAuth } from '../auth';
 import { buttonClass, inputClass, Notice } from '../components/AuthCard';
 import TwoFactor from '../components/TwoFactor';
 import Sessions from '../components/Sessions';
+import YourData from '../components/YourData';
+import Passkeys from '../components/Passkeys';
 import { useI18n } from '../i18n';
 
 export default function Account() {
@@ -47,9 +49,13 @@ export default function Account() {
         <button type="submit" className={buttonClass}>{t('Change password')}</button>
       </form>
 
+      <Passkeys />
+
       <TwoFactor />
 
       <Sessions />
+
+      <YourData />
     </div>
   );
 }

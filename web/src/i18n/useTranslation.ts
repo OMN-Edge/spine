@@ -6,6 +6,12 @@ import { LANGUAGES, useI18n } from './index';
 export const languageName = (code: string | null | undefined): string =>
   LANGUAGES.find(l => l.code === code)?.name ?? (code ? code.toUpperCase() : '');
 
+/** A country's name in the interface language, from its ISO code ("RO" is "Romania"); null when there is none. */
+export const countryName = (code: string | null | undefined, lang: string): string | null => {
+  if (!code) return null;
+  try { return new Intl.DisplayNames([lang], { type: 'region' }).of(code) ?? code; } catch { return code; }
+};
+
 /**
  * A document in the reader's language, in two steps: the title, summary, notes and specialties first (`head`, one short
  * model call), then the fields and results (`full`). `translation` is null until it is ready (or when none applies);

@@ -3,8 +3,8 @@ import type { SourceFile } from '../../types.js';
 import type { NewSourceFile, SourceFileRepository, SourceFileSummary } from '../types.js';
 import { owner } from './owner.js';
 
-type RawUpload = Omit<SourceFile, 'grouping_confirmed' | 'photo_set'> & { grouping_confirmed: number; photo_set: number };
-const asUpload = (row: RawUpload): SourceFile => ({ ...row, grouping_confirmed: row.grouping_confirmed === 1, photo_set: row.photo_set === 1 });
+type RawUpload = Omit<SourceFile, 'grouping_confirmed' | 'photo_set' | 'sample'> & { grouping_confirmed: number; photo_set: number; sample: number };
+const asUpload = (row: RawUpload): SourceFile => ({ ...row, grouping_confirmed: row.grouping_confirmed === 1, photo_set: row.photo_set === 1, sample: row.sample === 1 });
 
 /** Every statement filters by `user_id` (SECURITY.md P12). */
 export function sourceFileRepository(db: Database): SourceFileRepository {
@@ -12,20 +12,21 @@ export function sourceFileRepository(db: Database): SourceFileRepository {
   // checksum, no user_id (S-8). `findFor` below returns the full row because the
   // pipeline needs the path — its callers must not send it on.
   const list = db.prepare(`
-    SELECT id, uploaded_at, original_filename, mime_type, page_count, status, error_message, grouping_confirmed
+    SELECT id, uploaded_at, original_filename, mime_type, page_count, status, error_message, grouping_confirmed, sample, raw_count
     FROM source_files WHERE user_id = ? ORDER BY uploaded_at DESC
   `);
   const find = db.prepare('SELECT * FROM source_files WHERE id = ? AND user_id = ?');
   const findByChecksum = db.prepare('SELECT * FROM source_files WHERE checksum = ? AND user_id = ?');
   const insert = db.prepare(`
-    INSERT INTO source_files (id, user_id, uploaded_at, original_filename, file_path, mime_type, checksum, status, chat_conversation_id, photo_set)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+    INSERT INTO source_files (id, user_id, uploaded_at, original_filename, file_path, mime_type, checksum, status, chat_conversation_id, photo_set, sample)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
   `);
   const setStatus = db.prepare(
     'UPDATE source_files SET status = ?, error_message = ? WHERE id = ? AND user_id = ?',
   );
   const setChat = db.prepare('UPDATE source_files SET chat_conversation_id = ? WHERE id = ? AND user_id = ? AND EXISTS (SELECT 1 FROM chat_conversations WHERE id = ? AND user_id = ?)');
   const setConfirmed = db.prepare('UPDATE source_files SET grouping_confirmed = ? WHERE id = ? AND user_id = ?');
+  const setRawCount = db.prepare('UPDATE source_files SET raw_count = ? WHERE id = ? AND user_id = ?');
   const setPageCount = db.prepare(
     'UPDATE source_files SET page_count = ? WHERE id = ? AND user_id = ?',
   );
@@ -115,7 +116,12 @@ export function sourceFileRepository(db: Database): SourceFileRepository {
         input.checksum,
         input.chatConversationId ?? null,
         input.photoSet ? 1 : 0,
+        input.sample ? 1 : 0,
       );
+    },
+
+    async setRawCount(userId, id, count) {
+      setRawCount.run(count, id, owner(userId));
     },
 
     async setStatus(userId, id, status, errorMessage = null) {

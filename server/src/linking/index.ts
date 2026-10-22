@@ -5,6 +5,8 @@ import { logger } from '../logger.js';
 import { describeError } from '../failure.js';
 import { cardOf } from '../similarity/card.js';
 import { reduceLinks } from './reduce.js';
+import { scheduleEpisodes } from '../episodes/index.js';
+import { buildWhy, parseWhy, serializeWhy, type LinkWhy } from './why.js';
 import { similarTo, similarityEnabled } from '../similarity/index.js';
 import type { Store } from '../store/index.js';
 import type { Document, DocType } from '../types.js';
@@ -83,6 +85,24 @@ export async function candidatesFor(store: Store, userId: string, target: Docume
   return [...scored.values()].sort((a, b) => b.score - a.score).slice(0, MAX_CANDIDATES).map(c => c.doc);
 }
 
+/**
+ * The signals behind each candidate, for the owner to see why it was suggested: what the data shares with the target, how far
+ * apart in time they are, and how close in meaning when that search is on. Code, not the model.
+ */
+export async function whyFor(store: Store, userId: string, target: Document, candidates: Document[]): Promise<Map<string, LinkWhy | null>> {
+  const [signals, similar] = await Promise.all([
+    store.documents.relatedSignals(userId, target.id),
+    similarityEnabled() ? similarTo(userId, target.id, 20).catch(() => []) : Promise.resolve([]),
+  ]);
+  const signalOf = new Map(signals.map(s => [s.document_id, s]));
+  const scoreOf = new Map(similar.map(s => [s.id, s.score]));
+  const t0 = dayOf(target.doc_date);
+  return new Map(candidates.map(c => {
+    const d0 = dayOf(c.doc_date);
+    return [c.id, buildWhy(signalOf.get(c.id), { daysApart: t0 !== null && d0 !== null ? Math.abs(t0 - d0) : null, similarity: scoreOf.get(c.id) ?? null })];
+  }));
+}
+
 /** What the model is shown about one document: its summary card, and who acted in which role (a referrer says "requested by"). */
 async function linkCard(store: Store, userId: string, doc: Document): Promise<string> {
   const [card, doctors] = await Promise.all([cardOf(store, userId, doc), store.doctors.forDocument(userId, doc.id)]);
@@ -134,6 +154,7 @@ export async function findLinks(userId: string, documentId: string): Promise<num
   if (!judgements) return 0;
 
   const byLabel = new Map(labelled.map(c => [c.label, c.doc]));
+  const whyOf = await whyFor(store, userId, target, candidates);
   const now = new Date().toISOString();
   let proposed = 0;
   await store.transaction(async tx => {
@@ -152,7 +173,7 @@ export async function findLinks(userId: string, documentId: string): Promise<num
       const key = `${link.from.id}|${link.to.id}|${link.kind}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      fresh.push({ from_document_id: link.from.id, to_document_id: link.to.id, kind: link.kind, state: 'proposed', source: 'auto', reason: j.reason.slice(0, 400) || null });
+      fresh.push({ from_document_id: link.from.id, to_document_id: link.to.id, kind: link.kind, state: 'proposed', source: 'auto', reason: serializeWhy(whyOf.get(candidate!.id) ?? null) });
     }
     const { keep } = reduceLinks([...standing, ...fresh]);
     for (const f of fresh) {
@@ -179,6 +200,8 @@ async function drain(userId: string): Promise<void> {
       catch (err) { logger.warn('could not look for links', { error: describeError(err) }); }
     }
     await tidyLinks(userId).catch(err => logger.warn('could not tidy links', { error: describeError(err) }));
+    // New suggestions are new evidence for which documents belong together.
+    scheduleEpisodes(userId, 1000);
   } finally {
     pending.delete(userId);
     running.delete(userId);
@@ -214,7 +237,7 @@ export async function settleLinking(userId: string): Promise<void> {
 }
 
 export interface ChainNode { id: string; title: string | null; doc_type: Document['doc_type']; doc_date: string | null; provider: string | null }
-export interface ChainEdge { from: string; to: string; kind: LinkKind; state: 'proposed' | 'confirmed'; source: 'auto' | 'owner'; reason: string | null }
+export interface ChainEdge { from: string; to: string; kind: LinkKind; state: 'proposed' | 'confirmed'; source: 'auto' | 'owner'; why: LinkWhy | null }
 
 const MAX_NODES = 30;
 
@@ -246,7 +269,7 @@ export async function chainOf(userId: string, documentId: string): Promise<{ nod
   // Shown without what repeats itself: one line for a pair, and no "same episode" between documents a group already joins.
   const edges = reduceLinks(await store.links.among(userId, ids)).keep
     .filter((l): l is typeof l & { state: 'proposed' | 'confirmed' } => l.state !== 'dismissed')
-    .map(l => ({ from: l.from_document_id, to: l.to_document_id, kind: l.kind, state: l.state, source: l.source, reason: l.reason }));
+    .map(l => ({ from: l.from_document_id, to: l.to_document_id, kind: l.kind, state: l.state, source: l.source, why: parseWhy(l.reason) }));
   const nodes: ChainNode[] = [];
   for (const id of ids) {
     const doc = id === documentId ? start : await store.documents.findFor(userId, id);

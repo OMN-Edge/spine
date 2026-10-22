@@ -185,6 +185,21 @@ export function publicUrl(urlPath: string, env: NodeJS.ProcessEnv = process.env)
   return `${local ? 'http' : 'https'}://${host}${urlPath}`;
 }
 
+/**
+ * Where the "Shared securely via Spine" footer on a shared page leads (FR-SHR-07): `SPINE_LANDING_URL`, an https address,
+ * or null, in which case the footer is text only. Anything else is ignored rather than put in a link a stranger will click.
+ */
+export function landingUrl(env: NodeJS.ProcessEnv = process.env): string | null {
+  const raw = env.SPINE_LANDING_URL?.trim();
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    return url.protocol === 'https:' ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Where backups go: `SPINE_BACKUP_DIR`, otherwise `backups/` beside the data directory. */
 export function resolveBackupDir(env: NodeJS.ProcessEnv = process.env): string {
   return env.SPINE_BACKUP_DIR

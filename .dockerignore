@@ -1,0 +1,10 @@
+.git
+.env
+.venv
+data
+secrets
+**/node_modules
+**/dist
+**/coverage
+**/__pycache__
+web/src/**/*.js

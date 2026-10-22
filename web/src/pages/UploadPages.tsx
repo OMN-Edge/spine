@@ -142,6 +142,18 @@ export default function UploadPages() {
     }
   };
 
+  /** Turn a page a quarter clockwise or anticlockwise, for a scan fed in sideways. Nothing is read again; the next reading sees it upright. */
+  const turnPage = async (pageId: string, degrees: 90 | 270) => {
+    setNotice('');
+    try {
+      await api.sourceFiles.rotatePage(pageId, degrees);
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : t('Could not turn the page'));
+    } finally {
+      load();
+    }
+  };
+
   /** Set a whole document aside, however many pages it has, or bring all of them back. */
   const setDocumentHidden = async (doc: UploadDocument, hidden: boolean) => {
     setBusy(hidden ? t('Hiding the document') : t('Showing the pages'));
@@ -425,7 +437,7 @@ export default function UploadPages() {
                             className="block w-full rounded focus:outline-none focus:ring-2 focus:ring-blue-500 hover:ring-2 hover:ring-blue-200"
                           >
                             <img
-                              src={`/api/pages/${page.id}/image`}
+                              src={`/api/pages/${page.id}/image?r=${page.rotation}`}
                               alt=""
                               loading="lazy"
                               draggable={false}
@@ -452,6 +464,10 @@ export default function UploadPages() {
                           >
                             {page.hidden ? t('Show') : t('Hide')}
                           </button>
+                          <div className="flex justify-center gap-3 text-[11px] text-gray-400">
+                            <button type="button" disabled={!!busy} onClick={() => turnPage(page.id, 270)} aria-label={t('Turn page {n} anticlockwise', { n: page.page_number })} title={t('Turn anticlockwise')} className="hover:text-gray-700 disabled:opacity-50">↺</button>
+                            <button type="button" disabled={!!busy} onClick={() => turnPage(page.id, 90)} aria-label={t('Turn page {n} clockwise', { n: page.page_number })} title={t('Turn clockwise')} className="hover:text-gray-700 disabled:opacity-50">↻</button>
+                          </div>
                         </figure>
                       </div>
                     );

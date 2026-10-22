@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { LogoMark } from './Logo';
-import { LanguageSwitcher } from '../i18n';
+import { Link } from 'react-router-dom';
+import { LanguageSwitcher, useI18n } from '../i18n';
 
 /** The centred card the sign-in, signup and recovery pages share. */
 export default function AuthCard({
@@ -12,6 +13,7 @@ export default function AuthCard({
   children: ReactNode;
   footer?: ReactNode;
 }) {
+  const { t } = useI18n();
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div className="bg-white p-6 sm:p-8 rounded-xl shadow-sm border border-gray-200 w-full max-w-sm">
@@ -22,6 +24,11 @@ export default function AuthCard({
         <h1 className="text-2xl font-semibold text-gray-900 mb-6">{title}</h1>
         {children}
         {footer && <div className="mt-5 text-sm text-gray-500 space-y-1">{footer}</div>}
+        <p className="mt-5 text-xs text-gray-400 flex gap-3">
+          <Link to="/privacy" className="hover:underline">{t('Privacy notice')}</Link>
+          <Link to="/terms" className="hover:underline">{t('Terms of use')}</Link>
+          <Link to="/purpose" className="hover:underline">{t('What Spine is for')}</Link>
+        </p>
       </div>
     </div>
   );

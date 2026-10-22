@@ -6,7 +6,7 @@ Runs on a Raspberry Pi. No cloud storage — all data stays local.
 
 ## What it does
 
-- Upload PDFs, including scans (drag-and-drop, multi-file). Photos (JPEG, PNG) are read by the AI model when image reading is switched on, and are refused otherwise; files are checked by their contents, not their names
+- Upload PDFs, including scans (drag-and-drop, multi-file), Word documents and text files, which are turned into PDFs on arrival, and iPhone HEIC photos, which become JPEGs. Photos (JPEG, PNG) are read by the AI model when image reading is switched on, and are refused otherwise; files are checked by their contents, not their names
 - Full-text search over titles, summaries, notes, the text of every page, extracted values and doctors' names, with accents ignored
 - Automatically splits a merged multi-document PDF into logical documents using AI boundary detection
 - Extracts metadata per document: date, provider, type, summary, and individual fields (diagnoses, medications, lab values, etc.)
@@ -18,6 +18,7 @@ Runs on a Raspberry Pi. No cloud storage — all data stays local.
 - A library of the names the AI extracted and reuses — tags, providers, tests, and the doctors directory — to rename, merge and remove duplicates
 - Full-text and filtered search across all documents
 - Expiring, revocable read-only share links to send a doctor a subset of your history — everything, a tag, documents you pick or a date range. The recipient gets the timeline, the document pages and the trends, read-only, with no account or app
+- Episodes: documents that belong together, suggested from the provider, the dates and the links between documents and confirmed by you; the timeline and the search filter by episode, facility and specialty, and a share link can name episodes
 - Related documents (the same test or doctor, and, with Vertex embeddings on, ones that read alike) and search by words and meaning together
 - The interface is in English, Romanian, French and German, and a document's extracted details and your notes are translated into the reader's language on demand (and kept), including on a shared page
 - Export one document, or everything, as a zip with a manifest of what was read; upload that zip anywhere to restore it without the AI, with duplicates recognised. Any other zip of PDFs is added like separate uploads
@@ -26,6 +27,9 @@ Runs on a Raspberry Pi. No cloud storage — all data stays local.
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — target architecture, trust boundaries, ports and adapters, migration path
 - [SECURITY.md](SECURITY.md) — security principles, implemented controls, and the open gaps
+- [docs/self-host.md](docs/self-host.md) — `docker compose up -d` on one machine, with HTTPS
+- [CONTRIBUTING.md](CONTRIBUTING.md) — how to contribute; the repository is canonical on GitHub, and a deployed instance redirects `/source`, `/docs` and `/security` to it (set `SPINE_REPO_URL`)
+- [docs/key-hierarchy.md](docs/key-hierarchy.md) — the key hierarchy and trust boundaries planned for the hosted service (a design, not what runs today)
 - [docs/deployment-gcp.md](docs/deployment-gcp.md) — Vertex AI as an inference provider, EU residency, IAM
 
 ### Direction
@@ -201,6 +205,10 @@ Run `npm test` (or `npm run test:coverage`) in `server/`. Statement and branch c
 - the `invoke` paths in `llm/adapters/*` — need live provider credentials, so no real page has been read by a model; the image message was checked against both providers' request builders and the configuration refusals are covered
 
 Tests use in-memory SQLite (`SPINE_DB_PATH=:memory:`) with a `resetStore()` call between files so no state leaks across test files. Fixtures are built through the store interface, not raw SQL.
+
+## Credits
+
+Countries in a share link's access log come from the [IP to Country Lite database by DB-IP.com](https://db-ip.com), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 
 ## Licence
 

@@ -1,12 +1,14 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { api, type Document, type ShareLink, type ShareRequest } from '../api';
+import { api, type Document, type Episode, type ShareLink, type ShareRequest } from '../api';
+import { episodeName } from '../components/episode';
 import { useOnDataChanged } from '../dataChanged';
 import ShareRequestCard from '../components/ShareRequestCard';
 import { LANGUAGES, useI18n } from '../i18n';
 import { Combobox } from '../components/Combobox';
 import { languageName } from '../i18n/useTranslation';
 import { DOC_TYPE_LABELS } from '../components/DocumentCard';
+import { LIFETIMES } from '../lifetimes';
 import { documentByline, documentTitle } from '../titles';
 
 const input = 'w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500';
@@ -19,6 +21,7 @@ export function describeScope(link: ShareLink, t: ReturnType<typeof useI18n>['t'
     if (link.scope === 'all') return t('All history');
     if (link.scope === 'tag') return t('Tag: {name}', { name: String(value) });
     if (link.scope === 'document_ids') return tn(Array.isArray(value) ? value.length : 0, '{n} document', '{n} documents');
+    if (link.scope === 'episode') return tn(Array.isArray(value) ? value.length : 0, '{n} episode', '{n} episodes');
     if (link.scope === 'date_range') return `${value?.from ?? ''} – ${value?.to ?? ''}`;
   } catch { /* an unreadable scope is shown as its kind */ }
   return link.scope;
@@ -86,9 +89,11 @@ export default function ShareLinks() {
   const [scope, setScope] = useState<ShareLink['scope']>('all');
   const [tag, setTag] = useState('');
   const [ids, setIds] = useState<string[]>([]);
+  const [episodes, setEpisodes] = useState<Episode[]>([]);
+  const [episodeIds, setEpisodeIds] = useState<string[]>([]);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
-  const [form, setForm] = useState({ label: '', expires_days: 7, include_scans: false, language: '', require_approval: false, allow_chat: false });
+  const [form, setForm] = useState({ label: '', expires_hours: 168, include_scans: false, language: '', require_approval: false, allow_chat: false });
   const [tags, setTags] = useState<Array<{ id: number; name: string }>>([]);
   const [docs, setDocs] = useState<Document[] | null>(null);
   const [tagged, setTagged] = useState<number | null>(null);
@@ -102,6 +107,7 @@ export default function ShareLinks() {
     api.share.list().then(setLinks).finally(() => setLoading(false));
     api.share.requests().then(setRequests).catch(() => {});
     api.tags.list().then(setTags).catch(() => {});
+    api.episodes.list('confirmed').then(setEpisodes).catch(() => {});
     api.documents.listAll().then(setDocs).catch(() => setDocs([]));
   }, []);
 
@@ -115,8 +121,9 @@ export default function ShareLinks() {
   }, [scope, tag]);
 
   const inRange = docs && from && to ? docs.filter(d => d.doc_date && d.doc_date >= from && d.doc_date <= to).length : null;
-  const count = scope === 'all' ? docs?.length ?? null : scope === 'tag' ? tagged : scope === 'document_ids' ? ids.length : inRange;
-  const ready = scope === 'all' || (scope === 'tag' && !!tag) || (scope === 'document_ids' && ids.length > 0) || (scope === 'date_range' && !!from && !!to && from <= to);
+  const inEpisodes = new Set(episodes.filter(e => episodeIds.includes(e.id)).flatMap(e => e.document_ids)).size;
+  const count = scope === 'all' ? docs?.length ?? null : scope === 'tag' ? tagged : scope === 'document_ids' ? ids.length : scope === 'episode' ? inEpisodes : inRange;
+  const ready = scope === 'all' || (scope === 'tag' && !!tag) || (scope === 'document_ids' && ids.length > 0) || (scope === 'episode' && episodeIds.length > 0) || (scope === 'date_range' && !!from && !!to && from <= to);
 
   const create = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -124,12 +131,12 @@ export default function ShareLinks() {
     setCreating(true);
     setError('');
     try {
-      const scope_value = scope === 'tag' ? tag : scope === 'document_ids' ? ids : scope === 'date_range' ? { from, to } : undefined;
+      const scope_value = scope === 'tag' ? tag : scope === 'document_ids' ? ids : scope === 'episode' ? episodeIds : scope === 'date_range' ? { from, to } : undefined;
       const result = await api.share.create({
         label: form.label || undefined,
         scope,
         scope_value,
-        expires_days: form.expires_days,
+        expires_hours: form.expires_hours,
         include_scans: form.include_scans,
         language: form.language || null,
         require_approval: form.require_approval,
@@ -173,7 +180,7 @@ export default function ShareLinks() {
             <label htmlFor="s-scope" className={label}>{t('What to share')}</label>
             <Combobox
               id="s-scope" value={scope} onChange={v => setScope(v as ShareLink['scope'])} className={input}
-              options={[{ value: 'all', label: t('All history') }, { value: 'tag', label: t('Documents with a tag') }, { value: 'document_ids', label: t('Documents I pick') }, { value: 'date_range', label: t('A date range') }]}
+              options={[{ value: 'all', label: t('All history') }, { value: 'tag', label: t('Documents with a tag') }, { value: 'document_ids', label: t('Documents I pick') }, ...(episodes.length > 0 ? [{ value: 'episode', label: t('Episodes') }] : []), { value: 'date_range', label: t('A date range') }]}
             />
           </div>
 
@@ -196,6 +203,19 @@ export default function ShareLinks() {
               : <DocumentPicker docs={docs} chosen={ids} onChange={setIds} />
           )}
 
+          {scope === 'episode' && (
+            <div className="space-y-1">
+              {episodes.map(e => (
+                <label key={e.id} className="flex items-center gap-2 text-sm text-gray-700">
+                  <input type="checkbox" checked={episodeIds.includes(e.id)} onChange={ev => setEpisodeIds(prev => (ev.target.checked ? [...prev, e.id] : prev.filter(x => x !== e.id)))} />
+                  <span className="truncate">{episodeName(e, t)}</span>
+                  <span className="text-xs text-gray-400 shrink-0">{tn(e.document_ids.length, '{n} document', '{n} documents')}</span>
+                </label>
+              ))}
+              <p className="text-xs text-gray-500">{t('The link shares what the episode holds when it is opened, so a document added to the episode later is shared too.')}</p>
+            </div>
+          )}
+
           {scope === 'date_range' && (
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -212,12 +232,14 @@ export default function ShareLinks() {
           {count !== null && <p className="text-xs text-gray-500" role="status">{tn(count, 'This shares {n} document.', 'This shares {n} documents.')}</p>}
 
           <div>
-            <label htmlFor="s-days" className={label}>{t('Expires in (days, max 30)')}</label>
-            <input
-              id="s-days" type="number" min={1} max={30} value={form.expires_days}
-              onChange={e => setForm(f => ({ ...f, expires_days: parseInt(e.target.value) }))}
-              className="w-24 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            <label htmlFor="s-hours" className={label}>{t('Expires in')}</label>
+            <select
+              id="s-hours" value={form.expires_hours}
+              onChange={e => setForm(f => ({ ...f, expires_hours: parseInt(e.target.value) }))}
+              className="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {LIFETIMES.map(l => <option key={l.hours} value={l.hours}>{t(l.label)}</option>)}
+            </select>
           </div>
 
           <label className="flex items-start gap-2 text-sm text-gray-700">

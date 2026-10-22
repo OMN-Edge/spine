@@ -1,7 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
 import { doctorKey } from '../doctors.js';
-import { createReadStream, existsSync, statSync } from 'fs';
+import { createReadStream, existsSync, renameSync, rmSync, statSync } from 'fs';
+import sharp from 'sharp';
+import { isTurn } from '../geometry.js';
 import { extname } from 'path';
 import { getStore, type DocumentPatch, type MeasurementChange, type NewMeasurement } from '../store/index.js';
 import { requireAuth } from './middleware.js';
@@ -268,6 +270,8 @@ export async function documentRoutes(app: FastifyInstance) {
       tag?: string;
       doc_type?: string;
       provider?: string;
+      specialty?: string;
+      episode?: string;
       date_from?: string;
       date_to?: string;
       reviewed?: string;
@@ -275,13 +279,15 @@ export async function documentRoutes(app: FastifyInstance) {
       offset?: string;
     };
   }>('/api/documents', async (req, reply) => {
-    const { q, tag, doc_type, provider, date_from, date_to, reviewed, limit = '50', offset = '0' } = req.query;
+    const { q, tag, doc_type, provider, specialty, episode, date_from, date_to, reviewed, limit = '50', offset = '0' } = req.query;
 
     const documents = await getStore().documents.listFor(req.userId, {
       q,
       tag,
       docType: doc_type,
       provider,
+      specialty,
+      episodeId: episode,
       dateFrom: date_from,
       dateTo: date_to,
       reviewed: reviewed === undefined ? undefined : reviewed === 'true',
@@ -310,7 +316,11 @@ export async function documentRoutes(app: FastifyInstance) {
     ]);
 
     const upload = await getStore().sourceFiles.findFor(req.userId, doc.source_file_id);
-    return reply.send({ ...doc, fields, tags, pages, measurements, doctors, grouping_confirmed: upload?.grouping_confirmed ?? true });
+    const episode = (await store.episodes.list(req.userId, ['proposed', 'confirmed'])).find(e => e.document_ids.includes(id));
+    return reply.send({
+      ...doc, fields, tags, pages, measurements, doctors, grouping_confirmed: upload?.grouping_confirmed ?? true,
+      episode: episode ? { id: episode.id, title: episode.title, state: episode.state, first_date: episode.first_date, last_date: episode.last_date, provider: episode.provider } : null,
+    });
   });
 
   /**
@@ -612,6 +622,36 @@ export async function documentRoutes(app: FastifyInstance) {
     }
   });
 
+  // Turn a page image clockwise by 90, 180 or 270 degrees, for a scan that was fed in sideways. The image file is turned in
+  // place, and the boxes drawn on it (the page's text elements, the fields and results read from it) move with it; what a
+  // model reads next is the turned image. Nothing is read again by this.
+  app.post<{ Params: { id: string }; Body: { degrees?: unknown } }>('/api/pages/:id/rotate', async (req, reply) => {
+    const degrees = req.body?.degrees;
+    if (!isTurn(degrees)) return reply.status(400).send({ error: 'degrees must be 90, 180 or 270' });
+
+    const store = getStore();
+    const imagePath = await store.pages.findImagePathFor(req.userId, req.params.id);
+    if (!imagePath) return reply.status(404).send({ error: 'not found' });
+    const sourceFileId = await store.pages.sourceFileOf(req.userId, req.params.id);
+    const upload = sourceFileId ? await store.sourceFiles.findFor(req.userId, sourceFileId) : null;
+    if ((sourceFileId && isReadingPages(sourceFileId)) || upload?.status === 'pending' || upload?.status === 'processing') {
+      return reply.status(409).send({ error: 'this file is still being processed' });
+    }
+    if (!existsSync(imagePath) || !statSync(imagePath).isFile()) return reply.status(404).send({ error: 'image not found on disk' });
+
+    // Written beside the image and moved over it, so a failure leaves the page as it was.
+    const staged = `${imagePath}.turning`;
+    try {
+      const info = await sharp(imagePath).rotate(degrees).toFile(staged);
+      renameSync(staged, imagePath);
+      await store.pages.rotate(req.userId, req.params.id, degrees, { width: info.width, height: info.height });
+      const [page] = (await store.pages.listForSourceFile(req.userId, sourceFileId!)).filter(p => p.id === req.params.id);
+      return reply.send({ rotation: page.rotation, image_width: info.width, image_height: info.height });
+    } finally {
+      rmSync(staged, { force: true });
+    }
+  });
+
   // Set a whole document aside, or bring it back: every page of its range at once, however many there are.
   // The document then leaves the timeline, search, shares and trends (a document with every page hidden is
   // set aside) and stays on the upload's regrouping screen. It goes back to review, as hiding one page does.
@@ -640,10 +680,15 @@ export async function documentRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: 'image not found on disk' });
     }
 
+    // Kept by the browser, but asked again each time: a page can be turned, and the file's own date says whether it was.
+    const modified = statSync(imagePath).mtime;
+    const since = Date.parse(req.headers['if-modified-since'] ?? '');
+    if (Number.isFinite(since) && Math.floor(modified.getTime() / 1000) <= Math.floor(since / 1000)) return reply.status(304).send();
     const type = extname(imagePath).toLowerCase() === '.jpg' ? 'image/jpeg' : 'image/png';
     return reply
       .type(type)
-      .header('Cache-Control', 'private, max-age=3600')
+      .header('Cache-Control', 'private, no-cache')
+      .header('Last-Modified', modified.toUTCString())
       .send(createReadStream(imagePath));
   });
 }

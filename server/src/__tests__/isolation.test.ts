@@ -144,6 +144,11 @@ describe('P1 — deny by default', () => {
     'GET /api/share/:token/documents/:id',
     'GET /api/share/:token/pages/:pageId/image',
     'GET /api/share/:token/meta',
+    // Public on purpose: the privacy notice, the terms and the intended purpose are read before an account exists (own-account.test.ts).
+    'GET /api/legal/:doc',
+    // Public on purpose: they are how a passkey signs in (passkeys.test.ts); each is rate limited and single use.
+    'POST /api/auth/passkey/options',
+    'POST /api/auth/passkey/login',
     'GET /api/share/:token/documents/:id/translation',
     'GET /api/share/:token/trends',
     'GET /api/share/:token/trends/series',

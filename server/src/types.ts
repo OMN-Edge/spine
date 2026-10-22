@@ -14,6 +14,10 @@ export interface SourceFile {
   chat_conversation_id: string | null;
   /** Several photos bundled into one PDF: no text layer, so a model reads it as it reads a single photo. */
   photo_set: boolean;
+  /** Invented records from "explore with sample records", removed together. */
+  sample: boolean;
+  /** Unprocessed photos kept beside the PDF of a scan session; 0 for any other upload. */
+  raw_count: number;
 }
 
 export interface Page {
@@ -33,6 +37,8 @@ export interface Page {
   hidden: boolean;
   /** Where the page is in its file. `page_number` is its place in the upload, which the owner can change. */
   source_page: number;
+  /** Degrees clockwise (0, 90, 180, 270) the owner has turned the page image. Also what a cache of the image is told by. */
+  rotation: number;
   reviewed: boolean;
 }
 
@@ -55,6 +61,8 @@ export interface Document {
   language: string | null;
   /** Not read yet: its upload's grouping waits for the owner, or its pages changed since it was read. */
   needs_reading: boolean;
+  /** How many of its values were read with low confidence and not yet confirmed or edited by the owner. */
+  to_check: number;
 }
 
 export type DocType =
@@ -80,13 +88,15 @@ export interface ExtractedField {
   bbox_x1: number | null;
   bbox_y1: number | null;
   confidence: number | null;
+  /** Read with low confidence and not edited by the owner; the document page marks it "check" until the document is reviewed. */
+  needs_check: boolean;
 }
 
 export interface ShareLink {
   id: string;
   token: string;
   label: string | null;
-  scope: 'all' | 'tag' | 'document_ids' | 'date_range';
+  scope: 'all' | 'tag' | 'document_ids' | 'date_range' | 'episode';
   scope_value: string | null; // JSON
   created_at: string;
   expires_at: string;
@@ -185,6 +195,8 @@ export interface Measurement {
   bbox_x1: number | null;
   bbox_y1: number | null;
   confidence: number | null;
+  /** Read with low confidence and not edited by the owner. */
+  needs_check: boolean;
 }
 
 export interface Doctor {

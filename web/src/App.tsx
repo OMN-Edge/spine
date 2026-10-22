@@ -15,6 +15,10 @@ import ReviewQueue from './pages/ReviewQueue';
 import DocumentPage from './pages/DocumentPage';
 import Search from './pages/Search';
 import Trends from './pages/Trends';
+import Episodes from './pages/Episodes';
+import Scan from './pages/Scan';
+import LegalPage from './pages/LegalPage';
+import ConsentGate from './pages/ConsentGate';
 import Doctors from './pages/Doctors';
 import Library from './pages/Library';
 import DoctorPage from './pages/DoctorPage';
@@ -30,6 +34,7 @@ import { LanguageSwitcher, msg, useI18n } from './i18n';
 
 const NAV_LINKS = [
   { to: '/', label: msg('Timeline') },
+  { to: '/episodes', label: msg('Episodes') },
   { to: '/upload', label: msg('Upload') },
   { to: '/review', label: msg('Review') },
   { to: '/trends', label: msg('Trends') },
@@ -122,9 +127,13 @@ function ReviewRedirect() {
 }
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
-  const { authenticated } = useAuth();
+  const { t } = useI18n();
+  const { authenticated, consentNeeded, consentGiven } = useAuth();
   const location = useLocation();
   // Where they were going, so signing in lands there: a mailed link to a request is the case that matters.
+  // Until the server has said what this account still has to agree to, nothing is asked of it.
+  if (authenticated && consentNeeded === undefined) return <div className="min-h-screen flex items-center justify-center text-gray-400">{t('Loading…')}</div>;
+  if (authenticated && consentNeeded) return <ConsentGate need={consentNeeded} done={consentGiven} />;
   return authenticated ? <Layout>{children}</Layout> : <Navigate to="/login" replace state={{ from: location.pathname }} />;
 }
 
@@ -133,6 +142,8 @@ export default function App() {
   const [authenticated, setAuthenticatedState] = useState(false);
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(true);
+  // What this account still has to agree to; asked for whenever a sign-in happens.
+  const [consentNeeded, setConsentNeeded] = useState<{ health: boolean; terms: boolean } | null | undefined>(undefined);
 
   const setAuthenticated = (value: boolean, who = '') => {
     setAuthenticatedState(value);
@@ -146,16 +157,27 @@ export default function App() {
       .finally(() => setLoading(false));
   }, []);
 
+  // Whenever someone is signed in, ask what they still have to agree to (a new account, or a text that changed).
+  useEffect(() => {
+    if (!authenticated) { setConsentNeeded(undefined); return; }
+    api.auth.me()
+      .then(r => setConsentNeeded(r.consent_needed && (r.consent_needed.health || r.consent_needed.terms) ? r.consent_needed : null))
+      .catch(() => {});
+  }, [authenticated]);
+
   if (loading) return <div className="min-h-screen flex items-center justify-center text-gray-400">{t('Loading…')}</div>;
 
   return (
-    <AuthContext.Provider value={{ authenticated, email, setAuthenticated }}>
+    <AuthContext.Provider value={{ authenticated, email, setAuthenticated, consentNeeded, consentGiven: () => setConsentNeeded(null) }}>
       <ChatProvider authenticated={authenticated}>
       <ReauthDialog />
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/verify" element={<Verify />} />
+        <Route path="/privacy" element={<LegalPage doc="privacy" />} />
+        <Route path="/terms" element={<LegalPage doc="terms" />} />
+        <Route path="/purpose" element={<LegalPage doc="purpose" />} />
         <Route path="/forgot" element={<Forgot />} />
         <Route path="/reset" element={<Reset />} />
         <Route path="/share/:token" element={<PublicShareView />} />
@@ -166,6 +188,8 @@ export default function App() {
         <Route path="/documents/:id" element={<PrivateRoute><DocumentPage /></PrivateRoute>} />
         <Route path="/review/:id" element={<ReviewRedirect />} />
         <Route path="/trends" element={<PrivateRoute><Trends /></PrivateRoute>} />
+        <Route path="/episodes" element={<PrivateRoute><Episodes /></PrivateRoute>} />
+        <Route path="/scan" element={<PrivateRoute><Scan /></PrivateRoute>} />
         <Route path="/doctors" element={<PrivateRoute><Doctors /></PrivateRoute>} />
         <Route path="/library" element={<PrivateRoute><Library /></PrivateRoute>} />
         <Route path="/doctors/:id" element={<PrivateRoute><DoctorPage /></PrivateRoute>} />

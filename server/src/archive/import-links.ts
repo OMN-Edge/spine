@@ -1,3 +1,4 @@
+import { v4 as uuidv4 } from 'uuid';
 import { getStore } from '../store/index.js';
 import { describeError } from '../failure.js';
 import { logger } from '../logger.js';
@@ -16,7 +17,7 @@ export class LinkRestore {
   private done = false;
   private readonly ids = new Map<string, string>();
 
-  constructor(private readonly userId: string, private readonly links: Manifest['links']) {}
+  constructor(private readonly userId: string, private readonly links: Manifest['links'], private readonly episodes: Manifest['episodes'] = []) {}
 
   /** A file is being restored, and will say when it is done. */
   expect(): void { this.waiting += 1; }
@@ -32,8 +33,9 @@ export class LinkRestore {
   sealed(): void { this.done = true; this.run(); }
 
   private run(): void {
-    if (!this.done || this.waiting > 0 || this.links.length === 0) return;
+    if (!this.done || this.waiting > 0 || (this.links.length === 0 && this.episodes.length === 0)) return;
     const links = this.links.splice(0);
+    const episodes = this.episodes.splice(0);
     void (async () => {
       const store = getStore();
       const now = new Date().toISOString();
@@ -45,6 +47,16 @@ export class LinkRestore {
           await store.links.restore(this.userId, { from_document_id: from, to_document_id: to, kind: l.kind, source: l.source, state: l.state, reason: l.reason, confidence: l.confidence }, now);
         } catch (err) {
           logger.warn('a link from an export could not be restored', { error: describeError(err) });
+        }
+      }
+      // Episodes after the documents exist: the ones that were restored, in the state they were exported in.
+      for (const e of episodes) {
+        const documentIds = e.documents.flatMap(d => (this.ids.get(`${d.file}:${d.document}`) ? [this.ids.get(`${d.file}:${d.document}`)!] : []));
+        if (documentIds.length === 0) continue;
+        try {
+          await store.episodes.create(this.userId, { id: uuidv4(), title: e.title, state: e.state, source: e.source, documentIds }, now);
+        } catch (err) {
+          logger.warn('an episode from an export could not be restored', { error: describeError(err) });
         }
       }
     })();

@@ -1,4 +1,5 @@
 import type { Database } from 'better-sqlite3';
+import { LOW_CONFIDENCE } from '../../confidence.js';
 import type { Document } from '../../types.js';
 import type {
   DocumentFilter,
@@ -27,7 +28,10 @@ const ORDER = 'ORDER BY d.doc_date DESC NULLS LAST';
  */
 const COLUMNS =
   'd.id, d.source_file_id, d.page_start, d.page_end, d.title, d.doc_date, d.provider, ' +
-  'd.doc_type, d.ai_summary, d.user_notes, d.reviewed, d.language, d.needs_reading';
+  'd.doc_type, d.ai_summary, d.user_notes, d.reviewed, d.language, d.needs_reading, ' +
+  // Values to check: read with low confidence, in a document the owner has not reviewed, and not edited by them (FR-EXT-04).
+  `CASE WHEN d.reviewed = 1 THEN 0 ELSE (SELECT COUNT(*) FROM extracted_fields f WHERE f.document_id = d.id AND f.user_id = d.user_id AND f.owner_edited = 0 AND f.confidence < ${LOW_CONFIDENCE}) + ` +
+  `(SELECT COUNT(*) FROM measurements m WHERE m.document_id = d.id AND m.user_id = d.user_id AND m.owner_edited = 0 AND m.confidence < ${LOW_CONFIDENCE}) END AS to_check`;
 
 /** Every statement filters by `user_id` (SECURITY.md P12). */
 export function documentRepository(db: Database): DocumentRepository {
@@ -140,9 +144,20 @@ export function documentRepository(db: Database): DocumentRepository {
       }
       if (filter.docType) { sql += ' AND d.doc_type = ?'; params.push(filter.docType); }
       if (filter.provider) { sql += ' AND d.provider LIKE ?'; params.push(`%${filter.provider}%`); }
+      if (filter.specialty) {
+        sql += ` AND d.id IN (
+          SELECT dd.document_id FROM document_doctors dd
+          JOIN doctors dr ON dr.id = dd.doctor_id WHERE dr.user_id = ? AND dr.specialty LIKE ?
+        )`;
+        params.push(uid, `%${filter.specialty}%`);
+      }
       if (filter.dateFrom) { sql += ' AND d.doc_date >= ?'; params.push(filter.dateFrom); }
       if (filter.dateTo) { sql += ' AND d.doc_date <= ?'; params.push(filter.dateTo); }
       if (filter.sourceFileId) { sql += ' AND d.source_file_id = ?'; params.push(filter.sourceFileId); }
+      if (filter.episodeId) {
+        sql += ' AND d.id IN (SELECT ed.document_id FROM episode_documents ed WHERE ed.episode_id = ? AND ed.user_id = ?)';
+        params.push(filter.episodeId, uid);
+      }
       if (filter.includeHidden) { /* everything */ }
       else if (filter.includeUnconfirmed) sql += ` AND ${NOT_SET_ASIDE}`;
       else sql += ` AND ${VISIBLE}`;
@@ -293,6 +308,20 @@ export function documentRepository(db: Database): DocumentRepository {
                WHERE d.user_id = ? AND ${VISIBLE} AND d.id IN (${ids.map(() => '?').join(',')}) ${ORDER}`,
             )
             .all(uid, ...ids) as Document[];
+        }
+
+        case 'episode': {
+          // Confirmed episodes only: one since dismissed or removed shares nothing. A document set aside is not shared (VISIBLE).
+          const ids = value as string[];
+          return db
+            .prepare(
+              `SELECT ${COLUMNS} FROM documents d
+               WHERE d.user_id = ? AND ${VISIBLE}
+                 AND d.id IN (SELECT ed.document_id FROM episode_documents ed JOIN episodes e ON e.id = ed.episode_id
+                              WHERE e.user_id = ? AND e.state = 'confirmed' AND e.id IN (${ids.map(() => '?').join(',')}))
+               ${ORDER}`,
+            )
+            .all(uid, uid, ...ids) as Document[];
         }
 
         case 'date_range': {

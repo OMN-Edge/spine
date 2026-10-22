@@ -163,7 +163,7 @@ export async function exportDocument(userId: string, documentId: string): Promis
     pages: await Promise.all(pages.map(async (p, i) => pageEntry(store, userId, { ...p, hidden: false }, i + 1, i + 1))),
     documents: [await documentEntry(store, userId, doc, numbered, 1, pages.length, personOf)],
   };
-  const manifest: Manifest = { format: EXPORT_FORMAT, version: EXPORT_VERSION, exported_at: new Date().toISOString(), kind: 'document', files: [entry], links: [],
+  const manifest: Manifest = { format: EXPORT_FORMAT, version: EXPORT_VERSION, exported_at: new Date().toISOString(), kind: 'document', files: [entry], links: [], episodes: [],
     people: named.map(d => ({ name: d.name, specialty: d.specialty, clinic: d.clinic, license_code: d.license_code })), tags: [], test_aliases: [], decisions: [],
   };
   return {
@@ -215,7 +215,12 @@ export async function exportArchive(userId: string): Promise<ExportZip | 'empty'
     const from = placed.get(l.from_document_id); const to = placed.get(l.to_document_id);
     return from && to ? [{ from, to, kind: l.kind, source: l.source, state: l.state, reason: l.reason, confidence: l.confidence }] : [];
   });
-  const manifest: Manifest = { format: EXPORT_FORMAT, version: EXPORT_VERSION, exported_at: new Date().toISOString(), kind: 'archive', files: entries, links,
+  // Episodes with the documents they hold that are in the export, all states, so a dismissal stays a dismissal.
+  const episodes = (await store.episodes.list(userId)).flatMap(e => {
+    const documents = e.document_ids.flatMap(id => (placed.get(id) ? [placed.get(id)!] : []));
+    return documents.length > 0 ? [{ title: e.title, state: e.state, source: e.source, documents }] : [];
+  });
+  const manifest: Manifest = { format: EXPORT_FORMAT, version: EXPORT_VERSION, exported_at: new Date().toISOString(), kind: 'archive', files: entries, links, episodes,
     people: directory.people, tags: directory.tags, test_aliases: directory.test_aliases, decisions: directory.decisions,
   };
   return { stream: zipOf(manifest, files), filename: `spine-archive-${stamp()}.zip` };

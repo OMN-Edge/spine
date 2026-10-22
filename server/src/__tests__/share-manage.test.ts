@@ -28,9 +28,9 @@ const visitor = (res: { cookies: Array<{ name: string; value: string }> }) => re
 describe('inspecting a link', () => {
   it('shows its settings, what it shares now, who read it and its history', async () => {
     const { id, token } = await make({ include_scans: true, expires_days: 10 });
-    await app.inject({ method: 'GET', url: `/api/share/${token}/documents`, headers: { 'x-real-ip': '203.0.113.7' } });
-    await app.inject({ method: 'GET', url: `/api/share/${token}/documents`, headers: { 'x-real-ip': '203.0.113.7' } });
-    await app.inject({ method: 'GET', url: `/api/share/${token}/documents`, headers: { 'x-real-ip': '198.51.100.2' } });
+    await app.inject({ method: 'GET', url: `/api/share/${token}/documents`, headers: { 'x-forwarded-for': '203.0.113.7' } });
+    await app.inject({ method: 'GET', url: `/api/share/${token}/documents`, headers: { 'x-forwarded-for': '203.0.113.7' } });
+    await app.inject({ method: 'GET', url: `/api/share/${token}/documents`, headers: { 'x-forwarded-for': '198.51.100.2' } });
 
     const res = await detail(id);
     expect(res.statusCode).toBe(200);
@@ -44,6 +44,24 @@ describe('inspecting a link', () => {
     expect(body.access.recent).toHaveLength(3);
     expect(body.events.map((e: { kind: string }) => e.kind)).toEqual(['created']);
     expect(res.headers['cache-control']).toBe('no-store');
+  });
+
+  it('records the country of each read and the document it opened, and only a document the link shares', async () => {
+    const { id, token } = await make();
+    const from = (ip: string) => ({ 'x-forwarded-for': ip });
+    await app.inject({ method: 'GET', url: `/api/share/${token}/documents`, headers: from('81.196.1.1') });
+    await app.inject({ method: 'GET', url: `/api/share/${token}/documents/${docA}`, headers: from('81.196.1.1') });
+    await app.inject({ method: 'GET', url: `/api/share/${token}/documents/${docB}`, headers: from('8.8.8.8') });
+    await app.inject({ method: 'GET', url: `/api/share/${token}/documents`, headers: from('10.1.2.3') });
+
+    const body = (await detail(id)).json();
+    const recent = body.access.recent as Array<{ ip_address: string; country: string | null; document_id: string | null }>;
+    expect(recent.find(r => r.ip_address === '81.196.1.1' && r.document_id === docA)?.country).toBe('RO');
+    expect(recent.find(r => r.ip_address === '81.196.1.1' && r.document_id === null)?.country).toBe('RO');
+    // docB is the owner's but not in this link: the read is logged, the document is not named.
+    expect(recent.find(r => r.ip_address === '8.8.8.8')).toMatchObject({ country: 'US', document_id: null });
+    expect(recent.find(r => r.ip_address === '10.1.2.3')?.country).toBeNull();
+    expect(body.access.addresses.find((a: { ip_address: string }) => a.ip_address === '81.196.1.1')).toMatchObject({ country: 'RO', count: 2 });
   });
 
   it('is the owner’s alone', async () => {

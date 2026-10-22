@@ -45,6 +45,18 @@ describe('POST /api/share-links', () => {
     expect(res.statusCode).toBe(400);
   });
 
+  it('lives for the hours asked, from one hour to thirty days', async () => {
+    const make = (payload: object) => app.inject({ method: 'POST', url: '/api/share-links', headers: { cookie }, payload: { scope: 'all', ...payload } });
+    const hour = await make({ expires_hours: 1 });
+    expect(hour.statusCode).toBe(201);
+    const ms = new Date(hour.json().expires_at).getTime() - Date.now();
+    expect(ms).toBeGreaterThan(59 * 60_000);
+    expect(ms).toBeLessThanOrEqual(60 * 60_000);
+    expect((await make({ expires_hours: 720 })).statusCode).toBe(201);
+    for (const bad of [0, 721, 1.5, '3']) expect((await make({ expires_hours: bad })).statusCode).toBe(400);
+    expect((await make({ expires_hours: 2, expires_days: 2 })).statusCode).toBe(400);
+  });
+
   it('returns 401 without auth', async () => {
     const res = await app.inject({
       method: 'POST', url: '/api/share-links',

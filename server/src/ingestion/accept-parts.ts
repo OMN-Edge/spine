@@ -2,7 +2,9 @@ import { rmSync } from 'fs';
 import path from 'path';
 import type { MultipartFile, MultipartValue } from '@fastify/multipart';
 import { importZip } from '../archive/import.js';
+import { looksLikeDocx } from './convert.js';
 import { MAX_PHOTOS_IN_SET } from './photo-set.js';
+import { keepUnprocessed } from './raw-originals.js';
 import { acceptFile, acceptPhotoSet, newUploadPath, saveStream, type UploadOutcome } from './accept-upload.js';
 
 /** A document or a photo. */
@@ -49,6 +51,11 @@ export async function acceptParts(
     // A zip may hold many files, so the request limit is its limit; anything else is one document or photo.
     const { checksum, truncated, zip } = await saveStream(part.file, filePath, { zip: MAX_UPLOAD_BYTES, other: MAX_FILE_BYTES });
 
+    // A Word document is a zip too, but it is one document, not an archive of files.
+    if (zip && !truncated && (await looksLikeDocx(filePath))) {
+      results.push(await acceptFile(userId, { id: fileId, path: filePath, filename: part.filename ?? null, checksum, chatConversationId: conversation }));
+      continue;
+    }
     if (zip) {
       try {
         if (truncated) results.push({ skipped: true, reason: 'too_large', filename: part.filename ?? null });
@@ -75,10 +82,20 @@ export async function acceptParts(
  */
 export async function acceptPhotoParts(userId: string, parts: AsyncIterable<Part>): Promise<Array<UploadOutcome | Record<string, unknown>>> {
   const saved: Array<{ path: string; filename: string | null }> = [];
+  // A scan session also sends each photo as it was taken, before straightening, in the same order, as `originals` (FR-ING-09).
+  const raws: Array<{ path: string }> = [];
   let refusal: Record<string, unknown> | null = null;
   try {
     for await (const part of parts) {
       if (part.type !== 'file') continue;
+      if (part.fieldname === 'originals') {
+        if (raws.length >= MAX_PHOTOS_IN_SET) { part.file.resume(); continue; }
+        const { filePath } = newUploadPath(userId, '.raw');
+        raws.push({ path: filePath });
+        const { truncated } = await saveStream(part.file, filePath, { zip: MAX_FILE_BYTES, other: MAX_FILE_BYTES });
+        if (truncated && !refusal) refusal = { skipped: true, reason: 'too_large', filename: part.filename ?? null };
+        continue;
+      }
       if (saved.length > MAX_PHOTOS_IN_SET) { part.file.resume(); continue; } // one past the limit says "too many"; the rest are not kept
       const { filePath } = newUploadPath(userId, '.photo');
       saved.push({ path: filePath, filename: part.filename ?? null });
@@ -86,8 +103,11 @@ export async function acceptPhotoParts(userId: string, parts: AsyncIterable<Part
       if (truncated && !refusal) refusal = { skipped: true, reason: 'too_large', filename: part.filename ?? null };
     }
     if (refusal) return [refusal];
-    return [await acceptPhotoSet(userId, saved)];
+    const outcome = await acceptPhotoSet(userId, saved);
+    if ('id' in outcome && raws.length > 0) await keepUnprocessed(userId, outcome.id, raws.map(r => r.path));
+    return [outcome];
   } finally {
     for (const file of saved) rmSync(file.path, { force: true });
+    for (const file of raws) rmSync(file.path, { force: true });
   }
 }

@@ -13,6 +13,7 @@ import { windowLimiter } from '../rate-limit.js';
 import { startSession, endOtherSessions } from '../sessions.js';
 import { mailAfter, newSignInMail, securityChangeMail } from '../notify.js';
 import { checkSecondFactor, hasSecondFactor } from '../second-factor.js';
+import { consentNeeded } from '../legal.js';
 
 /**
  * SECURITY.md P5: every unauthenticated endpoint is rate limited. Login carries
@@ -209,6 +210,8 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions = 
       authenticated: true,
       email: user.email,
       second_factor_enabled: await hasSecondFactor(user.id),
+      // What this account still has to agree to before the app shows anything (FR-GDPR-01). Nothing once it has.
+      consent_needed: consentNeeded(user),
     });
   });
 
