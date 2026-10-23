@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
 import { doctorKey } from '../doctors.js';
 import { createReadStream, existsSync, renameSync, rmSync, statSync } from 'fs';
-import sharp from 'sharp';
+import { rotateImage } from '../ingestion/image-ops.js';
 import { isTurn } from '../geometry.js';
 import { extname } from 'path';
 import { getStore, type DocumentPatch, type MeasurementChange, type NewMeasurement } from '../store/index.js';
@@ -642,7 +642,7 @@ export async function documentRoutes(app: FastifyInstance) {
     // Written beside the image and moved over it, so a failure leaves the page as it was.
     const staged = `${imagePath}.turning`;
     try {
-      const info = await sharp(imagePath).rotate(degrees).toFile(staged);
+      const info = await rotateImage(imagePath, staged, degrees);
       renameSync(staged, imagePath);
       await store.pages.rotate(req.userId, req.params.id, degrees, { width: info.width, height: info.height });
       const [page] = (await store.pages.listForSourceFile(req.userId, sourceFileId!)).filter(p => p.id === req.params.id);

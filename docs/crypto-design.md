@@ -51,7 +51,7 @@ Each stage ends with the suite green, the documents updated, and a commit. Nothi
 | Stage | State |
 | --- | --- |
 | 1a | Built. Keys, derivation, recovery kit, the vault routes, sign-up, sign-in, reset and password change on the derived value, the device's vault client, tests including device against server |
-| 1b | Not started |
+| 1b | Built, with gaps. The store runs on a driver interface with SQLite in WebAssembly (`web/src/core/sqlite-wasm.ts`); a router gives the route files a place to run on the device (`local-app.ts`, held to Fastify by a test); Node's modules are replaced by in-memory ones (`shims/`) and the server's native tools by browser ones (`native/`: PDF.js rendering, Tesseract in WebAssembly, canvas, pdf-lib, fflate); the core runs in a Web Worker (`core.worker.ts`, `client.ts`); persistence (`persist.ts`) seals the database as 1 MiB pieces and each file as an object, with one index written last; the app's record requests, images and downloads go to the core, and a reload asks for the master password (`UnlockScreen`). `npm run check:browser` runs each native piece in real Chrome and `npm run check:app` runs the whole app in real Chrome against a real server: sign-in, vault, sample records written on the device, reload, unlock, and a look through the server's files for readable record text (none). Gaps: stamp and digital-signature reading, the model adapter (stage 2), streamed chat replies from the core, sharing (stage 4), a conflict screen when two devices save at once, and no page of the app other than those two checks has been tried in a real browser |
 | 2 | Not started |
 | 3 | Not started |
 | 4 | Not started |

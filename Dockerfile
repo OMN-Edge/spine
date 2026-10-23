@@ -1,4 +1,4 @@
-# The Spine server and the built web app. The Python sidecar is ingestion-service/Dockerfile; compose.yaml runs both.
+# The Spine server and the built web app. PDF text is read in-process (pdfjs-dist); there is no second service.
 FROM node:22-bookworm-slim AS build
 # better-sqlite3 compiles when no prebuilt binary fits the platform
 RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*

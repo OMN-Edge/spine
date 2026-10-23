@@ -8,6 +8,7 @@ import DeleteUpload from '../components/DeleteUpload';
 import { askForPassword } from '../reauth';
 import { msg, useI18n } from '../i18n';
 import type { I18n } from '../i18n';
+import { downloadFromDevice } from '../core/client';
 
 interface UploadResult {
   id?: string;
@@ -180,7 +181,7 @@ export default function Upload() {
     } catch {
       return;
     }
-    window.location.href = '/api/export';
+    await downloadFromDevice('/api/export', 'spine-export.zip');
   };
   const [dragging, setDragging] = useState(false);
   const [jobs, setJobs] = useState<JobState[]>([]);

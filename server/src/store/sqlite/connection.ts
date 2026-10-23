@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3';
+import type { Database, OpenDatabase } from './driver.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -10,10 +10,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  * Moved here from `db/index.ts` so that every SQLite-specific detail lives
  * inside the adapter.
  */
-export function openDatabase(location: string): Database.Database {
+export function openDatabase(location: string, open: OpenDatabase, schema?: string): Database {
   if (location !== ':memory:') fs.mkdirSync(path.dirname(location), { recursive: true });
 
-  const db = new Database(location);
+  const db = open(location);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
 
@@ -22,13 +22,13 @@ export function openDatabase(location: string): Database.Database {
 
   // Idempotent `CREATE TABLE IF NOT EXISTS`, re-applied every boot. The file
   // sits beside this adapter because it is SQLite-specific DDL; `npm run build`
-  // copies it next to the compiled output.
-  db.exec(fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8'));
+  // copies it next to the compiled output. The browser has no such file and hands the text in.
+  db.exec(schema ?? fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8'));
 
   return db;
 }
 
-const columnsOf = (db: Database.Database, table: string): string[] =>
+const columnsOf = (db: Database, table: string): string[] =>
   (db.prepare(`SELECT name FROM pragma_table_info('${table}')`).all() as Array<{ name: string }>).map(column => column.name);
 
 /**
@@ -55,7 +55,7 @@ const columnsOf = (db: Database.Database, table: string): string[] =>
  *    and `CREATE ... IF NOT EXISTS` would keep the old versions, so they are dropped here and
  *    schema.sql, which runs next, makes them again.
  */
-function addColumnsInPlace(db: Database.Database): void {
+function addColumnsInPlace(db: Database): void {
   const pages = columnsOf(db, 'pages');
   if (pages.length > 0 && !pages.includes('hidden')) {
     db.transaction(() => {
@@ -138,7 +138,7 @@ function addColumnsInPlace(db: Database.Database): void {
  * before document titles (documents have no `title`), and before structured
  * extraction (fields have no `group_no`, doctors no `license_code`, the search index no `body`, or doctor links no `source`).
  */
-function refuseOutdatedDatabase(db: Database.Database, location: string): void {
+function refuseOutdatedDatabase(db: Database, location: string): void {
   const uploads = columnsOf(db, 'source_files');
   const users = columnsOf(db, 'users');
   const documentColumns = columnsOf(db, 'documents');

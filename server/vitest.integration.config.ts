@@ -1,7 +1,7 @@
 import { defineConfig } from 'vitest/config';
 
 /**
- * Integration tests: the flows run against the real model named in `.env`, the real sidecar and poppler, with a fresh in-memory
+ * Integration tests: the flows run against the real model named in `.env`, poppler, with a fresh in-memory
  * database and a temporary data directory. Not part of `npm test`, which cannot call a model (vitest.config.ts blanks the keys);
  * run with `npm run test:integration`. See docs/testing.md.
  *
@@ -14,7 +14,6 @@ export default defineConfig({
     environment: 'node',
     include: ['src/__integration__/**/*.it.ts'],
     setupFiles: ['src/__integration__/support/env.ts'],
-    globalSetup: ['src/__integration__/support/global-setup.ts'],
     testTimeout: 300_000,
     hookTimeout: 120_000,
     fileParallelism: false,

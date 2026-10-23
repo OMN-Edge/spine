@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 
 /**
  * The environment an integration run has: `.env` for the model, and nothing else of the real instance. It runs before any test file
- * imports the app, because the store, the data directory and the sidecar address are read when their modules load.
+ * imports the app, because the store, the data directory and the data directory are read when their modules load.
  *
  * What is forced, so a run cannot touch or tell anyone about the real archive: an in-memory database, a temporary data and backup
  * directory, no mailer (the `.env` may have a real one: nothing here sends mail), and a session secret of its own.

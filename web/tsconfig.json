@@ -20,6 +20,9 @@
     "src"
   ],
   "exclude": [
-    "src/e2e"
+    "src/e2e",
+    "src/core/boot.ts",
+    "src/core/boot.test.ts",
+    "src/core/core.worker.ts"
   ]
 }

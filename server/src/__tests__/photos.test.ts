@@ -16,7 +16,8 @@ const mockAllowed = vi.hoisted(() => vi.fn());
 const sidecarParse = vi.hoisted(() => vi.fn());
 const modelParse = vi.hoisted(() => vi.fn());
 
-vi.mock('../ingestion/rasterize.js', () => ({ rasterizePdf: mockRasterizePdf, getPageImageDimensions: mockGetPageImageDimensions }));
+vi.mock('../ingestion/rasterize.js', () => ({ rasterizePdf: mockRasterizePdf }));
+vi.mock('../ingestion/image-size.js', () => ({ getPageImageDimensions: mockGetPageImageDimensions }));
 vi.mock('../ingestion/continuation.js', () => ({ checkContinuation: mockCheckContinuation }));
 vi.mock('../ingestion/extraction.js', () => ({ extractFields: mockExtractFields }));
 vi.mock('../parser/index.js', () => ({

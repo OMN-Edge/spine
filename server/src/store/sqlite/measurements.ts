@@ -1,5 +1,5 @@
 import { LOW_CONFIDENCE } from '../../confidence.js';
-import type { Database } from 'better-sqlite3';
+import type { Database } from './driver.js';
 import type { Measurement } from '../../types.js';
 import type {
   MeasurementChange,

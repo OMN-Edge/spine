@@ -1,4 +1,4 @@
-import type { Database } from 'better-sqlite3';
+import type { Database } from './driver.js';
 import { MAX_CONVERSATIONS, type ConversationRepository, type ConversationSummary, type StoredMessage } from '../types.js';
 import { owner } from './owner.js';
 

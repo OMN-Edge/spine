@@ -9,6 +9,7 @@ import { sourceLabel } from '../components/pageSource';
 import { documentByline, documentTitle } from '../titles';
 import DeleteUpload from '../components/DeleteUpload';
 import { useI18n } from '../i18n';
+import DeviceImg from '../components/DeviceImg';
 
 /**
  * One upload's pages, grouped into the documents they were read as, for fixing the
@@ -436,7 +437,7 @@ export default function UploadPages() {
                             aria-label={t('Open page {n} larger', { n: page.page_number })}
                             className="block w-full rounded focus:outline-none focus:ring-2 focus:ring-blue-500 hover:ring-2 hover:ring-blue-200"
                           >
-                            <img
+                            <DeviceImg
                               src={`/api/pages/${page.id}/image?r=${page.rotation}`}
                               alt=""
                               loading="lazy"

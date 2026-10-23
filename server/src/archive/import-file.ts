@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { getStore } from '../store/index.js';
-import { rasterizePdf, getPageImageDimensions } from '../ingestion/rasterize.js';
+import { rasterizePdf } from '../ingestion/rasterize.js';
+import { getPageImageDimensions } from '../ingestion/image-size.js';
 import { normalisePhoto } from '../ingestion/photo.js';
 import { beginJob, runQueued } from '../ingestion/jobs.js';
 import { cleanLanguageCode } from '../languages.js';

@@ -13,9 +13,11 @@ const mockExtractFields = vi.hoisted(() => vi.fn());
 
 vi.mock('../ingestion/rasterize.js', () => ({
   rasterizePdf: mockRasterizePdf,
+}));
+vi.mock('../ingestion/image-size.js', () => ({
   getPageImageDimensions: mockGetPageImageDimensions,
 }));
-vi.mock('../ingestion/ingestion-client.js', () => ({
+vi.mock('../ingestion/pdf-text.js', () => ({
   parseDocument: mockParseDocument,
 }));
 vi.mock('../ingestion/continuation.js', () => ({

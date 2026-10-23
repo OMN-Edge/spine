@@ -68,15 +68,6 @@ function build() {
 
   audit_dependencies
 
-  echo "Setting up Python venv for ingestion service..."
-  cd "${SPINE_DIR}/ingestion-service"
-  # PYTHON=python3.13 ./install.sh -b if the default python3 is newer than the sidecar supports (3.11 to 3.13)
-  "${PYTHON:-python3}" -m venv .venv
-  .venv/bin/pip install --upgrade pip
-  .venv/bin/pip install -r requirements.txt
-  # --no-deps: its dependencies include torch and transformers (about 1 GB), and strategy="fast" uses neither. See requirements.txt.
-  .venv/bin/pip install --no-deps unstructured_inference==1.6.13
-
   echo "Build complete."
 }
 
@@ -132,7 +123,7 @@ function install_services() {
 
   check_secrets
 
-  for unit in spine-web.service spine-ingestion.service spine-backup.service spine-backup.timer; do
+  for unit in spine-web.service spine-backup.service spine-backup.timer; do
     sed \
       -e "s|SPINE_DIR|${SPINE_DIR}|g" \
       -e "s|SPINE_USER|${SPINE_USER}|g" \
@@ -143,8 +134,7 @@ function install_services() {
 
   systemctl daemon-reload
 
-  systemctl enable spine-ingestion spine-web
-  systemctl restart spine-ingestion
+  systemctl enable spine-web
   sleep 2
   systemctl restart spine-web
 
@@ -154,7 +144,6 @@ function install_services() {
 
   echo ""
   echo "Services started."
-  echo "  spine-ingestion: $(systemctl is-active spine-ingestion)"
   echo "  spine-web:       $(systemctl is-active spine-web)"
   echo "  spine-backup:    $(systemctl is-active spine-backup.timer) (timer)"
 

@@ -17,7 +17,6 @@ The third is the one to think about. With the default, nothing but short text ex
 ## 1. What you need
 
 - A Linux machine with `apt` (Raspberry Pi OS bookworm or Debian/Ubuntu). A Pi is enough.
-- **Python 3.11, 3.12 or 3.13**, with its `venv` package. The sidecar's `unstructured` (0.27) does not install on 3.14 or newer. If the default `python3` is 3.14, name another one for the build in step 2 (`PYTHON=python3.13 ./install.sh -b`).
 - A **domain name** pointing at the machine (an `A` record), and, if it is at home, your router forwarding **ports 80 and 443** to it. Let's Encrypt needs 80 to issue the certificate.
 - An **API key** for your provider (step 3).
 - `git` and `sudo`.
@@ -27,8 +26,8 @@ The third is the one to think about. With the default, nothing but short text ex
 ```bash
 git clone <your repository URL> spine && cd spine
 
-sudo ./install.sh -d      # Node (22, 24 or 26), Python 3, poppler, tesseract + Romanian pack
-PYTHON=python3.13 ./install.sh -b    # builds web and server, creates the Python venv (a few minutes on a Pi)
+sudo ./install.sh -d      # Node (22, 24 or 26), poppler, tesseract + Romanian pack
+./install.sh -b    # builds web and server (a few minutes on a Pi)
 ```
 
 `-d` does **not** install nginx or certbot; step 6 does.
@@ -94,10 +93,10 @@ and add that path to `ReadWritePaths=` in `systemd/spine-backup.service` before 
 sudo ./install.sh -s
 ```
 
-This installs and starts `spine-web` (port 3000, loopback only), `spine-ingestion` (port 8000, loopback only) and a daily backup timer. It stops with a list of problems if the secret is unsafe. Check:
+This installs and starts `spine-web` (port 3000, loopback only) and a daily backup timer. It stops with a list of problems if the secret is unsafe. Check:
 
 ```bash
-systemctl is-active spine-web spine-ingestion spine-backup.timer
+systemctl is-active spine-web spine-backup.timer
 journalctl -u spine-web -n 30
 ```
 
@@ -191,7 +190,7 @@ Open `https://<your domain>`, sign in, and:
 
 ```bash
 # after pulling new code
-./install.sh -b && sudo systemctl restart spine-web          # add spine-ingestion if it changed
+./install.sh -b && sudo systemctl restart spine-web
 
 journalctl -u spine-web -f                                    # logs
 sudo systemctl start spine-backup                             # a backup now, instead of waiting for the timer
@@ -214,6 +213,5 @@ The server checks its configuration before it does anything else and lists every
 | `GOOGLE_API_KEY` and similar | One is set in the environment; unset it (Vertex only) |
 | `SPINE_LLM_ENDPOINT` / region / project | Vertex needs all three stated |
 | outdated database | Left over from an older shape; the message says whether it is safe to delete |
-| `pip install` fails on `unstructured` during `-b` | Built with Python 3.14 or newer; use 3.11, 3.12 or 3.13 (step 1) |
-| uploads fail immediately | `spine-ingestion` is down: `journalctl -u spine-ingestion`. With `hybrid` the sidecar is required, and the upload fails rather than guessing |
+| uploads fail immediately | `journalctl -u spine-web`; a PDF that cannot be opened (damaged or password-protected) fails the upload rather than being guessed at |
 | certificate issuance fails | DNS not pointing here yet, or ports 80/443 not forwarded |

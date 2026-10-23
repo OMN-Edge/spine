@@ -1,4 +1,4 @@
-import type { Database } from 'better-sqlite3';
+import type { Database } from './driver.js';
 import type { VaultKeys, VaultKeysRecord, VaultObjectMeta, VaultRepository } from '../types.js';
 
 const COLUMNS = 'id, profile_id, kind, seq, size, wrapped_key, deleted, created_at, updated_at';

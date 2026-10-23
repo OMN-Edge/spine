@@ -5,6 +5,7 @@ import { useAuth } from '../auth';
 import { askForPassword } from '../reauth';
 import { buttonClass, inputClass, Notice } from './AuthCard';
 import { useI18n } from '../i18n';
+import { downloadFromDevice } from '../core/client';
 
 type Capabilities = Awaited<ReturnType<typeof api.sourceFiles.capabilities>>;
 
@@ -25,7 +26,7 @@ export default function YourData() {
       const { fresh } = await api.auth.reauthStatus();
       if (!fresh && !(await askForPassword())) return;
     } catch { return; }
-    window.location.href = '/api/export';
+    await downloadFromDevice('/api/export', 'spine-export.zip');
   };
 
   const remove = async () => {

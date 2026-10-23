@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState } from 'react';
 import type { Page } from '../api';
 import { useI18n } from '../i18n';
+import DeviceImg from './DeviceImg';
 
 /** What the overlay needs to draw a box: the page it is on and where. */
 export interface Highlight {
@@ -49,7 +50,7 @@ export default function PageImageOverlay({ page, number, highlightField }: Props
 
   return (
     <div ref={containerRef} className="relative inline-block w-full">
-      <img
+      <DeviceImg
         src={`/api/pages/${page.id}/image?r=${page.rotation ?? 0}`}
         alt={t('Page {n}', { n: number ?? page.page_number })}
         className="w-full rounded border border-gray-200 shadow-sm"

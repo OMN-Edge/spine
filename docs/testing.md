@@ -4,7 +4,7 @@ Two suites, for two different questions.
 
 | | Unit and route tests | Integration tests |
 |---|---|---|
-| Question | Does our code do what it says, given any answer a model might give? | Does the whole thing work with the real model, the real sidecar and real PDFs? |
+| Question | Does our code do what it says, given any answer a model might give? | Does the whole thing work with the real model and real PDFs? |
 | Command | `npm test` | `npm run test:integration` |
 | Where | `server/src/__tests__/` | `server/src/__integration__/` |
 | Model | Never. Scripted stand-ins; `vitest.config.ts` blanks the provider key so a test cannot call one by accident | The one named in `.env` |
@@ -24,7 +24,7 @@ npm run test:integration -- src/__integration__/journey.it.ts   # one file
 It needs:
 
 - **A model.** It loads the repository's `.env` (`SPINE_LLM_PROVIDER`, `SPINE_LLM_MODEL`, and the provider's endpoint, region, project and credentials). If the configuration is unusable, every flow is skipped and the run says why. Embeddings are used if `.env` turns them on.
-- **The sidecar and poppler** for the flows that read a PDF. If a sidecar answers at `INGESTION_URL` (default `http://127.0.0.1:8000`) it is used; otherwise one is started from `ingestion-service/.venv` on port 8765 and stopped afterwards. Without either, the PDF flows are skipped, and the run says so. `pdftoppm` must be installed.
+- **poppler** for the flows that read a PDF (the text layer is read in-process by PDF.js). Without it, the PDF flows are skipped, and the run says so.
 
 It does **not** need the web server running. Each file builds the same Fastify app the server runs (`__tests__/helpers/app.ts`) and drives it with `app.inject`, through the HTTP routes and a signed-in session, as the browser does. There is no browser, so the screens are not exercised here; what they send and show is.
 
@@ -45,7 +45,7 @@ Fixtures are invented (`support/fixtures.ts`, `support/archive.ts`): no real per
 ### Adding a flow
 
 1. Put the text it needs in `support/fixtures.ts` (a PDF page is a list of lines; `makeTextPdf` makes the file) or seed records with `support/archive.ts`.
-2. Use `describeLive` (needs a model) or `describePipeline` (also needs the sidecar and poppler) from `support/live.js`, so it skips cleanly where it cannot run.
+2. Use `describeLive` (needs a model) or `describePipeline` (also needs poppler) from `support/live.js`, so it skips cleanly where it cannot run.
 3. Drive the app with `startWorld`, `ask`, `attach`, `proposalOf`, `confirm`, `until`.
 4. Assert the invariants above. Run it a few times; if it is flaky, make the assertion say what actually must hold.
 5. Add it to the list below and to the scenario it checks in [scenarios.md](scenarios.md) (status `live`).
@@ -54,7 +54,7 @@ Fixtures are invented (`support/fixtures.ts`, `support/archive.ts`): no real per
 
 | File | Needs | What it goes through |
 |---|---|---|
-| `journey.it.ts` | model, sidecar, poppler | A physician's export of six mixed pages is attached in the chat. The app reads it and reports in that conversation (documents, doctors, tests, "looks mixed"). The pages are checked with the model, the plan finds both mixed documents and is sure of them, the assistant proposes the groups, Confirm regroups and reads them again (values, date and provider come out right), the grouping is confirmed through the assistant, and a question about the result is answered with the right value and its source |
+| `journey.it.ts` | model, poppler | A physician's export of six mixed pages is attached in the chat. The app reads it and reports in that conversation (documents, doctors, tests, "looks mixed"). The pages are checked with the model, the plan finds both mixed documents and is sure of them, the assistant proposes the groups, Confirm regroups and reads them again (values, date and provider come out right), the grouping is confirmed through the assistant, and a question about the result is answered with the right value and its source |
 | `chat-qa.it.ts` | model | Questions about a value and its change, about the tests a consultation asked for, about "this" on a document page, about something that is not in the records (no invention), about treatment (no advice), and a follow-up in the same conversation; the archive is unchanged afterwards |
 | `chat-actions.it.ts` | model | Sharing (finds the visit and the tests it asked for; reasons about dates to pick both visits and only the March tests; scans and questions are not the model's to set; the recipient then sees exactly those), a note, a correction of one result, tags, changing and revoking an existing link, asking which link when two fit, and a document that tries to give the assistant instructions |
 | `tidy.it.ts` | model | The same doctor written three ways becomes one final form (name, code, specialty), a neurologist with the same surname and another code is left alone; a test named two ways; a clinic and a tag written two ways; nothing merged before Confirm |
@@ -65,7 +65,7 @@ Fixtures are invented (`support/fixtures.ts`, `support/archive.ts`): no real per
 
 1. Read the first assertion that failed: it says what it expected and, for the assistant, what it said instead.
 2. Run that file alone, twice. Both failing: a real regression, or a prompt that no longer works with this model. One failing: tighten the assertion or the prompt.
-3. A failure in `journey.it.ts` at the report step usually means the pipeline or the sidecar; later, the assistant or the regrouping. The log lines show how far it got.
+3. A failure in `journey.it.ts` at the report step usually means the pipeline or the text reader; later, the assistant or the regrouping. The log lines show how far it got.
 4. When a flow fails here and the unit tests pass, the unit tests' world is too tidy: add a unit test that reproduces the real state, then fix. The first live runs found three such bugs, each now fixed with a unit test:
    - the finished-upload report and the match questions were blind to a new upload's own tests, because the archive-wide test list holds back an upload whose grouping is not confirmed, which is the state the report is written in;
    - the link judge's correct answer was thrown away because the model wrote the label as `[1]` (with the brackets the prompt showed it in) and the app compared it with `1`;

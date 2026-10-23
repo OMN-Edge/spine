@@ -1,8 +1,8 @@
 import { getChatLlm } from '../llm/index.js';
 import { loadParserConfig } from '../config.js';
 import { logger } from '../logger.js';
-import { parseDocument } from '../ingestion/ingestion-client.js';
-import { getPageImageDimensions } from '../ingestion/rasterize.js';
+import { parseDocument } from '../ingestion/pdf-text.js';
+import { getPageImageDimensions } from '../ingestion/image-size.js';
 import { checkOcrAvailable, ocrPage } from './ocr.js';
 import { createHybridParser } from './adapters/hybrid.js';
 import { createMultimodalParser } from './adapters/multimodal.js';

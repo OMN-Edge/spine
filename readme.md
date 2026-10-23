@@ -43,7 +43,7 @@ What runs today is multi-user with local accounts, with storage, inference, pars
 | Server | Node.js + Fastify (API + serves the React build) |
 | Web | React + Vite + Tailwind CSS |
 | Database | SQLite (single file, zero ops) |
-| Parsing | Python + Unstructured (a local service on port 8000), optionally a vision model for scanned pages |
+| Parsing | PDF.js reads the PDF's text layer in the server process; local Tesseract and, optionally, a vision model for scanned pages |
 | AI | Anthropic or Vertex AI, set by configuration (continuation detection, field extraction, translation, optionally reading page images) |
 | Web server | nginx (from `packages/nginx`) with Let's Encrypt |
 
@@ -57,7 +57,7 @@ The steps below are the short version. [docs/setup.md](docs/setup.md) is the ful
 sudo ./install.sh -d
 ```
 
-Installs Node.js LTS, Python 3, tesseract, poppler-utils.
+Installs Node.js LTS, tesseract, poppler-utils.
 
 ### 2. Config
 
@@ -79,7 +79,7 @@ There is no shared password. Each person has an account with their own email and
 ./install.sh -b
 ```
 
-Builds the React app, compiles the TypeScript server, creates the Python venv and installs Unstructured.
+Builds the React app and compiles the TypeScript server.
 
 ### 4. Services
 
@@ -87,7 +87,7 @@ Builds the React app, compiles the TypeScript server, creates the Python venv an
 sudo ./install.sh -s
 ```
 
-Installs and starts `spine-web` (port 3000) and `spine-ingestion` (port 8000) as systemd services, plus a daily backup timer. It refuses to run if `SESSION_SECRET` is missing, short or still the placeholder.
+Installs and starts `spine-web` (port 3000) as a systemd service, plus a daily backup timer. It refuses to run if `SESSION_SECRET` is missing, short or still the placeholder.
 
 ### 5. Your account
 
@@ -120,17 +120,13 @@ Reads `SPINE_DOMAIN` from `.env` and, if the [nginx package](https://gitlab.com/
 ```bash
 ./install.sh -b
 sudo systemctl restart spine-web
-# If the ingestion service changed:
-sudo systemctl restart spine-ingestion
 ```
 
 ## Service management
 
 ```bash
 sudo systemctl status spine-web
-sudo systemctl status spine-ingestion
 journalctl -u spine-web -f
-journalctl -u spine-ingestion -f
 ```
 
 ## Data
@@ -160,7 +156,7 @@ From the Share Links page, create a link scoped to all history, a tag, a date ra
 cd server
 npm test                   # run all tests (no model is ever called)
 npm run test:coverage      # run with coverage report
-npm run test:integration   # the flows against the real model, sidecar and PDFs from .env (minutes, a few hundred model calls)
+npm run test:integration   # the flows against the real model and PDFs from .env (minutes, a few hundred model calls)
 ```
 
 Run `npm test` (or `npm run test:coverage`) in `server/`. Statement and branch coverage are both above 90%; the figures change with every commit, so they are not copied here.
@@ -196,11 +192,10 @@ Run `npm test` (or `npm run test:coverage`) in `server/`. Statement and branch c
 
 ### Integration tests
 
-`npm run test:integration` runs whole flows with the model named in `.env`, the Python sidecar and poppler, on a fresh in-memory database and a temporary data directory (never your `data/`, never the real mailer): attach a mixed export in the chat and follow it to the end, ask about the records, ask the assistant to share, correct, tag and tidy, a recipient asking about a shared link, and the calls the pipeline makes. It asserts what must hold whatever the model says. See [docs/testing.md](docs/testing.md); each scenario in [docs/scenarios.md](docs/scenarios.md) says whether it is covered (`auto`, `live`, `hand`).
+`npm run test:integration` runs whole flows with the model named in `.env`, poppler, on a fresh in-memory database and a temporary data directory (never your `data/`, never the real mailer): attach a mixed export in the chat and follow it to the end, ask about the records, ask the assistant to share, correct, tag and tidy, a recipient asking about a shared link, and the calls the pipeline makes. It asserts what must hold whatever the model says. See [docs/testing.md](docs/testing.md); each scenario in [docs/scenarios.md](docs/scenarios.md) says whether it is covered (`auto`, `live`, `hand`).
 
 ### What isn't covered
 
-- `ingestion-client.ts` — real HTTP call to the Python sidecar; the unit tests use synthetic output, and the integration suite (`journey.it.ts`) runs it against a real sidecar on text PDFs
 - `rasterize.ts` — PDF rasterizer; needs actual PDF files
 - the `invoke` paths in `llm/adapters/*` — need live provider credentials, so no real page has been read by a model; the image message was checked against both providers' request builders and the configuration refusals are covered
 

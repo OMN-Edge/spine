@@ -1,0 +1,37 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "types": [
+      "node"
+    ],
+    "typeRoots": [
+      "../server/node_modules/@types",
+      "./node_modules/@types"
+    ],
+    "skipLibCheck": true,
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable",
+      "WebWorker"
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "fastify": [
+        "../server/node_modules/fastify/fastify.d.ts"
+      ]
+    }
+  },
+  "include": [
+    "src/core/**/*.ts",
+    "../server/src/**/*.ts"
+  ],
+  "exclude": [
+    "../server/src/__tests__",
+    "../server/src/__integration__",
+    "../server/src/**/*.test.ts",
+    "src/e2e"
+  ]
+}

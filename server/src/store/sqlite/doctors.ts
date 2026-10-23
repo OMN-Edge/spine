@@ -1,4 +1,4 @@
-import type { Database } from 'better-sqlite3';
+import type { Database } from './driver.js';
 import { v4 as uuidv4 } from 'uuid';
 import type { Doctor, DoctorRole } from '../../types.js';
 import type { DoctorDocument, DoctorOnDocument, DoctorRepository, DoctorWithCounts } from '../types.js';

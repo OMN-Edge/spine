@@ -4,7 +4,7 @@ One machine, one domain, three commands. For a Raspberry Pi without Docker, see 
 
 ```bash
 cp .env.example .env     # set SESSION_SECRET (openssl rand -base64 48) and SPINE_DOMAIN, plus a model provider
-docker compose up -d     # builds the images, starts the app, the PDF sidecar, a daily backup and the HTTPS proxy
+docker compose up -d     # builds the images, starts the app, a daily backup and the HTTPS proxy
 docker compose exec web node dist/cli.js create-user you@example.com   # prints a password once
 ```
 
@@ -16,7 +16,6 @@ Point the domain's DNS at the machine and keep ports 80 and 443 open: the proxy 
 | --- | --- | --- |
 | `proxy` | Caddy: TLS, the security headers of `nginx/spine.conf`, no-store on `/share/` | the internet, ports 80 and 443 |
 | `web` | The server and the built web app (`Dockerfile`), with poppler and Tesseract | the proxy only |
-| `ingestion` | The PDF text-layer sidecar (`ingestion-service/Dockerfile`), read-only filesystem | the web service only |
 | `backup` | `backup.js` once a day: a database snapshot and a mirror of the originals | nothing |
 
 Data lives in Docker volumes: `data` (the database and the files), `backups`, `caddy-data` (certificates). `docker compose down` keeps them; `docker compose down -v` deletes them, records included.
@@ -32,7 +31,3 @@ Data lives in Docker volumes: `data` (the database and the files), `backups`, `c
 
 - Caddy has no per-address request limit on `/share/` like nginx's `limit_req`; the application's own limits still apply.
 - `SPINE_HOST` is `0.0.0.0` inside the private Compose network and nothing but the proxy can reach it, so the rule that the server binds loopback holds for the host.
-
-## Known problem: Apple Silicon M4 under Colima or Docker's Linux VM
-
-The VM reports the processor's SME extension, and libraries in the sidecar (OpenCV 5, OpenSSL, spaCy's BLIS, NumPy) die with "illegal instruction" when they probe for it. The image sets `OPENSSL_armcap=0` and `BLIS_ARCH=generic` and pins OpenCV 4, which gets the sidecar through import, but a PDF still crashes it in NumPy. Real servers and Raspberry Pis are not affected. On an M4 Mac use the sidecar outside the VM (`ingestion-service/` with its venv) or another Docker runtime that hides SME, until the libraries catch up.

@@ -18,6 +18,7 @@ import { useScreen } from '../components/ChatProvider';
 import { DOC_TYPE_NAMES, documentByline, documentTitle, fieldName, isSection, labelFromName, valueLines } from '../titles';
 import { LANGUAGES, useI18n } from '../i18n';
 import { languageName, useTranslation } from '../i18n/useTranslation';
+import { downloadFromDevice } from '../core/client';
 
 /**
  * A document, in two modes on the same page. Reading shows what was extracted next to the
@@ -644,7 +645,7 @@ export default function DocumentPage() {
         {!editing && (
           <div className="flex flex-wrap items-baseline justify-between gap-3">
             <Link to="/review" className="text-xs text-gray-400 hover:text-gray-600">{t('Review queue')} →</Link>
-            <a href={`/api/documents/${doc.id}/export`} download className="text-xs text-gray-400 hover:text-gray-600" title={t('This document and what was read from it, as a ZIP')}>{t('Export')}</a>
+            <button type="button" onClick={() => void downloadFromDevice(`/api/documents/${doc.id}/export`, 'spine-document.zip')} className="text-xs text-gray-400 hover:text-gray-600" title={t('This document and what was read from it, as a ZIP')}>{t('Export')}</button>
           </div>
         )}
       </div>

@@ -1,4 +1,4 @@
-import type { Database } from 'better-sqlite3';
+import type { Database } from './driver.js';
 import type { EmbeddingRepository, StoredEmbedding } from '../types.js';
 import { owner } from './owner.js';
 import { VISIBLE } from './visibility.js';

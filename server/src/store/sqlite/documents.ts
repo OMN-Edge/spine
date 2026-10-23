@@ -1,4 +1,4 @@
-import type { Database } from 'better-sqlite3';
+import type { Database } from './driver.js';
 import { LOW_CONFIDENCE } from '../../confidence.js';
 import type { Document } from '../../types.js';
 import type {

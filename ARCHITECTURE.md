@@ -21,7 +21,7 @@ The operator of an instance is its data controller and owns the risk; the author
 
 The application assumes nothing about where it runs, what database backs it or which model serves inference. Everything environment-specific sits behind an adapter, so a deployment is a *configuration*, not a build.
 
-The author's instance is a Raspberry Pi with the SQLite adapter, the local parser sidecar and a hosted model provider. That is one configuration among several, and the one that sets the lower bound on resource use. GCP appears only as an **inference adapter** (Vertex AI, EU multi-region), not as a host.
+The author's instance is a Raspberry Pi with the SQLite adapter, the in-process PDF text reader and a hosted model provider. That is one configuration among several, and the one that sets the lower bound on resource use. GCP appears only as an **inference adapter** (Vertex AI, EU multi-region), not as a host.
 
 ## Component map
 
@@ -46,8 +46,8 @@ The author's instance is a Raspberry Pi with the SQLite adapter, the local parse
                            │   └───┬──────┬───────┬────────┬────────┘     │
                            │       ▼      │       ▼        │              │
                            │  ┌─────────┐ │  ┌──────────┐  │              │
-                           │  │ SQLite  │ │  │ sidecar  │  │              │
-                           │  │ + data/ │ │  │ :8000    │  │              │
+                           │  │ SQLite  │ │  │ pdf.js   │  │              │
+                           │  │ + data/ │ │  │ in-proc  │  │              │
                            │  └─────────┘ │  └──────────┘  │              │
                            └──────────────┼────────────────┼──────────────┘
                                           ▼                ▼
@@ -64,7 +64,7 @@ Five. The third arrives with multi-user and is the one a routine change can brea
 4. **Authenticated user vs. share-token reader.** A token grants read-only access to a subset of *one* user's documents and nothing else.
 5. **Host → third parties.** The only egress: the inference provider, and the mail provider for account links. See [Egress](#egress-what-leaves-the-host).
 
-The parser sidecar sits inside the innermost boundary: loopback-bound, no authentication, and it accepts a filesystem path which it reads directly. Anything that can reach it can read any file the service user can. It must never be exposed.
+There is no parser service: PDF text is read in the server process by PDF.js (`ingestion/pdf-text.ts`), so there is no second listener to protect. The Python sidecar that did this before ([docs/sidecar.md](docs/sidecar.md)) was loopback-bound with no authentication and read any path it was given; that exposure is gone with it.
 
 ## Interfaces and adapters
 
@@ -118,7 +118,7 @@ src/llm/                   types.ts, tasks.ts, prompts.ts, chat-llm.ts, index.ts
 src/store/                 types.ts (interfaces), index.ts (registry),
                            sqlite/ — the only adapter; all SQL lives here
 src/parser/                types.ts (the contract), index.ts (registry), ocr.ts,
-                           adapters/{sidecar,multimodal,hybrid}.ts
+                           adapters/{sidecar,multimodal,hybrid}.ts  (sidecar.ts is the text-layer parser)
 src/mail/                  types.ts, index.ts (registry), adapters/{none,brevo}.ts
 ```
 
@@ -244,7 +244,7 @@ LangChain.js supplies the provider implementations (`@langchain/anthropic`, `@la
 
 `parse({ sourceFileId, filePath, pages }) → pages with text and boxes`. `SPINE_PARSER` picks the adapter:
 
-- **`text`** (default; `sidecar` is the old name) — the local Unstructured service, run with its `fast` strategy: the PDF's own text layer with exact boxes. A page with no text layer comes back with no elements. Nothing leaves the host.
+- **`text`** (default; `sidecar` is the old name) — the PDF's own text layer with exact boxes, read in-process by PDF.js (`ingestion/pdf-text.ts`; the retired Unstructured sidecar is described in [docs/sidecar.md](docs/sidecar.md)). A page with no text layer comes back with no elements. Nothing leaves the host.
 - **`ocr`** — the text layer where a page has one, local OCR (Tesseract) for the others, kept whatever its confidence. Nothing leaves the host, and handwriting is what it does poorly on.
 - **`multimodal`** — every page image goes to the configured LLM provider, which returns the text in blocks, with no positions. A page the model cannot read fails the upload and names the page; there is nothing to fall back to.
 - **`hybrid`** — text layer first, then local OCR (unless `SPINE_OCR=off`), then the model, per page. See [Hybrid routing](#hybrid-routing).
@@ -252,11 +252,9 @@ LangChain.js supplies the provider implementations (`@langchain/anthropic`, `@la
 The contract every adapter keeps, so nothing downstream has to guess:
 
 - **One entry per page image, in order.** A blank page is an entry with no elements, not an absence, so the pipeline can pair text with images by page number.
-- **`image_width`/`image_height` are the image's pixel size and every box is in that space.** Unstructured reports native-text boxes in PDF points (72 per inch) while the page PNG is 200 DPI, so the sidecar adapter scales its boxes into the image's pixels.
+- **`image_width`/`image_height` are the image's pixel size and every box is in that space.** The text layer's boxes are in PDF points (72 per inch) while the page PNG is 200 DPI, so the text-layer adapter scales them into the image's pixels.
 
-> **Not verified against a live sidecar.** The scaling follows from reading the code and the
-> library's coordinate model, not from a measurement. Check one native-text PDF
-> against a real highlight on first deploy. Likewise no real page has been sent to a real
+> **Box scaling checked on one real PDF, not in a browser.** Words and sizes were compared with the old sidecar's output on a real report; a highlight drawn on the page image has not been seen. Check one native-text PDF against a real highlight on first deploy. Likewise no real page has been sent to a real
 > model provider; the image message was checked against both providers' request builders only.
 
 ### Mailer interface
@@ -367,7 +365,7 @@ The aim is to spend as little as possible — money, time and privacy — on pag
 
 | Step | Signal | What happens |
 |---|---|---|
-| 1 | The page has a **text layer**: the sidecar returned at least `SPINE_TEXT_LAYER_MIN_CHARS` (default 50) non-whitespace characters for it | Use it, with the sidecar's exact boxes. Nothing else runs. |
+| 1 | The page has a **text layer**: the text layer holds at least `SPINE_TEXT_LAYER_MIN_CHARS` (default 50) non-whitespace characters for it | Use it, with the text layer's exact boxes. Nothing else runs. |
 | 2 | **Local OCR is confident** (Tesseract, run on the page image) | Keep it. Boxes are exact and in the image's own pixels. Nothing leaves. |
 | 3 | Otherwise | The model reads the page. |
 
@@ -384,7 +382,7 @@ Past about 8° of tilt Tesseract finds nothing and nothing in this path deskews,
 
 **No LLM screens first.** Looking at the image is the same egress as reading it, and a screening call is a second round trip, so it would cost the privacy of reading and add cost for every page that then needs reading anyway.
 
-**The sidecar is the one source for "does this page have text".** It runs Unstructured with `strategy="fast"` and nothing else: the PDF's own text layer, no OCR, no layout model. (`auto` is one decision for the whole file, not per page, so a typed PDF with one scanned page would have returned that page empty.) A page it returns text for has a text layer; a page it returns nothing for does not. The character count, rather than "any element", keeps a scan whose only text is a stray page number from counting as having one. The sidecar is called once per file, always. If it is down, **the upload fails** rather than treating every page as scanned, which would push digital PDFs through OCR and the model because of an outage.
+**The PDF's text layer is the one source for "does this page have text".** PDF.js reads it and nothing else: no OCR, no layout model, decided page by page. A page it returns text for has a text layer; a page it returns nothing for does not. The character count, rather than "any element", keeps a scan whose only text is a stray page number from counting as having one. The file is read once, always. If it cannot be opened, **the upload fails** rather than treating every page as scanned, which would push digital PDFs through OCR and the model because of a damaged file.
 
 The model can only improve a page, never lose one. If it fails or answers with nothing usable, the page keeps what local OCR read (or comes back empty if that failed too) and the failure is logged. Pages are read in parallel, up to `SPINE_LLM_CONCURRENCY` (default 4), one image per call; local OCR stays one page at a time. This keeps load and rate limits predictable on a Pi. Boxes from the model are its own estimate and less exact than OCR's, so those pages are stored as `multimodal` and the UI draws their highlight dashed with a "Read by AI · position approximate" label.
 
@@ -619,7 +617,7 @@ Page images are the most sensitive egress in the system and are off unless asked
 | Embeddings (`SPINE_EMBEDDINGS=vertex`, off by default) | each document's short **summary card** (title, type, provider, date, summary, doctors, diagnoses and similar key fields, test names; never page text) when it is new or changed, and the **search words** when searching by meaning | the configured Vertex endpoint |
 | Ask your records (`SPINE_CHAT`, on by default) | **the question, up to six earlier turns, a description of what is on screen**, and what the agent's read-only tools return (up to 120,000 characters a question): **summary cards, the owner's notes, results with values and reference ranges, and field values** of the documents it opens; never page text or scans. One question can be up to six model calls. When the model cannot take tools, or the agent fails, it is one call over a fixed set | configured provider |
 | Care chains (`SPINE_LINKING`, on by default) | the **summary cards** of one document and up to six candidates per call (same content as the embeddings row, plus each doctor's role and the **owner's notes**, first 600 characters), after an upload, a re-reading, or when asked; never page text. Only when the data finds a candidate | configured provider |
-| Parsing (sidecar) | nothing — local | — |
+| Parsing (text layer) | nothing — local | — |
 | Verification and recovery mail | recipient address + single-use link. **Never document content** | configured mail provider |
 
 Residency is a property of the endpoint. For Vertex that means the `eu` multi-region host and service-account credentials, never an API key. See SECURITY.md **P8**, **M-8** and [docs/deployment-gcp.md](docs/deployment-gcp.md).
@@ -656,7 +654,7 @@ Everything environment-specific comes from the environment. [`.env.example`](.en
 Everything above is built. What is left, in the order it matters:
 
 - **A migration runner**, before the first change to an existing table once the archive holds real records. Not a gate today: an empty database needs none.
-- **Live checks nobody has run:** the sidecar's box scaling against a real native-text PDF; a real page sent to a real model provider; a real Brevo send; argon2id timing on the Pi; the OCR thresholds on real scans of handwriting.
+- **Live checks nobody has run:** the text layer's box scaling as a highlight in a browser; a real page sent to a real model provider; a real Brevo send; argon2id timing on the Pi; the OCR thresholds on real scans of handwriting.
 - **Brevo's DPA**, to be confirmed by reading it.
 - **Requiring two-factor** instance-wide (SECURITY.md **S-20**).
 - **Choosing the model** on Vertex (`gemini-3.8-flash` or `claude-sonnet-5`) by running 50–100 real Romanian handwriting samples through each, and a rotation cadence for the service-account key.
@@ -673,10 +671,9 @@ Settled, recorded so they are not reopened by accident:
 
 ## Build, deploy, testing
 
-`install.sh` is the deployment story: `-d` system packages (Node LTS, Python 3, poppler-utils, tesseract), `-b` builds web and server then the Python venv, `-s` templates the systemd units and starts them — `spine-web`, `spine-ingestion` and the `spine-backup` timer — and `-n` Let's Encrypt plus the site config. `-s` refuses to proceed if `.env` carries a missing, short or placeholder secret. `better-sqlite3` ships N-API prebuilds including `linux-arm64`, so there is no compilation step on the Pi.
+`install.sh` is the deployment story: `-d` system packages (Node LTS, poppler-utils, tesseract), `-b` builds web and server, `-s` templates the systemd units and starts them — `spine-web` and the `spine-backup` timer — and `-n` Let's Encrypt plus the site config. `-s` refuses to proceed if `.env` carries a missing, short or placeholder secret. `better-sqlite3` ships N-API prebuilds including `linux-arm64`, so there is no compilation step on the Pi.
 
-**Sidecar Python.** `unstructured==0.15.0` needs Python `>=3.9,<3.13`, so build with 3.11 or 3.12: `PYTHON=python3.12 ./install.sh -b` (without `PYTHON`, the venv uses `python3`).
 
-**Tests.** `SPINE_DB_PATH=:memory:` is set in `vitest.config.ts`, not in test files: the store captures the path at module load and ESM hoists imports above any top-level assignment, so a test that sets it itself writes to the real `data/spine.db`. Some code is intentionally not covered because it needs a live sidecar, real PDFs or live credentials: `ingestion-client.ts`, `rasterize.ts`, the HTML entry-point half of `public-share.ts`, and the adapters' `invoke` paths. The LLM interface is tested through fake task clients (real `Runnable`s built with `RunnableLambda.from`), not a mocked vendor SDK, so the tests describe what Spine does with a model's answer and do not change when the provider does.
+**Tests.** `SPINE_DB_PATH=:memory:` is set in `vitest.config.ts`, not in test files: the store captures the path at module load and ESM hoists imports above any top-level assignment, so a test that sets it itself writes to the real `data/spine.db`. Some code is intentionally not covered because it needs real PDFs or live credentials: `rasterize.ts`, the HTML entry-point half of `public-share.ts`, and the adapters' `invoke` paths. The LLM interface is tested through fake task clients (real `Runnable`s built with `RunnableLambda.from`), not a mocked vendor SDK, so the tests describe what Spine does with a model's answer and do not change when the provider does.
 
 The harness registers the same plugins as `index.ts`, including `@fastify/rate-limit` and `trustProxy`, because a control is untested unless the test drives it the way production does (**P10**). The login limits are options on `authRoutes` so a test can set a small max and assert the 429 instead of mocking the limiter out.

@@ -4,6 +4,7 @@ import { prepareSignIn } from './crypto/vault-client';
 import { checkPasswordPolicy } from './crypto/password-policy';
 import { rewrapForPassword, type KdfParams, type VaultKeyPayload } from './crypto/keys';
 import { startAuthentication, startRegistration, type PublicKeyCredentialCreationOptionsJSON, type PublicKeyCredentialRequestOptionsJSON } from '@simplewebauthn/browser';
+import { appFetch } from './core/client';
 export type DocType =
   | 'lab_result'
   | 'discharge_note'
@@ -499,7 +500,7 @@ export class ApiError extends Error {
 }
 
 async function req<T>(url: string, options?: RequestInit, retried = false): Promise<T> {
-  const res = await fetch(url, {
+  const res = await appFetch(url, {
     // Only a request that sends JSON says so. Fastify refuses an empty body that claims to
     // be JSON, so a POST with no body (sign out, extract again, read the whole file again)
     // used to fail with a 400 whenever it came from the app.
@@ -526,7 +527,7 @@ async function req<T>(url: string, options?: RequestInit, retried = false): Prom
  * owner's chat and by a share recipient's.
  */
 async function readReplyStream<T>(url: string, body: unknown, handlers: ChatStreamHandlers, signal?: AbortSignal): Promise<T> {
-  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal, body: JSON.stringify(body) });
+  const res = await appFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal, body: JSON.stringify(body) });
   if (!res.ok || !res.body) {
     const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string; code?: string };
     throw new ApiError(err.error ?? res.statusText, res.status, err.code);
@@ -589,7 +590,7 @@ export const api = {
     /** `from` is folded into `id` and removed. */
     merge: (id: string, from: string) => post<{ ok: boolean }>(`/api/doctors/${id}/merge`, { from }),
     remove: async (id: string) => {
-      const res = await fetch(`/api/doctors/${id}`, { method: 'DELETE' });
+      const res = await appFetch(`/api/doctors/${id}`, { method: 'DELETE' });
       if (!res.ok) {
         const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
         throw new ApiError(err.error ?? res.statusText, res.status);
@@ -710,7 +711,7 @@ export const api = {
       // The conversation goes first: the server reads it before the first file arrives.
       if (conversationId) form.append('conversation_id', conversationId);
       for (const file of files) form.append('files', file, file.name);
-      const res = await fetch('/api/chat/attachments', { method: 'POST', body: form });
+      const res = await appFetch('/api/chat/attachments', { method: 'POST', body: form });
       if (!res.ok) {
         const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string; code?: string };
         throw new ApiError(err.error ?? res.statusText, res.status, err.code);
@@ -849,20 +850,20 @@ export const api = {
     upload: (files: FileList | File[]) => {
       const form = new FormData();
       for (const f of Array.from(files)) form.append('files', f);
-      return fetch('/api/source-files/upload', { method: 'POST', body: form }).then(r => r.json());
+      return appFetch('/api/source-files/upload', { method: 'POST', body: form }).then(r => r.json());
     },
     /** A scan session: the finished pages, in order, and the photos as they were taken, kept beside the document as its originals. */
     uploadScan: (pages: File[], originals: File[]) => {
       const form = new FormData();
       for (const f of pages) form.append('files', f);
       for (const f of originals) form.append('originals', f);
-      return fetch('/api/source-files/upload-photos', { method: 'POST', body: form }).then(r => r.json() as Promise<Array<{ id?: string; reason?: string }>>);
+      return appFetch('/api/source-files/upload-photos', { method: 'POST', body: form }).then(r => r.json() as Promise<Array<{ id?: string; reason?: string }>>);
     },
     /** Several photos of one document, in the order given: one upload whose pages they are. */
     uploadPhotos: (files: File[]) => {
       const form = new FormData();
       for (const f of files) form.append('files', f);
-      return fetch('/api/source-files/upload-photos', { method: 'POST', body: form }).then(r => r.json());
+      return appFetch('/api/source-files/upload-photos', { method: 'POST', body: form }).then(r => r.json());
     },
   },
 

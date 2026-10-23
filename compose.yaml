@@ -10,24 +10,11 @@ services:
     env_file: .env
     environment:
       DATA_DIR: /data
-      INGESTION_URL: http://ingestion:8000
       # Reachable only from the proxy on this private network; the proxy is the one address whose X-Forwarded-For is believed.
       SPINE_HOST: 0.0.0.0
       SPINE_TRUSTED_PROXIES: 172.30.0.10
     volumes:
       - data:/data
-    depends_on:
-      - ingestion
-    networks:
-      spine: {}
-
-  ingestion:
-    build: ./ingestion-service
-    restart: unless-stopped
-    read_only: true
-    tmpfs: [/tmp]
-    volumes:
-      - data:/data:ro
     networks:
       spine: {}
 

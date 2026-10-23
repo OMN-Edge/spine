@@ -1,4 +1,4 @@
-import type { Database } from 'better-sqlite3';
+import type { Database } from './driver.js';
 import type { NewUser, PasskeyRecord, TotpRecord, UserRecord, UserRepository, UserTokenKind } from '../types.js';
 
 import { STARTER_TAGS } from '../../tags.js';

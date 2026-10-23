@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import sharp from 'sharp';
+import { uprightPng } from './image-ops.js';
 import { resolveDataDir } from '../config.js';
 
 /** The longest side a page image may have. A phone photo is 4000+ pixels; the model does not need them. */
@@ -22,12 +22,7 @@ export async function normalisePhoto(
   fs.mkdirSync(outDir, { recursive: true });
   const imagePath = path.join(outDir, 'page-1.png');
 
-  await sharp(filePath, { limitInputPixels: MAX_PHOTO_PIXELS })
-    .rotate() // by the EXIF orientation, then the flag is dropped from the output
-    .resize({ width: MAX_PHOTO_SIDE, height: MAX_PHOTO_SIDE, fit: 'inside', withoutEnlargement: true })
-    .flatten({ background: '#ffffff' })
-    .png()
-    .toFile(imagePath);
+  await uprightPng(filePath, imagePath, { maxSide: MAX_PHOTO_SIDE, maxPixels: MAX_PHOTO_PIXELS });
 
   return [{ page_number: 1, image_path: imagePath }];
 }

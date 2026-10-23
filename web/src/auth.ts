@@ -11,6 +11,9 @@ export interface AuthContextValue {
   /** The account has no vault yet and is asked to make one. */
   vaultNeeded: boolean;
   vaultMade: () => void;
+  /** Whether the records are open on this device (the vault is opened with a key made from the master password). */
+  deviceState: 'starting' | 'locked' | 'open';
+  deviceOpened: () => void;
 }
 
 export const AuthContext = createContext<AuthContextValue>({
@@ -21,6 +24,8 @@ export const AuthContext = createContext<AuthContextValue>({
   consentGiven: () => {},
   vaultNeeded: false,
   vaultMade: () => {},
+  deviceState: 'open',
+  deviceOpened: () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);

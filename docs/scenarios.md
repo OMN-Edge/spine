@@ -8,7 +8,7 @@ How Spine is meant to be used, with the checks that say a scenario works. Not a 
 
 - **auto**: automated tests cover it (named where useful).
 - **hand**: checked by hand in the running app, with the model replaced by a fake server.
-- **live**: run against the real model, sidecar and PDFs by the integration suite (`npm run test:integration`, [testing.md](testing.md)), with the file named. What a real model returns is checked for what must hold whatever its words; wording and screens are not.
+- **live**: run against the real model and PDFs by the integration suite (`npm run test:integration`, [testing.md](testing.md)), with the file named. What a real model returns is checked for what must hold whatever its words; wording and screens are not.
 - **real model**: depends on what a real provider returns and no live flow covers it yet.
 - **not built**: described because it is wanted, but it does not exist.
 
@@ -119,7 +119,7 @@ Status: auto (`demo`); screens: hand.
 
 
 ### 2.1 Upload a PDF that holds several documents
-Status: live (`journey.it.ts`: a six-page export of four documents is read by the real sidecar and model; titles, dates, providers, results and doctors come out as printed).
+Status: live (`journey.it.ts`: a six-page export of four documents is read by the real text reader and model; titles, dates, providers, results and doctors come out as printed).
 
 The owner drops a 40-page scan on the Upload page. It was a stack of letters, results and a discharge note.
 

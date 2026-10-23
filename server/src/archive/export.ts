@@ -1,4 +1,4 @@
-import { ZipFile } from 'yazl';
+import { newZip } from './zip-write.js';
 import { createHash } from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -118,14 +118,13 @@ async function pageEntry(store: Store, userId: string, page: { id: string; hidde
 
 /** The zip: the manifest, then each file as it is (PDFs and photos are already compressed, so they are stored). */
 function zipOf(manifest: Manifest, files: Array<{ path: string; from: string | Buffer }>): NodeJS.ReadableStream {
-  const zip = new ZipFile();
-  zip.addBuffer(Buffer.from(JSON.stringify(manifest, null, 1)), MANIFEST_NAME);
+  const zip = newZip();
+  zip.addBuffer(Buffer.from(JSON.stringify(manifest, null, 1)), MANIFEST_NAME, { compress: true });
   for (const f of files) {
-    if (typeof f.from === 'string') zip.addFile(f.from, f.path, { compress: false });
-    else zip.addBuffer(f.from, f.path, { compress: false });
+    if (typeof f.from === 'string') zip.addFile(f.from, f.path);
+    else zip.addBuffer(f.from, f.path);
   }
-  zip.end();
-  return zip.outputStream;
+  return zip.finish();
 }
 
 /** One document as its own small export. */

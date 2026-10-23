@@ -1,8 +1,12 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { corePlugins, coreAssets, nodeModules } from './vite.core.shared.mjs';
 
 export default defineConfig({
-  plugins: [react()],
+  // `nodeModules` is also here because its aliases are set when the config is read, which the worker's own plugin list does not do.
+  plugins: [react(), coreAssets(), nodeModules()],
+  // The core runs in a worker, built with Node's modules and native tools swapped for the device's (vite.core.shared.mjs).
+  worker: { format: 'es', plugins: () => corePlugins() },
   server: {
     proxy: {
       '/api': 'http://localhost:3000',
@@ -11,5 +15,6 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
+    target: 'es2022',
   },
 });

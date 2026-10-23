@@ -1,7 +1,6 @@
-import { createWriteStream, readFileSync, renameSync, rmSync, statSync, openSync, readSync, closeSync, writeFileSync } from 'fs';
-import { createRequire } from 'node:module';
+import { readFileSync, renameSync, rmSync, statSync, openSync, readSync, closeSync, writeFileSync } from 'fs';
 import path from 'path';
-import PDFDocument from 'pdfkit';
+import { textToPdf } from './text-pdf.js';
 import heicConvert from 'heic-convert';
 import { ZipReader } from '../archive/zip-read.js';
 
@@ -15,8 +14,7 @@ export type ConvertibleKind = 'heic' | 'docx' | 'txt';
 
 /** A text file is one document of plain text: bigger is a data file, not something to put on pages. */
 export const MAX_TEXT_BYTES = 2 * 1024 * 1024;
-/** What goes onto pages: about 300 of them. The rest of a longer text is left off rather than stopping the upload. */
-const MAX_TEXT_CHARS = 900_000;
+
 const MAX_DOCX_XML_BYTES = 30 * 1024 * 1024;
 
 const HEIC_BRANDS = new Set(['heic', 'heix', 'hevc', 'hevx', 'heim', 'heis', 'hevm', 'hevs', 'mif1', 'msf1']);
@@ -102,28 +100,9 @@ export function textOfDocumentXml(xml: string): string {
   return paragraphs.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
-const FONT = createRequire(import.meta.url).resolve('dejavu-fonts-ttf/ttf/DejaVuSans.ttf');
 
 /**
- * Text on A4 pages in a font that has the accents of the languages Spine speaks (the standard PDF fonts have no ă, ș or ț),
- * as real text, so the PDF has the text layer the reader uses.
- */
-export function textToPdf(text: string, outPath: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: 'A4', margin: 56, compress: true, info: { Producer: 'Spine', Creator: 'Spine' } });
-    const out = createWriteStream(outPath);
-    out.on('finish', resolve);
-    out.on('error', reject);
-    doc.on('error', reject);
-    doc.pipe(out);
-    doc.font(FONT).fontSize(11);
-    doc.text(text.length > MAX_TEXT_CHARS ? text.slice(0, MAX_TEXT_CHARS) : text, { lineGap: 2 });
-    doc.end();
-  });
-}
-
-/**
- * Makes `source` readable. Returns the path of the file to keep (next to the source, with the right extension; the source is
+ * Text on A4 pages in a font that has the accents of the languages Spine speaks (the stth the right extension; the source is
  * removed) and its kind, or null when the file is not one of these.
  */
 export async function convertUpload(source: string): Promise<{ path: string; from: ConvertibleKind } | null> {

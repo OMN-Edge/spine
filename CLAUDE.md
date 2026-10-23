@@ -15,7 +15,7 @@ spine/
 ├── ARCHITECTURE.md         # Components, trust boundaries, data flows
 ├── SECURITY.md             # Principles, controls, known gaps, how to report a vulnerability
 ├── CONTRIBUTING.md         # GitHub is canonical; licence, checks, no real data
-├── Dockerfile, compose.yaml, Caddyfile  # one-command self-host (docs/self-host.md); ingestion-service/Dockerfile is the sidecar
+├── Dockerfile, compose.yaml, Caddyfile  # one-command self-host (docs/self-host.md)
 ├── install.sh              # All install steps: -d (deps), -b (build), -s (services), -n (nginx+cert)
 ├── .env                    # Runtime config (copy from .env.example)
 ├── server/                 # Node.js + Fastify — API + serves React build
@@ -48,13 +48,12 @@ spine/
 │       ├── store/         # store interface: types.ts (interfaces), index.ts (registry), sqlite/ (the only adapter)
 │       ├── hash-legacy-tokens.ts  # S-4 boot rewrite of plaintext share tokens
 │       ├── archive/        # export.ts (a document or the whole archive as a zip), import.ts (Spine export or plain zip), import-file.ts (restore one file, no model), manifest.ts (zod schema, fingerprint), zip-read.ts, pdf-pages.ts
-│       ├── ingestion/      # accept-upload.ts, jobs.ts, pipeline.ts, extraction.ts, continuation.ts, grounding.ts, rasterize.ts, ingestion-client.ts
+│       ├── ingestion/      # accept-upload.ts, jobs.ts, pipeline.ts, extraction.ts, continuation.ts, grounding.ts, rasterize.ts, pdf-text.ts (the PDF text layer, PDF.js)
 │       ├── routes/         # auth.ts (login + second step), totp.ts, documents.ts, source-files.ts, share.ts, public-share.ts, tags.ts, trends.ts, doctors.ts
 │       └── __tests__/      # Vitest tests + helpers/app.ts
 ├── web/                    # React + Vite + Tailwind
-├── ingestion-service/      # Python FastAPI — PDF parsing via Unstructured (port 8000)
 ├── nginx/                  # Site config template (spine.conf), security.txt template, /source /docs /security redirects
-└── systemd/                # spine-web.service, spine-ingestion.service, spine-backup.{service,timer}
+└── systemd/                # spine-web.service, spine-backup.{service,timer}
 ```
 
 ## Common commands
@@ -63,7 +62,7 @@ spine/
 # Install deps (first time, needs sudo)
 sudo ./install.sh -d
 
-# Build everything (server TS + React + Python venv)
+# Build everything (server TS + React)
 ./install.sh -b
 
 # Install and start systemd services
@@ -143,19 +142,19 @@ Target architecture, trust boundaries, interfaces/adapters and the migration pat
 
 **Request flow:** Browser → nginx (TLS) → Fastify (port 3000) → SQLite
 
-**Ingestion flow** (a photo skips `rasterize.ts` and the sidecar: `photo.ts` makes it an upright PNG page and the model parser reads it, and it is accepted only with `SPINE_MULTIMODAL_ENABLED`): Upload → `source-files.ts` writes to `data/originals/` → `pipeline.ts` (fire-and-forget) → `rasterize.ts` (PDF→PNG) → `ingestion-client.ts` (HTTP to Python sidecar) → `continuation.ts` (Claude Haiku, per page pair) → SQLite as pages and unread documents (`needs_reading`), held back until the owner confirms the grouping → on confirm, `read-upload.ts`: `extraction.ts` (Claude Haiku, per logical doc) → `grounding.ts` (bbox matching) → stamps and signatures → the documents appear
+**Ingestion flow** (a photo skips `rasterize.ts` and the text reader: `photo.ts` makes it an upright PNG page and the model parser reads it, and it is accepted only with `SPINE_MULTIMODAL_ENABLED`): Upload → `source-files.ts` writes to `data/originals/` → `pipeline.ts` (fire-and-forget) → `rasterize.ts` (PDF→PNG) → `pdf-text.ts` (PDF.js text layer) → `continuation.ts` (Claude Haiku, per page pair) → SQLite as pages and unread documents (`needs_reading`), held back until the owner confirms the grouping → on confirm, `read-upload.ts`: `extraction.ts` (Claude Haiku, per logical doc) → `grounding.ts` (bbox matching) → stamps and signatures → the documents appear
 
-**Python sidecar** (`ingestion-service/`, port 8000): FastAPI wrapping Unstructured. Called by `ingestion-client.ts`. Returns per-page elements with bounding boxes.
+**PDF text layer** (`ingestion/pdf-text.ts`): PDF.js in the server process returns per-page paragraph elements with bounding boxes in PDF points. There is no sidecar any more; what the retired Python/Unstructured one offered is in `docs/sidecar.md`.
 
 **AI model:** configuration, not code. `SPINE_LLM_PROVIDER` (`anthropic` | `vertex`) and `SPINE_LLM_MODEL`, defaulting to `claude-haiku-4-5-20251001` for both continuation detection and field extraction. Everything provider-specific is behind the LLM interface in `server/src/llm/`; **nothing above `src/llm/adapters/` may import a vendor package.**
 
 ## Key design decisions
 
-- **All data access goes through the store interface** — `getStore()` returns a `Store` of repositories. **No SQL and no `better-sqlite3` import may exist outside `server/src/store/sqlite/`**; there are currently zero `.prepare()` calls elsewhere. Every repository method takes the acting user's id as its first parameter, with exactly four exceptions enumerated in `store/types.ts` (share-token reads, access logging, boot-time maintenance, the users repository). Every statement on a user-owned table filters by `user_id`; a method called without a user throws; a record that is not the caller's answers 404. `__tests__/isolation.test.ts` checks all of it as a second user.
+- **All data access goes through the store interface** — `getStore()` returns a `Store` of repositories. **No SQL and no `better-sqlite3` import may exist outside `server/src/store/sqlite/`** (the repositories are written against `driver.ts`'s small `Database` interface; `driver-native.ts` is the only file that imports the module, and `npm run test:shim` runs the whole suite on the WebAssembly driver the browser will use); there are currently zero `.prepare()` calls elsewhere. Every repository method takes the acting user's id as its first parameter, with exactly four exceptions enumerated in `store/types.ts` (share-token reads, access logging, boot-time maintenance, the users repository). Every statement on a user-owned table filters by `user_id`; a method called without a user throws; a record that is not the caller's answers 404. `__tests__/isolation.test.ts` checks all of it as a second user.
 - **New tables carry `user_id` and new queries list explicit columns** — `SELECT *` on a table with `user_id` sends it to the client, including to share recipients. `response-shape.test.ts` scans whole responses.
-- **Parsing goes through the parser interface** — one entry per page image, in order, with boxes in that image's pixel space (the sidecar adapter scales from its own coordinates).
-  - The sidecar runs Unstructured with `strategy="fast"` only: the PDF's own text layer, no OCR, no layout model. A page with no text layer returns no elements. (`auto` is one decision for the whole file, and its `ocr` label is never set.)
-  - `hybrid` goes cheapest first per page: text layer (what the sidecar returned, at least `SPINE_TEXT_LAYER_MIN_CHARS`) → local Tesseract if its confidence is good → the model. It never sends a page that has a text layer, and fails the upload if the sidecar is down rather than treating every page as scanned.
+- **Parsing goes through the parser interface** — one entry per page image, in order, with boxes in that image's pixel space (the text-layer adapter scales from the page's size in points).
+  - PDF.js reads only the PDF's own text layer: no OCR, no layout model. A page with no text layer returns no elements. (`auto` is one decision for the whole file, and its `ocr` label is never set.)
+  - `hybrid` goes cheapest first per page: text layer (what the text layer held, at least `SPINE_TEXT_LAYER_MIN_CHARS`) → local Tesseract if its confidence is good → the model. It never sends a page that has a text layer, and fails the upload if the file cannot be opened rather than treating every page as scanned.
   - Images leave the host only via `readPage` (a page; `multimodal`/`hybrid`, or a photo) and `readStamps` (small signature-stamp crops from a PDF's last page, `ingestion/signatures.ts`), and only with `SPINE_MULTIMODAL_ENABLED`. If the model fails, the page keeps local OCR, and a failed stamp read adds no doctors and never fails the upload.
   - "Read page with AI" (`ingestion/ai-reading.ts`) sends only that page through the same parser and switch, then extracts only the documents that contain it again; "Read whole document" (`strategy: "configured"` on the same route) reads all of a document's visible pages in one call with the configured parser, as an upload does (text layer, then OCR, then a model, depending on `SPINE_PARSER`), keeps the grouping, and extracts again; it sends an image only if that parser does, so it needs the switch only then. A page that comes back unread keeps its earlier text.
   - Model-read pages are stored as `multimodal` with text and **no boxes** (a model's estimate of where text sits was unreliable, so it is not asked for): a field read from one keeps its source page and gets no highlight, and the UI draws none on such a page. Exact boxes come only from the PDF's text layer and from local OCR.
@@ -213,7 +212,6 @@ Target architecture, trust boundaries, interfaces/adapters and the migration pat
 
 `npm test` runs the suite; `npm run test:coverage` reports coverage (above 90% for statements and branches). **`npm run test:integration`** (server/) runs the flows against the real model in `.env`, the real sidecar and poppler (`src/__integration__/`, `*.it.ts`, `docs/testing.md`): it is never part of `npm test` (which blanks the provider key so a unit test cannot call a model), forces an in-memory database, a temporary data directory and no mailer, and asserts what must hold whatever the model says. Run it after changing a prompt, a tool, the pipeline or the model; when it fails and the unit tests pass, add a unit test for the real state first. A new user-facing flow needs a scenario in `docs/scenarios.md` and, if it depends on what a model returns, an integration flow.
 
-Intentionally uncovered (integration tests would need a live sidecar, real PDFs or live provider credentials):
-- `ingestion-client.ts` — HTTP to Python sidecar
+Intentionally uncovered (integration tests would need real PDFs or live provider credentials):
 - `rasterize.ts` — PDF rasterizer
 - the `invoke` paths in `llm/adapters/*` — they need live provider credentials. Their configuration refusals (missing endpoint/region/project, stray Google API key) are covered, and the interface is tested through fake task clients built with `RunnableLambda.from`, not a mocked vendor SDK

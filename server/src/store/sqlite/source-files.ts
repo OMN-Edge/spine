@@ -1,4 +1,4 @@
-import type { Database } from 'better-sqlite3';
+import type { Database } from './driver.js';
 import type { SourceFile } from '../../types.js';
 import type { NewSourceFile, SourceFileRepository, SourceFileSummary } from '../types.js';
 import { owner } from './owner.js';

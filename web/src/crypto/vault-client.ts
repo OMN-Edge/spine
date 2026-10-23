@@ -45,6 +45,9 @@ export class VaultFullError extends Error {
 
 type Fetch = typeof fetch;
 
+/** `fetch` called on its own: kept as a field and called as `this.f(...)` the browser refuses it ("Illegal invocation"), so it is wrapped. */
+const defaultFetch: Fetch = (input, init) => fetch(input, init);
+
 async function fail(res: Response): Promise<never> {
   const body = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
   if (res.status === 409) throw new ConflictError();
@@ -55,7 +58,7 @@ async function fail(res: Response): Promise<never> {
 const json = (body: unknown): RequestInit => ({ method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 
 /** What a sign-in needs from the server before it can start. */
-export async function fetchKdf(email: string, f: Fetch = fetch): Promise<{ vault: false } | { vault: true; salt: string; params: KdfParams }> {
+export async function fetchKdf(email: string, f: Fetch = defaultFetch): Promise<{ vault: false } | { vault: true; salt: string; params: KdfParams }> {
   const res = await f('/api/auth/kdf', json({ email }));
   if (!res.ok) return fail(res);
   return res.json();
@@ -65,7 +68,7 @@ export async function fetchKdf(email: string, f: Fetch = fetch): Promise<{ vault
  * Step one of signing in: the credential to send in place of the password, and the master key to keep for step two. For an account
  * with no vault yet the password itself is the credential and there is no master key.
  */
-export async function prepareSignIn(email: string, password: string, f: Fetch = fetch): Promise<{ credential: string; masterKey: Uint8Array | null }> {
+export async function prepareSignIn(email: string, password: string, f: Fetch = defaultFetch): Promise<{ credential: string; masterKey: Uint8Array | null }> {
   const kdf = await fetchKdf(email, f);
   if (!kdf.vault) return { credential: password, masterKey: null };
   const { masterKey, authValue } = await deriveFromPassword(password, kdf.salt, kdf.params);
@@ -88,7 +91,7 @@ export class VaultSession {
   ) {}
 
   /** Step two, once the server has accepted the credential (and any second factor): fetch the keys and open them. */
-  static async open(masterKey: Uint8Array, f: Fetch = fetch): Promise<VaultSession> {
+  static async open(masterKey: Uint8Array, f: Fetch = defaultFetch): Promise<VaultSession> {
     const res = await f('/api/vault/keys');
     if (!res.ok) return fail(res);
     const payload = (await res.json()) as VaultKeyPayload & { seq: number };
@@ -97,7 +100,7 @@ export class VaultSession {
   }
 
   /** Right after sign-up, when the keys are already in memory. */
-  static adopt(unlocked: UnlockedKeys, keys: VaultKeyPayload, f: Fetch = fetch): VaultSession {
+  static adopt(unlocked: UnlockedKeys, keys: VaultKeyPayload, f: Fetch = defaultFetch): VaultSession {
     return new VaultSession(unlocked, keys, f);
   }
 

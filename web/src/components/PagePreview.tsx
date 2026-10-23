@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useI18n } from '../i18n';
+import DeviceImg from './DeviceImg';
+import { deviceObjectUrl } from '../core/client';
 
 export interface PreviewPage {
   id: string;
@@ -51,7 +53,7 @@ export default function PagePreview({
   // Warm the neighbours, so moving along the pages does not wait on each image.
   useEffect(() => {
     for (const neighbour of [pages[index - 1], pages[index + 1]]) {
-      if (neighbour) new Image().src = `/api/pages/${neighbour.id}/image?r=${neighbour.rotation ?? 0}`;
+      if (neighbour) void deviceObjectUrl(`/api/pages/${neighbour.id}/image?r=${neighbour.rotation ?? 0}`).catch(() => undefined);
     }
   }, [pages, index]);
 
@@ -89,7 +91,7 @@ export default function PagePreview({
           className={`flex-1 min-h-0 overflow-auto px-2 ${zoomed ? '' : 'flex items-center justify-center'}`}
           onClick={e => { if (e.target === e.currentTarget) onClose(); }}
         >
-          <img
+          <DeviceImg
             key={page.id}
             src={`/api/pages/${page.id}/image?r=${page.rotation ?? 0}`}
             alt={t('Page {n}', { n: page.page_number })}

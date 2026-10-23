@@ -10,7 +10,7 @@ It is written to be enforced: every principle is phrased so a change can be judg
 > argon2id passwords, open signup with email verification, recovery links, optional TOTP
 > two-factor, and hybrid parsing with image egress behind two switches. Every defect found
 > so far is fixed or accepted ([Known gaps](#known-gaps)). Not yet exercised against a real
-> provider or sidecar: reading a page image, and the sidecar's box scaling. Nothing here
+> provider: reading a page image. Nothing here
 > claims compliance with any regulation. The 2026-10-18
 > [review](#review-attacks-on-sign-in-and-access-and-on-agent-built-software) found six things (a forgeable client
 > address, dependency advisories, a 30-day stolen-cookie window, a length-only password check, no model spend ceiling,
@@ -98,7 +98,7 @@ A change that breaks one of these is a defect, whether or not a test catches it.
 - **Residency is a property of the endpoint, not the model.** An adapter that can fall back to a global endpoint, or authenticate in a way known to ignore the configured location, is a defect.
 - **Email carries no medical content — ever.** The mail path exists only for account recovery and verification: a recipient address and a single-use link. No document text, no summary, no extracted field, no attachment. This is what keeps a mail provider from becoming a processor of health data, and the mailer interface has no attachment parameter precisely so the capability cannot be reached. The subject and body say nothing clinical either. The sender name is the operator's choice: it can be the company or the product, which tells the provider and anyone seeing the inbox that the recipient uses that service, and no more. An operator who wants less visible than that picks a more neutral name.
 
-**P9 — Least privilege at the OS layer.** Services run unprivileged with `ProtectSystem=strict`, `NoNewPrivileges`, write access narrowed to `data/`. The parser sidecar binds loopback only; it has no auth and accepts a filesystem path, so it must never be reachable off-host.
+**P9 — Least privilege at the OS layer.** Services run unprivileged with `ProtectSystem=strict`, `NoNewPrivileges`, write access narrowed to `data/`. There is no parser service any more: PDF text is read in the server process, so the old sidecar's unauthenticated, path-reading listener ([docs/sidecar.md](docs/sidecar.md)) no longer exists.
 
 **P10 — Tests exercise the real path.** A control is untested unless the test drives it the way production does. A fixture that builds state directly, bypassing the handler that encodes it, proves nothing.
 
@@ -202,7 +202,6 @@ Verified present.
 |---|---|
 | `NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`, `ReadWritePaths=data/` | both units |
 | `PrivateTmp`: stamp crops and other temporary files are not in a shared `/tmp` | `spine-web.service` |
-| Sidecar bound `127.0.0.1:8000` | `spine-ingestion.service:10` |
 | Services run as the invoking user, not root | both units |
 
 ## Known gaps

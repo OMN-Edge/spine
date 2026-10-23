@@ -5,6 +5,7 @@ import { useI18n } from '../i18n';
 import { documentTitle } from '../titles';
 import { useChat } from './ChatProvider';
 import LinkWhyLine from './LinkWhy';
+import DeviceImg from './DeviceImg';
 
 /**
  * A change the chat prepared, waiting for the person. The words are written here, from the proposal's data, in the person's
@@ -488,7 +489,7 @@ function RegroupCard({ proposal, state, setState, shell }: { proposal: Extract<P
           <div className="flex flex-wrap gap-2">
             {g.pages.map(p => (
               <figure key={p.id} className="relative m-0">
-                <img src={`/api/pages/${p.id}/image`} alt={t('Page {n}', { n: p.number })} loading="lazy" className="h-24 w-auto rounded border border-gray-200 bg-white" />
+                <DeviceImg src={`/api/pages/${p.id}/image`} alt={t('Page {n}', { n: p.number })} loading="lazy" className="h-24 w-auto rounded border border-gray-200 bg-white" />
                 <figcaption className="text-center text-[10px] text-gray-500">{t('Page {n}', { n: p.number })}</figcaption>
                 {state === 'waiting' && g.on && (
                   <button type="button" aria-label={t('Leave this page where it is')} title={t('Leave this page where it is')} onClick={() => setGroups(prev => prev.map((x, n) => n === gi ? { ...x, pages: x.pages.filter(q => q.id !== p.id) } : x))}

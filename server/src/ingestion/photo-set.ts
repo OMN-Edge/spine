@@ -1,5 +1,5 @@
 import fs from 'fs';
-import sharp from 'sharp';
+import { uprightJpeg } from './image-ops.js';
 import { MAX_PHOTO_PIXELS, MAX_PHOTO_SIDE } from './photo.js';
 
 /** Photos in one upload: a document is a few pages, and each is decoded in memory here. */
@@ -18,14 +18,7 @@ const READ_DPI = 200;
 export async function bundlePhotos(photos: string[], outPath: string): Promise<void> {
   const pages: Array<{ jpeg: Buffer; width: number; height: number; channels: number }> = [];
   for (const photo of photos) {
-    const { data, info } = await sharp(photo, { limitInputPixels: MAX_PHOTO_PIXELS })
-      .rotate()
-      .resize({ width: MAX_PHOTO_SIDE, height: MAX_PHOTO_SIDE, fit: 'inside', withoutEnlargement: true })
-      .flatten({ background: '#ffffff' })
-      .toColourspace('srgb')
-      .jpeg({ quality: 92 })
-      .toBuffer({ resolveWithObject: true });
-    pages.push({ jpeg: data, width: info.width, height: info.height, channels: info.channels });
+    pages.push(await uprightJpeg(photo, { maxSide: MAX_PHOTO_SIDE, maxPixels: MAX_PHOTO_PIXELS }));
   }
 
   // Objects: 1 catalog, 2 page tree, then per page its page, its drawing and its image.

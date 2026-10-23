@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { getStore } from '../store/index.js';
 import { newUploadPath } from '../ingestion/accept-upload.js';
-import { textToPdf } from '../ingestion/convert.js';
+import { textToPdf } from '../ingestion/text-pdf.js';
 import { removeUploadFiles } from '../ingestion/remove-upload.js';
 import { startRestore } from '../archive/import-file.js';
 import { getJobStatus } from '../ingestion/jobs.js';

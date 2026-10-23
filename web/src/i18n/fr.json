@@ -1065,5 +1065,10 @@
  "Filter": "Filtre",
  "Clean": "Nettoyé",
  "Greyscale": "Niveaux de gris",
- "Black and white": "Noir et blanc"
+ "Black and white": "Noir et blanc",
+ "Open your records": "Ouvrir vos dossiers",
+ "Your records are encrypted on this device. Type your master password to open them.": "Vos dossiers sont chiffrés sur cet appareil. Saisissez votre mot de passe principal pour les ouvrir.",
+ "Master password": "Mot de passe principal",
+ "That is not the master password.": "Ce n'est pas le mot de passe principal.",
+ "Opening…": "Ouverture…"
 }

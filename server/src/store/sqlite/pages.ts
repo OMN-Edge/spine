@@ -1,4 +1,4 @@
-import type { Database } from 'better-sqlite3';
+import type { Database } from './driver.js';
 import type { UnstructuredElement, Page } from '../../types.js';
 import type {
   GroundingContext,
