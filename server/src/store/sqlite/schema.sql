@@ -562,3 +562,37 @@ CREATE TABLE IF NOT EXISTS user_devices (
   first_seen_at TEXT NOT NULL,
   PRIMARY KEY (user_id, device_hash)
 );
+
+-- The zero-knowledge vault (docs/crypto-design.md). The server keeps what it cannot read: the account key wrapped twice (by the key the
+-- person's password makes on their device, and by the recovery key they hold on paper), the X25519 pair, and sealed objects. A row here is
+-- the only record that an account has a vault; an account without one is asked to make one at its next sign-in. `seq` is the newest
+-- change number handed out for this account, which is how a device asks for "what changed since".
+CREATE TABLE IF NOT EXISTS vault_keys (
+  user_id TEXT PRIMARY KEY REFERENCES users(id),
+  kdf_salt TEXT NOT NULL,            -- base64url, 16 random bytes
+  kdf_params TEXT NOT NULL,          -- JSON: the Argon2id cost the device used, so another device derives the same key
+  wrapped_by_master TEXT NOT NULL,   -- the account key, sealed under the master key
+  wrapped_by_recovery TEXT NOT NULL, -- the account key, sealed under the recovery key
+  public_key TEXT NOT NULL,          -- X25519, base64url
+  wrapped_private_key TEXT NOT NULL, -- sealed under the account key
+  seq INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+-- One sealed object: its ciphertext is a file beside the others (vault/<user>/<id>), and what is kept here is what a server needs to
+-- move it around and nothing it could read. `kind` is coarse (bundle, blob, library, embedding); `profile_id` is an opaque id.
+CREATE TABLE IF NOT EXISTS vault_objects (
+  user_id TEXT NOT NULL REFERENCES users(id),
+  id TEXT NOT NULL,
+  profile_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  seq INTEGER NOT NULL,
+  size INTEGER NOT NULL,
+  wrapped_key TEXT NOT NULL,         -- the object's data key, sealed under the profile key
+  deleted INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, id)
+);
+CREATE INDEX IF NOT EXISTS idx_vault_objects_seq ON vault_objects(user_id, seq);

@@ -210,6 +210,8 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions = 
       authenticated: true,
       email: user.email,
       second_factor_enabled: await hasSecondFactor(user.id),
+      // Whether the account has a vault. One that has none is asked to make it before anything else (docs/crypto-design.md).
+      vault: (await getStore().vault.getKeys(user.id)) !== null,
       // What this account still has to agree to before the app shows anything (FR-GDPR-01). Nothing once it has.
       consent_needed: consentNeeded(user),
     });

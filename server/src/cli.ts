@@ -87,7 +87,8 @@ export async function runCli(args: string[], io: CliIo): Promise<number> {
       });
 
       io.out(`created ${email}`);
-      io.out('the account agrees to the privacy notice and the terms at its first sign-in (docs/legal/)');
+      io.out('at its first sign-in the account agrees to the privacy notice and the terms (docs/legal/), then chooses its own master password and receives its recovery kit');
+      io.out('the password below only gets the person to that screen; it is replaced there and Spine keeps no copy of the new one');
       if (generated) io.out(`password (shown once): ${password}`);
       return 0;
     }
@@ -97,6 +98,13 @@ export async function runCli(args: string[], io: CliIo): Promise<number> {
       const user = await store.users.findByEmail(email);
       if (!user) {
         io.err(`no account for ${email}`);
+        return 1;
+      }
+
+      // An account with a vault signs in with a value its device derives from the master password. A password set here would be a second
+      // credential the person's device never sends, and could not open the records: the way back is the reset link and the recovery kit.
+      if (await store.vault.getKeys(user.id)) {
+        io.err(`${email} has a vault: its password is chosen on the person's device. Send a reset link (reset-link) and have them use their recovery kit`);
         return 1;
       }
 

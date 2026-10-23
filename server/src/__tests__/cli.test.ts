@@ -1,3 +1,4 @@
+import { fakeVaultKeys } from './helpers/vault.js';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
@@ -99,6 +100,16 @@ describe('set-password', () => {
     expect(await verifyPassword(after!.password_hash, 'the-second-password')).toBe(true);
     expect(await verifyPassword(after!.password_hash, 'the-first-password')).toBe(false);
     expect(console_.out_.join()).toMatch(/signed out/);
+  });
+
+  it('refuses an account with a vault, whose password the operator cannot choose', async () => {
+    await runCli(['create-user', 'vaulted@example.com', '--password-stdin'], io('the-first-password'));
+    const user = await getStore().users.findByEmail('vaulted@example.com');
+    await getStore().vault.putKeys(user!.id, { ...fakeVaultKeys(), kdf_params: JSON.stringify(fakeVaultKeys().kdf_params) }, new Date().toISOString());
+    const console_ = io('the-second-password');
+    expect(await runCli(['set-password', 'vaulted@example.com', '--password-stdin'], console_)).toBe(1);
+    expect(console_.err_.join()).toMatch(/has a vault/);
+    expect(await verifyPassword((await getStore().users.findByEmail('vaulted@example.com'))!.password_hash, 'the-first-password')).toBe(true);
   });
 
   it('reports an unknown account', async () => {

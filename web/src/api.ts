@@ -1,4 +1,8 @@
 import { askForPassword } from './reauth';
+import { credentialFor, vaultState } from './crypto/vault-state';
+import { prepareSignIn } from './crypto/vault-client';
+import { checkPasswordPolicy } from './crypto/password-policy';
+import { rewrapForPassword, type KdfParams, type VaultKeyPayload } from './crypto/keys';
 import { startAuthentication, startRegistration, type PublicKeyCredentialCreationOptionsJSON, type PublicKeyCredentialRequestOptionsJSON } from '@simplewebauthn/browser';
 export type DocType =
   | 'lab_result'
@@ -555,6 +559,9 @@ async function readReplyStream<T>(url: string, body: unknown, handlers: ChatStre
 const post = <T>(url: string, body: unknown) =>
   req<T>(url, { method: 'POST', body: JSON.stringify(body) });
 
+const put = <T>(url: string, body: unknown) =>
+  req<T>(url, { method: 'PUT', body: JSON.stringify(body) });
+
 const patch = <T>(url: string, body: unknown) =>
   req<T>(url, { method: 'PATCH', body: JSON.stringify(body) });
 
@@ -594,18 +601,39 @@ export const api = {
 
   auth: {
     /** Either signed in, or the password was right and a second factor is still needed. */
-    login: (email: string, password: string) =>
-      req<{ ok?: boolean; email?: string; second_factor_required?: boolean }>('/api/auth/login', {
-        method: 'POST',
-        body: JSON.stringify({ email, password }),
-      }),
+    login: async (email: string, password: string) => {
+      // The password never leaves the device: what is sent in its place is derived from it (docs/crypto-design.md).
+      const { credential, masterKey } = await prepareSignIn(email, password);
+      vaultState.setEmail(email);
+      try {
+        const result = await req<{ ok?: boolean; email?: string; second_factor_required?: boolean }>('/api/auth/login', {
+          method: 'POST',
+          body: JSON.stringify({ email, password: credential }),
+        });
+        vaultState.stashMaster(masterKey);
+        return result;
+      } catch (err) {
+        vaultState.stashMaster(null);
+        throw err;
+      }
+    },
     secondFactor: (code: string) =>
       post<{ ok: boolean; email: string }>('/api/auth/login/second-factor', { code }),
-    logout: () => req('/api/auth/logout', { method: 'POST' }),
-    me: () => req<{ authenticated: boolean; email: string; second_factor_enabled?: boolean; consent_needed?: { health: boolean; terms: boolean } }>('/api/auth/me'),
+    logout: async () => {
+      await vaultState.lock();
+      return req('/api/auth/logout', { method: 'POST' });
+    },
+    me: () => req<{ authenticated: boolean; email: string; second_factor_enabled?: boolean; vault?: boolean; consent_needed?: { health: boolean; terms: boolean } }>('/api/auth/me'),
     options: () => req<{ registration: 'operator' | 'open'; recovery: boolean }>('/api/auth/options'),
-    register: (email: string, password: string, consent: { health_data: boolean; terms: boolean }) =>
-      post<{ ok: boolean; message: string }>('/api/auth/register', { email, password, consent_health_data: consent.health_data, accept_terms: consent.terms }),
+    /** The keys are made on the device; the server gets the derived credential and the sealed keys, never the password. */
+    register: (email: string, account: { authValue: string; keys: VaultKeyPayload }, consent: { health_data: boolean; terms: boolean }) =>
+      post<{ ok: boolean; message: string }>('/api/auth/register', { email, auth_value: account.authValue, keys: account.keys, consent_health_data: consent.health_data, accept_terms: consent.terms }),
+    /** An account without a vault makes one: the new credential replaces the password the server knew. */
+    createVault: (account: { authValue: string; keys: VaultKeyPayload }) => put<{ ok: boolean }>('/api/vault/keys', { auth_value: account.authValue, keys: account.keys }),
+    rewrap: (change: { authValue?: string; keys: VaultKeyPayload }) => post<{ ok: boolean }>('/api/vault/keys/rewrap', { auth_value: change.authValue, keys: change.keys }),
+    /** What a reset link is for: the recovery-wrapped key, to open with the kit. */
+    resetKeys: (token: string) =>
+      post<{ vault: false } | { vault: true; wrapped_by_recovery: string; public_key: string; wrapped_private_key: string; kdf_params: KdfParams }>('/api/auth/reset/keys', { token }),
     /** Passkeys: sign in with the device; manage them from the account page. */
     passkeys: {
       supported: () => typeof window !== 'undefined' && !!window.PublicKeyCredential,
@@ -629,11 +657,25 @@ export const api = {
     forgot: (email: string) => post<{ ok: boolean; message: string }>('/api/auth/forgot', { email }),
     reset: (token: string, password: string) =>
       post<{ ok: boolean }>('/api/auth/reset', { token, password }),
-    changePassword: (current: string, next: string) =>
-      post<{ ok: boolean }>('/api/auth/password', { current, next }),
+    resetVault: (token: string, change: { authValue: string; keys: VaultKeyPayload }, erase = false) =>
+      post<{ ok: boolean }>('/api/auth/reset', { token, auth_value: change.authValue, keys: change.keys, erase: erase || undefined }),
+    /** A new master password: the same keys sealed under a new master key, here, so the records stay readable. */
+    changePassword: async (current: string, next: string) => {
+      const session = await vaultState.unlock(current);
+      await api.auth.reauth(current);
+      const problem = checkPasswordPolicy(next, { email: vaultState.email() });
+      if (problem) throw new ApiError(problem === 'short' ? 'The password must be at least 12 characters.' : problem === 'long' ? 'The password is too long.' : 'That password is too easy to guess: use a longer phrase that is not a common word, a pattern or part of your address.', 400);
+      const change = await rewrapForPassword(session.unlocked, session.keys, next);
+      const done = await api.auth.rewrap({ authValue: change.authValue, keys: change.keys });
+      session.keys = change.keys;
+      return done;
+    },
     /** Whether the password was typed recently enough for the actions that ask for it again. */
     reauthStatus: () => req<{ fresh: boolean }>('/api/auth/reauth'),
-    reauth: (password: string, code?: string) => post<{ ok: boolean }>('/api/auth/reauth', code ? { password, code } : { password }),
+    reauth: async (password: string, code?: string) => {
+      const credential = await credentialFor(password);
+      return post<{ ok: boolean }>('/api/auth/reauth', code ? { password: credential, code } : { password: credential });
+    },
     sessions: {
       list: () => req<Array<{ id: string; created_at: string; last_seen_at: string; user_agent: string; address: string; current: boolean }>>('/api/auth/sessions'),
       end: (id: string) => req<{ ok: boolean }>(`/api/auth/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
@@ -641,12 +683,12 @@ export const api = {
     },
     totp: {
       status: () => req<{ enabled: boolean; recovery_codes_left: number }>('/api/auth/totp'),
-      setup: (password: string) =>
-        post<{ secret: string; otpauth_uri: string }>('/api/auth/totp/setup', { password }),
+      setup: async (password: string) =>
+        post<{ secret: string; otpauth_uri: string }>('/api/auth/totp/setup', { password: await credentialFor(password) }),
       enable: (code: string) => post<{ ok: boolean; recovery_codes: string[] }>('/api/auth/totp/enable', { code }),
-      disable: (password: string, code: string) => post<{ ok: boolean }>('/api/auth/totp/disable', { password, code }),
-      newRecoveryCodes: (password: string, code: string) =>
-        post<{ ok: boolean; recovery_codes: string[] }>('/api/auth/totp/recovery-codes', { password, code }),
+      disable: async (password: string, code: string) => post<{ ok: boolean }>('/api/auth/totp/disable', { password: await credentialFor(password), code }),
+      newRecoveryCodes: async (password: string, code: string) =>
+        post<{ ok: boolean; recovery_codes: string[] }>('/api/auth/totp/recovery-codes', { password: await credentialFor(password), code }),
     },
   },
 

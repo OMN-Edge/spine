@@ -607,3 +607,15 @@ export function llmDailyCalls(env: NodeJS.ProcessEnv = process.env): number {
   const n = Number(raw);
   return Number.isInteger(n) && n >= 0 ? n : 5000;
 }
+
+/**
+ * What one account may keep in its vault (ciphertext, so a count of bytes and nothing else): `SPINE_VAULT_MAX_MB` for the whole
+ * account (default 5120) and `SPINE_VAULT_MAX_OBJECT_MB` for one object (default 100). A bad value gives the default.
+ */
+export function vaultLimits(env: NodeJS.ProcessEnv = process.env): { accountBytes: number; objectBytes: number } {
+  const mb = (raw: string | undefined, fallback: number) => {
+    const n = Number(raw);
+    return Number.isFinite(n) && n >= 1 ? Math.floor(n) * 1024 * 1024 : fallback * 1024 * 1024;
+  };
+  return { accountBytes: mb(env.SPINE_VAULT_MAX_MB, 5120), objectBytes: mb(env.SPINE_VAULT_MAX_OBJECT_MB, 100) };
+}

@@ -21,6 +21,7 @@ import { episodeRoutes } from './routes/episodes.js';
 import { demoRoutes } from './routes/demo.js';
 import { ownAccountRoutes } from './routes/own-account.js';
 import { passkeyRoutes } from './routes/passkeys.js';
+import { vaultRoutes } from './routes/vault.js';
 import { chatRoutes } from './routes/chat.js';
 import { shareRoutes } from './routes/share.js';
 import { publicShareRoutes } from './routes/public-share.js';
@@ -151,6 +152,7 @@ await app.register(episodeRoutes);
 await app.register(demoRoutes);
 await app.register(ownAccountRoutes);
 await app.register(passkeyRoutes);
+await app.register(vaultRoutes);
 await app.register(chatRoutes);
 await app.register(shareRoutes);
 // The share entry route serves the SPA shell, so it needs the build's path.

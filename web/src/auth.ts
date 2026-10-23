@@ -8,6 +8,9 @@ export interface AuthContextValue {
   /** What the account still has to agree to before the app shows anything; null when it has agreed. */
   consentNeeded: { health: boolean; terms: boolean } | null | undefined;
   consentGiven: () => void;
+  /** The account has no vault yet and is asked to make one. */
+  vaultNeeded: boolean;
+  vaultMade: () => void;
 }
 
 export const AuthContext = createContext<AuthContextValue>({
@@ -16,6 +19,8 @@ export const AuthContext = createContext<AuthContextValue>({
   setAuthenticated: () => {},
   consentNeeded: null,
   consentGiven: () => {},
+  vaultNeeded: false,
+  vaultMade: () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);

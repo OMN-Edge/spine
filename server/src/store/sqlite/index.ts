@@ -18,6 +18,7 @@ import { linkRepository } from './links.js';
 import { episodeRepository } from './episodes.js';
 import { conversationRepository } from './conversations.js';
 import { userRepository } from './users.js';
+import { vaultRepository } from './vault.js';
 import type { Store, StoreConfig } from '../types.js';
 
 /**
@@ -52,6 +53,7 @@ function storeOver(db: Database, depth: number): Store {
     regroupPlans: regroupPlanRepository(db),
     matchDecisions: matchDecisionRepository(db),
     sessions: sessionRepository(db),
+    vault: vaultRepository(db),
     maintenance: maintenanceRepository(db),
 
     /**

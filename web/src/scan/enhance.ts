@@ -76,3 +76,67 @@ export function enhance(src: Raster): Raster {
   }
   return flat;
 }
+
+/**
+ * Greyscale with some more contrast, for a page read best as dark print on white: luminance, then pushed away from the middle grey.
+ * Meant to follow `enhance` (the paper is already white), so the print gets darker and the paper stays white. It is not a threshold:
+ * every grey in between is kept, which is what lets faint print and handwriting survive.
+ */
+export function greyscale(src: Raster, contrast = 1.35): Raster {
+  const out = newRaster(src.width, src.height);
+  for (let i = 0; i < src.data.length; i += 4) {
+    const l = 0.299 * src.data[i] + 0.587 * src.data[i + 1] + 0.114 * src.data[i + 2];
+    const v = Math.min(255, Math.max(0, (l - 128) * contrast + 128));
+    out.data[i] = v; out.data[i + 1] = v; out.data[i + 2] = v; out.data[i + 3] = 255;
+  }
+  return out;
+}
+
+/**
+ * Otsu's method (1979): the cut-off that best separates the page's lights from its darks, by maximising the variance between the two
+ * groups of a brightness histogram. The usual way to choose one without a number guessed in advance (the `otsu` and `image-filter-js`
+ * packages do the same); written from the definition. Kept between `LOW` and `HIGH`, because a page that is nearly all paper has
+ * nothing to separate and would otherwise be cut through its noise.
+ */
+const LOW = 110;
+const HIGH = 190;
+const FALLBACK = 150;
+
+export function otsuCutoff(brightness: Uint8Array | number[]): number {
+  const hist = new Float64Array(256);
+  for (const v of brightness) hist[Math.min(255, Math.max(0, Math.round(v)))]++;
+  const total = brightness.length;
+  let sumAll = 0;
+  for (let v = 0; v < 256; v++) sumAll += v * hist[v];
+  let weightBack = 0; let sumBack = 0; let best = 0; let cutoff = 127;
+  for (let v = 0; v < 256; v++) {
+    weightBack += hist[v];
+    if (weightBack === 0) continue;
+    const weightFront = total - weightBack;
+    if (weightFront === 0) break;
+    sumBack += v * hist[v];
+    const meanBack = sumBack / weightBack; const meanFront = (sumAll - sumBack) / weightFront;
+    const between = weightBack * weightFront * (meanBack - meanFront) ** 2;
+    if (between > best) { best = between; cutoff = v; }
+  }
+  // One level only: nothing to separate, so the usual cut-off for a cleaned page.
+  return best === 0 ? FALLBACK : Math.min(HIGH, Math.max(LOW, cutoff + 1));
+}
+
+/**
+ * Pure black and white, for print that is already dark on a pale page (a receipt, a form): every pixel is ink or paper. It follows `enhance`,
+ * which has already made the lighting even and the paper white, so one cut-off is enough where the raw photo would need a local one; the
+ * cut-off is found with Otsu's method unless one is given. Pale print and handwriting can fall under it and vanish, which is why it is a
+ * choice per page and the greyscale and clean versions are the ones to use for those.
+ */
+export function blackAndWhite(src: Raster, cutoff?: number): Raster {
+  const out = newRaster(src.width, src.height);
+  const lum = new Uint8Array(src.width * src.height);
+  for (let i = 0, j = 0; i < src.data.length; i += 4, j++) lum[j] = 0.299 * src.data[i] + 0.587 * src.data[i + 1] + 0.114 * src.data[i + 2];
+  const limit = cutoff ?? otsuCutoff(lum);
+  for (let i = 0, j = 0; i < src.data.length; i += 4, j++) {
+    const v = lum[j] < limit ? 0 : 255;
+    out.data[i] = v; out.data[i + 1] = v; out.data[i + 2] = v; out.data[i + 3] = 255;
+  }
+  return out;
+}

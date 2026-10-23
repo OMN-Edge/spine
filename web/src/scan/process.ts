@@ -1,6 +1,6 @@
-import { enhance } from './enhance';
+import { blackAndWhite, enhance, greyscale } from './enhance';
 import type { Quad, Raster } from './image';
-import { pageSize, warpPerspective } from './warp';
+import { straighten } from './detect';
 
 /** The browser side of scanning: a photo into pixels and back. Everything here runs on the device (FR-ING-10). */
 const MAX_SOURCE_SIDE = 3000;
@@ -31,9 +31,13 @@ export function rasterToBlob(r: Raster, quality = 0.92): Promise<Blob> {
   return new Promise((resolve, reject) => canvas.toBlob(b => (b ? resolve(b) : reject(new Error('could not save the picture'))), 'image/jpeg', quality));
 }
 
-/** The page cut out and straightened, plain and cleaned up. `quad` is in the photo's own pixels as loaded at `loaded.scale`. */
-export async function processPage(loaded: Loaded, quad: Quad): Promise<{ plain: Blob; clean: Blob }> {
-  const straight = warpPerspective(loaded.raster, quad, pageSize(quad));
-  const [plain, clean] = await Promise.all([rasterToBlob(straight), rasterToBlob(enhance(straight))]);
-  return { plain, clean };
+/** How a page is saved: as photographed and straightened, with shadows and fading cleaned up, in greys with more contrast, or in pure black and white. */
+export type PageFilter = 'original' | 'clean' | 'grey' | 'bw';
+
+/** The page cut out and straightened, in each version. `quad` is in the photo's own pixels as loaded at `loaded.scale`. */
+export async function processPage(loaded: Loaded, quad: Quad): Promise<Record<PageFilter, Blob>> {
+  const straight = await straighten(loaded.raster, quad);
+  const clean = enhance(straight);
+  const [original, cleaned, grey, bw] = await Promise.all([rasterToBlob(straight), rasterToBlob(clean), rasterToBlob(greyscale(clean)), rasterToBlob(blackAndWhite(clean))]);
+  return { original, clean: cleaned, grey, bw };
 }

@@ -2,7 +2,7 @@
 
 This is the public write-up of how Spine is meant to keep records readable only by their owner and the doctors the owner chooses (requirements TR-CRY, TR-SHC, TR-AI, TR-OSS-03). It describes the **design for the hosted service**. It is not what the code does today.
 
-> **Status.** The code in this repository is a server-side application: the server decrypts nothing because it encrypts nothing, the database holds readable text, and the operator of an instance can read every record on it ([SECURITY.md](../SECURITY.md), [ARCHITECTURE.md](../ARCHITECTURE.md)). Nothing below is implemented yet. Until it is, and until an independent cryptography audit has been published (TR-OSS-02), no product claim should say that the operator cannot read your records. Each section ends with what stays visible, so the claim can be checked against the design.
+> **Status.** Keys and the vault routes are built (stage 1a, [crypto-design.md](crypto-design.md)); nothing the app stores is sealed yet. The code in this repository is otherwise a server-side application: the server decrypts nothing because it encrypts nothing, the database holds readable text, and the operator of an instance can read every record on it ([SECURITY.md](../SECURITY.md), [ARCHITECTURE.md](../ARCHITECTURE.md)). Nothing below is implemented yet. Until it is, and until an independent cryptography audit has been published (TR-OSS-02), no product claim should say that the operator cannot read your records. Each section ends with what stays visible, so the claim can be checked against the design.
 
 ## Claim, in one sentence
 

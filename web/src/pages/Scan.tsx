@@ -4,7 +4,7 @@ import { api } from '../api';
 import CornerEditor from '../scan/CornerEditor';
 import { defaultQuad, detectDocument, steady } from '../scan/detect';
 import type { Quad } from '../scan/image';
-import { loadRaster, processPage, type Loaded } from '../scan/process';
+import { loadRaster, processPage, type Loaded, type PageFilter } from '../scan/process';
 import { useI18n } from '../i18n';
 
 /**
@@ -16,10 +16,9 @@ import { useI18n } from '../i18n';
 interface Page {
   id: number;
   raw: Blob;
-  plain: Blob;
-  clean: Blob;
+  versions: Record<PageFilter, Blob>;
   previewUrl: string;
-  cleanUp: boolean;
+  filter: PageFilter;
   quad: Quad;
 }
 
@@ -49,7 +48,7 @@ export default function Scan() {
     setBusy(t('Looking for the page…')); setError('');
     try {
       const loaded = await loadRaster(raw);
-      const found = quadHint ?? detectDocument(loaded.raster) ?? defaultQuad(loaded.width, loaded.height);
+      const found = quadHint ?? (await detectDocument(loaded.raster).catch(() => null)) ?? defaultQuad(loaded.width, loaded.height);
       setStill({ raw, url: URL.createObjectURL(raw), loaded, quad: found, replaces });
       setMode('adjust');
     } catch (err) {
@@ -63,8 +62,8 @@ export default function Scan() {
     if (!still) return;
     setBusy(t('Straightening the page…')); setError('');
     try {
-      const { plain, clean } = await processPage(still.loaded, still.quad);
-      const page: Page = { id: still.replaces ?? next.current++, raw: still.raw, plain, clean, previewUrl: URL.createObjectURL(clean), cleanUp: true, quad: still.quad };
+      const versions = await processPage(still.loaded, still.quad);
+      const page: Page = { id: still.replaces ?? next.current++, raw: still.raw, versions, previewUrl: URL.createObjectURL(versions.clean), filter: 'clean', quad: still.quad };
       setPages(list => (still.replaces !== null ? list.map(p => (p.id === still.replaces ? page : p)) : [...list, page]));
       URL.revokeObjectURL(still.url);
       setStill(null);
@@ -81,7 +80,7 @@ export default function Scan() {
     try {
       const stamp = new Date().toISOString().slice(0, 10);
       const results = await api.sourceFiles.uploadScan(
-        pages.map((p, i) => new File([p.cleanUp ? p.clean : p.plain], `scan ${stamp} p${i + 1}.jpg`, { type: 'image/jpeg' })),
+        pages.map((p, i) => new File([p.versions[p.filter]], `scan ${stamp} p${i + 1}.jpg`, { type: 'image/jpeg' })),
         pages.map((p, i) => new File([p.raw], `scan ${stamp} original ${i + 1}.jpg`, { type: p.raw.type || 'image/jpeg' })),
       );
       const r = results[0] as { id?: string; reason?: string };
@@ -100,6 +99,13 @@ export default function Scan() {
     const copy = [...list]; [copy[index], copy[to]] = [copy[to], copy[index]];
     return copy;
   });
+  // The preview follows the filter, so what is shown is what is saved.
+  const setFilter = (id: number, filter: PageFilter) => setPages(list => list.map(p => {
+    if (p.id !== id) return p;
+    URL.revokeObjectURL(p.previewUrl);
+    return { ...p, filter, previewUrl: URL.createObjectURL(p.versions[filter]) };
+  }));
+
   const remove = (id: number) => setPages(list => { const gone = list.find(p => p.id === id); if (gone) URL.revokeObjectURL(gone.previewUrl); return list.filter(p => p.id !== id); });
 
   if (canRead === false) {
@@ -154,8 +160,13 @@ export default function Scan() {
                     <button type="button" onClick={() => remove(p.id)} className="text-gray-500 hover:text-red-600">{t('Remove')}</button>
                   </div>
                   <label className="flex items-center justify-center gap-1 text-xs text-gray-600 mt-1">
-                    <input type="checkbox" checked={p.cleanUp} onChange={e => setPages(list => list.map(q => (q.id === p.id ? { ...q, cleanUp: e.target.checked } : q)))} />
-                    {t('Clean up shadows and fading')}
+                    {t('Filter')}
+                    <select value={p.filter} onChange={e => setFilter(p.id, e.target.value as PageFilter)} className="border border-gray-300 rounded px-1 py-0.5 text-xs">
+                      <option value="original">{t('Original')}</option>
+                      <option value="clean">{t('Clean')}</option>
+                      <option value="grey">{t('Greyscale')}</option>
+                      <option value="bw">{t('Black and white')}</option>
+                    </select>
                   </label>
                 </li>
               ))}
@@ -206,32 +217,36 @@ function CameraStep({ count, onShot }: { count: number; onShot: (raw: Blob) => v
         if (gone) { stream.getTracks().forEach(tr => tr.stop()); return; }
         if (video.current) { video.current.srcObject = stream; await video.current.play().catch(() => undefined); }
         setLive('on');
-        timer = window.setInterval(() => {
+        let looking = false;
+        timer = window.setInterval(async () => {
           const v = video.current; const o = overlay.current;
-          if (!v || !o || !v.videoWidth) return;
-          const w = work.current ?? (work.current = document.createElement('canvas'));
-          const scale = 320 / v.videoWidth;
-          w.width = 320; w.height = Math.round(v.videoHeight * scale);
-          const ctx = w.getContext('2d', { willReadFrequently: true });
-          if (!ctx) return;
-          ctx.drawImage(v, 0, 0, w.width, w.height);
-          const frame = ctx.getImageData(0, 0, w.width, w.height);
-          const quad = detectDocument({ data: frame.data, width: w.width, height: w.height });
-          o.width = w.width; o.height = w.height;
-          const octx = o.getContext('2d');
-          octx?.clearRect(0, 0, o.width, o.height);
-          if (quad && octx) {
-            octx.strokeStyle = '#22c55e'; octx.lineWidth = 3; octx.fillStyle = 'rgba(34,197,94,0.15)';
-            octx.beginPath(); quad.forEach((p, i) => (i === 0 ? octx.moveTo(p.x, p.y) : octx.lineTo(p.x, p.y))); octx.closePath(); octx.fill(); octx.stroke();
-          }
-          const now = Date.now();
-          const state = last.current;
-          if (steady(state.quad, quad, { width: w.width, height: w.height })) {
-            if (now - state.since >= STEADY_MS && now - state.shot >= COOLDOWN_MS && autoRef.current) { state.since = now; shoot(); }
-          } else {
-            state.since = now;
-          }
-          state.quad = quad;
+          if (!v || !o || !v.videoWidth || looking) return;
+          looking = true;
+          try {
+            const w = work.current ?? (work.current = document.createElement('canvas'));
+            const scale = 320 / v.videoWidth;
+            w.width = 320; w.height = Math.round(v.videoHeight * scale);
+            const ctx = w.getContext('2d', { willReadFrequently: true });
+            if (!ctx) return;
+            ctx.drawImage(v, 0, 0, w.width, w.height);
+            const frame = ctx.getImageData(0, 0, w.width, w.height);
+            const quad = await detectDocument({ data: frame.data, width: w.width, height: w.height }).catch(() => null);
+            o.width = w.width; o.height = w.height;
+            const octx = o.getContext('2d');
+            octx?.clearRect(0, 0, o.width, o.height);
+            if (quad && octx) {
+              octx.strokeStyle = '#22c55e'; octx.lineWidth = 3; octx.fillStyle = 'rgba(34,197,94,0.15)';
+              octx.beginPath(); quad.forEach((p, i) => (i === 0 ? octx.moveTo(p.x, p.y) : octx.lineTo(p.x, p.y))); octx.closePath(); octx.fill(); octx.stroke();
+            }
+            const now = Date.now();
+            const state = last.current;
+            if (steady(state.quad, quad, { width: w.width, height: w.height })) {
+              if (now - state.since >= STEADY_MS && now - state.shot >= COOLDOWN_MS && autoRef.current) { state.since = now; shoot(); }
+            } else {
+              state.since = now;
+            }
+            state.quad = quad;
+          } finally { looking = false; }
         }, TICK_MS);
       } catch {
         setLive('off');

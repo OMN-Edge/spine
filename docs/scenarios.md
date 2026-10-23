@@ -33,8 +33,11 @@ The owner asks for a reset. With a mailer they get a link by email; without one,
 - The link works once, and carries its token in the part of the URL the server never sees.
 - A new password signs out the owner's other sessions.
 - The mail has no document content and no clinical words.
+- For an account with a vault the page asks for the **recovery kit** and a new password: the kit opens the account key on the device, which is sealed again under the new password, and the records stay readable. A mistyped kit is caught by its check characters; a kit from another account does not open this one.
+- Without the kit the page says that the records cannot be opened by anyone, and offers to start empty: every stored object is erased, and a new vault and a new kit are made. Nothing is erased before the person has ticked that they understand.
+- The link alone never gives access to records: the server holds only the key sealed under the kit.
 
-Status: auto (`accounts`, `mail`, `cli`). Brevo delivery itself: real provider, untested.
+Status: auto (`accounts`, `mail`, `cli`, `vault`, and `web/src/e2e/vault.e2e.test.ts` for the kit and the erase path). Brevo delivery itself: real provider, untested. The reset page in a browser: hand, not yet done.
 
 ### 1.3 Turn on two-factor
 The owner scans a QR code, confirms one code, and saves ten recovery codes.
@@ -52,21 +55,33 @@ Only where the operator has opened registration (it needs a mail provider). A pe
 - Until the link is used the account cannot sign in, and it gets no session.
 - The link works once, expires, and is carried in the part of the address the server never sees. Asking for another link replaces the old one.
 - A taken address, an unknown one and a verified one all get the same answer, so the form cannot be used to find out who has an account, and nothing is mailed to an address that is not new.
-- A weak password (under 12 characters) or a bad address creates nothing.
+- A weak password (under 12 characters, or a common word or pattern) is refused on the device, before anything is sent; a bad address creates nothing.
+- The keys are made on the device, and the **recovery kit** is shown, printable and saveable, before the account is created: a person is asked to say it is stored somewhere safe, and no account exists whose kit was not shown. The page says plainly that Spine cannot recover the records.
+- The server receives a value derived from the password, never the password, and sealed keys it cannot open.
 - If the mail provider is down the form still answers; it does not crash.
 - With registration closed there is no sign-up route at all.
 - Requests are rate limited per address and per source, so the form cannot flood an inbox.
 
-Status: auto (`accounts`). Delivery by a real mail provider: real provider, untested.
+Status: auto (`accounts`, `vault`, `web/src/crypto`, `web/src/e2e/vault.e2e.test.ts`). Delivery by a real mail provider: real provider, untested. The sign-up screens in a browser: hand, not yet done.
 
 ### 1.5 Change my password
 On the Account page, with the current password and the new one twice.
 
 - The current password is required, and a wrong one changes nothing.
-- The new password is at least 12 characters.
+- The new password is at least 12 characters and not easy to guess, checked on the device.
+- The same keys are sealed under the new password on the device; the records are not touched and stay readable, and the old password stops opening them.
 - Every other session of the owner is signed out; the one they are using stays.
+- A new recovery kit can be made from the same page; the old kit stops working the moment the new one is stored, and the new one is shown before it is stored.
 
-Status: auto (`auth`, `second-factor`).
+Status: auto (`auth`, `second-factor`, `vault`, `web/src/crypto`). In a browser: hand, not yet done.
+
+### 1.6 An account with no vault
+An account the operator made, or one from before the vault, signs in and, after agreeing to the texts, is asked to choose a master password and shown its recovery kit before anything else.
+
+- The password it signed in with is replaced by the new one; nothing about the new one is sent.
+- The operator cannot choose a password for an account that has a vault; `set-password` refuses, and the way back is a reset link and the kit.
+
+Status: auto (`vault`, `cli`). In a browser: hand, not yet done.
 
 ---
 

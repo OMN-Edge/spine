@@ -44,6 +44,7 @@ export function userRepository(db: Database): UserRepository {
     WHERE token_hash = ? AND kind = ? AND used_at IS NULL AND expires_at > ?
     RETURNING user_id
   `);
+  const peekToken = db.prepare('SELECT user_id FROM user_tokens WHERE token_hash = ? AND kind = ? AND used_at IS NULL AND expires_at > ?');
   const invalidateTokens = db.prepare(
     'UPDATE user_tokens SET used_at = ? WHERE user_id = ? AND kind = ? AND used_at IS NULL',
   );
@@ -134,6 +135,8 @@ export function userRepository(db: Database): UserRepository {
     'user_devices',
     'user_tokens',
     'user_passkeys',
+    'vault_objects',
+    'vault_keys',
     'user_recovery_codes',
     'user_totp',
   ];
@@ -151,6 +154,10 @@ export function userRepository(db: Database): UserRepository {
 
     async findByEmail(email) {
       return (findByEmail.get(email) as UserRecord | undefined) ?? null;
+    },
+
+    async peekToken(tokenHash, kind, now) {
+      return ((peekToken.get(tokenHash, kind, now) as { user_id: string } | undefined)?.user_id) ?? null;
     },
 
     async listPasskeys(userId) {

@@ -68,6 +68,7 @@ export interface Store {
   regroupPlans: RegroupPlanRepository;
   matchDecisions: MatchDecisionRepository;
   sessions: SessionRepository;
+  vault: VaultRepository;
   maintenance: MaintenanceRepository;
 
   /**
@@ -159,6 +160,8 @@ export interface UserRepository {
    */
   consumeToken(tokenHash: string, kind: UserTokenKind, now: string): Promise<string | null>;
   /** Spends every unspent token of a kind, so a newer one replaces older ones. */
+  /** Who a token is for if it is still good, without spending it (a reset page fetches the recovery-wrapped key first). */
+  peekToken(tokenHash: string, kind: UserTokenKind, now: string): Promise<string | null>;
   invalidateTokens(userId: string, kind: UserTokenKind): Promise<void>;
   /** The user's passkeys, oldest first. The public keys are for the server; a client gets only the name and dates. */
   listPasskeys(userId: string): Promise<PasskeyRecord[]>;
@@ -1033,3 +1036,63 @@ export class StoreConfigError extends Error {
 }
 
 export type StoreFactory = (config: StoreConfig) => Store;
+
+/** What a device needs to open an account's vault. Every value is opaque to the server: sealed, or public. */
+export interface VaultKeys {
+  kdf_salt: string;
+  kdf_params: string;
+  wrapped_by_master: string;
+  wrapped_by_recovery: string;
+  public_key: string;
+  wrapped_private_key: string;
+}
+
+/** The keys again with the counters the server keeps. */
+export interface VaultKeysRecord extends VaultKeys {
+  user_id: string;
+  seq: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VaultObjectMeta {
+  id: string;
+  profile_id: string;
+  kind: string;
+  seq: number;
+  size: number;
+  wrapped_key: string;
+  deleted: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NewVaultObject {
+  id: string;
+  profileId: string;
+  kind: string;
+  size: number;
+  wrappedKey: string;
+  /** The `seq` the writer last saw for this object, 0 for a new one. A different current value is a conflict. */
+  baseSeq: number;
+}
+
+export type VaultPut = { seq: number } | 'conflict' | 'no_vault' | 'quota';
+
+export interface VaultRepository {
+  getKeys(userId: string): Promise<VaultKeysRecord | null>;
+  /** Only when the account has none; false otherwise. */
+  putKeys(userId: string, keys: VaultKeys, now: string): Promise<boolean>;
+  /** The same account key under new wrappings (a new master password, a new recovery kit). Objects are untouched. */
+  replaceKeys(userId: string, keys: VaultKeys, now: string): Promise<boolean>;
+  /** Everything changed after `since`, deletions included, oldest change first. */
+  list(userId: string, since: number): Promise<VaultObjectMeta[]>;
+  get(userId: string, id: string): Promise<VaultObjectMeta | null>;
+  /** Writes the row only. `maxBytes` is the account's allowance over its live objects, counting this one's new size. */
+  put(userId: string, object: NewVaultObject, now: string, maxBytes: number): Promise<VaultPut>;
+  /** A tombstone, so another device learns of the deletion; false if there is no such live object or `baseSeq` is stale. */
+  remove(userId: string, id: string, baseSeq: number, now: string): Promise<{ seq: number } | false>;
+  usage(userId: string): Promise<{ objects: number; bytes: number }>;
+  /** Removes the vault and every object row; the ids, so the caller can delete the files. */
+  erase(userId: string): Promise<string[]>;
+}

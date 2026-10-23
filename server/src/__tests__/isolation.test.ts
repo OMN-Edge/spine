@@ -138,6 +138,9 @@ describe('P1 — deny by default', () => {
     'POST /api/auth/resend-verification',
     'POST /api/auth/forgot',
     'POST /api/auth/reset',
+    // The salt a device needs before it can sign in, and the recovery-wrapped key a reset link is for; both answer the same for any address.
+    'POST /api/auth/kdf',
+    'POST /api/auth/reset/keys',
     'GET /share/:token',
     'GET /api/share/:token/documents',
     // Public on purpose, and scoped by the link, not a session: public-share-detail.test.ts.

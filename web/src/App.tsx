@@ -19,6 +19,8 @@ import Episodes from './pages/Episodes';
 import Scan from './pages/Scan';
 import LegalPage from './pages/LegalPage';
 import ConsentGate from './pages/ConsentGate';
+import VaultSetup from './pages/VaultSetup';
+import { vaultState } from './crypto/vault-state';
 import Doctors from './pages/Doctors';
 import Library from './pages/Library';
 import DoctorPage from './pages/DoctorPage';
@@ -128,12 +130,13 @@ function ReviewRedirect() {
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { t } = useI18n();
-  const { authenticated, consentNeeded, consentGiven } = useAuth();
+  const { authenticated, consentNeeded, consentGiven, vaultNeeded, vaultMade } = useAuth();
   const location = useLocation();
   // Where they were going, so signing in lands there: a mailed link to a request is the case that matters.
   // Until the server has said what this account still has to agree to, nothing is asked of it.
   if (authenticated && consentNeeded === undefined) return <div className="min-h-screen flex items-center justify-center text-gray-400">{t('Loading…')}</div>;
   if (authenticated && consentNeeded) return <ConsentGate need={consentNeeded} done={consentGiven} />;
+  if (authenticated && vaultNeeded) return <VaultSetup done={vaultMade} />;
   return authenticated ? <Layout>{children}</Layout> : <Navigate to="/login" replace state={{ from: location.pathname }} />;
 }
 
@@ -144,10 +147,13 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   // What this account still has to agree to; asked for whenever a sign-in happens.
   const [consentNeeded, setConsentNeeded] = useState<{ health: boolean; terms: boolean } | null | undefined>(undefined);
+  // An account with no vault is asked to make one (after consent, before anything else).
+  const [vaultNeeded, setVaultNeeded] = useState(false);
 
   const setAuthenticated = (value: boolean, who = '') => {
     setAuthenticatedState(value);
     setEmail(value ? who : '');
+    if (value) vaultState.setEmail(who);
   };
 
   useEffect(() => {
@@ -161,14 +167,23 @@ export default function App() {
   useEffect(() => {
     if (!authenticated) { setConsentNeeded(undefined); return; }
     api.auth.me()
-      .then(r => setConsentNeeded(r.consent_needed && (r.consent_needed.health || r.consent_needed.terms) ? r.consent_needed : null))
+      .then(r => {
+        setConsentNeeded(r.consent_needed && (r.consent_needed.health || r.consent_needed.terms) ? r.consent_needed : null);
+        const needed = r.vault === false;
+        setVaultNeeded(needed);
+      })
       .catch(() => {});
   }, [authenticated]);
+
+  // The sign-in left the master key; once consent allows the request and there is a vault, open it with it.
+  useEffect(() => {
+    if (authenticated && consentNeeded === null && !vaultNeeded) vaultState.openStashed().catch(() => {});
+  }, [authenticated, consentNeeded, vaultNeeded]);
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-gray-400">{t('Loading…')}</div>;
 
   return (
-    <AuthContext.Provider value={{ authenticated, email, setAuthenticated, consentNeeded, consentGiven: () => setConsentNeeded(null) }}>
+    <AuthContext.Provider value={{ authenticated, email, setAuthenticated, consentNeeded, consentGiven: () => setConsentNeeded(null), vaultNeeded, vaultMade: () => setVaultNeeded(false) }}>
       <ChatProvider authenticated={authenticated}>
       <ReauthDialog />
       <Routes>

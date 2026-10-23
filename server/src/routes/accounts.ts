@@ -21,6 +21,8 @@ import {
 import { hashUserToken } from '../user-tokens.js';
 import { windowLimiter, type WindowLimit } from '../rate-limit.js';
 import { loadRegistrationMode, type RegistrationMode } from '../config.js';
+import { AUTH_VALUE, parseVaultKeys } from '../vault-keys.js';
+import { removeAllObjects } from '../vault-files.js';
 
 /**
  * Signup, address verification and password recovery (SECURITY.md M-6, M-11).
@@ -80,11 +82,17 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
   });
 
   if (registration === 'open') {
-    app.post<{ Body: { email?: string; password?: string; consent_health_data?: unknown; accept_terms?: unknown } }>(
+    app.post<{ Body: { email?: string; password?: string; auth_value?: string; keys?: unknown; consent_health_data?: unknown; accept_terms?: unknown } }>(
       '/api/auth/register',
       { preHandler: [perSource, perAddress] },
       async (req, reply) => {
         const { email, password, consent_health_data: health, accept_terms: terms } = req.body ?? {};
+        // With a vault the device sends the value it derived from the password, and the keys it made; the server never sees the password.
+        const vault = req.body?.auth_value !== undefined || req.body?.keys !== undefined;
+        const keys = vault ? parseVaultKeys(req.body?.keys) : null;
+        if (vault && (!keys || typeof req.body?.auth_value !== 'string' || !AUTH_VALUE.test(req.body.auth_value))) {
+          return reply.status(400).send({ error: 'the keys are not in the expected form' });
+        }
         const address = typeof email === 'string' ? normaliseEmail(email) : '';
         if (!isPlausibleEmail(address)) {
           return reply.status(400).send({ error: 'a valid email address is required' });
@@ -94,23 +102,28 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
         if (health !== true || terms !== true) {
           return reply.status(400).send({ error: 'consent to the use of your health data and acceptance of the terms are both needed, and given separately' });
         }
-        const problem = checkPasswordPolicy(password, { email: address });
+        // A vault's password is checked on the device, where it is typed; what arrives here is a derived value.
+        const problem = vault ? null : checkPasswordPolicy(password, { email: address });
         if (problem) return reply.status(400).send({ error: problem });
 
         const store = getStore();
         // Hashed whether or not the address is taken, so both cost the same.
-        const passwordHash = await hashPassword(password as string);
+        const passwordHash = await hashPassword((vault ? req.body?.auth_value : password) as string);
 
         if (!(await store.users.findByEmail(address))) {
           const id = uuidv4();
           try {
-            await store.users.create({
-              id,
-              email: address,
-              passwordHash,
-              createdAt: new Date().toISOString(),
-              verifiedAt: null, // holds nothing and gets no session until confirmed
-              consent: { healthVersion: HEALTH_CONSENT_VERSION, termsVersion: TERMS_VERSION },
+            const createdAt = new Date().toISOString();
+            await store.transaction(async tx => {
+              await tx.users.create({
+                id,
+                email: address,
+                passwordHash,
+                createdAt,
+                verifiedAt: null, // holds nothing and gets no session until confirmed
+                consent: { healthVersion: HEALTH_CONSENT_VERSION, termsVersion: TERMS_VERSION },
+              });
+              if (keys) await tx.vault.putKeys(id, keys, createdAt);
             });
             const token = await issueUserToken(id, 'verify', VERIFY_TTL_MS);
             sendLater(req, id, verificationMail(address, verificationLink(token)), 'verification');
@@ -179,31 +192,72 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
     },
   );
 
-  app.post<{ Body: { token?: string; password?: string } }>(
+  // The recovery-wrapped key of the account a reset link is for, so the device can open it with the recovery kit and wrap it again under
+  // a new master key. The link is not spent: the next call spends it. Sealed, so it is no use without the kit.
+  app.post<{ Body: { token?: string } }>(
+    '/api/auth/reset/keys',
+    { preHandler: [perSource] },
+    async (req, reply) => {
+      const { token } = req.body ?? {};
+      if (typeof token !== 'string' || !token) return reply.status(400).send(INVALID_LINK);
+      const store = getStore();
+      const userId = await store.users.peekToken(hashUserToken(token), 'reset', new Date().toISOString());
+      if (!userId) return reply.status(400).send(INVALID_LINK);
+      const k = await store.vault.getKeys(userId);
+      if (!k) return reply.send({ vault: false });
+      return reply.send({ vault: true, wrapped_by_recovery: k.wrapped_by_recovery, public_key: k.public_key, wrapped_private_key: k.wrapped_private_key, kdf_params: JSON.parse(k.kdf_params) });
+    },
+  );
+
+  // `erase` is the person's choice to go on without the kit: the sealed records could never be opened again, so they are removed and the
+  // account starts with an empty vault. Without it, `keys` must hold the same account key the recovery kit opened.
+  app.post<{ Body: { token?: string; password?: string; auth_value?: string; keys?: unknown; erase?: unknown } }>(
     '/api/auth/reset',
     { preHandler: [perSource] },
     async (req, reply) => {
       const { token, password } = req.body ?? {};
       if (typeof token !== 'string' || !token) return reply.status(400).send(INVALID_LINK);
 
-      // Checked before the token is spent, so a too-short password does not use
-      // up the link.
-      const problem = checkPasswordPolicy(password);
-      if (problem) return reply.status(400).send({ error: problem });
-
       const store = getStore();
+      const vault = req.body?.auth_value !== undefined || req.body?.keys !== undefined;
+      const keys = vault ? parseVaultKeys(req.body?.keys) : null;
+      if (vault && (!keys || typeof req.body?.auth_value !== 'string' || !AUTH_VALUE.test(req.body.auth_value))) {
+        return reply.status(400).send({ error: 'the keys are not in the expected form' });
+      }
+
+      // Checked before the token is spent, so a bad request does not use up the link.
+      if (!vault) {
+        const problem = checkPasswordPolicy(password);
+        if (problem) return reply.status(400).send({ error: problem });
+        const owner = await store.users.peekToken(hashUserToken(token), 'reset', new Date().toISOString());
+        // A password this server knows would sit beside keys it cannot open: an account with a vault is reset with a vault's keys.
+        if (owner && (await store.vault.getKeys(owner))) return reply.status(400).send({ error: 'this account has a vault: reset it from the page, with your recovery kit' });
+      }
+
       const now = new Date().toISOString();
       const userId = await store.users.consumeToken(hashUserToken(token), 'reset', now);
       if (!userId) return reply.status(400).send(INVALID_LINK);
 
       // setPassword bumps auth_version, which ends every session of this user.
-      await store.users.setPassword(userId, await hashPassword(password as string));
+      await store.users.setPassword(userId, await hashPassword((vault ? req.body?.auth_value : password) as string));
+      if (keys) {
+        const had = await store.vault.getKeys(userId);
+        if (had && req.body?.erase === true) {
+          await store.vault.erase(userId);
+          removeAllObjects(userId);
+          await store.vault.putKeys(userId, keys, now);
+        } else if (had) {
+          await store.vault.replaceKeys(userId, keys, now);
+        } else {
+          await store.vault.putKeys(userId, keys, now);
+        }
+      }
       // Receiving the link proves the mailbox is theirs.
       await store.users.markVerified(userId, now);
       await store.users.invalidateTokens(userId, 'reset');
       await store.sessions.revokeExcept(userId, null);
 
-      req.log.info({ userId }, 'password reset by link');
+      req.log.info({ userId, erased: req.body?.erase === true }, 'password reset by link');
       return reply.send({ ok: true });
     },
   );

@@ -1,0 +1,60 @@
+# Encryption redesign: build plan and decisions
+
+This is the engineering plan for [key-hierarchy.md](key-hierarchy.md) (the public design). It says how the code gets there, in what order, and what each step changes. Requirements: FR-ACC-01/02, TR-CRY-01..07, TR-SHC-01..05, TR-AI-01..15, TR-INF-04. Status of each stage is kept in the commit history and in the table at the end.
+
+## The shape of the change
+
+Today the server reads documents: it rasterizes, extracts, searches, chats, links and translates. In the new design the server holds ciphertext, so all of that has to run where the plaintext is, in the browser.
+
+The decision that keeps this tractable: **the browser runs the same core the server runs today, against the same store interface, and the server becomes a ciphertext store.**
+
+- **Auth stays on the server and keeps its shape.** Sign-in, rate limits, sessions, TOTP and the mail flows are unchanged. The only difference is that the "password" the server receives is an *authentication value* the browser derives, not the password.
+- **Two derivations from one Argon2id run** (TR-CRY-01). The browser runs Argon2id over the master password with a per-account salt, then HKDF-expands the result into a **master key** (never leaves the device) and an **authentication value** (sent as the password; the server hashes it again with its own argon2id). The server cannot go from the authentication value to the master key.
+- **Keys** (TR-CRY-02, 06): a random 32-byte **account key** is wrapped twice, under the master key and under the **recovery key**. An X25519 **account key pair** has its private half wrapped by the account key. Each **profile** has a random **profile key** wrapped by the account key. Each **document** has a random **data key** wrapped by the profile key. Content is sealed with XChaCha20-Poly1305 (libsodium), the object id and kind bound in as associated data so a blob cannot be swapped for another.
+- **What the server stores** (TR-CRY-03, TR-INF-04): `vault_keys` (salt, KDF parameters, the wrapped account key twice, the public key, the wrapped private key) and `vault_objects` (opaque id, owner, profile id, a coarse kind, revision, size, timestamps, the wrapped data key, and the ciphertext). Nothing else about a record.
+- **The unit of storage is an upload bundle.** The export manifest already describes one uploaded file with its pages' text and boxes, documents, fields, results and edits, and `archive/import-file.ts` restores it without a model. That code is the serializer: a bundle is sealed JSON of one manifest file entry; page images and the original file are separate sealed blobs under the same data key. A **library** object carries what is shared across uploads (doctors, tags, test aliases, decisions, links, episodes). An **embedding** object carries one document's vector.
+- **The browser holds a working database.** On unlock it downloads and opens the objects into an in-memory SQLite (the existing store adapter over a WebAssembly driver), so the existing queries, filters, trends, linking and search run unchanged on the device. Changes are written back as new object revisions.
+- **Work that needs native tools moves to the browser's equivalents:** the PDF text layer and page images (pdf.js), OCR (Tesseract compiled to WebAssembly), trimming a PDF for export (pdf-lib), conversion of HEIC and DOCX (already in JavaScript). The Python sidecar and poppler leave the product.
+- **Model calls** (TR-AI): the browser calls the relay with the decrypted content; the relay holds the credential, checks the session and the per-user quota, forwards to the configured endpoint and writes nothing. The existing LLM interface and prompts move to the browser; the relay is a small pass-through service in this repository. A self-hosted install points the relay at its own OpenAI-compatible endpoint (TR-AI-07).
+
+## Decisions
+
+**Passkeys.** A passkey proves who is signing in; it cannot unlock the vault, because it cannot derive the master key. A passkey sign-in therefore gets a session and the vault still asks for the master password to open (or uses the WebAuthn PRF extension where the authenticator supports it, as a later addition). The consent gate and the lists of sessions are unaffected.
+
+**Password reset.** A reset link can set a new authentication value, but it cannot restore access to the data: the server never held what is needed. Resetting with the recovery kit re-wraps the account key under the new master key, so nothing is lost. Resetting without it creates an empty vault, and the interface says so before the person confirms. `set-password` in the operator CLI is removed for the same reason.
+
+**Operator-created accounts.** The CLI cannot choose a password for someone. `create-user` creates the account without a vault and prints a one-time link where the person sets their own password and receives their recovery kit.
+
+**Recovery kit.** A 256-bit recovery key shown once at sign-up as a printable sheet, Base32 in groups, with a short check value so a typing error is caught. The sign-up screen states that the operator cannot recover an account. The person must confirm they have kept it before the vault opens. The kit can be regenerated while signed in, which re-wraps the account key under the new recovery key.
+
+**What the server learns.** The email, that an account exists, the number and size of its objects, when they changed, the coarse kind of each (`bundle`, `blob`, `library`, `embedding`), and share metadata. Titles, dates, tags, doctors, fields, summaries and embeddings are inside sealed objects.
+
+**Account export.** Unchanged for the person: the zip is built in the browser from the decrypted vault, and the importer reads the format that exists (manifest version 3). The server no longer builds it.
+
+**Multiple devices.** Sign in with the master password; the wrapped keys come down with the account, so no separate enrolment step is needed. Enrolling from a signed-in device (a pairing code) is later.
+
+## Order of work and acceptance
+
+Each stage ends with the suite green, the documents updated, and a commit. Nothing is switched on for users until the stage before it is complete.
+
+| Stage | What | Done when |
+| --- | --- | --- |
+| 1a | Crypto primitives, key hierarchy, derivation, recovery kit, `vault_keys`, `vault_objects` and their routes, sign-up and sign-in through the derived value, the browser's vault client | A new account signs up with a derived value, a vault round-trips sealed objects, a recovery kit restores access, the server never sees the password or a key |
+| 1b | The core in the browser: SQLite in WebAssembly, bundle serialization, sync, ingestion without the sidecar | An upload is read on the device and stored only as ciphertext; the timeline works from the local database |
+| 2 | Model calls through the relay; extraction, summaries, chat, linking, translation on the device | No route on the server receives plaintext content |
+| 3 | Search and embeddings on the device | Hybrid search runs locally; no vector index on the server |
+| 4 | Share links with a key in the fragment, approval mode, emergency card | A recipient reads a shared bundle the server cannot open |
+| 5 | Ciphertext-only backups, deletion by destroying keys, removal of the old plaintext tables and routes | A backup contains no plaintext; the old tables are gone |
+
+## Status
+
+| Stage | State |
+| --- | --- |
+| 1a | Built. Keys, derivation, recovery kit, the vault routes, sign-up, sign-in, reset and password change on the derived value, the device's vault client, tests including device against server |
+| 1b | Not started |
+| 2 | Not started |
+| 3 | Not started |
+| 4 | Not started |
+| 5 | Not started |
+
+The claim "the operator cannot read your records" stays out of every product text until stage 5 is done and the audit report exists.

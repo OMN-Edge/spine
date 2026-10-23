@@ -1,3 +1,4 @@
+import { removeAllObjects } from './vault-files.js';
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
@@ -126,6 +127,7 @@ export async function deleteAccount(userId: string): Promise<DeletedAccount> {
   fs.rmSync(path.join(dataDir, 'originals', userId), { recursive: true, force: true });
   fs.rmSync(path.join(resolveBackupDir(), 'originals', userId), { recursive: true, force: true });
 
+  removeAllObjects(userId);
   await store.users.delete(userId);
   return summary;
 }

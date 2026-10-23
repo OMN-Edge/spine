@@ -6,6 +6,8 @@ import TwoFactor from '../components/TwoFactor';
 import Sessions from '../components/Sessions';
 import YourData from '../components/YourData';
 import Passkeys from '../components/Passkeys';
+import RecoveryKitSettings from '../components/RecoveryKitSettings';
+import { checkPasswordPolicy } from '../crypto/password-policy';
 import { useI18n } from '../i18n';
 
 export default function Account() {
@@ -22,6 +24,8 @@ export default function Account() {
     setError('');
     setDone(false);
     if (next !== again) return setError(t('The two new passwords do not match'));
+    const problem = checkPasswordPolicy(next, { email });
+    if (problem) return setError(problem === 'short' ? t('The password must be at least 12 characters.') : problem === 'long' ? t('The password is too long.') : t('That password is too easy to guess: use a longer phrase that is not a common word, a pattern or part of your address.'));
     try {
       await api.auth.changePassword(current, next);
       setDone(true);
@@ -48,6 +52,8 @@ export default function Account() {
         {done && <Notice kind="ok">{t('Password changed. Your other sessions have been signed out.')}</Notice>}
         <button type="submit" className={buttonClass}>{t('Change password')}</button>
       </form>
+
+      <RecoveryKitSettings />
 
       <Passkeys />
 
