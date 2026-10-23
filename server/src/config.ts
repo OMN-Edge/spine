@@ -135,6 +135,7 @@ export interface EmbeddingEnvConfig {
 export interface StoreEnvConfig {
   adapter: string;
   location: string;
+  scope: 'full' | 'accounts';
 }
 
 /** A model that can be picked for a reading. The first is `SPINE_LLM_MODEL`, which uploads use. */
@@ -372,7 +373,7 @@ function readStoreConfig(env: NodeJS.ProcessEnv, problems: string[]): StoreEnvCo
 
   if (location.trim().length === 0) problems.push('SPINE_DB_PATH is empty');
 
-  return { adapter: env.SPINE_STORE ?? 'sqlite', location };
+  return { adapter: env.SPINE_STORE ?? 'sqlite', location, scope: env.SPINE_STORE_SCOPE === 'accounts' ? 'accounts' : 'full' };
 }
 
 /**

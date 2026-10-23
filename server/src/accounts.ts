@@ -92,19 +92,17 @@ export function accessRequestMail(to: string, link: string, requestedAt: string,
 }
 
 export interface DeletedAccount {
-  uploads: number;
-  documents: number;
+  /** Sealed objects in its vault. The server knows no more of what it holds: no uploads or documents. */
+  objects: number;
 }
 
 /**
- * What deleting an account would remove, without removing it. Counted from the
- * store so the CLI can show it before asking for confirmation.
+ * What deleting an account would remove, without removing it. Counted from the vault, the only thing of its records the server has,
+ * so the CLI can show it before asking for confirmation.
  */
 export async function describeAccount(userId: string): Promise<DeletedAccount> {
-  const store = getStore();
-  const uploads = await store.sourceFiles.listFor(userId);
-  const documents = await store.documents.listFor(userId, { limit: 1_000_000, offset: 0 });
-  return { uploads: uploads.length, documents: documents.length };
+  const objects = await getStore().vault.list(userId, 0);
+  return { objects: objects.filter(o => !o.deleted).length };
 }
 
 /**
@@ -122,13 +120,13 @@ export async function deleteAccount(userId: string): Promise<DeletedAccount> {
   const summary = await describeAccount(userId);
   const dataDir = resolveDataDir();
 
-  for (const upload of await store.sourceFiles.listFor(userId)) {
-    fs.rmSync(path.join(dataDir, 'pages', upload.id), { recursive: true, force: true });
-  }
+  // Files an earlier build wrote in plaintext, if this data directory has any (the server writes none now, SECURITY.md M-37).
   fs.rmSync(path.join(dataDir, 'originals', userId), { recursive: true, force: true });
   fs.rmSync(path.join(resolveBackupDir(), 'originals', userId), { recursive: true, force: true });
 
+  // The sealed vault: the live copy and the backup's, so no ciphertext of the account is left.
   removeAllObjects(userId);
+  fs.rmSync(path.join(resolveBackupDir(), 'vault', userId), { recursive: true, force: true });
   // The sealed shares too (their rows go with the account's, below).
   for (const id of await store.shared.eraseFor(userId)) removeShare(id);
   await store.users.delete(userId);

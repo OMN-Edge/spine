@@ -9,7 +9,10 @@ import { useShareHost } from '../../../server/src/share-host';
 import { relayMail } from './native/relay-auth';
 import { newId } from '../crypto/keys';
 import { ready as hashingReady } from './shims/crypto';
-import schema from '../../../server/src/store/sqlite/schema.sql?raw';
+import accountsSchema from '../../../server/src/store/sqlite/schema-accounts.sql?raw';
+import recordsSchema from '../../../server/src/store/sqlite/schema-records.sql?raw';
+
+const schema = `${accountsSchema}\n${recordsSchema}`;
 import { createSqliteStoreWith } from '../../../server/src/store/sqlite/store';
 import { resetStore } from '../../../server/src/store/index';
 import { decorateAuth } from '../../../server/src/routes/middleware';

@@ -8,7 +8,7 @@ import base from './vitest.config.js';
 export default mergeConfig(base, defineConfig({
   test: {
     setupFiles: ['src/__tests__/helpers/wasm-driver.ts'],
-    exclude: ['**/node_modules/**', '**/dist/**', '**/legacy-database.test.ts', '**/page-hiding.test.ts', '**/backup.test.ts', '**/needs-reading-column.test.ts'],
+    exclude: ['**/node_modules/**', '**/dist/**', '**/legacy-database.test.ts', '**/page-hiding.test.ts', '**/backup.test.ts', '**/needs-reading-column.test.ts', '**/accounts-scope.test.ts'],
     server: { deps: { inline: [/sqlite-wasm/] } },
   },
 }));

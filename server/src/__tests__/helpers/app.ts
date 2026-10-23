@@ -83,6 +83,9 @@ export async function buildTestApp(options: TestAppOptions = {}) {
   // Matches production: registered globally off, applied per route.
   await app.register(fastifyRateLimit, { global: false });
 
+  // `npm run test:accounts` registers what the server does (index.ts) and no route of a record, on a database without their tables.
+  const records = process.env.SPINE_STORE_SCOPE !== 'accounts';
+
   // Import routes after env vars are set
   const { authRoutes } = await import('../../routes/auth.js');
   const { accountRoutes } = await import('../../routes/accounts.js');
@@ -125,21 +128,21 @@ export async function buildTestApp(options: TestAppOptions = {}) {
     perAddress: { max: 1000, windowMs: 60 * 1000 },
     ...options.accounts,
   });
-  await app.register(documentRoutes);
-  await app.register(sourceFileRoutes);
-  await app.register(exportRoutes);
-  await app.register(similarityRoutes);
-  await app.register(linkRoutes);
-  await app.register(episodeRoutes);
-  await app.register(demoRoutes);
+  if (records) await app.register(documentRoutes);
+  if (records) await app.register(sourceFileRoutes);
+  if (records) await app.register(exportRoutes);
+  if (records) await app.register(similarityRoutes);
+  if (records) await app.register(linkRoutes);
+  if (records) await app.register(episodeRoutes);
+  if (records) await app.register(demoRoutes);
   await app.register(ownAccountRoutes);
   await app.register(passkeyRoutes, { perSource: 100_000, instanceWide: 100_000, ...options.passkeys });
   await app.register(vaultRoutes, options.vault ?? {});
   await app.register(relayRoutes);
   await app.register(sharedRoutes, { requestPerSource: { max: 1000, timeWindow: '1 minute' }, requestPerLink: { max: 1000, windowMs: 60 * 1000 }, readPerSource: { max: 100000, timeWindow: '1 minute' }, ...options.shared });
-  await app.register(chatRoutes, { askPerMinute: 1000 });
-  await app.register(shareRoutes);
-  await app.register(publicShareRoutes, {
+  if (records) await app.register(chatRoutes, { askPerMinute: 1000 });
+  if (records) await app.register(shareRoutes);
+  if (records) await app.register(publicShareRoutes, {
     requestPerSource: { max: 1000, timeWindow: '1 minute' },
     requestPerLink: { max: 1000, windowMs: 60 * 1000 },
     chatPerSource: { max: 1000, timeWindow: '1 minute' },
@@ -149,9 +152,9 @@ export async function buildTestApp(options: TestAppOptions = {}) {
         ? path.join(tmpdir(), 'spine-no-such-build', 'index.html')
         : (options.appShellPath ?? writeAppShell()),
   });
-  await app.register(tagRoutes);
-  await app.register(trendRoutes);
-  await app.register(doctorRoutes);
+  if (records) await app.register(tagRoutes);
+  if (records) await app.register(trendRoutes);
+  if (records) await app.register(doctorRoutes);
 
   await app.ready();
 

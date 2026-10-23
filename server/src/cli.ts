@@ -174,15 +174,15 @@ export async function runCli(args: string[], io: CliIo): Promise<number> {
       const held = await describeAccount(user.id);
       if (!flags.includes('--yes')) {
         io.err(
-          `${email} owns ${held.uploads} upload(s) and ${held.documents} document(s). ` +
-            'Deleting removes them, their files and their share links, and cannot be undone. ' +
+          `${email} has ${held.objects} sealed object(s) in its vault. ` +
+            'Deleting removes them, the keys that open them and its sealed share links, and cannot be undone. ' +
             'Run again with --yes to do it.',
         );
         return 1;
       }
 
       await deleteAccount(user.id);
-      io.out(`deleted ${email}: ${held.uploads} upload(s), ${held.documents} document(s)`);
+      io.out(`deleted ${email}: ${held.objects} sealed object(s)`);
       io.out('database snapshots already taken still hold the rows until they are pruned');
       return 0;
     }
@@ -253,6 +253,7 @@ async function readStdinLine(): Promise<string> {
 
 // Only when executed directly, so importing this in a test does not run it.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  process.env.SPINE_STORE_SCOPE = 'accounts'; // the operator's commands touch accounts only (SECURITY.md M-37)
   const code = await runCli(process.argv.slice(2), {
     out: line => console.log(line),
     err: line => console.error(line),

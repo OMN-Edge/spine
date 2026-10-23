@@ -6,6 +6,20 @@ It must run on hardware as small as a Raspberry Pi, and must not be tied to any 
 
 Everything described here is built, except what [Not done yet](#not-done-yet) lists. For the security posture this is expected to hold, see [SECURITY.md](SECURITY.md). For the Vertex AI provider specifically, see [docs/deployment-gcp.md](docs/deployment-gcp.md).
 
+## Where the code runs now
+
+The sections below describe the application's logic: uploads, reading, grouping, search, chat, links, shares. **That logic no longer runs on the server.** It runs as a core in the browser (a Web Worker, `web/src/core/`), over the same store interface and the same route files, on a SQLite database in WebAssembly that is saved to the server only as sealed pieces ([docs/crypto-design.md](docs/crypto-design.md), SECURITY.md **M-34** to **M-37**). Read "the server" in those sections as "the core", on the device.
+
+What the server does:
+
+- **Accounts**: sign-in on a value the browser derives from the master password (the server never receives the password), sessions, second factor, passkeys, reset and mail.
+- **The vault**: keys it cannot open and sealed objects it stores and returns (`routes/vault.ts`).
+- **Sealed shares**: the bytes of a share, its end time, the approval handshake and where in the world a link was opened (`routes/shared.ts`).
+- **The relay's pass** (`routes/relay.ts`); the relay itself (`server/src/relay/`) forwards a device's model calls and stores nothing.
+- **The app and the address a recipient is given.**
+
+`server/src/index.ts` registers nothing else, so the server has no route that reads or writes a record. The route files under `server/src/routes/` for documents, uploads, tags, chat and the rest stay in the repository because the core runs them; the server's tests register them to hold that code. The server's database is made from `schema-accounts.sql` alone (`SPINE_STORE_SCOPE=accounts`), so it has no table for a record; the core builds `schema-accounts.sql` and `schema-records.sql`. In that scope the repositories of records refuse to be used.
+
 ## Design goals
 
 1. **Multi-user, with real isolation.** Users of the same instance are separate adversaries. One user must never be able to read another's records, by any route.
@@ -575,7 +589,7 @@ Originals are per-user paths so a filesystem mistake cannot cross users as easil
 - `share_links`, `share_link_access_log`.
 - `documents_fts` — FTS5, one row per document: `title`, `doc_type`, `provider`, `ai_summary`, `user_notes`, and `body`, which holds the text of the document's pages, its extracted values, its measurements' names and its doctors' names. The view `document_search_source` says what one document contributes, and triggers on documents, pages, fields, measurements, doctor links and doctor names rebuild the rows a change touches, so no code path can change one of those and forget the index. Accents are folded ("lombara" finds "lombară"). The index is shared; search results are filtered by joining back to `documents.user_id`, and `body` is built only from that user's rows, so it leaks nothing. Typed text is never passed to the index as query syntax: each run of letters and digits becomes a quoted word that matches by its start, all words must match, and a hit in the title ranks above one deep in a page (`search-query.ts`). A search also returns, per result, a `snippet`: FTS5's excerpt from the best-matching column of that user's own row, with each match wrapped in control characters (U+0001, U+0002), never markup, which the page turns into highlighting as text nodes.
 
-There is **no migration runner**: `schema.sql` is idempotent `CREATE TABLE IF NOT EXISTS`, re-applied every boot. That adds a new *table* to an existing database but cannot add a *column* to an existing one. So a change to an existing table needs the runner (ordered files in the placeholder `store/sqlite/migrations/` plus a table recording which have run), or an empty database. **One kind of change is made in place:** a new column with a default (`pages.hidden` was the first). `addColumnsInPlace` in `store/sqlite/connection.ts` adds it on open if it is missing, and drops and lets `schema.sql` remake any view or trigger that names it, because `CREATE ... IF NOT EXISTS` would keep the old ones. Each step is idempotent and is tested against a database made without the column. Renaming or removing a column, or changing a type, still needs the runner. Startup refuses a database from an older shape, saying how many uploads and documents it holds and whether it is safe to delete. **Build the runner before loading real records**; see [Not done yet](#not-done-yet).
+There is **no migration runner**: the schema files (`schema-accounts.sql`, `schema-records.sql`) is idempotent `CREATE TABLE IF NOT EXISTS`, re-applied every boot. That adds a new *table* to an existing database but cannot add a *column* to an existing one. So a change to an existing table needs the runner (ordered files in the placeholder `store/sqlite/migrations/` plus a table recording which have run), or an empty database. **One kind of change is made in place:** a new column with a default (`pages.hidden` was the first). `addColumnsInPlace` in `store/sqlite/connection.ts` adds it on open if it is missing, and drops and lets the schema files (`schema-accounts.sql`, `schema-records.sql`) remake any view or trigger that names it, because `CREATE ... IF NOT EXISTS` would keep the old ones. Each step is idempotent and is tested against a database made without the column. Renaming or removing a column, or changing a type, still needs the runner. Startup refuses a database from an older shape, saying how many uploads and documents it holds and whether it is safe to delete. **Build the runner before loading real records**; see [Not done yet](#not-done-yet).
 
 ### Share links
 

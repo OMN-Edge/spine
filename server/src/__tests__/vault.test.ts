@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
+import path from 'path';
 import { buildTestApp, loginAs } from './helpers/app.js';
 import { OWNER_EMAIL, OWNER_ID, createTestUser } from './helpers/seed.js';
 import { fakeAuthValue, fakeVaultKeys } from './helpers/vault.js';
@@ -8,6 +9,7 @@ import { issueUserToken } from '../accounts.js';
 import { vaultDirOf } from '../vault-files.js';
 import { deleteAccount } from '../accounts.js';
 import { resetMailer, type Mailer } from '../mail/index.js';
+import { resolveBackupDir } from '../config.js';
 
 /**
  * SECURITY.md M-34: the vault. The server keeps keys it cannot open and objects it cannot read; it checks shapes, owners and sequence
@@ -221,6 +223,14 @@ describe('objects', () => {
     await deleteAccount(OWNER_ID);
     expect(fs.existsSync(vaultDirOf(OWNER_ID))).toBe(false);
     expect(await getStore().vault.getKeys(OWNER_ID)).toBeNull();
+  });
+
+  it('is removed from the backup mirror too, so deleting the account destroys every copy of its ciphertext', async () => {
+    const mirrored = path.join(resolveBackupDir(), 'vault', OWNER_ID);
+    fs.mkdirSync(mirrored, { recursive: true });
+    fs.writeFileSync(path.join(mirrored, 'object-0001'), 'sealed');
+    await deleteAccount(OWNER_ID);
+    expect(fs.existsSync(mirrored)).toBe(false);
   });
 });
 

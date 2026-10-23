@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from 'fs';
 import type { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
 import { getStore } from '../store/index.js';
@@ -246,5 +247,28 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     const left = Date.parse(bundle.expiresAt) - Date.now();
     const { token, expiresAt } = issueToken(settings.secret, `share:${bundle.id}`, Math.min(PASS_MS, left));
     return reply.header('Cache-Control', 'no-store').send({ token, expires_at: expiresAt });
+  });
+}
+
+const ENDED_PAGE =
+  '<!doctype html><html lang="en"><head><meta charset="utf-8">' +
+  '<title>Link unavailable</title></head><body>' +
+  '<p>This link is no longer active.</p></body></html>';
+
+/**
+ * `GET /share/:id`, the address a recipient is given: the app shell for a share that exists (the page opens the sealed copy itself and
+ * says if it ended), a plain page for one that never did. It reads no record and keeps no log; the visit is noted when the page opens
+ * the copy. Registered by the server only: the tests' apps register the older share routes, which answer the same address.
+ */
+export async function shareShellRoutes(app: FastifyInstance, opts: { appShellPath: string }) {
+  app.get<{ Params: { id: string } }>('/share/:id', async (req, reply) => {
+    if (!SHARE_ID.test(req.params.id) || !(await getStore().shared.get(req.params.id))) {
+      return reply.status(410).type('text/html').send(ENDED_PAGE);
+    }
+    if (!existsSync(opts.appShellPath)) {
+      req.log.error({ appShellPath: opts.appShellPath }, 'share view requested but the web build is missing');
+      return reply.status(500).type('text/html').send(ENDED_PAGE);
+    }
+    return reply.type('text/html').send(readFileSync(opts.appShellPath, 'utf8'));
   });
 }

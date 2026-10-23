@@ -833,7 +833,7 @@ export interface ResolvedShareLink {
   allowChat: boolean;
 }
 
-/** A document's details in another language, kept until what was translated changes (see schema.sql). */
+/** A document's details in another language, kept until what was translated changes (see the schema files). */
 export interface TranslationRepository {
   get(userId: string, documentId: string, language: string): Promise<{ sourceHash: string; content: string; createdAt: string } | null>;
   /** Replaces any earlier translation into that language. Nothing is written if the document is not the user's. */
@@ -1025,7 +1025,7 @@ export interface MaintenanceRepository {
   snapshotTo(destination: string): Promise<void>;
   /** Startup: nothing can still be in flight, the registry is in-memory. */
   failStalledSourceFiles(): Promise<number>;
-  /** S-4: rewrite any plaintext share token left by a pre-S-4 build. */
+  /** The share links' stored tokens: the old server-side links, which are tests' business now (S-4). */
   listShareLinkTokens(): Promise<Array<{ id: string; token: string }>>;
   setShareLinkToken(id: string, tokenHash: string): Promise<void>;
 }
@@ -1034,6 +1034,11 @@ export interface StoreConfig {
   adapter: string;
   /** Adapter-specific: a file path for SQLite, a DSN for a networked store. */
   location: string;
+  /**
+   * `accounts`: only the tables an account, a session, the vault and a sealed share need, which is all the server keeps (SECURITY.md
+   * M-37). Any repository of records then refuses to be used. `full` (the default) is what the device's core and the tests build.
+   */
+  scope?: 'full' | 'accounts';
 }
 
 export class StoreConfigError extends Error {

@@ -37,7 +37,7 @@ export async function ownAccountRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'type your email address to confirm' });
     }
     const summary = await deleteAccount(req.userId);
-    logger.info('an account was deleted by its owner', { documents: summary.documents, uploads: summary.uploads });
+    logger.info('an account was deleted by its owner', { objects: summary.objects });
     await req.session.destroy();
     return reply.send({ deleted: true, ...summary });
   });

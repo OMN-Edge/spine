@@ -20,7 +20,10 @@ export function userRepository(db: Database): UserRepository {
     backed_up: r.backed_up === 1, created_at: r.created_at as string, last_used_at: (r.last_used_at as string | null) ?? null,
   });
   const setConsent = db.prepare('UPDATE users SET health_consent_at = ?, health_consent_version = ?, terms_accepted_at = ?, terms_version = ? WHERE id = ?');
-  const insertTag = db.prepare('INSERT OR IGNORE INTO tags (user_id, name) VALUES (?, ?)');
+  // Which tables exist: the server's database has none for records (scope `accounts`), so a user has no starter tags there and deleting
+  // one has only the account's tables to empty.
+  const tables = new Set((db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map(t => t.name));
+  const insertTag = tables.has('tags') ? db.prepare('INSERT OR IGNORE INTO tags (user_id, name) VALUES (?, ?)') : null;
   const findByEmail = db.prepare('SELECT * FROM users WHERE email = ?');
   const findById = db.prepare('SELECT * FROM users WHERE id = ?');
   const setPassword = db.prepare(
@@ -101,7 +104,7 @@ export function userRepository(db: Database): UserRepository {
   const createWithTags = db.transaction((user: NewUser) => {
     const c = user.consent;
     insert.run(user.id, user.email, user.passwordHash, user.createdAt, user.verifiedAt, c ? user.createdAt : null, c?.healthVersion ?? null, c ? user.createdAt : null, c?.termsVersion ?? null);
-    for (const name of STARTER_TAGS) insertTag.run(user.id, name);
+    if (insertTag) for (const name of STARTER_TAGS) insertTag.run(user.id, name);
   });
 
   // Children before parents, because foreign keys are enforced. The FTS triggers
@@ -144,7 +147,7 @@ export function userRepository(db: Database): UserRepository {
     'user_recovery_codes',
     'user_totp',
   ];
-  const deleteFrom = OWNED_TABLES.map(table => db.prepare(`DELETE FROM ${table} WHERE user_id = ?`));
+  const deleteFrom = OWNED_TABLES.filter(table => tables.has(table)).map(table => db.prepare(`DELETE FROM ${table} WHERE user_id = ?`));
   const deleteUser = db.prepare('DELETE FROM users WHERE id = ?');
   const deleteEverything = db.transaction((id: string) => {
     for (const statement of deleteFrom) statement.run(id);

@@ -11,31 +11,13 @@ import { fileURLToPath } from 'url';
 import { authRoutes } from './routes/auth.js';
 import { totpRoutes } from './routes/totp.js';
 import { accountRoutes } from './routes/accounts.js';
-import { documentRoutes } from './routes/documents.js';
-import { sourceFileRoutes } from './routes/source-files.js';
-import { exportRoutes } from './routes/export.js';
-import { getEmbedder, EmbedderConfigError } from './embedding/index.js';
-import { similarityRoutes } from './routes/similarity.js';
-import { linkRoutes } from './routes/links.js';
-import { episodeRoutes } from './routes/episodes.js';
-import { demoRoutes } from './routes/demo.js';
 import { ownAccountRoutes } from './routes/own-account.js';
 import { passkeyRoutes } from './routes/passkeys.js';
 import { vaultRoutes } from './routes/vault.js';
 import { relayRoutes } from './routes/relay.js';
-import { sharedRoutes, sweepShares } from './routes/shared.js';
-import { chatRoutes } from './routes/chat.js';
-import { shareRoutes } from './routes/share.js';
-import { publicShareRoutes } from './routes/public-share.js';
-import { tagRoutes } from './routes/tags.js';
-import { trendRoutes } from './routes/trends.js';
-import { doctorRoutes } from './routes/doctors.js';
+import { sharedRoutes, shareShellRoutes, sweepShares } from './routes/shared.js';
 import { decorateAuth } from './routes/middleware.js';
-import { reconcileStalledJobs } from './ingestion/pipeline.js';
-import { hashLegacyShareTokens } from './hash-legacy-tokens.js';
 import { getStore } from './store/index.js';
-import { getChatLlm, LlmConfigError } from './llm/index.js';
-import { checkParserRequirements, getParser, ParserConfigError } from './parser/index.js';
 import { loadConfig, ConfigError, sessionLimits, type Config } from './config.js';
 import { useLogger } from './logger.js';
 
@@ -54,6 +36,9 @@ function loadConfigOrExit(): Config {
   }
 }
 
+// The server keeps accounts, the vault and sealed shares, and no table for a record (SECURITY.md M-37). Set before the store is first read.
+process.env.SPINE_STORE_SCOPE = 'accounts';
+
 const config = loadConfigOrExit();
 
 const app = Fastify({
@@ -69,51 +54,13 @@ useLogger({
   error: (message, detail) => app.log.error(detail ?? {}, message),
 });
 
-// P3: an unknown provider or an unusable credential must stop the process here,
-// not surface later as a failed ingestion. P8: log what it resolved to —
-// provider, model and endpoint — because if residency has to be provable it has
-// to be observable.
-try {
-  // Touch it once so a bad provider, endpoint or credential stops the process
-  // here instead of at the first upload. getChatLlm() memoizes, so this is the
-  // construction and every later call is a read.
-  getChatLlm();
-  // The one place this is logged. P8: residency has to be observable, so
-  // `journalctl -u spine-web | grep "llm provider"` answers "what is this instance
-  // actually pointed at". Straight from config — there is no second source.
-  app.log.info(
-    { provider: config.llm.provider, model: config.llm.model, endpoint: config.llm.endpoint },
-    'llm provider ready',
-  );
-
-  // M-7: whether page images can leave this host is a startup fact, stated plainly
-  // rather than left to be inferred from two settings.
-  await checkParserRequirements();
-  const parser = getParser();
-  app.log.info({ parser: config.parser.mode, imageEgress: parser.imageEgress }, 'parser ready');
-  if (parser.imageEgress) {
-    app.log.warn(
-      { provider: config.llm.provider, endpoint: config.llm.endpoint },
-      'page images WILL be sent to the model provider for scanned and handwritten pages',
-    );
-  }
-  // The same for embeddings: constructed once so a missing endpoint or a stray Google API key stops the process here.
-  const embedder = getEmbedder();
-  if (embedder.enabled) {
-    app.log.warn(
-      { model: embedder.id, endpoint: config.embeddings.endpoint, region: config.embeddings.region },
-      'document summaries WILL be sent to the embedding service to find related documents',
-    );
-  } else {
-    app.log.info('embeddings are off: documents are found by their words only');
-  }
-} catch (err) {
-  if (err instanceof LlmConfigError || err instanceof ParserConfigError || err instanceof EmbedderConfigError) {
-    console.error(`Refusing to start — ${err.message}`);
-    process.exit(1);
-  }
-  throw err;
-}
+// The server calls no model any more (a device's calls go through the relay, M-35), so it builds no model client and needs no
+// credential. The settings were validated with the rest of the config above (P3, M-8: endpoint, region and project stated, no stray Google
+// key). P8: residency has to be observable, so log what the device is told to use.
+app.log.info(
+  { provider: config.llm.provider, model: config.llm.model, endpoint: config.llm.endpoint, embeddings: config.embeddings.adapter },
+  'model settings given to devices',
+);
 
 await app.register(fastifyCookie);
 await app.register(fastifySession, {
@@ -145,27 +92,14 @@ await app.register(authRoutes);
 await app.register(totpRoutes);
 await app.register(sessionRoutes);
 await app.register(accountRoutes, { registration: config.registration });
-await app.register(documentRoutes);
-await app.register(sourceFileRoutes);
-await app.register(exportRoutes);
-await app.register(similarityRoutes);
-await app.register(linkRoutes);
-await app.register(episodeRoutes);
-await app.register(demoRoutes);
 await app.register(ownAccountRoutes);
 await app.register(passkeyRoutes);
 await app.register(vaultRoutes);
 await app.register(relayRoutes);
 await app.register(sharedRoutes);
-await app.register(chatRoutes);
-await app.register(shareRoutes);
-// The share entry route serves the SPA shell, so it needs the build's path.
-await app.register(publicShareRoutes, {
-  appShellPath: path.join(webDist, 'index.html'),
-});
-await app.register(tagRoutes);
-await app.register(trendRoutes);
-await app.register(doctorRoutes);
+// The records are on the device (stage 5): the server registers no route that reads or writes one, and the routes the device's
+// core runs (documents, uploads, tags, chat, ...) are not served here. A recipient's address gets the app shell.
+await app.register(shareShellRoutes, { appShellPath: path.join(webDist, 'index.html') });
 
 // Serve built web app for all non-API routes
 await app.register(fastifyStatic, {
@@ -199,21 +133,8 @@ if (accounts.length === 0) {
   app.log.warn('no user accounts exist — create one with: npm run cli -- create-user <email>');
 }
 
-// P6: rewrite any plaintext share token left by a pre-S-4 build. Idempotent,
-// so this is a no-op on every boot after the first.
-const rewritten = await hashLegacyShareTokens();
-if (rewritten.hashed > 0) app.log.warn(`hashed ${rewritten.hashed} plaintext share token(s)`);
-for (const id of rewritten.unrecognised) {
-  app.log.error({ shareLinkId: id }, 'share_links.token is neither a raw token nor a digest — left as is');
-}
-
-// The job registry is in-memory, so anything still marked in-flight was
-// stranded by a previous process and will never progress.
 // Sealed shares that have ended are deleted: at start, and hourly.
 await sweepShares().catch(() => undefined);
 setInterval(() => void sweepShares().catch(() => undefined), 60 * 60 * 1000).unref();
-
-const stranded = await reconcileStalledJobs();
-if (stranded > 0) app.log.warn(`marked ${stranded} interrupted source_file(s) as errored`);
 
 await app.listen({ port: config.port, host: config.host });

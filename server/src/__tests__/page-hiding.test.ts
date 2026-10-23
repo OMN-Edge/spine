@@ -253,8 +253,8 @@ describe('a database from before pages could be hidden', () => {
   function oldDatabase(): string {
     dir = mkdtempSync(path.join(tmpdir(), 'spine-prehide-'));
     const file = path.join(dir, 'spine.db');
-    const schemaFile = path.join(path.dirname(fileURLToPath(import.meta.url)), '../store/sqlite/schema.sql');
-    const old = readFileSync(schemaFile, 'utf8')
+    const here = path.join(path.dirname(fileURLToPath(import.meta.url)), '../store/sqlite');
+    const old = ['schema-accounts.sql', 'schema-records.sql'].map(f => readFileSync(path.join(here, f), 'utf8')).join('\n')
       .replace(/ {2}hidden INTEGER NOT NULL DEFAULT 0,.*\n/, '')
       .replace(/last_accessed_at TEXT,\n {2}include_scans INTEGER NOT NULL DEFAULT 0,[^\n]*\n {2}language TEXT[^\n]*\n {2}require_approval[^\n]*\n {2}allow_chat[^\n]*\n\);/, 'last_accessed_at TEXT\n);')
       .replace(/reviewed INTEGER DEFAULT 0,\n {2}language TEXT[^\n]*\n\);/, 'reviewed INTEGER DEFAULT 0\n);')

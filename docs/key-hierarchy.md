@@ -2,7 +2,7 @@
 
 This is the public write-up of how Spine is meant to keep records readable only by their owner and the doctors the owner chooses (requirements TR-CRY, TR-SHC, TR-AI, TR-OSS-03). It describes the **design for the hosted service**. It is not what the code does today.
 
-> **Status.** Keys and the vault routes are built (stage 1a, [crypto-design.md](crypto-design.md)); nothing the app stores is sealed yet. The code in this repository is otherwise a server-side application: the server decrypts nothing because it encrypts nothing, the database holds readable text, and the operator of an instance can read every record on it ([SECURITY.md](../SECURITY.md), [ARCHITECTURE.md](../ARCHITECTURE.md)). Nothing below is implemented yet. Until it is, and until an independent cryptography audit has been published (TR-OSS-02), no product claim should say that the operator cannot read your records. Each section ends with what stays visible, so the claim can be checked against the design.
+> **Status.** Built, not audited ([crypto-design.md](crypto-design.md) has the stages). Keys are made on the device, records are kept in a database the browser holds and saved to the server as sealed objects, the server registers no route that reads a record, and shares are sealed copies ([SECURITY.md](../SECURITY.md) **M-34** to **M-37**). Gaps are listed there and in the status table: the relay sees model calls in plaintext as they pass, passkeys cannot unlock the vault, and a share is a snapshot. Each section ends with what stays visible, so the claim can be checked against the design.
 
 ## Claim, in one sentence
 
@@ -69,7 +69,7 @@ Stays visible to the operator: that a share exists, its expiry, when and from wh
 - A web client served by the operator could in principle be swapped for a malicious one that steals keys. The mitigations are a strict content security policy, subresource integrity, reproducible builds with published hashes, and native apps as the reference client. They reduce the risk; they do not remove the need to trust the build you run. The code is open (AGPL-3.0) so the build can be checked.
 - Metadata that must be visible to work (sizes, timestamps, share counts, the account email) is visible.
 - A model provider sees the plaintext of the calls you choose to make.
-- Nothing here has been audited. The audit report will be published when it exists.
+- Nothing here has been audited.
 
 ## Reporting a flaw
 

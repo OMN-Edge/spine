@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, readdirSync, existsSync, rmSync } from 'fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readdirSync, existsSync, rmSync, readFileSync, utimesSync } from 'fs';
 import { tmpdir } from 'os';
 import path from 'path';
 import Database from 'better-sqlite3';
 import { buildTestApp } from './helpers/app.js';
-import { seedSourceFile } from './helpers/seed.js';
+import { OWNER_ID } from './helpers/seed.js';
 import { getStore } from '../store/index.js';
 import { runBackup } from '../backup.js';
 
@@ -34,8 +34,6 @@ function snapshots(): string[] {
 
 describe('runBackup — database snapshot', () => {
   it('writes a snapshot that is a readable database with the real rows', async () => {
-    const id = await seedSourceFile({ status: 'done' });
-
     const result = await runBackup({ dataDir, backupDir, keep: 7 });
 
     expect(existsSync(result.snapshot)).toBe(true);
@@ -44,9 +42,9 @@ describe('runBackup — database snapshot', () => {
     // is not a backup.
     const restored = new Database(result.snapshot, { readonly: true });
     try {
-      const row = restored.prepare('SELECT id FROM source_files WHERE id = ?').get(id) as
+      const row = restored.prepare('SELECT id FROM users WHERE id = ?').get(OWNER_ID) as
         { id: string } | undefined;
-      expect(row?.id).toBe(id);
+      expect(row?.id).toBe(OWNER_ID);
     } finally {
       restored.close();
     }
@@ -88,6 +86,59 @@ describe('runBackup — originals mirror', () => {
     const result = await runBackup({ dataDir, backupDir, keep: 7 });
     expect(result.originalsCopied).toBe(0);
     expect(existsSync(result.snapshot)).toBe(true);
+  });
+});
+
+describe('runBackup — vault mirror', () => {
+  function seedVault(user: string, id: string, body: string, when?: Date) {
+    const dir = path.join(dataDir, 'vault', user);
+    mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, id);
+    writeFileSync(file, body);
+    if (when) utimesSync(file, when, when);
+  }
+  const mirrored = (user: string, id: string) => path.join(backupDir, 'vault', user, id);
+
+  it('copies sealed objects, and only what is new on a second run', async () => {
+    seedVault('u1', 'obj-aaaaaaaa', 'sealed-1');
+    seedVault('u2', 'obj-bbbbbbbb', 'sealed-2');
+
+    expect((await runBackup({ dataDir, backupDir, keep: 7 })).vaultCopied).toBe(2);
+    expect(readFileSync(mirrored('u1', 'obj-aaaaaaaa'), 'utf8')).toBe('sealed-1');
+    expect((await runBackup({ dataDir, backupDir, keep: 7 })).vaultCopied).toBe(0);
+  });
+
+  it('copies an object again when it was overwritten under the same id, even at the same size', async () => {
+    seedVault('u1', 'obj-aaaaaaaa', 'revision-1', new Date(Date.UTC(2026, 0, 1)));
+    await runBackup({ dataDir, backupDir, keep: 7 });
+
+    seedVault('u1', 'obj-aaaaaaaa', 'revision-2', new Date(Date.UTC(2026, 0, 2)));
+    expect((await runBackup({ dataDir, backupDir, keep: 7 })).vaultCopied).toBe(1);
+    expect(readFileSync(mirrored('u1', 'obj-aaaaaaaa'), 'utf8')).toBe('revision-2');
+  });
+
+  it('drops an object the vault deleted, but never empties the backup because the vault is missing', async () => {
+    seedVault('u1', 'obj-aaaaaaaa', 'one');
+    seedVault('u1', 'obj-cccccccc', 'two');
+    await runBackup({ dataDir, backupDir, keep: 7 });
+
+    rmSync(path.join(dataDir, 'vault', 'u1', 'obj-cccccccc'));
+    await runBackup({ dataDir, backupDir, keep: 7 });
+    expect(existsSync(mirrored('u1', 'obj-cccccccc'))).toBe(false);
+    expect(existsSync(mirrored('u1', 'obj-aaaaaaaa'))).toBe(true);
+
+    rmSync(path.join(dataDir, 'vault'), { recursive: true });
+    await runBackup({ dataDir, backupDir, keep: 7 });
+    expect(existsSync(mirrored('u1', 'obj-aaaaaaaa'))).toBe(true);
+  });
+
+  it('leaves a write in flight alone and does not copy data/shares', async () => {
+    seedVault('u1', 'obj-aaaaaaaa.1234.part', 'half');
+    mkdirSync(path.join(dataDir, 'shares', 'abc'), { recursive: true });
+    writeFileSync(path.join(dataDir, 'shares', 'abc', 'db'), 'sealed share');
+
+    expect((await runBackup({ dataDir, backupDir, keep: 7 })).vaultCopied).toBe(0);
+    expect(existsSync(path.join(backupDir, 'shares'))).toBe(false);
   });
 });
 

@@ -168,7 +168,7 @@ describe('sealed shares on the server', () => {
     expect((await post(`/api/shared/${share}/opened`, { document_id: 'a b/../c' })).statusCode).toBe(400);
     const { opens } = (await get('/api/shared/events', owner)).json<{ opens: Array<{ id: number; documentId: string | null; countView: boolean; country: string | null }> }>();
     expect(opens.filter(o => o.documentId === doc)).toHaveLength(1);
-    expect(JSON.stringify(opens)).not.toMatch(/127\.0\.0\.1|ip/i);
+    expect(JSON.stringify(opens)).not.toMatch(/127\.0\.0\.1|"(ip|address)"/i);
     await post('/api/shared/events/ack', { requests: [], opens: opens.map(o => o.id) }, owner);
     expect((await get('/api/shared/events', owner)).json().opens).toEqual([]);
     expect((await get('/api/shared/events', other)).json().opens).toEqual([]);

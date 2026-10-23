@@ -130,10 +130,12 @@ describe('how long a sign-in lasts', () => {
   });
 });
 
+const records = process.env.SPINE_STORE_SCOPE !== 'accounts'; // `npm run test:accounts` has no table for a record (SECURITY.md M-37)
+
 describe('asking for the password again', () => {
   const exportUrl = '/api/export';
 
-  it('lets a sign-in just made through, and asks again after ten minutes', async () => {
+  it.skipIf(!records)('lets a sign-in just made through, and asks again after ten minutes', async () => {
     const cookie = await loginAs(app);
     expect((await get(exportUrl, cookie)).statusCode).toBe(404); // past the guard: nothing to export yet
 
@@ -150,7 +152,7 @@ describe('asking for the password again', () => {
     expect((await get(exportUrl, cookie)).statusCode).toBe(404);
   });
 
-  it('asks before a share link shows page images, creating or changing, and not otherwise', async () => {
+  it.skipIf(!records)('asks before a share link shows page images, creating or changing, and not otherwise', async () => {
     const cookie = await loginAs(app);
     const create = (include_scans: boolean) => send('POST', '/api/share-links', cookie, { scope: 'all', include_scans });
 

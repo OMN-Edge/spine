@@ -10,7 +10,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  * Moved here from `db/index.ts` so that every SQLite-specific detail lives
  * inside the adapter.
  */
-export function openDatabase(location: string, open: OpenDatabase, schema?: string): Database {
+export function openDatabase(location: string, open: OpenDatabase, schema?: string, scope: 'full' | 'accounts' = 'full'): Database {
   if (location !== ':memory:') fs.mkdirSync(path.dirname(location), { recursive: true });
 
   const db = open(location);
@@ -23,9 +23,15 @@ export function openDatabase(location: string, open: OpenDatabase, schema?: stri
   // Idempotent `CREATE TABLE IF NOT EXISTS`, re-applied every boot. The file
   // sits beside this adapter because it is SQLite-specific DDL; `npm run build`
   // copies it next to the compiled output. The browser has no such file and hands the text in.
-  db.exec(schema ?? fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8'));
+  db.exec(schema ?? readSchema(scope));
 
   return db;
+}
+
+/** The accounts' tables, then (unless the scope is only accounts) the records'. The browser has no files and hands both texts in. */
+function readSchema(scope: 'full' | 'accounts'): string {
+  const read = (name: string) => fs.readFileSync(path.join(__dirname, name), 'utf8');
+  return scope === 'accounts' ? read('schema-accounts.sql') : `${read('schema-accounts.sql')}\n${read('schema-records.sql')}`;
 }
 
 const columnsOf = (db: Database, table: string): string[] =>
@@ -34,7 +40,7 @@ const columnsOf = (db: Database, table: string): string[] =>
 /**
  * The one kind of change that needs no emptying: a new column with a default. Each step here is
  * idempotent and lists what it adds, so a database from before it is brought forward on open and
- * a new one (made whole by schema.sql) is left alone. Anything that is not additive still has to
+ * a new one (made whole by the schema files) is left alone. Anything that is not additive still has to
  * be refused by `refuseOutdatedDatabase`.
  *
  *  - `pages.source_page`: where a page is in its file, separate from where it sits in the upload. Filled from `page_number`, which
@@ -53,7 +59,7 @@ const columnsOf = (db: Database, table: string): string[] =>
  *  - `documents.needs_reading`: a document whose fields have not been read yet because its upload's grouping is not confirmed. Earlier documents were read.
  *  - `pages.hidden`: pages the owner has set aside. The search view and one trigger name the column,
  *    and `CREATE ... IF NOT EXISTS` would keep the old versions, so they are dropped here and
- *    schema.sql, which runs next, makes them again.
+ *    the schema, which runs next, makes them again.
  */
 function addColumnsInPlace(db: Database): void {
   const pages = columnsOf(db, 'pages');

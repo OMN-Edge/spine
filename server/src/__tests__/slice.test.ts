@@ -16,7 +16,7 @@ import path from 'path';
  * The copy a share is made of must hold what the recipient may read and nothing else, because the browser that opens it holds the
  * whole file. This builds one from an owner's records that include things that must stay out, and looks at every table of the result.
  */
-const SCHEMA = readFileSync(path.join(__dirname, '../store/sqlite/schema.sql'), 'utf8');
+const SCHEMA = ['schema-accounts.sql', 'schema-records.sql'].map(f => readFileSync(path.join(__dirname, '../store/sqlite', f), 'utf8')).join('\n');
 const LOCAL = hashShareToken('local');
 
 describe('the copy a share is made of', () => {

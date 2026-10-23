@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, statSync, copyFileSync, rmSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync, statSync, copyFileSync, rmSync, utimesSync } from 'fs';
 import path from 'path';
 import { getStore } from './store/index.js';
 import { resolveBackupDir, resolveDataDir } from './config.js';
@@ -6,6 +6,12 @@ import { resolveBackupDir, resolveDataDir } from './config.js';
 /**
  * SECURITY.md P11: `data/spine.db` and `data/originals/` must be restorable.
  * `data/pages/` is regenerable and is deliberately not copied.
+ *
+ * The vault is where a person's records live now: `vault_objects` in the database holds
+ * only the metadata, and the sealed bytes are files under `data/vault/`. A snapshot of
+ * the database without them restores an account with nothing in it, so they are
+ * mirrored too. They are ciphertext, so the backup holds nothing readable. `data/shares/`
+ * is not copied: a share is meant to end, and a copy in a backup would outlive its revoke.
  *
  * Two different problems, two different mechanisms:
  *
@@ -37,6 +43,8 @@ export interface BackupResult {
   snapshot: string;
   /** Originals newly mirrored by this run. */
   originalsCopied: number;
+  /** Sealed vault objects newly copied or replaced by this run. */
+  vaultCopied: number;
   /** Older snapshots removed by retention. */
   snapshotsPruned: string[];
 }
@@ -75,6 +83,46 @@ function mirrorTree(from: string, to: string): number {
   return copied;
 }
 
+/**
+ * Unlike originals, an object is overwritten under the same id when it changes, so size
+ * alone cannot say it is current: a different size or an older modification time copies
+ * it again, and the copy keeps the source's time so the next run can tell. Inside a
+ * user's directory the mirror also drops what the source no longer has, because a deleted
+ * object should not survive in the backup; a user's whole directory is removed only by
+ * `deleteAccount`, so an empty or missing `data/vault` can never empty the backup.
+ */
+function mirrorVault(from: string, to: string): number {
+  if (!existsSync(from)) return 0;
+  let copied = 0;
+  for (const user of readdirSync(from, { withFileTypes: true })) {
+    if (!user.isDirectory()) continue;
+    const sourceDir = path.join(from, user.name);
+    const targetDir = path.join(to, user.name);
+    mkdirSync(targetDir, { recursive: true });
+
+    const held = new Set<string>();
+    for (const entry of readdirSync(sourceDir, { withFileTypes: true })) {
+      // A write in flight is a `.part` file beside the object; the rename makes it real.
+      if (!entry.isFile() || entry.name.endsWith('.part')) continue;
+      held.add(entry.name);
+      const source = path.join(sourceDir, entry.name);
+      const target = path.join(targetDir, entry.name);
+      const s = statSync(source);
+      if (existsSync(target)) {
+        const t = statSync(target);
+        if (t.size === s.size && Math.floor(t.mtimeMs) >= Math.floor(s.mtimeMs)) continue; // utimes keeps milliseconds only
+      }
+      copyFileSync(source, target);
+      utimesSync(target, s.atime, s.mtime);
+      copied += 1;
+    }
+    for (const entry of readdirSync(targetDir, { withFileTypes: true })) {
+      if (entry.isFile() && !held.has(entry.name)) rmSync(path.join(targetDir, entry.name), { force: true });
+    }
+  }
+  return copied;
+}
+
 function pruneSnapshots(backupDir: string, keep: number): string[] {
   const snapshots = readdirSync(backupDir)
     .filter(f => f.startsWith(SNAPSHOT_PREFIX) && f.endsWith(SNAPSHOT_SUFFIX))
@@ -106,11 +154,16 @@ export async function runBackup({
     path.join(backupDir, 'originals'),
   );
 
-  return { snapshot, originalsCopied, snapshotsPruned: pruneSnapshots(backupDir, keep) };
+  // After the snapshot, never before: an object's file is written before its row, so files
+  // copied now are at least as new as the rows just snapshotted.
+  const vaultCopied = mirrorVault(path.join(dataDir, 'vault'), path.join(backupDir, 'vault'));
+
+  return { snapshot, originalsCopied, vaultCopied, snapshotsPruned: pruneSnapshots(backupDir, keep) };
 }
 
 /** CLI entry point: `node dist/backup.js`, run by spine-backup.service. */
 async function main(): Promise<void> {
+  process.env.SPINE_STORE_SCOPE = 'accounts';
   const dataDir = resolveDataDir();
   const backupDir = resolveBackupDir();
   const keep = Number(process.env.SPINE_BACKUP_KEEP ?? 7);
@@ -123,6 +176,7 @@ async function main(): Promise<void> {
   const result = await runBackup({ dataDir, backupDir, keep });
   console.log(
     `backup: ${result.snapshot}, ${result.originalsCopied} original(s) mirrored, ` +
+      `${result.vaultCopied} vault object(s) mirrored, ` +
       `${result.snapshotsPruned.length} old snapshot(s) pruned`,
   );
 }

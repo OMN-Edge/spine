@@ -9,7 +9,7 @@ import puppeteer from 'puppeteer-core';
 const here = import.meta.dirname;
 execFileSync('npx', ['vite', 'build', '--config', path.join(here, 'vite.config.mjs')], { cwd: path.join(here, '..'), stdio: 'ignore' });
 const dist = path.join(here, 'dist');
-const CSP = fs.readFileSync(path.join(here, '../../Caddyfile'), 'utf8').match(/Content-Security-Policy "([^"]+)"/)[1];
+const CSP = fs.readFileSync(path.join(here, '../../Caddyfile'), 'utf8').match(/Content-Security-Policy "([^"]+)"/)[1].replace('{$SPINE_RELAY_URL:}', '');  // Caddy's empty default; no relay in this check
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.wasm': 'application/wasm' };
 const server = http.createServer((req, res) => {
   const file = path.join(dist, req.url === '/' ? 'index.html' : req.url.split('?')[0]);

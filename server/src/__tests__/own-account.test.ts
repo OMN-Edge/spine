@@ -26,6 +26,8 @@ async function newcomer(email = 'newcomer@spine.test') {
   return { ...u, cookie: await loginAs(app, u.email, u.password) };
 }
 
+const records = process.env.SPINE_STORE_SCOPE !== 'accounts'; // `npm run test:accounts` has no table for a record (SECURITY.md M-37)
+
 describe('the texts a person agrees to', () => {
   it('are public, carry a version, and have the operator filled in', async () => {
     for (const doc of ['privacy', 'terms', 'purpose']) {
@@ -51,12 +53,12 @@ describe('an account that has not agreed', () => {
     const { cookie } = await newcomer();
     const me = (await call('GET', '/api/auth/me', cookie)).json();
     expect(me.consent_needed).toEqual({ health: true, terms: true });
-    for (const url of ['/api/documents', '/api/export', '/api/tags', '/api/share-links', '/api/episodes']) {
+    for (const url of ['/api/vault/keys', '/api/relay/config', '/api/shared/events', ...(records ? ['/api/documents', '/api/export', '/api/tags', '/api/share-links', '/api/episodes'] : [])]) {
       const res = await call('GET', url, cookie);
       expect(res.statusCode, url).toBe(403);
       expect(res.json().code).toBe('consent_required');
     }
-    expect((await call('POST', '/api/demo', cookie, { language: 'en' })).statusCode).toBe(403);
+    if (records) expect((await call('POST', '/api/demo', cookie, { language: 'en' })).statusCode).toBe(403);
   });
 
   it('needs both, given separately, and then is let in', async () => {
@@ -64,10 +66,10 @@ describe('an account that has not agreed', () => {
     for (const body of [{}, { health_data: true }, { terms: true }, { health_data: 'yes', terms: true }, { health_data: false, terms: true }]) {
       expect((await call('POST', '/api/account/consent', cookie, body)).statusCode).toBe(400);
     }
-    expect((await call('GET', '/api/documents', cookie)).statusCode).toBe(403);
+    expect((await call('GET', '/api/vault/keys', cookie)).statusCode).toBe(403);
 
     expect((await call('POST', '/api/account/consent', cookie, { health_data: true, terms: true })).statusCode).toBe(200);
-    expect((await call('GET', '/api/documents', cookie)).statusCode).toBe(200);
+    expect((await call('GET', '/api/shared/events', cookie)).statusCode).toBe(200);
     const user = await getStore().users.findById(id);
     expect(user).toMatchObject({ health_consent_version: HEALTH_CONSENT_VERSION, terms_version: TERMS_VERSION });
     expect(user!.health_consent_at).toBeTruthy();
@@ -77,10 +79,10 @@ describe('an account that has not agreed', () => {
   it('is asked again when the text it agreed to is older', async () => {
     const { id, cookie } = await newcomer('older@spine.test');
     await getStore().users.recordConsent(id, { healthVersion: '2020-01-01', termsVersion: TERMS_VERSION }, new Date().toISOString());
-    expect((await call('GET', '/api/documents', cookie)).statusCode).toBe(403);
+    expect((await call('GET', '/api/vault/keys', cookie)).statusCode).toBe(403);
     expect((await call('GET', '/api/auth/me', cookie)).json().consent_needed).toEqual({ health: true, terms: false });
     expect((await call('POST', '/api/account/consent', cookie, { health_data: true })).statusCode).toBe(200); // only what changed is asked
-    expect((await call('GET', '/api/documents', cookie)).statusCode).toBe(200);
+    expect((await call('GET', '/api/shared/events', cookie)).statusCode).toBe(200);
   });
 });
 
@@ -96,7 +98,7 @@ describe('leaving', () => {
   it('deletes the account and its records only after the password is typed again and the address is written out', async () => {
     const u = await createTestUser('leaving@spine.test');
     const cookie = await loginAs(app, u.email, u.password);
-    await seedDocument({ userId: u.id });
+    if (records) await seedDocument({ userId: u.id });
     // A sign-in just made counts as the password just typed; ten minutes later it no longer does.
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(Date.now() + 11 * 60_000);
@@ -109,10 +111,10 @@ describe('leaving', () => {
 
     const gone = await call('POST', '/api/account/delete', cookie, { confirm: u.email.toUpperCase() });
     expect(gone.statusCode).toBe(200);
-    expect(gone.json()).toMatchObject({ deleted: true, documents: 1 });
+    expect(gone.json()).toMatchObject({ deleted: true, objects: 0 });
     expect(await getStore().users.findById(u.id)).toBeNull();
     expect(existsSync(join(dir, 'originals', u.id))).toBe(false);
-    expect((await call('GET', '/api/documents', cookie)).statusCode).toBe(401);
+    expect((await call('GET', '/api/auth/sessions', cookie)).statusCode).toBe(401);
   });
 
   it('can be done by an account that never agreed (declining means leaving)', async () => {

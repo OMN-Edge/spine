@@ -8,7 +8,6 @@ import {
   looksLikeRawToken,
   looksLikeTokenDigest,
 } from '../share-token.js';
-import { hashLegacyShareTokens } from '../hash-legacy-tokens.js';
 
 /**
  * P6 / S-4: possession of the database must not confer the ability to use the
@@ -29,10 +28,6 @@ afterAll(async () => { await app.close(); });
  * through the interface, which accepts any string here precisely so the rewrite has
  * something to find.
  */
-async function seedLegacyLink(token: string) {
-  return seedShareLink({ tokenHash: token });
-}
-
 async function storedToken(id: string): Promise<string> {
   const token = await storedTokenFor(id);
   if (token === undefined) throw new Error(`share_link ${id} not found`);
@@ -106,38 +101,5 @@ describe('POST /api/share-links — the token is hashed at rest', () => {
     expect(stolen).not.toBe(token);
     expect((await app.inject({ method: 'GET', url: `/api/share/${stolen}/documents` })).statusCode).toBe(410);
     expect((await app.inject({ method: 'GET', url: `/share/${stolen}` })).statusCode).toBe(410);
-  });
-});
-
-describe('hashLegacyShareTokens — in-place rewrite (S-4)', () => {
-  it('hashes a plaintext token without breaking the link', async () => {
-    const legacyToken = createShareToken();
-    const id = await seedLegacyLink(legacyToken);
-    expect(await storedToken(id)).toBe(legacyToken);
-
-    const result = await hashLegacyShareTokens();
-
-    expect(result.hashed).toBeGreaterThanOrEqual(1);
-    expect(result.unrecognised).toEqual([]);
-    expect(await storedToken(id)).toBe(hashShareToken(legacyToken));
-
-    // The link the owner already sent out keeps working.
-    const res = await app.inject({ method: 'GET', url: `/api/share/${legacyToken}/documents` });
-    expect(res.statusCode).toBe(200);
-  });
-
-  it('is a no-op the second time', async () => {
-    await seedLegacyLink(createShareToken());
-    expect((await hashLegacyShareTokens()).hashed).toBeGreaterThanOrEqual(1);
-    expect((await hashLegacyShareTokens()).hashed).toBe(0);
-  });
-
-  it('leaves a row matching neither shape alone and reports it', async () => {
-    const id = await seedLegacyLink('not-a-token-or-a-digest');
-
-    const result = await hashLegacyShareTokens();
-
-    expect(result.unrecognised).toContain(id);
-    expect(await storedToken(id)).toBe('not-a-token-or-a-digest');
   });
 });

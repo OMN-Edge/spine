@@ -167,8 +167,8 @@ describe('signing in with it on', () => {
 
     // The cookie holds a pending login, which is not a login.
     expect((await get('/api/auth/me', cookie)).statusCode).toBe(401);
-    expect((await get('/api/documents', cookie)).statusCode).toBe(401);
-    expect((await get('/api/source-files', cookie)).statusCode).toBe(401);
+    expect((await get('/api/auth/sessions', cookie)).statusCode).toBe(401);
+    expect((await get('/api/vault/keys', cookie)).statusCode).toBe(401);
   });
 
   it('a right code completes it, with a new session id', async () => {
@@ -183,7 +183,7 @@ describe('signing in with it on', () => {
     const session = cookieOf(res);
     expect(session).not.toBe(pending);
     expect((await get('/api/auth/me', session)).statusCode).toBe(200);
-    expect((await get('/api/documents', session)).statusCode).toBe(200);
+    expect((await get('/api/auth/sessions', session)).statusCode).toBe(200);
     // The pending cookie is not upgraded by the completion.
     expect((await get('/api/auth/me', pending)).statusCode).toBe(401);
   });

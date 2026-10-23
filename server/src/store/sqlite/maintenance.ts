@@ -6,14 +6,6 @@ import type { MaintenanceRepository } from '../types.js';
  * user, which is the third and last documented exception to P12's rule.
  */
 export function maintenanceRepository(db: Database): MaintenanceRepository {
-  const failStalled = db.prepare(`
-    UPDATE source_files
-    SET status = 'error',
-        error_message = COALESCE(error_message, 'interrupted — server restarted during processing')
-    WHERE status IN ('pending', 'processing')
-  `);
-  const listTokens = db.prepare('SELECT id, token FROM share_links');
-  const setToken = db.prepare('UPDATE share_links SET token = ? WHERE id = ?');
 
   return {
     /**
@@ -28,15 +20,22 @@ export function maintenanceRepository(db: Database): MaintenanceRepository {
     },
 
     async failStalledSourceFiles() {
-      return failStalled.run().changes;
+      // Prepared here and not when the repository is built: the server's database has no `source_files` (SECURITY.md M-37), and only the
+      // device's core, which has, asks for this.
+      return db.prepare(`
+        UPDATE source_files
+        SET status = 'error',
+            error_message = COALESCE(error_message, 'interrupted — server restarted during processing')
+        WHERE status IN ('pending', 'processing')
+      `).run().changes;
     },
 
     async listShareLinkTokens() {
-      return listTokens.all() as Array<{ id: string; token: string }>;
+      return db.prepare('SELECT id, token FROM share_links').all() as Array<{ id: string; token: string }>;
     },
 
     async setShareLinkToken(id, tokenHash) {
-      setToken.run(tokenHash, id);
+      db.prepare('UPDATE share_links SET token = ? WHERE id = ?').run(tokenHash, id);
     },
   };
 }

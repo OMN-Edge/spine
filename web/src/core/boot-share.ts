@@ -3,7 +3,10 @@ import { LocalApp, type InjectRequest, type InjectResponse } from './local-app';
 import { WasmDatabase } from './sqlite-wasm';
 import { ready as hashingReady } from './shims/crypto';
 import { memory } from './shims/fs';
-import schema from '../../../server/src/store/sqlite/schema.sql?raw';
+import accountsSchema from '../../../server/src/store/sqlite/schema-accounts.sql?raw';
+import recordsSchema from '../../../server/src/store/sqlite/schema-records.sql?raw';
+
+const schema = `${accountsSchema}\n${recordsSchema}`;
 import { createSqliteStoreWith } from '../../../server/src/store/sqlite/store';
 import { resetStore } from '../../../server/src/store/index';
 import { publicShareRoutes } from '../../../server/src/routes/public-share';

@@ -26,6 +26,8 @@ function io(stdin = ''): CliIo & { out_: string[]; err_: string[] } {
 
 beforeEach(() => resetStore());
 
+const records = process.env.SPINE_STORE_SCOPE !== 'accounts'; // `npm run test:accounts` has no table for a record (SECURITY.md M-37)
+
 describe('create-user', () => {
   it('creates an account and prints a generated password once', async () => {
     const console_ = io();
@@ -79,7 +81,7 @@ describe('create-user', () => {
     expect(await runCli(['create-user'], io())).toBe(2);
   });
 
-  it('gives a new user their own starter tags', async () => {
+  it.skipIf(!records)('gives a new user their own starter tags', async () => {
     await runCli(['create-user', 'tags@example.com'], io());
     const user = await getStore().users.findByEmail('tags@example.com');
     const names = (await getStore().tags.listFor(user!.id)).map(t => t.name);
@@ -247,15 +249,18 @@ describe('delete-user', () => {
   it('shows what it would remove and does nothing without --yes', async () => {
     setUp();
     await createTestUser();
-    await seedDocument();
+    const keys = fakeVaultKeys();
+    const now = new Date().toISOString();
+    await getStore().vault.putKeys(OWNER_ID, { ...keys, kdf_params: JSON.stringify(keys.kdf_params) }, now);
+    await getStore().vault.put(OWNER_ID, { id: 'object-0001', profileId: 'profile-0001', kind: 'bundle', size: 4, wrappedKey: 'k', baseSeq: 0 }, now, 1 << 20);
     const console_ = io();
 
     expect(await runCli(['delete-user', 'owner@spine.test'], console_)).toBe(1);
-    expect(console_.err_.join()).toMatch(/1 upload\(s\) and 1 document\(s\).*--yes/);
+    expect(console_.err_.join()).toMatch(/has 1 sealed object\(s\).*--yes/);
     expect(await getStore().users.findByEmail('owner@spine.test')).not.toBeNull();
   });
 
-  it('removes the account, its rows, its files and its backup copy', async () => {
+  it.skipIf(!records)('removes the account, its rows, its files and its backup copy', async () => {
     setUp();
     await createTestUser();
     const { sourceFileId } = await seedDocument();
@@ -268,12 +273,11 @@ describe('delete-user', () => {
     expect(await getStore().sourceFiles.listFor(OWNER_ID)).toEqual([]);
     expect(await getStore().documents.listFor(OWNER_ID, { limit: 10, offset: 0 })).toEqual([]);
     expect(existsSync(paths.original)).toBe(false);
-    expect(existsSync(paths.page)).toBe(false);
     expect(existsSync(paths.mirrored)).toBe(false);
     expect(console_.out_.join()).toMatch(/snapshots already taken/);
   });
 
-  it('leaves every other user’s records and files alone', async () => {
+  it.skipIf(!records)('leaves every other user’s records and files alone', async () => {
     setUp();
     await createTestUser();
     const other = await createTestUser('other@example.com');

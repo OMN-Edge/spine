@@ -159,7 +159,7 @@ describe('signing in with a passkey', () => {
     const { res, cookie: session } = await signIn(device);
     expect(res.statusCode).toBe(200);
     expect((await send('GET', '/api/auth/me', session)).json().consent_needed).toEqual({ health: true, terms: true });
-    expect((await send('GET', '/api/documents', session)).statusCode).toBe(403);
+    expect((await send('GET', '/api/vault/keys', session)).statusCode).toBe(403);
   });
 
   it('limits attempts per source with the real limiter', async () => {
