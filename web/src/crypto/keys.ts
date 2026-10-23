@@ -1,5 +1,5 @@
-import { fromB64, sodium, toB64 } from './sodium.js';
-import { open, randomKey, seal } from './seal.js';
+import { fromB64, sodium, sodiumNow, toB64 } from './sodium.js';
+import { open, openNow, randomKey, seal } from './seal.js';
 
 /**
  * The key hierarchy (docs/key-hierarchy.md, docs/crypto-design.md), all of it on the device.
@@ -177,6 +177,17 @@ export async function openObject(profileKey: Uint8Array, kind: string, id: strin
   const dataKey = await open(profileKey, fromB64(s, wrappedKey), CTX.dataKey(id));
   try {
     return await open(dataKey, body, objectContext(kind, id));
+  } finally {
+    s.memzero(dataKey);
+  }
+}
+
+/** `openObject` for a caller that cannot wait (the core's file system answers a read at once); libsodium must already be loaded. */
+export function openObjectNow(profileKey: Uint8Array, kind: string, id: string, body: Uint8Array, wrappedKey: string): Uint8Array {
+  const s = sodiumNow();
+  const dataKey = openNow(profileKey, fromB64(s, wrappedKey), CTX.dataKey(id));
+  try {
+    return openNow(dataKey, body, objectContext(kind, id));
   } finally {
     s.memzero(dataKey);
   }

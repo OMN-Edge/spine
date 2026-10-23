@@ -8,13 +8,21 @@ import { Buffer } from 'buffer';
  * vault by a layer above (docs/crypto-design.md). Paths are POSIX and absolute, as on the server.
  */
 type Entry = { data: Uint8Array | null; size: number; mtime: Date };
-/** Set when a file the vault holds is asked for before it has been brought in; the caller fetches it and asks again. */
-export class NeedsFile extends Error {
-  constructor(readonly path: string) { super(`${path} is in the vault and not loaded yet`); this.name = 'NeedsFile'; }
-}
+/**
+ * Brings in a file the vault holds but this page has not loaded yet, at the moment something reads it. Set by the persistence layer; reading is
+ * synchronous (as `fs` is), so it fetches synchronously, which a worker may do.
+ */
+let loader: ((path: string) => Uint8Array) | null = null;
 const written = new Set<string>();
 const removed = new Set<string>();
-const resident = (a: string, e: Entry): Uint8Array => { if (!e.data) throw new NeedsFile(a); return e.data; };
+const resident = (a: string, e: Entry): Uint8Array => {
+  if (!e.data) {
+    if (!loader) throw Object.assign(new Error(`${a} is in the vault and nothing can fetch it`), { code: 'EIO' });
+    e.data = loader(a);
+    e.size = e.data.length;
+  }
+  return e.data;
+};
 const files = new Map<string, Entry>();
 const dirs = new Set<string>(['/']);
 
@@ -148,7 +156,8 @@ export const memory = {
     for (const p of paths?.removed ?? [...removed]) removed.delete(p);
   },
   known(p: string, size: number) { const a = abs(p); mkdirSync(path.dirname(a), { recursive: true }); if (!files.has(a)) files.set(a, { data: null, size, mtime: new Date(0) }); },
-  fill(p: string, data: Uint8Array) { const a = abs(p); const e = files.get(a); if (e) { e.data = data; e.size = data.length; } },
+  /** Where files the vault holds are fetched from when read. */
+  useLoader(next: ((path: string) => Uint8Array) | null) { loader = next; },
   evict(p: string) { const e = files.get(abs(p)); if (e && !written.has(abs(p))) e.data = null; },
   isResident(p: string) { return !!files.get(abs(p))?.data; },
   clear() { files.clear(); dirs.clear(); dirs.add('/'); written.clear(); removed.clear(); },

@@ -3,7 +3,10 @@ import type { FastifyInstance } from 'fastify';
 import { LocalApp, type InjectRequest, type InjectResponse } from './local-app';
 import { WasmDatabase } from './sqlite-wasm';
 import { Persistence, type ObjectStore } from './persist';
-import { NeedsFile, memory } from './shims/fs';
+import { memory } from './shims/fs';
+import { createShareHost } from './share/host';
+import { useShareHost } from '../../../server/src/share-host';
+import { relayMail } from './native/relay-auth';
 import { newId } from '../crypto/keys';
 import { ready as hashingReady } from './shims/crypto';
 import schema from '../../../server/src/store/sqlite/schema.sql?raw';
@@ -22,6 +25,7 @@ import { similarityRoutes } from '../../../server/src/routes/similarity';
 import { linkRoutes } from '../../../server/src/routes/links';
 import { demoRoutes } from '../../../server/src/routes/demo';
 import { chatRoutes } from '../../../server/src/routes/chat';
+import { shareRoutes } from '../../../server/src/routes/share';
 
 /**
  * Starts the core: the server's store and route files, running in this page or worker, on SQLite in memory. One person is "signed in":
@@ -64,10 +68,13 @@ export async function startCore(vault?: { objects: ObjectStore; profileId: strin
   }
   const user = (await store.users.findById(DEVICE_USER))!;
 
+  // Links are sealed here and sent to the server (docs/crypto-design.md, stage 4).
+  useShareHost(createShareHost({ source: db, schema, store: () => store, mail: relayMail }));
+
   const local = new LocalApp();
   const app = local as unknown as FastifyInstance;
   decorateAuth(app);
-  for (const routes of [tagRoutes, doctorRoutes, trendRoutes, episodeRoutes, documentRoutes, sourceFileRoutes, exportRoutes, similarityRoutes, linkRoutes, demoRoutes, chatRoutes]) {
+  for (const routes of [tagRoutes, doctorRoutes, trendRoutes, episodeRoutes, documentRoutes, sourceFileRoutes, exportRoutes, similarityRoutes, linkRoutes, demoRoutes, chatRoutes, shareRoutes]) {
     await (routes as unknown as (a: FastifyInstance, o?: object) => Promise<void>)(app, {});
   }
 
@@ -90,23 +97,15 @@ export async function startCore(vault?: { objects: ObjectStore; profileId: strin
     lock() {
       locked = true;
       if (timer) clearInterval(timer);
+      useShareHost(null);
+      memory.useLoader(null);
       memory.clear();
       db.close();
       resetStore(null);
     },
-    async inject(request) {
-      // A file the vault holds is brought in the first time something reads it, and the request is made again.
-      for (let tries = 0; ; tries++) {
-        try {
-          return await local.inject({
-            ...request,
-            session: { userId: DEVICE_USER, authVersion: user.auth_version, sid: 'device-session', reauthAt: Date.now(), ...request.session },
-          });
-        } catch (err) {
-          if (!(err instanceof NeedsFile) || !persistence || tries >= 20) throw err;
-          await persistence.fill(err.path);
-        }
-      }
-    },
+    inject: request => local.inject({
+      ...request,
+      session: { userId: DEVICE_USER, authVersion: user.auth_version, sid: 'device-session', reauthAt: Date.now(), ...request.session },
+    }),
   };
 }

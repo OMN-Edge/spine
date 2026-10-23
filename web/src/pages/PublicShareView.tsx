@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
-import { api, ApiError, type ShareApproval, type SharedDocument, type SharedListDocument, type TranslatedDocument, type TrendName, type TrendSeries } from '../api';
+import { api, type SharedDocument, type SharedListDocument, type TranslatedDocument, type TrendName, type TrendSeries } from '../api';
 import { SeriesBody, TestList } from '../components/TrendViews';
 import DocumentCard, { DOC_TYPE_LABELS } from '../components/DocumentCard';
 import { DoctorsList } from '../components/DoctorsPanel';
@@ -9,6 +9,7 @@ import SpineLog from '../components/SpineLog';
 import SharedChat from '../components/SharedChat';
 import SharedConnections from '../components/SharedConnections';
 import { LanguageSwitcher, useI18n } from '../i18n';
+import { LOCAL_SHARE_TOKEN, useShareAccess } from '../core/share/access';
 import { Combobox } from '../components/Combobox';
 import { languageName, useTranslation } from '../i18n/useTranslation';
 import AiLabel from '../components/AiLabel';
@@ -20,57 +21,41 @@ import { documentByline, documentTitle, fieldName, isCriticalField, isSection, v
  * Nothing is requested from the documents' routes before that: they would answer 403.
  */
 export default function PublicShareView() {
-  const { token } = useParams<{ token: string }>();
+  const { token: shareId } = useParams<{ token: string }>();
   const { t } = useI18n();
-  const [approval, setApproval] = useState<ShareApproval | null>(null);
-  const [gone, setGone] = useState(false);
+  const { state, ask, error } = useShareAccess(shareId);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
 
-  useEffect(() => {
-    if (!token) return;
-    let live = true;
-    let timer: number | undefined;
-    const check = () => api.publicShare.meta(token)
-      .then(m => { if (live) { setApproval(m.approval); if (m.approval === 'pending') timer = window.setTimeout(check, 5000); } })
-      .catch(err => { if (live && err instanceof ApiError && err.status === 410) setGone(true); else if (live) setApproval('open'); });
-    check();
-    return () => { live = false; window.clearTimeout(timer); };
-  }, [token, approval === 'pending']);
-
-  const ask = async () => {
-    if (!token) return;
-    setBusy(true);
-    setError('');
-    try {
-      setApproval((await api.publicShare.requestAccess(token, note)).approval);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t('Could not send the request'));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  if (!token) return null;
-  if (approval === 'open' || gone) return <SharedContent token={token} />;
-  if (approval === null) return <div className="min-h-screen flex items-center justify-center text-gray-400">{t('Loading…')}</div>;
+  if (!shareId) return null;
+  if (state === 'open') return <SharedContent token={LOCAL_SHARE_TOKEN} shareId={shareId} />;
+  if (state === 'checking') return <div className="min-h-screen flex items-center justify-center text-gray-400">{t('Loading…')}</div>;
+  if (state === 'gone' || state === 'broken') {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center max-w-sm">
+          <p className="text-gray-900 font-medium mb-2">{t('Link unavailable')}</p>
+          <p className="text-gray-500 text-sm">{state === 'gone' ? t('This link is no longer active.') : t('This address is incomplete or damaged. Ask the person who shared it for the whole link.')}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="max-w-sm w-full text-center">
         <p className="text-gray-900 font-medium mb-2">{t('Approval needed')}</p>
-        {approval === 'needed' && (
+        {state === 'needed' && (
           <>
             <p className="text-gray-500 text-sm mb-4">{t('The person who shared this asks to approve who opens it. Send them a request; it works in this browser only.')}</p>
             <label htmlFor="req-note" className="block text-xs text-gray-500 text-left mb-1">{t('Who are you? (optional)')}</label>
             <input id="req-note" value={note} maxLength={120} onChange={e => setNote(e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 mb-3" />
-            <button disabled={busy} onClick={ask} className="w-full bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50">{t('Ask for access')}</button>
-            {error && <p className="text-xs text-red-600 mt-3" role="alert">{error}</p>}
+            <button disabled={busy} onClick={async () => { setBusy(true); try { await ask(note); } finally { setBusy(false); } }} className="w-full bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50">{t('Ask for access')}</button>
+            {error && <p className="text-xs text-red-600 mt-3" role="alert">{t('Could not send the request')}</p>}
           </>
         )}
-        {approval === 'pending' && <p className="text-gray-500 text-sm" role="status">{t('Your request was sent. Keep this page open: it opens when the owner approves.')}</p>}
-        {approval === 'denied' && <p className="text-gray-500 text-sm" role="alert">{t('The owner did not approve this request.')}</p>}
+        {state === 'pending' && <p className="text-gray-500 text-sm" role="status">{t('Your request was sent. Keep this page open: it opens when the owner approves.')}</p>}
+        {state === 'denied' && <p className="text-gray-500 text-sm" role="alert">{t('The owner did not approve this request.')}</p>}
         <div className="mt-6 flex justify-center"><LanguageSwitcher /></div>
       </div>
     </div>
@@ -82,7 +67,7 @@ export default function PublicShareView() {
  * shared by year, and opening a document (`?d=<id>`, so Back works) shows its details beside its scans when the owner
  * allowed them. No review, no reading again, no links into the owner's own pages.
  */
-function SharedContent({ token }: { token: string }) {
+function SharedContent({ token }: { token: string; shareId?: string }) {
   const [params, setParams] = useSearchParams();
   const { t, tn, lang, preferLang } = useI18n();
   const [docs, setDocs] = useState<SharedListDocument[]>([]);

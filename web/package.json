@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && tsc -p tsconfig.core.json && vite build",
     "preview": "vite preview",
-    "test": "vitest run --exclude \"src/core/**\" && vitest run -c vitest.core.config.mjs",
+    "test": "vitest run --exclude \"src/core/**\" && vitest run -c vitest.core.config.mjs && vitest run -c vitest.relay.config.mjs",
     "check:browser": "node browser-check/run.mjs",
     "check:app": "node browser-check/app.mjs"
   },

@@ -21,6 +21,9 @@
     "paths": {
       "fastify": [
         "../server/node_modules/fastify/fastify.d.ts"
+      ],
+      "@langchain/google-common": [
+        "../server/node_modules/@langchain/google-common/dist/index.d.ts"
       ]
     }
   },
@@ -32,6 +35,8 @@
     "../server/src/__tests__",
     "../server/src/__integration__",
     "../server/src/**/*.test.ts",
-    "src/e2e"
+    "src/e2e",
+    "../server/src/relay",
+    "src/core/llm.test.ts"
   ]
 }

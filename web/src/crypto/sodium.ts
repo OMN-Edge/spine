@@ -7,10 +7,17 @@ import sodiumLib from 'libsodium-wrappers-sumo';
 export type Sodium = typeof sodiumLib;
 
 let ready: Promise<Sodium> | null = null;
+let loaded = false;
 
 export function sodium(): Promise<Sodium> {
-  ready ??= sodiumLib.ready.then(() => sodiumLib);
+  ready ??= sodiumLib.ready.then(() => { loaded = true; return sodiumLib; });
   return ready;
+}
+
+/** The library, for code that cannot wait (a file read that must answer at once). Only after `await sodium()` has been done once. */
+export function sodiumNow(): Sodium {
+  if (!loaded) throw new Error('libsodium is not ready yet');
+  return sodiumLib;
 }
 
 export const toB64 = (s: Sodium, bytes: Uint8Array): string => s.to_base64(bytes, s.base64_variants.URLSAFE_NO_PADDING);

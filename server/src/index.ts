@@ -22,6 +22,8 @@ import { demoRoutes } from './routes/demo.js';
 import { ownAccountRoutes } from './routes/own-account.js';
 import { passkeyRoutes } from './routes/passkeys.js';
 import { vaultRoutes } from './routes/vault.js';
+import { relayRoutes } from './routes/relay.js';
+import { sharedRoutes, sweepShares } from './routes/shared.js';
 import { chatRoutes } from './routes/chat.js';
 import { shareRoutes } from './routes/share.js';
 import { publicShareRoutes } from './routes/public-share.js';
@@ -153,6 +155,8 @@ await app.register(demoRoutes);
 await app.register(ownAccountRoutes);
 await app.register(passkeyRoutes);
 await app.register(vaultRoutes);
+await app.register(relayRoutes);
+await app.register(sharedRoutes);
 await app.register(chatRoutes);
 await app.register(shareRoutes);
 // The share entry route serves the SPA shell, so it needs the build's path.
@@ -205,6 +209,10 @@ for (const id of rewritten.unrecognised) {
 
 // The job registry is in-memory, so anything still marked in-flight was
 // stranded by a previous process and will never progress.
+// Sealed shares that have ended are deleted: at start, and hourly.
+await sweepShares().catch(() => undefined);
+setInterval(() => void sweepShares().catch(() => undefined), 60 * 60 * 1000).unref();
+
 const stranded = await reconcileStalledJobs();
 if (stranded > 0) app.log.warn(`marked ${stranded} interrupted source_file(s) as errored`);
 

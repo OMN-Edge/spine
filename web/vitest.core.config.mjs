@@ -7,5 +7,5 @@ export default defineConfig({
   // SQLite's Node build and the swapped-out files do not need from us).
   plugins: corePlugins({ inNode: true }).slice(1),
   resolve: { alias: coreAliases.filter(a => !String(a.find).includes('child_process')) },
-  test: { include: ['src/core/**/*.test.ts'], server: { deps: { inline: [/sqlite-wasm/] } } },
+  test: { include: ['src/core/**/*.test.ts'], exclude: ['src/core/llm.test.ts', '**/node_modules/**'], server: { deps: { inline: [/sqlite-wasm/] } } },
 });

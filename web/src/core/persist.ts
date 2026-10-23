@@ -1,4 +1,4 @@
-import { sodium } from '../crypto/sodium';
+import { sodium, sodiumNow } from '../crypto/sodium';
 import { memory } from './shims/fs';
 
 /**
@@ -16,6 +16,8 @@ import { memory } from './shims/fs';
 export interface ObjectStore {
   put(kind: 'bundle' | 'blob' | 'library', id: string, plaintext: Uint8Array, baseSeq: number): Promise<number>;
   get(id: string, kind: 'bundle' | 'blob' | 'library'): Promise<{ plaintext: Uint8Array; seq: number }>;
+  /** The same, answered at once, for a file read by code that cannot wait. */
+  getSync(id: string, kind: 'blob'): Uint8Array;
   remove(id: string, baseSeq: number): Promise<unknown>;
 }
 
@@ -66,19 +68,21 @@ export class Persistence {
     }
     for (const [path, part] of Object.entries(this.index.files)) memory.known(path, part.size);
     memory.settle();
+    memory.useLoader(path => this.fill(path));
     const out = new Uint8Array(pieces.reduce((n, p) => n + p.length, 0));
     let at = 0;
     for (const p of pieces) { out.set(p, at); at += p.length; }
     return out;
   }
 
-  /** Brings a file the vault holds into memory. */
-  async fill(path: string): Promise<void> {
+  /** A file the vault holds, fetched when something reads it. Checked against what was saved. */
+  private fill(path: string): Uint8Array {
     const part = this.index.files[path];
-    if (!part) throw new Error(`${path} is not in the vault`);
-    const { plaintext } = await this.store.get(part.id, 'blob');
-    if ((await this.hash(plaintext)) !== part.hash) throw new Error('a file is not what was saved');
-    memory.fill(path, plaintext);
+    if (!part) throw Object.assign(new Error(`${path} is not in the vault`), { code: 'ENOENT' });
+    const data = this.store.getSync(part.id, 'blob');
+    const check = sodiumNow();
+    if (check.to_base64(check.crypto_generichash(24, data, null), check.base64_variants.URLSAFE_NO_PADDING) !== part.hash) throw new Error('a file is not what was saved');
+    return data;
   }
 
   /** One save at a time, in order. */

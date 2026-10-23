@@ -247,6 +247,20 @@ export function shareLinkRepository(db: Database): ShareLinkRepository {
       return row ? { ...row, include_scans: !!row.include_scans, require_approval: !!row.require_approval, allow_chat: !!row.allow_chat, revoked: !!row.revoked } : null;
     },
 
+    async keyFor(userId, linkId) {
+      const r = db.prepare('SELECT key FROM share_link_keys WHERE share_link_id = ? AND user_id = ?').get(linkId, owner(userId)) as { key: string } | undefined;
+      return r?.key ?? null;
+    },
+
+    async setKey(userId, linkId, key) {
+      db.prepare('INSERT INTO share_link_keys (share_link_id, user_id, key) VALUES (?, ?, ?) ON CONFLICT(share_link_id) DO UPDATE SET key = excluded.key WHERE user_id = excluded.user_id').run(linkId, owner(userId), key);
+    },
+
+    async requestKey(userId, id) {
+      const r = db.prepare('SELECT visitor_hash FROM share_access_requests WHERE id = ? AND user_id = ?').get(id, owner(userId)) as { visitor_hash: string } | undefined;
+      return r?.visitor_hash ?? null;
+    },
+
     async update(userId, id, patch, at) {
       return updateTx(owner(userId), id, patch, at);
     },

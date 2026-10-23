@@ -90,11 +90,15 @@ export async function publicShareRoutes(
     // before the lookup.
     const link = await store.shareLinks.findLiveByTokenHash(hashShareToken(req.params.token));
 
+    // A sealed share (docs/crypto-design.md, stage 4) is opened by the page itself, which asks the server about it and says if it ended, so
+    // the app is served for its id whatever its state. The server cannot tell what is in it; the access is noted when the page opens it.
+    const sealed = !link && /^[A-Za-z0-9_-]{22,64}$/.test(req.params.token) ? await store.shared.get(req.params.token) : null;
+
     // A dead link gets a plain page rather than the app, so a recipient whose
     // link expired is not left looking at a spinner.
-    if (!link) return reply.status(410).type('text/html').send(DEAD_LINK_PAGE);
+    if (!link && !sealed) return reply.status(410).type('text/html').send(DEAD_LINK_PAGE);
 
-    await logAccess(store, req, link.id, { countView: false });
+    if (link) await logAccess(store, req, link.id, { countView: false });
 
     if (!existsSync(appShellPath)) {
       req.log.error({ appShellPath }, 'share view requested but the web build is missing');

@@ -619,3 +619,13 @@ export function vaultLimits(env: NodeJS.ProcessEnv = process.env): { accountByte
   };
   return { accountBytes: mb(env.SPINE_VAULT_MAX_MB, 5120), objectBytes: mb(env.SPINE_VAULT_MAX_OBJECT_MB, 100) };
 }
+
+/**
+ * What one account may publish as sealed shares (docs/crypto-design.md, stage 4): bytes only, since the server cannot see what is in
+ * them. `SPINE_SHARE_MAX_MB` for one sealed database or page image (default 100), `SPINE_SHARE_MAX_TOTAL_MB` for all of an account's
+ * live shares together (default 1024), `SPINE_SHARE_MAX_LIVE` for how many are live at once (default 50). A bad value gives the default.
+ */
+export function sharedLimits(env: NodeJS.ProcessEnv = process.env): { partBytes: number; totalBytes: number; live: number } {
+  const n = (raw: string | undefined, fallback: number) => (Number.isFinite(Number(raw)) && Number(raw) >= 1 ? Math.floor(Number(raw)) : fallback);
+  return { partBytes: n(env.SPINE_SHARE_MAX_MB, 100) * 1024 * 1024, totalBytes: n(env.SPINE_SHARE_MAX_TOTAL_MB, 1024) * 1024 * 1024, live: n(env.SPINE_SHARE_MAX_LIVE, 50) };
+}

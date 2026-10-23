@@ -10,6 +10,7 @@ export default function DeviceImg({ src, ...rest }: ImgHTMLAttributes<HTMLImageE
     deviceObjectUrl(src).then(u => { if (live) setUrl(u); }).catch(() => undefined);
     return () => { live = false; };
   }, [src]);
+  // No address until the picture is here (a placeholder as a data: address would need the page's policy to allow data:).
   // eslint-disable-next-line jsx-a11y/alt-text -- the caller gives the alt text in `rest`
-  return <img {...rest} src={url ?? 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=='} />;
+  return <img {...rest} src={url ?? undefined} />;
 }

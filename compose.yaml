@@ -41,6 +41,8 @@ services:
       - "443:443"
     environment:
       SPINE_DOMAIN: ${SPINE_DOMAIN:?set SPINE_DOMAIN in .env}
+      # The address the page may send model calls to (docs/relay.md); empty when there is none.
+      SPINE_RELAY_URL: ${SPINE_RELAY_URL:-}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data

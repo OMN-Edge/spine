@@ -5,5 +5,6 @@ import { corePlugins, coreAssets } from '../vite.core.shared.mjs';
 export default defineConfig({
   root: import.meta.dirname,
   plugins: [...corePlugins(), coreAssets()],
+  define: { 'process.env': 'globalThis.process.env' },
   build: { outDir: 'dist', emptyOutDir: true, minify: false, target: 'es2022', rollupOptions: { shimMissingExports: true, onwarn() {} } },
 });

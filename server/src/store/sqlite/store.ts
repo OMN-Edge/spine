@@ -19,6 +19,7 @@ import { episodeRepository } from './episodes.js';
 import { conversationRepository } from './conversations.js';
 import { userRepository } from './users.js';
 import { vaultRepository } from './vault.js';
+import { sharedRepository } from './shared.js';
 import type { Store, StoreConfig } from '../types.js';
 
 /**
@@ -54,6 +55,7 @@ function storeOver(db: Database, depth: number): Store {
     matchDecisions: matchDecisionRepository(db),
     sessions: sessionRepository(db),
     vault: vaultRepository(db),
+    shared: sharedRepository(db),
     maintenance: maintenanceRepository(db),
 
     /**

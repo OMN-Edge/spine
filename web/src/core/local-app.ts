@@ -189,10 +189,10 @@ export class LocalApp {
       if (!out.sent && result !== undefined && result !== reply) { out.payload = result; out.sent = true; }
       if (!out.sent) throw new Error('Promise may not be fulfilled with \'undefined\' when statusCode is not 204');
     } catch (err) {
-      // A request that cannot be answered until something outside it happens (a file to fetch) goes back to the caller, who asks again.
-      if ((err as { name?: string }).name === 'NeedsFile') throw err;
       const e = err as { statusCode?: number; message?: string; name?: string };
       const status = e.statusCode && e.statusCode >= 400 ? e.statusCode : 500;
+      // What the server's log would say: the request and the failure's own words.
+      if (status >= 500) console.error('a request failed', method, path, e.message ?? String(err));
       fail(status, status === 500 ? 'Internal Server Error' : (e.name ?? 'Error'), e.message ?? String(err));
     }
     return finish();

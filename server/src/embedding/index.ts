@@ -20,9 +20,16 @@ export function createEmbedder(config: EmbedderConfig): Embedder {
 
 let _embedder: Embedder | null = null;
 
+/** What the device adds to the embedder's settings: a source of passes for the relay in place of Google credentials. */
+let hooks: Pick<EmbedderConfig, 'tokenProvider' | 'fetchImpl'> = {};
+export function useEmbedderHooks(next: typeof hooks): void {
+  hooks = next;
+  _embedder = null;
+}
+
 /** Reads config on first use and memoizes. */
 export function getEmbedder(): Embedder {
-  if (!_embedder) _embedder = createEmbedder(loadEmbeddingConfig());
+  if (!_embedder) _embedder = createEmbedder({ ...loadEmbeddingConfig(), ...hooks });
   return _embedder;
 }
 

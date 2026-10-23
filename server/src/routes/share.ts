@@ -6,6 +6,7 @@ import { publicUrl } from '../config.js';
 import { isSupportedLanguage, SUPPORTED_LANGUAGES } from '../languages.js';
 import { warmTranslations } from '../translation.js';
 import { getMailer } from '../mail/index.js';
+import { shareHost } from '../share-host.js';
 import { createShareToken, hashShareToken } from '../share-token.js';
 import {
   resolveScope,
@@ -57,10 +58,25 @@ async function checkScope(userId: string, scope: unknown, scopeValue: unknown): 
   return { resolved };
 }
 
+/** What visitors did since the last look is brought in before the owner reads it. A server that cannot be reached leaves what is already here. */
+async function pullEvents(userId: string): Promise<void> {
+  await shareHost()?.pull(userId).catch(() => undefined);
+}
+
+/** The link as `listForShare` reads it, for the documents it shares now. */
+async function sharedDocumentIds(userId: string, link: { id: string; scope: string; scope_value: string | null; expires_at: string; include_scans: boolean; language: string | null; require_approval: boolean; allow_chat: boolean }): Promise<string[]> {
+  const docs = await getStore().documents.listForShare({
+    id: link.id, userId, scope: link.scope as ResolvedScope['scope'], scopeValue: link.scope_value, expiresAt: link.expires_at,
+    includeScans: link.include_scans, language: link.language, requireApproval: link.require_approval, allowChat: link.allow_chat,
+  });
+  return docs.map(d => d.id);
+}
+
 export async function shareRoutes(app: FastifyInstance) {
   app.addHook('preHandler', requireAuth);
 
   app.get('/api/share-links', async (req, reply) => {
+    await pullEvents(req.userId);
     return reply.send(await getStore().shareLinks.listFor(req.userId));
   });
 
@@ -122,19 +138,35 @@ export async function shareRoutes(app: FastifyInstance) {
       void getStore().documents.listForShare(link).then(docs => warmTranslations(req.userId, docs.map(d => d.id), language)).catch(() => undefined);
     }
 
-    const url = publicUrl(`/share/${token}`);
+    let url = publicUrl(`/share/${token}`);
+    const host = shareHost();
+    if (host) {
+      // The sealed copy is made here and sent; the address carries its key after the # (or not at all, for a link that needs approval).
+      try {
+        const created = (await getStore().shareLinks.findFor(req.userId, id))!;
+        const { key } = await host.publish({ link: created, userId: req.userId, documentIds: await sharedDocumentIds(req.userId, created), newKey: true });
+        await getStore().shareLinks.setKey(req.userId, id, key);
+        url = host.addressOf(id, require_approval ? null : key);
+      } catch (err) {
+        await getStore().shareLinks.revoke(req.userId, id);
+        const status = (err as { status?: number }).status;
+        return reply.status(status && status >= 400 && status < 500 ? status : 502).send({ error: (err as Error).message || 'the link could not be published', code: (err as { code?: string }).code });
+      }
+    }
     // `approval_mail`: whether the owner will be told by mail. Without a mailer the requests wait on the Share links page.
-    return reply.status(201).send({ id, token, url, expires_at: expires.toISOString(), approval_mail: require_approval ? getMailer().enabled : null });
+    return reply.status(201).send({ id, token: host ? id : token, url, expires_at: expires.toISOString(), approval_mail: require_approval ? (host ? host.mailsOwner() : getMailer().enabled) : null });
   });
 
   // Browsers waiting to open links that need approval (M-19), and the owner's decision. The mail's link opens the page
   // for one request; deciding is a POST from the signed-in owner, never a GET, so a mail scanner that follows the link
   // cannot approve anything.
   app.get('/api/share-requests', async (req, reply) => {
+    await pullEvents(req.userId);
     return reply.header('Cache-Control', 'no-store').send(await getStore().shareLinks.listRequests(req.userId, new Date().toISOString()));
   });
 
   app.get<{ Params: { id: string } }>('/api/share-requests/:id', async (req, reply) => {
+    await pullEvents(req.userId);
     const found = await getStore().shareLinks.getRequest(req.userId, req.params.id, new Date().toISOString());
     if (!found) return reply.status(404).send({ error: 'not found' });
     return reply.header('Cache-Control', 'no-store').send(found);
@@ -149,6 +181,17 @@ export async function shareRoutes(app: FastifyInstance) {
     if (!found) return reply.status(404).send({ error: 'not found' });
     // Approving on a link that is gone would look like it worked; say it did not. Denying is always allowed.
     if (decision === 'approve' && !found.link_active) return reply.status(409).send({ error: 'this link is no longer active' });
+    const host = shareHost();
+    if (host) {
+      // The answer goes to the server first: an approval carries the share key wrapped to that browser's own key, which only this device can make.
+      const [visitorKey, shareKey] = await Promise.all([store.shareLinks.requestKey(req.userId, req.params.id), store.shareLinks.keyFor(req.userId, found.share_link_id)]);
+      if (!visitorKey || (decision === 'approve' && !shareKey)) return reply.status(409).send({ error: 'this request cannot be answered from here' });
+      try {
+        await host.answer(req.userId, { id: req.params.id, linkId: found.share_link_id, visitorKey }, decision, decision === 'approve' ? shareKey : null);
+      } catch (err) {
+        return reply.status(502).send({ error: (err as Error).message || 'the answer could not be sent' });
+      }
+    }
     await store.shareLinks.decideRequest(req.userId, req.params.id, decision === 'approve' ? 'approved' : 'denied', now);
     return reply.send({ ok: true, status: decision === 'approve' ? 'approved' : 'denied' });
   });
@@ -156,6 +199,7 @@ export async function shareRoutes(app: FastifyInstance) {
   // One link, to inspect: how it is set now, what it shares now, who has read it, who asked, and what has happened to it.
   app.get<{ Params: { id: string } }>('/api/share-links/:id', async (req, reply) => {
     const store = getStore();
+    await pullEvents(req.userId);
     const link = await store.shareLinks.findFor(req.userId, req.params.id);
     if (!link) return reply.status(404).send({ error: 'not found' });
     const now = new Date().toISOString();
@@ -220,15 +264,38 @@ export async function shareRoutes(app: FastifyInstance) {
       patch.scopeValue = serializeScopeValue(checked.resolved);
     }
 
-    const result = await getStore().shareLinks.update(req.userId, req.params.id, patch, new Date().toISOString());
+    const store = getStore();
+    const before = await store.shareLinks.findFor(req.userId, req.params.id);
+    const result = await store.shareLinks.update(req.userId, req.params.id, patch, new Date().toISOString());
     if (result === 'not_found') return reply.status(404).send({ error: 'not found' });
     if (result === 'revoked') return reply.status(409).send({ error: 'a revoked link cannot be changed' });
+
+    const host = shareHost();
+    if (!host || !before) return reply.send({ ok: true });
+    // What is in the copy changed (or who may open it): the copy is made again. Changing the approval setting makes it under a new key,
+    // so an address handed out earlier stops opening; the new address is in the answer.
+    const link = (await store.shareLinks.findFor(req.userId, req.params.id))!;
+    const approvalChanged = patch.requireApproval !== undefined && patch.requireApproval !== before.require_approval;
+    const contentChanged = ['label', 'includeScans', 'allowChat', 'language', 'scope', 'scopeValue'].some(k => (patch as Record<string, unknown>)[k] !== undefined);
+    try {
+      if (contentChanged || approvalChanged) {
+        const { key } = await host.publish({ link, userId: req.userId, documentIds: await sharedDocumentIds(req.userId, link), newKey: approvalChanged });
+        await store.shareLinks.setKey(req.userId, link.id, key);
+        return reply.send({ ok: true, url: host.addressOf(link.id, link.require_approval ? null : key) });
+      }
+      if (patch.expiresAt) await host.update({ id: link.id, expiresAt: link.expires_at, requireApproval: link.require_approval });
+    } catch (err) {
+      return reply.status(502).send({ error: (err as Error).message || 'the change could not be sent' });
+    }
     return reply.send({ ok: true });
   });
 
   app.delete<{ Params: { id: string } }>('/api/share-links/:id', async (req, reply) => {
     const revoked = await getStore().shareLinks.revoke(req.userId, req.params.id);
     if (!revoked) return reply.status(404).send({ error: 'not found' });
+    // The sealed copy is deleted at the server, so revoking is immediate there too. A server that cannot be reached must not leave the
+    // owner thinking it is done: say so, and the link stays revoked here for the next try.
+    try { await shareHost()?.revoke(req.params.id); } catch (err) { return reply.status(502).send({ error: (err as Error).message || 'the link was revoked here but the server could not be told', revoked: true }); }
     return reply.send({ ok: true });
   });
 }

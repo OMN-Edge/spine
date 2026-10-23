@@ -184,11 +184,13 @@ function setup_nginx() {
   # Install Spine's site config
   # SPINE_REPO_URL is optional: without it the /source, /docs and /security redirects are left out.
   REPO_URL=$(grep -E '^SPINE_REPO_URL=' "${SPINE_DIR}/.env" | cut -d= -f2 | tr -d '"' | tr -d "'" | sed 's|/*$||')
+  # SPINE_RELAY_URL is the address the page may send model calls to (docs/relay.md); it goes into the page's content security policy.
+  RELAY_URL=$(grep -E '^SPINE_RELAY_URL=' "${SPINE_DIR}/.env" | cut -d= -f2 | tr -d '"' | tr -d "'" | sed 's|/*$||')
   if [ -n "${REPO_URL}" ]; then
-    sed -e "s|SPINE_REPO_URL|${REPO_URL}|g" -e "s/SPINE_DOMAIN/${DOMAIN}/g" "${SPINE_DIR}/nginx/spine.conf"
+    sed -e "s|SPINE_REPO_URL|${REPO_URL}|g" -e "s|SPINE_RELAY_URL|${RELAY_URL}|g" -e "s/SPINE_DOMAIN/${DOMAIN}/g" "${SPINE_DIR}/nginx/spine.conf"
   else
     echo "SPINE_REPO_URL not set: no /source, /docs or /security redirects."
-    sed -e '/SPINE_REPO_URL/d' -e "s/SPINE_DOMAIN/${DOMAIN}/g" "${SPINE_DIR}/nginx/spine.conf"
+    sed -e '/SPINE_REPO_URL/d' -e "s|SPINE_RELAY_URL|${RELAY_URL}|g" -e "s/SPINE_DOMAIN/${DOMAIN}/g" "${SPINE_DIR}/nginx/spine.conf"
   fi | tee /etc/nginx/sites-available/spine > /dev/null
 
   # security.txt (RFC 9116) expires after a year; running -n again renews it.

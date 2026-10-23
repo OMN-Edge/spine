@@ -142,6 +142,16 @@ describe('P1 — deny by default', () => {
     'POST /api/auth/kdf',
     'POST /api/auth/reset/keys',
     'GET /share/:token',
+    // Public on purpose, and known only by the random id in the link: they answer with metadata and sealed bytes, nothing a person can
+    // read, and accept a browser's request, its public key and its note that it opened the link (shared.test.ts).
+    'GET /api/shared/:id/meta',
+    'GET /api/shared/:id/bundle',
+    'GET /api/shared/:id/config',
+    'GET /api/shared/:id/blob/:n',
+    'POST /api/shared/:id/access-request',
+    'GET /api/shared/:id/access-request/:rid',
+    'POST /api/shared/:id/opened',
+    'POST /api/shared/:id/relay-token',
     'GET /api/share/:token/documents',
     // Public on purpose, and scoped by the link, not a session: public-share-detail.test.ts.
     'GET /api/share/:token/documents/:id',

@@ -4,96 +4,133 @@ import type { FromWorker, Part, ToWorker } from './protocol';
  * The page's side of the core: starts the worker, and answers `fetch`-shaped calls from it. `deviceFetch` is what the app's requests
  * for records go through; the ones for the account (sign-in, the vault's objects) still go to the server.
  */
-let worker: Worker | null = null;
-/** Resolves when the worker has started listening; a message sent before would be lost. */
-let loaded: Promise<void> = Promise.resolve();
-let next = 1;
-let onLoaded: () => void = () => {};
-const waiting = new Map<number, { resolve: (m: Extract<FromWorker, { ok: true }>) => void; reject: (e: Error) => void }>();
+class CoreWorker {
+  private worker: Worker | null = null;
+  /** Resolves when the worker has started listening; a message sent before would be lost. */
+  private loaded: Promise<void> = Promise.resolve();
+  private onLoaded: () => void = () => {};
+  private next = 1;
+  private waiting = new Map<number, { resolve: (m: Extract<FromWorker, { ok: true }>) => void; reject: (e: Error) => void }>();
+  private ready = false;
 
-function ensure(): Worker {
-  if (worker) return worker;
-  worker = new Worker(new URL('./core.worker.ts', import.meta.url), { type: 'module' });
-  loaded = new Promise(resolve => { onLoaded = resolve; });
-  worker.onmessage = (event: MessageEvent<FromWorker>) => {
-    const m = event.data;
-    // SQLite's own worker support announces itself on the same channel; it is not for us.
-    if (typeof m?.id !== 'number') return;
-    if ('trace' in m) { if (m.trace === 'loaded') onLoaded(); else console.debug('[core]', m.trace); return; }
-    const w = waiting.get(m.id);
-    if (!w) return;
-    waiting.delete(m.id);
-    if (m.ok) w.resolve(m);
-    else w.reject(Object.assign(new Error(m.error.message), m.error));
-  };
-  // A worker that cannot start (or dies) must not leave every request waiting for an answer that will never come.
-  worker.onerror = event => {
-    const error = Object.assign(new Error(event.message || 'the core could not start'), { name: 'CoreError' });
-    console.error('the core failed', event.message, event.filename, event.lineno);
-    for (const w of waiting.values()) w.reject(error);
-    waiting.clear();
-  };
-  return worker;
-}
+  private ensure(): Worker {
+    if (this.worker) return this.worker;
+    const worker = new Worker(new URL('./core.worker.ts', import.meta.url), { type: 'module' });
+    this.worker = worker;
+    this.loaded = new Promise(resolve => { this.onLoaded = resolve; });
+    worker.onmessage = (event: MessageEvent<FromWorker>) => {
+      const m = event.data;
+      // SQLite's own worker support announces itself on the same channel; it is not for us.
+      if (typeof m?.id !== 'number') return;
+      if ('trace' in m) { if (m.trace === 'loaded') this.onLoaded(); else console.debug('[core]', m.trace); return; }
+      const w = this.waiting.get(m.id);
+      if (!w) return;
+      this.waiting.delete(m.id);
+      if (m.ok) w.resolve(m);
+      else w.reject(Object.assign(new Error(m.error.message), m.error));
+    };
+    // A worker that cannot start (or dies) must not leave every request waiting for an answer that will never come.
+    worker.onerror = event => {
+      const error = Object.assign(new Error(event.message || 'the core could not start'), { name: 'CoreError' });
+      console.error('the core failed', event.message, event.filename, event.lineno);
+      for (const w of this.waiting.values()) w.reject(error);
+      this.waiting.clear();
+    };
+    return worker;
+  }
 
-type WithoutId<T> = T extends unknown ? Omit<T, 'id'> : never;
-function send(message: WithoutId<ToWorker>, transfer: Transferable[] = []) {
-  const id = next++;
-  const w = ensure();
-  return new Promise<Extract<FromWorker, { ok: true }>>((resolve, reject) => {
-    waiting.set(id, { resolve, reject });
-    void loaded.then(() => w.postMessage({ ...message, id }, transfer));
-  });
-}
+  send(message: WithoutId<ToWorker>, transfer: Transferable[] = []) {
+    const id = this.next++;
+    const w = this.ensure();
+    return new Promise<Extract<FromWorker, { ok: true }>>((resolve, reject) => {
+      this.waiting.set(id, { resolve, reject });
+      void this.loaded.then(() => w.postMessage({ ...message, id }, transfer));
+    });
+  }
 
-export const device = {
   /** Opens the vault with this master key and loads the records. The key is handed over, not copied: this page no longer has it. */
   async unlock(masterKey: Uint8Array): Promise<void> {
-    await send({ type: 'start', masterKey }, [masterKey.buffer]);
-    ready = true;
-  },
+    await this.send({ type: 'start', masterKey }, [masterKey.buffer]);
+    this.ready = true;
+  }
+
+  /** Reads a share: fetches the sealed copy, opens it with the key from the link, and answers from it. */
+  async openShare(shareId: string, key: string): Promise<void> {
+    await this.send({ type: 'startShare', shareId, key });
+    this.ready = true;
+  }
+
   /** Saves what changed, lets go of everything, and stops the worker. */
   async lock(): Promise<void> {
-    if (worker) await send({ type: 'lock' }).catch(() => undefined);
-    worker?.terminate();
-    worker = null;
-    ready = false;
-  },
-  isOpen: () => ready,
-};
-let ready = false;
+    if (this.worker) await this.send({ type: 'lock' }).catch(() => undefined);
+    this.worker?.terminate();
+    this.worker = null;
+    this.ready = false;
+  }
 
-/** `fetch`, answered by the core. A form's files are read here and handed over as parts. */
-export async function deviceFetch(url: string, init: RequestInit = {}): Promise<Response> {
-  const headers: Record<string, string> = {};
-  new Headers(init.headers).forEach((v, k) => { headers[k] = v; });
-  let body: string | undefined;
-  let parts: Part[] | undefined;
-  const transfer: Transferable[] = [];
-  if (init.body instanceof FormData) {
-    parts = [];
-    for (const [fieldname, value] of init.body.entries()) {
-      if (typeof value === 'string') parts.push({ fieldname, value });
-      else { const data = await value.arrayBuffer(); transfer.push(data); parts.push({ fieldname, filename: value.name, mimetype: value.type, data }); }
+  isOpen = () => this.ready;
+
+  /** `fetch`, answered by the core. A form's files are read here and handed over as parts. */
+  async fetch(url: string, init: RequestInit = {}): Promise<Response> {
+    const headers: Record<string, string> = {};
+    new Headers(init.headers).forEach((v, k) => { headers[k] = v; });
+    let body: string | undefined;
+    let parts: Part[] | undefined;
+    const transfer: Transferable[] = [];
+    if (init.body instanceof FormData) {
+      parts = [];
+      for (const [fieldname, value] of init.body.entries()) {
+        if (typeof value === 'string') parts.push({ fieldname, value });
+        else { const data = await value.arrayBuffer(); transfer.push(data); parts.push({ fieldname, filename: value.name, mimetype: value.type, data }); }
+      }
+    } else if (typeof init.body === 'string') body = init.body;
+
+    try {
+      const m = await this.send({ type: 'request', method: init.method ?? 'GET', url, headers, body, parts }, transfer);
+      return new Response(m.status === 204 || m.status === 304 ? null : m.body, { status: m.status, headers: m.headers });
+    } catch (err) {
+      const e = err as { status?: number; code?: string; message: string };
+      if (e.status === 423) return new Response(JSON.stringify({ error: e.message, code: e.code }), { status: 423, headers: { 'content-type': 'application/json' } });
+      throw err;
     }
-  } else if (typeof init.body === 'string') body = init.body;
-
-  try {
-    const m = await send({ type: 'request', method: init.method ?? 'GET', url, headers, body, parts }, transfer);
-    return new Response(m.status === 204 || m.status === 304 ? null : m.body, { status: m.status, headers: m.headers });
-  } catch (err) {
-    const e = err as { status?: number; code?: string; message: string };
-    if (e.status === 423) return new Response(JSON.stringify({ error: e.message, code: e.code }), { status: 423, headers: { 'content-type': 'application/json' } });
-    throw err;
   }
 }
 
-/** Requests the server answers (the account, the vault's objects, what a share's recipient reads); every other `/api` call is the core's. */
-const SERVER_SIDE = /^\/(api\/(auth|account|legal|vault|share)\/|share\/)/;
+type WithoutId<T> = T extends unknown ? Omit<T, 'id'> : never;
 
-/** What the app calls instead of `fetch`: the core for records, the network for the rest. */
-export const appFetch = (url: string, init?: RequestInit): Promise<Response> =>
-  SERVER_SIDE.test(url) || !url.startsWith('/api/') ? fetch(url, init) : deviceFetch(url, init);
+/** The owner's core: their vault, opened with the master key. */
+export const device = new CoreWorker();
+/** A recipient's core: one share, opened with the key from its link. A separate worker, so an owner can open their own link in the same browser. */
+export const reader = new CoreWorker();
+export const deviceFetch = (url: string, init?: RequestInit) => device.fetch(url, init);
+
+/**
+ * Requests the server answers: the account, the vault's objects, and a share's sealed copy and handshake (`/api/shared/`, which is
+ * ciphertext and metadata). What a recipient reads of a share (`/api/share/<token>/...`) is answered by the reader's core; every other
+ * `/api` call is the owner's core.
+ */
+const SERVER_SIDE = /^\/(api\/(auth|account|legal|vault|shared)\/|share\/)/;
+const READER = /^\/api\/share\//;
+
+/** The share the reader's core has open, so that what the recipient opens can be noted at the server. */
+let reading: string | null = null;
+export const readingShare = (id: string | null) => { reading = id; };
+
+/** What the app calls instead of `fetch`: the cores for records, the network for the rest. */
+export async function appFetch(url: string, init?: RequestInit): Promise<Response> {
+  if (READER.test(url)) {
+    const res = await reader.fetch(url, init);
+    // The recipient's browser says that a document was opened: only the time, the country and the id inside the sealed copy are kept.
+    if (res.ok && reading && (init?.method ?? 'GET') === 'GET') {
+      const doc = /^\/api\/share\/[^/]+\/documents\/([^/?]+)$/.exec(url)?.[1];
+      if (doc || /^\/api\/share\/[^/]+\/documents(\?|$)/.test(url)) {
+        void fetch(`/api/shared/${encodeURIComponent(reading)}/opened`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(doc ? { document_id: doc } : {}) }).catch(() => undefined);
+      }
+    }
+    return res;
+  }
+  return SERVER_SIDE.test(url) || !url.startsWith('/api/') ? fetch(url, init) : deviceFetch(url, init);
+}
 
 /** A picture the core holds, as an address the page can show; the same address is reused, and the oldest are let go. */
 const shown = new Map<string, Promise<string>>();
@@ -101,7 +138,7 @@ const KEEP = 80;
 export function deviceObjectUrl(url: string): Promise<string> {
   let found = shown.get(url);
   if (found) { shown.delete(url); shown.set(url, found); return found; }
-  found = deviceFetch(url).then(async res => {
+  found = appFetch(url).then(async res => {
     if (!res.ok) throw new Error(`could not load ${url}`);
     return URL.createObjectURL(await res.blob());
   });

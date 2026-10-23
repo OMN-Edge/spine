@@ -107,6 +107,10 @@ export function userRepository(db: Database): UserRepository {
   // Children before parents, because foreign keys are enforced. The FTS triggers
   // on documents keep the search index in step.
   const OWNED_TABLES = [
+    'share_link_keys',
+    'shared_requests',
+    'shared_opens',
+    'shared_bundles',
     'match_decisions',
     'share_link_events',
     'share_link_access_log',

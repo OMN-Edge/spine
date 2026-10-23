@@ -1,6 +1,6 @@
 import { sodium } from './sodium.js';
 import {
-  createAccountKeys, deriveFromPassword, lock, newId, newProfileKey, openObject, openProfileKey, openProfileRecord, sealObject, sealProfileRecord,
+  createAccountKeys, deriveFromPassword, lock, newId, newProfileKey, openObject, openObjectNow, openProfileKey, openProfileRecord, sealObject, sealProfileRecord,
   unlockWithMaster, type KdfParams, type UnlockedKeys, type VaultKeyPayload,
 } from './keys.js';
 
@@ -150,6 +150,19 @@ export class VaultSession {
     const got = await this.fetchObject(id);
     const plaintext = await openObject(this.keyOf(got.profileId), kind, id, got.body, got.wrappedKey);
     return { plaintext, seq: got.seq, profileId: got.profileId };
+  }
+
+  /**
+   * `get` without waiting, for the core's file system, which must answer a read at once: a synchronous request, which a worker may make
+   * (a page may not). Libsodium and the profile must already be loaded.
+   */
+  getSync(id: string, kind: Exclude<ObjectKind, 'profile'>): Uint8Array {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', `/api/vault/objects/${encodeURIComponent(id)}`, false);
+    xhr.responseType = 'arraybuffer';
+    xhr.send();
+    if (xhr.status !== 200) throw Object.assign(new Error(`could not read an object of the vault (${xhr.status})`), { status: xhr.status });
+    return openObjectNow(this.keyOf(xhr.getResponseHeader('x-spine-profile') ?? ''), kind, id, new Uint8Array(xhr.response as ArrayBuffer), xhr.getResponseHeader('x-spine-wrapped-key') ?? '');
   }
 
   async remove(id: string, baseSeq: number): Promise<number> {

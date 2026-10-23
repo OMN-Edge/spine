@@ -7,6 +7,8 @@ export default defineConfig({
   plugins: [react(), coreAssets(), nodeModules()],
   // The core runs in a worker, built with Node's modules and native tools swapped for the device's (vite.core.shared.mjs).
   worker: { format: 'es', plugins: () => corePlugins() },
+  // The core reads its settings from `process.env`, which Vite would otherwise replace with an empty object (one the core could not set).
+  define: { 'process.env': 'globalThis.process.env' },
   server: {
     proxy: {
       '/api': 'http://localhost:3000',

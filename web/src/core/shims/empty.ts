@@ -5,3 +5,6 @@ export const createRequire = () => refuse('require');
 export class ChatVertexAI { constructor() { refuse('ChatVertexAI')(); } }
 export class ChatAnthropic { constructor() { refuse('ChatAnthropic')(); } }
 export class GoogleAuth { constructor() { refuse('GoogleAuth')(); } }
+export const hash = refuse('argon2 hash');
+export const verify = refuse('argon2 verify');
+export const Algorithm = { Argon2d: 0, Argon2i: 1, Argon2id: 2 };

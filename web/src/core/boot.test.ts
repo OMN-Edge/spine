@@ -20,6 +20,11 @@ function vault() {
       if (!o || o.kind !== kind) throw Object.assign(new Error('not found'), { status: 404 });
       return { plaintext: Uint8Array.from(o.data), seq: o.seq };
     },
+    getSync(id, kind) {
+      const o = objects.get(id);
+      if (!o || o.kind !== kind) throw new Error('not found');
+      return Uint8Array.from(o.data);
+    },
     async remove(id) { objects.delete(id); },
   };
   return { objects, store };

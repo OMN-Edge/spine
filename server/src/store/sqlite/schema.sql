@@ -596,3 +596,55 @@ CREATE TABLE IF NOT EXISTS vault_objects (
   PRIMARY KEY (user_id, id)
 );
 CREATE INDEX IF NOT EXISTS idx_vault_objects_seq ON vault_objects(user_id, seq);
+
+-- A link's sealed copy of the records it shares (docs/crypto-design.md, stage 4). The server holds bytes it cannot open: the key is
+-- in the address after the # (or goes to one browser, wrapped to its own key, when the owner approves). Nothing here says what is
+-- shared. `shared_requests` and `shared_opens` are what the recipient's browser did, kept only until the owner's device collects them.
+CREATE TABLE IF NOT EXISTS shared_bundles (
+  id TEXT PRIMARY KEY, -- random, in the link
+  user_id TEXT NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  require_approval INTEGER NOT NULL DEFAULT 0,
+  size INTEGER NOT NULL DEFAULT 0, -- the sealed database
+  blobs INTEGER NOT NULL DEFAULT 0, -- sealed files beside it (page images)
+  blob_bytes INTEGER NOT NULL DEFAULT 0,
+  revoked_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS shared_requests (
+  id TEXT PRIMARY KEY,
+  bundle_id TEXT NOT NULL REFERENCES shared_bundles(id),
+  user_id TEXT NOT NULL REFERENCES users(id),
+  visitor_key TEXT NOT NULL, -- the visitor browser's public key; the share key is wrapped to it on approval
+  status TEXT NOT NULL DEFAULT 'pending', -- 'pending' | 'approved' | 'denied'
+  wrapped_key TEXT, -- the share key sealed to visitor_key: only that browser can open it
+  note TEXT,
+  country TEXT,
+  requested_at TEXT NOT NULL,
+  decided_at TEXT,
+  pulled INTEGER NOT NULL DEFAULT 0, -- 1: the owner's device has collected it
+  UNIQUE (bundle_id, visitor_key)
+);
+
+CREATE TABLE IF NOT EXISTS shared_opens (
+  id INTEGER PRIMARY KEY,
+  bundle_id TEXT NOT NULL REFERENCES shared_bundles(id),
+  user_id TEXT NOT NULL REFERENCES users(id),
+  at TEXT NOT NULL,
+  country TEXT,
+  document_id TEXT, -- the id inside the sealed copy of a document the recipient opened; null for opening the link
+  count_view INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_shared_bundles_user ON shared_bundles(user_id);
+CREATE INDEX IF NOT EXISTS idx_shared_requests_user ON shared_requests(user_id, pulled);
+CREATE INDEX IF NOT EXISTS idx_shared_opens_user ON shared_opens(user_id);
+
+-- The key a link's sealed copy was made with, kept in the owner's own (sealed) records so the link's address can be shown again and an
+-- approval can wrap it to a visitor's browser. The server never has it.
+CREATE TABLE IF NOT EXISTS share_link_keys (
+  share_link_id TEXT PRIMARY KEY REFERENCES share_links(id),
+  user_id TEXT NOT NULL REFERENCES users(id),
+  key TEXT NOT NULL
+);

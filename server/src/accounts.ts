@@ -1,4 +1,5 @@
 import { removeAllObjects } from './vault-files.js';
+import { removeShare } from './shared-files.js';
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
@@ -128,6 +129,8 @@ export async function deleteAccount(userId: string): Promise<DeletedAccount> {
   fs.rmSync(path.join(resolveBackupDir(), 'originals', userId), { recursive: true, force: true });
 
   removeAllObjects(userId);
+  // The sealed shares too (their rows go with the account's, below).
+  for (const id of await store.shared.eraseFor(userId)) removeShare(id);
   await store.users.delete(userId);
   return summary;
 }

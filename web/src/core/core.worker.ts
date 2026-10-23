@@ -2,6 +2,8 @@ import './shims/globals';
 import { PassThrough } from 'stream';
 import { Buffer } from 'buffer';
 import { startCore, type Core } from './boot';
+import { startShareCore, type ShareCore } from './boot-share';
+import { applyRelayConfig } from './native/relay-auth';
 import { VaultSession } from '../crypto/vault-client';
 import type { FromWorker, Part, ToWorker } from './protocol';
 
@@ -10,7 +12,16 @@ import type { FromWorker, Part, ToWorker } from './protocol';
  * the master key the page handed over once at unlock, so the keys never sit in the page's own memory beyond that moment, and the
  * database never blocks the screen.
  */
-let core: Core | null = null;
+// A worker's console is easy to miss; what the core logs as a problem is also said on the page's console (its own words, no records).
+for (const level of ['warn', 'error'] as const) {
+  const original = console[level].bind(console);
+  console[level] = (...args: unknown[]) => {
+    original(...args);
+    (self as unknown as Worker).postMessage({ id: 0, trace: `${level}: ${args.map(a => (a instanceof Error ? a.message : typeof a === 'string' ? a : JSON.stringify(a))).join(' ').slice(0, 400)}` } satisfies FromWorker);
+  };
+}
+
+let core: Core | ShareCore | null = null;
 let session: VaultSession | null = null;
 
 const partOf = (p: Part) =>
@@ -30,6 +41,8 @@ async function start(masterKey: Uint8Array): Promise<void> {
   trace('loading profiles');
   const profiles = await session.loadProfiles();
   const profileId = profiles[0]?.id ?? (await session.createProfile('Me'));
+  // The model calls go through the relay: take the server's settings for them (nothing breaks if there is none).
+  trace((await applyRelayConfig().catch(() => false)) ? 'relay configured' : 'no relay');
   trace('starting the core');
   const s = session;
   core = await startCore({
@@ -37,6 +50,7 @@ async function start(masterKey: Uint8Array): Promise<void> {
     objects: {
       put: (kind, id, data, seq) => s.put(profileId, kind, id, data, seq),
       get: (id, kind) => s.get(id, kind),
+      getSync: (id, kind) => s.getSync(id, kind),
       remove: (id, seq) => s.remove(id, seq),
     },
   });
@@ -50,8 +64,12 @@ self.onmessage = async (event: MessageEvent<ToWorker>) => {
     if (m.type === 'start') {
       await start(m.masterKey);
       reply({ id: m.id, ok: true });
+    } else if (m.type === 'startShare') {
+      // Reading a share: no vault, no account; the key is the access.
+      core = await startShareCore(m.shareId, m.key);
+      reply({ id: m.id, ok: true });
     } else if (m.type === 'lock') {
-      await core?.flush().catch(() => undefined);
+      if (core && 'flush' in core) await core.flush().catch(() => undefined);
       core?.lock();
       await session?.close();
       core = null; session = null;

@@ -21,6 +21,8 @@ export const REPLACED = {
   'ingestion/text-pdf.ts': 'text-pdf.ts',
   'archive/zip-read.ts': 'zip-read.ts',
   'archive/zip-write.ts': 'zip-write.ts',
+  'llm/adapters/vertex.ts': 'llm-vertex.ts',
+  'geo.ts': 'geo.ts',
 };
 
 const replaceNativeFiles = {
@@ -41,8 +43,10 @@ export const coreAliases = [
   { find: /^(node:)?crypto$/, replacement: path.join(shims, 'crypto.ts') },
   { find: /^(node:)?url$/, replacement: path.join(shims, 'url.ts') },
   { find: /^(node:)?(child_process|module)$/, replacement: path.join(shims, 'empty.ts') },
+  // The one copy of LangChain the server's code uses, so a class made here is the same class there.
+  { find: /^(@langchain\/google-common)$/, replacement: path.join(here, '../server/node_modules/$1') },
   { find: /^pdfjs-dist\/legacy\/build\/pdf\.mjs$/, replacement: path.join(native, 'pdfjs.ts') },
-  { find: /^(sharp|pdfkit|yauzl|yazl|google-auth-library|@langchain\/google-vertexai|@langchain\/anthropic|better-sqlite3)$/, replacement: path.join(shims, 'empty.ts') },
+  { find: /^(sharp|pdfkit|yauzl|yazl|google-auth-library|@langchain\/google-vertexai|@langchain\/anthropic|better-sqlite3|@node-rs\/argon2)$/, replacement: path.join(shims, 'empty.ts') },
 ];
 
 /** `inNode`: the tests run in Node, which has these modules for real; only the swaps are wanted. */

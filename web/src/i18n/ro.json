@@ -1070,5 +1070,6 @@
  "Your records are encrypted on this device. Type your master password to open them.": "Dosarul dumneavoastră este criptat pe acest dispozitiv. Introduceți parola principală pentru a-l deschide.",
  "Master password": "Parola principală",
  "That is not the master password.": "Aceasta nu este parola principală.",
- "Opening…": "Se deschide…"
+ "Opening…": "Se deschide…",
+ "This address is incomplete or damaged. Ask the person who shared it for the whole link.": "Adresa este incompletă sau deteriorată. Cereți persoanei care a trimis-o linkul întreg."
 }

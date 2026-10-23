@@ -36,7 +36,7 @@ import type {
  * interface would weld it to `better-sqlite3`. The SQLite adapter returns
  * already-resolved values, which costs a microtask per call.
  *
- * Four exceptions to the user-scoping rule, each named here so that a fifth
+ * Five exceptions to the user-scoping rule, each named here so that a fifth
  * has to be argued for:
  *
  *  1. `shareLinks.findLiveByTokenHash`, `shareLinks.findRequest`/`createRequest`
@@ -44,9 +44,11 @@ import type {
  *     the token, never from a session (P12).
  *  2. `shareLinks.logAccess` — the caller is an unauthenticated reader by
  *     definition (P7).
- *  3. `maintenance.*` — boot-time operations across all rows, run by the
+ *  3. `shared.get`, `shared.createRequest`/`getRequest`, `shared.logOpen` and `shared.expired` — the public side of a sealed share: scoped
+ *     by the bundle's id, which is random and in the link, and answering only what the link's holder may see (metadata and sealed bytes).
+ *  4. `maintenance.*` — boot-time operations across all rows, run by the
  *     process itself with no acting user.
- *  4. `users.*` — the identity layer. Login has to find a user by email before
+ *  5. `users.*` — the identity layer. Login has to find a user by email before
  *     there is an acting user, and every request resolves its session to a user
  *     here.
  */
@@ -69,6 +71,7 @@ export interface Store {
   matchDecisions: MatchDecisionRepository;
   sessions: SessionRepository;
   vault: VaultRepository;
+  shared: SharedRepository;
   maintenance: MaintenanceRepository;
 
   /**
@@ -717,6 +720,11 @@ export interface ShareLinkRepository {
 
   /** One of the user's links, or null. */
   findFor(userId: string, id: string): Promise<ShareLinkSummary | null>;
+  /** The key the link's sealed copy was made with (kept in the owner's own records), or null. */
+  keyFor(userId: string, linkId: string): Promise<string | null>;
+  setKey(userId: string, linkId: string, key: string): Promise<void>;
+  /** What a request holds in place of the cookie digest: the visitor browser's public key, for wrapping the share key to it. Null if not the user's. */
+  requestKey(userId: string, id: string): Promise<string | null>;
   /**
    * Changes a link after it was made. A revoked link cannot be changed. What changed is written to the link's history, and
    * turning approval on drops the requests it already held, so a browser approved under an earlier setting is not let back in.
@@ -1095,4 +1103,71 @@ export interface VaultRepository {
   usage(userId: string): Promise<{ objects: number; bytes: number }>;
   /** Removes the vault and every object row; the ids, so the caller can delete the files. */
   erase(userId: string): Promise<string[]>;
+}
+
+/** A link's sealed copy, as the server knows it: when it ends, whether it needs approval, how big it is. Nothing of what is in it. */
+export interface SharedBundle {
+  id: string;
+  userId: string;
+  createdAt: string;
+  expiresAt: string;
+  requireApproval: boolean;
+  size: number;
+  blobs: number;
+  blobBytes: number;
+  revokedAt: string | null;
+}
+
+export interface SharedRequest {
+  id: string;
+  bundleId: string;
+  visitorKey: string;
+  status: 'pending' | 'approved' | 'denied';
+  wrappedKey: string | null;
+  note: string | null;
+  country: string | null;
+  requestedAt: string;
+  decidedAt: string | null;
+}
+
+export interface SharedOpen {
+  id: number;
+  bundleId: string;
+  at: string;
+  country: string | null;
+  documentId: string | null;
+  countView: boolean;
+}
+
+export interface SharedRepository {
+  /** Public: by the id in the link. Revoked and expired ones are returned as they are; the caller decides. */
+  get(id: string): Promise<SharedBundle | null>;
+  /** The owner's: makes the row, or replaces its metadata when the same owner publishes again; 'taken' if the id is someone else's. */
+  put(userId: string, bundle: { id: string; expiresAt: string; requireApproval: boolean; size: number; blobs: number; blobBytes: number }, now: string): Promise<'ok' | 'taken' | 'revoked'>;
+  /** Counts a sealed file uploaded beside the database. */
+  addBlob(userId: string, id: string, bytes: number): Promise<boolean>;
+  /** A change of end date or approval, for the owner's own live bundle. */
+  update(userId: string, id: string, patch: { expiresAt?: string; requireApproval?: boolean }): Promise<boolean>;
+  /** Ends it now and forgets every wrapped key; false if it is not this owner's or already revoked. */
+  revoke(userId: string, id: string, now: string): Promise<boolean>;
+  /** Live bundles and the bytes they hold, for the owner's limits. */
+  usage(userId: string, now: string): Promise<{ bundles: number; bytes: number }>;
+  /** Bundles that have ended (past their end, or revoked) and still have files: their wrapped keys are forgotten and their sizes zeroed, and the ids come back so the caller deletes the files. */
+  endedWithFiles(now: string): Promise<Array<{ id: string; userId: string }>>;
+  /** Removes the rows of bundles that ended more than `graceMs` ago (the row is what tells a late visitor that it ended). */
+  forgetEnded(now: string, graceMs: number): Promise<number>;
+  /** Every bundle id of one owner, for deleting an account; the rows are removed. */
+  eraseFor(userId: string): Promise<string[]>;
+
+  /** Public: a browser asks. Null when too many wait already, or the browser asked before (then `getRequest` has the answer). */
+  createRequest(bundleId: string, request: { id: string; visitorKey: string; note: string | null; country: string | null; requestedAt: string }, maxWaiting: number): Promise<SharedRequest | 'waiting' | 'known'>;
+  getRequest(bundleId: string, id: string): Promise<SharedRequest | null>;
+  /** The owner's: requests their device has not collected. */
+  pendingRequests(userId: string): Promise<SharedRequest[]>;
+  ackRequests(userId: string, ids: string[]): Promise<void>;
+  decide(userId: string, id: string, status: 'approved' | 'denied', wrappedKey: string | null, now: string): Promise<boolean>;
+
+  logOpen(bundleId: string, at: string, country: string | null, documentId: string | null, countView: boolean): Promise<void>;
+  pendingOpens(userId: string, limit: number): Promise<SharedOpen[]>;
+  ackOpens(userId: string, ids: number[]): Promise<void>;
 }

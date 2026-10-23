@@ -21,6 +21,11 @@ function fakeVault() {
       if (!o || o.kind !== kind) throw Object.assign(new Error('not found'), { status: 404 });
       return { plaintext: Uint8Array.from(o.data), seq: o.seq };
     },
+    getSync(id, kind) {
+      const o = objects.get(id);
+      if (!o || o.kind !== kind) throw new Error('not found');
+      return Uint8Array.from(o.data);
+    },
     async remove(id, base) {
       if (objects.get(id)?.seq !== base) throw new Error('conflict');
       objects.delete(id);
@@ -85,9 +90,10 @@ describe('what the device keeps in the vault', () => {
     await fresh.load();
     expect(fs.existsSync('/data/originals/a.pdf')).toBe(true);
     expect(fs.statSync('/data/originals/a.pdf').size).toBe(4);
-    expect(() => fs.readFileSync('/data/originals/a.pdf')).toThrow(/not loaded yet/);
-    await fresh.fill('/data/originals/a.pdf');
+    expect(memory.isResident('/data/originals/a.pdf')).toBe(false);
+    // read when something asks, with no step in between
     expect([...(fs.readFileSync('/data/originals/a.pdf') as Buffer)]).toEqual([1, 2, 3, 4]);
+    expect(memory.isResident('/data/originals/a.pdf')).toBe(true);
     expect(fs.existsSync('/data/tmp/scratch')).toBe(false);
   });
 

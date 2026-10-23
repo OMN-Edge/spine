@@ -23,6 +23,10 @@
     "src/e2e",
     "src/core/boot.ts",
     "src/core/boot.test.ts",
+    "src/core/llm.test.ts",
+    "src/core/native",
+    "src/core/boot-share.ts",
+    "src/core/share/host.ts",
     "src/core/core.worker.ts"
   ]
 }

@@ -1,4 +1,4 @@
-import { sodium } from './sodium.js';
+import { sodium, sodiumNow } from './sodium.js';
 
 /**
  * Sealing: XChaCha20-Poly1305 with a fresh random 24-byte nonce, written in front of the ciphertext (nonce, then ciphertext and tag).
@@ -26,6 +26,18 @@ export async function seal(key: Uint8Array, plaintext: Uint8Array, context: stri
 
 export async function open(key: Uint8Array, sealed: Uint8Array, context: string): Promise<Uint8Array> {
   const s = await sodium();
+  const n = s.crypto_aead_xchacha20poly1305_ietf_NPUBBYTES;
+  if (sealed.length < n + s.crypto_aead_xchacha20poly1305_ietf_ABYTES) throw new OpenError();
+  try {
+    return s.crypto_aead_xchacha20poly1305_ietf_decrypt(null, sealed.subarray(n), utf8(context), sealed.subarray(0, n), key);
+  } catch {
+    throw new OpenError();
+  }
+}
+
+/** `open`, for a caller that cannot wait; libsodium must already be loaded. */
+export function openNow(key: Uint8Array, sealed: Uint8Array, context: string): Uint8Array {
+  const s = sodiumNow();
   const n = s.crypto_aead_xchacha20poly1305_ietf_NPUBBYTES;
   if (sealed.length < n + s.crypto_aead_xchacha20poly1305_ietf_ABYTES) throw new OpenError();
   try {
