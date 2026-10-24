@@ -7,6 +7,8 @@ import { isSupportedLanguage, SUPPORTED_LANGUAGES } from '../languages.js';
 import { warmTranslations } from '../translation.js';
 import { getMailer } from '../mail/index.js';
 import { shareHost } from '../share-host.js';
+import { logger } from '../logger.js';
+import { describeError } from '../failure.js';
 import { createShareToken, hashShareToken } from '../share-token.js';
 import {
   resolveScope,
@@ -74,6 +76,32 @@ async function sharedDocumentIds(userId: string, link: { id: string; scope: stri
 
 export async function shareRoutes(app: FastifyInstance) {
   app.addHook('preHandler', requireAuth);
+
+  // A link follows the records for as long as it lasts: after the owner's records change, the device asks for the copies to be looked at
+  // again, and one that would now hold something different is made again under the same key (a deleted document leaves the copy, a new one
+  // inside the link's scope joins it). Nothing is sent for a copy that would be the same.
+  app.post('/api/share-links/refresh', async (req, reply) => {
+    const host = shareHost();
+    if (!host) return reply.send({ checked: 0, published: 0 });
+    const store = getStore();
+    const now = Date.now();
+    let checked = 0;
+    let published = 0;
+    for (const summary of await store.shareLinks.listFor(req.userId)) {
+      if (summary.revoked || new Date(summary.expires_at).getTime() <= now) continue;
+      const link = await store.shareLinks.findFor(req.userId, summary.id);
+      if (!link) continue;
+      checked++;
+      try {
+        const result = await host.publish({ link, userId: req.userId, documentIds: await sharedDocumentIds(req.userId, link), newKey: false, unlessUnchanged: true });
+        if (result.published) { published++; await store.shareLinks.setCopyDigest(req.userId, link.id, result.digest); }
+      } catch (err) {
+        // A server that cannot be reached leaves the old copy; the next change tries again.
+        logger.warn('a share could not be refreshed', { linkId: link.id, error: describeError(err) });
+      }
+    }
+    return reply.send({ checked, published });
+  });
 
   app.get('/api/share-links', async (req, reply) => {
     await pullEvents(req.userId);
@@ -144,8 +172,9 @@ export async function shareRoutes(app: FastifyInstance) {
       // The sealed copy is made here and sent; the address carries its key after the # (or not at all, for a link that needs approval).
       try {
         const created = (await getStore().shareLinks.findFor(req.userId, id))!;
-        const { key } = await host.publish({ link: created, userId: req.userId, documentIds: await sharedDocumentIds(req.userId, created), newKey: true });
+        const { key, digest } = await host.publish({ link: created, userId: req.userId, documentIds: await sharedDocumentIds(req.userId, created), newKey: true });
         await getStore().shareLinks.setKey(req.userId, id, key);
+        await getStore().shareLinks.setCopyDigest(req.userId, id, digest);
         url = host.addressOf(id, require_approval ? null : key);
       } catch (err) {
         await getStore().shareLinks.revoke(req.userId, id);
@@ -279,8 +308,9 @@ export async function shareRoutes(app: FastifyInstance) {
     const contentChanged = ['label', 'includeScans', 'allowChat', 'language', 'scope', 'scopeValue'].some(k => (patch as Record<string, unknown>)[k] !== undefined);
     try {
       if (contentChanged || approvalChanged) {
-        const { key } = await host.publish({ link, userId: req.userId, documentIds: await sharedDocumentIds(req.userId, link), newKey: approvalChanged });
+        const { key, digest } = await host.publish({ link, userId: req.userId, documentIds: await sharedDocumentIds(req.userId, link), newKey: approvalChanged });
         await store.shareLinks.setKey(req.userId, link.id, key);
+        await store.shareLinks.setCopyDigest(req.userId, link.id, digest);
         return reply.send({ ok: true, url: host.addressOf(link.id, link.require_approval ? null : key) });
       }
       if (patch.expiresAt) await host.update({ id: link.id, expiresAt: link.expires_at, requireApproval: link.require_approval });

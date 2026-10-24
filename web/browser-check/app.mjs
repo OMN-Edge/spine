@@ -39,7 +39,11 @@ if (REAL) {
   relay = await startRelayWithStandIn({ secret: RELAY_SECRET, origin: `http://localhost:${front}`, models: [{ model: 'gemini-test', endpoint: 'aiplatform.eu.example', project: 'proj-1', region: 'eu' }, { model: 'gemini-embedding-2', endpoint: 'aiplatform.eu.example', project: 'proj-1', region: 'eu' }] });
 }
 const standIn = { SPINE_EMBEDDINGS: 'vertex', SPINE_EMBEDDING_ENDPOINT: 'aiplatform.eu.example', SPINE_EMBEDDING_REGION: 'eu', SPINE_EMBEDDING_PROJECT: 'proj-1', SPINE_LLM_PROVIDER: 'vertex', SPINE_LLM_ENDPOINT: 'aiplatform.eu.example', SPINE_LLM_REGION: 'eu', SPINE_LLM_PROJECT: 'proj-1', SPINE_LLM_MODEL: 'gemini-test' };
+// The invented root the signed fixture chains to, named as the operator would: a directory of certificates.
+const anchors = fs.mkdtempSync(path.join(os.tmpdir(), 'spine-app-check-anchors-'));
+fs.copyFileSync(path.join(root, 'server/src/__tests__/fixtures/chain-root.der'), path.join(anchors, 'root.der'));
 const env = {
+  SPINE_TRUST_ANCHORS_DIR: anchors,
   PATH: process.env.PATH, HOME: process.env.HOME, DATA_DIR: data, SESSION_SECRET: 'app-check-secret-app-check-secret-1234', PORT: String(port), SPINE_PARSER: 'text',
   ...(REAL ? modelEnv : standIn), // the model settings are the .env's alone in real mode: the relay and the server must describe the same targets
   SPINE_RELAY_URL: relay.url, SPINE_RELAY_SECRET: RELAY_SECRET,
@@ -63,9 +67,11 @@ const MASTER = 'violet-tractor-9Qx-pelican-ledger-42';
 const made = execFileSync('node', ['dist/cli.js', 'create-user', 'check@example.com'], { cwd: path.join(root, 'server'), env, encoding: 'utf8' });
 const password = made.match(/password \(shown once\): (\S+)/)[1];
 const CSP = fs.readFileSync(path.join(root, 'Caddyfile'), 'utf8').match(/Content-Security-Policy "([^"]+)"/)[1].replace('{$SPINE_RELAY_URL:}', relay.url);
+const puts = []; // when the owner's device sent a sealed copy
 const asked = []; // every address the browsers asked the server for: a key in the part after the # would never be among them
 const proxy = http.createServer((req, res) => {
   asked.push(req.url);
+  if (req.method === 'PUT' && req.url.startsWith('/api/shared/')) puts.push(Date.now());
   const up = http.request({ host: '127.0.0.1', port, path: req.url, method: req.method, headers: req.headers }, r => {
     res.writeHead(r.statusCode, { ...r.headers, 'content-security-policy': CSP });
     r.pipe(res);
@@ -307,11 +313,14 @@ try {
 
   // Opt-in: upload a digitally signed PDF and see its signer filed as a doctor on the device. `SPINE_CHECK_SIGNED=/path/to/signed.pdf`.
   // The expected name is read by poppler's pdfsig in this script; only whether the page shows it is printed, never the name.
-  if (process.env.SPINE_CHECK_SIGNED) {
-    const file = process.env.SPINE_CHECK_SIGNED;
-    const dn = (() => { try { return execFileSync('pdfsig', [file], { stdio: ['ignore', 'pipe', 'ignore'] }).toString(); } catch (e) { return String(e.stdout ?? ''); } })();
+  // Without it an invented file made for this (server/src/__tests__/fixtures) is used, and its signer is also held to being verified, since the
+  // certificates in it chain to the invented root named above.
+  {
+    const own = !!process.env.SPINE_CHECK_SIGNED;
+    const file = own ? process.env.SPINE_CHECK_SIGNED : path.join(root, 'server/src/__tests__/fixtures/signed-chain-good.pdf');
+    const dn = own ? (() => { try { return execFileSync('pdfsig', [file], { stdio: ['ignore', 'pipe', 'ignore'] }).toString(); } catch (e) { return String(e.stdout ?? ''); } })() : '';
     const full = dn.match(/Signer full Distinguished Name: (.+)/)?.[1] ?? '';
-    const given = full.match(/givenName=([^,]+)/)?.[1], surname = full.match(/SN=([^,]+)/)?.[1];
+    const given = own ? full.match(/givenName=([^,]+)/)?.[1] : 'Ana', surname = own ? full.match(/SN=([^,]+)/)?.[1] : 'Exemplu';
     check(!!given && !!surname, 'the signed file has a personal signature to look for');
     // Only the core's warnings about signatures and filing are shown, never the records.
     const coreLogs = [];
@@ -346,6 +355,13 @@ try {
     if (!shown) { await click('Timeline'); await wait(3000); console.log('     documents on the timeline now:', await p.evaluate(() => new Set([...document.querySelectorAll('a')].map(a => a.getAttribute('href')).filter(h => h?.startsWith('/documents/'))).size)); }
     if (!shown) console.log('     core logs:', coreLogs.length ? coreLogs : 'none', '| reading line still shown:', (await text()).includes('Reading the documents'));
     check(shown, 'the signer is filed among the doctors, read from the digital signature on the device');
+    if (!own && shown) {
+      // The chain leads to the named root: the document says the signature is verified.
+      await (await p.evaluateHandle(() => [...document.querySelectorAll('a')].find(a => a.innerText.includes('Ana Exemplu') && a.getAttribute('href')?.startsWith('/doctors/')))).asElement().click();
+      await wait(1500);
+      await (await p.evaluateHandle(() => [...document.querySelectorAll('a')].find(a => a.getAttribute('href')?.startsWith('/documents/')))).asElement().click();
+      check(await waitFor('Digital signature verified', 20000), 'its signer is shown as verified, because the file’s certificates chain to the named authority');
+    }
     await wait(4000); // the save
   }
 
@@ -527,6 +543,54 @@ try {
     fs.rmSync(downloads, { recursive: true, force: true });
   }
 
+  // Two devices on one account: each removes a different tag at the same time, and each ends up with both removals. The first is told, without
+  // a reload, that the other made changes.
+  {
+    const ctx = await browser.createBrowserContext();
+    const d = await ctx.newPage();
+    const dErrors = [];
+    d.on('pageerror', e => dErrors.push(e.message));
+    const dText = () => d.evaluate(() => document.body.innerText);
+    const dWait = async (what, ms = 30000) => { for (let t = 0; t < ms; t += 250) { if ((await dText()).includes(what)) return true; await wait(250); } return false; };
+    const dClick = async label => { const h = await d.evaluateHandle(l => [...document.querySelectorAll('button,a')].find(e => e.offsetParent && e.innerText.trim().toLowerCase().startsWith(l.toLowerCase())), label); await h.asElement().click(); };
+    await d.goto(`http://localhost:${front}/login`, { waitUntil: 'networkidle0' });
+    await d.type('input[type=email]', 'check@example.com'); await d.type('input[type=password]', MASTER); await dClick('Sign in');
+    check(await dWait('Chest X-ray', 60000), 'a second device signing in with the master password sees the records the first device saved');
+
+    const removeTag = async (page, read, name) => {
+      await page.evaluate(() => [...document.querySelectorAll('a')].find(a => a.getAttribute('href') === '/library')?.click()); // within the page: a reload would lock it
+
+      for (let t = 0; t < 20000 && !(await read()).includes(name); t += 250) await wait(250);
+      if (process.env.SPINE_CHECK_DEBUG) console.log('     library:', JSON.stringify(await page.evaluate(() => [...document.querySelectorAll('li')].map(l => l.innerText.slice(0, 40)))));
+      await page.evaluate(n => { const li = [...document.querySelectorAll('li')].find(l => l.innerText.split('\n')[0].trim() === n); [...li.querySelectorAll('button')].find(b => b.innerText.trim() === 'Remove tag').click(); }, name);
+      await wait(400);
+      await page.evaluate(() => [...document.querySelectorAll('[role=alertdialog] button')].find(b => b.innerText.trim() === 'Remove tag').click());
+      for (let t = 0; t < 10000 && !(await read()).includes('Removed.'); t += 250) await wait(250);
+    };
+    // The page being left open on the first device is the one that is told; the tag is removed on it through the same screen.
+    await removeTag(p, text, 'oncology');
+    await removeTag(d, dText, 'vaccine');
+    check((await text()).includes('Removed.') && (await dText()).includes('Removed.'), 'each device removes a tag of its own');
+
+    // Within a few polls each has the other's removal.
+    let both = false;
+    for (let t = 0; t < 40000 && !both; t += 3000) {
+      await wait(3000);
+      const here = await text(); const there = await dText();
+      both = here.includes('Another device made changes') && there.includes('Another device made changes');
+    }
+    check(both, 'each device is told, without a reload, that the other made changes');
+    for (const [page, read, who] of [[p, text, 'first'], [d, dText, 'second']]) {
+      await page.goto(`http://localhost:${front}/library`, { waitUntil: 'networkidle0' });
+      if (await page.$('input[type=password]')) { await page.type('input[type=password]', MASTER); await page.evaluate(() => [...document.querySelectorAll('button')].find(b => b.innerText.trim() === 'Open')?.click()); }
+      for (let t = 0; t < 20000 && !(await read()).includes('allergy'); t += 250) await wait(250);
+      const listed = await read();
+      check(listed.includes('allergy') && !listed.includes('oncology') && !listed.includes('vaccine'), `the ${who} device has both removals and keeps the other tags`);
+    }
+    check(dErrors.length === 0, `no errors on the second device${dErrors.length ? `: ${dErrors[0]}` : ''}`);
+    await ctx.close();
+  }
+
   // A passkey that opens the vault (the WebAuthn PRF extension), with Chrome's virtual authenticator standing in for the person's device.
   {
     const cdp = await p.createCDPSession();
@@ -558,6 +622,36 @@ try {
     check(await waitFor('Chest X-ray', 30000), 'the passkey opens the records after a reload');
     await cdp.send('WebAuthn.disable');
   }
+
+  // A share follows the records: when the owner removes the sample records, the link made earlier stops showing them, with no action on the link.
+  {
+    await p.evaluate(() => [...document.querySelectorAll('a')].find(a => a.getAttribute('href') === '/')?.click());
+    check(await waitFor('Remove the sample records', 20000), 'the owner’s timeline still has the sample records');
+    const before = puts.length;
+    const removedAt = Date.now();
+    await click('Remove the sample records');
+    let removedHere = false;
+    for (let t = 0; t < 30000 && !removedHere; t += 500) { await wait(500); const now = await text(); removedHere = !now.includes('Chest X-ray') && !now.includes('Remove the sample records'); }
+    check(removedHere, 'and removes them');
+    for (let t = 0; t < 120000 && puts.length === before; t += 1000) await wait(1000);
+    console.log(`     the copy was sent again ${puts.length > before ? Math.round((puts[before] - removedAt) / 1000) + ' s' : 'never'} after the removal`);
+    const ctx = await browser.createBrowserContext();
+    const r = await ctx.newPage();
+    let gone = false;
+    for (let t = 0; t < 60000 && !gone; t += 6000) {
+      await r.goto(full, { waitUntil: 'load' });
+      // With nothing left to share the copy is not usable: the page says the link is unavailable, which is also the proof it was made again.
+      const settled = () => r.evaluate(() => /Shared securely via Spine|Link unavailable/.test(document.body.innerText));
+      for (let w = 0; w < 12000 && !(await settled()); w += 250) await wait(250);
+      gone = (await settled()) && !(await r.evaluate(() => document.body.innerText)).includes('Chest X-ray');
+      if (!gone) await wait(4000);
+    }
+    if (!gone) console.log('     recipient says:', (await r.evaluate(() => document.body.innerText)).replace(/\s+/g, ' ').slice(0, 400));
+    if (!gone) console.log('     shared requests after removal:', JSON.stringify(asked.filter(u => u.includes('/api/shared/')).slice(-12)), '| owner console:', errors.slice(-3));
+    check(gone, 'the link made earlier no longer shows what the owner removed, without the owner touching the link');
+    await ctx.close();
+  }
+
 
   // What the server holds.
   const sealed = fs.readdirSync(path.join(data, 'vault'), { recursive: true }).length;

@@ -8,7 +8,7 @@ import {
  * The device's side of the vault: derive the credential, unlock the keys, and move sealed objects to and from the server. Everything
  * the server is given is sealed or public; everything read back is opened here. `fetch` is a parameter so tests can stand in for it.
  */
-export type ObjectKind = 'profile' | 'bundle' | 'blob' | 'library' | 'embedding';
+export type ObjectKind = 'profile' | 'bundle' | 'blob' | 'library' | 'embedding' | 'log';
 
 export interface ObjectMeta {
   id: string;

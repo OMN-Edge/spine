@@ -71,6 +71,8 @@ export interface Store {
   matchDecisions: MatchDecisionRepository;
   sessions: SessionRepository;
   usage: UsageRepository;
+  changes: ChangeLog;
+  files: FileRegistryRepository;
   vault: VaultRepository;
   shared: SharedRepository;
   maintenance: MaintenanceRepository;
@@ -127,6 +129,8 @@ export interface NewUser {
   verifiedAt: string | null;
   /** Given at sign-up, by the person; absent for an account the operator creates, which is asked at its first sign-in. */
   consent?: { healthVersion: string; termsVersion: string };
+  /** False for the one person a device holds, whose tags come from the vault (a deleted starter tag must not come back on every unlock). Default true. */
+  starterTags?: boolean;
 }
 
 /** A user's TOTP enrolment. `confirmed_at` is null until a first code has been accepted. */
@@ -669,6 +673,43 @@ export interface SessionRepository {
   rememberDevice(userId: string, deviceHash: string, at: string): Promise<'first' | 'known' | 'new'>;
 }
 
+/** A value in a change: what a column holds. A blob is its hex digits. */
+export type Cell = string | number | null;
+
+/**
+ * One row changing: `t` the table, `k` its key columns, `r` the whole row after the change (null: it was deleted) and `h` when, as a
+ * hybrid logical clock that sorts as text and that no two devices produce twice. This is the form in which records travel between
+ * devices; it names tables and columns of the domain, not an engine's pages (docs/crypto-design.md, "Syncing devices").
+ */
+export interface Change {
+  t: string;
+  k: Record<string, Cell>;
+  r: Record<string, Cell> | null;
+  h: string;
+}
+
+/** The writes this device has made and the writes other devices made, kept apart from how the store holds them. */
+export interface ChangeLog {
+  /** The writes made here since the last call, each row once with its last state, stamped. Empty when nothing changed. Not inside a transaction. */
+  drain(): Promise<Change[]>;
+  /**
+   * Brings other devices' changes in: a row changes only if the change is newer than what is held for it (a deletion is a change too).
+   * Drain first: it refuses while unsent local changes wait. Returns how many rows it changed.
+   */
+  apply(changes: Change[]): Promise<number>;
+  /** Every row held as a change, and every deletion remembered: what a new device or a snapshot starts from. */
+  dump(): Promise<Change[]>;
+}
+
+/** A file the device holds, as the vault keeps it: the sealed object that has its bytes, and what the bytes must hash to. */
+export interface RegisteredFile { path: string; objectId: string; hash: string; size: number; seq: number }
+
+export interface FileRegistryRepository {
+  list(userId: string): Promise<RegisteredFile[]>;
+  put(userId: string, file: RegisteredFile): Promise<void>;
+  remove(userId: string, path: string): Promise<void>;
+}
+
 /** What the relay has let a user's device do today, so a restart or a second instance does not give the day again. */
 export interface UsageRepository {
   /**
@@ -740,6 +781,9 @@ export interface ShareLinkRepository {
   /** The key the link's sealed copy was made with (kept in the owner's own records), or null. */
   keyFor(userId: string, linkId: string): Promise<string | null>;
   setKey(userId: string, linkId: string, key: string): Promise<void>;
+  /** A keyed hash of the copy last sent for the link, or null if none was. */
+  copyDigest(userId: string, linkId: string): Promise<string | null>;
+  setCopyDigest(userId: string, linkId: string, digest: string): Promise<void>;
   /** What a request holds in place of the cookie digest: the visitor browser's public key, for wrapping the share key to it. Null if not the user's. */
   requestKey(userId: string, id: string): Promise<string | null>;
   /**

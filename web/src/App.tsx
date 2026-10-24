@@ -22,7 +22,7 @@ import ConsentGate from './pages/ConsentGate';
 import VaultSetup from './pages/VaultSetup';
 import { vaultState } from './crypto/vault-state';
 import UnlockScreen from './components/UnlockScreen';
-import SaveConflict from './components/SaveConflict';
+import SyncNotice from './components/SyncNotice';
 import Doctors from './pages/Doctors';
 import Library from './pages/Library';
 import DoctorPage from './pages/DoctorPage';
@@ -142,7 +142,7 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
   // The records are sealed in the vault and open only on this device, with the key made from the master password.
   if (authenticated && deviceState === 'starting') return <div className="min-h-screen flex items-center justify-center text-gray-400">{t('Opening…')}</div>;
   if (authenticated && deviceState === 'locked') return <UnlockScreen opened={deviceOpened} signOut={() => setAuthenticated(false)} />;
-  return authenticated ? <Layout><SaveConflict />{children}</Layout> : <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  return authenticated ? <Layout><SyncNotice />{children}</Layout> : <Navigate to="/login" replace state={{ from: location.pathname }} />;
 }
 
 export default function App() {

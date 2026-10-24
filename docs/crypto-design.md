@@ -46,6 +46,19 @@ Each stage ends with the suite green, the documents updated, and a commit. Nothi
 | 4 | Share links with a key in the fragment, approval mode, emergency card | A recipient reads a shared bundle the server cannot open |
 | 5 | Ciphertext-only backups, deletion by destroying keys, removal of the old plaintext tables and routes | A backup contains no plaintext; the old tables are gone |
 
+## Syncing devices
+
+Records are not saved as a database file any more (SECURITY.md **M-38**). The source of truth is a set of sealed objects: segments of changes, a snapshot and the files, and the store that answers the routes is built from them.
+
+- **A change** is one row after a write (`{t: table, k: key columns, r: row or null, h: clock}`), made by a trigger and stamped when it was written; its form names tables and columns, not an engine's pages. `Store.changes` has three operations: `drain` (what was written here), `apply` (what other devices wrote; the newest change to a row wins) and `dump` (every row and deletion, for a snapshot or a new device).
+- **A save** seals the files written since the last (one `blob` object each, listed in the `vault_files` table), then the drained changes as one `log` object, then looks at the vault for other devices' segments and applies them. It never rewrites an object.
+- **Compaction**: when 40 segments wait, a device writes a snapshot (sealed `bundle` parts of a dump), then the index (`library`, written over with the sequence number it was read at; a second device compacting at once gets a conflict and retries), then deletes the segments and the old snapshot. A device that was away applies the new snapshot over its own records.
+- **Opening**: the snapshot, then every segment not folded, then the file list. A new vault gets the starter tags once.
+- **Conflicts**: per row, the later change; per natural key (a tag's or doctor's name) one row and an alias for the other key; per unique place (a page's number) the newer change. What is merged cannot lose a record that only one device wrote.
+- **Not synced**: the accounts tables (they are the server's), the search index (rebuilt), the scratch directory.
+- **Shares** are the same form: the owner's device builds the allow-listed copy in a store of its own and seals its changes (`{v, owner, changes}`); the recipient's browser applies them to an empty store. Nothing about a share is a database file.
+- **Shares follow the records**: 15 seconds after the records change, each live link's copy is built again and sent only if it would hold something different (`POST /api/share-links/refresh`, a keyed digest in `share_link_keys`), under the same key. A closed device cannot refresh; the copy shows what it last held.
+
 ## Status
 
 | Stage | State |

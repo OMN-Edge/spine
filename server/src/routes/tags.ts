@@ -14,7 +14,7 @@ export async function tagRoutes(app: FastifyInstance) {
   app.addHook('preHandler', requireAuth);
 
   const tagId = (value: unknown): number | null => {
-    const n = typeof value === 'string' && /^\d{1,9}$/.test(value) ? Number(value) : NaN;
+    const n = typeof value === 'string' && /^\d{1,16}$/.test(value) ? Number(value) : NaN;
     return Number.isSafeInteger(n) ? n : null;
   };
 

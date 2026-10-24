@@ -11,6 +11,8 @@ import { sourceFileRepository } from './source-files.js';
 import { regroupPlanRepository } from './regroup-plans.js';
 import { sessionRepository } from './sessions.js';
 import { usageRepository } from './usage.js';
+import { changeLog } from './changes.js';
+import { fileRegistryRepository } from './file-registry.js';
 import { matchDecisionRepository } from './match-decisions.js';
 import { tagRepository } from './tags.js';
 import { translationRepository } from './translations.js';
@@ -71,6 +73,8 @@ function storeOver(db: Database, depth: number, scope: 'full' | 'accounts'): Sto
     matchDecisions: records ? matchDecisionRepository(db) : absent('matchDecisions'),
     sessions: sessionRepository(db),
     usage: usageRepository(db),
+    changes: records ? changeLog(db) : absent('changes'),
+    files: records ? fileRegistryRepository(db) : absent('files'),
     vault: vaultRepository(db),
     shared: sharedRepository(db),
     maintenance: maintenanceRepository(db),

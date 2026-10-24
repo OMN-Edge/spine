@@ -24,7 +24,7 @@ class CoreWorker {
       const m = event.data;
       // SQLite's own worker support announces itself on the same channel; it is not for us.
       if (typeof m?.id !== 'number') return;
-      if ('conflict' in m) { window.dispatchEvent(new Event(SAVE_CONFLICT)); return; }
+      if ('changed' in m) { window.dispatchEvent(new Event(RECORDS_CHANGED)); return; }
       if ('trace' in m) { if (m.trace === 'loaded') this.onLoaded(); else console.debug('[core]', m.trace); return; }
       if ('chunk' in m) { this.streams.get(m.id)?.enqueue(new Uint8Array(m.chunk)); return; }
       if ('end' in m) { try { this.streams.get(m.id)?.close(); } catch { /* the reader already left */ } this.streams.delete(m.id); return; }
@@ -122,7 +122,7 @@ class CoreWorker {
 type WithoutId<T> = T extends unknown ? Omit<T, 'id'> : never;
 
 /** Said on the window when another device saved first and this one can no longer save. */
-export const SAVE_CONFLICT = 'spine:save-conflict';
+export const RECORDS_CHANGED = 'spine:records-changed';
 
 /** The owner's core: their vault, opened with the master key. */
 export const device = new CoreWorker();

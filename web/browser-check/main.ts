@@ -15,6 +15,10 @@ import { stampImages, readDigitalSigners } from '../src/core/native/signatures';
 import heicUrl from '../../server/src/__tests__/fixtures/gradient.heic?url';
 import signedRsaUrl from '../../server/src/__tests__/fixtures/signed-rsa.pdf?url';
 import signedEcUrl from '../../server/src/__tests__/fixtures/signed-ec.pdf?url';
+import chainGoodUrl from '../../server/src/__tests__/fixtures/signed-chain-good.pdf?url';
+import chainForeignUrl from '../../server/src/__tests__/fixtures/signed-chain-foreign.pdf?url';
+import chainRootUrl from '../../server/src/__tests__/fixtures/chain-root.der?url';
+import { readSigners } from '../../server/src/ingestion/signatures-cms';
 
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 /** An invented two-page PDF with a text layer, made here so the check needs no file. */
@@ -75,6 +79,17 @@ const step = async (out: Record<string, unknown>, name: string, fn: () => Promis
     const voided = await readDigitalSigners('/data/originals/changed.pdf');
     if (names.join() !== 'Ana Testescu,Dan Exemplu' || voided.length !== 0) throw new Error(`expected both signers and none once changed, got ${names.join()} / ${voided.length}`);
     return names;
+  });
+  // The certificates in a file chain to an authority the operator named: verified; to none, or to another: only a label.
+  await step(out, 'signature-chain', async () => {
+    // A small file is inlined as a data address, which the page's policy does not let fetch read: decode it here.
+    const load = async (url: string) => url.startsWith('data:') ? Uint8Array.from(atob(url.split(',')[1]), c => c.charCodeAt(0)) : new Uint8Array(await (await fetch(url)).arrayBuffer());
+    const root = await load(chainRootUrl);
+    const good = await readSigners(await load(chainGoodUrl), [root]);
+    const noAnchor = await readSigners(await load(chainGoodUrl));
+    const foreign = await readSigners(await load(chainForeignUrl), [root]);
+    if (!good[0]?.verified || noAnchor[0]?.verified || foreign[0]?.verified) throw new Error(`expected verified only for the chain to the named root, got ${good[0]?.verified}/${noAnchor[0]?.verified}/${foreign[0]?.verified}`);
+    return { verified: good[0].verified };
   });
   await step(out, 'own-signed', async () => {
     const response = await fetch('/own-signed.pdf');

@@ -1,3 +1,4 @@
+import { randomRowId } from './ids.js';
 import type { Database } from './driver.js';
 import { owner } from './owner.js';
 import type {
@@ -44,8 +45,8 @@ export function shareLinkRepository(db: Database): ShareLinkRepository {
 
   // The log row carries the link's owner, read from the link itself.
   const insertAccess = db.prepare(`
-    INSERT INTO share_link_access_log (user_id, share_link_id, accessed_at, ip_address, country, document_id)
-    SELECT user_id, id, ?, ?, ?, ? FROM share_links WHERE id = ?
+    INSERT INTO share_link_access_log (id, user_id, share_link_id, accessed_at, ip_address, country, document_id)
+    SELECT ?, user_id, id, ?, ?, ?, ? FROM share_links WHERE id = ?
   `);
   const bumpViewCount = db.prepare(
     'UPDATE share_links SET view_count = view_count + 1, last_accessed_at = ? WHERE id = ?',
@@ -84,7 +85,8 @@ export function shareLinkRepository(db: Database): ShareLinkRepository {
     LIMIT 100
   `);
 
-  const event = db.prepare('INSERT INTO share_link_events (user_id, share_link_id, at, kind, detail) VALUES (?, ?, ?, ?, ?)');
+  const insertEvent = db.prepare('INSERT INTO share_link_events (id, user_id, share_link_id, at, kind, detail) VALUES (?, ?, ?, ?, ?, ?)');
+  const event = { run: (...args: unknown[]) => insertEvent.run(randomRowId(), ...args) };
   const events = db.prepare('SELECT at, kind, detail FROM share_link_events WHERE share_link_id = ? AND user_id = ? ORDER BY at DESC, id DESC LIMIT ?');
   const one = db.prepare(`
     SELECT id, label, scope, scope_value, created_at, expires_at, revoked, view_count, last_accessed_at, include_scans, language, require_approval, allow_chat,
@@ -207,7 +209,7 @@ export function shareLinkRepository(db: Database): ShareLinkRepository {
     },
 
     async logAccess(linkId, accessedAt, ipAddress, countView, where = {}) {
-      insertAccess.run(accessedAt, ipAddress, where.country ?? null, where.documentId ?? null, linkId);
+      insertAccess.run(randomRowId(), accessedAt, ipAddress, where.country ?? null, where.documentId ?? null, linkId);
       if (countView) bumpViewCount.run(accessedAt, linkId);
     },
 
@@ -254,6 +256,15 @@ export function shareLinkRepository(db: Database): ShareLinkRepository {
 
     async setKey(userId, linkId, key) {
       db.prepare('INSERT INTO share_link_keys (share_link_id, user_id, key) VALUES (?, ?, ?) ON CONFLICT(share_link_id) DO UPDATE SET key = excluded.key WHERE user_id = excluded.user_id').run(linkId, owner(userId), key);
+    },
+
+    async copyDigest(userId, linkId) {
+      const r = db.prepare('SELECT copy_digest FROM share_link_keys WHERE share_link_id = ? AND user_id = ?').get(linkId, owner(userId)) as { copy_digest: string | null } | undefined;
+      return r?.copy_digest ?? null;
+    },
+
+    async setCopyDigest(userId, linkId, digest) {
+      db.prepare('UPDATE share_link_keys SET copy_digest = ? WHERE share_link_id = ? AND user_id = ?').run(digest, linkId, owner(userId));
     },
 
     async requestKey(userId, id) {

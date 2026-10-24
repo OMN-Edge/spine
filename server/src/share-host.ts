@@ -12,11 +12,13 @@ export interface PublishInput {
   documentIds: string[];
   /** A new key, so a copy made under the old one stops opening (the approval setting changed); otherwise the link's own is kept. */
   newKey: boolean;
+  /** Send nothing if the copy would hold what the last one did (a link that follows the records looks again after each change). */
+  unlessUnchanged?: boolean;
 }
 
 export interface ShareHost {
-  /** Seals and sends the copy; gives the key (base64url) it was made with. */
-  publish(input: PublishInput): Promise<{ key: string }>;
+  /** Seals and sends the copy; gives the key (base64url) it was made with, and whether anything was sent. */
+  publish(input: PublishInput): Promise<{ key: string; published: boolean; digest: string }>;
   /** A change of end time or approval that does not change what is in the copy. */
   update(link: { id: string; expiresAt: string; requireApproval: boolean }): Promise<void>;
   revoke(linkId: string): Promise<void>;

@@ -18,7 +18,7 @@ describe('share links made by a device', () => {
   let keyCounter = 0;
 
   const host: ShareHost = {
-    async publish(input) { if (failWith) throw failWith; published.push(input); calls.push(`publish${input.newKey ? ':new-key' : ''}`); return { key: `key-${++keyCounter}` }; },
+    async publish(input) { if (failWith) throw failWith; published.push(input); calls.push(`publish${input.newKey ? ':new-key' : ''}`); return { key: `key-${++keyCounter}`, published: true, digest: `digest-${keyCounter}` }; },
     async update(l) { calls.push(`update:${l.requireApproval}`); },
     async revoke(id) { if (failWith) throw failWith; calls.push(`revoke:${id.length > 0}`); },
     async pull() { calls.push('pull'); },
@@ -90,6 +90,20 @@ describe('share links made by a device', () => {
     calls.length = 0;
     await call('PATCH', `/api/share-links/${id}`, { expires_days: 3 });
     expect(calls).toEqual(['update:true']);
+  });
+
+  it('looks at every live link again when asked, makes the copy again for the ones the host says changed, and skips revoked and ended links', async () => {
+    const live = (await create({ label: 'live' })).json<{ id: string }>();
+    const revoked = (await create({ label: 'revoked' })).json<{ id: string }>();
+    await call('DELETE', `/api/share-links/${revoked.id}`);
+    published = [];
+    const res = await call('POST', '/api/share-links/refresh');
+    expect(res.statusCode).toBe(200);
+    const seen = published.map(p => p.link.id);
+    expect(seen).toContain(live.id);
+    expect(seen).not.toContain(revoked.id);
+    expect(published.every(p => p.unlessUnchanged === true && p.newKey === false)).toBe(true);
+    expect(await getStore().shareLinks.copyDigest(OWNER_ID, live.id)).toMatch(/^digest-/);
   });
 
   it('revokes at the server too, and says so when the server could not be told', async () => {

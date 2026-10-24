@@ -52,8 +52,9 @@ async function start(opening: Uint8Array | { prf: Uint8Array; credentialId: stri
       get: (id, kind) => s.get(id, kind),
       getSync: (id, kind) => s.getSync(id, kind),
       remove: (id, seq) => s.remove(id, seq),
+      list: since => s.list(since),
     },
-  }, { onConflict: () => (self as unknown as Worker).postMessage({ id: 0, conflict: true } satisfies FromWorker) });
+  }, { onChanged: () => (self as unknown as Worker).postMessage({ id: 0, changed: true } satisfies FromWorker) });
   trace('ready');
 }
 

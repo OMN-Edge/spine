@@ -1,3 +1,4 @@
+import { starterTagId } from './ids.js';
 import type { Database } from './driver.js';
 import type { NewUser, PasskeyRecord, TotpRecord, UserRecord, UserRepository, UserTokenKind } from '../types.js';
 
@@ -25,7 +26,7 @@ export function userRepository(db: Database): UserRepository {
   // Which tables exist: the server's database has none for records (scope `accounts`), so a user has no starter tags there and deleting
   // one has only the account's tables to empty.
   const tables = new Set((db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map(t => t.name));
-  const insertTag = tables.has('tags') ? db.prepare('INSERT OR IGNORE INTO tags (user_id, name) VALUES (?, ?)') : null;
+  const insertTag = tables.has('tags') ? db.prepare('INSERT OR IGNORE INTO tags (id, user_id, name) VALUES (?, ?, ?)') : null;
   const findByEmail = db.prepare('SELECT * FROM users WHERE email = ?');
   const findById = db.prepare('SELECT * FROM users WHERE id = ?');
   const setPassword = db.prepare(
@@ -106,7 +107,7 @@ export function userRepository(db: Database): UserRepository {
   const createWithTags = db.transaction((user: NewUser) => {
     const c = user.consent;
     insert.run(user.id, user.email, user.passwordHash, user.createdAt, user.verifiedAt, c ? user.createdAt : null, c?.healthVersion ?? null, c ? user.createdAt : null, c?.termsVersion ?? null);
-    if (insertTag) for (const name of STARTER_TAGS) insertTag.run(user.id, name);
+    if (insertTag && user.starterTags !== false) for (const name of STARTER_TAGS) insertTag.run(starterTagId(user.id, name), user.id, name);
   });
 
   // Children before parents, because foreign keys are enforced. The FTS triggers

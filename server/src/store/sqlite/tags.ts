@@ -1,3 +1,5 @@
+import { randomRowId, starterTagId } from './ids.js';
+import { STARTER_TAGS } from '../../tags.js';
 import type { Database } from './driver.js';
 import type { TagRepository } from '../types.js';
 import { owner } from './owner.js';
@@ -16,7 +18,9 @@ export function tagRepository(db: Database): TagRepository {
     WHERE dt.document_id = ? AND dt.user_id = ? AND t.user_id = ?
   `);
   const ownsDocument = db.prepare('SELECT 1 FROM documents WHERE id = ? AND user_id = ?');
-  const ensure = db.prepare('INSERT OR IGNORE INTO tags (user_id, name) VALUES (?, ?)');
+  const insertTag = db.prepare('INSERT OR IGNORE INTO tags (id, user_id, name) VALUES (?, ?, ?)');
+  // A starter tag has the same key on every device, so two devices that make it make one row.
+  const ensure = { run: (userId: string, name: string) => insertTag.run((STARTER_TAGS as readonly string[]).includes(name) ? starterTagId(userId, name) : randomRowId(), userId, name) };
   const link = db.prepare(`
     INSERT OR IGNORE INTO document_tags (user_id, document_id, tag_id)
     SELECT ?, ?, id FROM tags WHERE user_id = ? AND name = ?

@@ -13,7 +13,7 @@ export type Trace = { id: 0; trace: string };
 export type FromWorker =
   | Trace
   /** Another device saved first: this one has changes it could not save and has stopped trying (SECURITY.md M-34). */
-  | { id: 0; conflict: true }
+  | { id: 0; changed: true }
 
   | { id: number; ok: true; status?: number; headers?: Record<string, string>; body?: ArrayBuffer; stream?: boolean }
   /** A piece of a streamed reply, in the order written, and its end. */

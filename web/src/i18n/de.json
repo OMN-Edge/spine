@@ -1072,9 +1072,6 @@
  "That is not the master password.": "Das ist nicht das Master-Passwort.",
  "Opening…": "Wird geöffnet …",
  "This address is incomplete or damaged. Ask the person who shared it for the whole link.": "Diese Adresse ist unvollständig oder beschädigt. Bitten Sie die Person, die sie geteilt hat, um den ganzen Link.",
- "Another device saved changes first": "Ein anderes Gerät hat zuerst Änderungen gespeichert",
- "Changes made here since then are not saved. Download them now, then reload to carry on from the other device’s records.": "Änderungen, die seitdem hier gemacht wurden, sind nicht gespeichert. Laden Sie sie jetzt herunter und laden Sie die Seite dann neu, um mit den Unterlagen des anderen Geräts weiterzumachen.",
- "Download what is on this device": "Herunterladen, was auf diesem Gerät ist",
  "Reload": "Neu laden",
  "A passkey can also open your records without the master password, if your device supports it. The records stay encrypted: the passkey makes the key on this device and only a sealed copy is kept for it.": "Ein Passkey kann Ihre Unterlagen auch ohne das Hauptpasswort öffnen, wenn Ihr Gerät das unterstützt. Die Unterlagen bleiben verschlüsselt: Der Passkey erzeugt den Schlüssel auf diesem Gerät, und nur eine versiegelte Kopie wird für ihn aufbewahrt.",
  "opens your records": "öffnet Ihre Unterlagen",
@@ -1083,5 +1080,7 @@
  "Open with a passkey": "Mit einem Passkey öffnen",
  "This passkey does not open your records. Use the master password.": "Dieser Passkey öffnet Ihre Unterlagen nicht. Verwenden Sie das Hauptpasswort.",
  "Digital signature verified": "Digitale Signatur geprüft",
- "The certificates in the file lead to an authority this server trusts": "Die Zertifikate in der Datei führen zu einer Stelle, der dieser Server vertraut"
+ "The certificates in the file lead to an authority this server trusts": "Die Zertifikate in der Datei führen zu einer Stelle, der dieser Server vertraut",
+ "Another device made changes": "Ein anderes Gerät hat Änderungen gemacht",
+ "They are already here. Reload to see them.": "Sie sind schon hier. Laden Sie neu, um sie zu sehen."
 }

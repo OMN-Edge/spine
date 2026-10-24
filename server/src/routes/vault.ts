@@ -18,7 +18,7 @@ export interface VaultRouteOptions {
   kdfPerSource?: { max: number; timeWindow: string | number };
 }
 
-const KINDS = new Set(['profile', 'bundle', 'blob', 'library', 'embedding']);
+const KINDS = new Set(['profile', 'bundle', 'blob', 'library', 'embedding', 'log']);
 const SEQ = /^\d{1,15}$/;
 
 export async function vaultRoutes(app: FastifyInstance, opts: VaultRouteOptions = {}) {

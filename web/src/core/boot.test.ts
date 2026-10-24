@@ -4,14 +4,19 @@ import { memory } from './shims/fs';
 import fs from './shims/fs';
 import type { ObjectStore } from './persist';
 import { seedDocument, seedPage, seedSourceFile } from '../../../server/src/__tests__/helpers/seed';
+import { WasmDatabase } from './sqlite-wasm';
+import { createSqliteStoreWith } from '../../../server/src/store/sqlite/store';
+import accountsSchema from '../../../server/src/store/sqlite/schema-accounts.sql?raw';
+import recordsSchema from '../../../server/src/store/sqlite/schema-records.sql?raw';
 
 /** The vault as a Map: enough of it for the core to save into and load from. */
-function vault() {
+function vault(profile = 'profile-aaaaaaaa') {
   const objects = new Map<string, { kind: string; data: Uint8Array; seq: number }>();
+  let counter = 0;
   const store: ObjectStore = {
     async put(kind, id, data, base) {
       if ((objects.get(id)?.seq ?? 0) !== base) throw new Error('conflict');
-      const seq = (objects.get(id)?.seq ?? 0) + 1;
+      const seq = ++counter;
       objects.set(id, { kind, data: Uint8Array.from(data), seq });
       return seq;
     },
@@ -26,6 +31,7 @@ function vault() {
       return Uint8Array.from(o.data);
     },
     async remove(id) { objects.delete(id); },
+    async list(since) { return { objects: [...objects.entries()].filter(([, o]) => o.seq > since).map(([id, o]) => ({ id, profile_id: profile, kind: o.kind, seq: o.seq, deleted: false })) }; },
   };
   return { objects, store };
 }
@@ -62,33 +68,51 @@ describe('the core, saving to and loading from the vault', () => {
     second.lock();
   });
 
-  it('stops saving and says so when another device saved first, instead of trying again for ever', async () => {
-    const { objects, store } = vault();
-    let saves = 0;
-    let armed = false;
-    const racing: ObjectStore = {
-      ...store,
-      async put(kind, id, data, base) {
-        saves += 1;
-        // The index object is the one another device wins: its change number has moved on.
-        if (kind === 'library' && armed) throw Object.assign(new Error('this object changed elsewhere'), { name: 'ConflictError' });
-        return store.put(kind, id, data, base);
-      },
-    };
-    let said = 0;
-    const core = await startCore({ objects: racing, profileId: 'profile-bbbbbbbb' }, { onConflict: () => { said += 1; } });
-    armed = true;
-    await seedSourceFile({ userId: 'device', status: 'done' });
-    await core.flush();
-    expect(said).toBe(1);
+  it('gives a new vault the starter tags once, and a tag the person deleted does not come back', async () => {
+    const { store } = vault('profile-cccccccc');
+    const first = await startCore({ objects: store, profileId: 'profile-cccccccc' });
+    const before = (await first.inject({ method: 'GET', url: '/api/tags' })).json<Array<{ id: number; name: string }>>();
+    expect(before.map(t => t.name)).toContain('cardiology');
+    const gone = before.find(t => t.name === 'cardiology')!;
+    expect((await first.inject({ method: 'DELETE', url: `/api/tags/${gone.id}` })).statusCode).toBe(200);
+    await first.flush();
+    first.lock();
 
-    const after = saves;
-    await seedSourceFile({ userId: 'device', status: 'done' });
+    const second = await startCore({ objects: store, profileId: 'profile-cccccccc' });
+    const after = (await second.inject({ method: 'GET', url: '/api/tags' })).json<Array<{ name: string }>>();
+    expect(after.map(t => t.name)).not.toContain('cardiology');
+    expect(after.length).toBe(before.length - 1);
+    second.lock();
+  });
+
+  it('converts a vault of the earlier kind, whose records were a database file in pieces, and keeps its files', async () => {
+    const { objects, store } = vault('profile-dddddddd');
+    // The earlier kind, made by hand: a database file in one piece, a file of its own, and an index (v1) that names them.
+    const schema = `${accountsSchema}\n${recordsSchema}`;
+    const old = new WasmDatabase();
+    const oldStore = createSqliteStoreWith({ adapter: 'sqlite', location: ':memory:' }, () => old, schema);
+    await oldStore.users.create({ id: 'device', email: 'device@local', passwordHash: 'x', createdAt: 'now', verifiedAt: 'now', consent: undefined });
+    await oldStore.sourceFiles.create('device', { id: 'old-file', uploadedAt: 'now', originalFilename: 'a.pdf', filePath: '/data/originals/a.pdf', mimeType: 'application/pdf', checksum: 'c' });
+    await oldStore.documents.create('device', { id: 'old-doc', sourceFileId: 'old-file', pageStart: 1, pageEnd: 1, docDate: '2026-01-01', provider: null, docType: 'lab_result', aiSummary: 'from before' });
+    const dbBytes = old.export();
+    const hash = async (b: Uint8Array) => { const s2 = await (await import('../crypto/sodium')).sodium(); return s2.to_base64(s2.crypto_generichash(24, b, null), s2.base64_variants.URLSAFE_NO_PADDING); };
+    const piece = { id: 'piece-1-xxxxxxxx', hash: await hash(dbBytes), size: dbBytes.length, seq: await store.put('bundle', 'piece-1-xxxxxxxx', dbBytes, 0) };
+    const file = new Uint8Array([9, 8, 7]);
+    const filePart = { id: 'file-1-xxxxxxxx', hash: await hash(file), size: 3, seq: await store.put('blob', 'file-1-xxxxxxxx', file, 0) };
+    await store.put('library', 'ix-profile-dddddddd', new TextEncoder().encode(JSON.stringify({ v: 1, db: [piece], files: { '/data/originals/a.pdf': filePart } })), 0);
+
+    const core = await startCore({ objects: store, profileId: 'profile-dddddddd' });
+    expect((await core.inject({ method: 'GET', url: '/api/documents/old-doc' })).statusCode).toBe(200);
+    expect([...(fs.readFileSync('/data/originals/a.pdf') as Buffer)]).toEqual([9, 8, 7]);
     await core.flush();
-    await core.flush();
-    expect(said).toBe(1);        // said once
-    expect(saves).toBe(after);   // and nothing more was sent
-    expect(objects.size).toBeGreaterThan(0);
     core.lock();
+    expect(objects.has('piece-1-xxxxxxxx')).toBe(false); // the pieces of the old file are let go
+
+    // and it opens again from what the conversion wrote
+    memory.clear();
+    const again = await startCore({ objects: store, profileId: 'profile-dddddddd' });
+    expect((await again.inject({ method: 'GET', url: '/api/documents/old-doc' })).statusCode).toBe(200);
+    expect([...(fs.readFileSync('/data/originals/a.pdf') as Buffer)]).toEqual([9, 8, 7]);
+    again.lock();
   });
 });

@@ -9,6 +9,7 @@ import recordsSchema from '../../../server/src/store/sqlite/schema-records.sql?r
 const schema = `${accountsSchema}\n${recordsSchema}`;
 import { createSqliteStoreWith } from '../../../server/src/store/sqlite/store';
 import { resetStore } from '../../../server/src/store/index';
+import type { Change } from '../../../server/src/store/types';
 import { publicShareRoutes } from '../../../server/src/routes/public-share';
 import { openPart, openPartNow } from './share/keys';
 import { useTokenUrl } from './native/relay-auth';
@@ -29,7 +30,8 @@ export async function startShareCore(shareId: string, key: string): Promise<Shar
   const bundle = await fetch(`/api/shared/${id}/bundle`);
   if (!bundle.ok) throw Object.assign(new Error(bundle.status === 410 ? 'this link is no longer active' : 'this link could not be opened'), { status: bundle.status });
   // A wrong key is the same failure as a changed copy: it does not open.
-  const bytes = await openPart(key, shareId, 'db', new Uint8Array(await bundle.arrayBuffer()));
+  const copy = JSON.parse(new TextDecoder().decode(await openPart(key, shareId, 'records', new Uint8Array(await bundle.arrayBuffer())))) as { v: number; owner: string; changes: Change[] };
+  if (copy.v !== 1) throw new Error('this link was made by a newer version of Spine');
 
   const meta = (await (await fetch(`/api/shared/${id}/meta`)).json()) as { blobs: number };
   // The page images are sealed files beside the copy, fetched when one is asked for.
@@ -51,9 +53,13 @@ export async function startShareCore(shareId: string, key: string): Promise<Shar
   Object.assign(process.env, config.env);
   useRelayHooks({ tokenProvider: relayToken, fetchImpl: relayFetch });
 
-  const db = new WasmDatabase(bytes);
+  const db = new WasmDatabase();
   const store = createSqliteStoreWith({ adapter: 'sqlite', location: ':memory:' }, () => db, schema);
   resetStore(store);
+  // Nobody is signed in here; the copy's rows name the owner, who needs a row to be found by.
+  const now = new Date().toISOString();
+  await store.users.create({ id: copy.owner, email: 'shared@invalid.example', passwordHash: 'x', createdAt: now, verifiedAt: now, starterTags: false });
+  await store.changes.apply(copy.changes);
 
   const local = new LocalApp();
   await (publicShareRoutes as unknown as (app: FastifyInstance, options?: object) => Promise<void>)(local as unknown as FastifyInstance, {});

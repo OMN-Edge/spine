@@ -1072,9 +1072,6 @@
  "That is not the master password.": "Aceasta nu este parola principală.",
  "Opening…": "Se deschide…",
  "This address is incomplete or damaged. Ask the person who shared it for the whole link.": "Adresa este incompletă sau deteriorată. Cereți persoanei care a trimis-o linkul întreg.",
- "Another device saved changes first": "Alt dispozitiv a salvat primul modificări",
- "Changes made here since then are not saved. Download them now, then reload to carry on from the other device’s records.": "Modificările făcute aici de atunci nu sunt salvate. Descărcați-le acum, apoi reîncărcați pagina ca să continuați de la înregistrările celuilalt dispozitiv.",
- "Download what is on this device": "Descarcă ce este pe acest dispozitiv",
  "Reload": "Reîncarcă",
  "A passkey can also open your records without the master password, if your device supports it. The records stay encrypted: the passkey makes the key on this device and only a sealed copy is kept for it.": "O cheie de acces poate deschide și înregistrările fără parola principală, dacă dispozitivul o acceptă. Înregistrările rămân criptate: cheia de acces face cheia pe acest dispozitiv și pentru ea se păstrează doar o copie sigilată.",
  "opens your records": "deschide înregistrările",
@@ -1083,5 +1080,7 @@
  "Open with a passkey": "Deschide cu o cheie de acces",
  "This passkey does not open your records. Use the master password.": "Această cheie de acces nu deschide înregistrările. Folosiți parola principală.",
  "Digital signature verified": "Semnătură digitală verificată",
- "The certificates in the file lead to an authority this server trusts": "Certificatele din fișier duc la o autoritate în care acest server are încredere"
+ "The certificates in the file lead to an authority this server trusts": "Certificatele din fișier duc la o autoritate în care acest server are încredere",
+ "Another device made changes": "Un alt dispozitiv a făcut modificări",
+ "They are already here. Reload to see them.": "Sunt deja aici. Reîncărcați pentru a le vedea."
 }

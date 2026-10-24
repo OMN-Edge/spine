@@ -472,10 +472,22 @@ CREATE TRIGGER IF NOT EXISTS doctors_fts_update AFTER UPDATE OF name ON doctors 
   WHERE id IN (SELECT d.rowid FROM documents d JOIN document_doctors l ON l.document_id = d.id WHERE l.doctor_id = new.id);
 END;
 
+-- Where a file the person's device holds (an original, a page image) is kept in the vault: one sealed object per file, found by the file's
+-- path. In the records so that a second device learns of a file the same way it learns of anything else (store/sqlite/changes.ts).
+CREATE TABLE IF NOT EXISTS vault_files (
+  path TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  object_id TEXT NOT NULL,
+  hash TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  seq INTEGER NOT NULL
+);
+
 -- The key a link's sealed copy was made with, kept in the owner's own (sealed) records so the link's address can be shown again and an
 -- approval can wrap it to a visitor's browser. The server never has it.
 CREATE TABLE IF NOT EXISTS share_link_keys (
   share_link_id TEXT PRIMARY KEY REFERENCES share_links(id),
   user_id TEXT NOT NULL REFERENCES users(id),
-  key TEXT NOT NULL
+  key TEXT NOT NULL,
+  copy_digest TEXT -- a keyed hash of what the copy last sent held, so a copy that would be the same is not sent again
 );
