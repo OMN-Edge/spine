@@ -3,7 +3,7 @@ import { sodium, toB64 } from './sodium.js';
 import { OpenError, open, seal } from './seal.js';
 import {
   createAccountKeys, deriveFromPassword, lock, newProfileKey, newRecoveryKit, openObject, openProfileKey, resetWithRecovery, rewrapForPassword,
-  sealObject, unlockWithMaster, unlockWithRecovery, type KdfParams,
+  sealObject, unlockWithMaster, unlockWithPasskey, unlockWithRecovery, wrapForPasskey, type KdfParams,
 } from './keys.js';
 import { newRecoveryKey, readRecoveryKey, writeRecoveryKey } from './recovery-kit.js';
 
@@ -203,5 +203,31 @@ describe('the shapes the server accepts', () => {
     const sealed = await sealObject(profile.profileKey, 'bundle', 'object-0001', bytes('x'));
     expect(profile.wrapped).toMatch(/^[A-Za-z0-9_-]{90,200}$/);
     expect(sealed.wrappedKey).toMatch(/^[A-Za-z0-9_-]{90,200}$/);
+  });
+});
+
+describe('a passkey that opens the vault', () => {
+  it('opens the same account key from its PRF output, and from nothing else', async () => {
+    const s = await sodium();
+    const account = await createAccountKeys(PASSWORD, FAST);
+    const prf = s.randombytes_buf(32);
+    const wrapped = await wrapForPasskey(account.unlocked, prf, 'cred-a');
+
+    const opened = await unlockWithPasskey(prf, 'cred-a', wrapped, account.keys);
+    expect(opened.accountKey).toEqual(account.unlocked.accountKey);
+    expect(opened.privateKey).toEqual(account.unlocked.privateKey);
+
+    await expect(unlockWithPasskey(s.randombytes_buf(32), 'cred-a', wrapped, account.keys)).rejects.toBeInstanceOf(OpenError);
+    await expect(unlockWithPasskey(prf, 'cred-b', wrapped, account.keys)).rejects.toBeInstanceOf(OpenError); // sealed for another credential
+    await expect(wrapForPasskey(account.unlocked, s.randombytes_buf(16), 'cred-a')).rejects.toThrow(/unexpected/);
+  });
+
+  it('keeps opening after the master password changes, because the account key does not', async () => {
+    const s = await sodium();
+    const account = await createAccountKeys(PASSWORD, FAST);
+    const prf = s.randombytes_buf(32);
+    const wrapped = await wrapForPasskey(account.unlocked, prf, 'cred-a');
+    const changed = await rewrapForPassword(account.unlocked, account.keys, 'another long password 77 here', FAST);
+    expect((await unlockWithPasskey(prf, 'cred-a', wrapped, changed.keys)).accountKey).toEqual(account.unlocked.accountKey);
   });
 });

@@ -54,7 +54,7 @@ const doctor = z.object({
   /** Which entry of the manifest's `people` this is, so two people of one name stay two. Absent from version 1. */
   person: z.number().int().min(0).max(49_999).nullable().default(null),
   /** Where the document read the doctor from, and the code it printed (what a code clash is asked about). */
-  source: z.enum(['text', 'stamp', 'signature']).default('text'),
+  source: z.enum(['text', 'stamp', 'signature', 'verified_signature']).default('text'),
   printed_code: text(100).nullable().default(null),
 });
 

@@ -1,31 +1,39 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { RunnableLambda } from '@langchain/core/runnables';
-import { ModelBudgetError, modelCallsToday, resetModelBudget, spendModelCall } from '../llm/budget.js';
+import { ModelBudgetError, spendModelCall } from '../llm/budget.js';
+import { getStore, resetStore } from '../store/index.js';
 import { llmDailyCalls } from '../config.js';
 import { buildChatLlm } from '../llm/chat-llm.js';
 import type { ChatLlmConfig, TaskClients } from '../llm/index.js';
 
 /** SECURITY.md S-35: one allowance for the instance, whoever asks. */
 
-beforeEach(() => resetModelBudget());
+beforeEach(() => resetStore());
 
 describe('the daily allowance', () => {
-  it('lets the limit through and refuses the next call', () => {
+  it('lets the limit through and refuses the next call', async () => {
     const day = new Date('2026-10-18T10:00:00Z');
-    for (let i = 0; i < 3; i++) spendModelCall(day, 3);
-    expect(() => spendModelCall(day, 3)).toThrow(ModelBudgetError);
-    expect(() => spendModelCall(day, 3)).toThrow(/daily limit of 3/);
+    for (let i = 0; i < 3; i++) await spendModelCall(day, 3);
+    await expect(spendModelCall(day, 3)).rejects.toThrow(ModelBudgetError);
+    await expect(spendModelCall(day, 3)).rejects.toThrow(/daily limit of 3/);
   });
 
-  it('starts again the next UTC day', () => {
-    spendModelCall(new Date('2026-10-18T23:59:00Z'), 1);
-    expect(() => spendModelCall(new Date('2026-10-18T23:59:30Z'), 1)).toThrow(ModelBudgetError);
-    expect(() => spendModelCall(new Date('2026-10-19T00:00:10Z'), 1)).not.toThrow();
+  it('starts again the next UTC day', async () => {
+    await spendModelCall(new Date('2026-10-18T23:59:00Z'), 1);
+    await expect(spendModelCall(new Date('2026-10-18T23:59:30Z'), 1)).rejects.toThrow(ModelBudgetError);
+    await expect(spendModelCall(new Date('2026-10-19T00:00:10Z'), 1)).resolves.toBeUndefined();
   });
 
-  it('zero means no ceiling, and does not count', () => {
-    for (let i = 0; i < 50; i++) spendModelCall(new Date(), 0);
-    expect(modelCallsToday()).toBe(0);
+  it('zero means no ceiling, and does not count', async () => {
+    for (let i = 0; i < 50; i++) await spendModelCall(new Date(), 0);
+    expect(await getStore().usage.spend('instance', new Date().toISOString().slice(0, 10), 1)).toBe(1); // nothing was counted before this
+  });
+
+  it('is kept in the store, so a second look at the same store sees the count', async () => {
+    const day = new Date('2026-10-18T10:00:00Z');
+    await spendModelCall(day, 2);
+    expect(await getStore().usage.spend('instance', '2026-10-18', 2)).toBe(2);
+    await expect(spendModelCall(day, 2)).rejects.toThrow(ModelBudgetError);
   });
 
   it('reads SPINE_LLM_DAILY_CALLS, and a bad value gives the default rather than no ceiling', () => {

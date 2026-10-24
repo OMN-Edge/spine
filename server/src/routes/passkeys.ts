@@ -6,6 +6,7 @@ import { relyingParty } from '../passkeys.js';
 import { mailAfter, newSignInMail, securityChangeMail } from '../notify.js';
 import { startSession } from '../sessions.js';
 import { windowLimiter } from '../rate-limit.js';
+import { sealed } from '../vault-keys.js';
 import { requireAuth, requireRecentAuth, type SessionData } from './middleware.js';
 import { PENDING_LOGIN_MS } from './auth.js';
 
@@ -45,8 +46,8 @@ export async function passkeyRoutes(app: FastifyInstance, opts: PasskeyRouteOpti
 
   app.get('/api/auth/passkeys', { preHandler: [requireAuth] }, async (req, reply) => {
     const list = await getStore().users.listPasskeys(req.userId);
-    // Names and dates only: the credential id and key are the server's.
-    return reply.header('Cache-Control', 'no-store').send(list.map(p => ({ id: p.id, name: p.name, backed_up: p.backed_up, created_at: p.created_at, last_used_at: p.last_used_at })));
+    // Names, dates and whether it opens the vault: the credential id and key are the server's, and so is the sealed key, which is not sent here.
+    return reply.header('Cache-Control', 'no-store').send(list.map(p => ({ id: p.id, name: p.name, backed_up: p.backed_up, created_at: p.created_at, last_used_at: p.last_used_at, opens_vault: p.wrapped_key !== null })));
   });
 
   app.post('/api/auth/passkeys/options', { preHandler: [requireAuth, requireRecentAuth, app.rateLimit({ max: 20, timeWindow: '10 minutes' })] }, async (req, reply) => {
@@ -60,6 +61,8 @@ export async function passkeyRoutes(app: FastifyInstance, opts: PasskeyRouteOpti
       rpName: rp.name, rpID: rp.id, userName: user.email, userID: new TextEncoder().encode(user.id), attestationType: 'none',
       excludeCredentials: mine.map(p => ({ id: p.id, transports: (p.transports ?? undefined) as AuthenticatorTransport[] | undefined })),
       authenticatorSelection: { residentKey: 'required', userVerification: 'required' },
+      // Asks the authenticator to support the PRF extension, which is what lets this passkey open the vault; one that cannot just signs in.
+      extensions: { prf: {} } as never,
     });
     (req.session as SessionData).passkey = { kind: 'register', challenge: options.challenge, expiresAt: Date.now() + CHALLENGE_MS };
     return reply.header('Cache-Control', 'no-store').send(options);
@@ -94,6 +97,18 @@ export async function passkeyRoutes(app: FastifyInstance, opts: PasskeyRouteOpti
 
   app.patch<{ Params: { id: string }; Body: { name?: unknown } }>('/api/auth/passkeys/:id', { preHandler: [requireAuth] }, async (req, reply) => {
     if (!(await getStore().users.renamePasskey(req.userId, req.params.id, cleanName(req.body?.name)))) return reply.status(404).send({ error: 'not found' });
+    return reply.send({ ok: true });
+  });
+
+  // Lets a passkey open the vault: the device made a key from the passkey's PRF output (which never leaves it), sealed the account key under it
+  // and sends only that. The server holds ciphertext it cannot open. Needs the password typed lately, as adding a passkey does, and is
+  // mailed, because it is a new way to open the records. Null takes it away again.
+  app.put<{ Params: { id: string }; Body: { wrapped_key?: unknown } }>('/api/auth/passkeys/:id/vault-key', { preHandler: [requireAuth, requireRecentAuth, app.rateLimit({ max: 20, timeWindow: '10 minutes' })] }, async (req, reply) => {
+    const wrapped = req.body?.wrapped_key;
+    if (wrapped !== null && !sealed(wrapped, 90, 200)) return reply.status(400).send({ error: 'the sealed key is not what it should be' });
+    if (!(await getStore().users.setPasskeyWrappedKey(req.userId, req.params.id, wrapped as string | null))) return reply.status(404).send({ error: 'not found' });
+    const user = await getStore().users.findById(req.userId);
+    if (user) mailAfter(req, user.id, securityChangeMail(user.email, wrapped === null ? 'A passkey can no longer open your records.' : 'A passkey can now open your records.', new Date().toISOString()), 'passkey vault key');
     return reply.send({ ok: true });
   });
 
@@ -152,6 +167,7 @@ export async function passkeyRoutes(app: FastifyInstance, opts: PasskeyRouteOpti
     const device = await startSession(req, reply, user.id, user.auth_version);
     if (device === 'new') mailAfter(req, user.id, newSignInMail(user.email, new Date().toISOString()), 'new sign-in');
     req.log.info({ ip: req.ip, userId: user.id }, 'login succeeded with a passkey');
-    return reply.send({ ok: true, email: user.email });
+    // The sealed key travels with the sign-in: it is ciphertext, and only this passkey's PRF output (on the device) opens it.
+    return reply.send({ ok: true, email: user.email, credential_id: passkey.id, wrapped_key: passkey.wrapped_key });
   });
 }

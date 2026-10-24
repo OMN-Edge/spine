@@ -11,6 +11,10 @@ import { convertUpload } from '../../server/src/ingestion/convert';
 import { rotateImage } from '../src/core/native/image-ops';
 import { newZip } from '../src/core/native/zip-write';
 import { ZipReader } from '../src/core/native/zip-read';
+import { stampImages, readDigitalSigners } from '../src/core/native/signatures';
+import heicUrl from '../../server/src/__tests__/fixtures/gradient.heic?url';
+import signedRsaUrl from '../../server/src/__tests__/fixtures/signed-rsa.pdf?url';
+import signedEcUrl from '../../server/src/__tests__/fixtures/signed-ec.pdf?url';
 
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 /** An invented two-page PDF with a text layer, made here so the check needs no file. */
@@ -46,6 +50,47 @@ const step = async (out: Record<string, unknown>, name: string, fn: () => Promis
   await step(out, 'rotate', async () => rotateImage('/data/pages/ph/page-1.png', '/data/rot.png', 90));
   await step(out, 'txt', async () => { fs.writeFileSync('/data/originals/n.txt', 'Epicriză\nPacient: Ionescu Maria, ă ș ț î â.\n'); const r = await convertUpload('/data/originals/n.txt'); const t = await parseDocument(r!.path); return { from: r!.from, text: t.pages[0]?.elements.map(e => e.text) }; });
   await step(out, 'zip', async () => { const z = newZip(); z.addBuffer(Buffer.from('hello'), 'a.txt'); z.addFile('/data/originals/a.pdf', 'dir/a.pdf'); const chunks: Buffer[] = []; for await (const ch of z.finish() as AsyncIterable<Buffer>) chunks.push(ch); fs.writeFileSync('/data/x.zip', Buffer.concat(chunks)); const r = await ZipReader.open('/data/x.zip'); const t = (await r.readBuffer('a.txt', 100)).toString(); const e = await r.extractTo('dir/a.pdf', '/data/b.pdf', 1e7); return { names: r.entries.map(x => x.name), t, same: e.bytes === bytes.length }; });
+  // stamps: a letterhead on both pages must be left out, the wide picture on the last page kept, and what is kept is a PNG at most 1000 wide
+  await step(out, 'stamps', async () => {
+    const picture = async (w: number, h: number, shade: string) => { const cv = new OffscreenCanvas(w, h); const cx = cv.getContext('2d')!; cx.fillStyle = shade; cx.fillRect(0, 0, w, h); cx.fillStyle = '#000'; cx.fillText('Dr. Example Invented', 10, h / 2); return new Uint8Array(await (await cv.convertToBlob({ type: 'image/png' })).arrayBuffer()); };
+    const doc = await PDFDocument.create();
+    const letterhead = await doc.embedPng(await picture(400, 100, '#9cf'));
+    const stamp = await doc.embedPng(await picture(1400, 700, '#fc9'));
+    const first = doc.addPage([595, 842]); first.drawImage(letterhead, { x: 40, y: 760, width: 200, height: 50 });
+    const last = doc.addPage([595, 842]); last.drawImage(letterhead, { x: 40, y: 760, width: 200, height: 50 }); last.drawImage(stamp, { x: 300, y: 100, width: 200, height: 100 });
+    const crops = await stampImages(await doc.save(), [2]);
+    const kept = crops.get(2) ?? [];
+    const bitmap = kept[0] ? await createImageBitmap(new Blob([kept[0] as unknown as BlobPart])) : null;
+    if (kept.length !== 1 || !bitmap || bitmap.width !== 1000 || bitmap.height !== 500) throw new Error(`expected one 1000x500 stamp, got ${kept.length} (${bitmap?.width}x${bitmap?.height})`);
+    return { kept: kept.length, width: bitmap.width, height: bitmap.height };
+  });
+  // digital signatures: an invented RSA and an invented ECDSA signature are read with WebCrypto, and a changed byte voids one
+  await step(out, 'signatures', async () => {
+    const load = async (url: string) => new Uint8Array(await (await fetch(url)).arrayBuffer());
+    const rsa = await load(signedRsaUrl), ec = await load(signedEcUrl);
+    fs.writeFileSync('/data/originals/rsa.pdf', rsa); fs.writeFileSync('/data/originals/ec.pdf', ec);
+    const changed = Uint8Array.from(rsa); const at = new TextDecoder('latin1').decode(changed).indexOf('/MediaBox') + 10; changed[at] += 1;
+    fs.writeFileSync('/data/originals/changed.pdf', changed);
+    const names = [...await readDigitalSigners('/data/originals/rsa.pdf'), ...await readDigitalSigners('/data/originals/ec.pdf')].map(s => s.name);
+    const voided = await readDigitalSigners('/data/originals/changed.pdf');
+    if (names.join() !== 'Ana Testescu,Dan Exemplu' || voided.length !== 0) throw new Error(`expected both signers and none once changed, got ${names.join()} / ${voided.length}`);
+    return names;
+  });
+  await step(out, 'own-signed', async () => {
+    const response = await fetch('/own-signed.pdf');
+    if (!response.ok) return 'none given';
+    fs.writeFileSync('/data/originals/own.pdf', new Uint8Array(await response.arrayBuffer()));
+    return { signers: (await readDigitalSigners('/data/originals/own.pdf')).map(s => s.name.length > 0) };
+  });
+  // HEIC: its converter is loaded when a file needs it (a chunk of its own), so this is the proof that loading it on the device works.
+  await step(out, 'heic', async () => {
+    // A small file is inlined as a data address, which the page's policy does not let fetch read: decode it here.
+    fs.writeFileSync('/data/originals/g.heic', Uint8Array.from(atob(heicUrl.split(',')[1]), c => c.charCodeAt(0)));
+    const converted = await convertUpload('/data/originals/g.heic');
+    const head = fs.readFileSync(converted!.path) as Buffer;
+    if (converted?.from !== 'heic' || head[0] !== 0xff || head[1] !== 0xd8) throw new Error('expected a JPEG from the HEIC file');
+    return head.length;
+  });
   await step(out, 'core', async () => { const core = await startCore(); return (await core.inject({ method: 'GET', url: '/api/tags' })).statusCode; });
   (window as any).__result = out;
 })();

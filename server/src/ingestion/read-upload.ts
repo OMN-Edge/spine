@@ -141,7 +141,7 @@ async function fileSignatures(userId: string, sourceFileId: string, filePath: st
         for (const d of docs) {
           for (const signer of signers) {
             const id = await tx.doctors.upsert(userId, { name: signer.name, clinic: d.provider }, now);
-            if (id) await tx.doctors.link(userId, d.id, id, 'author', 'signature');
+            if (id) await tx.doctors.link(userId, d.id, id, 'author', signer.verified ? 'verified_signature' : 'signature');
           }
         }
       });

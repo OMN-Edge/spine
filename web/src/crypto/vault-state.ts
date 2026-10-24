@@ -1,5 +1,5 @@
 import { deriveFromPassword } from './keys.js';
-import { VaultSession, fetchKdf } from './vault-client.js';
+import { VaultSession, fetchKdf, type PasskeyUnlock } from './vault-client.js';
 import { OpenError } from './seal.js';
 import { device, forgetDeviceObjectUrls } from '../core/client';
 
@@ -57,6 +57,15 @@ export const vaultState = {
     await session?.close();
     session = opened;
     if (!device.isOpen()) await device.unlock(forDevice);
+    return session;
+  },
+
+  /** Opens it with a passkey's PRF output (a sign-in with a passkey that opens the vault). Throws `OpenError` if the sealed key does not open. */
+  async unlockWithPasskey(unlock: PasskeyUnlock): Promise<VaultSession> {
+    const opened = await VaultSession.openWithPasskey({ ...unlock, prf: unlock.prf.slice() });
+    await session?.close();
+    session = opened;
+    if (!device.isOpen()) await device.unlockWithPasskey({ credentialId: unlock.credentialId, wrapped: unlock.wrapped, prf: unlock.prf.slice() });
     return session;
   },
 

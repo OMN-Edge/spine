@@ -44,6 +44,7 @@ export interface UnlockedKeys {
 const CTX = {
   byMaster: 'spine/v1/account-key/master',
   byRecovery: 'spine/v1/account-key/recovery',
+  byPasskey: (credentialId: string) => `spine/v1/account-key/passkey/${credentialId}`,
   privateKey: 'spine/v1/account-private-key',
   profileKey: (profileId: string) => `spine/v1/profile-key/${profileId}`,
   dataKey: (objectId: string) => `spine/v1/data-key/${objectId}`,
@@ -102,6 +103,38 @@ export const unlockWithMaster = (masterKey: Uint8Array, payload: VaultKeyPayload
 /** Throws `OpenError` for a wrong recovery key. */
 export const unlockWithRecovery = (recoveryKey: Uint8Array, payload: Pick<VaultKeyPayload, 'wrapped_by_recovery' | 'wrapped_private_key' | 'public_key'>) =>
   unlockWith(recoveryKey, CTX.byRecovery, payload.wrapped_by_recovery, payload as VaultKeyPayload);
+
+/**
+ * A passkey that opens the vault: its PRF output (32 bytes the authenticator derives from a fixed input and never shows anyone else) makes
+ * a key on the device, and the account key is sealed under it. The server keeps the sealed form on the passkey's row and cannot open it:
+ * it never sees the PRF output. The account key does not change with the password, so this stays valid through a change of password.
+ */
+async function keyFromPrf(prf: Uint8Array): Promise<Uint8Array> {
+  const s = await sodium();
+  if (prf.length !== 32) throw new Error('the passkey gave an unexpected value');
+  return s.crypto_kdf_derive_from_key(32, 1, 'spineprf', prf);
+}
+
+export async function wrapForPasskey(unlocked: UnlockedKeys, prf: Uint8Array, credentialId: string): Promise<string> {
+  const s = await sodium();
+  const key = await keyFromPrf(prf);
+  try {
+    return toB64(s, await seal(key, unlocked.accountKey, CTX.byPasskey(credentialId)));
+  } finally {
+    s.memzero(key);
+  }
+}
+
+/** Throws `OpenError` for another passkey's output, a key sealed for another credential, or changed bytes. */
+export async function unlockWithPasskey(prf: Uint8Array, credentialId: string, wrapped: string, payload: VaultKeyPayload): Promise<UnlockedKeys> {
+  const s = await sodium();
+  const key = await keyFromPrf(prf);
+  try {
+    return await unlockWith(key, CTX.byPasskey(credentialId), wrapped, payload);
+  } finally {
+    s.memzero(key);
+  }
+}
 
 /** A new master password over the same account key: a new salt, a new master key, the recovery wrapping as it was. */
 export async function rewrapForPassword(unlocked: UnlockedKeys, current: VaultKeyPayload, newPassword: string, params: KdfParams = DEFAULT_KDF): Promise<{ authValue: string; keys: VaultKeyPayload }> {

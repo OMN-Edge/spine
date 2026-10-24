@@ -15,6 +15,7 @@ import { ownAccountRoutes } from './routes/own-account.js';
 import { passkeyRoutes } from './routes/passkeys.js';
 import { vaultRoutes } from './routes/vault.js';
 import { relayRoutes } from './routes/relay.js';
+import { trustAnchorRoutes } from './routes/trust-anchors.js';
 import { sharedRoutes, shareShellRoutes, sweepShares } from './routes/shared.js';
 import { decorateAuth } from './routes/middleware.js';
 import { getStore } from './store/index.js';
@@ -96,6 +97,7 @@ await app.register(ownAccountRoutes);
 await app.register(passkeyRoutes);
 await app.register(vaultRoutes);
 await app.register(relayRoutes);
+await app.register(trustAnchorRoutes);
 await app.register(sharedRoutes);
 // The records are on the device (stage 5): the server registers no route that reads or writes one, and the routes the device's
 // core runs (documents, uploads, tags, chat, ...) are not served here. A recipient's address gets the app shell.

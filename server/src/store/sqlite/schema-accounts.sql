@@ -59,7 +59,8 @@ CREATE TABLE IF NOT EXISTS user_passkeys (
   name TEXT NOT NULL,
   backed_up INTEGER NOT NULL DEFAULT 0, -- synced between the person's devices (iCloud Keychain, Google Password Manager)
   created_at TEXT NOT NULL,
-  last_used_at TEXT
+  last_used_at TEXT,
+  wrapped_key TEXT          -- the account key sealed under a key the passkey's PRF output makes on the device; ciphertext, NULL when this passkey does not open the vault
 );
 CREATE INDEX IF NOT EXISTS idx_user_passkeys_user ON user_passkeys(user_id);
 
@@ -82,6 +83,15 @@ CREATE TABLE IF NOT EXISTS user_sessions (
   address TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id);
+
+-- Model calls the relay has allowed an account's device, a row a day; the relay counts here in whichever store it is
+-- configured with, which need not be the server's (so no foreign key). Only a number, never what was asked.
+CREATE TABLE IF NOT EXISTS model_usage (
+  user_id TEXT NOT NULL,
+  day TEXT NOT NULL,
+  calls INTEGER NOT NULL,
+  PRIMARY KEY (user_id, day)
+);
 
 -- sha256 of a random cookie each browser holds, to tell "a browser this account has signed in from" from a new one,
 -- so a new one can be mailed about. Not a credential: it grants nothing by itself.

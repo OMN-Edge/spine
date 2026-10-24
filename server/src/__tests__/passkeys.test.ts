@@ -12,7 +12,7 @@ afterAll(async () => { await app.close(); });
 afterEach(() => { vi.useRealTimers(); });
 
 const cookieOf = (res: { cookies: Array<{ name: string; value: string }> }) => res.cookies.map(c => `${c.name}=${c.value}`).join('; ');
-const send = (method: 'GET' | 'POST' | 'PATCH' | 'DELETE', url: string, cookie?: string, payload?: unknown) =>
+const send = (method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', url: string, cookie?: string, payload?: unknown) =>
   app.inject({ method, url, headers: cookie ? { cookie } : {}, ...(payload === undefined ? {} : { payload: payload as object }) });
 
 /** Signs in with the password and registers a new software authenticator; returns the pieces a test wants next. */
@@ -58,7 +58,7 @@ describe('registering a passkey', () => {
     const list = (await send('GET', '/api/auth/passkeys', cookie)).json() as Array<Record<string, unknown>>;
     expect(list).toHaveLength(1);
     expect(list[0]).toMatchObject({ name: 'Kitchen tablet' });
-    expect(Object.keys(list[0]).sort()).toEqual(['backed_up', 'created_at', 'id', 'last_used_at', 'name']);
+    expect(Object.keys(list[0]).sort()).toEqual(['backed_up', 'created_at', 'id', 'last_used_at', 'name', 'opens_vault']);
     expect(JSON.stringify(list)).not.toMatch(/public_key|counter/);
     const stored = (await getStore().users.listPasskeys(user.id))[0];
     expect(stored.public_key.length).toBeGreaterThan(40);
@@ -98,7 +98,7 @@ describe('signing in with a passkey', () => {
     const { user, device } = await withPasskey('signin@spine.test');
     const { res, cookie } = await signIn(device);
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ ok: true, email: user.email });
+    expect(res.json()).toEqual({ ok: true, email: user.email, credential_id: device.id.toString('base64url'), wrapped_key: null });
     expect((await send('GET', '/api/auth/me', cookie)).json()).toMatchObject({ authenticated: true, email: user.email });
     const stored = (await getStore().users.listPasskeys(user.id))[0];
     expect(stored.counter).toBe(1);
@@ -199,6 +199,55 @@ describe('managing passkeys', () => {
   it('deletes with the account', async () => {
     const { user } = await withPasskey('gone@spine.test');
     await getStore().users.delete(user.id);
+    expect(await getStore().users.listPasskeys(user.id)).toEqual([]);
+  });
+});
+
+describe('a passkey that opens the vault', () => {
+  const sealedKey = 'A'.repeat(96); // what the device sends: 72 sealed bytes, as 96 characters of base64url
+  const idOf = (device: SoftAuthenticator) => device.id.toString('base64url');
+
+  it('keeps the sealed key it is given, lists only that it opens the vault, and hands the key back at sign-in', async () => {
+    const { user, cookie, device } = await withPasskey('opens@spine.test');
+    expect((await send('GET', '/api/auth/passkeys', cookie)).json()[0].opens_vault).toBe(false);
+    expect((await signIn(device)).res.json()).toMatchObject({ wrapped_key: null });
+
+    const set = await send('PUT', `/api/auth/passkeys/${idOf(device)}/vault-key`, cookie, { wrapped_key: sealedKey });
+    expect(set.statusCode).toBe(200);
+    const listed = (await send('GET', '/api/auth/passkeys', cookie)).json();
+    expect(listed[0].opens_vault).toBe(true);
+    expect(JSON.stringify(listed)).not.toContain(sealedKey);
+    expect((await signIn(device)).res.json()).toMatchObject({ credential_id: idOf(device), wrapped_key: sealedKey });
+    expect((await getStore().users.listPasskeys(user.id))[0].wrapped_key).toBe(sealedKey);
+
+    expect((await send('PUT', `/api/auth/passkeys/${idOf(device)}/vault-key`, cookie, { wrapped_key: null })).statusCode).toBe(200);
+    expect((await signIn(device)).res.json().wrapped_key).toBeNull();
+  });
+
+  it('wants a session, the password typed lately, a sealed value of the right shape, and a passkey of the caller’s own', async () => {
+    const { cookie, device } = await withPasskey('opens-refused@spine.test');
+    const url = `/api/auth/passkeys/${idOf(device)}/vault-key`;
+    expect((await send('PUT', url, undefined, { wrapped_key: sealedKey })).statusCode).toBe(401);
+    for (const bad of ['short', 'not base64 !'.padEnd(100, 'x'), 'A'.repeat(300), 5, undefined]) {
+      expect((await send('PUT', url, cookie, { wrapped_key: bad })).statusCode, String(bad)).toBe(400);
+    }
+    const other = await withPasskey('opens-other@spine.test');
+    expect((await send('PUT', url, other.cookie, { wrapped_key: sealedKey })).statusCode).toBe(404);
+    expect((await getStore().users.listPasskeys((await getStore().users.findByEmail('opens-refused@spine.test'))!.id))[0].wrapped_key).toBeNull();
+
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(Date.now() + 11 * 60_000);
+    const user = (await getStore().users.findByEmail('opens-refused@spine.test'))!;
+    await getStore().sessions.touch(user.id, (await getStore().sessions.list(user.id))[0].id, new Date().toISOString());
+    const stale = await send('PUT', url, cookie, { wrapped_key: sealedKey });
+    expect(stale.statusCode).toBe(403);
+    expect(stale.json().code).toBe('reauth_required');
+  });
+
+  it('goes with the passkey when it is removed', async () => {
+    const { user, cookie, device } = await withPasskey('opens-removed@spine.test');
+    await send('PUT', `/api/auth/passkeys/${idOf(device)}/vault-key`, cookie, { wrapped_key: sealedKey });
+    expect((await send('DELETE', `/api/auth/passkeys/${idOf(device)}`, cookie)).statusCode).toBe(200);
     expect(await getStore().users.listPasskeys(user.id)).toEqual([]);
   });
 });

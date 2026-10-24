@@ -1,5 +1,6 @@
 import { loadEmbeddingConfig } from '../config.js';
 import { createNoneEmbedder } from './adapters/none.js';
+import { createRelayEmbedder } from './adapters/relay.js';
 import { createVertexEmbedder } from './adapters/vertex.js';
 import { EmbedderConfigError, type Embedder, type EmbedderConfig, type EmbedderFactory } from './types.js';
 
@@ -7,6 +8,7 @@ import { EmbedderConfigError, type Embedder, type EmbedderConfig, type EmbedderF
 const ADAPTERS = {
   none: createNoneEmbedder,
   vertex: createVertexEmbedder,
+  relay: createRelayEmbedder,
 } satisfies Record<string, EmbedderFactory>;
 
 export const EMBEDDERS = Object.keys(ADAPTERS);

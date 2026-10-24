@@ -26,7 +26,7 @@ export const ROLE_LABELS: Record<DoctorRole, string> = {
 export const draftDoctor = (d: DoctorOnDocument): DraftDoctor => ({ key: `${d.id}-${d.role}`, id: d.id, code: d.license_code, name: d.name, specialty: d.specialty ?? '', role: d.role });
 
 /** Reading mode: who this document names, each linking to their page in the directory. */
-export function DoctorsList({ doctors, plain = false }: { doctors: Array<Pick<DoctorOnDocument, 'id' | 'name' | 'specialty' | 'role'> & { license_code?: string | null }>; plain?: boolean }) {
+export function DoctorsList({ doctors, plain = false }: { doctors: Array<Pick<DoctorOnDocument, 'id' | 'name' | 'specialty' | 'role'> & { license_code?: string | null; signature_verified?: boolean }>; plain?: boolean }) {
   const { t } = useI18n();
   return (
     <div className="space-y-1">
@@ -37,6 +37,7 @@ export function DoctorsList({ doctors, plain = false }: { doctors: Array<Pick<Do
               <span className="font-medium text-gray-900 break-words">{d.name}</span>
               {d.specialty && <span className="block text-gray-400">{d.specialty}</span>}
               {/* The code is the owner's to see on their own pages; a recipient's list never carries it. */}
+              {!plain && d.signature_verified && <span className="block text-green-700" title={t('The certificates in the file lead to an authority this server trusts')}>{t('Digital signature verified')}</span>}
               {!plain && d.license_code && <span className="block text-gray-400" title={t('Professional code')}>{t('Code {code}', { code: d.license_code })}</span>}
             </span>
             <span className="text-gray-500 shrink-0">{t(ROLE_LABELS[d.role] ?? ROLE_LABELS.other)}</span>

@@ -42,7 +42,7 @@ async function invokeValidated<T>(
   let raw: unknown;
   for (let attempt = 1; ; attempt++) {
     try {
-      spendModelCall();
+      await spendModelCall();
       raw = await clients[task].invoke(prompt);
       break;
     } catch (err) {

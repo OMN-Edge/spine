@@ -1,8 +1,9 @@
 import { askForPassword } from './reauth';
 import { credentialFor, vaultState } from './crypto/vault-state';
-import { prepareSignIn } from './crypto/vault-client';
+import { prepareSignIn, type PasskeyUnlock } from './crypto/vault-client';
+import { getWithPrf, prfSupported } from './crypto/passkey-prf';
 import { checkPasswordPolicy } from './crypto/password-policy';
-import { rewrapForPassword, type KdfParams, type VaultKeyPayload } from './crypto/keys';
+import { rewrapForPassword, wrapForPasskey, type KdfParams, type VaultKeyPayload } from './crypto/keys';
 import { startAuthentication, startRegistration, type PublicKeyCredentialCreationOptionsJSON, type PublicKeyCredentialRequestOptionsJSON } from '@simplewebauthn/browser';
 import { appFetch } from './core/client';
 export type DocType =
@@ -91,6 +92,7 @@ export interface DoctorOnDocument {
   clinic: string | null;
   license_code: string | null;
   role: DoctorRole;
+  signature_verified?: boolean;
 }
 
 /** One test across all documents, for the list of trends. */
@@ -638,7 +640,7 @@ export const api = {
     /** Passkeys: sign in with the device; manage them from the account page. */
     passkeys: {
       supported: () => typeof window !== 'undefined' && !!window.PublicKeyCredential,
-      list: () => req<Array<{ id: string; name: string; backed_up: boolean; created_at: string; last_used_at: string | null }>>('/api/auth/passkeys'),
+      list: () => req<Array<{ id: string; name: string; backed_up: boolean; created_at: string; last_used_at: string | null; opens_vault: boolean }>>('/api/auth/passkeys'),
       add: async (name: string) => {
         const options = await post<PublicKeyCredentialCreationOptionsJSON>('/api/auth/passkeys/options', {});
         const response = await startRegistration({ optionsJSON: options });
@@ -646,11 +648,25 @@ export const api = {
       },
       rename: (id: string, name: string) => patch<{ ok: boolean }>(`/api/auth/passkeys/${encodeURIComponent(id)}`, { name }),
       remove: (id: string) => del<{ ok: boolean }>(`/api/auth/passkeys/${encodeURIComponent(id)}`),
-      signIn: async () => {
+      /** `unlock` is there when this passkey opens the vault and the browser gave its PRF output: the records open without the password. */
+      signIn: async (): Promise<{ ok: boolean; email: string; unlock: PasskeyUnlock | null }> => {
         const options = await post<PublicKeyCredentialRequestOptionsJSON>('/api/auth/passkey/options', {});
-        const response = await startAuthentication({ optionsJSON: options });
-        return post<{ ok: boolean; email: string }>('/api/auth/passkey/login', { response });
+        const { response, prf } = prfSupported() ? await getWithPrf(options) : { response: await startAuthentication({ optionsJSON: options }), prf: null };
+        const done = await post<{ ok: boolean; email: string; credential_id: string; wrapped_key: string | null }>('/api/auth/passkey/login', { response });
+        return { ok: done.ok, email: done.email, unlock: prf && done.wrapped_key ? { prf, credentialId: done.credential_id, wrapped: done.wrapped_key } : null };
       },
+      /** Lets a passkey open the vault: asks it for its PRF output, seals the account key under a key made from it, and sends only that. */
+      enableVaultUnlock: async (id: string) => {
+        const session = vaultState.session();
+        if (!session) throw new ApiError('Open your records first.', 0);
+        // A ceremony only to read the PRF output, so the challenge is made here and the answer is not sent anywhere (the server's own
+        // challenge would also end this session, as a sign-in does).
+        const challenge = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        const { prf } = await getWithPrf({ challenge, allowCredentials: [{ id, type: 'public-key' }], userVerification: 'required' });
+        if (!prf) throw new ApiError('This passkey cannot open your records on this device.', 0);
+        return put<{ ok: boolean }>(`/api/auth/passkeys/${encodeURIComponent(id)}/vault-key`, { wrapped_key: await wrapForPasskey(session.unlocked, prf, id) });
+      },
+      disableVaultUnlock: (id: string) => put<{ ok: boolean }>(`/api/auth/passkeys/${encodeURIComponent(id)}/vault-key`, { wrapped_key: null }),
     },
     verify: (token: string) => post<{ ok: boolean }>('/api/auth/verify', { token }),
     resendVerification: (email: string) =>

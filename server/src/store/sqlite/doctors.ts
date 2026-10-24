@@ -45,7 +45,7 @@ export function doctorRepository(db: Database): DoctorRepository {
   const linkInfo = db.prepare('SELECT doctor_id, role, source, printed_code FROM document_doctors WHERE document_id = ? AND user_id = ? ORDER BY rowid');
   const unlinkRead = db.prepare("DELETE FROM document_doctors WHERE document_id = ? AND user_id = ? AND source = 'text'");
   const forDocument = db.prepare(`
-    SELECT k.id, k.name, k.specialty, k.clinic, k.license_code, k.created_at, l.role
+    SELECT k.id, k.name, k.specialty, k.clinic, k.license_code, k.created_at, l.role, l.source = 'verified_signature' AS signature_verified
     FROM document_doctors l JOIN doctors k ON k.id = l.doctor_id AND k.user_id = l.user_id
     WHERE l.document_id = ? AND l.user_id = ? ORDER BY l.rowid
   `);
@@ -148,7 +148,7 @@ export function doctorRepository(db: Database): DoctorRepository {
     },
 
     async linkInfo(userId, documentId) {
-      return linkInfo.all(documentId, owner(userId)) as Array<{ doctor_id: string; role: DoctorRole; source: 'text' | 'stamp' | 'signature'; printed_code: string | null }>;
+      return linkInfo.all(documentId, owner(userId)) as Array<{ doctor_id: string; role: DoctorRole; source: 'text' | 'stamp' | 'signature' | 'verified_signature'; printed_code: string | null }>;
     },
 
     async unlinkAll(userId, documentId) {

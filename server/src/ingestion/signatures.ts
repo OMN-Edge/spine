@@ -94,7 +94,7 @@ export async function readSignatures(filePath: string, lastPages: number[], maxP
 export async function readDigitalSigners(filePath: string): Promise<DigitalSigner[]> {
   try {
     // pdfsig prints a harmless "NSS_Init failed" on stderr when it has no certificate store.
-    const { stdout } = await execFileAsync('pdfsig', [filePath], { timeout: 20_000, maxBuffer: 8 * 1024 * 1024 });
+    const { stdout } = await execFileAsync('pdfsig', [filePath], { timeout: 20_000, maxBuffer: 8 * 1024 * 1024, env: { ...process.env, TZ: 'UTC' } }) // pdfsig prints the signing time in the host's zone;
     return parseSigners(stdout);
   } catch (err) {
     const stdout = (err as { stdout?: string }).stdout;

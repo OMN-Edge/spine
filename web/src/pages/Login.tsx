@@ -4,6 +4,7 @@ import { api, ApiError } from '../api';
 import { useAuth } from '../auth';
 import AuthCard, { buttonClass, inputClass, Notice } from '../components/AuthCard';
 import { useI18n } from '../i18n';
+import { vaultState } from '../crypto/vault-state';
 
 export default function Login() {
   const { t } = useI18n();
@@ -72,6 +73,9 @@ export default function Login() {
     setError('');
     try {
       const result = await api.auth.passkeys.signIn();
+      vaultState.setEmail(result.email);
+      // A passkey that opens the vault leaves the records open; otherwise the master password is asked for, as after a reload.
+      if (result.unlock) await vaultState.unlockWithPasskey(result.unlock).catch(() => undefined);
       setAuthenticated(true, result.email);
       navigate(home);
     } catch (err) {

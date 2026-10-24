@@ -21,7 +21,6 @@ export const REPLACED = {
   'ingestion/text-pdf.ts': 'text-pdf.ts',
   'archive/zip-read.ts': 'zip-read.ts',
   'archive/zip-write.ts': 'zip-write.ts',
-  'llm/adapters/vertex.ts': 'llm-vertex.ts',
   'geo.ts': 'geo.ts',
 };
 

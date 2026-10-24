@@ -35,9 +35,9 @@ const partOf = (p: Part) =>
 
 const trace = (step: string) => (self as unknown as Worker).postMessage({ id: 0, trace: step } satisfies FromWorker);
 
-async function start(masterKey: Uint8Array): Promise<void> {
+async function start(opening: Uint8Array | { prf: Uint8Array; credentialId: string; wrapped: string }): Promise<void> {
   trace('opening the vault');
-  session = await VaultSession.open(masterKey);
+  session = opening instanceof Uint8Array ? await VaultSession.open(opening) : await VaultSession.openWithPasskey(opening);
   trace('loading profiles');
   const profiles = await session.loadProfiles();
   const profileId = profiles[0]?.id ?? (await session.createProfile('Me'));
@@ -53,9 +53,11 @@ async function start(masterKey: Uint8Array): Promise<void> {
       getSync: (id, kind) => s.getSync(id, kind),
       remove: (id, seq) => s.remove(id, seq),
     },
-  });
+  }, { onConflict: () => (self as unknown as Worker).postMessage({ id: 0, conflict: true } satisfies FromWorker) });
   trace('ready');
 }
+
+const streaming = new Map<number, () => void>();
 
 self.onmessage = async (event: MessageEvent<ToWorker>) => {
   const m = event.data;
@@ -63,6 +65,9 @@ self.onmessage = async (event: MessageEvent<ToWorker>) => {
   try {
     if (m.type === 'start') {
       await start(m.masterKey);
+      reply({ id: m.id, ok: true });
+    } else if (m.type === 'startWithPasskey') {
+      await start(m.passkey);
       reply({ id: m.id, ok: true });
     } else if (m.type === 'startShare') {
       // Reading a share: no vault, no account; the key is the access.
@@ -74,9 +79,24 @@ self.onmessage = async (event: MessageEvent<ToWorker>) => {
       await session?.close();
       core = null; session = null;
       reply({ id: m.id, ok: true });
+    } else if (m.type === 'abort') {
+      streaming.get(m.target)?.();
+      reply({ id: m.id, ok: true });
     } else {
       if (!core) throw Object.assign(new Error('the vault is locked'), { status: 423, code: 'locked' });
       const res = await core.inject({ method: m.method, url: m.url, headers: m.headers, payload: m.body, parts: m.parts?.map(partOf) });
+      if (res.stream) {
+        const post = (r: FromWorker, transfer: Transferable[] = []) => (self as unknown as Worker).postMessage(r, transfer);
+        post({ id: m.id, ok: true, status: res.statusCode, headers: res.headers, stream: true });
+        streaming.set(m.id, () => res.close?.());
+        try {
+          for await (const chunk of res.stream) { const copy = chunk.slice().buffer as ArrayBuffer; post({ id: m.id, chunk: copy }, [copy]); }
+        } finally {
+          streaming.delete(m.id);
+          post({ id: m.id, end: true });
+        }
+        return;
+      }
       const body = res.bytes ?? new TextEncoder().encode(res.body);
       const copy = body.slice().buffer as ArrayBuffer;
       reply({ id: m.id, ok: true, status: res.statusCode, headers: res.headers, body: copy }, [copy]);

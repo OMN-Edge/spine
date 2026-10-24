@@ -35,7 +35,7 @@ export function parseKdfParams(raw: unknown): KdfParams | null {
   return { alg, ops: ops as number, memKiB: memKiB as number };
 }
 
-const sealed = (v: unknown, min: number, max: number): v is string => typeof v === 'string' && v.length >= min && v.length <= max && B64URL.test(v);
+export const sealed = (v: unknown, min: number, max: number): v is string => typeof v === 'string' && v.length >= min && v.length <= max && B64URL.test(v);
 
 /** The keys a client sends, or null when any part is not what it should be. */
 export function parseVaultKeys(raw: unknown): VaultKeys | null {

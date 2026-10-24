@@ -16,5 +16,7 @@ COPY --from=build /app/server/node_modules node_modules
 COPY --from=build /app/server/dist dist
 USER node
 ENV NODE_ENV=production
+# The daily count is kept in the process unless the deployment names a store (SPINE_STORE, DATA_DIR, SPINE_DB_PATH; docs/relay.md).
+ENV SPINE_DB_PATH=:memory:
 # Cloud Run sets PORT; the relay listens on it (8080 otherwise).
 CMD ["node", "dist/relay/main.js"]

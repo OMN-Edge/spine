@@ -47,7 +47,9 @@ export default function Timeline() {
   // Zoom to one year (FR-TL-01); a year that is no longer in the list (another filter was chosen) shows everything.
   const [zoom, setZoom] = useState('');
   const samples = useSampleRecords();
-  const shownYears = years.includes(zoom) ? [zoom] : years;
+  // '' is "All years" and also the key of the undated group, so it must not count as a year that was chosen: with any undated document
+  // in the list, "All years" would otherwise show only those.
+  const shownYears = zoom !== '' && years.includes(zoom) ? [zoom] : years;
 
   return (
     <div>

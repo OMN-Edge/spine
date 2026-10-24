@@ -1,6 +1,5 @@
 import type { FastifyInstance } from 'fastify';
 import { requireAuth } from './middleware.js';
-import { loadEmbeddingConfig, loadLlmConfig } from '../config.js';
 import { getMailer } from '../mail/index.js';
 import { issueToken, MIN_SECRET_LENGTH } from '../relay/token.js';
 
@@ -12,12 +11,12 @@ const PASS_MS = 10 * 60 * 1000;
  * names, copied if set. Nothing secret is on the list, and `SPINE_LLM_PROVIDER` and the endpoints are set by `relayEnv`.
  */
 const SHARED = [
-  'SPINE_LLM_MODEL', 'SPINE_LLM_MODELS', 'SPINE_LLM_REGION', 'SPINE_LLM_PROJECT', 'SPINE_LLM_CONTEXT_CHARS', 'SPINE_LLM_CONCURRENCY',
+  'SPINE_LLM_MODEL', 'SPINE_LLM_MODELS', 'SPINE_LLM_CONTEXT_CHARS', 'SPINE_LLM_CONCURRENCY',
   'SPINE_LLM_MAX_RETRIES', 'SPINE_LLM_MAX_TOKENS_CONTINUATION', 'SPINE_LLM_MAX_TOKENS_EXTRACTION', 'SPINE_LLM_MAX_TOKENS_PAGE',
   'SPINE_TRANSLATION', 'SPINE_CHAT', 'SPINE_LINKING',
   'SPINE_PARSER', 'SPINE_MULTIMODAL_ENABLED', 'SPINE_OCR', 'SPINE_TEXT_LAYER_MIN_CHARS', 'SPINE_OCR_MIN_CONFIDENCE',
   'SPINE_OCR_MAX_LOW_SHARE', 'SPINE_OCR_LANGS',
-  'SPINE_EMBEDDINGS', 'SPINE_EMBEDDING_MODEL', 'SPINE_EMBEDDING_DIMS', 'SPINE_EMBEDDING_REGION', 'SPINE_EMBEDDING_PROJECT',
+  'SPINE_EMBEDDING_MODEL', 'SPINE_EMBEDDING_DIMS',
 ] as const;
 
 export interface RelaySettings { url: string; secret: string }
@@ -35,11 +34,16 @@ export function relayEnv(settings: RelaySettings, env: NodeJS.ProcessEnv = proce
   const host = new URL(settings.url).host;
   const out: Record<string, string> = {};
   for (const name of SHARED) if (env[name] !== undefined && env[name] !== '') out[name] = env[name]!;
-  // The device speaks to Vertex, and to the relay as if it were the regional host: the relay forwards to the real one.
-  out.SPINE_LLM_PROVIDER = 'vertex';
+  // The device speaks the relay's neutral protocol; which provider answers is the relay's own configuration, not this server's.
+  out.SPINE_LLM_PROVIDER = 'relay';
   out.SPINE_LLM_ENDPOINT = host;
-  if ((env.SPINE_EMBEDDINGS ?? 'none') === 'vertex') out.SPINE_EMBEDDING_ENDPOINT = host;
-  // A model with a region of its own is called at the relay too; its host is the relay's, the region stays in the path.
+  const embedder = (env.SPINE_EMBEDDINGS ?? 'none').toLowerCase();
+  if (embedder !== 'none') {
+    out.SPINE_EMBEDDINGS = 'relay';
+    out.SPINE_EMBEDDING_ENDPOINT = host;
+    // Vectors keep the name they had when this server made them itself.
+    out.SPINE_EMBEDDING_SPACE = `${embedder}:${env.SPINE_EMBEDDING_MODEL || 'gemini-embedding-2'}:${env.SPINE_EMBEDDING_DIMS || '768'}`;
+  }
   return out;
 }
 
@@ -49,9 +53,6 @@ export async function relayRoutes(app: FastifyInstance) {
   app.get('/api/relay/config', async (_req, reply) => {
     const settings = relaySettings();
     if (!settings) return reply.status(503).send({ error: 'this instance has no relay for model calls', code: 'no_relay' });
-    // Refused here rather than failing on the device: the relay forwards to Vertex only.
-    if (loadLlmConfig().provider !== 'vertex') return reply.status(503).send({ error: 'model calls from a device need SPINE_LLM_PROVIDER=vertex', code: 'no_relay' });
-    void loadEmbeddingConfig();
     return reply.header('Cache-Control', 'no-store').send({ url: settings.url, env: relayEnv(settings), mail: getMailer().enabled });
   });
 

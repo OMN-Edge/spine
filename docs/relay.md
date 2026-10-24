@@ -1,6 +1,6 @@
 # The relay for model calls
 
-A device (the browser) reads documents itself, so it is the one that sends text and page images to the model. It cannot hold Spine's Google credential, so it sends those calls to a small service, the relay, which holds the credential and forwards them. This page says what the relay does and does not do, how to deploy it, and what the operator must still do in the cloud console. The security entry is [SECURITY.md](../SECURITY.md) **M-35**.
+A device (the browser) reads documents itself, so it is the one that sends text and page images to the model. It cannot hold Spine's provider credential, so it sends those calls to a small service, the relay, which holds the credential and runs them through the provider adapter you configured (Vertex or Anthropic; a new provider is one adapter file in `server/src/llm/adapters/`). The device speaks a neutral protocol (`server/src/relay/protocol.ts`): a task name and messages in, a parsed result, a message or a stream of chunks out, and texts to vectors for embeddings. This page says what the relay does and does not do, how to deploy it, and what the operator must still do in the cloud console. The security entry is [SECURITY.md](../SECURITY.md) **M-35**.
 
 ## What it is
 
@@ -9,20 +9,21 @@ A device (the browser) reads documents itself, so it is the one that sends text 
 | Variable | What it is |
 | --- | --- |
 | `SPINE_RELAY_SECRET` | At least 32 random characters, the same on the relay and on the Spine server. Signs the passes the server gives devices. |
-| `SPINE_LLM_PROVIDER` | `vertex` (the relay forwards to Vertex AI only). |
-| `SPINE_LLM_ENDPOINT`, `SPINE_LLM_REGION`, `SPINE_LLM_PROJECT` | Stated, never defaulted: residency is a property of the endpoint (e.g. `aiplatform.eu.rep.googleapis.com`, `eu`). |
+| `SPINE_LLM_PROVIDER` | `vertex` or `anthropic`: the provider the relay calls, with that adapter's own settings (`ANTHROPIC_API_KEY`, or the Vertex ones below). Not `relay`. |
+| `SPINE_LLM_ENDPOINT`, `SPINE_LLM_REGION`, `SPINE_LLM_PROJECT` | For Vertex: stated, never defaulted; residency is a property of the endpoint (e.g. `aiplatform.eu.rep.googleapis.com`, `eu`). |
 | `SPINE_LLM_MODEL`, `SPINE_LLM_MODELS` | The models that may be called; each may have its own region. Anything else is refused. |
-| `SPINE_EMBEDDINGS=vertex`, `SPINE_EMBEDDING_MODEL`, `_REGION`, `_PROJECT`, `_ENDPOINT` | The embedding model, if used. |
+| `SPINE_EMBEDDINGS=vertex`, `SPINE_EMBEDDING_MODEL`, `_REGION`, `_PROJECT`, `_ENDPOINT` | The embedding model, if used: the relay's embedder, whichever adapter that is. |
 | `SPINE_RELAY_ORIGIN` | The address the app is served from (`https://spine.example`), the only origin the browser may call the relay from. |
-| `SPINE_RELAY_DAILY_CALLS` | Calls one account may make a day (default 500). Counted in the process: **run one instance**. |
+| `SPINE_RELAY_DAILY_CALLS` | Calls one account may make a day (default 500). Counted in the store (next row). |
+| `SPINE_STORE`, `DATA_DIR`, `SPINE_DB_PATH` | The store the relay counts in, chosen as the server's is. It records only a number a day per account (table `model_usage`), so the relay may share the server's database, have one of its own on a volume, or set `SPINE_DB_PATH=:memory:` to count in the process (**run one instance** then). The SQLite adapter is a file, so instances that share a count must share the file; a networked adapter would not need that. |
 | `PORT` | The port to listen on (Cloud Run sets it). |
 
 The Spine server needs `SPINE_RELAY_URL` (the relay's https address) and `SPINE_RELAY_SECRET`. Without them a device cannot call a model and says so. Docker Compose passes `SPINE_RELAY_URL` to the proxy so the page's content security policy allows it (`nginx/spine.conf` gets it from `install.sh -n`).
 
 ## What it does and does not do
 
-- It checks the pass, the path (a model, project and region it was configured with, and a call Spine makes), the size and the account's daily allowance; then it sends the body to the stated endpoint with its own credential and nothing else of the device's.
-- It **stores nothing and logs no content**: one line a call with the model, method, status, request size and time.
+- It checks the pass, the path (one of Spine's tasks or the embedding call), the shape of the body, that the model is one it offers, the size and the account's daily allowance; then it runs the task through its provider adapter with its own credential. A tool the device names is a declaration given to the model, never run by the relay. Nothing else of the device's goes on.
+- It **stores nothing and logs no content**: one line a call with the task, model, status, request size and time. A provider's own error text is not passed back, because it may quote what was sent.
 - It **can see** everything that passes through it, in plaintext. Say "does not store or log content" in product text, never "cannot see". An enclave relay with attestation (Google Cloud Confidential Space) would remove that and is a later step.
 
 ## Deploying on Cloud Run
@@ -40,7 +41,7 @@ gcloud run deploy spine-relay \
 (`--source .` uses `relay.Dockerfile` if you name it with `--dockerfile`, or build and push the image yourself.) Notes:
 
 - **Unauthenticated at the platform level**: the pass is the authentication; Cloud Run's own IAM check would stop a browser. The service account has only the Vertex AI User role.
-- **One instance**: the daily allowance is counted in memory. Raise `--max-instances` only after moving the count somewhere shared.
+- **One instance** while the store is `:memory:` (the usual Cloud Run setting): raise `--max-instances` only after the count is in a store every instance reaches.
 - **Region**: an EU region for the service itself, as the requirements say. Request logging is metadata only; do not enable request-body logging.
 - Put the service's address in `SPINE_RELAY_URL` on the Spine server and in `SPINE_RELAY_ORIGIN`'s counterpart: the relay allows the app's origin, and the app's content security policy allows the relay's.
 

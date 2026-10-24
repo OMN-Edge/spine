@@ -1071,5 +1071,17 @@
  "Master password": "Mot de passe principal",
  "That is not the master password.": "Ce n'est pas le mot de passe principal.",
  "Opening…": "Ouverture…",
- "This address is incomplete or damaged. Ask the person who shared it for the whole link.": "Cette adresse est incomplète ou abîmée. Demandez le lien entier à la personne qui l'a partagé."
+ "This address is incomplete or damaged. Ask the person who shared it for the whole link.": "Cette adresse est incomplète ou abîmée. Demandez le lien entier à la personne qui l'a partagé.",
+ "Another device saved changes first": "Un autre appareil a enregistré des modifications en premier",
+ "Changes made here since then are not saved. Download them now, then reload to carry on from the other device’s records.": "Les modifications faites ici depuis ne sont pas enregistrées. Téléchargez-les maintenant, puis rechargez pour continuer avec les dossiers de l’autre appareil.",
+ "Download what is on this device": "Télécharger ce qui se trouve sur cet appareil",
+ "Reload": "Recharger",
+ "A passkey can also open your records without the master password, if your device supports it. The records stay encrypted: the passkey makes the key on this device and only a sealed copy is kept for it.": "Une clé d’accès peut aussi ouvrir vos dossiers sans le mot de passe principal, si votre appareil le permet. Les dossiers restent chiffrés : la clé d’accès fabrique la clé sur cet appareil et seule une copie scellée est conservée pour elle.",
+ "opens your records": "ouvre vos dossiers",
+ "Stop opening my records with it": "Ne plus ouvrir mes dossiers avec elle",
+ "Open my records with it": "Ouvrir mes dossiers avec elle",
+ "Open with a passkey": "Ouvrir avec une clé d’accès",
+ "This passkey does not open your records. Use the master password.": "Cette clé d’accès n’ouvre pas vos dossiers. Utilisez le mot de passe principal.",
+ "Digital signature verified": "Signature numérique vérifiée",
+ "The certificates in the file lead to an authority this server trusts": "Les certificats du fichier mènent à une autorité à laquelle ce serveur fait confiance"
 }

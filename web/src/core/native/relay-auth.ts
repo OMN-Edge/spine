@@ -1,4 +1,4 @@
-import { useEmbedderHooks } from '../../../../server/src/embedding/index';
+import { useRelayHooks } from '../../../../server/src/llm/adapters/relay';
 
 /**
  * How the device reaches the model: through the relay, with a pass the Spine server gives to a signed-in account
@@ -38,6 +38,6 @@ export async function applyRelayConfig(): Promise<boolean> {
   const body = (await res.json()) as { env: Record<string, string>; mail?: boolean };
   mail = body.mail === true;
   Object.assign(process.env, body.env);
-  useEmbedderHooks({ tokenProvider: relayToken, fetchImpl: relayFetch });
+  useRelayHooks({ tokenProvider: relayToken, fetchImpl: relayFetch });
   return true;
 }

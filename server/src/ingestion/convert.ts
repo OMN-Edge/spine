@@ -1,7 +1,6 @@
 import { readFileSync, renameSync, rmSync, statSync, openSync, readSync, closeSync, writeFileSync } from 'fs';
 import path from 'path';
 import { textToPdf } from './text-pdf.js';
-import heicConvert from 'heic-convert';
 import { ZipReader } from '../archive/zip-read.js';
 
 /**
@@ -112,6 +111,8 @@ export async function convertUpload(source: string): Promise<{ path: string; fro
   const staged = `${target}.part`;
   try {
     if (kind === 'heic') {
+      // Loaded when a HEIC file is converted: it is two megabytes of code a device otherwise never needs.
+      const { default: heicConvert } = await import('heic-convert');
       const jpeg = await heicConvert({ buffer: readFileSync(source), format: 'JPEG', quality: 0.92 });
       writeFileSync(staged, Buffer.from(jpeg));
     } else if (kind === 'txt') {

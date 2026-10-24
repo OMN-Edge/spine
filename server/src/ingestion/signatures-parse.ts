@@ -1,5 +1,5 @@
 // What can be said about a PDF's stamps and digital signatures without running anything: the shapes, the picking and the parsing.
-// The device reads neither yet (web/src/core/native/signatures.ts), so these are what both sides share.
+// The device reads stamps with PDF.js and digital signatures with signatures-cms.ts (web/src/core/native/signatures.ts); these are what both sides share.
 
 /**
  * `pdfimages` writes every image on a page, not only the ones chosen, so a page declaring more pixels than
@@ -94,6 +94,8 @@ export interface StampDoctor {
 export interface DigitalSigner {
   name: string;
   signedAt: string | null;
+  /** The certificates in the file chain up to a trust anchor the operator named, in date at the signing time. Undefined: not checked. */
+  verified?: boolean;
 }
 
 /** Parses `pdfsig` output: one block per signature, introduced by "Signature #n:". */

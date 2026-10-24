@@ -1,8 +1,9 @@
 import { loadLlmConfig } from '../config.js';
 import { logger } from '../logger.js';
 import { buildChatLlm } from './chat-llm.js';
-import { buildTaskSpecs } from './tasks.js';
+import { buildTaskSpecs, type TaskClients } from './tasks.js';
 import { createAnthropicChat } from './adapters/anthropic.js';
+import { createRelayChat } from './adapters/relay.js';
 import { createVertexChat } from './adapters/vertex.js';
 import {
   LlmConfigError,
@@ -18,6 +19,7 @@ import {
 const ADAPTERS = {
   anthropic: createAnthropicChat,
   vertex: createVertexChat,
+  relay: createRelayChat,
 } satisfies Record<string, TaskClientsFactory>;
 
 export const LLM_PROVIDERS = Object.keys(ADAPTERS);
@@ -33,14 +35,21 @@ export const LLM_PROVIDERS = Object.keys(ADAPTERS);
  * was needed.)
  */
 export function createChatLlm(config: ChatLlmConfig): ChatLlm {
+  return buildChatLlm(createTaskClients(config), config);
+}
+
+/**
+ * The adapter's clients, one per task, before the interface wraps them: what the relay serves a device's call with.
+ * The adapter is handed all the tasks up front and builds a client for each.
+ */
+export function createTaskClients(config: ChatLlmConfig): TaskClients {
   const factory = (ADAPTERS as Record<string, TaskClientsFactory | undefined>)[config.provider];
   if (!factory) {
     throw new LlmConfigError(
       `unknown SPINE_LLM_PROVIDER "${config.provider}"; expected one of ${LLM_PROVIDERS.join(', ')}`,
     );
   }
-  // The adapter is handed both tasks up front and builds a client for each.
-  return buildChatLlm(factory(config, buildTaskSpecs(config)), config);
+  return factory(config, buildTaskSpecs(config));
 }
 
 let _chatLlm: ChatLlm | null = null;

@@ -31,13 +31,17 @@ describe('what a device is given to call the relay', () => {
     expect((await get('/api/relay/token', false)).statusCode).toBe(401);
   });
 
-  it('says so when there is no relay, or the provider is not one it can reach', async () => {
+  it('says so when there is no relay', async () => {
     delete process.env.SPINE_RELAY_URL;
     expect((await get('/api/relay/config')).statusCode).toBe(503);
     expect((await get('/api/relay/token')).statusCode).toBe(503);
+    expect((await get('/api/relay/config')).json().code).toBe('no_relay');
+  });
+
+  it('serves whichever provider the relay is set up with: the device is told only the relay', async () => {
     configure();
     process.env.SPINE_LLM_PROVIDER = 'anthropic';
-    expect((await get('/api/relay/config')).json().code).toBe('no_relay');
+    expect((await get('/api/relay/config')).statusCode).toBe(200);
   });
 
   it('gives the settings the device needs, with the relay as the endpoint, and nothing secret', async () => {
@@ -46,9 +50,9 @@ describe('what a device is given to call the relay', () => {
     expect(res.statusCode).toBe(200);
     const body = res.json<{ url: string; env: Record<string, string> }>();
     expect(body.url).toBe('https://relay.example.run.app');
-    expect(body.env.SPINE_LLM_PROVIDER).toBe('vertex');
+    expect(body.env.SPINE_LLM_PROVIDER).toBe('relay');
     expect(body.env.SPINE_LLM_ENDPOINT).toBe('relay.example.run.app');
-    expect(body.env.SPINE_LLM_PROJECT).toBe('proj-1');
+    expect(body.env.SPINE_LLM_PROJECT).toBeUndefined();
     expect(body.env.SPINE_PARSER).toBe('text');
     const text = res.body;
     for (const secret of [SECRET, 'sk-ant-never-sent', 'test-secret-must-be-at-least']) expect(text).not.toContain(secret);
@@ -66,6 +70,8 @@ describe('what a device is given to call the relay', () => {
     expect(relaySettings({ SPINE_RELAY_URL: 'http://relay.example', SPINE_RELAY_SECRET: SECRET })).toBeNull();
     expect(relaySettings({ SPINE_RELAY_URL: 'http://localhost:8080', SPINE_RELAY_SECRET: SECRET })).not.toBeNull();
     expect(relaySettings({ SPINE_RELAY_URL: 'https://relay.example', SPINE_RELAY_SECRET: 'short' })).toBeNull();
-    expect(relayEnv({ url: 'https://relay.example', secret: SECRET }, { SPINE_EMBEDDINGS: 'vertex' }).SPINE_EMBEDDING_ENDPOINT).toBe('relay.example');
+    const env = relayEnv({ url: 'https://relay.example', secret: SECRET }, { SPINE_EMBEDDINGS: 'vertex', SPINE_EMBEDDING_MODEL: 'm-1', SPINE_EMBEDDING_DIMS: '256', SPINE_LLM_PROJECT: 'secret-project' });
+    expect(env).toMatchObject({ SPINE_LLM_PROVIDER: 'relay', SPINE_LLM_ENDPOINT: 'relay.example', SPINE_EMBEDDINGS: 'relay', SPINE_EMBEDDING_ENDPOINT: 'relay.example', SPINE_EMBEDDING_SPACE: 'vertex:m-1:256' });
+    expect(JSON.stringify(env)).not.toContain('secret-project'); // the provider's project is the relay's business
   });
 });

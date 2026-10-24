@@ -1,61 +1,51 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { Readable } from 'node:stream';
+import type { UsageRepository } from '../store/types.js';
+import { mapChatMessagesToStoredMessages, mapStoredMessagesToChatMessages, type AIMessage, type BaseMessage } from '@langchain/core/messages';
+import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
+import { LLM_TASKS, type LlmTask, type TaskClients } from '../llm/tasks.js';
+import { LlmBlockedError } from '../llm/types.js';
+import type { Embedder } from '../embedding/types.js';
+import { EMBED_PATH, TASK_PATH, embedRequest, taskRequest, type StreamLine } from './protocol.js';
 import { verifyToken } from './token.js';
 
 /**
- * The relay: the one thing between a device and the model provider (docs/crypto-design.md, SECURITY.md M-35). A device cannot hold
- * Spine's Google credential, so it sends the request here with a pass from the Spine server, and the relay adds the credential and
- * forwards it to the configured regional endpoint.
+ * The relay: the one thing between a device and the model provider (docs/relay.md, SECURITY.md M-35). A device cannot hold Spine's
+ * credential, so it sends the task here with a pass from the Spine server, and the relay runs it through the same provider adapters the
+ * server uses (`llm/adapters/`, picked by `SPINE_LLM_PROVIDER`), which hold the credential. Which provider that is, is the relay's
+ * configuration: the device speaks the neutral protocol in `protocol.ts` and never knows.
  *
- * What it keeps to: it **stores nothing and logs no content**. A request is read, forwarded and answered; the only things written down
- * are the model, the status, the sizes and the time. It forwards only the calls Spine makes (generate, stream, embed) to the project,
- * region and models it was configured with, so a pass cannot be used to reach anything else the credential can. It does see what passes
- * through it, in plaintext: it ends the TLS connection. That is why the words are "does not store or log", not "cannot see".
+ * What it keeps to: it **stores nothing and logs no content**. A request is read, answered and forgotten; the only things written down are
+ * the task, the model, the status, the sizes and the time. It runs only the tasks Spine has (`LLM_TASKS`) on the models it was configured
+ * with, and a tool the device names is a declaration handed to the model, never something the relay runs. It does see what passes through
+ * it, in plaintext: it ends the TLS connection. That is why the words are "does not store or log", not "cannot see".
  */
-export interface RelayTarget { model: string; endpoint: string; project: string; region: string }
-
 export interface RelayConfig {
   secret: string;
-  /** What may be called and where it goes: the models Spine uses, each at the regional host stated for it (residency is a property of it). */
-  targets: RelayTarget[];
   /** The address the app is served from, which the browser needs to be told it may call this service. */
   allowedOrigin: string;
-  /** Calls a user may make a day; the count is kept in this process, so run one instance to make it exact. */
+  /** Calls a user may make a day. */
   dailyCalls: number;
+  /** Where the day's calls are counted: the `usage` repository of the store the relay is configured with (`getStore()`). */
+  usage: UsageRepository;
   maxBodyBytes: number;
-  accessToken: () => Promise<string>;
-  fetchImpl?: typeof fetch;
+  /** The clients for a model id (the default when undefined), or null when that model is not offered. */
+  clients: (model: string | undefined) => TaskClients | null;
+  embedder: () => Embedder;
   log?: (line: Record<string, unknown>) => void;
   now?: () => number;
 }
 
-const METHODS = ['generateContent', 'streamGenerateContent', 'embedContent', 'predict'];
-const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
 export function createRelay(config: RelayConfig) {
-  const call = config.fetchImpl ?? fetch;
   const now = config.now ?? Date.now;
   const log = config.log ?? (() => undefined);
-  const allowed = config.targets.map(t => ({
-    target: t,
-    pattern: new RegExp(`^/v1/projects/${escape(t.project)}/locations/${escape(t.region)}/publishers/google/models/${escape(t.model)}:(${METHODS.join('|')})$`),
-  }));
-  const used = new Map<string, { day: string; calls: number }>();
 
-  const reply = (res: ServerResponse, status: number, error: string) => {
+  const reply = (res: ServerResponse, status: number, error: string, code?: string) => {
     res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-    res.end(JSON.stringify({ error }));
+    res.end(JSON.stringify(code ? { error, code } : { error }));
   };
 
   /** Counts a call against the user's day; false if there is none left. */
-  function spend(userId: string): boolean {
-    const day = new Date(now()).toISOString().slice(0, 10);
-    const have = used.get(userId);
-    if (!have || have.day !== day) { used.set(userId, { day, calls: 1 }); return true; }
-    if (have.calls >= config.dailyCalls) return false;
-    have.calls++;
-    return true;
-  }
+  const spend = async (userId: string): Promise<boolean> => (await config.usage.spend(userId, new Date(now()).toISOString().slice(0, 10), config.dailyCalls)) !== null;
 
   async function body(req: IncomingMessage): Promise<Buffer | null> {
     const chunks: Buffer[] = [];
@@ -68,6 +58,75 @@ export function createRelay(config: RelayConfig) {
     return Buffer.concat(chunks);
   }
 
+  /** The words for a failure, never the provider's own message, which may quote what was sent. */
+  const failure = (err: unknown): { status: number; error: string; code?: string } =>
+    err instanceof LlmBlockedError ? { status: 422, error: 'the model refused these words', code: 'blocked' } : { status: 502, error: 'the model provider could not answer' };
+
+  async function runTask(task: LlmTask, req: IncomingMessage, res: ServerResponse, payload: Buffer, started: number): Promise<void> {
+    const parsed = taskRequest.safeParse(safeJson(payload));
+    if (!parsed.success) return reply(res, 400, 'not a request this service understands');
+    const { model, messages, tools, stream } = parsed.data;
+    const clients = config.clients(model);
+    if (!clients) return reply(res, 400, 'that model is not offered');
+    const label = { task, model: model ?? 'default' };
+    const abort = new AbortController();
+    res.on('close', () => abort.abort());
+    let history: BaseMessage[];
+    try { history = mapStoredMessagesToChatMessages(messages as never); } catch { return reply(res, 400, 'not a request this service understands'); }
+
+    try {
+      if (task !== 'agent') {
+        const result = await clients[task].invoke(history, { signal: abort.signal });
+        res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+        res.end(JSON.stringify({ result }));
+        return log({ ...label, status: 200, bytes_in: payload.length, ms: now() - started });
+      }
+      const agent = clients.agent as unknown as BaseChatModel & { bindTools?: (t: unknown[]) => BaseChatModel };
+      const bound = tools && tools.length > 0 && agent.bindTools ? agent.bindTools(tools) : agent;
+      if (!stream) {
+        const message = (await bound.invoke(history, { signal: abort.signal })) as AIMessage;
+        res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+        res.end(JSON.stringify({ message: mapChatMessagesToStoredMessages([message])[0] }));
+        return log({ ...label, status: 200, bytes_in: payload.length, ms: now() - started });
+      }
+      // Streamed: one JSON line a piece. Once the status is sent, a failure can only be said in a line.
+      res.writeHead(200, { 'content-type': 'application/x-ndjson', 'cache-control': 'no-store' });
+      let status = 200;
+      try {
+        for await (const chunk of await bound.stream(history, { signal: abort.signal })) {
+          const line: StreamLine = { chunk: { content: chunk.content, tool_call_chunks: (chunk as { tool_call_chunks?: unknown[] }).tool_call_chunks, additional_kwargs: chunk.additional_kwargs, response_metadata: chunk.response_metadata, usage_metadata: (chunk as { usage_metadata?: unknown }).usage_metadata, id: chunk.id } };
+          res.write(`${JSON.stringify(line)}\n`);
+        }
+      } catch (err) {
+        const f = failure(err);
+        status = f.status;
+        if (!abort.signal.aborted) res.write(`${JSON.stringify({ error: f.error, code: f.code } satisfies StreamLine)}\n`);
+      }
+      res.end();
+      return log({ ...label, status, bytes_in: payload.length, ms: now() - started });
+    } catch (err) {
+      const f = failure(err);
+      if (!res.headersSent) reply(res, f.status, f.error, f.code); else res.end();
+      log({ ...label, status: f.status, bytes_in: payload.length, ms: now() - started });
+    }
+  }
+
+  async function runEmbed(res: ServerResponse, payload: Buffer, started: number): Promise<void> {
+    const parsed = embedRequest.safeParse(safeJson(payload));
+    if (!parsed.success) return reply(res, 400, 'not a request this service understands');
+    try {
+      const embedder = config.embedder();
+      if (!embedder.enabled) return reply(res, 404, 'embeddings are not set up here');
+      const vectors = await embedder.embed(parsed.data.texts, parsed.data.kind);
+      res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+      res.end(JSON.stringify({ vectors: vectors.map(v => Array.from(v)), id: embedder.id }));
+      log({ task: 'embed', model: embedder.id, status: 200, bytes_in: payload.length, ms: now() - started });
+    } catch {
+      reply(res, 502, 'the model provider could not answer');
+      log({ task: 'embed', model: 'embedder', status: 502, bytes_in: payload.length, ms: now() - started });
+    }
+  }
+
   return async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const started = now();
     res.setHeader('access-control-allow-origin', config.allowedOrigin);
@@ -78,38 +137,24 @@ export function createRelay(config: RelayConfig) {
     }
     if (req.method === 'GET' && req.url === '/healthz') return reply(res, 200, 'ok');
 
-    const [path, query = ''] = (req.url ?? '').split('?', 2);
-    const found = allowed.find(a => a.pattern.test(path));
-    const match = found && ([, found.target.model, /:(\w+)$/.exec(path)![1]] as const);
-    if (req.method !== 'POST' || !found || !match) return reply(res, 404, 'not a call this service makes');
-    // Only the one query a streamed answer needs.
-    if (query !== '' && query !== 'alt=sse') return reply(res, 400, 'unexpected query');
+    const path = (req.url ?? '').split('?', 1)[0];
+    const task = TASK_PATH.exec(path)?.[1];
+    const isEmbed = path === EMBED_PATH;
+    if (req.method !== 'POST' || (!isEmbed && !(task && (LLM_TASKS as readonly string[]).includes(task)))) return reply(res, 404, 'not a call this service makes');
+    if ((req.url ?? '') !== path) return reply(res, 400, 'unexpected query');
 
     const bearer = /^Bearer (.+)$/.exec(String(req.headers.authorization ?? ''))?.[1];
     const who = bearer ? verifyToken(config.secret, bearer, now()) : null;
     if (!who) return reply(res, 401, 'sign in again');
-    if (!spend(who.userId)) return reply(res, 429, 'the daily allowance of model calls is used up');
+    if (!(await spend(who.userId))) return reply(res, 429, 'the daily allowance of model calls is used up');
 
     const payload = await body(req);
     if (!payload) return reply(res, 413, 'too large');
-
-    let upstream: Response;
-    try {
-      upstream = await call(`https://${found.target.endpoint}${path}${query ? `?${query}` : ''}`, {
-        method: 'POST',
-        // Only these go on: nothing the device sent, its cookies and address included, reaches the provider.
-        headers: { authorization: `Bearer ${await config.accessToken()}`, 'content-type': 'application/json' },
-        body: payload,
-        signal: AbortSignal.timeout(180_000),
-      });
-    } catch {
-      log({ model: match[1], method: match[2], status: 502, bytes_in: payload.length, ms: now() - started });
-      return reply(res, 502, 'the model provider could not be reached');
-    }
-
-    res.writeHead(upstream.status, { 'content-type': upstream.headers.get('content-type') ?? 'application/json', 'cache-control': 'no-store' });
-    if (upstream.body) await new Promise<void>(resolve => Readable.fromWeb(upstream.body as never).on('error', resolve).on('end', resolve).pipe(res));
-    else res.end();
-    log({ model: match[1], method: match[2], status: upstream.status, bytes_in: payload.length, ms: now() - started });
+    if (isEmbed) return runEmbed(res, payload, started);
+    return runTask(task as LlmTask, req, res, payload, started);
   };
+}
+
+function safeJson(payload: Buffer): unknown {
+  try { return JSON.parse(payload.toString('utf8')); } catch { return null; }
 }

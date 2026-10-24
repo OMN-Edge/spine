@@ -130,6 +130,8 @@ export interface EmbeddingEnvConfig {
   endpoint?: string;
   region?: string;
   project?: string;
+  /** The vector space's name when the embedder is reached through a relay, so vectors made by one provider keep the name they had. */
+  space?: string;
 }
 
 export interface StoreEnvConfig {
@@ -321,6 +323,7 @@ function readEmbeddingConfig(env: NodeJS.ProcessEnv, problems: string[]): Embedd
     endpoint: inherit(env.SPINE_EMBEDDING_ENDPOINT, env.SPINE_LLM_ENDPOINT),
     region: inherit(env.SPINE_EMBEDDING_REGION, env.SPINE_LLM_REGION),
     project: inherit(env.SPINE_EMBEDDING_PROJECT, env.SPINE_LLM_PROJECT),
+    space: env.SPINE_EMBEDDING_SPACE || undefined,
   };
   if (adapter === 'vertex') {
     if (!config.endpoint) problems.push('SPINE_EMBEDDINGS=vertex needs SPINE_EMBEDDING_ENDPOINT (or SPINE_LLM_ENDPOINT with SPINE_LLM_PROVIDER=vertex): residency is a property of the endpoint, so there is no default');
@@ -427,8 +430,8 @@ function readModelChoices(env: NodeJS.ProcessEnv, defaultModel: string, problems
     }
     let endpoint: string | undefined;
     if (region !== undefined) {
-      if (env.SPINE_LLM_PROVIDER !== 'vertex') {
-        problems.push(`SPINE_LLM_MODELS names a region for ${id}, which only means something with SPINE_LLM_PROVIDER=vertex`);
+      if (env.SPINE_LLM_PROVIDER !== 'vertex' && env.SPINE_LLM_PROVIDER !== 'relay') {
+        problems.push(`SPINE_LLM_MODELS names a region for ${id}, which only means something with SPINE_LLM_PROVIDER=vertex (or relay, which tells a device where the relay sends it)`);
         continue;
       }
       endpoint = endpointForRegion(region) ?? undefined;

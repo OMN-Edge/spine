@@ -51,7 +51,7 @@ export interface Core {
   store: ReturnType<typeof createSqliteStoreWith>;
 }
 
-export async function startCore(vault?: { objects: ObjectStore; profileId: string }): Promise<Core> {
+export async function startCore(vault?: { objects: ObjectStore; profileId: string }, hooks: { onConflict?: () => void } = {}): Promise<Core> {
   await hashingReady();
   const persistence = vault && new Persistence(vault.objects, `ix-${vault.profileId}`, newId);
   const saved = persistence ? await persistence.load() : null;
@@ -83,16 +83,25 @@ export async function startCore(vault?: { objects: ObjectStore; profileId: strin
 
   let seen = db.totalChanges;
   let locked = false;
+  // Another device saved first. This one stops saving (retrying would only pile up objects that can never be used) and says so.
+  let conflicted = false;
   const dirty = () => db.totalChanges !== seen || memory.changes().written.length > 0 || memory.changes().removed.length > 0;
   const flush = async () => {
-    if (!persistence || locked) return;
+    if (!persistence || locked || conflicted) return;
     // A save waits for a moment when no transaction is open, so it never holds half of one.
     for (let waited = 0; db.inTransaction && waited < 50; waited++) await new Promise(r => setTimeout(r, 20));
     if (db.inTransaction) return;
     seen = db.totalChanges;
-    await persistence.save(() => db.export());
+    try {
+      await persistence.save(() => db.export());
+    } catch (err) {
+      if ((err as Error)?.name !== 'ConflictError') throw err;
+      conflicted = true;
+      if (timer) clearInterval(timer);
+      hooks.onConflict?.();
+    }
   };
-  const timer = persistence ? setInterval(() => { if (dirty()) void flush().catch(() => undefined); }, SAVE_EVERY_MS) : null;
+  const timer: ReturnType<typeof setInterval> | null = persistence ? setInterval(() => { if (dirty()) void flush().catch(() => undefined); }, SAVE_EVERY_MS) : null;
 
   return {
     store,

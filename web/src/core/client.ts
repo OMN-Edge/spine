@@ -10,6 +10,8 @@ class CoreWorker {
   private loaded: Promise<void> = Promise.resolve();
   private onLoaded: () => void = () => {};
   private next = 1;
+  /** The streamed replies being read, by request. */
+  private streams = new Map<number, ReadableStreamDefaultController<Uint8Array>>();
   private waiting = new Map<number, { resolve: (m: Extract<FromWorker, { ok: true }>) => void; reject: (e: Error) => void }>();
   private ready = false;
 
@@ -22,7 +24,10 @@ class CoreWorker {
       const m = event.data;
       // SQLite's own worker support announces itself on the same channel; it is not for us.
       if (typeof m?.id !== 'number') return;
+      if ('conflict' in m) { window.dispatchEvent(new Event(SAVE_CONFLICT)); return; }
       if ('trace' in m) { if (m.trace === 'loaded') this.onLoaded(); else console.debug('[core]', m.trace); return; }
+      if ('chunk' in m) { this.streams.get(m.id)?.enqueue(new Uint8Array(m.chunk)); return; }
+      if ('end' in m) { try { this.streams.get(m.id)?.close(); } catch { /* the reader already left */ } this.streams.delete(m.id); return; }
       const w = this.waiting.get(m.id);
       if (!w) return;
       this.waiting.delete(m.id);
@@ -51,6 +56,12 @@ class CoreWorker {
   /** Opens the vault with this master key and loads the records. The key is handed over, not copied: this page no longer has it. */
   async unlock(masterKey: Uint8Array): Promise<void> {
     await this.send({ type: 'start', masterKey }, [masterKey.buffer]);
+    this.ready = true;
+  }
+
+  /** The same with a passkey's PRF output: the worker opens the account key with it. Handed over, not copied. */
+  async unlockWithPasskey(passkey: { prf: Uint8Array; credentialId: string; wrapped: string }): Promise<void> {
+    await this.send({ type: 'startWithPasskey', passkey }, [passkey.prf.buffer]);
     this.ready = true;
   }
 
@@ -87,6 +98,18 @@ class CoreWorker {
 
     try {
       const m = await this.send({ type: 'request', method: init.method ?? 'GET', url, headers, body, parts }, transfer);
+      if (m.stream) {
+        const id = m.id;
+        const stop = () => { this.streams.delete(id); void this.send({ type: 'abort', target: id }).catch(() => undefined); };
+        const body = new ReadableStream<Uint8Array>({
+          start: controller => {
+            this.streams.set(id, controller);
+            init.signal?.addEventListener('abort', () => { try { controller.error(new DOMException('aborted', 'AbortError')); } catch { /* done already */ } stop(); }, { once: true });
+          },
+          cancel: stop,
+        });
+        return new Response(body, { status: m.status, headers: m.headers });
+      }
       return new Response(m.status === 204 || m.status === 304 ? null : m.body, { status: m.status, headers: m.headers });
     } catch (err) {
       const e = err as { status?: number; code?: string; message: string };
@@ -97,6 +120,9 @@ class CoreWorker {
 }
 
 type WithoutId<T> = T extends unknown ? Omit<T, 'id'> : never;
+
+/** Said on the window when another device saved first and this one can no longer save. */
+export const SAVE_CONFLICT = 'spine:save-conflict';
 
 /** The owner's core: their vault, opened with the master key. */
 export const device = new CoreWorker();
@@ -158,7 +184,11 @@ export function forgetDeviceObjectUrls(): void {
 /** Saves what the core returns for this address as a file, the way a link with `download` would. */
 export async function downloadFromDevice(url: string, filename: string): Promise<void> {
   const res = await deviceFetch(url);
-  if (!res.ok) throw new Error('could not make the file');
+  if (!res.ok) {
+    // Said in the console for whoever is finding out why: the status and the core's own words, never the records.
+    const why = await res.json().then((b: { error?: string; message?: string }) => b.error ?? b.message ?? '', () => '');
+    throw new Error(`could not make the file (${res.status}${why ? `: ${why}` : ''})`);
+  }
   const disposition = res.headers.get('content-disposition')?.match(/filename="?([^";]+)"?/)?.[1];
   const link = document.createElement('a');
   link.href = URL.createObjectURL(await res.blob());

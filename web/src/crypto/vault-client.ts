@@ -1,7 +1,7 @@
 import { sodium } from './sodium.js';
 import {
   createAccountKeys, deriveFromPassword, lock, newId, newProfileKey, openObject, openObjectNow, openProfileKey, openProfileRecord, sealObject, sealProfileRecord,
-  unlockWithMaster, type KdfParams, type UnlockedKeys, type VaultKeyPayload,
+  unlockWithMaster, unlockWithPasskey, type KdfParams, type UnlockedKeys, type VaultKeyPayload,
 } from './keys.js';
 
 /**
@@ -80,6 +80,9 @@ export async function prepareSignUp(password: string) {
   return createAccountKeys(password);
 }
 
+/** What a passkey sign-in leaves for opening the vault: its PRF output, which credential it came from, and the sealed key the server holds for it. */
+export interface PasskeyUnlock { prf: Uint8Array; credentialId: string; wrapped: string }
+
 export class VaultSession {
   private profileKeys = new Map<string, Uint8Array>();
 
@@ -96,6 +99,15 @@ export class VaultSession {
     if (!res.ok) return fail(res);
     const payload = (await res.json()) as VaultKeyPayload & { seq: number };
     const unlocked = await unlockWithMaster(masterKey, payload);
+    return new VaultSession(unlocked, payload, f);
+  }
+
+  /** The same step with a passkey's PRF output (`passkey-prf.ts`) in place of the master key. */
+  static async openWithPasskey(unlock: PasskeyUnlock, f: Fetch = defaultFetch): Promise<VaultSession> {
+    const res = await f('/api/vault/keys');
+    if (!res.ok) return fail(res);
+    const payload = (await res.json()) as VaultKeyPayload & { seq: number };
+    const unlocked = await unlockWithPasskey(unlock.prf, unlock.credentialId, unlock.wrapped, payload);
     return new VaultSession(unlocked, payload, f);
   }
 

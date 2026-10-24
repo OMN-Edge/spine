@@ -26,6 +26,8 @@ export interface EmbedderConfig {
   endpoint?: string;
   region?: string;
   project?: string;
+  /** The name of the vector space when a relay embeds for a provider behind it (see `relay.ts`). */
+  space?: string;
   /** Injectable for tests: a bearer token, and the HTTP call. */
   tokenProvider?: () => Promise<string>;
   fetchImpl?: typeof fetch;

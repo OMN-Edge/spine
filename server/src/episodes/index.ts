@@ -102,6 +102,6 @@ export function scheduleEpisodes(userId: string, delayMs = 5000): void {
     timers.delete(userId);
     proposeEpisodes(userId).catch(err => logger.warn('could not look for episodes', { error: describeError(err) }));
   }, delayMs);
-  timer.unref();
+  timer.unref?.(); // a browser timer has no unref (this runs on the device too)
   timers.set(userId, timer);
 }

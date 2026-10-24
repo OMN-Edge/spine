@@ -14,10 +14,12 @@ export function userRepository(db: Database): UserRepository {
   const touchPasskey = db.prepare('UPDATE user_passkeys SET counter = MAX(counter, ?), last_used_at = ? WHERE id = ?');
   const renamePasskey = db.prepare('UPDATE user_passkeys SET name = ? WHERE id = ? AND user_id = ?');
   const removePasskey = db.prepare('DELETE FROM user_passkeys WHERE id = ? AND user_id = ?');
+  const setPasskeyKey = db.prepare('UPDATE user_passkeys SET wrapped_key = ? WHERE id = ? AND user_id = ?');
   const asPasskey = (r: Record<string, unknown>): PasskeyRecord => ({
     id: r.id as string, user_id: r.user_id as string, public_key: r.public_key as string, counter: r.counter as number,
     transports: r.transports ? (JSON.parse(r.transports as string) as string[]) : null, name: r.name as string,
     backed_up: r.backed_up === 1, created_at: r.created_at as string, last_used_at: (r.last_used_at as string | null) ?? null,
+    wrapped_key: (r.wrapped_key as string | null) ?? null,
   });
   const setConsent = db.prepare('UPDATE users SET health_consent_at = ?, health_consent_version = ?, terms_accepted_at = ?, terms_version = ? WHERE id = ?');
   // Which tables exist: the server's database has none for records (scope `accounts`), so a user has no starter tags there and deleting
@@ -139,6 +141,7 @@ export function userRepository(db: Database): UserRepository {
     'source_files',
     'tags',
     'user_sessions',
+    'model_usage',
     'user_devices',
     'user_tokens',
     'user_passkeys',
@@ -190,6 +193,10 @@ export function userRepository(db: Database): UserRepository {
 
     async removePasskey(userId, id) {
       return removePasskey.run(id, userId).changes === 1;
+    },
+
+    async setPasskeyWrappedKey(userId, id, wrapped) {
+      return setPasskeyKey.run(wrapped, id, userId).changes === 1;
     },
 
     async recordConsent(id, consent, at) {

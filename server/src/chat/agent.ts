@@ -323,7 +323,7 @@ export function splitCitations(answer: string): string {
  * stream still works: its whole reply is one piece.
  */
 async function callStreaming(model: BaseChatModel, messages: BaseMessage[], progress: ChatProgress): Promise<AIMessage> {
-  spendModelCall(); // the instance's daily allowance (S-35)
+  await spendModelCall(); // the instance's daily allowance (S-35)
   let whole: AIMessageChunk | AIMessage | undefined;
   let tooling = false;
   let shown = false;

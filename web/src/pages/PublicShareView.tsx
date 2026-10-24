@@ -1,3 +1,4 @@
+import DeviceImg from '../components/DeviceImg';
 import { useState, useEffect } from 'react';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { api, type SharedDocument, type SharedListDocument, type TranslatedDocument, type TrendName, type TrendSeries } from '../api';
@@ -352,7 +353,7 @@ function SharedDocumentView({ token, id, translating, original, titleOf, onBack 
               </div>
             )}
             {currentPage && (
-              <img
+              <DeviceImg
                 key={currentPage.id}
                 src={`/api/share/${token}/pages/${currentPage.id}/image`} alt={t('Page {n}', { n: pageIdx + 1 })}
                 width={currentPage.image_width} height={currentPage.image_height}

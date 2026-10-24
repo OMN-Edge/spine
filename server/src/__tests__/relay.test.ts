@@ -1,13 +1,20 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { openDatabase } from '../store/sqlite/connection.js';
+import { openNative } from '../store/sqlite/driver-native.js';
+import { usageRepository } from '../store/sqlite/usage.js';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { readFileSync } from 'node:fs';
+import { HumanMessage, mapChatMessagesToStoredMessages } from '@langchain/core/messages';
+import { LlmBlockedError } from '../llm/types.js';
+import { standInClients, type StandInCall } from '../relay/stand-in.js';
+import type { TaskClients } from '../llm/tasks.js';
 import { createRelay } from '../relay/relay.js';
 import { issueToken, verifyToken } from '../relay/token.js';
 
 const SECRET = 'relay-test-secret-relay-test-secret-0123';
 const MODEL = 'gemini-test-flash';
-const PATH = `/v1/projects/proj-1/locations/eu/publishers/google/models/${MODEL}:generateContent`;
+const TASK = '/v1/task/continuation';
 
 describe('the relay pass', () => {
   it('is valid for its user until it runs out, and for no one else', () => {
@@ -26,21 +33,24 @@ describe('the relay pass', () => {
 describe('the relay', () => {
   let server: Server;
   let base = '';
-  let seen: Array<{ url: string; headers: Record<string, string>; body: string }>;
+  let calls: StandInCall[];
   let logs: Array<Record<string, unknown>>;
+  let limit = 100;
   let clock = Date.UTC(2026, 9, 23, 12);
   const mint = (user = 'user-1') => issueToken(SECRET, user, 600_000, clock).token;
+  const messages = (text: string) => mapChatMessagesToStoredMessages([new HumanMessage(text)]);
 
   beforeEach(async () => {
-    seen = [];
     logs = [];
-    const fake: typeof fetch = async (url, init) => {
-      seen.push({ url: String(url), headers: Object.fromEntries(new Headers(init?.headers).entries()), body: String(init?.body) });
-      return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'an answer' }] } }] }), { status: 200, headers: { 'content-type': 'application/json' } });
-    };
+    limit = 100;
+    const stand = standInClients({ continuation: { is_continuation: true, confidence: 0.9, reasoning: 'same table' } });
+    calls = stand.calls;
+    const clients: TaskClients = { ...stand.clients, translation: { invoke: async () => { throw new LlmBlockedError('Prompt blocked: SAFETY'); } } as never };
     const handle = createRelay({
-      secret: SECRET, targets: [{ model: MODEL, endpoint: 'aiplatform.eu.example', project: 'proj-1', region: 'eu' }, { model: 'embed-test', endpoint: 'aiplatform.eu2.example', project: 'proj-1', region: 'eu' }], allowedOrigin: 'https://app.example',
-      dailyCalls: 2, maxBodyBytes: 1000, accessToken: async () => 'google-token', fetchImpl: fake, log: l => logs.push(l), now: () => clock,
+      secret: SECRET, allowedOrigin: 'https://app.example', get dailyCalls() { return limit; }, maxBodyBytes: 2000, usage: usageRepository(openDatabase(':memory:', openNative)),
+      clients: model => (model === undefined || model === MODEL ? clients : null),
+      embedder: () => ({ enabled: true, id: 'test:3', dims: 3, embed: async texts => texts.map(() => Float32Array.from([1, 0, 0])) }),
+      log: l => logs.push(l), now: () => clock,
     });
     server = createServer((req, res) => void handle(req, res));
     await new Promise<void>(r => server.listen(0, '127.0.0.1', r));
@@ -48,67 +58,90 @@ describe('the relay', () => {
   });
   afterEach(() => new Promise<void>(r => server.close(() => r())));
 
-  const post = (path: string, body: string, token: string | null = mint(), extra: Record<string, string> = {}) =>
-    fetch(base + path, { method: 'POST', body, headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}), ...extra } });
+  const post = (path: string, body: unknown, token: string | null = mint(), extra: Record<string, string> = {}) =>
+    fetch(base + path, { method: 'POST', body: typeof body === 'string' ? body : JSON.stringify(body), headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}), ...extra } });
 
-  it('forwards a call with its own credential and nothing of the device’s', async () => {
-    const res = await post(PATH, '{"contents":[]}', mint(), { cookie: 'session=secret', 'x-forwarded-for': '203.0.113.9' });
+  it('runs a task through the relay’s own model and answers the parsed result', async () => {
+    const res = await post(TASK, { model: MODEL, messages: messages('Hemoglobin 13.5') }, mint(), { cookie: 'session=secret' });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ candidates: [{ content: { parts: [{ text: 'an answer' }] } }] });
-    expect(seen).toHaveLength(1);
-    expect(seen[0].url).toBe(`https://aiplatform.eu.example${PATH}`);
-    expect(seen[0].headers.authorization).toBe('Bearer google-token');
-    expect(Object.keys(seen[0].headers).sort()).toEqual(['authorization', 'content-type']);
-    expect(seen[0].body).toBe('{"contents":[]}');
+    expect(await res.json()).toEqual({ result: { is_continuation: true, confidence: 0.9, reasoning: 'same table' } });
+    expect(calls).toHaveLength(1);
+    expect(JSON.stringify(calls[0].messages)).toContain('Hemoglobin 13.5');
   });
 
-  it('refuses without a valid pass, and anything it was not set up to forward', async () => {
-    expect((await post(PATH, '{}', null)).status).toBe(401);
-    expect((await post(PATH, '{}', 'forged.token.here')).status).toBe(401);
-    expect((await post(PATH.replace(MODEL, 'another-model'), '{}')).status).toBe(404);
-    expect((await post(PATH.replace('proj-1', 'other-project'), '{}')).status).toBe(404);
-    expect((await post(PATH.replace(':generateContent', ':tuningJobs'), '{}')).status).toBe(404);
-    expect((await post(`${PATH}?key=abc`, '{}')).status).toBe(400);
-    expect((await fetch(base + PATH, { method: 'GET', headers: { authorization: `Bearer ${mint()}` } })).status).toBe(404);
-    expect(seen).toHaveLength(0);
+  it('gives the agent the tools the device names as declarations and hands back what the model asked for', async () => {
+    const tool = { type: 'function', function: { name: 'find_documents', description: 'finds', parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } } };
+    const res = await post('/v1/task/agent', { messages: messages('what do I have?'), tools: [tool] });
+    const { message } = (await res.json()) as { message: { type: string; data: { tool_calls: Array<{ name: string; args: unknown }> } } };
+    expect(message.type).toBe('ai');
+    expect(message.data.tool_calls[0]).toMatchObject({ name: 'find_documents', args: { query: 'sample' } });
+  });
+
+  it('streams the agent’s reply one line a piece', async () => {
+    const res = await post('/v1/task/agent', { messages: messages('hello'), stream: true });
+    expect(res.headers.get('content-type')).toContain('application/x-ndjson');
+    const lines = (await res.text()).trim().split('\n').map(l => JSON.parse(l));
+    expect(lines.map(l => l.chunk?.content).join('')).toBe('A sample answer.');
+  });
+
+  it('says a refusal by the model as a refusal, without the provider’s words', async () => {
+    const res = await post('/v1/task/translation', { messages: messages('x') });
+    expect(res.status).toBe(422);
+    expect(await res.json()).toEqual({ error: 'the model refused these words', code: 'blocked' });
+  });
+
+  it('embeds texts and says which vector space they are in', async () => {
+    const res = await post('/v1/embed', { texts: ['a', 'b'], kind: 'document' });
+    expect(await res.json()).toEqual({ vectors: [[1, 0, 0], [1, 0, 0]], id: 'test:3' });
+  });
+
+  it('refuses without a valid pass, and anything it was not set up to run', async () => {
+    expect((await post(TASK, { messages: messages('x') }, null)).status).toBe(401);
+    expect((await post(TASK, { messages: messages('x') }, 'forged.token.here')).status).toBe(401);
+    expect((await post('/v1/task/notatask', { messages: messages('x') })).status).toBe(404);
+    expect((await post('/v1/projects/p/locations/eu/publishers/google/models/m:generateContent', {})).status).toBe(404);
+    expect((await post(`${TASK}?key=abc`, { messages: messages('x') })).status).toBe(400);
+    expect((await fetch(base + TASK, { method: 'GET', headers: { authorization: `Bearer ${mint()}` } })).status).toBe(404);
+    expect((await post(TASK, { model: 'another-model', messages: messages('x') })).status).toBe(400);
+    expect((await post(TASK, { messages: [{ type: 'function', data: { content: 'x' } }] })).status).toBe(400);
+    expect((await post(TASK, 'not json')).status).toBe(400);
+    expect(calls).toHaveLength(0);
   });
 
   it('counts each user’s calls apart, and starts again the next day', async () => {
-    expect((await post(PATH, '{}', mint('a'))).status).toBe(200);
-    expect((await post(PATH, '{}', mint('a'))).status).toBe(200);
-    expect((await post(PATH, '{}', mint('a'))).status).toBe(429);
-    expect((await post(PATH, '{}', mint('b'))).status).toBe(200);
+    limit = 2;
+    const call = (user: string) => post(TASK, { messages: messages('x') }, mint(user));
+    expect((await call('a')).status).toBe(200);
+    expect((await call('a')).status).toBe(200);
+    expect((await call('a')).status).toBe(429);
+    expect((await call('b')).status).toBe(200);
     clock += 24 * 60 * 60 * 1000;
-    expect((await post(PATH, '{}', mint('a'))).status).toBe(200);
+    expect((await call('a')).status).toBe(200);
   });
 
-  it('sends each model to the host stated for it', async () => {
-    await post(PATH.replace(MODEL, 'embed-test').replace('generateContent', 'embedContent'), '{}');
-    expect(seen[0].url).toBe('https://aiplatform.eu2.example/v1/projects/proj-1/locations/eu/publishers/google/models/embed-test:embedContent');
-  });
-
-  it('refuses a body over the limit before sending it anywhere', async () => {
-    expect((await post(PATH, 'x'.repeat(1001))).status).toBe(413);
-    expect(seen).toHaveLength(0);
+  it('refuses a body over the limit before running anything', async () => {
+    expect((await post(TASK, 'x'.repeat(2001))).status).toBe(413);
+    expect(calls).toHaveLength(0);
   });
 
   it('answers the browser’s check and tells it which address may call', async () => {
-    const res = await fetch(base + PATH, { method: 'OPTIONS' });
+    const res = await fetch(base + TASK, { method: 'OPTIONS' });
     expect(res.status).toBe(204);
     expect(res.headers.get('access-control-allow-origin')).toBe('https://app.example');
     expect(res.headers.get('access-control-allow-headers')).toContain('authorization');
   });
 
-  it('writes down the model, the status and the sizes, and none of the content', async () => {
-    await post(PATH, '{"contents":[{"parts":[{"text":"Hemoglobin 13.5 for Jane Example"}]}]}');
+  it('writes down the task, the model, the status and the sizes, and none of the content', async () => {
+    await post(TASK, { model: MODEL, messages: messages('Hemoglobin 13.5 for Jane Example') });
     expect(logs).toHaveLength(1);
-    expect(Object.keys(logs[0]).sort()).toEqual(['bytes_in', 'method', 'model', 'ms', 'status']);
+    expect(Object.keys(logs[0]).sort()).toEqual(['bytes_in', 'model', 'ms', 'status', 'task']);
     expect(JSON.stringify(logs)).not.toMatch(/Hemoglobin|Jane/);
   });
 
-  it('has nothing to store with: no files, no database, no log of bodies', () => {
+  it('stores nothing but a count: no files, no repository but `usage` (a number a day), no log of bodies', () => {
     const source = readFileSync(new URL('../relay/relay.ts', import.meta.url), 'utf8');
     const imports = [...source.matchAll(/from '([^']+)'/g)].map(m => m[1]);
-    expect(imports.sort()).toEqual(['./token.js', 'node:http', 'node:stream']);
+    expect(imports.sort()).toEqual(['../embedding/types.js', '../llm/tasks.js', '../llm/types.js', '../store/types.js', './protocol.js', './token.js', '@langchain/core/language_models/chat_models', '@langchain/core/messages', 'node:http']);
+    expect(source).toContain("import type { UsageRepository } from '../store/types.js'"); // a type only: the relay is given the repository, it opens no store
   });
 });

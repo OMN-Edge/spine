@@ -61,4 +61,34 @@ describe('the core, saving to and loading from the vault', () => {
     expect([...(image.bytes ?? [])]).toEqual([137, 80, 78, 71, 1, 2, 3]);
     second.lock();
   });
+
+  it('stops saving and says so when another device saved first, instead of trying again for ever', async () => {
+    const { objects, store } = vault();
+    let saves = 0;
+    let armed = false;
+    const racing: ObjectStore = {
+      ...store,
+      async put(kind, id, data, base) {
+        saves += 1;
+        // The index object is the one another device wins: its change number has moved on.
+        if (kind === 'library' && armed) throw Object.assign(new Error('this object changed elsewhere'), { name: 'ConflictError' });
+        return store.put(kind, id, data, base);
+      },
+    };
+    let said = 0;
+    const core = await startCore({ objects: racing, profileId: 'profile-bbbbbbbb' }, { onConflict: () => { said += 1; } });
+    armed = true;
+    await seedSourceFile({ userId: 'device', status: 'done' });
+    await core.flush();
+    expect(said).toBe(1);
+
+    const after = saves;
+    await seedSourceFile({ userId: 'device', status: 'done' });
+    await core.flush();
+    await core.flush();
+    expect(said).toBe(1);        // said once
+    expect(saves).toBe(after);   // and nothing more was sent
+    expect(objects.size).toBeGreaterThan(0);
+    core.lock();
+  });
 });

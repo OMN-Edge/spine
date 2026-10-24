@@ -12,7 +12,7 @@ import { resetStore } from '../../../server/src/store/index';
 import { publicShareRoutes } from '../../../server/src/routes/public-share';
 import { openPart, openPartNow } from './share/keys';
 import { useTokenUrl } from './native/relay-auth';
-import { useEmbedderHooks } from '../../../server/src/embedding/index';
+import { useRelayHooks } from '../../../server/src/llm/adapters/relay';
 import { relayFetch, relayToken } from './native/relay-auth';
 
 /**
@@ -49,7 +49,7 @@ export async function startShareCore(shareId: string, key: string): Promise<Shar
   useTokenUrl(`/api/shared/${id}/relay-token`, 'POST');
   const config = (await (await fetch(`/api/shared/${id}/config`)).json().catch(() => ({ env: {} }))) as { env: Record<string, string> };
   Object.assign(process.env, config.env);
-  useEmbedderHooks({ tokenProvider: relayToken, fetchImpl: relayFetch });
+  useRelayHooks({ tokenProvider: relayToken, fetchImpl: relayFetch });
 
   const db = new WasmDatabase(bytes);
   const store = createSqliteStoreWith({ adapter: 'sqlite', location: ':memory:' }, () => db, schema);

@@ -293,7 +293,7 @@ CREATE TABLE IF NOT EXISTS document_embeddings (
   model TEXT NOT NULL,
   dims INTEGER NOT NULL,
   text_hash TEXT NOT NULL,
-  vector BLOB NOT NULL, -- float32, little endian
+  vector BLOB NOT NULL, -- a float32 scale, then one signed byte a dimension (TR-AI-14); a vector stored before that is whole float32, still read
   created_at TEXT NOT NULL,
   PRIMARY KEY (document_id, model)
 );

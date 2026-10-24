@@ -62,6 +62,10 @@ const columnsOf = (db: Database, table: string): string[] =>
  *    the schema, which runs next, makes them again.
  */
 function addColumnsInPlace(db: Database): void {
+  // A passkey that opens the vault holds the account key sealed under a key its PRF output makes; the server cannot open it.
+  const passkeys = columnsOf(db, 'user_passkeys');
+  if (passkeys.length > 0 && !passkeys.includes('wrapped_key')) db.exec('ALTER TABLE user_passkeys ADD COLUMN wrapped_key TEXT');
+
   const pages = columnsOf(db, 'pages');
   if (pages.length > 0 && !pages.includes('hidden')) {
     db.transaction(() => {

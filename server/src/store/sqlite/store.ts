@@ -10,6 +10,7 @@ import { shareLinkRepository } from './share-links.js';
 import { sourceFileRepository } from './source-files.js';
 import { regroupPlanRepository } from './regroup-plans.js';
 import { sessionRepository } from './sessions.js';
+import { usageRepository } from './usage.js';
 import { matchDecisionRepository } from './match-decisions.js';
 import { tagRepository } from './tags.js';
 import { translationRepository } from './translations.js';
@@ -69,6 +70,7 @@ function storeOver(db: Database, depth: number, scope: 'full' | 'accounts'): Sto
     regroupPlans: records ? regroupPlanRepository(db) : absent('regroupPlans'),
     matchDecisions: records ? matchDecisionRepository(db) : absent('matchDecisions'),
     sessions: sessionRepository(db),
+    usage: usageRepository(db),
     vault: vaultRepository(db),
     shared: sharedRepository(db),
     maintenance: maintenanceRepository(db),

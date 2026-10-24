@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { createChatLlm, LLM_PROVIDERS, LlmConfigError } from '../llm/index.js';
-import { loadConfig } from '../config.js';
+import { loadConfig, loadLlmConfig } from '../config.js';
 import type { ChatLlmConfig } from '../llm/index.js';
 
 const base: ChatLlmConfig = {
@@ -31,7 +31,13 @@ describe('createChatLlm — the adapter registry', () => {
   });
 
   it('exposes exactly the providers that have adapters', () => {
-    expect(LLM_PROVIDERS.sort()).toEqual(['anthropic', 'vertex']);
+    expect(LLM_PROVIDERS.sort()).toEqual(['anthropic', 'relay', 'vertex']);
+  });
+
+  it('builds the relay adapter, which needs the relay’s host and knows nothing of a provider', () => {
+    const base = loadLlmConfig({ SPINE_LLM_PROVIDER: 'relay', SPINE_LLM_ENDPOINT: 'relay.example' } as NodeJS.ProcessEnv);
+    expect(() => createChatLlm(base)).not.toThrow();
+    expect(() => createChatLlm({ ...base, endpoint: undefined })).toThrow(/relay/);
   });
 
   it('builds the anthropic adapter', () => {

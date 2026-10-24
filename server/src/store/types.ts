@@ -70,6 +70,7 @@ export interface Store {
   regroupPlans: RegroupPlanRepository;
   matchDecisions: MatchDecisionRepository;
   sessions: SessionRepository;
+  usage: UsageRepository;
   vault: VaultRepository;
   shared: SharedRepository;
   maintenance: MaintenanceRepository;
@@ -112,6 +113,8 @@ export interface PasskeyRecord {
   backed_up: boolean;
   created_at: string;
   last_used_at: string | null;
+  /** The account key sealed under a key this passkey's PRF output makes on the device (null: this passkey signs in but does not open the vault). Ciphertext; the server cannot open it. */
+  wrapped_key: string | null;
 }
 
 export interface NewUser {
@@ -171,11 +174,13 @@ export interface UserRepository {
   /** The passkey with this credential id, whoever's it is: sign-in finds the account from it, so it has no acting user. */
   findPasskey(credentialId: string): Promise<PasskeyRecord | null>;
   /** False if the credential id is already registered (to anyone). */
-  addPasskey(userId: string, passkey: Omit<PasskeyRecord, 'user_id' | 'last_used_at'>): Promise<boolean>;
+  addPasskey(userId: string, passkey: Omit<PasskeyRecord, 'user_id' | 'last_used_at' | 'wrapped_key'>): Promise<boolean>;
   /** After a sign-in: the counter the authenticator reported and when. Only ever moves a counter forward. */
   touchPasskey(credentialId: string, counter: number, at: string): Promise<void>;
   renamePasskey(userId: string, id: string, name: string): Promise<boolean>;
   removePasskey(userId: string, id: string): Promise<boolean>;
+  /** Stores (or with null removes) the sealed account key a passkey opens the vault with. False if the passkey is not this user's. */
+  setPasskeyWrappedKey(userId: string, id: string, wrapped: string | null): Promise<boolean>;
   /** Records consent to process health data and acceptance of the terms, each with the version of the text shown. */
   recordConsent(id: string, consent: { healthVersion: string; termsVersion: string }, at: string): Promise<void>;
   /** Removes the user and everything they own. Files on disk are the caller's. */
@@ -571,6 +576,8 @@ export interface DoctorWithCounts extends Doctor {
 
 export interface DoctorOnDocument extends Doctor {
   role: DoctorRole;
+  /** A digital signature on the file named this person and its certificates chain to an anchor the operator trusts. */
+  signature_verified: boolean;
 }
 
 export interface DoctorDocument {
@@ -596,7 +603,7 @@ export interface DoctorRepository {
    * Names a doctor on a document. False if either is not the user's. `source` is where it came from: a
    * stamp wins over text if both name the same doctor in the same role.
    */
-  link(userId: string, documentId: string, doctorId: string, role: DoctorRole, source?: 'text' | 'stamp' | 'signature', printedCode?: string | null): Promise<boolean>;
+  link(userId: string, documentId: string, doctorId: string, role: DoctorRole, source?: 'text' | 'stamp' | 'signature' | 'verified_signature', printedCode?: string | null): Promise<boolean>;
   /**
    * Doctors whom one of these documents gave a professional code other than the one the directory holds (the directory keeps one per
    * doctor, and a name match leaves it as it is). One row per doctor and printed code.
@@ -604,7 +611,7 @@ export interface DoctorRepository {
   codeClashes(userId: string, documentIds: string[]): Promise<Array<{ doctor_id: string; name: string; directory_code: string; printed_code: string; document_ids: string[] }>>;
   /** Every link, however it was made: the owner replacing the list. */
   /** How each doctor is tied to the document now: the role, where it was read (text, a stamp, a signature) and the code the document printed. For keeping them through an edit. */
-  linkInfo(userId: string, documentId: string): Promise<Array<{ doctor_id: string; role: DoctorRole; source: 'text' | 'stamp' | 'signature'; printed_code: string | null }>>;
+  linkInfo(userId: string, documentId: string): Promise<Array<{ doctor_id: string; role: DoctorRole; source: 'text' | 'stamp' | 'signature' | 'verified_signature'; printed_code: string | null }>>;
   unlinkAll(userId: string, documentId: string): Promise<void>;
   /** Only the links made from the document's text, so reading the text again leaves what a stamp gave. */
   unlinkRead(userId: string, documentId: string): Promise<void>;
@@ -660,6 +667,16 @@ export interface SessionRepository {
    * `known` when this browser has signed in before, `new` when others have but this one has not.
    */
   rememberDevice(userId: string, deviceHash: string, at: string): Promise<'first' | 'known' | 'new'>;
+}
+
+/** What the relay has let a user's device do today, so a restart or a second instance does not give the day again. */
+export interface UsageRepository {
+  /**
+   * Counts one model call for the user on `day` (YYYY-MM-DD) and answers how many are counted now, or answers null with nothing counted
+   * when `limit` calls already are (or `limit` is not above zero). Atomic. The model budget uses the reserved name `instance` for the
+   * whole instance.
+   */
+  spend(userId: string, day: string, limit: number): Promise<number | null>;
 }
 
 export interface TagWithCount { id: number; name: string; document_count: number }

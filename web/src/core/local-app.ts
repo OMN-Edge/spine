@@ -57,6 +57,9 @@ export interface InjectResponse {
   /** Set when the body is bytes, not text. */
   bytes?: Uint8Array;
   json<T = unknown>(): T;
+  /** Set for a reply written as it goes (the chat's NDJSON): read it as it comes, and call `close` if the reader goes away. */
+  stream?: AsyncIterable<Uint8Array>;
+  close?: () => void;
 }
 
 interface Route { method: Method; pattern: RegExp; keys: string[]; options: RouteOptions; handler: Handler; url: string }
@@ -122,6 +125,7 @@ export class LocalApp {
     const headers: Record<string, string> = {};
     for (const [k, v] of Object.entries(input.headers ?? {})) headers[k.toLowerCase()] = v;
 
+    const closers: Array<() => void> = [];
     const out = { status: 200, headers: {} as Record<string, string>, payload: undefined as unknown, sent: false };
     const reply: LocalReply = {
       get sent() { return out.sent; },
@@ -131,11 +135,18 @@ export class LocalApp {
       header(name, value) { out.headers[name.toLowerCase()] = String(value); return reply; },
       type(contentType) { out.headers['content-type'] = contentType; return reply; },
       send(payload) { out.payload = payload; out.sent = true; return reply; },
-      raw: { on() {}, write() { return true; }, end() {}, writeHead() {} },
+      raw: { on(event: string, fn: () => void) { if (event === 'close') closers.push(fn); }, write() { return true; }, end() {}, writeHead() {} },
     } as LocalReply;
 
     const finish = async (): Promise<InjectResponse> => {
       let payload = out.payload;
+      if (payload && typeof payload === 'object' && Symbol.asyncIterator in payload && (out.headers['content-type'] ?? '').includes('ndjson')) {
+        // Written as it goes: handed on as it comes, and the route is told when the reader leaves, so it stops the model call.
+        const source = payload as AsyncIterable<unknown>;
+        const encoder = new TextEncoder();
+        const stream = (async function* () { for await (const chunk of source) yield typeof chunk === 'string' ? encoder.encode(chunk) : (chunk as Uint8Array); })();
+        return { statusCode: out.status, headers: out.headers, body: '', stream, close: () => { for (const fn of closers) fn(); (source as { destroy?: () => void }).destroy?.(); }, json: () => { throw new Error('a stream has no body to parse'); } } as InjectResponse;
+      }
       if (payload && typeof payload === 'object' && Symbol.asyncIterator in payload) payload = await collect(payload as AsyncIterable<unknown>);
       const bytes = asBytes(payload);
       let body = '';

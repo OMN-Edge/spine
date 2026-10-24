@@ -222,7 +222,7 @@ export function scheduleLinking(userId: string, documentIds: string[], delayMs =
     timers.delete(userId);
     if (!running.has(userId)) void drain(userId);
   }, delayMs));
-  timers.get(userId)?.unref();
+  timers.get(userId)?.unref?.(); // a browser timer has no unref (this runs on the device too)
 }
 
 /** Whether a person's documents are being looked at or waiting to be. */

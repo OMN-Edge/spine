@@ -26,11 +26,32 @@ export function similarityEnabled(): boolean {
   return getEmbedder().enabled;
 }
 
-const toBytes = (v: Float32Array): Buffer => Buffer.from(v.buffer.slice(v.byteOffset, v.byteOffset + v.byteLength));
-const fromBytes = (b: Buffer, dims: number): Float32Array | null => {
-  if (b.length !== dims * 4) return null;
-  return new Float32Array(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength));
-};
+/**
+ * A vector is stored as one signed byte a dimension and a float32 scale in front (TR-AI-14): 772 bytes for 768 dimensions instead of
+ * 3,072, which is what a device saves, seals and downloads for every document. Rounding to 1/127 of the largest component moves a cosine
+ * by well under a percent, which does not change which documents come first. Vectors stored before this, as float32, are still read.
+ */
+export function quantise(v: Float32Array): Buffer {
+  let max = 0;
+  for (const x of v) max = Math.max(max, Math.abs(x));
+  const scale = max / 127 || 1;
+  const out = Buffer.alloc(4 + v.length);
+  out.writeFloatLE(scale, 0);
+  for (let i = 0; i < v.length; i++) out.writeInt8(Math.max(-127, Math.min(127, Math.round(v[i] / scale))), 4 + i);
+  return out;
+}
+export function dequantise(b: Uint8Array, dims: number): Float32Array | null {
+  if (b.length === dims * 4) return new Float32Array(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength)); // stored whole, before quantising
+  if (b.length !== dims + 4) return null;
+  // A driver may hand back a plain Uint8Array, not a Buffer, so read through a view.
+  const view = new DataView(b.buffer, b.byteOffset, b.byteLength);
+  const scale = view.getFloat32(0, true);
+  const out = new Float32Array(dims);
+  for (let i = 0; i < dims; i++) out[i] = view.getInt8(4 + i) * scale;
+  return out;
+}
+const toBytes = quantise;
+const fromBytes = dequantise;
 const dot = (a: Float32Array, b: Float32Array): number => {
   let s = 0;
   for (let i = 0; i < a.length; i++) s += a[i] * b[i];
@@ -99,7 +120,7 @@ export function scheduleSync(userId: string): void {
         if (again.delete(userId)) scheduleSync(userId);
       });
   }, 2000));
-  timers.get(userId)?.unref();
+  timers.get(userId)?.unref?.(); // a browser timer has no unref (this runs on the device too)
 }
 
 /** Tests: waits for the work a schedule started. */

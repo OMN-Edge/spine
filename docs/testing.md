@@ -61,6 +61,25 @@ Fixtures are invented (`support/fixtures.ts`, `support/archive.ts`): no real per
 | `recipient-chat.it.ts` | model | A doctor with a link asks about what was shared: answered from it and cited, in the third person, the owner's purpose as context; nothing from the rest of the archive however it is asked; it cannot change anything; the stream ends in the answer |
 | `model-seams.it.ts` | model | The calls the pipeline makes, one at a time: page continuation, extraction of a laboratory report, a consultation and a discharge note (type, date, provider, doctors with codes, each result with unit and range, canonical names reused), the link between a consultation and the tests it asked for (right direction, a proposal), and a translation that keeps the numbers |
 
+## The app in a real browser
+
+The integration suite drives the server's routes with `app.inject`. Since the records live on the device (the core in a Web Worker), the whole app is also checked in real Chrome, against a real server, a relay and a model:
+
+```bash
+cd server && npm run build && cd ../web && npm run build     # the checks run the built server and web, not the sources
+npm run check:browser       # each native piece of the core: text, rendering, OCR, trimming, photos, zip, stamps
+npm run check:app           # sign-up, vault, sample records, reload and unlock, search, upload, shares, export and import
+```
+
+`check:app` uses a stand-in for the model behind the real relay code. Two switches change that, and nothing else:
+
+| | |
+|---|---|
+| `SPINE_CHECK_REAL=1` | Starts the relay as a process with the model, region, project and service account in `.env`, so the upload is read, the documents are embedded and a recipient's question is answered by the real provider (invented records only; the same cost and residency as the integration suite). |
+| `SPINE_CHECK_RESTORE=/path/to/export.zip` | Restores a Spine export through the Upload page and checks that every document of its manifest is on the timeline after a reload and an unlock, and that no model was asked to read or write one. Only counts are printed. |
+
+Every run also exports everything from the first account and imports it into a second one, then exports again and compares the two manifests (apart from ids, times and the numbering of the zip's entries), before and after a reload: what comes out of one device is what another puts back.
+
 ## When one fails
 
 1. Read the first assertion that failed: it says what it expected and, for the assistant, what it said instead.
