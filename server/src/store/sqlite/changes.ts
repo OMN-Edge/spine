@@ -145,8 +145,15 @@ function build(db: Database): ChangeLog {
         const existing = db.prepare(`SELECT ${quote(meta.pk[0])} AS id FROM ${meta.table} WHERE ${same}`).get(...sameValues) as { id: Cell } | undefined;
         if (existing) { addAlias.run(meta.table, String(row[meta.pk[0]]), String(existing.id)); return; }
       }
-      // Anything else that must be unique (a page's place, a visitor's request): the newer change takes the place.
+      // Anything else that must be unique (a page's place, a visitor's request): the newer change takes the place, so a row already here that was
+      // written later keeps it and the incoming one is dropped, and every device ends with the same row whichever order the changes reach it.
       const notThis = meta.pk.map(c => `${quote(c)} = ?`).join(' AND ');
+      const holders = db.prepare(`SELECT ${meta.pk.map(quote).join(', ')} FROM ${meta.table} WHERE ${same} AND NOT (${notThis})`).all(...sameValues, ...meta.pk.map(c => row[c])) as Array<Record<string, Cell>>;
+      const later = holders.some(h => {
+        const held = (getClock.get(meta.table, norm(Object.fromEntries(meta.pk.map(c => [c, h[c]])))) as { h: string } | undefined)?.h;
+        return held !== undefined && held > change.h;
+      });
+      if (later) return;
       db.prepare(`DELETE FROM ${meta.table} WHERE ${same} AND NOT (${notThis})`).run(...sameValues, ...meta.pk.map(c => row[c]));
       statement.run(...values);
     }

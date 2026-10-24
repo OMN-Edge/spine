@@ -140,7 +140,7 @@ cd server && npm run test:coverage
 
 ## Architecture
 
-Target architecture, trust boundaries, interfaces/adapters and the migration path: [ARCHITECTURE.md](ARCHITECTURE.md). Security principles, current controls and known gaps: [SECURITY.md](SECURITY.md) — read it before touching routing, auth, share links, storage, providers or static serving.
+What it must do (the `FR-`, `TR-` and `CR-` IDs cited around the repo): [docs/requirements.md](docs/requirements.md). Target architecture, trust boundaries, interfaces/adapters and the migration path: [ARCHITECTURE.md](ARCHITECTURE.md). Security principles, current controls and known gaps: [SECURITY.md](SECURITY.md) — read it before touching routing, auth, share links, storage, providers or static serving.
 
 **The sections below describe what runs today:** multi-user with local accounts (CLI or open signup with email verification), a store interface (SQLite only), an LLM interface with Anthropic and Vertex adapters, a mailer interface (`none`, `brevo`). Hosting stays on a Pi; GCP is inference only.
 

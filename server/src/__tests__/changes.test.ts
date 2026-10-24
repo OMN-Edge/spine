@@ -123,6 +123,47 @@ describe('devices that write and then exchange changes', () => {
     }
   });
 
+  it('a tag that is not a starter, made on two devices under two keys, is one tag: the other device’s key means the one already held', async () => {
+    const x = await seedDocument(a);
+    await exchange(a, b);
+    const y = await seedDocument(b, { sourceFileId: undefined });
+    await a.tags.setForDocument(USER, x.id, ['allergy clinic']);
+    await b.tags.setForDocument(USER, y.id, ['allergy clinic']);
+    const [forA, forB] = [await a.tags.listFor(USER), await b.tags.listFor(USER)];
+    expect(forA.find(t => t.name === 'allergy clinic')!.id).not.toBe(forB.find(t => t.name === 'allergy clinic')!.id);
+    await exchange(a, b);
+    await exchange(a, b);
+    for (const s of [a, b]) {
+      expect((await s.tags.listFor(USER)).filter(t => t.name === 'allergy clinic')).toHaveLength(1);
+      expect(await s.tags.namesForDocument(USER, x.id)).toEqual(['allergy clinic']);
+      expect(await s.tags.namesForDocument(USER, y.id)).toEqual(['allergy clinic']);
+    }
+  });
+
+  it('two pages added at the same place of one file on two devices leave one page there, the same on both', async () => {
+    const file = await seedDocument(a);
+    await exchange(a, b);
+    const add = (s: Store, id: string) => s.pages.create(USER, { id, sourceFileId: file.sourceFileId, pageNumber: 2, imagePath: '/tmp/q.png', imageWidth: 800, imageHeight: 1100, rawText: id, elements: [], extractionSource: 'native_text', isContinuation: null, continuationConfidence: null, continuationReasoning: null });
+    await add(a, uuid());
+    await new Promise(r => setTimeout(r, 5));
+    await add(b, uuid());
+    await exchange(a, b);
+    await exchange(a, b);
+    expect(await held(a)).toEqual(await held(b));
+    const pages = (await held(a)).filter(c => c.t === 'pages' && (c.r as { page_number: number }).page_number === 2);
+    expect(pages).toHaveLength(1);
+  });
+
+  it('a failed apply leaves nothing half done', async () => {
+    await seedDocument(a);
+    const changes = await a.changes.drain();
+    const broken = changes.map(c => (c.t === 'documents' && c.r ? { ...c, r: { ...c.r, source_file_id: null } } : c));
+    const before = await held(b);
+    await expect(b.changes.apply(broken)).rejects.toThrow();
+    expect(await held(b)).toEqual(before);
+    expect(await b.changes.apply(changes)).toBeGreaterThan(0);
+  });
+
   it('search finds what arrived from the other device', async () => {
     const doc = await seedDocument(a, { aiSummary: 'unique-word-amlodipine' });
     await exchange(a, b);
@@ -141,6 +182,22 @@ describe('devices that write and then exchange changes', () => {
     const first = await a.changes.drain();
     expect(await b.changes.apply(first)).toBeGreaterThan(0);
     expect(await b.changes.apply(first)).toBe(0);
+  });
+});
+
+describe('a dump', () => {
+  it('keeps a deletion as a change, so a device that is given it later does not bring the row back', async () => {
+    const doc = await seedDocument(a);
+    await exchange(a, b);
+    await a.documents.delete(USER, doc.id);
+    await a.changes.drain();
+    const dump = await a.changes.dump();
+    expect(dump.some(c => c.t === 'documents' && c.r === null)).toBe(true);
+    const late = open();
+    await account(late);
+    await late.changes.drain();
+    await late.changes.apply(dump);
+    expect(await late.documents.findFor(USER, doc.id)).toBeNull();
   });
 });
 

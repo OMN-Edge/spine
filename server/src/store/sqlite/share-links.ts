@@ -1,4 +1,4 @@
-import { randomRowId } from './ids.js';
+import { orderedRowId } from './ids.js';
 import type { Database } from './driver.js';
 import { owner } from './owner.js';
 import type {
@@ -86,7 +86,7 @@ export function shareLinkRepository(db: Database): ShareLinkRepository {
   `);
 
   const insertEvent = db.prepare('INSERT INTO share_link_events (id, user_id, share_link_id, at, kind, detail) VALUES (?, ?, ?, ?, ?, ?)');
-  const event = { run: (...args: unknown[]) => insertEvent.run(randomRowId(), ...args) };
+  const event = { run: (...args: unknown[]) => insertEvent.run(orderedRowId(), ...args) };
   const events = db.prepare('SELECT at, kind, detail FROM share_link_events WHERE share_link_id = ? AND user_id = ? ORDER BY at DESC, id DESC LIMIT ?');
   const one = db.prepare(`
     SELECT id, label, scope, scope_value, created_at, expires_at, revoked, view_count, last_accessed_at, include_scans, language, require_approval, allow_chat,
@@ -209,7 +209,7 @@ export function shareLinkRepository(db: Database): ShareLinkRepository {
     },
 
     async logAccess(linkId, accessedAt, ipAddress, countView, where = {}) {
-      insertAccess.run(randomRowId(), accessedAt, ipAddress, where.country ?? null, where.documentId ?? null, linkId);
+      insertAccess.run(orderedRowId(), accessedAt, ipAddress, where.country ?? null, where.documentId ?? null, linkId);
       if (countView) bumpViewCount.run(accessedAt, linkId);
     },
 

@@ -23,3 +23,17 @@ export function starterTagId(userId: string, name: string): number {
   }
   return (a & 0xfffff) * 2 ** 32 + b + 1;
 }
+
+let lastOrdered = 0;
+const ORDERED_EPOCH = Date.UTC(2026, 0, 1);
+
+/**
+ * A key that sorts by when it was made, for the two logs that list newest first and whose rows can share a millisecond (`share_link_events`,
+ * `share_link_access_log`): the time since 2026 in the high part, eleven random bits below, and never lower than the one before it in this
+ * process, so two rows written in a row stay in that order. Two devices need the same millisecond and the same eleven bits to collide.
+ */
+export function orderedRowId(now = Date.now()): number {
+  const low = crypto.getRandomValues(new Uint16Array(1))[0] & 0x7ff;
+  lastOrdered = Math.max(lastOrdered + 1, Math.max(0, now - ORDERED_EPOCH) * 2048 + low);
+  return lastOrdered;
+}

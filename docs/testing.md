@@ -13,6 +13,22 @@ Two suites, for two different questions.
 
 The unit suite is the net under every change. The integration suite is what tells you that a prompt still gets a real model to do the right thing, which nothing else can.
 
+## Every check, and what each one answers
+
+| Command | Question | Needs |
+|---|---|---|
+| `cd server && npx tsc --noEmit`, `cd web && npm run build` | Does it compile, for the server, the web app and the device core (`tsconfig.core.json`)? | nothing |
+| `cd server && npm test` | Does the server's code do what it says? Includes `requirements.test.ts`: every `FR-`, `TR-` and `CR-` ID cited anywhere in the repository is defined once in [requirements.md](requirements.md) | nothing |
+| `cd server && npm run test:accounts` | Does it still hold on the accounts-only database the server runs (SECURITY.md **M-37**)? | nothing |
+| `cd server && npm run test:shim` | Does the same suite hold on the WebAssembly SQLite the browser runs? | nothing |
+| `cd web && npm test` | The device: keys and vault, the core's saving and syncing (`persist`, `boot`), shares, scanning algorithms, the relay client | nothing |
+| `cd server && npm run test:coverage` | What is not run by any test (above 90% for statements and branches; the entry points and the provider calls are listed as intentionally uncovered in CLAUDE.md) | nothing |
+| `cd web && npm run check:browser` | Does each native piece of the core work in real Chrome (text, rendering, OCR, photos, zip, stamps, signature chain)? | Chrome, a build |
+| `cd web && npm run check:app` | The whole app in real browsers, against a real server and relay: sign-up, vault, upload, search, two devices on one account, shares that follow the records, signatures, passkeys, export and import | Chrome, a build |
+| `cd server && npm run test:integration` | Does a real model do the right thing with the prompts? | a model in `.env` |
+
+`./scripts/check.sh all` runs the first six, the dependency audit and the secret and code scans that CI runs. A change that touches the store, the change log or the vault is not done until `test:accounts`, `test:shim` and `check:app` have run: each has caught a bug the others could not.
+
 ## Running the integration suite
 
 ```bash

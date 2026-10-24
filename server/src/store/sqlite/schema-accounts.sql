@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS users (
   email_verified_at TEXT,
   created_at TEXT NOT NULL,
   -- Consent to process health data (GDPR Art. 9(2)(a)) and acceptance of the terms: separate acts, each with the version of the
-  -- text that was shown. NULL until given; an account without them is held at the consent screen (FR-GDPR-01).
+  -- text that was shown. NULL until given; an account without them is held at the consent screen (CR-GDPR-01).
   health_consent_at TEXT,
   health_consent_version TEXT,
   terms_accepted_at TEXT,

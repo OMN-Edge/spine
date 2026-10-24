@@ -344,6 +344,14 @@ Each reading adds the doctors a document names, with a role: wrote it, prescribe
 
 Status: auto (`structured`, `stamps`, `stamps-flow`); which pictures are chosen, checked on four real reports by hand; how well a real model reads a stamp, especially a code under a signature: real model.
 
+### 5.1b A signature that chains to an authority the operator named
+The operator names the authorities they trust for digital signatures (`SPINE_TRUST_ANCHORS_DIR`: for Romania, the qualified providers on the EU trusted list). When a signed PDF's certificates lead to one of them, every certificate was in date at the signing time, each is signed by the next and each issuer is a CA, the doctor is filed as `verified_signature` and the document page says "Digital signature verified".
+
+- A signature whose chain ends at a different root, whose certificate had expired when it was signed, or with no authority named, is a label from the file and is not marked verified.
+- Nothing ships by default: without anchors no signature is "verified". There is no revocation lookup, and the signing time is the one the file states (SECURITY.md S-23; CR-SIG-01).
+
+Status: auto (`signatures-cms`, `trust-anchors`; the invented chains in `fixtures/make-chain-fixtures.sh`); in a browser: `check:browser` (step `signature-chain`) and `check:app`.
+
 ### 5.2 Correct the directory
 The owner finds two entries for one person ("Popescu I." and "Popescu Ion").
 
@@ -520,6 +528,15 @@ Status: auto (`share-chat`); live (`recipient-chat.it.ts`: answers from the shar
 
 Status: auto (`share-manage`); screens: not yet checked by hand.
 
+### 7.5 A link follows the records while it lasts
+A share's sealed copy is rebuilt a moment (about 15 seconds) after the owner's records change, and sent again under the same key only if it would hold something different (a keyed digest decides). Deleting a document removes it from the copy; a link that shares nothing any more answers "Link unavailable".
+
+- The recipient needs nothing new: the same address shows the new copy.
+- A closed device cannot refresh: a copy shows what it last held.
+- The copy is the same change form records use between devices, applied to an empty store by the recipient's browser.
+
+Status: auto (`share-host`, `shared`, `slice`; web `share/keys`); in real browsers: `check:app` (removes the sample records and watches the earlier link stop showing them).
+
 ---
 
 ## 8. More than one person
@@ -530,6 +547,26 @@ Status: auto (`share-manage`); screens: not yet checked by hand.
 - Deleting a user removes all of their records, and only theirs.
 
 Status: auto (`isolation`, `response-shape`, `cli`).
+
+### 8.2 The same account on two devices
+The owner signs in on a second device with the master password (or a passkey) and sees the same records. Each device saves what it changed as a sealed segment of row changes; the others fetch and apply them, so nothing is overwritten and the server never reads a record.
+
+- Two devices that change different things at the same moment end with both changes. The newest change to a row wins; a deletion is a change.
+- A device that saved is told that another made changes, and offers a reload; pages do not refresh themselves.
+- A tag or doctor made on two devices with the same name becomes one. Starter tags are the same on every device.
+- After 40 segments a device writes a snapshot, so a device that was away catches up from it.
+- A vault of the earlier kind (database-file pieces) is converted on its first unlock.
+- Not covered: network failures mid-save, large vaults, a device whose clock is wrong (it can win edits it should not).
+
+Status: auto (`changes`, `ids`; web `persist`, `boot`); in real browsers: `check:app` (two contexts on one account, each removes a different tag, both end with both removals); a wrong clock and a failing network: not tried.
+
+### 8.3 Quotas that outlive a process
+The relay's daily count for each user, and the instance's daily model-call budget, are kept in the store's `usage` repository (`Store.usage.spend`, atomic), not in memory: the count survives a restart and is shared by every process that uses the same store.
+
+- A user past the limit is refused with 429 before the call reaches the provider; the next day starts again.
+- With `SPINE_DB_PATH=:memory:` (the relay image's default) the count is per process; a networked store adapter does not exist yet.
+
+Status: auto (`relay`, `model-budget`, `usage`).
 
 ---
 
