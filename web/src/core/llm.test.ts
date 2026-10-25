@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { createRelay } from '../../../server/src/relay/relay';
 import { issueToken } from '../../../server/src/relay/token';
 import { relayFetch, relayToken, useTokenUrl } from './native/relay-auth';
-import { useRelayHooks } from '../../../server/src/llm/adapters/relay';
+import { useRelayHooks } from 'spine-core/llm/adapters/relay';
 import { standInClients } from '../../../server/src/relay/stand-in';
 
 /**
@@ -33,12 +33,15 @@ beforeAll(async () => {
     SPINE_EMBEDDINGS: 'relay', SPINE_EMBEDDING_ENDPOINT: host, SPINE_EMBEDDING_MODEL: 'gemini-embedding-2', SPINE_EMBEDDING_DIMS: '128', SPINE_EMBEDDING_SPACE: 'vertex:gemini-embedding-2:128',
   });
   useRelayHooks({ tokenProvider: relayToken, fetchImpl: relayFetch });
+  // Every model call is counted in the store the process has (the device's own, here a database in memory).
+  const { createStore, useStoreFactory } = await import('spine-core/store/index');
+  useStoreFactory(() => createStore({ adapter: 'sqlite', location: ':memory:' }));
 });
 afterAll(() => { relay.close(); tokens.close(); });
 
 describe('a model call from the device', () => {
   it('goes through the relay, which runs the task and answers the parsed result', async () => {
-    const { getChatLlm } = await import('../../../server/src/llm/index');
+    const { getChatLlm } = await import('spine-core/llm/index');
     const result = await getChatLlm().detectContinuation('Hemoglobin 13.5', 'g/dL (continued)');
     expect(result.is_continuation).toBe(true);
     expect(stand.calls).toHaveLength(1);
@@ -47,7 +50,7 @@ describe('a model call from the device', () => {
   });
 
   it('gives the agent’s model the tools the graph binds and gets its tool call back', async () => {
-    const { getChatLlm } = await import('../../../server/src/llm/index');
+    const { getChatLlm } = await import('spine-core/llm/index');
     const bound = (getChatLlm().agentModel() as unknown as { bindTools(t: unknown[]): { invoke(m: unknown[]): Promise<{ tool_calls: Array<{ name: string }> }> } }).bindTools([
       { type: 'function', function: { name: 'find_documents', description: 'finds', parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } } },
     ]);
@@ -56,7 +59,7 @@ describe('a model call from the device', () => {
   });
 
   it('does the same for a search or a summary’s embedding, in the vector space it had before', async () => {
-    const { getEmbedder } = await import('../../../server/src/embedding/index');
+    const { getEmbedder } = await import('spine-core/embedding/index');
     const embedder = getEmbedder();
     expect(embedder.id).toBe('vertex:gemini-embedding-2:128');
     const [vector] = await embedder.embed(['Hemoglobin results'], 'document');

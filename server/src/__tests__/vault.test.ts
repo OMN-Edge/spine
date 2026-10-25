@@ -3,13 +3,13 @@ import fs from 'fs';
 import path from 'path';
 import { buildTestApp, loginAs } from './helpers/app.js';
 import { OWNER_EMAIL, OWNER_ID, createTestUser } from './helpers/seed.js';
-import { fakeAuthValue, fakeVaultKeys } from './helpers/vault.js';
-import { getStore } from '../store/index.js';
+import { fakeAuthValue, fakeVaultKeys } from 'spine-core/testing/vault.js';
+import { getAccountsStore } from 'spine-core/store/index.js';
 import { issueUserToken } from '../accounts.js';
 import { vaultDirOf } from '../vault-files.js';
 import { deleteAccount } from '../accounts.js';
 import { resetMailer, type Mailer } from '../mail/index.js';
-import { resolveBackupDir } from '../config.js';
+import { resolveBackupDir } from 'spine-core/config.js';
 
 /**
  * SECURITY.md M-34: the vault. The server keeps keys it cannot open and objects it cannot read; it checks shapes, owners and sequence
@@ -79,11 +79,11 @@ describe('signing up with a vault', () => {
     const keys = fakeVaultKeys();
     const res = await app.inject({ method: 'POST', url: '/api/auth/register', payload: { email: 'new@example.com', auth_value, keys, ...consent } });
     expect(res.statusCode).toBe(200);
-    const user = await getStore().users.findByEmail('new@example.com');
+    const user = await getAccountsStore().users.findByEmail('new@example.com');
     expect(user).not.toBeNull();
-    expect((await getStore().vault.getKeys(user!.id))?.wrapped_by_recovery).toBe(keys.wrapped_by_recovery);
+    expect((await getAccountsStore().vault.getKeys(user!.id))?.wrapped_by_recovery).toBe(keys.wrapped_by_recovery);
     // The value stands in for the password at sign-in once the address is confirmed.
-    await getStore().users.markVerified(user!.id, new Date().toISOString());
+    await getAccountsStore().users.markVerified(user!.id, new Date().toISOString());
     const login = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: 'new@example.com', password: auth_value } });
     expect(login.statusCode).toBe(200);
   });
@@ -102,7 +102,7 @@ describe('signing up with a vault', () => {
     }
     const shortValue = await app.inject({ method: 'POST', url: '/api/auth/register', payload: { email: 'x@example.com', auth_value: 'abc', keys: fakeVaultKeys(), ...consent } });
     expect(shortValue.statusCode).toBe(400);
-    expect(await getStore().users.findByEmail('x@example.com')).toBeNull();
+    expect(await getAccountsStore().users.findByEmail('x@example.com')).toBeNull();
   });
 });
 
@@ -222,7 +222,7 @@ describe('objects', () => {
     expect(fs.existsSync(vaultDirOf(OWNER_ID))).toBe(true);
     await deleteAccount(OWNER_ID);
     expect(fs.existsSync(vaultDirOf(OWNER_ID))).toBe(false);
-    expect(await getStore().vault.getKeys(OWNER_ID)).toBeNull();
+    expect(await getAccountsStore().vault.getKeys(OWNER_ID)).toBeNull();
   });
 
   it('is removed from the backup mirror too, so deleting the account destroys every copy of its ciphertext', async () => {
@@ -255,8 +255,8 @@ describe('a reset with a vault', () => {
     const auth_value = fakeAuthValue();
     const keys = fakeVaultKeys();
     expect((await post('/api/auth/reset', { token, auth_value, keys })).statusCode).toBe(200);
-    expect((await getStore().vault.getKeys(OWNER_ID))?.wrapped_by_master).toBe(keys.wrapped_by_master);
-    expect((await getStore().vault.list(OWNER_ID, 0)).map(o => o.id)).toEqual(['object-0001']);
+    expect((await getAccountsStore().vault.getKeys(OWNER_ID))?.wrapped_by_master).toBe(keys.wrapped_by_master);
+    expect((await getAccountsStore().vault.list(OWNER_ID, 0)).map(o => o.id)).toEqual(['object-0001']);
     expect((await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: OWNER_EMAIL, password: auth_value } })).statusCode).toBe(200);
   });
 
@@ -266,9 +266,9 @@ describe('a reset with a vault', () => {
     const token = await issueUserToken(OWNER_ID, 'reset', 60_000);
     const keys = fakeVaultKeys();
     expect((await post('/api/auth/reset', { token, auth_value: fakeAuthValue(), keys, erase: true })).statusCode).toBe(200);
-    expect(await getStore().vault.list(OWNER_ID, 0)).toEqual([]);
+    expect(await getAccountsStore().vault.list(OWNER_ID, 0)).toEqual([]);
     expect(fs.existsSync(`${vaultDirOf(OWNER_ID)}/object-0001`)).toBe(false);
-    expect((await getStore().vault.getKeys(OWNER_ID))?.public_key).toBe(keys.public_key);
+    expect((await getAccountsStore().vault.getKeys(OWNER_ID))?.public_key).toBe(keys.public_key);
   });
 
   it('does not let a password this server would know be set beside keys it cannot open', async () => {

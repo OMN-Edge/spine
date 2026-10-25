@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { buildTestApp, loginAs } from './helpers/app.js';
 import { createTestUser, OWNER_EMAIL, OWNER_ID, TEST_PASSWORD } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
+import { getAccountsStore } from 'spine-core/store/index.js';
 import { issueUserToken } from '../accounts.js';
 import { checkSecondFactor } from '../second-factor.js';
 import { base32Decode, hotp, stepAt } from '../totp.js';
@@ -138,7 +138,7 @@ describe('enrolling', () => {
 
   it('stores the secret encrypted, never in the clear', async () => {
     const { secret } = await enrol();
-    const stored = (await getStore().users.getTotp(OWNER_ID))!;
+    const stored = (await getAccountsStore().users.getTotp(OWNER_ID))!;
     expect(stored.secret_enc).not.toContain(secret);
     expect(stored.secret_enc.startsWith('v1.')).toBe(true);
   });
@@ -360,10 +360,10 @@ describe('recovery codes at sign-in', () => {
 
   it('are stored as hashes', async () => {
     const { recovery } = await enrol();
-    const left = await getStore().users.countRecoveryCodes(OWNER_ID);
+    const left = await getAccountsStore().users.countRecoveryCodes(OWNER_ID);
     expect(left).toBe(10);
     // Present the raw string where a hash is expected: it must not match.
-    expect(await getStore().users.useRecoveryCode(OWNER_ID, recovery[0], new Date().toISOString())).toBe(false);
+    expect(await getAccountsStore().users.useRecoveryCode(OWNER_ID, recovery[0], new Date().toISOString())).toBe(false);
   });
 
   it('still work if SESSION_SECRET changed and the authenticator no longer can (S-21)', async () => {
@@ -448,8 +448,8 @@ describe('changing it', () => {
   it('removes the secret and the codes when it is turned off', async () => {
     const { recovery, cookie } = await enrol();
     await post('/api/auth/totp/disable', { password: TEST_PASSWORD, code: recovery[0] }, cookie);
-    expect(await getStore().users.getTotp(OWNER_ID)).toBeNull();
-    expect(await getStore().users.countRecoveryCodes(OWNER_ID)).toBe(0);
+    expect(await getAccountsStore().users.getTotp(OWNER_ID)).toBeNull();
+    expect(await getAccountsStore().users.countRecoveryCodes(OWNER_ID)).toBe(0);
   });
 
   it('cannot be turned off when it is not on', async () => {
@@ -502,20 +502,17 @@ describe('other ways in do not skip it', () => {
   });
 
   it('the only code path that issues a session is the login pair', async () => {
-    // A guard on the guard: a session is assigned in one function (sessions.ts startSession), and only the
+    // A guard on the guard: a session is assigned in one function (server/src/sessions.ts startSession), and only the
     // two login steps in routes/auth.ts, and the passkey login, may call it. A new caller is a bypass unless it checks the factor,
-    // and needs adding here and justifying in SECURITY.md.
+    // and needs adding here and justifying in SECURITY.md. Every route file counts, in the server and in core.
     const { readFileSync, readdirSync } = await import('fs');
-    const routes = new URL('../routes/', import.meta.url);
-    const assigners = readdirSync(routes)
-      .filter(f => f.endsWith('.ts'))
-      .filter(f => /session\.userId\s*=/.test(readFileSync(new URL(f, routes), 'utf8')));
+    const routeDirs = [new URL('../routes/', import.meta.url), new URL('../../../core/src/routes/', import.meta.url)];
+    const routeFiles = routeDirs.flatMap(dir => readdirSync(dir).filter(f => f.endsWith('.ts')).map(f => ({ name: f, text: readFileSync(new URL(f, dir), 'utf8') })));
+    const assigners = routeFiles.filter(f => /session\.userId\s*=/.test(f.text)).map(f => f.name);
     expect(assigners).toEqual([]);
     expect(readFileSync(new URL('../sessions.ts', import.meta.url), 'utf8')).toMatch(/session\.userId\s*=/);
 
-    const callers = readdirSync(routes)
-      .filter(f => f.endsWith('.ts'))
-      .filter(f => /startSession\(/.test(readFileSync(new URL(f, routes), 'utf8')));
+    const callers = routeFiles.filter(f => /startSession\(/.test(f.text)).map(f => f.name).sort();
     // routes/passkeys.ts is the second, justified in SECURITY.md M-33: a passkey is used with user verification required, so it
     // is the password and the second factor together.
     expect(callers).toEqual(['auth.ts', 'passkeys.ts']);
@@ -525,7 +522,7 @@ describe('other ways in do not skip it', () => {
 describe('the store', () => {
   it('claims a step once, and only for a newer one', async () => {
     await enrol();
-    const store = getStore();
+    const store = getAccountsStore();
     const last = (await store.users.getTotp(OWNER_ID))!.last_step;
 
     expect(await store.users.claimTotpStep(OWNER_ID, last)).toBe(false);
@@ -537,14 +534,14 @@ describe('the store', () => {
   it('will not claim a step for an unconfirmed enrolment', async () => {
     const cookie = await loginAs(app);
     await post('/api/auth/totp/setup', { password: TEST_PASSWORD }, cookie);
-    expect(await getStore().users.claimTotpStep(OWNER_ID, 999_999_999)).toBe(false);
+    expect(await getAccountsStore().users.claimTotpStep(OWNER_ID, 999_999_999)).toBe(false);
   });
 
   it('removes the secret and codes with the user', async () => {
     await enrol();
-    await getStore().users.delete(OWNER_ID);
-    expect(await getStore().users.getTotp(OWNER_ID)).toBeNull();
-    expect(await getStore().users.countRecoveryCodes(OWNER_ID)).toBe(0);
+    await getAccountsStore().users.delete(OWNER_ID);
+    expect(await getAccountsStore().users.getTotp(OWNER_ID)).toBeNull();
+    expect(await getAccountsStore().users.countRecoveryCodes(OWNER_ID)).toBe(0);
   });
 
   it('refuses a code for a user with no confirmed enrolment', async () => {

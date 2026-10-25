@@ -1,11 +1,12 @@
-import { fakeVaultKeys } from './helpers/vault.js';
+import { holdsRecordsInThisRun } from 'spine-core/testing/store-kind.js';
+import { fakeVaultKeys } from 'spine-core/testing/vault.js';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import path from 'path';
 import { afterEach } from 'vitest';
 import { runCli, type CliIo } from '../cli.js';
-import { getStore, resetStore } from '../store/index.js';
+import { getStore, resetStore, getAccountsStore } from 'spine-core/store/index.js';
 import { verifyPassword, MIN_PASSWORD_LENGTH } from '../passwords.js';
 import { hashUserToken } from '../user-tokens.js';
 import { seedDocument, seedSourceFile, createTestUser, OWNER_ID } from './helpers/seed.js';
@@ -26,7 +27,7 @@ function io(stdin = ''): CliIo & { out_: string[]; err_: string[] } {
 
 beforeEach(() => resetStore());
 
-const records = process.env.SPINE_STORE_SCOPE !== 'accounts'; // `npm run test:accounts` has no table for a record (SECURITY.md M-37)
+const records = holdsRecordsInThisRun(); // `npm run test:accounts` runs the server's own store, which has none (SECURITY.md M-37)
 
 describe('create-user', () => {
   it('creates an account and prints a generated password once', async () => {
@@ -37,7 +38,7 @@ describe('create-user', () => {
     const password = printed.split(': ')[1];
     expect(password.length).toBeGreaterThanOrEqual(MIN_PASSWORD_LENGTH);
 
-    const user = await getStore().users.findByEmail('new@example.com'); // lower-cased
+    const user = await getAccountsStore().users.findByEmail('new@example.com'); // lower-cased
     expect(user).not.toBeNull();
     expect(await verifyPassword(user!.password_hash, password)).toBe(true);
   });
@@ -47,7 +48,7 @@ describe('create-user', () => {
     await runCli(['create-user', 'store@example.com'], console_);
     const password = console_.out_.find(l => l.startsWith('password'))!.split(': ')[1];
 
-    const user = await getStore().users.findByEmail('store@example.com');
+    const user = await getAccountsStore().users.findByEmail('store@example.com');
     expect(user!.password_hash).not.toContain(password);
     expect(user!.password_hash).toMatch(/^\$argon2id\$/);
   });
@@ -57,7 +58,7 @@ describe('create-user', () => {
     expect(await runCli(['create-user', 'stdin@example.com', '--password-stdin'], console_)).toBe(0);
 
     expect(console_.out_.join('\n')).not.toContain('a-password-from-stdin!');
-    const user = await getStore().users.findByEmail('stdin@example.com');
+    const user = await getAccountsStore().users.findByEmail('stdin@example.com');
     expect(await verifyPassword(user!.password_hash, 'a-password-from-stdin!')).toBe(true);
   });
 
@@ -65,7 +66,7 @@ describe('create-user', () => {
     const console_ = io('short');
     expect(await runCli(['create-user', 'weak@example.com', '--password-stdin'], console_)).toBe(1);
     expect(console_.err_.join()).toMatch(/at least 12/);
-    expect(await getStore().users.findByEmail('weak@example.com')).toBeNull();
+    expect(await getAccountsStore().users.findByEmail('weak@example.com')).toBeNull();
   });
 
   it('refuses a duplicate email, in any case', async () => {
@@ -83,7 +84,7 @@ describe('create-user', () => {
 
   it.skipIf(!records)('gives a new user their own starter tags', async () => {
     await runCli(['create-user', 'tags@example.com'], io());
-    const user = await getStore().users.findByEmail('tags@example.com');
+    const user = await getAccountsStore().users.findByEmail('tags@example.com');
     const names = (await getStore().tags.listFor(user!.id)).map(t => t.name);
     expect(names).toEqual(expect.arrayContaining(['allergy', 'cardiology', 'lab']));
   });
@@ -92,12 +93,12 @@ describe('create-user', () => {
 describe('set-password', () => {
   it('changes the password and ends existing sessions', async () => {
     await runCli(['create-user', 'reset@example.com', '--password-stdin'], io('the-first-password'));
-    const before = await getStore().users.findByEmail('reset@example.com');
+    const before = await getAccountsStore().users.findByEmail('reset@example.com');
 
     const console_ = io('the-second-password');
     expect(await runCli(['set-password', 'reset@example.com', '--password-stdin'], console_)).toBe(0);
 
-    const after = await getStore().users.findByEmail('reset@example.com');
+    const after = await getAccountsStore().users.findByEmail('reset@example.com');
     expect(after!.auth_version).toBe(before!.auth_version + 1);
     expect(await verifyPassword(after!.password_hash, 'the-second-password')).toBe(true);
     expect(await verifyPassword(after!.password_hash, 'the-first-password')).toBe(false);
@@ -106,12 +107,12 @@ describe('set-password', () => {
 
   it('refuses an account with a vault, whose password the operator cannot choose', async () => {
     await runCli(['create-user', 'vaulted@example.com', '--password-stdin'], io('the-first-password'));
-    const user = await getStore().users.findByEmail('vaulted@example.com');
-    await getStore().vault.putKeys(user!.id, { ...fakeVaultKeys(), kdf_params: JSON.stringify(fakeVaultKeys().kdf_params) }, new Date().toISOString());
+    const user = await getAccountsStore().users.findByEmail('vaulted@example.com');
+    await getAccountsStore().vault.putKeys(user!.id, { ...fakeVaultKeys(), kdf_params: JSON.stringify(fakeVaultKeys().kdf_params) }, new Date().toISOString());
     const console_ = io('the-second-password');
     expect(await runCli(['set-password', 'vaulted@example.com', '--password-stdin'], console_)).toBe(1);
     expect(console_.err_.join()).toMatch(/has a vault/);
-    expect(await verifyPassword((await getStore().users.findByEmail('vaulted@example.com'))!.password_hash, 'the-first-password')).toBe(true);
+    expect(await verifyPassword((await getAccountsStore().users.findByEmail('vaulted@example.com'))!.password_hash, 'the-first-password')).toBe(true);
   });
 
   it('reports an unknown account', async () => {
@@ -124,28 +125,28 @@ describe('set-password', () => {
 describe('disable-2fa', () => {
   it('turns off the second factor, ends their sessions, and removes the secret and codes', async () => {
     await runCli(['create-user', 'lost@example.com', '--password-stdin'], io('the-first-password'));
-    const user = (await getStore().users.findByEmail('lost@example.com'))!;
-    await getStore().users.beginTotp(user.id, 'v1.x', new Date().toISOString());
-    await getStore().users.enableTotp(user.id, 1, ['h1', 'h2'], new Date().toISOString());
-    const before = (await getStore().users.findById(user.id))!;
+    const user = (await getAccountsStore().users.findByEmail('lost@example.com'))!;
+    await getAccountsStore().users.beginTotp(user.id, 'v1.x', new Date().toISOString());
+    await getAccountsStore().users.enableTotp(user.id, 1, ['h1', 'h2'], new Date().toISOString());
+    const before = (await getAccountsStore().users.findById(user.id))!;
 
     const console_ = io();
     expect(await runCli(['disable-2fa', 'lost@example.com'], console_)).toBe(0);
 
     expect(console_.out_.join()).toMatch(/turned off.*signed out/);
-    expect(await getStore().users.getTotp(user.id)).toBeNull();
-    expect(await getStore().users.countRecoveryCodes(user.id)).toBe(0);
-    expect((await getStore().users.findById(user.id))!.auth_version).toBe(before.auth_version + 1);
+    expect(await getAccountsStore().users.getTotp(user.id)).toBeNull();
+    expect(await getAccountsStore().users.countRecoveryCodes(user.id)).toBe(0);
+    expect((await getAccountsStore().users.findById(user.id))!.auth_version).toBe(before.auth_version + 1);
   });
 
   it('leaves an account without one alone, and says so', async () => {
     await runCli(['create-user', 'plain@example.com'], io());
-    const user = (await getStore().users.findByEmail('plain@example.com'))!;
+    const user = (await getAccountsStore().users.findByEmail('plain@example.com'))!;
     const console_ = io();
 
     expect(await runCli(['disable-2fa', 'plain@example.com'], console_)).toBe(0);
     expect(console_.out_.join()).toMatch(/no two-factor/);
-    expect((await getStore().users.findById(user.id))!.auth_version).toBe(user.auth_version);
+    expect((await getAccountsStore().users.findById(user.id))!.auth_version).toBe(user.auth_version);
   });
 
   it('reports an unknown account', async () => {
@@ -192,11 +193,11 @@ describe('reset-link', () => {
     const token = link.split('#')[1];
     expect(token).toHaveLength(43);
 
-    const user = await getStore().users.findByEmail('link@example.com');
+    const user = await getAccountsStore().users.findByEmail('link@example.com');
     const now = new Date().toISOString();
-    expect(await getStore().users.consumeToken(hashUserToken(token), 'reset', now)).toBe(user!.id);
+    expect(await getAccountsStore().users.consumeToken(hashUserToken(token), 'reset', now)).toBe(user!.id);
     // And only once.
-    expect(await getStore().users.consumeToken(hashUserToken(token), 'reset', now)).toBeNull();
+    expect(await getAccountsStore().users.consumeToken(hashUserToken(token), 'reset', now)).toBeNull();
   });
 
   it('reports an unknown account and a silly lifetime', async () => {
@@ -251,13 +252,13 @@ describe('delete-user', () => {
     await createTestUser();
     const keys = fakeVaultKeys();
     const now = new Date().toISOString();
-    await getStore().vault.putKeys(OWNER_ID, { ...keys, kdf_params: JSON.stringify(keys.kdf_params) }, now);
-    await getStore().vault.put(OWNER_ID, { id: 'object-0001', profileId: 'profile-0001', kind: 'bundle', size: 4, wrappedKey: 'k', baseSeq: 0 }, now, 1 << 20);
+    await getAccountsStore().vault.putKeys(OWNER_ID, { ...keys, kdf_params: JSON.stringify(keys.kdf_params) }, now);
+    await getAccountsStore().vault.put(OWNER_ID, { id: 'object-0001', profileId: 'profile-0001', kind: 'bundle', size: 4, wrappedKey: 'k', baseSeq: 0 }, now, 1 << 20);
     const console_ = io();
 
     expect(await runCli(['delete-user', 'owner@spine.test'], console_)).toBe(1);
     expect(console_.err_.join()).toMatch(/has 1 sealed object\(s\).*--yes/);
-    expect(await getStore().users.findByEmail('owner@spine.test')).not.toBeNull();
+    expect(await getAccountsStore().users.findByEmail('owner@spine.test')).not.toBeNull();
   });
 
   it.skipIf(!records)('removes the account, its rows, its files and its backup copy', async () => {
@@ -269,7 +270,7 @@ describe('delete-user', () => {
     const console_ = io();
     expect(await runCli(['delete-user', 'owner@spine.test', '--yes'], console_)).toBe(0);
 
-    expect(await getStore().users.findByEmail('owner@spine.test')).toBeNull();
+    expect(await getAccountsStore().users.findByEmail('owner@spine.test')).toBeNull();
     expect(await getStore().sourceFiles.listFor(OWNER_ID)).toEqual([]);
     expect(await getStore().documents.listFor(OWNER_ID, { limit: 10, offset: 0 })).toEqual([]);
     expect(existsSync(paths.original)).toBe(false);

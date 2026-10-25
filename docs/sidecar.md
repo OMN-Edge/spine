@@ -1,6 +1,6 @@
 # The retired PDF sidecar
 
-Until October 2026 the server read a PDF's text layer through a second process: a small Python service wrapping [Unstructured](https://github.com/Unstructured-IO/unstructured), called over HTTP. It is replaced by `server/src/ingestion/pdf-text.ts`, which does the same job in-process with [PDF.js](https://mozilla.github.io/pdf.js/) and needs no Python. The service itself is kept in [sidecar/](sidecar/) as a reference and is neither built nor started by `install.sh` or `compose.yaml`. This page records what it offered, so that a choice to go back, or to use more of Unstructured, is an informed one.
+Until October 2026 the server read a PDF's text layer through a second process: a small Python service wrapping [Unstructured](https://github.com/Unstructured-IO/unstructured), called over HTTP. It is replaced by `core/src/ingestion/pdf-text.ts`, which does the same job in-process with [PDF.js](https://mozilla.github.io/pdf.js/) and needs no Python. The service itself is kept in [sidecar/](sidecar/) as a reference and is neither built nor started by `install.sh` or `compose.yaml`. This page records what it offered, so that a choice to go back, or to use more of Unstructured, is an informed one.
 
 ## Why it was replaced
 

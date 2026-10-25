@@ -2,10 +2,10 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from
 import { v4 as uuidv4 } from 'uuid';
 import { buildTestApp, loginSession } from './helpers/app.js';
 import { OWNER_ID, seedDocument, seedPage, seedSourceFile } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
-import { resetChatLlm, type ChatLlm } from '../llm/index.js';
-import { rereadDocument } from '../ingestion/document-reading.js';
-import type { ExtractionResult } from '../types.js';
+import { getStore } from 'spine-core/store/index.js';
+import { resetChatLlm, type ChatLlm } from 'spine-core/llm/index.js';
+import { rereadDocument } from 'spine-core/ingestion/document-reading.js';
+import type { ExtractionResult } from 'spine-core/types.js';
 
 /**
  * What the owner sets, adds, changes or removes stays through a new reading: the new reading fills in the rest. The model

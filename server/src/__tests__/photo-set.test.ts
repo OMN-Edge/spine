@@ -5,17 +5,17 @@ import { tmpdir } from 'os';
 import path from 'path';
 import sharp from 'sharp';
 import { buildTestApp, loginSession } from './helpers/app.js';
-import { getStore } from '../store/index.js';
+import { getStore } from 'spine-core/store/index.js';
 import { OWNER_ID } from './helpers/seed.js';
-import { bundlePhotos, MAX_PHOTOS_IN_SET } from '../ingestion/photo-set.js';
-import { readsByModel } from '../file-kind.js';
+import { bundlePhotos, MAX_PHOTOS_IN_SET } from 'spine-core/ingestion/photo-set.js';
+import { readsByModel } from 'spine-core/file-kind.js';
 
 const mockStartJob = vi.hoisted(() => vi.fn());
 const mockAllowed = vi.hoisted(() => vi.fn());
-vi.mock('../ingestion/pipeline.js', () => ({ startIngestionJob: mockStartJob, getJobStatus: vi.fn().mockReturnValue(null) }));
-vi.mock('../parser/index.js', async orig => ({ ...(await orig<typeof import('../parser/index.js')>()), aiReadingAllowed: mockAllowed }));
+vi.mock('spine-core/ingestion/pipeline.js', () => ({ startIngestionJob: mockStartJob, getJobStatus: vi.fn().mockReturnValue(null) }));
+vi.mock('spine-core/parser/index.js', async orig => ({ ...(await orig<typeof import('spine-core/parser/index.js')>()), aiReadingAllowed: mockAllowed }));
 
-const hasPoppler = (() => { try { execFileSync('pdftoppm', ['-v'], { stdio: 'ignore' }); execFileSync('pdfinfo', ['-v'], { stdio: 'ignore' }); return true; } catch { return false; } })();
+import { hasPoppler } from 'spine-core/testing/tools.js';
 
 let app: Awaited<ReturnType<typeof buildTestApp>>;
 let cookie: string;
@@ -152,7 +152,7 @@ describe.skipIf(!hasPoppler)('a scan session keeps the photos as they were taken
 
 describe('a scan session when only local OCR can read it', () => {
   it('is read by local OCR when the parser is ocr, or hybrid with Tesseract on, and otherwise by a model', async () => {
-    const { localOcrReadsPhotoSets, readsByModel } = await import('../file-kind.js');
+    const { localOcrReadsPhotoSets, readsByModel } = await import('spine-core/file-kind.js');
     const keys = ['SPINE_PARSER', 'SPINE_OCR', 'SPINE_MULTIMODAL_ENABLED'] as const;
     const was = Object.fromEntries(keys.map(k => [k, process.env[k]]));
     try {

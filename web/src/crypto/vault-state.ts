@@ -74,8 +74,9 @@ export const vaultState = {
     pendingMaster = null;
   },
 
-  async lock() {
-    await device.lock();
+  /** Throws `UnsavedChangesError` if changes are not in the vault yet, and then nothing is lost or closed; `force` is the person's choice. */
+  async lock(force = false) {
+    await device.lock(force);
     forgetDeviceObjectUrls();
     await session?.close();
     session = null;

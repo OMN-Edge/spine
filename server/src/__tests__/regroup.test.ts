@@ -2,15 +2,15 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vites
 import { v4 as uuidv4 } from 'uuid';
 import { buildTestApp, loginAs, loginSession } from './helpers/app.js';
 import { createTestUser, seedPage, seedSourceFile, OWNER_ID } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
-import { EXTRACTION_FALLBACK } from '../llm/types.js';
+import { getStore } from 'spine-core/store/index.js';
+import { EXTRACTION_FALLBACK } from 'spine-core/llm/types.js';
 
 /**
  * Regrouping an upload's pages: split and join, the reading that follows, and the two
  * routes the regrouping screen uses. The model is mocked; everything else is real.
  */
 const mockExtractFields = vi.hoisted(() => vi.fn());
-vi.mock('../ingestion/extraction.js', () => ({ extractFields: mockExtractFields }));
+vi.mock('spine-core/ingestion/extraction.js', () => ({ extractFields: mockExtractFields }));
 
 let app: Awaited<ReturnType<typeof buildTestApp>>;
 let cookie: string;
@@ -282,7 +282,7 @@ describe('reading a document again (rereadDocument)', () => {
   it('puts a reviewed document back to unreviewed, since what it holds changed', async () => {
     const { doc } = await upload(1);
     await getStore().documents.update(OWNER_ID, doc, { reviewed: true });
-    const { rereadDocument } = await import('../ingestion/document-reading.js');
+    const { rereadDocument } = await import('spine-core/ingestion/document-reading.js');
     mockExtractFields.mockResolvedValueOnce(reading('Again'));
     expect(await rereadDocument(OWNER_ID, doc)).toBe(true);
     const after = (await getStore().documents.findFor(OWNER_ID, doc))!;
@@ -292,7 +292,7 @@ describe('reading a document again (rereadDocument)', () => {
   it('keeps the owner’s notes', async () => {
     const { doc } = await upload(1);
     await getStore().documents.update(OWNER_ID, doc, { user_notes: 'ask about this' });
-    const { rereadDocument } = await import('../ingestion/document-reading.js');
+    const { rereadDocument } = await import('spine-core/ingestion/document-reading.js');
     mockExtractFields.mockResolvedValueOnce(reading('Again'));
     await rereadDocument(OWNER_ID, doc);
     expect((await getStore().documents.findFor(OWNER_ID, doc))!.user_notes).toBe('ask about this');

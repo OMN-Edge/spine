@@ -1082,5 +1082,9 @@
  "Digital signature verified": "Digitale Signatur geprüft",
  "The certificates in the file lead to an authority this server trusts": "Die Zertifikate in der Datei führen zu einer Stelle, der dieser Server vertraut",
  "Another device made changes": "Ein anderes Gerät hat Änderungen gemacht",
- "They are already here. Reload to see them.": "Sie sind schon hier. Laden Sie neu, um sie zu sehen."
+ "They are already here. Reload to see them.": "Sie sind schon hier. Laden Sie neu, um sie zu sehen.",
+ "Your latest changes are not saved yet. Spine keeps trying, so keep this page open.": "Ihre letzten Änderungen sind noch nicht gespeichert. Spine versucht es weiter – lassen Sie diese Seite geöffnet.",
+ "Some of your latest changes are not saved yet. If you sign out now, they will be lost.": "Einige Ihrer letzten Änderungen sind noch nicht gespeichert. Wenn Sie sich jetzt abmelden, gehen sie verloren.",
+ "Keep this page open": "Seite geöffnet lassen",
+ "Sign out and lose them": "Abmelden und Änderungen verlieren"
 }

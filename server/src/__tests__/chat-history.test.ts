@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { buildTestApp, loginAs, loginSession } from './helpers/app.js';
 import { OWNER_ID, createTestUser, seedDocument } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
-import { MAX_CONVERSATIONS, MAX_MESSAGES } from '../store/types.js';
-import { resetChatLlm, type ChatLlm } from '../llm/index.js';
-import type { ChatRecord, ChatTurn } from '../llm/types.js';
+import { getStore } from 'spine-core/store/index.js';
+import { MAX_CONVERSATIONS, MAX_MESSAGES } from 'spine-core/store/types.js';
+import { resetChatLlm, type ChatLlm } from 'spine-core/llm/index.js';
+import type { ChatRecord, ChatTurn } from 'spine-core/llm/types.js';
 
 /**
  * Conversations are kept for the owner: listed, reopened, continued, renamed and deleted. They are medical text, so they are

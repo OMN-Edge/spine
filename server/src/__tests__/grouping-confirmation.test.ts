@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { buildTestApp, loginAs, loginSession } from './helpers/app.js';
 import { OWNER_ID, createTestUser, seedDocument, seedShareLink } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
-import { hashShareToken } from '../share-token.js';
-import { resetChatLlm, type ChatLlm } from '../llm/index.js';
-import type { LinkCard } from '../llm/types.js';
-import { settleLinking } from '../linking/index.js';
-import { findLinks } from '../linking/index.js';
+import { getStore } from 'spine-core/store/index.js';
+import { hashShareToken } from 'spine-core/share-token.js';
+import { resetChatLlm, type ChatLlm } from 'spine-core/llm/index.js';
+import type { LinkCard } from 'spine-core/llm/types.js';
+import { settleLinking } from 'spine-core/linking/index.js';
+import { findLinks } from 'spine-core/linking/index.js';
 
 /**
  * An upload's grouping is checked by the owner before its documents appear anywhere: out of the timeline, search, shares

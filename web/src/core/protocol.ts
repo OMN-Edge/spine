@@ -5,15 +5,25 @@ export type ToWorker =
   | { id: number; type: 'startWithPasskey'; passkey: { prf: Uint8Array; credentialId: string; wrapped: string } }
   | { id: number; type: 'request'; method: string; url: string; headers: Record<string, string>; body?: string; parts?: Part[] }
   | { id: number; type: 'startShare'; shareId: string; key: string }
-  | { id: number; type: 'lock' }
+  /** Saves, then lets go of everything. Refused with code `unsaved` if something could not be saved, unless the person chose to lose it (`force`). */
+  | { id: number; type: 'lock'; force?: boolean }
+  /** Save now. Fails if the vault did not take it. */
+  | { id: number; type: 'save' }
   /** The reader of a streamed reply went away: stop writing it. */
   | { id: number; type: 'abort'; target: number };
 /** Where the worker is in starting up, for the console of whoever is finding out why it does not. Names of steps, never content. */
 export type Trace = { id: 0; trace: string };
+/**
+ * Whether what the person did is all in the vault. `error` is set from a save that failed until one succeeds; the core keeps trying on
+ * its own, and the page says so, so nobody works on believing it is saved when it is not.
+ */
+export interface SaveState { unsaved: boolean; error: string | null }
 export type FromWorker =
   | Trace
   /** Another device saved first: this one has changes it could not save and has stopped trying (SECURITY.md M-34). */
   | { id: 0; changed: true }
+  /** The state of saving changed. */
+  | { id: 0; save: SaveState }
 
   | { id: number; ok: true; status?: number; headers?: Record<string, string>; body?: ArrayBuffer; stream?: boolean }
   /** A piece of a streamed reply, in the order written, and its end. */

@@ -1,11 +1,10 @@
 import fs from 'fs';
 import { Buffer } from 'buffer';
 import { WasmDatabase } from '../sqlite-wasm';
-import { createSqliteStoreWith } from '../../../../server/src/store/sqlite/store';
-import { copySlice } from '../../../../server/src/store/sqlite/slice';
-import { hashShareToken } from '../../../../server/src/share-token';
-import type { Store } from '../../../../server/src/store/types';
-import type { ShareHost } from '../../../../server/src/share-host';
+import { createDeviceStore, copySlice } from 'spine-core/store/sqlite/browser';
+import { hashShareToken } from 'spine-core/share-token';
+import type { Store } from 'spine-core/store/types';
+import type { ShareHost } from 'spine-core/share-host';
 import { sodium } from '../../crypto/sodium';
 import { newShareKey, sealPart, wrapShareKey } from './keys';
 
@@ -40,7 +39,7 @@ export function createShareHost(deps: { source: WasmDatabase; schema: string; st
       let digest = '';
       try {
         // The copy is built in a store of its own, and leaves it as changes: the form in which records travel, not a database file.
-        const copyStore = createSqliteStoreWith({ adapter: 'sqlite', location: ':memory:' }, () => dest, deps.schema);
+        const copyStore = createDeviceStore(() => dest, deps.schema);
         let next = 0;
         const result = copySlice(deps.source, dest, {
           userId, documentIds, includeText: link.allow_chat, includeScans: link.include_scans, tokenHash: hashShareToken(LOCAL_SHARE_TOKEN),

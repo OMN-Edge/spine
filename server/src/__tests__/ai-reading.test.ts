@@ -2,10 +2,10 @@ import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } 
 import { v4 as uuidv4 } from 'uuid';
 import { buildTestApp, loginAs } from './helpers/app.js';
 import { createTestUser, seedPage, seedSourceFile, OWNER_ID } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
-import { resetParser, type Parser, type ParseInput } from '../parser/index.js';
-import { getAiReading, resetAiReadings } from '../ingestion/ai-reading.js';
-import { EXTRACTION_FALLBACK } from '../llm/types.js';
+import { getStore } from 'spine-core/store/index.js';
+import { resetParser, type Parser, type ParseInput } from 'spine-core/parser/index.js';
+import { getAiReading, resetAiReadings } from 'spine-core/ingestion/ai-reading.js';
+import { EXTRACTION_FALLBACK } from 'spine-core/llm/types.js';
 
 /**
  * Reading chosen pages with the model, and extracting the documents they belong to again.
@@ -13,7 +13,7 @@ import { EXTRACTION_FALLBACK } from '../llm/types.js';
  * about "only these pages' images are sent" is real.
  */
 const mockExtractFields = vi.hoisted(() => vi.fn());
-vi.mock('../ingestion/extraction.js', () => ({ extractFields: mockExtractFields }));
+vi.mock('spine-core/ingestion/extraction.js', () => ({ extractFields: mockExtractFields }));
 
 let app: Awaited<ReturnType<typeof buildTestApp>>;
 let cookie: string;

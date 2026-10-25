@@ -2,10 +2,10 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from
 import { v4 as uuidv4 } from 'uuid';
 import { buildTestApp, loginSession } from './helpers/app.js';
 import { OWNER_ID, createTestUser, seedDocument } from './helpers/seed.js';
-import { ScriptedModel } from './helpers/scripted-model.js';
-import { getStore } from '../store/index.js';
-import { resetChatLlm, type ChatLlm } from '../llm/index.js';
-import type { Proposal } from '../chat/proposals.js';
+import { ScriptedModel } from 'spine-core/testing/scripted-model.js';
+import { getStore } from 'spine-core/store/index.js';
+import { resetChatLlm, type ChatLlm } from 'spine-core/llm/index.js';
+import type { Proposal } from 'spine-core/chat/proposals.js';
 
 /**
  * The chat can prepare changes and never makes them. Each action tool returns a proposal; these tests check what is in it, that

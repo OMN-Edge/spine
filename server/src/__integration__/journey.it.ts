@@ -3,7 +3,7 @@ import { describePipeline } from './support/live.js';
 import { makeTextPdf } from './support/pdf.js';
 import { CONSULTATION, DISCHARGE, FACTS, LAB_REPORT, PRESCRIPTION } from './support/fixtures.js';
 import { OWNER_ID, ask, attach, confirm, proposalOf, reportOf, startWorld, until } from './support/world.js';
-import { getStore } from '../store/index.js';
+import { getStore } from 'spine-core/store/index.js';
 
 /**
  * The whole journey of a bulk export, with the real sidecar, the real model and the real assistant: a physician's export whose six pages

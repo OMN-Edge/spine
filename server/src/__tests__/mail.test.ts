@@ -2,7 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { createMailer, MAILERS } from '../mail/index.js';
 import { parseSender } from '../mail/adapters/brevo.js';
 import { MailerConfigError, MailerDisabledError } from '../mail/types.js';
-import { loadConfig, loadMailConfig, loadRegistrationMode, publicUrl, ConfigError } from '../config.js';
+import { publicUrl, ConfigError } from 'spine-core/config.js';
+import { loadConfig, loadMailConfig, loadRegistrationMode } from '../config.js';
 import { resetMail, verificationMail } from '../accounts.js';
 
 describe('createMailer — the registry', () => {

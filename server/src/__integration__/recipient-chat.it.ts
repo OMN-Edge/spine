@@ -2,7 +2,7 @@ import { beforeAll, expect, it } from 'vitest';
 import { describeLive } from './support/live.js';
 import { seedYear } from './support/archive.js';
 import { OWNER_ID, startWorld, type World } from './support/world.js';
-import { getStore } from '../store/index.js';
+import { getStore } from 'spine-core/store/index.js';
 
 /**
  * A doctor with a share link asks the assistant about what was shared. Asserted: it answers from the shared documents, it tells the

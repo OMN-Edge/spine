@@ -622,8 +622,9 @@ export const api = {
     },
     secondFactor: (code: string) =>
       post<{ ok: boolean; email: string }>('/api/auth/login/second-factor', { code }),
-    logout: async () => {
-      await vaultState.lock();
+    /** Throws `UnsavedChangesError` (and signs nothing out) while changes are not in the vault; `force` is the person's choice to lose them. */
+    logout: async (force = false) => {
+      await vaultState.lock(force);
       return req('/api/auth/logout', { method: 'POST' });
     },
     me: () => req<{ authenticated: boolean; email: string; second_factor_enabled?: boolean; vault?: boolean; consent_needed?: { health: boolean; terms: boolean } }>('/api/auth/me'),

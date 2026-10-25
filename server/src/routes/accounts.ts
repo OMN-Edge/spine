@@ -1,7 +1,7 @@
 import { HEALTH_CONSENT_VERSION, TERMS_VERSION } from '../legal.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
-import { getStore } from '../store/index.js';
+import { getAccountsStore } from 'spine-core/store/index.js';
 import { getMailer, type MailMessage } from '../mail/index.js';
 import {
   checkPasswordPolicy,
@@ -19,7 +19,7 @@ import {
   verificationMail,
 } from '../accounts.js';
 import { hashUserToken } from '../user-tokens.js';
-import { windowLimiter, type WindowLimit } from '../rate-limit.js';
+import { windowLimiter, type WindowLimit } from 'spine-core/rate-limit.js';
 import { loadRegistrationMode, type RegistrationMode } from '../config.js';
 import { AUTH_VALUE, parseVaultKeys } from '../vault-keys.js';
 import { removeAllObjects } from '../vault-files.js';
@@ -106,7 +106,7 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
         const problem = vault ? null : checkPasswordPolicy(password, { email: address });
         if (problem) return reply.status(400).send({ error: problem });
 
-        const store = getStore();
+        const store = getAccountsStore();
         // Hashed whether or not the address is taken, so both cost the same.
         const passwordHash = await hashPassword((vault ? req.body?.auth_value : password) as string);
 
@@ -146,7 +146,7 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
       const { token } = req.body ?? {};
       if (typeof token !== 'string' || !token) return reply.status(400).send(INVALID_LINK);
 
-      const store = getStore();
+      const store = getAccountsStore();
       const now = new Date().toISOString();
       const userId = await store.users.consumeToken(hashUserToken(token), 'verify', now);
       if (!userId) return reply.status(400).send(INVALID_LINK);
@@ -162,7 +162,7 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
     { preHandler: [perSource, perAddress] },
     async (req, reply) => {
       const address = normaliseEmail(String(req.body?.email ?? ''));
-      const user = isPlausibleEmail(address) ? await getStore().users.findByEmail(address) : null;
+      const user = isPlausibleEmail(address) ? await getAccountsStore().users.findByEmail(address) : null;
 
       if (user && !user.email_verified_at && getMailer().enabled) {
         const token = await issueUserToken(user.id, 'verify', VERIFY_TTL_MS);
@@ -182,7 +182,7 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
       }
 
       const address = normaliseEmail(String(req.body?.email ?? ''));
-      const user = isPlausibleEmail(address) ? await getStore().users.findByEmail(address) : null;
+      const user = isPlausibleEmail(address) ? await getAccountsStore().users.findByEmail(address) : null;
 
       if (user) {
         const token = await issueUserToken(user.id, 'reset', RESET_TTL_MS);
@@ -200,7 +200,7 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
     async (req, reply) => {
       const { token } = req.body ?? {};
       if (typeof token !== 'string' || !token) return reply.status(400).send(INVALID_LINK);
-      const store = getStore();
+      const store = getAccountsStore();
       const userId = await store.users.peekToken(hashUserToken(token), 'reset', new Date().toISOString());
       if (!userId) return reply.status(400).send(INVALID_LINK);
       const k = await store.vault.getKeys(userId);
@@ -218,7 +218,7 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
       const { token, password } = req.body ?? {};
       if (typeof token !== 'string' || !token) return reply.status(400).send(INVALID_LINK);
 
-      const store = getStore();
+      const store = getAccountsStore();
       const vault = req.body?.auth_value !== undefined || req.body?.keys !== undefined;
       const keys = vault ? parseVaultKeys(req.body?.keys) : null;
       if (vault && (!keys || typeof req.body?.auth_value !== 'string' || !AUTH_VALUE.test(req.body.auth_value))) {

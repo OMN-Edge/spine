@@ -1,10 +1,11 @@
 import { createServer } from 'node:http';
-import { loadLlmConfig } from '../config.js';
-import { createTaskClients, type TaskClients } from '../llm/index.js';
-import { getEmbedder } from '../embedding/index.js';
-import { getStore } from '../store/index.js';
+import { loadLlmConfig } from 'spine-core/config.js';
+import { createTaskClients, type TaskClients } from 'spine-core/llm/index.js';
+import { getEmbedder } from 'spine-core/embedding/index.js';
+import { getAccountsStore } from 'spine-core/store/index.js';
 import { createRelay } from './relay.js';
 import { MIN_SECRET_LENGTH } from './token.js';
+import { useAccountsStore } from '../store.js';
 
 /**
  * The relay's process (`node dist/relay/main.js`), for Cloud Run or any host. It is configured only by the environment: the same
@@ -40,8 +41,8 @@ clients(undefined); // a bad provider setting stops the process here and not at 
 // The daily count lives in the store the environment names (SPINE_STORE, DATA_DIR / SPINE_DB_PATH), chosen as the model provider is. A relay
 // with no database of its own sets SPINE_DB_PATH=:memory:, which counts in this process (run one instance); one that shares the server's
 // database, or a networked adapter, counts across restarts and instances.
-process.env.SPINE_STORE_SCOPE = 'accounts';
-const usage = getStore().usage;
+useAccountsStore();
+const usage = getAccountsStore().usage;
 
 const handle = createRelay({
   secret,

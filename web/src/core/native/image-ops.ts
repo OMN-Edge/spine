@@ -1,8 +1,8 @@
 import fs from 'fs';
 import { Buffer } from 'buffer';
-import type { UprightOptions } from '../../../../server/src/ingestion/image-ops';
+import type { UprightOptions } from 'spine-core/ingestion/image-ops';
 
-/** Same contract as server/src/ingestion/image-ops.ts, done with the browser's image decoding and canvas. */
+/** Same contract as core/src/ingestion/image-ops.ts, done with the browser's image decoding and canvas. */
 async function decode(src: string, maxPixels: number): Promise<ImageBitmap> {
   const bitmap = await createImageBitmap(new Blob([fs.readFileSync(src) as unknown as BlobPart]), { imageOrientation: 'from-image' });
   if (bitmap.width * bitmap.height > maxPixels) { bitmap.close(); throw new Error('the picture has too many pixels'); }

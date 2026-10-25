@@ -1,6 +1,6 @@
 import { sodium, sodiumNow } from '../crypto/sodium';
 import { memory } from './shims/fs';
-import type { Change, ChangeLog, FileRegistryRepository } from '../../../server/src/store/types';
+import type { Change, ChangeLog, FileRegistryRepository } from 'spine-core/store/types';
 
 /**
  * What the device keeps in the vault (docs/crypto-design.md, "Syncing devices"). The server stores opaque objects and nothing else.
@@ -75,6 +75,11 @@ export class Persistence {
   private registry = new Map<string, { objectId: string; hash: string; size: number; seq: number }>();
   /** An older vault: its database file in pieces, and the files it listed. Converted by `adoptLegacy`. */
   private legacy: IndexV1 | null = null;
+  /**
+   * Changes taken out of the change log and not yet in the vault. Draining makes the log forget what it hands over, so a save that
+   * failed after draining (the network, the vault's limit) would otherwise have lost them for good: they stay here and go first next time.
+   */
+  private unsent: Change[] = [];
   onChanged: (() => void) | null = null;
 
   constructor(
@@ -95,6 +100,20 @@ export class Persistence {
     const data = bytes(JSON.stringify(value));
     const id = await this.newId();
     return { id, hash: await this.hash(data), size: data.length, seq: await this.store.put(kind, id, data, 0) };
+  }
+
+  /** Whether changes were taken out of the log and the vault does not have them yet (a save failed part-way). */
+  get waiting(): boolean { return this.unsent.length > 0; }
+
+  /** Sends what the log holds, after what an earlier failed save left. A group leaves the list only once the vault has it. */
+  private async sendChanges(): Promise<void> {
+    // A loop, not push(...list): a first save after a large import can be more arguments than a call allows.
+    for (const change of await this.records.changes.drain()) this.unsent.push(change);
+    for (const group of chunks(this.unsent)) {
+      const part = await this.putJson('log', { v: 1, changes: group });
+      this.open.set(part.id, part.seq);
+      this.unsent.splice(0, group.length);
+    }
   }
 
   private async readParts(parts: Part[]): Promise<Change[]> {
@@ -224,11 +243,7 @@ export class Persistence {
       if (had) { obsolete.push({ id: had.objectId, seq: had.seq }); await this.records.files.remove(this.records.userId, path); }
     }
 
-    const local = await this.records.changes.drain();
-    for (const group of chunks(local)) {
-      const part = await this.putJson('log', { v: 1, changes: group });
-      this.open.set(part.id, part.seq);
-    }
+    await this.sendChanges();
 
     await this.pull();
     await this.refreshRegistry();
@@ -271,7 +286,7 @@ export class Persistence {
   private async compact(force: boolean): Promise<void> {
     if (!force && this.open.size < COMPACT_AFTER) return;
     // Writes made while this save was waiting on the vault are sent first, so the snapshot holds nothing a segment does not.
-    for (const group of chunks(await this.records.changes.drain())) { const part = await this.putJson('log', { v: 1, changes: group }); this.open.set(part.id, part.seq); }
+    await this.sendChanges();
     const all = await this.records.changes.dump();
     const parts: Part[] = [];
     for (const group of chunks(all)) parts.push(await this.putJson('bundle', { v: 1, changes: group }));

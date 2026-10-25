@@ -5,9 +5,9 @@ import fs from './shims/fs';
 import type { ObjectStore } from './persist';
 import { seedDocument, seedPage, seedSourceFile } from '../../../server/src/__tests__/helpers/seed';
 import { WasmDatabase } from './sqlite-wasm';
-import { createSqliteStoreWith } from '../../../server/src/store/sqlite/store';
-import accountsSchema from '../../../server/src/store/sqlite/schema-accounts.sql?raw';
-import recordsSchema from '../../../server/src/store/sqlite/schema-records.sql?raw';
+import { createDeviceStore } from 'spine-core/store/sqlite/browser';
+import accountsSchema from 'spine-core/store/sqlite/schema-accounts.sql?raw';
+import recordsSchema from 'spine-core/store/sqlite/schema-records.sql?raw';
 
 /** The vault as a Map: enough of it for the core to save into and load from. */
 function vault(profile = 'profile-aaaaaaaa') {
@@ -85,12 +85,72 @@ describe('the core, saving to and loading from the vault', () => {
     second.lock();
   });
 
+  /** A vault that can be taken offline, and a core started on it with the states it announced. */
+  async function offlineable(profile: string) {
+    const { store } = vault(profile);
+    const state = { offline: false };
+    const flaky: ObjectStore = { ...store, put: (...args) => { if (state.offline) throw new Error('offline'); return store.put(...args); } };
+    const states: Array<{ unsaved: boolean; error: string | null }> = [];
+    const core = await startCore({ objects: flaky, profileId: profile }, { onSaveState: s => states.push(s) });
+    await core.flush();
+    return { core, state, states, store };
+  }
+
+  it('says when a save fails, keeps the records marked as changed, and clears it once the vault has them', async () => {
+    const { core, state, states } = await offlineable('profile-dddddddd');
+    expect(await core.saveState()).toEqual({ unsaved: false, error: null });
+    await seedDocument({ userId: 'device', sourceFileId: await seedSourceFile({ userId: 'device', status: 'done' }), withPage: false, tags: ['cardio'] });
+    expect((await core.saveState()).unsaved).toBe(true);
+
+    state.offline = true;
+    await expect(core.flush()).rejects.toThrow('offline');
+    expect(await core.saveState()).toEqual({ unsaved: true, error: 'offline' });
+    expect(states.at(-1)).toEqual({ unsaved: true, error: 'offline' });
+    // still failing: still marked, not forgotten
+    await expect(core.flush()).rejects.toThrow('offline');
+    expect((await core.saveState()).unsaved).toBe(true);
+
+    state.offline = false;
+    await core.flush();
+    expect(await core.saveState()).toEqual({ unsaved: false, error: null });
+    expect(states.at(-1)).toEqual({ unsaved: false, error: null });
+    core.lock();
+  });
+
+  it('does not lock over changes the vault does not have; it keeps them, and saves and locks once the vault answers', async () => {
+    const { core, state, store } = await offlineable('profile-eeeeeeee');
+    await seedDocument({ userId: 'device', sourceFileId: await seedSourceFile({ userId: 'device', status: 'done' }), withPage: false, tags: ['kept-offline'] });
+    state.offline = true;
+    await expect(core.close()).rejects.toMatchObject({ code: 'unsaved' });
+    // refused, so nothing was dropped: the records answer and are still marked as changed
+    expect((await core.inject({ method: 'GET', url: '/api/tags' })).json<Array<{ name: string }>>().map(t => t.name)).toContain('kept-offline');
+    expect((await core.saveState()).unsaved).toBe(true);
+
+    state.offline = false;
+    await core.close();
+    // and the vault has them: a new start finds them
+    const again = await startCore({ objects: store, profileId: 'profile-eeeeeeee' });
+    expect((await again.inject({ method: 'GET', url: '/api/tags' })).json<Array<{ name: string }>>().map(t => t.name)).toContain('kept-offline');
+    again.lock();
+  });
+
+  it('lets go of unsaved changes only when the person chose to', async () => {
+    const { core, state, store } = await offlineable('profile-ffffffff');
+    await seedDocument({ userId: 'device', sourceFileId: await seedSourceFile({ userId: 'device', status: 'done' }), withPage: false, tags: ['lost-on-purpose'] });
+    state.offline = true;
+    await core.close(true);
+    state.offline = false;
+    const again = await startCore({ objects: store, profileId: 'profile-ffffffff' });
+    expect((await again.inject({ method: 'GET', url: '/api/tags' })).json<Array<{ name: string }>>().map(t => t.name)).not.toContain('lost-on-purpose');
+    again.lock();
+  });
+
   it('converts a vault of the earlier kind, whose records were a database file in pieces, and keeps its files', async () => {
     const { objects, store } = vault('profile-dddddddd');
     // The earlier kind, made by hand: a database file in one piece, a file of its own, and an index (v1) that names them.
     const schema = `${accountsSchema}\n${recordsSchema}`;
     const old = new WasmDatabase();
-    const oldStore = createSqliteStoreWith({ adapter: 'sqlite', location: ':memory:' }, () => old, schema);
+    const oldStore = createDeviceStore(() => old, schema);
     await oldStore.users.create({ id: 'device', email: 'device@local', passwordHash: 'x', createdAt: 'now', verifiedAt: 'now', consent: undefined });
     await oldStore.sourceFiles.create('device', { id: 'old-file', uploadedAt: 'now', originalFilename: 'a.pdf', filePath: '/data/originals/a.pdf', mimeType: 'application/pdf', checksum: 'c' });
     await oldStore.documents.create('device', { id: 'old-doc', sourceFileId: 'old-file', pageStart: 1, pageEnd: 1, docDate: '2026-01-01', provider: null, docType: 'lab_result', aiSummary: 'from before' });

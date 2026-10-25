@@ -2,12 +2,12 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from
 import { v4 as uuidv4 } from 'uuid';
 import { buildTestApp, loginAs, loginSession } from './helpers/app.js';
 import { OWNER_ID, createTestUser, seedDocument } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
-import { resetChatLlm, type ChatLlm } from '../llm/index.js';
-import type { ChatRecord, ChatTurn } from '../llm/types.js';
-import { buildChatPrompt } from '../llm/prompts.js';
-import { trimHistory } from '../chat/index.js';
-import { keywordsOf, documentsForQuestion } from '../chat/retrieval.js';
+import { getStore } from 'spine-core/store/index.js';
+import { resetChatLlm, type ChatLlm } from 'spine-core/llm/index.js';
+import type { ChatRecord, ChatTurn } from 'spine-core/llm/types.js';
+import { buildChatPrompt } from 'spine-core/llm/prompts.js';
+import { trimHistory } from 'spine-core/chat/index.js';
+import { keywordsOf, documentsForQuestion } from 'spine-core/chat/retrieval.js';
 
 /**
  * Asking questions of the records: what is found and sent, what is never sent, how the answer is tied back to documents,
@@ -226,7 +226,7 @@ describe('who can ask, and what is accepted', () => {
 
 describe('what the assistant will not do (FR-CHAT-02, FR-ORG-08)', () => {
   it('declines to interpret results, for the owner, for a recipient and in the fixed pipeline, and the summary prompt asks for none', async () => {
-    const { buildAgentSystemPrompt, buildSharedAgentSystemPrompt, buildExtractionPrompt } = await import('../llm/prompts.js');
+    const { buildAgentSystemPrompt, buildSharedAgentSystemPrompt, buildExtractionPrompt } = await import('spine-core/llm/prompts.js');
     expect(buildAgentSystemPrompt()).toContain('You do not interpret results');
     expect(buildAgentSystemPrompt()).toContain('this is a question for their doctor');
     expect(buildSharedAgentSystemPrompt(null)).toContain('You do not interpret results either');

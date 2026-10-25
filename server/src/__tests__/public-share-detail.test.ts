@@ -5,8 +5,8 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { buildTestApp, loginSession } from './helpers/app.js';
 import { OWNER_ID, createTestUser, seedDocument, seedPage, seedShareLink } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
-import { hashShareToken } from '../share-token.js';
+import { getStore } from 'spine-core/store/index.js';
+import { hashShareToken } from 'spine-core/share-token.js';
 
 /**
  * What a recipient can open from a share link: one document's details, and its page images only when the

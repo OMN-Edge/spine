@@ -10,7 +10,7 @@ export class ZipTooLarge extends Error {
 }
 
 /**
- * Same contract as server/src/archive/zip-read.ts: a zip given to us, entries found by name, nothing extracted to a path the zip chose,
+ * Same contract as core/src/archive/zip-read.ts: a zip given to us, entries found by name, nothing extracted to a path the zip chose,
  * and every read capped whatever the zip claims. fflate lists the entries without inflating any, then inflates one at a time.
  */
 export class ZipReader {

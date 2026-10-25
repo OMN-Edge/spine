@@ -5,15 +5,15 @@ import { useAuth } from '../auth';
 import AuthCard, { buttonClass, inputClass, Notice } from '../components/AuthCard';
 import { useI18n } from '../i18n';
 import { vaultState } from '../crypto/vault-state';
+import { inAppPath } from '../safe-path';
 
 export default function Login() {
   const { t } = useI18n();
   const { setAuthenticated } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  // Router state set by the app itself, never the URL; still only an in-app path is followed.
-  const from = (location.state as { from?: unknown } | null)?.from;
-  const home = typeof from === 'string' && from.startsWith('/') && !from.startsWith('//') ? from : '/';
+  // Router state set by the app itself from the address it was opened at, which anyone can craft; only an in-app path is followed.
+  const home = inAppPath((location.state as { from?: unknown } | null)?.from);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');

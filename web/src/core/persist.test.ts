@@ -3,10 +3,10 @@ import { Persistence, type ObjectStore, type ObjectMeta } from './persist';
 import { memory } from './shims/fs';
 import fs from './shims/fs';
 import { WasmDatabase } from './sqlite-wasm';
-import { createSqliteStoreWith } from '../../../server/src/store/sqlite/store';
-import type { Store } from '../../../server/src/store/types';
-import accountsSchema from '../../../server/src/store/sqlite/schema-accounts.sql?raw';
-import recordsSchema from '../../../server/src/store/sqlite/schema-records.sql?raw';
+import { createDeviceStore } from 'spine-core/store/sqlite/browser';
+import type { Store } from 'spine-core/store/types';
+import accountsSchema from 'spine-core/store/sqlite/schema-accounts.sql?raw';
+import recordsSchema from 'spine-core/store/sqlite/schema-records.sql?raw';
 
 const schema = `${accountsSchema}\n${recordsSchema}`;
 const USER = 'device';
@@ -54,7 +54,7 @@ const newId = async () => `id-${++n}-xxxxxxxx`;
 
 /** One device: a store of its own over its own database, and the layer that saves it. */
 async function device(store: ObjectStore): Promise<{ db: Store; p: Persistence; changed: number[] }> {
-  const db = createSqliteStoreWith({ adapter: 'sqlite', location: ':memory:' }, () => new WasmDatabase(), schema);
+  const db = createDeviceStore(() => new WasmDatabase(), schema);
   await db.users.create({ id: USER, email: 'device@local', passwordHash: 'x', createdAt: 'now', verifiedAt: 'now', consent: undefined, starterTags: false });
   const p = new Persistence(store, PROFILE, `ix-${PROFILE}`, newId, { changes: db.changes, files: db.files, userId: USER });
   const changed: number[] = [];
@@ -94,6 +94,29 @@ describe('what the device keeps in the vault', () => {
     log.puts.length = 0;
     await d.p.save();
     expect(log.puts).toEqual([]);
+  });
+
+  it('a save that fails keeps the changes it had taken out of the log, and sends them with the next one', async () => {
+    const { store } = fakeVault();
+    let offline = false;
+    const flaky: ObjectStore = { ...store, put: (...args) => { if (offline) throw new Error('offline'); return store.put(...args); } };
+    const a = await device(flaky);
+    await a.p.load();
+    await addDoc(a.db, 'd1', 'amlodipine');
+    offline = true;
+    await expect(a.p.save()).rejects.toThrow('offline');
+    // The log has handed the changes over and forgotten them: only the persistence layer still has them.
+    expect(a.p.waiting).toBe(true);
+    await expect(a.p.save()).rejects.toThrow('offline');
+    expect(a.p.waiting).toBe(true);
+
+    offline = false;
+    await a.p.save();
+    expect(a.p.waiting).toBe(false);
+
+    const b = await device(store);
+    await b.p.load();
+    expect((await b.db.documents.findFor(USER, 'd1'))?.ai_summary).toBe('amlodipine');
   });
 
   it('two devices that write and save see each other’s writes, and neither is lost', async () => {

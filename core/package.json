@@ -1,0 +1,60 @@
+{
+  "name": "spine-core",
+  "version": "1.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    "./*.js": {
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && cp src/store/sqlite/schema-accounts.sql src/store/sqlite/schema-records.sql dist/store/sqlite/",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:accounts": "vitest run -c vitest.accounts.config.ts",
+    "test:shim": "vitest run -c vitest.shim.config.ts",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.1.3",
+    "@fastify/multipart": "^10.1.4",
+    "@fastify/rate-limit": "^11.2.1",
+    "@fastify/session": "^11.1.4",
+    "@ip-location-db/dbip-country-mmdb": "^2.3.2026060120",
+    "@langchain/anthropic": "^1.5.12",
+    "@langchain/core": "^1.2.17",
+    "@langchain/google-vertexai": "^2.3.2",
+    "@langchain/langgraph": "^1.5.1",
+    "better-sqlite3": "^13.0.3",
+    "dejavu-fonts-ttf": "^2.37.3",
+    "fastify": "^5.12.7",
+    "google-auth-library": "^11.3.1",
+    "heic-convert": "^2.1.0",
+    "maxmind": "^5.0.7",
+    "pdfjs-dist": "^6.4.299",
+    "pdfkit": "^0.20.2",
+    "sharp": "^0.35.5",
+    "uuid": "^14.0.3",
+    "yauzl": "^3.4.0",
+    "yazl": "^3.3.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^20.14.0",
+    "@types/pdfkit": "^0.17.7",
+    "@types/uuid": "^10.0.0",
+    "@types/yauzl": "^3.4.0",
+    "@types/yazl": "^3.3.1",
+    "@vitest/coverage-v8": "^2.0.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  }
+}

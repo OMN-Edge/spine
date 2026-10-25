@@ -5,11 +5,11 @@ import { join } from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { buildTestApp, loginSession } from './helpers/app.js';
 import { OWNER_ID, createTestUser, seedPage, seedSourceFile, TEST_PASSWORD } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
-import { announceUpload } from '../chat/notices.js';
+import { getStore, getAccountsStore } from 'spine-core/store/index.js';
+import { announceUpload } from 'spine-core/chat/notices.js';
 
 const mockStartJob = vi.hoisted(() => vi.fn());
-vi.mock('../ingestion/pipeline.js', () => ({ startIngestionJob: mockStartJob, getJobStatus: vi.fn().mockReturnValue(null) }));
+vi.mock('spine-core/ingestion/pipeline.js', () => ({ startIngestionJob: mockStartJob, getJobStatus: vi.fn().mockReturnValue(null) }));
 
 /**
  * A file attached in the chat is the ordinary upload, tied to the conversation it was attached in, so what happens to it is
@@ -80,7 +80,7 @@ describe('attaching a file in the chat', () => {
     const res = await attach([{ field: ['conversation_id', mine.conversation.id] }, { file: { name: 'sneaky.pdf', content: pdf('sneaky') } }], other);
     expect(res.statusCode).toBe(404);
     expect((await getStore().sourceFiles.listFor(OWNER_ID)).length).toBe(before);
-    expect(await getStore().sourceFiles.listFor((await getStore().users.findByEmail('attacher@spine.test'))!.id)).toEqual([]);
+    expect(await getStore().sourceFiles.listFor((await getAccountsStore().users.findByEmail('attacher@spine.test'))!.id)).toEqual([]);
     expect((await attach([{ field: ['conversation_id', 'x'.repeat(100)] }, { file: { name: 'a.pdf', content: pdf('a') } }])).statusCode).toBe(404);
   });
 

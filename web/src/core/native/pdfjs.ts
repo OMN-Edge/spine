@@ -1,5 +1,5 @@
-import * as pdfjs from '../../../node_modules/pdfjs-dist/legacy/build/pdf.mjs';
-import * as worker from '../../../node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs';
+import * as pdfjs from 'pdfjs-real/legacy/build/pdf.mjs';
+import * as worker from 'pdfjs-real/legacy/build/pdf.worker.mjs';
 
 /**
  * PDF.js for the core. The core already runs in a worker, so PDF.js runs its own worker code in the same one (it looks for

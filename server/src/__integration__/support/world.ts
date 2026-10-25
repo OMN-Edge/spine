@@ -1,8 +1,8 @@
 import { v4 as uuidv4 } from 'uuid';
 import { buildTestApp, loginSession } from '../../__tests__/helpers/app.js';
 import { OWNER_ID } from '../../__tests__/helpers/seed.js';
-import { getStore } from '../../store/index.js';
-import type { Proposal } from '../../chat/proposals.js';
+import { getStore } from 'spine-core/store/index.js';
+import type { Proposal } from 'spine-core/chat/proposals.js';
 
 /**
  * A running app with a signed-in owner, and the ways a person drives it: type to the assistant, attach a file, press Confirm on a

@@ -153,13 +153,12 @@ From the Share Links page, create a link scoped to all history, a tag, a date ra
 ## Tests
 
 ```bash
-cd server
-npm test                   # run all tests (no model is ever called)
-npm run test:coverage      # run with coverage report
-npm run test:integration   # the flows against the real model and PDFs from .env (minutes, a few hundred model calls)
+npm test                              # core, server and web (no model is ever called)
+npm run test:coverage -w spine-server # run with coverage report
+npm run test:integration -w spine-server   # the flows against the real model and PDFs from .env (minutes, a few hundred model calls)
 ```
 
-Run `npm test` (or `npm run test:coverage`) in `server/`. Statement and branch coverage are both above 90%; the figures change with every commit, so they are not copied here.
+The code is three npm workspaces: `core/` (what the browser's core and the server both run), `server/` and `web/`. Install once at the root. Statement and branch coverage are both above 90%; the figures change with every commit, so they are not copied here.
 
 | Area | Files | Notes |
 |---|---|---|

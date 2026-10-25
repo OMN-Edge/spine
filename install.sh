@@ -11,7 +11,7 @@ function usage() {
   printf "Usage: $(basename $0) [OPTIONS]\n\n"
   printf "    -h      print this help\n"
   printf "    -d      install system dependencies\n"
-  printf "    -b      build server + web app\n"
+  printf "    -b      build core + server + web app\n"
   printf "    -s      install and start systemd services\n"
   printf "    -n      set up nginx (cert + site config)\n"
   printf "\nFirst install:\n"
@@ -47,22 +47,17 @@ function audit_dependencies() {
     return
   fi
   echo "Auditing dependencies..."
-  for dir in server web; do
-    (cd "${SPINE_DIR}/${dir}" && npm audit --omit=dev --audit-level=high) || {
-      echo "ERROR: ${dir} has a high or critical advisory (see above). Update it, or SPINE_SKIP_AUDIT=1 to build anyway." >&2
-      exit 1
-    }
-  done
+  # One lockfile at the root covers core, server and web
+  (cd "${SPINE_DIR}" && npm audit --omit=dev --audit-level=high) || {
+    echo "ERROR: a dependency has a high or critical advisory (see above). Update it, or SPINE_SKIP_AUDIT=1 to build anyway." >&2
+    exit 1
+  }
 }
 
 function build() {
-  echo "Building web app..."
-  cd "${SPINE_DIR}/web"
-  npm ci
-  npm run build
-
-  echo "Building server..."
-  cd "${SPINE_DIR}/server"
+  # core, server and web are npm workspaces: one install, and core is built first because the other two use it
+  echo "Installing dependencies and building (core, server, web app)..."
+  cd "${SPINE_DIR}"
   npm ci
   npm run build
 

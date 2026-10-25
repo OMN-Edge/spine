@@ -5,7 +5,7 @@ import path from 'path';
 import { randomBytes } from 'crypto';
 import { buildTestApp, loginAs, loginSession } from './helpers/app.js';
 import { createTestUser } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
+import { getAccountsStore } from 'spine-core/store/index.js';
 import { verifyToken } from '../relay/token.js';
 import { sweepShares } from '../routes/shared.js';
 
@@ -105,7 +105,7 @@ describe('sealed shares on the server', () => {
     expect((await get(`/api/shared/${share}/meta`)).statusCode).toBe(410);
     await sweepShares();
     expect(existsSync(path.join(dir, 'shares', share))).toBe(false);
-    const row = (await getStore().shared.pendingRequests((await getStore().users.findByEmail('owner@spine.test'))!.id)).find(r => r.id === req.request_id);
+    const row = (await getAccountsStore().shared.pendingRequests((await getAccountsStore().users.findByEmail('owner@spine.test'))!.id)).find(r => r.id === req.request_id);
     expect(row?.wrappedKey ?? null).toBeNull();
   });
 

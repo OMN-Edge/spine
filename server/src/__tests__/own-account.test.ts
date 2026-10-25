@@ -1,7 +1,8 @@
+import { holdsRecordsInThisRun } from 'spine-core/testing/store-kind.js';
 import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
 import { buildTestApp, loginAs } from './helpers/app.js';
 import { createTestUser, seedDocument, TEST_PASSWORD } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
+import { getAccountsStore } from 'spine-core/store/index.js';
 import { HEALTH_CONSENT_VERSION, TERMS_VERSION, legalText } from '../legal.js';
 import { existsSync, mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
@@ -26,7 +27,7 @@ async function newcomer(email = 'newcomer@spine.test') {
   return { ...u, cookie: await loginAs(app, u.email, u.password) };
 }
 
-const records = process.env.SPINE_STORE_SCOPE !== 'accounts'; // `npm run test:accounts` has no table for a record (SECURITY.md M-37)
+const records = holdsRecordsInThisRun(); // `npm run test:accounts` runs the server's own store, which has none (SECURITY.md M-37)
 
 describe('the texts a person agrees to', () => {
   it('are public, carry a version, and have the operator filled in', async () => {
@@ -70,7 +71,7 @@ describe('an account that has not agreed', () => {
 
     expect((await call('POST', '/api/account/consent', cookie, { health_data: true, terms: true })).statusCode).toBe(200);
     expect((await call('GET', '/api/shared/events', cookie)).statusCode).toBe(200);
-    const user = await getStore().users.findById(id);
+    const user = await getAccountsStore().users.findById(id);
     expect(user).toMatchObject({ health_consent_version: HEALTH_CONSENT_VERSION, terms_version: TERMS_VERSION });
     expect(user!.health_consent_at).toBeTruthy();
     expect((await call('GET', '/api/auth/me', cookie)).json().consent_needed).toEqual({ health: false, terms: false });
@@ -78,7 +79,7 @@ describe('an account that has not agreed', () => {
 
   it('is asked again when the text it agreed to is older', async () => {
     const { id, cookie } = await newcomer('older@spine.test');
-    await getStore().users.recordConsent(id, { healthVersion: '2020-01-01', termsVersion: TERMS_VERSION }, new Date().toISOString());
+    await getAccountsStore().users.recordConsent(id, { healthVersion: '2020-01-01', termsVersion: TERMS_VERSION }, new Date().toISOString());
     expect((await call('GET', '/api/vault/keys', cookie)).statusCode).toBe(403);
     expect((await call('GET', '/api/auth/me', cookie)).json().consent_needed).toEqual({ health: true, terms: false });
     expect((await call('POST', '/api/account/consent', cookie, { health_data: true })).statusCode).toBe(200); // only what changed is asked
@@ -89,7 +90,7 @@ describe('an account that has not agreed', () => {
 describe('signing up', () => {
   it('records both agreements with the version shown', async () => {
     const u = await createTestUser('signup@spine.test');
-    const user = await getStore().users.findById(u.id);
+    const user = await getAccountsStore().users.findById(u.id);
     expect(user).toMatchObject({ health_consent_version: HEALTH_CONSENT_VERSION, terms_version: TERMS_VERSION });
   });
 });
@@ -102,17 +103,17 @@ describe('leaving', () => {
     // A sign-in just made counts as the password just typed; ten minutes later it no longer does.
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(Date.now() + 11 * 60_000);
-    await getStore().sessions.touch(u.id, (await getStore().sessions.list(u.id))[0].id, new Date().toISOString());
+    await getAccountsStore().sessions.touch(u.id, (await getAccountsStore().sessions.list(u.id))[0].id, new Date().toISOString());
     expect((await call('POST', '/api/account/delete', cookie, { confirm: u.email })).statusCode).toBe(403);
 
     expect((await call('POST', '/api/auth/reauth', cookie, { password: TEST_PASSWORD })).statusCode).toBe(200);
     expect((await call('POST', '/api/account/delete', cookie, { confirm: 'someone@else.test' })).statusCode).toBe(400);
-    expect(await getStore().users.findById(u.id)).not.toBeNull();
+    expect(await getAccountsStore().users.findById(u.id)).not.toBeNull();
 
     const gone = await call('POST', '/api/account/delete', cookie, { confirm: u.email.toUpperCase() });
     expect(gone.statusCode).toBe(200);
     expect(gone.json()).toMatchObject({ deleted: true, objects: 0 });
-    expect(await getStore().users.findById(u.id)).toBeNull();
+    expect(await getAccountsStore().users.findById(u.id)).toBeNull();
     expect(existsSync(join(dir, 'originals', u.id))).toBe(false);
     expect((await call('GET', '/api/auth/sessions', cookie)).statusCode).toBe(401);
   });
@@ -121,7 +122,7 @@ describe('leaving', () => {
     const { id, email, cookie } = await newcomer('decline@spine.test');
     await call('POST', '/api/auth/reauth', cookie, { password: TEST_PASSWORD });
     expect((await call('POST', '/api/account/delete', cookie, { confirm: email })).statusCode).toBe(200);
-    expect(await getStore().users.findById(id)).toBeNull();
+    expect(await getAccountsStore().users.findById(id)).toBeNull();
   });
 
   it('is not possible without signing in', async () => {

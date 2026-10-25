@@ -1,6 +1,6 @@
 # The relay for model calls
 
-A device (the browser) reads documents itself, so it is the one that sends text and page images to the model. It cannot hold Spine's provider credential, so it sends those calls to a small service, the relay, which holds the credential and runs them through the provider adapter you configured (Vertex or Anthropic; a new provider is one adapter file in `server/src/llm/adapters/`). The device speaks a neutral protocol (`server/src/relay/protocol.ts`): a task name and messages in, a parsed result, a message or a stream of chunks out, and texts to vectors for embeddings. This page says what the relay does and does not do, how to deploy it, and what the operator must still do in the cloud console. The security entry is [SECURITY.md](../SECURITY.md) **M-35**.
+A device (the browser) reads documents itself, so it is the one that sends text and page images to the model. It cannot hold Spine's provider credential, so it sends those calls to a small service, the relay, which holds the credential and runs them through the provider adapter you configured (Vertex or Anthropic; a new provider is one adapter file in `core/src/llm/adapters/`). The device speaks a neutral protocol (`core/src/relay/protocol.ts`): a task name and messages in, a parsed result, a message or a stream of chunks out, and texts to vectors for embeddings. This page says what the relay does and does not do, how to deploy it, and what the operator must still do in the cloud console. The security entry is [SECURITY.md](../SECURITY.md) **M-35**.
 
 ## What it is
 

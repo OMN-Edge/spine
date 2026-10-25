@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitest/config';
+import base from './vitest.config.js';
 
 /**
  * Integration tests: the flows run against the real model named in `.env`, poppler, with a fresh in-memory
@@ -9,11 +10,12 @@ import { defineConfig } from 'vitest/config';
  * tests assert what must hold whatever it says (structure, safety, the facts in the input), and a retry absorbs an odd answer.
  */
 export default defineConfig({
+  resolve: base.resolve,
   test: {
     globals: true,
     environment: 'node',
     include: ['src/__integration__/**/*.it.ts'],
-    setupFiles: ['src/__integration__/support/env.ts'],
+    setupFiles: ['src/__integration__/support/env.ts', '../core/src/testing/use-records-store.ts'],
     testTimeout: 300_000,
     hookTimeout: 120_000,
     fileParallelism: false,

@@ -16,21 +16,21 @@ const mockAllowed = vi.hoisted(() => vi.fn());
 const sidecarParse = vi.hoisted(() => vi.fn());
 const modelParse = vi.hoisted(() => vi.fn());
 
-vi.mock('../ingestion/rasterize.js', () => ({ rasterizePdf: mockRasterizePdf }));
-vi.mock('../ingestion/image-size.js', () => ({ getPageImageDimensions: mockGetPageImageDimensions }));
-vi.mock('../ingestion/continuation.js', () => ({ checkContinuation: mockCheckContinuation }));
-vi.mock('../ingestion/extraction.js', () => ({ extractFields: mockExtractFields }));
-vi.mock('../parser/index.js', () => ({
+vi.mock('spine-core/ingestion/rasterize.js', () => ({ rasterizePdf: mockRasterizePdf }));
+vi.mock('spine-core/ingestion/image-size.js', () => ({ getPageImageDimensions: mockGetPageImageDimensions }));
+vi.mock('spine-core/ingestion/continuation.js', () => ({ checkContinuation: mockCheckContinuation }));
+vi.mock('spine-core/ingestion/extraction.js', () => ({ extractFields: mockExtractFields }));
+vi.mock('spine-core/parser/index.js', () => ({
   getParser: () => ({ parse: sidecarParse, imageEgress: false }),
   getModelParser: () => ({ parse: modelParse, imageEgress: true }),
   aiReadingAllowed: mockAllowed,
   resetParser: () => {},
 }));
 
-import { startIngestionJob, getJobStatus } from '../ingestion/pipeline.js';
-import { getStore } from '../store/index.js';
-import { normalisePhoto, MAX_PHOTO_SIDE } from '../ingestion/photo.js';
-import { detectFileKind, isImage } from '../file-kind.js';
+import { startIngestionJob, getJobStatus } from 'spine-core/ingestion/pipeline.js';
+import { getStore } from 'spine-core/store/index.js';
+import { normalisePhoto, MAX_PHOTO_SIDE } from 'spine-core/ingestion/photo.js';
+import { detectFileKind, isImage } from 'spine-core/file-kind.js';
 import { createTestUser, seedSourceFile, OWNER_ID } from './helpers/seed.js';
 
 let dir: string;

@@ -2,15 +2,15 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vites
 import { v4 as uuidv4 } from 'uuid';
 import { buildTestApp, loginSession } from './helpers/app.js';
 import { createTestUser, seedPage, seedSourceFile, OWNER_ID } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
-import { planMove, type PageGroup } from '../ingestion/move-page.js';
+import { getStore } from 'spine-core/store/index.js';
+import { planMove, type PageGroup } from 'spine-core/ingestion/move-page.js';
 
 /**
  * Moving a page: the list work on its own, then through the route with the real store, which has to leave
  * page numbers unique, every document's range matching its pages, and what was read from a page with it.
  */
 const mockExtractFields = vi.hoisted(() => vi.fn());
-vi.mock('../ingestion/extraction.js', () => ({ extractFields: mockExtractFields }));
+vi.mock('spine-core/ingestion/extraction.js', () => ({ extractFields: mockExtractFields }));
 
 describe('planMove', () => {
   const groups = (): PageGroup[] => [

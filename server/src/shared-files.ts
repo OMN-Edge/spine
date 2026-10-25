@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
-import { resolveDataDir } from './config.js';
+import { resolveDataDir } from 'spine-core/config.js';
 
 /**
  * The sealed copies a share is made of, under `<data>/shares/<id>/`: `db` and numbered `blob-N` files. The server cannot read them;

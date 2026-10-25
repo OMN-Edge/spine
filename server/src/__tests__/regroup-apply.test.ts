@@ -2,11 +2,11 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } 
 import { v4 as uuidv4 } from 'uuid';
 import { buildTestApp, loginSession } from './helpers/app.js';
 import { OWNER_ID, createTestUser, seedPage, seedSourceFile, TEST_PASSWORD } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
-import { planRegroup } from '../ingestion/regroup.js';
-import { resetChatLlm, type ChatLlm } from '../llm/index.js';
-import { resetRegroupJobs } from '../regroup/jobs.js';
-import { ScriptedModel } from './helpers/scripted-model.js';
+import { getStore } from 'spine-core/store/index.js';
+import { planRegroup } from 'spine-core/ingestion/regroup.js';
+import { resetChatLlm, type ChatLlm } from 'spine-core/llm/index.js';
+import { resetRegroupJobs } from 'spine-core/regroup/jobs.js';
+import { ScriptedModel } from 'spine-core/testing/scripted-model.js';
 
 /**
  * Rearranging a mixed upload: the list work (pure), the transaction behind the route, and the analysis that finds the groups. The

@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
-import { resolveDataDir } from './config.js';
+import { resolveDataDir } from 'spine-core/config.js';
 
 /**
  * The ciphertext of the vault's objects, one file each under `<data>/vault/<user>/<id>`. The server cannot read them; this module only

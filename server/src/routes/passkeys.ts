@@ -1,13 +1,14 @@
 import type { FastifyInstance } from 'fastify';
 import { generateAuthenticationOptions, generateRegistrationOptions, verifyAuthenticationResponse, verifyRegistrationResponse } from '@simplewebauthn/server';
 import type { AuthenticationResponseJSON, AuthenticatorTransport, RegistrationResponseJSON } from '@simplewebauthn/server';
-import { getStore } from '../store/index.js';
+import { getAccountsStore } from 'spine-core/store/index.js';
 import { relyingParty } from '../passkeys.js';
 import { mailAfter, newSignInMail, securityChangeMail } from '../notify.js';
 import { startSession } from '../sessions.js';
-import { windowLimiter } from '../rate-limit.js';
+import { windowLimiter } from 'spine-core/rate-limit.js';
 import { sealed } from '../vault-keys.js';
-import { requireAuth, requireRecentAuth, type SessionData } from './middleware.js';
+import { requireAuth, requireRecentAuth } from 'spine-core/routes/middleware.js';
+import { type SessionData } from '../session-auth.js';
 import { PENDING_LOGIN_MS } from './auth.js';
 
 /**
@@ -45,13 +46,13 @@ export async function passkeyRoutes(app: FastifyInstance, opts: PasskeyRouteOpti
   // --- Managing them (signed in) ---------------------------------------------------------------------------------------------
 
   app.get('/api/auth/passkeys', { preHandler: [requireAuth] }, async (req, reply) => {
-    const list = await getStore().users.listPasskeys(req.userId);
+    const list = await getAccountsStore().users.listPasskeys(req.userId);
     // Names, dates and whether it opens the vault: the credential id and key are the server's, and so is the sealed key, which is not sent here.
     return reply.header('Cache-Control', 'no-store').send(list.map(p => ({ id: p.id, name: p.name, backed_up: p.backed_up, created_at: p.created_at, last_used_at: p.last_used_at, opens_vault: p.wrapped_key !== null })));
   });
 
   app.post('/api/auth/passkeys/options', { preHandler: [requireAuth, requireRecentAuth, app.rateLimit({ max: 20, timeWindow: '10 minutes' })] }, async (req, reply) => {
-    const store = getStore();
+    const store = getAccountsStore();
     const user = await store.users.findById(req.userId);
     if (!user) return reply.status(401).send({ error: 'not authenticated' });
     const mine = await store.users.listPasskeys(req.userId);
@@ -85,18 +86,18 @@ export async function passkeyRoutes(app: FastifyInstance, opts: PasskeyRouteOpti
     if (!verified.verified || !verified.registrationInfo) return reply.status(400).send({ error: 'this passkey could not be verified' });
 
     const { credential, credentialBackedUp } = verified.registrationInfo;
-    const added = await getStore().users.addPasskey(req.userId, {
+    const added = await getAccountsStore().users.addPasskey(req.userId, {
       id: credential.id, public_key: Buffer.from(credential.publicKey).toString('base64url'), counter: credential.counter,
       transports: (credential.transports as string[] | undefined) ?? null, name: cleanName(req.body.name), backed_up: credentialBackedUp, created_at: new Date().toISOString(),
     });
     if (!added) return reply.status(409).send({ error: 'this passkey is already registered' });
-    const user = await getStore().users.findById(req.userId);
+    const user = await getAccountsStore().users.findById(req.userId);
     if (user) mailAfter(req, user.id, securityChangeMail(user.email, 'A passkey was added to your account.', new Date().toISOString()), 'passkey added');
     return reply.status(201).send({ ok: true });
   });
 
   app.patch<{ Params: { id: string }; Body: { name?: unknown } }>('/api/auth/passkeys/:id', { preHandler: [requireAuth] }, async (req, reply) => {
-    if (!(await getStore().users.renamePasskey(req.userId, req.params.id, cleanName(req.body?.name)))) return reply.status(404).send({ error: 'not found' });
+    if (!(await getAccountsStore().users.renamePasskey(req.userId, req.params.id, cleanName(req.body?.name)))) return reply.status(404).send({ error: 'not found' });
     return reply.send({ ok: true });
   });
 
@@ -106,15 +107,15 @@ export async function passkeyRoutes(app: FastifyInstance, opts: PasskeyRouteOpti
   app.put<{ Params: { id: string }; Body: { wrapped_key?: unknown } }>('/api/auth/passkeys/:id/vault-key', { preHandler: [requireAuth, requireRecentAuth, app.rateLimit({ max: 20, timeWindow: '10 minutes' })] }, async (req, reply) => {
     const wrapped = req.body?.wrapped_key;
     if (wrapped !== null && !sealed(wrapped, 90, 200)) return reply.status(400).send({ error: 'the sealed key is not what it should be' });
-    if (!(await getStore().users.setPasskeyWrappedKey(req.userId, req.params.id, wrapped as string | null))) return reply.status(404).send({ error: 'not found' });
-    const user = await getStore().users.findById(req.userId);
+    if (!(await getAccountsStore().users.setPasskeyWrappedKey(req.userId, req.params.id, wrapped as string | null))) return reply.status(404).send({ error: 'not found' });
+    const user = await getAccountsStore().users.findById(req.userId);
     if (user) mailAfter(req, user.id, securityChangeMail(user.email, wrapped === null ? 'A passkey can no longer open your records.' : 'A passkey can now open your records.', new Date().toISOString()), 'passkey vault key');
     return reply.send({ ok: true });
   });
 
   app.delete<{ Params: { id: string } }>('/api/auth/passkeys/:id', { preHandler: [requireAuth, requireRecentAuth] }, async (req, reply) => {
-    if (!(await getStore().users.removePasskey(req.userId, req.params.id))) return reply.status(404).send({ error: 'not found' });
-    const user = await getStore().users.findById(req.userId);
+    if (!(await getAccountsStore().users.removePasskey(req.userId, req.params.id))) return reply.status(404).send({ error: 'not found' });
+    const user = await getAccountsStore().users.findById(req.userId);
     if (user) mailAfter(req, user.id, securityChangeMail(user.email, 'A passkey was removed from your account.', new Date().toISOString()), 'passkey removed');
     return reply.send({ ok: true });
   });
@@ -144,7 +145,7 @@ export async function passkeyRoutes(app: FastifyInstance, opts: PasskeyRouteOpti
       return reply.status(401).send({ error: 'this passkey could not be used' });
     };
 
-    const store = getStore();
+    const store = getAccountsStore();
     const passkey = await store.users.findPasskey(response.id);
     if (!passkey) return refused();
     const user = await store.users.findById(passkey.user_id);

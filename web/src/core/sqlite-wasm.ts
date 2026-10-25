@@ -1,7 +1,7 @@
 import sqlite3InitModule from '@sqlite.org/sqlite-wasm';
 
 /**
- * A driver for the store (server/src/store/sqlite/driver.ts) over SQLite compiled to WebAssembly (the project's own build, which has FTS5),
+ * A driver for the store (core/src/store/sqlite/driver.ts) over SQLite compiled to WebAssembly (the project's own build, which has FTS5),
  * so the store runs unchanged where the plaintext is: in the browser. `openWasm` is handed to `createSqliteStoreWith`; the server never loads this file.
  *
  * It follows the contract in driver.ts, which is the native module's behaviour that the store relies on and nothing else: positional parameters (spread or one array), numbers, strings, null and

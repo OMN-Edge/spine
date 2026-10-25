@@ -13,28 +13,45 @@ Two suites, for two different questions.
 
 The unit suite is the net under every change. The integration suite is what tells you that a prompt still gets a real model to do the right thing, which nothing else can.
 
+A test that is skipped is reported as a pass, so none is allowed to skip where its tool is expected. The PDF tests need poppler (`core/src/testing/tools.ts`): on a laptop they skip with a note, and where `CI` is set a missing tool fails the run, which is why both pipelines install `poppler-utils`. `web/src/build/native-swaps.test.ts` holds the device's swap of Node-only files for browser versions to its map: every file in `core/src` that needs Node must be swapped or listed as never run on the device, and a replacement must offer the exports of the file it replaces. The browser checks (`check:browser`, `check:app`) stop at the first page error and print it with the server's log, instead of waiting out a timeout.
+
+Guards that keep the fixes of the pre-release review from coming back, and where each runs. In CI (`npm test`, `npm run build`): `core/src/__tests__/ports.test.ts` (a process with no way of knowing who a request is from refuses everything; consent holds an account; the mail default follows the device's share host), `pinned-images.test.ts` (every container image is named by digest), `boundary.test.ts` (core imports neither server nor web; the server asks only for the accounts store), `web/src/build/native-swaps.test.ts`, `web/src/core/client.test.ts` (the page keeps the core open and says so when it holds unsaved changes), `persist.test.ts` and `boot.test.ts` (a failed save keeps its changes and is retried), and the build itself, which ends with `web/scripts/check-bundle.mjs` and fails if the core's worker is split into chunks. Only on a machine with Chrome (`./scripts/check.sh browser`): `check:browser` and `check:app`, which also cover the banner while a save fails, the sign-out question, and where the next sign-in lands.
+
 ## Every check, and what each one answers
 
 | Command | Question | Needs |
 |---|---|---|
-| `cd server && npx tsc --noEmit`, `cd web && npm run build` | Does it compile, for the server, the web app and the device core (`tsconfig.core.json`)? | nothing |
-| `cd server && npm test` | Does the server's code do what it says? Includes `requirements.test.ts`: every `FR-`, `TR-` and `CR-` ID cited anywhere in the repository is defined once in [requirements.md](requirements.md) | nothing |
-| `cd server && npm run test:accounts` | Does it still hold on the accounts-only database the server runs (SECURITY.md **M-37**)? | nothing |
-| `cd server && npm run test:shim` | Does the same suite hold on the WebAssembly SQLite the browser runs? | nothing |
-| `cd web && npm test` | The device: keys and vault, the core's saving and syncing (`persist`, `boot`), shares, scanning algorithms, the relay client | nothing |
-| `cd server && npm run test:coverage` | What is not run by any test (above 90% for statements and branches; the entry points and the provider calls are listed as intentionally uncovered in CLAUDE.md) | nothing |
-| `cd web && npm run check:browser` | Does each native piece of the core work in real Chrome (text, rendering, OCR, photos, zip, stamps, signature chain)? | Chrome, a build |
+| `npm run build` (at the root), `npm run typecheck -w spine-core -w spine-server` | Does it compile, for core, the server, the web app and the device core (`web/tsconfig.core.json`)? Core is built first because the server uses its output | nothing |
+| `npm test -w spine-core`, `npm test -w spine-server` | Does the code do what it says? Core holds the unit tests (the store contract, sync rules, the share allow-list, the parser and the model interface); the server holds the tests that drive the whole composed app, with a login. Includes `requirements.test.ts`: every `FR-`, `TR-` and `CR-` ID cited anywhere in the repository is defined once in [requirements.md](requirements.md) | nothing |
+| `npm run test:accounts -w spine-server` (and `-w spine-core`) | Does it still hold on the accounts-only database the server runs (SECURITY.md **M-37**)? | nothing |
+| `npm run test:shim -w spine-server` (and `-w spine-core`) | Does the same suite hold on the WebAssembly SQLite the browser runs? | nothing |
+| `npm test -w spine-web` | The device: keys and vault, the core's saving and syncing (`persist`, `boot`), shares, scanning algorithms, the relay client | nothing |
+| `npm run test:coverage -w spine-core` (or `-w spine-server`) | What is not run by any test (above 90% for statements and branches; the entry points and the provider calls are listed as intentionally uncovered in CLAUDE.md) | nothing |
+| `npm run check:browser -w spine-web` | Does each native piece of the core work in real Chrome (text, rendering, OCR, photos, zip, stamps, signature chain)? | Chrome, a build |
 | `cd web && npm run check:app` | The whole app in real browsers, against a real server and relay: sign-up, vault, upload, search, two devices on one account, shares that follow the records, signatures, passkeys, export and import | Chrome, a build |
-| `cd server && npm run test:integration` | Does a real model do the right thing with the prompts? | a model in `.env` |
+| `npm run test:integration -w spine-server` | Does a real model do the right thing with the prompts? | a model in `.env` |
 
 `./scripts/check.sh all` runs the first six, the dependency audit and the secret and code scans that CI runs. A change that touches the store, the change log or the vault is not done until `test:accounts`, `test:shim` and `check:app` have run: each has caught a bug the others could not.
+
+## What belongs to every store, and what to SQLite
+
+The rules that do not depend on an engine are written once, above the adapters, and tested without a database where they can be:
+
+| Rule | Where | Held by |
+|---|---|---|
+| Syncing devices: the clock, the newest change wins, a tag or doctor made twice becomes one, the newer change keeps a place | `store/sync.ts` (SQLite supplies `Rows` in `store/sqlite/changes.ts`) | `sync-engine.test.ts` on `__tests__/helpers/memory-rows.ts`, a store made of maps, with a random run that exchanges changes in different orders; `changes.test.ts` through the SQLite repositories |
+| What a share copy holds | `store/slice-policy.ts` (SQLite chooses the rows in `store/sqlite/slice.ts`) | `slice-policy.test.ts` (every table and column of the records is named, copied, left or never shared); `slice.test.ts` (a real copy, every table looked at) |
+| Which documents are shown | `store/visibility.ts` (SQLite's SQL rendering in `store/sqlite/visibility.ts`) | the contract below |
+| Keys that are not the engine's counter | `store/ids.ts` | `ids.test.ts` |
+| What the interface means: who sees what, order and paging, search, tags, transactions, quotas, two stores syncing | `store/types.ts` | `__tests__/contract/store-contract.ts`, run for each adapter by `store-contract.test.ts` |
+
+The contract is written as a function that takes a way to make a store. Today it runs for SQLite (native here, and on the WebAssembly driver under `npm run test:shim`). **A second adapter is finished when `describeStoreContract` passes for it**; until one exists the contract has only ever been run against the one implementation, so it may still assume something SQLite does that the interface does not say.
 
 ## Running the integration suite
 
 ```bash
-cd server
-npm run test:integration                                  # every flow
-npm run test:integration -- src/__integration__/journey.it.ts   # one file
+npm run test:integration -w spine-server                                  # every flow
+npm run test:integration -w spine-server -- src/__integration__/journey.it.ts   # one file
 ```
 
 It needs:
@@ -82,7 +99,7 @@ Fixtures are invented (`support/fixtures.ts`, `support/archive.ts`): no real per
 The integration suite drives the server's routes with `app.inject`. Since the records live on the device (the core in a Web Worker), the whole app is also checked in real Chrome, against a real server, a relay and a model:
 
 ```bash
-cd server && npm run build && cd ../web && npm run build     # the checks run the built server and web, not the sources
+npm run build                 # at the root: core, server and web. The checks run the built server and web, not the sources
 npm run check:browser       # each native piece of the core: text, rendering, OCR, trimming, photos, zip, stamps
 npm run check:app           # sign-up, vault, sample records, reload and unlock, search, upload, shares, export and import
 ```

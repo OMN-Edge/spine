@@ -1,11 +1,11 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { UsageRepository } from '../store/types.js';
+import type { UsageRepository } from 'spine-core/store/types.js';
 import { mapChatMessagesToStoredMessages, mapStoredMessagesToChatMessages, type AIMessage, type BaseMessage } from '@langchain/core/messages';
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
-import { LLM_TASKS, type LlmTask, type TaskClients } from '../llm/tasks.js';
-import { LlmBlockedError } from '../llm/types.js';
-import type { Embedder } from '../embedding/types.js';
-import { EMBED_PATH, TASK_PATH, embedRequest, taskRequest, type StreamLine } from './protocol.js';
+import { LLM_TASKS, type LlmTask, type TaskClients } from 'spine-core/llm/tasks.js';
+import { LlmBlockedError } from 'spine-core/llm/types.js';
+import type { Embedder } from 'spine-core/embedding/types.js';
+import { EMBED_PATH, TASK_PATH, embedRequest, taskRequest, type StreamLine } from 'spine-core/relay/protocol.js';
 import { verifyToken } from './token.js';
 
 /**
@@ -25,7 +25,7 @@ export interface RelayConfig {
   allowedOrigin: string;
   /** Calls a user may make a day. */
   dailyCalls: number;
-  /** Where the day's calls are counted: the `usage` repository of the store the relay is configured with (`getStore()`). */
+  /** Where the day's calls are counted: the `usage` repository of the store the relay is configured with (`getAccountsStore()`). */
   usage: UsageRepository;
   maxBodyBytes: number;
   /** The clients for a model id (the default when undefined), or null when that model is not offered. */

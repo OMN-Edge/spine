@@ -3,8 +3,8 @@ import { BaseChatModel, type BaseChatModelCallOptions } from '@langchain/core/la
 import { AIMessage, AIMessageChunk, type BaseMessage } from '@langchain/core/messages';
 import { ChatGenerationChunk, type ChatResult } from '@langchain/core/outputs';
 import { convertToOpenAITool } from '@langchain/core/utils/function_calling';
-import { loadLlmConfig } from '../config.js';
-import { buildTaskSpecs, type LlmTask, type TaskClients } from '../llm/tasks.js';
+import { loadLlmConfig } from 'spine-core/config.js';
+import { buildTaskSpecs, type LlmTask, type TaskClients } from 'spine-core/llm/tasks.js';
 
 /**
  * A model for tests and for `npm run check:app`, never for `main.ts`: every task answers with the simplest value that fits its schema, and

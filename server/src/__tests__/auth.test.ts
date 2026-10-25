@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { buildTestApp, loginAs } from './helpers/app.js';
 import { OWNER_EMAIL, TEST_PASSWORD, createTestUser } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
+import { getAccountsStore } from 'spine-core/store/index.js';
 import { MAX_PASSWORD_LENGTH } from '../passwords.js';
 
 let app: Awaited<ReturnType<typeof buildTestApp>>;
@@ -155,7 +155,7 @@ describe('POST /api/auth/password', () => {
 
   it('does not store the password, only an argon2id hash', async () => {
     const user = await createTestUser('hashed@spine.test');
-    const stored = await getStore().users.findByEmail(user.email);
+    const stored = await getAccountsStore().users.findByEmail(user.email);
 
     expect(stored!.password_hash).toMatch(/^\$argon2id\$/);
     expect(stored!.password_hash).not.toContain(user.password);

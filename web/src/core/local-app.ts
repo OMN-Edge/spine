@@ -2,7 +2,7 @@
  * A router with the part of Fastify's interface that the route files use, so the same files answer requests on the device.
  * Nothing is listening: a request is a function call (`inject`), the way the server's own tests make them. See docs/crypto-design.md.
  *
- * What it covers is what `server/src/routes/*.ts` call, and nothing else: app.get/post/put/patch/delete with `{ preHandler }`, addHook
+ * What it covers is what `core/src/routes/*.ts` call, and nothing else: app.get/post/put/patch/delete with `{ preHandler }`, addHook
  * ('preHandler' | 'onRequest'), decorateRequest, rateLimit (no limit: nobody else can reach a device), register, and on the request
  * params/query/body/headers/session/log/ip/url/parts, on the reply status/code/header/type/send/raw. Errors answer as Fastify's do.
  * A test runs the same requests against Fastify and against this, and compares.

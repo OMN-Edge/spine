@@ -4,10 +4,10 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { buildTestApp, loginAs, loginSession } from './helpers/app.js';
 import { createTestUser, OWNER_ID } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
+import { getStore } from 'spine-core/store/index.js';
 
 const mockStartJob = vi.hoisted(() => vi.fn());
-vi.mock('../ingestion/pipeline.js', () => ({
+vi.mock('spine-core/ingestion/pipeline.js', () => ({
   startIngestionJob: mockStartJob,
   getJobStatus: vi.fn().mockReturnValue(null),
 }));

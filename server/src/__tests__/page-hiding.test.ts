@@ -7,8 +7,8 @@ import Database from 'better-sqlite3';
 import { v4 as uuidv4 } from 'uuid';
 import { buildTestApp, loginSession } from './helpers/app.js';
 import { createTestUser, seedPage, seedSourceFile, OWNER_ID } from './helpers/seed.js';
-import { createStore, getStore } from '../store/index.js';
-import { rereadDocument } from '../ingestion/document-reading.js';
+import { createStore, getStore } from 'spine-core/store/index.js';
+import { rereadDocument } from 'spine-core/ingestion/document-reading.js';
 
 /**
  * Setting a page aside: it stays in the upload, with its image and text, but leaves the document's
@@ -16,7 +16,7 @@ import { rereadDocument } from '../ingestion/document-reading.js';
  * made before the column existed is brought forward when it is opened.
  */
 const mockExtractFields = vi.hoisted(() => vi.fn());
-vi.mock('../ingestion/extraction.js', () => ({ extractFields: mockExtractFields }));
+vi.mock('spine-core/ingestion/extraction.js', () => ({ extractFields: mockExtractFields }));
 
 let app: Awaited<ReturnType<typeof buildTestApp>>;
 let cookie: string;
@@ -253,7 +253,7 @@ describe('a database from before pages could be hidden', () => {
   function oldDatabase(): string {
     dir = mkdtempSync(path.join(tmpdir(), 'spine-prehide-'));
     const file = path.join(dir, 'spine.db');
-    const here = path.join(path.dirname(fileURLToPath(import.meta.url)), '../store/sqlite');
+    const here = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../../core/src/store/sqlite');
     const old = ['schema-accounts.sql', 'schema-records.sql'].map(f => readFileSync(path.join(here, f), 'utf8')).join('\n')
       .replace(/ {2}hidden INTEGER NOT NULL DEFAULT 0,.*\n/, '')
       .replace(/last_accessed_at TEXT,\n {2}include_scans INTEGER NOT NULL DEFAULT 0,[^\n]*\n {2}language TEXT[^\n]*\n {2}require_approval[^\n]*\n {2}allow_chat[^\n]*\n\);/, 'last_accessed_at TEXT\n);')

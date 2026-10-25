@@ -1,5 +1,5 @@
 import { createHmac } from 'crypto';
-import type { VaultKeys } from './store/types.js';
+import type { VaultKeys } from 'spine-core/store/types.js';
 
 /**
  * What the server checks about the vault's keys: only their shape. It cannot check more, because everything in them is sealed or

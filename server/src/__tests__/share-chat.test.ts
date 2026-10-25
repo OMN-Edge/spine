@@ -5,8 +5,8 @@ import { AIMessage, type BaseMessage } from '@langchain/core/messages';
 import type { ChatResult } from '@langchain/core/outputs';
 import { buildTestApp, loginSession } from './helpers/app.js';
 import { OWNER_ID, seedDocument } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
-import { resetChatLlm, type ChatLlm } from '../llm/index.js';
+import { getStore } from 'spine-core/store/index.js';
+import { resetChatLlm, type ChatLlm } from 'spine-core/llm/index.js';
 
 /**
  * SECURITY.md M-20: a recipient's questions. The model is a scripted stand-in; what is tested is what the agent can reach

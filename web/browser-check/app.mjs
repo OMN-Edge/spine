@@ -1,6 +1,6 @@
 // Runs the real app, end to end, in real Chrome: a server on a temporary data directory, an account, sign-in, the vault set up, the sample
 // records written on the device, a reload, and the unlock that brings them back. Then it looks in the server's files for anything readable.
-// `npm run check:app` (needs `npm run build` in web/ and server/, and Google Chrome; set CHROME elsewhere than macOS). Exits 1 on a failure.
+// `npm run check:app` (needs `npm run build` in web/ and server/, and Google Chrome; set CHROME elsewhere than macOS, and CHROME_FLAGS=--no-sandbox where it runs as root or in a container). Exits 1 on a failure.
 import { spawn, execFileSync, spawnSync } from 'node:child_process';
 import http from 'node:http';
 import fs from 'node:fs';
@@ -41,7 +41,7 @@ if (REAL) {
 const standIn = { SPINE_EMBEDDINGS: 'vertex', SPINE_EMBEDDING_ENDPOINT: 'aiplatform.eu.example', SPINE_EMBEDDING_REGION: 'eu', SPINE_EMBEDDING_PROJECT: 'proj-1', SPINE_LLM_PROVIDER: 'vertex', SPINE_LLM_ENDPOINT: 'aiplatform.eu.example', SPINE_LLM_REGION: 'eu', SPINE_LLM_PROJECT: 'proj-1', SPINE_LLM_MODEL: 'gemini-test' };
 // The invented root the signed fixture chains to, named as the operator would: a directory of certificates.
 const anchors = fs.mkdtempSync(path.join(os.tmpdir(), 'spine-app-check-anchors-'));
-fs.copyFileSync(path.join(root, 'server/src/__tests__/fixtures/chain-root.der'), path.join(anchors, 'root.der'));
+fs.copyFileSync(path.join(root, 'core/src/__tests__/fixtures/chain-root.der'), path.join(anchors, 'root.der'));
 const env = {
   SPINE_TRUST_ANCHORS_DIR: anchors,
   PATH: process.env.PATH, HOME: process.env.HOME, DATA_DIR: data, SESSION_SECRET: 'app-check-secret-app-check-secret-1234', PORT: String(port), SPINE_PARSER: 'text',
@@ -69,8 +69,13 @@ const password = made.match(/password \(shown once\): (\S+)/)[1];
 const CSP = fs.readFileSync(path.join(root, 'Caddyfile'), 'utf8').match(/Content-Security-Policy "([^"]+)"/)[1].replace('{$SPINE_RELAY_URL:}', relay.url);
 const puts = []; // when the owner's device sent a sealed copy
 const asked = []; // every address the browsers asked the server for: a key in the part after the # would never be among them
+let failVaultWrites = false; // when set, the vault refuses writes, as a server that is down or a vault that is full would
 const proxy = http.createServer((req, res) => {
   asked.push(req.url);
+  if (failVaultWrites && req.method !== 'GET' && req.method !== 'HEAD' && req.url.startsWith('/api/vault/objects')) {
+    res.writeHead(503, { 'content-type': 'application/json' });
+    return res.end(JSON.stringify({ error: 'test: the vault is not taking writes' }));
+  }
   if (req.method === 'PUT' && req.url.startsWith('/api/shared/')) puts.push(Date.now());
   const up = http.request({ host: '127.0.0.1', port, path: req.url, method: req.method, headers: req.headers }, r => {
     res.writeHead(r.statusCode, { ...r.headers, 'content-security-policy': CSP });
@@ -78,18 +83,31 @@ const proxy = http.createServer((req, res) => {
   });
   req.pipe(up);
 }).listen(front);
-const server = spawn('node', ['dist/index.js'], { cwd: path.join(root, 'server'), env, stdio: 'ignore' });
+const serverLogPath = path.join(data, 'server.log');
+const serverLog = fs.openSync(serverLogPath, 'w');
+const server = spawn('node', ['dist/index.js'], { cwd: path.join(root, 'server'), env, stdio: ['ignore', serverLog, serverLog] });
 await new Promise(r => setTimeout(r, 3000));
 
-const browser = await puppeteer.launch({ executablePath: process.env.CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true, defaultViewport: { width: 1100, height: 900 } });
+const browser = await puppeteer.launch({ executablePath: process.env.CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true, args: (process.env.CHROME_FLAGS ?? '').split(/\s+/).filter(Boolean), defaultViewport: { width: 1100, height: 900 } });
 let failed = false;
 let seen = () => '';
-const check = (ok, what) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${what}`); if (!ok) { failed = true; console.log(`     page says: ${seen().replace(/\s+/g, ' ').slice(0, 300)}`); } };
+// What the page and the core's worker said that was wrong, and the server's own log: a failed step is explained by these, so the first
+// failure prints them (a worker's error is not a page error, and a step that waits for text would otherwise only say it never came).
+const diagnostics = [];
+const explain = () => {
+  for (const d of diagnostics.slice(-15)) console.log(`     browser: ${d}`);
+  try { for (const l of fs.readFileSync(serverLogPath, 'utf8').trim().split('\n').slice(-12)) if (l) console.log(`     server: ${l.slice(0, 240)}`); } catch { /* no log */ }
+};
+const check = (ok, what) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${what}`); if (!ok) { if (!failed) explain(); failed = true; console.log(`     page says: ${seen().replace(/\s+/g, ' ').slice(0, 300)}`); } };
 try {
   const p = await browser.newPage();
   const errors = [];
-  p.on('pageerror', e => errors.push(e.message));
-  p.on('console', m => { if (/Content Security Policy|violat/i.test(m.text())) errors.push(m.text()); });
+  p.on('pageerror', e => { errors.push(e.message); diagnostics.push(`page error: ${(e.stack || e.message).split('\n').slice(0, 3).join(' | ')}`); });
+  p.on('console', m => {
+    if (/Content Security Policy|violat/i.test(m.text())) errors.push(m.text());
+    // The core's worker reports its failures on the page's console (a favicon the server does not have is not one)
+    if ((m.type() === 'error' || m.type() === 'warning') && !/favicon|status of 404/.test(m.text())) diagnostics.push(`console ${m.type()}: ${m.text().slice(0, 300)}`);
+  });
   let last = '';
   const text = async () => (last = await p.evaluate(() => document.body.innerText));
   seen = () => last;
@@ -313,11 +331,11 @@ try {
 
   // Opt-in: upload a digitally signed PDF and see its signer filed as a doctor on the device. `SPINE_CHECK_SIGNED=/path/to/signed.pdf`.
   // The expected name is read by poppler's pdfsig in this script; only whether the page shows it is printed, never the name.
-  // Without it an invented file made for this (server/src/__tests__/fixtures) is used, and its signer is also held to being verified, since the
+  // Without it an invented file made for this (core/src/__tests__/fixtures) is used, and its signer is also held to being verified, since the
   // certificates in it chain to the invented root named above.
   {
     const own = !!process.env.SPINE_CHECK_SIGNED;
-    const file = own ? process.env.SPINE_CHECK_SIGNED : path.join(root, 'server/src/__tests__/fixtures/signed-chain-good.pdf');
+    const file = own ? process.env.SPINE_CHECK_SIGNED : path.join(root, 'core/src/__tests__/fixtures/signed-chain-good.pdf');
     const dn = own ? (() => { try { return execFileSync('pdfsig', [file], { stdio: ['ignore', 'pipe', 'ignore'] }).toString(); } catch (e) { return String(e.stdout ?? ''); } })() : '';
     const full = dn.match(/Signer full Distinguished Name: (.+)/)?.[1] ?? '';
     const given = own ? full.match(/givenName=([^,]+)/)?.[1] : 'Ana', surname = own ? full.match(/SN=([^,]+)/)?.[1] : 'Exemplu';
@@ -591,6 +609,28 @@ try {
     await ctx.close();
   }
 
+  // A save that fails is shown, not hidden. The vault refuses writes, a change is made on this device, and the page says the latest changes are
+  // not saved; signing out then asks first, and keeping the page open loses nothing; once the vault takes writes again the notice goes.
+  {
+    failVaultWrites = true;
+    await click('Library');
+    await waitFor('Remove tag', 15000);
+    await click('Remove tag');
+    await p.evaluate(() => [...document.querySelectorAll('[role=alertdialog] button')].find(b => b.innerText.trim().startsWith('Remove tag'))?.click());
+    check(await waitFor('Your latest changes are not saved yet', 25000), 'a save that fails is shown on the page');
+    await click('Sign out');
+    check(await waitFor('If you sign out now, they will be lost', 8000), 'signing out over unsaved changes asks first');
+    await click('Keep this page open');
+    await wait(500);
+    const afterKeeping = await text();
+    check(!afterKeeping.includes('If you sign out now') && afterKeeping.includes('Sign out') && afterKeeping.includes('Library'), 'keeping the page open leaves the person signed in, with the records open');
+    failVaultWrites = false;
+    let gone = false;
+    for (let t = 0; t < 30000 && !gone; t += 500) { gone = !(await text()).includes('Your latest changes are not saved yet'); if (!gone) await wait(500); }
+    check(gone, 'the notice goes once the vault takes the save');
+    await click('Timeline');
+  }
+
   // A passkey that opens the vault (the WebAuthn PRF extension), with Chrome's virtual authenticator standing in for the person's device.
   {
     const cdp = await p.createCDPSession();
@@ -664,6 +704,7 @@ try {
   if (readable.length) for (const w of readable) console.log(`     in: ${spawnSync('grep', ['-rlaF', w, data], { encoding: 'utf8' }).stdout.trim().split('\n').map(f => path.relative(data, f)).join(', ')}`);
   check(readable.length === 0, `no readable record text in the server's files${readable.length ? `: ${readable.join(', ')}` : ''}`);
 } catch (err) {
+  if (!failed) explain();
   console.log(`FAIL ${err.message}`);
   failed = true;
 } finally {

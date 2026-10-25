@@ -12,16 +12,16 @@ process.env.SPINE_DB_PATH = ':memory:';
 process.env.ANTHROPIC_API_KEY = 'test';
 
 const started = vi.hoisted(() => vi.fn());
-vi.mock('../ingestion/pipeline.js', () => ({ startIngestionJob: started, getJobStatus: () => null }));
-vi.mock('../parser/index.js', () => ({ aiReadingAllowed: () => true, getParser: () => ({}), getModelParser: () => ({}), resetParser: () => {} }));
+vi.mock('spine-core/ingestion/pipeline.js', () => ({ startIngestionJob: started, getJobStatus: () => null }));
+vi.mock('spine-core/parser/index.js', () => ({ aiReadingAllowed: () => true, getParser: () => ({}), getModelParser: () => ({}), resetParser: () => {} }));
 
-import { convertUpload, looksLikeHeic, looksLikeText, looksLikeDocx, textOfDocumentXml } from '../ingestion/convert.js';
-import { acceptFile, acceptPhotoSet } from '../ingestion/accept-upload.js';
-import { detectFileKind } from '../file-kind.js';
-import { getStore } from '../store/index.js';
+import { convertUpload, looksLikeHeic, looksLikeText, looksLikeDocx, textOfDocumentXml } from 'spine-core/ingestion/convert.js';
+import { acceptFile, acceptPhotoSet } from 'spine-core/ingestion/accept-upload.js';
+import { detectFileKind } from 'spine-core/file-kind.js';
+import { getStore } from 'spine-core/store/index.js';
 import { createTestUser, OWNER_ID } from './helpers/seed.js';
 
-const HEIC = join(fileURLToPath(new URL('.', import.meta.url)), 'fixtures/gradient.heic');
+const HEIC = join(fileURLToPath(new URL('.', import.meta.url)), '../../../core/src/__tests__/fixtures/gradient.heic');
 let dir: string;
 beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), 'spine-convert-'));

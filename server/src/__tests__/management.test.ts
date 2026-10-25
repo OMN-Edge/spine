@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { v4 as uuidv4 } from 'uuid';
 import { buildTestApp, loginAs, loginSession } from './helpers/app.js';
 import { OWNER_ID, createTestUser, seedDocument } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
+import { getStore } from 'spine-core/store/index.js';
 
 /**
  * What the app extracted and the person reuses: tags, providers, tests. Managed by the person, each scoped to them.

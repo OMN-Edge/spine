@@ -1,4 +1,4 @@
-import type { FromWorker, Part, ToWorker } from './protocol';
+import type { FromWorker, Part, SaveState, ToWorker } from './protocol';
 
 /**
  * The page's side of the core: starts the worker, and answers `fetch`-shaped calls from it. `deviceFetch` is what the app's requests
@@ -14,6 +14,8 @@ class CoreWorker {
   private streams = new Map<number, ReadableStreamDefaultController<Uint8Array>>();
   private waiting = new Map<number, { resolve: (m: Extract<FromWorker, { ok: true }>) => void; reject: (e: Error) => void }>();
   private ready = false;
+  /** Whether what the person did is all in the vault; changes are announced on the window as `SAVE_STATE_CHANGED`. */
+  saveState: SaveState = { unsaved: false, error: null };
 
   private ensure(): Worker {
     if (this.worker) return this.worker;
@@ -25,6 +27,7 @@ class CoreWorker {
       // SQLite's own worker support announces itself on the same channel; it is not for us.
       if (typeof m?.id !== 'number') return;
       if ('changed' in m) { window.dispatchEvent(new Event(RECORDS_CHANGED)); return; }
+      if ('save' in m) { this.saveState = m.save; window.dispatchEvent(new Event(SAVE_STATE_CHANGED)); return; }
       if ('trace' in m) { if (m.trace === 'loaded') this.onLoaded(); else console.debug('[core]', m.trace); return; }
       if ('chunk' in m) { this.streams.get(m.id)?.enqueue(new Uint8Array(m.chunk)); return; }
       if ('end' in m) { try { this.streams.get(m.id)?.close(); } catch { /* the reader already left */ } this.streams.delete(m.id); return; }
@@ -71,12 +74,29 @@ class CoreWorker {
     this.ready = true;
   }
 
-  /** Saves what changed, lets go of everything, and stops the worker. */
-  async lock(): Promise<void> {
-    if (this.worker) await this.send({ type: 'lock' }).catch(() => undefined);
+  /**
+   * Saves what changed, lets go of everything, and stops the worker. If something could not be saved it throws `UnsavedChangesError` and
+   * keeps everything open; `force` is the person's choice to lose it.
+   */
+  async lock(force = false): Promise<void> {
+    if (this.worker) {
+      try {
+        await this.send({ type: 'lock', force });
+      } catch (err) {
+        // A worker that is already gone has nothing to save; one that refused has the person's work.
+        if ((err as { code?: string }).code === 'unsaved') throw new UnsavedChangesError();
+      }
+    }
     this.worker?.terminate();
     this.worker = null;
     this.ready = false;
+    this.saveState = { unsaved: false, error: null };
+    window.dispatchEvent(new Event(SAVE_STATE_CHANGED));
+  }
+
+  /** Tries to save now; throws if the vault did not take it. */
+  async save(): Promise<void> {
+    await this.send({ type: 'save' });
   }
 
   isOpen = () => this.ready;
@@ -123,6 +143,13 @@ type WithoutId<T> = T extends unknown ? Omit<T, 'id'> : never;
 
 /** Said on the window when another device saved first and this one can no longer save. */
 export const RECORDS_CHANGED = 'spine:records-changed';
+/** Said on the window when `device.saveState` changed. */
+export const SAVE_STATE_CHANGED = 'spine:save-state';
+
+/** Locking would lose changes the vault does not have yet. */
+export class UnsavedChangesError extends Error {
+  constructor() { super('some changes are not saved yet'); this.name = 'UnsavedChangesError'; }
+}
 
 /** The owner's core: their vault, opened with the master key. */
 export const device = new CoreWorker();

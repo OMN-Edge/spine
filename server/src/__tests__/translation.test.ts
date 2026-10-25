@@ -2,11 +2,11 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } 
 import { v4 as uuidv4 } from 'uuid';
 import { buildTestApp, loginSession } from './helpers/app.js';
 import { OWNER_ID, createTestUser, seedPage, seedSourceFile, seedShareLink } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
-import { hashShareToken } from '../share-token.js';
-import { resetChatLlm, type ChatLlm, type TranslationBundle } from '../llm/index.js';
-import { LlmBlockedError } from '../llm/types.js';
-import { translateDocument } from '../translation.js';
+import { getStore } from 'spine-core/store/index.js';
+import { hashShareToken } from 'spine-core/share-token.js';
+import { resetChatLlm, type ChatLlm, type TranslationBundle } from 'spine-core/llm/index.js';
+import { LlmBlockedError } from 'spine-core/llm/types.js';
+import { translateDocument } from 'spine-core/translation.js';
 
 /**
  * Translating a document on demand and keeping it: what is sent, what is kept, when the kept copy stops being

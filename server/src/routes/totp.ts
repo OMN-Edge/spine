@@ -1,10 +1,11 @@
 import { endOtherSessions } from '../sessions.js';
 import { mailAfter, securityChangeMail } from '../notify.js';
 import type { FastifyInstance } from 'fastify';
-import { getStore } from '../store/index.js';
+import { getAccountsStore } from 'spine-core/store/index.js';
 import { verifyPassword } from '../passwords.js';
-import { requireAuth, type SessionData } from './middleware.js';
-import { windowLimiter } from '../rate-limit.js';
+import { requireAuth } from 'spine-core/routes/middleware.js';
+import { type SessionData } from '../session-auth.js';
+import { windowLimiter } from 'spine-core/rate-limit.js';
 import { checkSecondFactor, newRecoveryCodes } from '../second-factor.js';
 import {
   base32Encode,
@@ -38,7 +39,7 @@ export async function totpRoutes(app: FastifyInstance, opts: TotpRouteOptions = 
   const issuer = () => process.env.SPINE_DOMAIN || 'Archive';
 
   app.get('/api/auth/totp', { preHandler: [requireAuth] }, async (req, reply) => {
-    const store = getStore();
+    const store = getAccountsStore();
     const totp = await store.users.getTotp(req.userId);
     const enabled = totp?.confirmed_at != null;
     return reply.send({
@@ -50,7 +51,7 @@ export async function totpRoutes(app: FastifyInstance, opts: TotpRouteOptions = 
   /** The password is checked again for anything that changes the factor. */
   async function passwordOk(userId: string, password: unknown): Promise<boolean> {
     if (typeof password !== 'string' || !password) return false;
-    const user = await getStore().users.findById(userId);
+    const user = await getAccountsStore().users.findById(userId);
     return !!user && (await verifyPassword(user.password_hash, password));
   }
 
@@ -60,7 +61,7 @@ export async function totpRoutes(app: FastifyInstance, opts: TotpRouteOptions = 
       return reply.status(401).send({ error: 'password is incorrect' });
     }
 
-    const store = getStore();
+    const store = getAccountsStore();
     const user = (await store.users.findById(req.userId))!;
     const secret = generateSecret();
     const started = await store.users.beginTotp(req.userId, encryptSecret(user.id, secret), new Date().toISOString());
@@ -74,7 +75,7 @@ export async function totpRoutes(app: FastifyInstance, opts: TotpRouteOptions = 
     const { code } = req.body ?? {};
     if (typeof code !== 'string') return reply.status(400).send({ error: 'code required' });
 
-    const store = getStore();
+    const store = getAccountsStore();
     const totp = await store.users.getTotp(req.userId);
     if (!totp) return reply.status(409).send({ error: 'start setup first' });
     if (totp.confirmed_at) return reply.status(409).send({ error: 'two-factor is already on' });
@@ -107,7 +108,7 @@ export async function totpRoutes(app: FastifyInstance, opts: TotpRouteOptions = 
       const user = await proofOr401(req, reply);
       if (!user) return;
 
-      const authVersion = await getStore().users.disableTotp(user.id);
+      const authVersion = await getAccountsStore().users.disableTotp(user.id);
       (req.session as SessionData).authVersion = authVersion;
       await endOtherSessions(user.id, req.session as SessionData);
       mailAfter(req, user.id, securityChangeMail(user.email, 'Two-factor sign-in was turned off', new Date().toISOString()), 'two-factor change');
@@ -124,7 +125,7 @@ export async function totpRoutes(app: FastifyInstance, opts: TotpRouteOptions = 
       if (!user) return;
 
       const { codes, hashes } = newRecoveryCodes();
-      await getStore().users.replaceRecoveryCodes(user.id, hashes);
+      await getAccountsStore().users.replaceRecoveryCodes(user.id, hashes);
       req.log.info({ userId: user.id }, 'recovery codes regenerated');
       return reply.send({ ok: true, recovery_codes: codes });
     },
@@ -135,7 +136,7 @@ export async function totpRoutes(app: FastifyInstance, opts: TotpRouteOptions = 
     req: { userId: string; body?: { password?: string; code?: string } | undefined; log: { warn: (o: object, m: string) => void } },
     reply: { status: (n: number) => { send: (b: object) => unknown } },
   ) {
-    const store = getStore();
+    const store = getAccountsStore();
     const totp = await store.users.getTotp(req.userId);
     if (!totp?.confirmed_at) {
       reply.status(409).send({ error: 'two-factor is not on' });

@@ -2,22 +2,22 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } 
 import { v4 as uuidv4 } from 'uuid';
 import { buildTestApp, loginSession } from './helpers/app.js';
 import { seedPage, seedSourceFile, OWNER_ID } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
+import { getStore } from 'spine-core/store/index.js';
 import { writeFileSync, mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import path from 'path';
-import { loadLlmConfig } from '../config.js';
-import { getModelParser, resetParser } from '../parser/index.js';
-import { chooseModel, getChatLlm, resetChatLlm } from '../llm/index.js';
-import { useLogger, type AppLogger } from '../logger.js';
-import { EXTRACTION_FALLBACK, type ChatLlm } from '../llm/types.js';
+import { loadLlmConfig } from 'spine-core/config.js';
+import { getModelParser, resetParser } from 'spine-core/parser/index.js';
+import { chooseModel, getChatLlm, resetChatLlm } from 'spine-core/llm/index.js';
+import { useLogger, type AppLogger } from 'spine-core/logger.js';
+import { EXTRACTION_FALLBACK, type ChatLlm } from 'spine-core/llm/types.js';
 
 /**
  * Picking a model for a reading: the list the operator offers, the check that a request names only
  * one of them, and that the choice reaches the call that reads.
  */
 const mockExtractFields = vi.hoisted(() => vi.fn());
-vi.mock('../ingestion/extraction.js', () => ({ extractFields: mockExtractFields }));
+vi.mock('spine-core/ingestion/extraction.js', () => ({ extractFields: mockExtractFields }));
 
 const saved = process.env.SPINE_LLM_MODELS;
 afterEach(() => {

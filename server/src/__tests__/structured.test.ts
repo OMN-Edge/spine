@@ -2,18 +2,18 @@ import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vites
 import { v4 as uuidv4 } from 'uuid';
 import { buildTestApp, loginAs, loginSession } from './helpers/app.js';
 import { createTestUser, seedPage, seedSourceFile, OWNER_ID } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
-import { canonicalName, flagFor, normaliseMeasurements, parseNumber, validDay, validMonth, validWhen } from '../ingestion/measurements.js';
-import { doctorDisplayName, doctorKey, normaliseLicenseCode } from '../doctors.js';
-import { extractionSchema } from '../llm/types.js';
-import { DOC_TYPE_GUIDES, guidesForPrompt } from '../llm/doc-types.js';
-import { DOC_TYPES } from '../llm/types.js';
-import { rereadDocument } from '../ingestion/document-reading.js';
-import { unitKey } from '../units.js';
-import { buildContinuationPrompt, buildExtractionPrompt } from '../llm/prompts.js';
+import { getStore, getAccountsStore } from 'spine-core/store/index.js';
+import { canonicalName, flagFor, normaliseMeasurements, parseNumber, validDay, validMonth, validWhen } from 'spine-core/ingestion/measurements.js';
+import { doctorDisplayName, doctorKey, normaliseLicenseCode } from 'spine-core/doctors.js';
+import { extractionSchema } from 'spine-core/llm/types.js';
+import { DOC_TYPE_GUIDES, guidesForPrompt } from 'spine-core/llm/doc-types.js';
+import { DOC_TYPES } from 'spine-core/llm/types.js';
+import { rereadDocument } from 'spine-core/ingestion/document-reading.js';
+import { unitKey } from 'spine-core/units.js';
+import { buildContinuationPrompt, buildExtractionPrompt } from 'spine-core/llm/prompts.js';
 
 const mockExtractFields = vi.hoisted(() => vi.fn());
-vi.mock('../ingestion/extraction.js', () => ({ extractFields: mockExtractFields }));
+vi.mock('spine-core/ingestion/extraction.js', () => ({ extractFields: mockExtractFields }));
 
 let app: Awaited<ReturnType<typeof buildTestApp>>;
 let cookie: string;
@@ -539,7 +539,7 @@ describe('whose it is', () => {
     const theirs = await upload(other.id);
     mockExtractFields.mockResolvedValue(reading());
     await rereadDocument(other.id, theirs.docId);
-    await expect(getStore().users.delete(other.id)).resolves.toBeUndefined();
+    await expect(getAccountsStore().users.delete(other.id)).resolves.toBeUndefined();
     expect(await getStore().doctors.listFor(other.id)).toEqual([]);
     expect(await getStore().measurements.names(other.id)).toEqual([]);
   });

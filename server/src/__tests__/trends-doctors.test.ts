@@ -2,8 +2,8 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { v4 as uuidv4 } from 'uuid';
 import { buildTestApp, loginAs, loginSession } from './helpers/app.js';
 import { createTestUser, seedPage, seedSourceFile, OWNER_ID } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
-import { DOC_TYPES } from '../llm/types.js';
+import { getStore } from 'spine-core/store/index.js';
+import { DOC_TYPES } from 'spine-core/llm/types.js';
 
 let app: Awaited<ReturnType<typeof buildTestApp>>;
 let cookie: string;

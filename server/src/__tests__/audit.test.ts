@@ -6,12 +6,12 @@ import { Readable } from 'stream';
 import { v4 as uuidv4 } from 'uuid';
 import { buildTestApp, loginSession } from './helpers/app.js';
 import { OWNER_ID, seedDocument } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
-import { saveStream } from '../ingestion/accept-upload.js';
-import { runQueued } from '../ingestion/jobs.js';
-import { manifestSchema } from '../archive/manifest.js';
-import { resetChatLlm } from '../llm/index.js';
-import type { ChatLlm, TranslationBundle } from '../llm/types.js';
+import { getStore } from 'spine-core/store/index.js';
+import { saveStream } from 'spine-core/ingestion/accept-upload.js';
+import { runQueued } from 'spine-core/ingestion/jobs.js';
+import { manifestSchema } from 'spine-core/archive/manifest.js';
+import { resetChatLlm } from 'spine-core/llm/index.js';
+import type { ChatLlm, TranslationBundle } from 'spine-core/llm/types.js';
 
 /**
  * Checks from the security review of export, import, translation, sharing and the library (SECURITY.md, "Review of

@@ -2,11 +2,11 @@ import { describe, it, expect, beforeAll, afterAll, afterEach, beforeEach } from
 import { v4 as uuidv4 } from 'uuid';
 import { buildTestApp, loginAs, loginSession } from './helpers/app.js';
 import { OWNER_ID, createTestUser, seedDocument } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
-import { resetEmbedder, createEmbedder, type Embedder, type EmbedKind } from '../embedding/index.js';
-import { createVertexEmbedder } from '../embedding/adapters/vertex.js';
-import { loadEmbeddingConfig } from '../config.js';
-import { embeddingStatus, hybridSearch, relatedTo, searchByMeaning, settleSync, similarTo, syncEmbeddings } from '../similarity/index.js';
+import { getStore } from 'spine-core/store/index.js';
+import { resetEmbedder, createEmbedder, type Embedder, type EmbedKind } from 'spine-core/embedding/index.js';
+import { createVertexEmbedder } from 'spine-core/embedding/adapters/vertex.js';
+import { loadEmbeddingConfig } from 'spine-core/config.js';
+import { embeddingStatus, hybridSearch, relatedTo, searchByMeaning, settleSync, similarTo, syncEmbeddings } from 'spine-core/similarity/index.js';
 
 /**
  * A stand-in for a model: words hashed into a small vector, so texts that share words are close. Enough to prove the

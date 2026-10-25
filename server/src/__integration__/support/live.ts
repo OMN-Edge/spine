@@ -1,8 +1,8 @@
 import { execFileSync } from 'child_process';
 import { describe } from 'vitest';
-import { getChatLlm } from '../../llm/index.js';
-import { getEmbedder } from '../../embedding/index.js';
-import { loadLlmConfig } from '../../config.js';
+import { getChatLlm } from 'spine-core/llm/index.js';
+import { getEmbedder } from 'spine-core/embedding/index.js';
+import { loadLlmConfig } from 'spine-core/config.js';
 
 /**
  * What this run can do. A suite that needs the model is skipped (and says why) if the configuration is not usable; one that reads a PDF

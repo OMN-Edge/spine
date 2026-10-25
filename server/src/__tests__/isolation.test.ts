@@ -12,8 +12,8 @@ import {
   seedShareLink,
   seedSourceFile,
 } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
-import { hashShareToken } from '../share-token.js';
+import { getStore } from 'spine-core/store/index.js';
+import { hashShareToken } from 'spine-core/share-token.js';
 
 /**
  * SECURITY.md P12 / M-1: one user must never read, change or enumerate another's
@@ -28,7 +28,7 @@ import { hashShareToken } from '../share-token.js';
  */
 
 const mockStartJob = vi.hoisted(() => vi.fn());
-vi.mock('../ingestion/pipeline.js', () => ({
+vi.mock('spine-core/ingestion/pipeline.js', () => ({
   startIngestionJob: mockStartJob,
   getJobStatus: vi.fn().mockReturnValue(null),
   reconcileStalledJobs: vi.fn().mockResolvedValue(0),

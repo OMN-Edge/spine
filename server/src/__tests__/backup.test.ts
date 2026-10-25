@@ -5,7 +5,7 @@ import path from 'path';
 import Database from 'better-sqlite3';
 import { buildTestApp } from './helpers/app.js';
 import { OWNER_ID } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
+import { getStore } from 'spine-core/store/index.js';
 import { runBackup } from '../backup.js';
 
 /** P11: spine.db and data/originals/ must be restorable. */

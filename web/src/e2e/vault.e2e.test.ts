@@ -9,20 +9,22 @@ import { ConflictError, VaultSession, prepareSignIn } from '../crypto/vault-clie
 /**
  * The device's code against the real server code, over HTTP, in one process: nothing is faked on the server's side. It is what proves
  * that what the browser seals is what the server stores, that the server's checks accept what the browser makes, and that a second
- * device can open what the first sealed. It needs the server's dependencies, so it is skipped where only the web's are installed.
+ * device can open what the first sealed. It needs the server's dependencies (Fastify is the one it looks for), so it is skipped where only the web's are installed.
  */
-const serverDir = path.resolve(__dirname, '../../../server');
-const haveServer = fs.existsSync(path.join(serverDir, 'node_modules'));
+const haveServer = ['../../../node_modules', '../../../server/node_modules'].some(dir => fs.existsSync(path.resolve(__dirname, dir, 'fastify')));
 const FAST: KdfParams = { alg: 'argon2id13', ops: 2, memKiB: 19456 };
 const EMAIL = 'person@example.com';
 const PASSWORD = 'a long and private master password';
+
+// Skipped where only the web's dependencies are installed; in CI that would hide the one test of the device against the real server.
+if (!haveServer && process.env.CI) throw new Error('the server is not installed, so the device-and-server test would be skipped and still look green');
 
 describe.skipIf(!haveServer)('the device and the server together', () => {
   let close: () => Promise<void>;
   let base = '';
   let dataDir = '';
   let server: typeof import('../../../server/src/__tests__/helpers/app.js');
-  let store: typeof import('../../../server/src/store/index.js');
+  let store: typeof import('spine-core/store/index.js');
   let accounts: typeof import('../../../server/src/accounts.js');
   let mail: typeof import('../../../server/src/mail/index.js');
   let userId = '';
@@ -56,7 +58,7 @@ describe.skipIf(!haveServer)('the device and the server together', () => {
     dataDir = fs.mkdtempSync(path.join(fs.realpathSync(require('os').tmpdir()), 'spine-e2e-'));
     process.env.DATA_DIR = dataDir;
     server = await import('../../../server/src/__tests__/helpers/app.js');
-    store = await import('../../../server/src/store/index.js');
+    store = await import('spine-core/store/index.js');
     accounts = await import('../../../server/src/accounts.js');
     mail = await import('../../../server/src/mail/index.js');
     mail.resetMailer({ enabled: true, async send() {} });

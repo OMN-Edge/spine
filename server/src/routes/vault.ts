@@ -1,12 +1,13 @@
 import type { FastifyInstance } from 'fastify';
-import { getStore } from '../store/index.js';
+import { getAccountsStore } from 'spine-core/store/index.js';
 import { vaultLimits } from '../config.js';
 import { hashPassword, normaliseEmail } from '../passwords.js';
 import { AUTH_VALUE, DEFAULT_KDF, parseKdfParams, parseVaultKeys, pretendSalt } from '../vault-keys.js';
 import { OBJECT_ID, readObject, removeObject, writeObject } from '../vault-files.js';
 import { endOtherSessions } from '../sessions.js';
 import { mailAfter, securityChangeMail } from '../notify.js';
-import { requireAuth, requireRecentAuth, type SessionData } from './middleware.js';
+import { requireAuth, requireRecentAuth } from 'spine-core/routes/middleware.js';
+import { type SessionData } from '../session-auth.js';
 
 /**
  * The vault (SECURITY.md M-34, docs/crypto-design.md): keys wrapped on the device, and objects sealed on the device. Nothing here can
@@ -33,8 +34,8 @@ export async function vaultRoutes(app: FastifyInstance, opts: VaultRouteOptions 
     async (req, reply) => {
       const address = typeof req.body?.email === 'string' ? normaliseEmail(req.body.email) : '';
       if (!address || address.length > 254) return reply.status(400).send({ error: 'email required' });
-      const user = await getStore().users.findByEmail(address);
-      const keys = user ? await getStore().vault.getKeys(user.id) : null;
+      const user = await getAccountsStore().users.findByEmail(address);
+      const keys = user ? await getAccountsStore().vault.getKeys(user.id) : null;
       if (user && !keys) return reply.send({ vault: false });
       return reply.send({
         vault: true,
@@ -45,7 +46,7 @@ export async function vaultRoutes(app: FastifyInstance, opts: VaultRouteOptions 
   );
 
   app.get('/api/vault/keys', { preHandler: requireAuth }, async (req, reply) => {
-    const k = await getStore().vault.getKeys(req.userId);
+    const k = await getAccountsStore().vault.getKeys(req.userId);
     if (!k) return reply.status(404).send({ error: 'this account has no vault yet', code: 'no_vault' });
     return reply.send({
       kdf_salt: k.kdf_salt,
@@ -68,7 +69,7 @@ export async function vaultRoutes(app: FastifyInstance, opts: VaultRouteOptions 
       if (!keys || typeof req.body?.auth_value !== 'string' || !AUTH_VALUE.test(req.body.auth_value)) {
         return reply.status(400).send({ error: 'the keys are not in the expected form' });
       }
-      const store = getStore();
+      const store = getAccountsStore();
       if (await store.vault.getKeys(req.userId)) return reply.status(409).send({ error: 'this account already has a vault' });
       await changeCredential(req, req.userId, req.body.auth_value, keys, false);
       req.log.info({ userId: req.userId }, 'vault created');
@@ -86,9 +87,9 @@ export async function vaultRoutes(app: FastifyInstance, opts: VaultRouteOptions 
       if (!keys || (authValue !== undefined && (typeof authValue !== 'string' || !AUTH_VALUE.test(authValue)))) {
         return reply.status(400).send({ error: 'the keys are not in the expected form' });
       }
-      if (!(await getStore().vault.getKeys(req.userId))) return reply.status(404).send({ error: 'this account has no vault yet', code: 'no_vault' });
+      if (!(await getAccountsStore().vault.getKeys(req.userId))) return reply.status(404).send({ error: 'this account has no vault yet', code: 'no_vault' });
       await changeCredential(req, req.userId, authValue ?? null, keys, true);
-      const user = await getStore().users.findById(req.userId);
+      const user = await getAccountsStore().users.findById(req.userId);
       if (user) mailAfter(req, user.id, securityChangeMail(user.email, authValue ? 'Your password was changed' : 'Your recovery kit was replaced', new Date().toISOString()), 'vault change');
       req.log.info({ userId: req.userId }, 'vault keys rewrapped');
       return reply.send({ ok: true });
@@ -98,14 +99,14 @@ export async function vaultRoutes(app: FastifyInstance, opts: VaultRouteOptions 
   app.get<{ Querystring: { since?: string } }>('/api/vault/objects', { preHandler: requireAuth }, async (req, reply) => {
     const since = req.query.since ?? '0';
     if (!SEQ.test(since)) return reply.status(400).send({ error: 'since must be a number' });
-    const store = getStore();
+    const store = getAccountsStore();
     const [objects, usage, keys] = await Promise.all([store.vault.list(req.userId, Number(since)), store.vault.usage(req.userId), store.vault.getKeys(req.userId)]);
     return reply.send({ seq: keys?.seq ?? 0, usage, objects });
   });
 
   app.get<{ Params: { id: string } }>('/api/vault/objects/:id', { preHandler: requireAuth }, async (req, reply) => {
     if (!OBJECT_ID.test(req.params.id)) return reply.status(404).send({ error: 'not found' });
-    const meta = await getStore().vault.get(req.userId, req.params.id);
+    const meta = await getAccountsStore().vault.get(req.userId, req.params.id);
     const bytes = meta && !meta.deleted ? readObject(req.userId, req.params.id) : null;
     if (!meta || !bytes) return reply.status(404).send({ error: 'not found' });
     return reply
@@ -135,7 +136,7 @@ export async function vaultRoutes(app: FastifyInstance, opts: VaultRouteOptions 
       if (!OBJECT_ID.test(id) || !KINDS.has(kind) || !OBJECT_ID.test(profile) || !/^[A-Za-z0-9_-]{90,200}$/.test(wrappedKey) || !SEQ.test(base) || !Buffer.isBuffer(body) || body.length === 0) {
         return reply.status(400).send({ error: 'an object needs an id, a kind, a profile, a wrapped key, the sequence you last saw and a body' });
       }
-      const store = getStore();
+      const store = getAccountsStore();
       const result = await store.vault.put(req.userId, { id, profileId: profile, kind, size: body.length, wrappedKey, baseSeq: Number(base) }, new Date().toISOString(), vaultLimits().accountBytes);
       if (result === 'no_vault') return reply.status(404).send({ error: 'this account has no vault yet', code: 'no_vault' });
       if (result === 'conflict') return reply.status(409).send({ error: 'this object changed elsewhere; fetch it again', code: 'conflict' });
@@ -151,7 +152,7 @@ export async function vaultRoutes(app: FastifyInstance, opts: VaultRouteOptions 
     async (req, reply) => {
       const base = req.query.base ?? '';
       if (!OBJECT_ID.test(req.params.id) || !SEQ.test(base)) return reply.status(400).send({ error: 'an id and the sequence you last saw are needed' });
-      const done = await getStore().vault.remove(req.userId, req.params.id, Number(base), new Date().toISOString());
+      const done = await getAccountsStore().vault.remove(req.userId, req.params.id, Number(base), new Date().toISOString());
       if (!done) return reply.status(409).send({ error: 'no such object, or it changed elsewhere', code: 'conflict' });
       removeObject(req.userId, req.params.id);
       return reply.send({ seq: done.seq });
@@ -170,7 +171,7 @@ export async function changeCredential(
   keys: NonNullable<ReturnType<typeof parseVaultKeys>>,
   replace: boolean,
 ): Promise<void> {
-  const store = getStore();
+  const store = getAccountsStore();
   const now = new Date().toISOString();
   if (authValue) await store.users.setPassword(userId, await hashPassword(authValue));
   if (replace) await store.vault.replaceKeys(userId, keys, now);

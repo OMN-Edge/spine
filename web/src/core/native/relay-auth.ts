@@ -1,4 +1,4 @@
-import { useRelayHooks } from '../../../../server/src/llm/adapters/relay';
+import { useRelayHooks } from 'spine-core/llm/adapters/relay';
 
 /**
  * How the device reaches the model: through the relay, with a pass the Spine server gives to a signed-in account

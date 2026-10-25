@@ -1,17 +1,21 @@
 import { existsSync, readFileSync } from 'fs';
 import type { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
-import { getStore } from '../store/index.js';
+import { getAccountsStore } from 'spine-core/store/index.js';
 import { sharedLimits } from '../config.js';
 import { SHARE_ID, readBlob, readBundle, removeBlobs, removeShare, writeBlob, writeBundle } from '../shared-files.js';
-import { requireAuth } from './middleware.js';
-import { countryOf } from '../geo.js';
+import { requireAuth } from 'spine-core/routes/middleware.js';
+import { countryOf } from 'spine-core/geo.js';
 import { accessRequestMail } from '../accounts.js';
 import { getMailer } from '../mail/index.js';
-import { publicUrl } from '../config.js';
+import { publicUrl } from 'spine-core/config.js';
 import { issueToken } from '../relay/token.js';
 import { relaySettings, relayEnv } from './relay.js';
-import { windowLimiter } from '../rate-limit.js';
+import { windowLimiter } from 'spine-core/rate-limit.js';
+import { logger } from 'spine-core/logger.js';
+
+/** What a failure of something done after the answer, with nobody waiting on it, leaves: a line, with the reason and no content. */
+const later = (what: string) => (err: unknown) => logger.warn(`${what} failed`, { error: err instanceof Error ? err.message : String(err) });
 
 /**
  * The server's part of an encrypted share (SECURITY.md M-36, docs/crypto-design.md stage 4). A link is a sealed copy of what it
@@ -41,7 +45,7 @@ const PASS_MS = 10 * 60 * 1000;
 
 /** Deletes the files of every share that has ended, and the rows long after. Run at start, hourly, and by a visit to an ended one. */
 export async function sweepShares(now = new Date()): Promise<number> {
-  const store = getStore();
+  const store = getAccountsStore();
   const ended = await store.shared.endedWithFiles(now.toISOString());
   for (const { id } of ended) removeShare(id);
   await store.shared.forgetEnded(now.toISOString(), ENDED_GRACE_MS);
@@ -54,11 +58,11 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
 
   const live = async (id: string) => {
     if (!SHARE_ID.test(id)) return null;
-    const bundle = await getStore().shared.get(id);
+    const bundle = await getAccountsStore().shared.get(id);
     if (!bundle) return null;
     if (bundle.revokedAt || Date.parse(bundle.expiresAt) <= Date.now()) {
       // Ended: nothing of it should be left on disk, whenever this is noticed.
-      if (bundle.size > 0 || bundle.blobs > 0) void sweepShares().catch(() => undefined);
+      if (bundle.size > 0 || bundle.blobs > 0) void sweepShares().catch(later('removing an ended share'));
       return 'ended' as const;
     }
     return bundle;
@@ -74,7 +78,7 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
       return reply.status(400).send({ error: 'an id, an end time in the future and the sealed copy are needed' });
     }
     if (Date.parse(expires) - Date.now() > 31 * 24 * 60 * 60 * 1000) return reply.status(400).send({ error: 'a share may last at most 31 days' });
-    const store = getStore();
+    const store = getAccountsStore();
     const used = await store.shared.usage(req.userId, new Date().toISOString());
     const existing = await store.shared.get(id);
     const replacing = existing && existing.userId === req.userId && !existing.revokedAt;
@@ -90,7 +94,7 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
   app.put<{ Params: { id: string; n: string }; Body: Buffer }>('/api/shared/:id/blob/:n', { preHandler: requireAuth }, async (req, reply) => {
     const limits = sharedLimits();
     const n = Number(req.params.n);
-    const store = getStore();
+    const store = getAccountsStore();
     const bundle = SHARE_ID.test(req.params.id) ? await store.shared.get(req.params.id) : null;
     if (!bundle || bundle.userId !== req.userId || bundle.revokedAt) return reply.status(404).send({ error: 'not found' });
     if (!Number.isInteger(n) || n < 0 || n > 9999 || !Buffer.isBuffer(req.body) || req.body.length === 0) return reply.status(400).send({ error: 'a number and the sealed file are needed' });
@@ -105,19 +109,19 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     const { expires_at: expires, require_approval: approval } = req.body ?? {};
     if (expires !== undefined && (typeof expires !== 'string' || !ISO.test(expires) || Date.parse(expires) <= Date.now() || Date.parse(expires) - Date.now() > 31 * 24 * 60 * 60 * 1000)) return reply.status(400).send({ error: 'expires_at must be a time within the next 31 days' });
     if (approval !== undefined && typeof approval !== 'boolean') return reply.status(400).send({ error: 'require_approval must be true or false' });
-    if (!SHARE_ID.test(req.params.id) || !(await getStore().shared.update(req.userId, req.params.id, { expiresAt: expires as string | undefined, requireApproval: approval as boolean | undefined }))) return reply.status(404).send({ error: 'not found' });
+    if (!SHARE_ID.test(req.params.id) || !(await getAccountsStore().shared.update(req.userId, req.params.id, { expiresAt: expires as string | undefined, requireApproval: approval as boolean | undefined }))) return reply.status(404).send({ error: 'not found' });
     return reply.send({ ok: true });
   });
 
   app.delete<{ Params: { id: string } }>('/api/shared/:id', { preHandler: requireAuth }, async (req, reply) => {
-    if (!SHARE_ID.test(req.params.id) || !(await getStore().shared.revoke(req.userId, req.params.id, new Date().toISOString()))) return reply.status(404).send({ error: 'not found' });
+    if (!SHARE_ID.test(req.params.id) || !(await getAccountsStore().shared.revoke(req.userId, req.params.id, new Date().toISOString()))) return reply.status(404).send({ error: 'not found' });
     removeShare(req.params.id);
     return reply.send({ ok: true });
   });
 
   // What the link's visitors did, for the owner's device to collect: browsers asking to be let in, and openings. Collected once.
   app.get('/api/shared/events', { preHandler: requireAuth }, async (req, reply) => {
-    const store = getStore();
+    const store = getAccountsStore();
     const [requests, opens] = await Promise.all([store.shared.pendingRequests(req.userId), store.shared.pendingOpens(req.userId, 500)]);
     return reply.header('Cache-Control', 'no-store').send({ requests, opens });
   });
@@ -127,8 +131,8 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     if (!Array.isArray(requests) || !Array.isArray(opens) || requests.length > 1000 || opens.length > 1000 || !requests.every(r => typeof r === 'string') || !opens.every(o => Number.isInteger(o))) {
       return reply.status(400).send({ error: 'ids of requests and openings are needed' });
     }
-    await getStore().shared.ackRequests(req.userId, requests as string[]);
-    await getStore().shared.ackOpens(req.userId, opens as number[]);
+    await getAccountsStore().shared.ackRequests(req.userId, requests as string[]);
+    await getAccountsStore().shared.ackOpens(req.userId, opens as number[]);
     return reply.send({ ok: true });
   });
 
@@ -137,7 +141,7 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     const { decision, wrapped_key: wrapped } = req.body ?? {};
     if (decision !== 'approved' && decision !== 'denied') return reply.status(400).send({ error: 'decision must be approved or denied' });
     if (decision === 'approved' && (typeof wrapped !== 'string' || !WRAPPED.test(wrapped))) return reply.status(400).send({ error: 'an approval carries the wrapped key' });
-    const done = await getStore().shared.decide(req.userId, req.params.rid, decision, decision === 'approved' ? (wrapped as string) : null, new Date().toISOString());
+    const done = await getAccountsStore().shared.decide(req.userId, req.params.rid, decision, decision === 'approved' ? (wrapped as string) : null, new Date().toISOString());
     if (!done) return reply.status(404).send({ error: 'not found, already answered, or the link has ended' });
     return reply.send({ ok: true });
   });
@@ -190,17 +194,17 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
       const country = await countryOf(req.ip ?? null);
       const id = uuidv4();
       const requestedAt = new Date().toISOString();
-      const made = await getStore().shared.createRequest(bundle.id, { id, visitorKey: key, note, country, requestedAt }, MAX_WAITING);
+      const made = await getAccountsStore().shared.createRequest(bundle.id, { id, visitorKey: key, note, country, requestedAt }, MAX_WAITING);
       if (made === 'waiting') return reply.status(429).send({ error: 'too many requests are waiting for this link' });
       if (made === 'known') {
         // Asking again: the browser's own earlier request, found by its key.
-        const again = (await getStore().shared.pendingRequests(bundle.userId)).find(r => r.bundleId === bundle.id && r.visitorKey === key);
+        const again = (await getAccountsStore().shared.pendingRequests(bundle.userId)).find(r => r.bundleId === bundle.id && r.visitorKey === key);
         return reply.header('Cache-Control', 'no-store').send({ request_id: again?.id ?? null, status: again?.status ?? 'pending', known: true });
       }
       const mailer = getMailer();
       if (mailer.enabled) {
-        const owner = await getStore().users.findById(bundle.userId);
-        if (owner) void mailer.send(accessRequestMail(owner.email, publicUrl(`/share-requests/${id}`), requestedAt, null)).catch(() => undefined);
+        const owner = await getAccountsStore().users.findById(bundle.userId);
+        if (owner) void mailer.send(accessRequestMail(owner.email, publicUrl(`/share-requests/${id}`), requestedAt, null)).catch(later('mailing the owner about a request to open a share'));
       }
       return reply.status(202).header('Cache-Control', 'no-store').send({ request_id: id, status: 'pending' });
     },
@@ -211,7 +215,7 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     const bundle = await live(req.params.id);
     if (!bundle) return reply.status(404).send({ error: 'not found' });
     if (bundle === 'ended') return reply.status(410).send({ error: 'this link is no longer active', ended: true });
-    const found = await getStore().shared.getRequest(bundle.id, req.params.rid);
+    const found = await getAccountsStore().shared.getRequest(bundle.id, req.params.rid);
     if (!found) return reply.status(404).send({ error: 'not found' });
     return reply.header('Cache-Control', 'no-store').send({ status: found.status, wrapped_key: found.status === 'approved' ? found.wrappedKey : null });
   });
@@ -223,7 +227,7 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     if (!bundle || bundle === 'ended') return reply.status(bundle === 'ended' ? 410 : 404).send({ error: bundle === 'ended' ? 'this link is no longer active' : 'not found' });
     const doc = req.body?.document_id;
     if (doc !== undefined && doc !== null && (typeof doc !== 'string' || !DOC_ID.test(doc))) return reply.status(400).send({ error: 'document_id must be an id' });
-    await getStore().shared.logOpen(bundle.id, new Date().toISOString(), await countryOf(req.ip ?? null), (doc as string | null | undefined) ?? null, typeof doc === 'string');
+    await getAccountsStore().shared.logOpen(bundle.id, new Date().toISOString(), await countryOf(req.ip ?? null), (doc as string | null | undefined) ?? null, typeof doc === 'string');
     return reply.status(204).send();
   });
 
@@ -262,7 +266,7 @@ const ENDED_PAGE =
  */
 export async function shareShellRoutes(app: FastifyInstance, opts: { appShellPath: string }) {
   app.get<{ Params: { id: string } }>('/share/:id', async (req, reply) => {
-    if (!SHARE_ID.test(req.params.id) || !(await getStore().shared.get(req.params.id))) {
+    if (!SHARE_ID.test(req.params.id) || !(await getAccountsStore().shared.get(req.params.id))) {
       return reply.status(410).type('text/html').send(ENDED_PAGE);
     }
     if (!existsSync(opts.appShellPath)) {

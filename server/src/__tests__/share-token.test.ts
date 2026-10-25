@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { buildTestApp, loginSession } from './helpers/app.js';
 import { seedShareLink, storedTokenFor } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
+import { getAccountsStore } from 'spine-core/store/index.js';
 import {
   createShareToken,
   hashShareToken,
   looksLikeRawToken,
   looksLikeTokenDigest,
-} from '../share-token.js';
+} from 'spine-core/share-token.js';
 
 /**
  * P6 / S-4: possession of the database must not confer the ability to use the
@@ -72,7 +72,7 @@ describe('POST /api/share-links — the token is hashed at rest', () => {
       headers: { cookie }, payload: { scope: 'all' },
     });
 
-    const rows = await getStore().maintenance.listShareLinkTokens();
+    const rows = await getAccountsStore().maintenance.listShareLinkTokens();
     expect(rows.length).toBeGreaterThan(0);
     for (const row of rows) expect(looksLikeRawToken(row.token)).toBe(false);
   });

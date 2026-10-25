@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { getStore } from '../store/index.js';
+import { getAccountsStore } from 'spine-core/store/index.js';
 import {
   checkPasswordPolicy,
   hashPassword,
@@ -8,8 +8,9 @@ import {
   verifyAgainstDummy,
   verifyPassword,
 } from '../passwords.js';
-import { authenticate, requireAuth, type SessionData } from './middleware.js';
-import { windowLimiter } from '../rate-limit.js';
+import { requireAuth } from 'spine-core/routes/middleware.js';
+import { authenticate, type SessionData } from '../session-auth.js';
+import { windowLimiter } from 'spine-core/rate-limit.js';
 import { startSession, endOtherSessions } from '../sessions.js';
 import { mailAfter, newSignInMail, securityChangeMail } from '../notify.js';
 import { checkSecondFactor, hasSecondFactor } from '../second-factor.js';
@@ -93,7 +94,7 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions = 
         return reply.status(401).send({ error: 'incorrect email or password' });
       }
 
-      const user = await getStore().users.findByEmail(normaliseEmail(email));
+      const user = await getAccountsStore().users.findByEmail(normaliseEmail(email));
 
       // An unknown email and a wrong password take the same time and give the
       // same answer, so the endpoint cannot be used to list accounts.
@@ -170,7 +171,7 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions = 
       }
 
       // Re-read the user: a password change or deletion since the password step voids it.
-      const user = await getStore().users.findById(pending.userId);
+      const user = await getAccountsStore().users.findById(pending.userId);
       if (!user || !user.email_verified_at || user.auth_version !== pending.authVersion) {
         delete session.pending;
         return reply.status(401).send(expired);
@@ -198,7 +199,7 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions = 
 
   app.post('/api/auth/logout', async (req, reply) => {
     const { userId, sid } = req.session as SessionData;
-    if (userId && sid) await getStore().sessions.revoke(userId, sid);
+    if (userId && sid) await getAccountsStore().sessions.revoke(userId, sid);
     await req.session.destroy();
     return reply.send({ ok: true });
   });
@@ -211,7 +212,7 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions = 
       email: user.email,
       second_factor_enabled: await hasSecondFactor(user.id),
       // Whether the account has a vault. One that has none is asked to make it before anything else (docs/crypto-design.md).
-      vault: (await getStore().vault.getKeys(user.id)) !== null,
+      vault: (await getAccountsStore().vault.getKeys(user.id)) !== null,
       // What this account still has to agree to before the app shows anything (CR-GDPR-01). Nothing once it has.
       consent_needed: consentNeeded(user),
     });
@@ -232,7 +233,7 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions = 
       const problem = checkPasswordPolicy(next);
       if (problem) return reply.status(400).send({ error: problem });
 
-      const store = getStore();
+      const store = getAccountsStore();
       const user = await store.users.findById(req.userId);
       if (!user || !(await verifyPassword(user.password_hash, current))) {
         req.log.warn({ ip: req.ip, userId: req.userId }, 'password change with wrong current password');

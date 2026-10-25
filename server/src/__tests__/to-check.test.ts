@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { v4 as uuidv4 } from 'uuid';
 import { buildTestApp, loginSession } from './helpers/app.js';
 import { seedDocument } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
+import { getStore } from 'spine-core/store/index.js';
 
 const OWNER = 'user-owner';
 let app: Awaited<ReturnType<typeof buildTestApp>>;

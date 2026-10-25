@@ -5,10 +5,10 @@ import { AIMessage, type BaseMessage } from '@langchain/core/messages';
 import type { ChatResult } from '@langchain/core/outputs';
 import { buildTestApp, loginAs, loginSession } from './helpers/app.js';
 import { OWNER_ID, createTestUser, seedDocument } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
-import { resetChatLlm, type ChatLlm } from '../llm/index.js';
-import { TOOL_KINDS, splitCitations } from '../chat/agent.js';
-import { checkScreen } from '../chat/screen.js';
+import { getStore } from 'spine-core/store/index.js';
+import { resetChatLlm, type ChatLlm } from 'spine-core/llm/index.js';
+import { TOOL_KINDS, splitCitations } from 'spine-core/chat/agent.js';
+import { checkScreen } from 'spine-core/chat/screen.js';
 
 /**
  * The chat as an agent. The model is a scripted stand-in that asks for the tool calls a test gives it and then answers, so

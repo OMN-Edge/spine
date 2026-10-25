@@ -1,7 +1,8 @@
 import { pathToFileURL } from 'url';
 import { v4 as uuidv4 } from 'uuid';
-import { getStore } from './store/index.js';
+import { getAccountsStore } from 'spine-core/store/index.js';
 import { RESET_TTL_MS, deleteAccount, describeAccount, issueUserToken, resetLink } from './accounts.js';
+import { useAccountsStore } from './store.js';
 import {
   checkPasswordPolicy,
   generatePassword,
@@ -56,7 +57,7 @@ export async function runCli(args: string[], io: CliIo): Promise<number> {
   const [command, ...rest] = args;
   const flags = rest.filter(arg => arg.startsWith('--'));
   const positional = rest.filter(arg => !arg.startsWith('--'));
-  const store = getStore();
+  const store = getAccountsStore();
 
   switch (command) {
     case 'create-user': {
@@ -200,7 +201,7 @@ export async function runCli(args: string[], io: CliIo): Promise<number> {
     // Sends one short sentence to the embedding service and says what came back: whether the endpoint, project and
     // model are right, how many numbers, how long it took. Nothing of any document is sent.
     case 'check-embeddings': {
-      const { getEmbedder } = await import('./embedding/index.js');
+      const { getEmbedder } = await import('spine-core/embedding/index.js');
       const embedder = getEmbedder();
       if (!embedder.enabled) { io.err('embeddings are off (SPINE_EMBEDDINGS is none)'); return 1; }
       const started = Date.now();
@@ -229,7 +230,7 @@ export async function runCli(args: string[], io: CliIo): Promise<number> {
     case 'embed-all': {
       const user = await store.users.findByEmail(normaliseEmail(positional[0] ?? ''));
       if (!user) { io.err('no such account'); return 1; }
-      const { similarityEnabled, syncEmbeddings } = await import('./similarity/index.js');
+      const { similarityEnabled, syncEmbeddings } = await import('spine-core/similarity/index.js');
       if (!similarityEnabled()) { io.err('embeddings are off (SPINE_EMBEDDINGS is none)'); return 1; }
       const { embedded } = await syncEmbeddings(user.id);
       io.out(`embedded ${embedded} document${embedded === 1 ? '' : 's'}`);
@@ -253,7 +254,7 @@ async function readStdinLine(): Promise<string> {
 
 // Only when executed directly, so importing this in a test does not run it.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  process.env.SPINE_STORE_SCOPE = 'accounts'; // the operator's commands touch accounts only (SECURITY.md M-37)
+  useAccountsStore(); // the operator's commands touch accounts only (SECURITY.md M-37)
   const code = await runCli(process.argv.slice(2), {
     out: line => console.log(line),
     err: line => console.error(line),

@@ -7,20 +7,18 @@ import { v4 as uuidv4 } from 'uuid';
 import { ZipFile } from 'yazl';
 import { buildTestApp, loginAs, loginSession } from './helpers/app.js';
 import { createTestUser, OWNER_ID, seedSourceFile } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
-import { ZipReader } from '../archive/zip-read.js';
-import { documentFingerprint, manifestSchema, type Manifest } from '../archive/manifest.js';
-import { getJobStatus } from '../ingestion/jobs.js';
-import { pairKey } from '../matching/index.js';
-import { exportArchive } from '../archive/export.js';
+import { getStore } from 'spine-core/store/index.js';
+import { ZipReader } from 'spine-core/archive/zip-read.js';
+import { documentFingerprint, manifestSchema, type Manifest } from 'spine-core/archive/manifest.js';
+import { getJobStatus } from 'spine-core/ingestion/jobs.js';
+import { pairKey } from 'spine-core/matching/index.js';
+import { exportArchive } from 'spine-core/archive/export.js';
 
 // A plain zip hands its PDFs to the ordinary upload path, which would read them with a model.
 const mockStartJob = vi.hoisted(() => vi.fn());
-vi.mock('../ingestion/pipeline.js', () => ({ startIngestionJob: mockStartJob, getJobStatus: vi.fn().mockReturnValue(null) }));
+vi.mock('spine-core/ingestion/pipeline.js', () => ({ startIngestionJob: mockStartJob, getJobStatus: vi.fn().mockReturnValue(null) }));
 
-const hasPoppler = (() => {
-  try { execFileSync('pdftoppm', ['-v'], { stdio: 'ignore' }); execFileSync('pdfseparate', ['-v'], { stdio: 'ignore' }); return true; } catch { return false; }
-})();
+import { hasPoppler } from 'spine-core/testing/tools.js';
 
 /** A small valid PDF with one line of text on each page. */
 function makePdf(lines: string[]): Buffer {

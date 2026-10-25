@@ -2,10 +2,10 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { v4 as uuidv4 } from 'uuid';
 import { buildTestApp, loginSession } from './helpers/app.js';
 import { OWNER_ID, seedDocument, seedSourceFile } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
-import { doctorSuggestion, nameSuggestion } from '../matching/similar.js';
-import { openQuestions } from '../matching/index.js';
-import { announceUpload } from '../chat/notices.js';
+import { getStore } from 'spine-core/store/index.js';
+import { doctorSuggestion, nameSuggestion } from 'spine-core/matching/similar.js';
+import { openQuestions } from 'spine-core/matching/index.js';
+import { announceUpload } from 'spine-core/chat/notices.js';
 
 /**
  * Asking the owner whether two entries are the same. What is obvious was merged when the upload was read; what is not is put as a

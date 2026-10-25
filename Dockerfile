@@ -1,18 +1,24 @@
 # The Spine server and the built web app. PDF text is read in-process (pdfjs-dist); there is no second service.
-FROM node:22-bookworm-slim AS build
+# Pinned by digest (the multi-architecture index, 2026-10-25), so a rebuild is the same Node and the same Debian. To move it: read the new digest of
+# node:22-bookworm-slim from the registry (Docker-Content-Digest of its index), put it here, build both images, and run the checks.
+FROM node:22-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d AS build
 # better-sqlite3 compiles when no prebuilt binary fits the platform
 RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY web/package.json web/package-lock.json web/
-RUN cd web && npm ci
-COPY web web
-RUN cd web && npm run build
-COPY server/package.json server/package-lock.json server/
-RUN cd server && npm ci
+# core, server and web are npm workspaces: one lockfile at the root, one install, and core is built before the other two
+COPY package.json package-lock.json ./
+COPY core/package.json core/
+COPY server/package.json server/
+COPY web/package.json web/
+RUN npm ci
+COPY core core
 COPY server server
-RUN cd server && npm run build && npm prune --omit=dev
+COPY web web
+RUN npm run build
+# What the server runs, without the build tools or the web app's own packages (they are in web/dist now)
+RUN rm -rf node_modules && npm ci --omit=dev --workspace spine-server
 
-FROM node:22-bookworm-slim
+FROM node:22-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d
 # poppler: rasterizing and trimming PDFs. tesseract: local OCR (SPINE_PARSER=ocr or hybrid); add a language pack here
 # and to SPINE_OCR_LANGS if you need one.
 RUN apt-get update \
@@ -20,8 +26,10 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/* \
  && mkdir /data /backups && chown node:node /data /backups
 WORKDIR /app
+COPY --from=build /app/node_modules node_modules
+COPY --from=build /app/core/package.json core/
+COPY --from=build /app/core/dist core/dist
 COPY --from=build /app/server/package.json server/
-COPY --from=build /app/server/node_modules server/node_modules
 COPY --from=build /app/server/dist server/dist
 COPY --from=build /app/web/dist web/dist
 # The privacy notice, terms and intended purpose the app serves; mount your own over this or set SPINE_LEGAL_DIR

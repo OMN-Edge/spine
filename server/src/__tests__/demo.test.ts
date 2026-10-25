@@ -2,15 +2,14 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdtempSync, rmSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { execFileSync } from 'child_process';
 import { buildTestApp, loginAs, loginSession } from './helpers/app.js';
 import { createTestUser } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
-import { demoRecords } from '../demo/records.js';
-import { manifestSchema, EXPORT_FORMAT } from '../archive/manifest.js';
+import { getStore } from 'spine-core/store/index.js';
+import { demoRecords } from 'spine-core/demo/records.js';
+import { manifestSchema, EXPORT_FORMAT } from 'spine-core/archive/manifest.js';
 
 const OWNER = 'user-owner';
-const hasPoppler = (() => { try { execFileSync('pdftoppm', ['-v'], { stdio: 'ignore' }); return true; } catch { return false; } })();
+import { hasPoppler } from 'spine-core/testing/tools.js';
 
 process.env.SPINE_DB_PATH = ':memory:';
 let app: Awaited<ReturnType<typeof buildTestApp>>;

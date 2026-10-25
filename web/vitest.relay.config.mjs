@@ -7,6 +7,6 @@ import { coreAliases, corePlugins } from './vite.core.shared.mjs';
  */
 export default defineConfig({
   plugins: corePlugins({ inNode: true }).slice(1),
-  resolve: { alias: coreAliases.filter(a => String(a.find).includes('google-common')) },
+  resolve: { alias: coreAliases.filter(a => /google-common|spine-core/.test(String(a.find))) },
   test: { include: ['src/core/llm.test.ts'] },
 });

@@ -4,8 +4,8 @@ import { AIMessage, AIMessageChunk, type BaseMessage } from '@langchain/core/mes
 import { ChatGenerationChunk, type ChatResult } from '@langchain/core/outputs';
 import { buildTestApp, loginSession } from './helpers/app.js';
 import { OWNER_ID, seedDocument } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
-import { resetChatLlm, type ChatLlm } from '../llm/index.js';
+import { getStore } from 'spine-core/store/index.js';
+import { resetChatLlm, type ChatLlm } from 'spine-core/llm/index.js';
 
 /**
  * Asking with `stream: true`: the reply is JSON lines (steps, pieces of the answer, then the whole reply), and what is kept is

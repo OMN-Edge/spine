@@ -1,4 +1,4 @@
-import { createShareToken, hashShareToken } from './share-token.js';
+import { createShareToken, hashShareToken } from 'spine-core/share-token.js';
 
 /**
  * Verification and reset tokens are capabilities, handled like share tokens:

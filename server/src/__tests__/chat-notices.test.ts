@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import { buildTestApp, loginSession } from './helpers/app.js';
 import { OWNER_ID, createTestUser, seedDocument, seedSourceFile, seedPage, TEST_PASSWORD } from './helpers/seed.js';
-import { ScriptedModel } from './helpers/scripted-model.js';
-import { getStore } from '../store/index.js';
-import { announceUpload } from '../chat/notices.js';
-import { resetChatLlm, type ChatLlm } from '../llm/index.js';
+import { ScriptedModel } from 'spine-core/testing/scripted-model.js';
+import { getStore } from 'spine-core/store/index.js';
+import { announceUpload } from 'spine-core/chat/notices.js';
+import { resetChatLlm, type ChatLlm } from 'spine-core/llm/index.js';
 
 /**
  * The app starts a conversation when an upload has been read, and the owner reviews it by talking: what was read, what looks wrong,
@@ -141,8 +141,8 @@ describe('the two stages of reading an upload (M-29)', () => {
 
   it('confirming reads the documents first and shows them only afterwards; confirming again does not read twice', async () => {
     const upload = await grouped();
-    const { readUpload } = await import('../ingestion/read-upload.js');
-    const { resetChatLlm } = await import('../llm/index.js');
+    const { readUpload } = await import('spine-core/ingestion/read-upload.js');
+    const { resetChatLlm } = await import('spine-core/llm/index.js');
     const read: string[] = [];
     resetChatLlm({
       extractFields: async (text: string) => { read.push(text); return { title: 'Read title', doc_date: '2026-04-01', provider: null, doc_type: 'lab_result', ai_summary: 's', suggested_tags: [], doctors: [], measurements: [], fields: [], language: 'ro' }; },
@@ -168,7 +168,7 @@ describe('the two stages of reading an upload (M-29)', () => {
 
   it('Done while the grouping is not confirmed reads nothing: it marks the documents', async () => {
     const upload = await grouped();
-    const { resetChatLlm } = await import('../llm/index.js');
+    const { resetChatLlm } = await import('spine-core/llm/index.js');
     let called = 0;
     resetChatLlm({ extractFields: async () => { called += 1; return {}; } } as unknown as ChatLlm);
     await getStore().documents.update(OWNER_ID, 'g-a', { needs_reading: false });
@@ -290,7 +290,7 @@ describe('the report of a page analysis goes where it was asked for', () => {
   };
 
   it('is added to the conversation the analysis was asked for in, not a new one', async () => {
-    const { announceRegroup } = await import('../chat/notices.js');
+    const { announceRegroup } = await import('spine-core/chat/notices.js');
     const upload = await analysed();
     const conversation = await asked();
     await announceRegroup(OWNER_ID, upload, conversation);
@@ -301,7 +301,7 @@ describe('the report of a page analysis goes where it was asked for', () => {
   });
 
   it('starts its own conversation when none is named, or the one named is not theirs', async () => {
-    const { announceRegroup } = await import('../chat/notices.js');
+    const { announceRegroup } = await import('spine-core/chat/notices.js');
     const upload = await analysed();
     await announceRegroup(OWNER_ID, upload, null);
     expect(await getStore().conversations.list(OWNER_ID, 50)).toHaveLength(1);
@@ -504,7 +504,7 @@ describe('looking at pages and moving one by talking', () => {
   });
 
   it('is not given to a share recipient’s agent, and is declared read or action', async () => {
-    const { TOOL_KINDS } = await import('../chat/agent.js');
+    const { TOOL_KINDS } = await import('spine-core/chat/agent.js');
     expect(TOOL_KINDS.read_pages).toBe('read');
     expect(TOOL_KINDS.propose_move_page).toBe('action');
   });

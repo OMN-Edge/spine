@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { buildTestApp, loginAs, loginSession } from './helpers/app.js';
 import { OWNER_ID, createTestUser, seedDocument, seedPage, seedSourceFile } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
-import { resetChatLlm, type ChatLlm } from '../llm/index.js';
-import type { LinkCard, LinkJudgement, LinkRelation } from '../llm/types.js';
-import { chainOf, findLinks, linkFromRelation, settleLinking } from '../linking/index.js';
-import type { Document } from '../types.js';
+import { getStore, getAccountsStore } from 'spine-core/store/index.js';
+import { resetChatLlm, type ChatLlm } from 'spine-core/llm/index.js';
+import type { LinkCard, LinkJudgement, LinkRelation } from 'spine-core/llm/types.js';
+import { chainOf, findLinks, linkFromRelation, settleLinking } from 'spine-core/linking/index.js';
+import type { Document } from 'spine-core/types.js';
 
 /**
  * Care chains: who is a candidate (no model), what the model is shown, how its answer becomes links, what the owner's
@@ -126,7 +126,7 @@ describe('candidates', () => {
 
 describe('the model’s answer', () => {
   it('drops a candidate label the model made up, and trims what it keeps', async () => {
-    const { buildChatLlm } = await import('../llm/chat-llm.js');
+    const { buildChatLlm } = await import('spine-core/llm/chat-llm.js');
     const { RunnableLambda } = await import('@langchain/core/runnables');
     const answer = { links: [
       { candidate: ' 1 ', relation: 'same_episode', reason: ' a free-text reason is dropped ' },
@@ -277,7 +277,7 @@ describe('finding links', () => {
 
   it('runs in the background for the documents it is told about', async () => {
     const { consult } = await consultAndLab();
-    const { scheduleLinking } = await import('../linking/index.js');
+    const { scheduleLinking } = await import('spine-core/linking/index.js');
     relation = 'target_requested_candidate';
     scheduleLinking(OWNER_ID, [consult.id]);
     await settleLinking(OWNER_ID);
@@ -400,7 +400,7 @@ describe('reading a document again', () => {
     await seedPage(sf, { pageNumber: 1, rawText: 'Consultatie cardiologie' });
     const d = await seedDocument({ sourceFileId: sf, withPage: false });
     await getStore().documents.update(OWNER_ID, d.id, { user_notes: 'Asked for after the March visit' });
-    const { rereadDocument } = await import('../ingestion/document-reading.js');
+    const { rereadDocument } = await import('spine-core/ingestion/document-reading.js');
     expect(await rereadDocument(OWNER_ID, d.id)).toBe(true);
     expect(seen).toEqual(['Asked for after the March visit']);
     expect((await asDocument(d.id)).user_notes).toBe('Asked for after the March visit');
@@ -426,8 +426,8 @@ describe('deleting', () => {
     const user = await createTestUser('leaving@spine.test');
     const { consult, lab } = await consultAndLab(user.id);
     await getStore().links.add(user.id, { from_document_id: consult.id, to_document_id: lab.id, kind: 'requests', source: 'owner', state: 'confirmed', reason: null }, '2026-07-01T00:00:00Z');
-    await getStore().users.delete(user.id);
-    expect(await getStore().users.findByEmail('leaving@spine.test')).toBeNull();
+    await getAccountsStore().users.delete(user.id);
+    expect(await getAccountsStore().users.findByEmail('leaving@spine.test')).toBeNull();
   });
 });
 
@@ -449,7 +449,7 @@ describe('links that repeat each other', () => {
     for (const [a, b, kind] of [[consult.id, lab.id, 'requests'], [consult.id, second.id, 'requests'], [lab.id, second.id, 'same_episode'], [consult.id, lab.id, 'same_episode']] as const) {
       await store().links.add(OWNER_ID, { from_document_id: a, to_document_id: b, kind, source: 'auto', state: 'confirmed', reason: null }, now);
     }
-    const { chainOf } = await import('../linking/index.js');
+    const { chainOf } = await import('spine-core/linking/index.js');
     const chain = (await chainOf(OWNER_ID, consult.id))!;
     expect(chain.edges.map(e => e.kind).sort()).toEqual(['requests', 'requests']);
     expect(await store().links.all(OWNER_ID)).toHaveLength(4); // reading is not tidying
@@ -468,7 +468,7 @@ describe('links that repeat each other', () => {
     await add(consult.id, second.id, 'follow_up', 'dismissed');
     await add(lab.id, second.id, 'follow_up', 'confirmed', 'owner');
 
-    const { tidyLinks } = await import('../linking/index.js');
+    const { tidyLinks } = await import('spine-core/linking/index.js');
     expect(await tidyLinks(OWNER_ID)).toBe(2); // the pair's weaker kind, and the episode inside the group
     const left = (await store().links.all(OWNER_ID)).map(l => `${l.kind}:${l.state}:${l.source}`).sort();
     expect(left).toEqual(['follow_up:confirmed:owner', 'follow_up:dismissed:auto', 'requests:confirmed:auto', 'requests:confirmed:auto']);

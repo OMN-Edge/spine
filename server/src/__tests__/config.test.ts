@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { loadConfig, ConfigError } from '../config.js';
+import { ConfigError } from 'spine-core/config.js';
+import { loadConfig } from '../config.js';
 
 /**
  * P3 / S-3: `index.ts` read
@@ -68,7 +69,7 @@ describe('loadConfig — bind address', () => {
 
 describe('landingUrl', () => {
   it('is an https address or nothing', async () => {
-    const { landingUrl } = await import('../config.js');
+    const { landingUrl } = await import('spine-core/config.js');
     expect(landingUrl({})).toBeNull();
     expect(landingUrl({ SPINE_LANDING_URL: 'https://spine.example.com' })).toBe('https://spine.example.com/');
     for (const bad of ['http://spine.example.com', 'javascript:alert(1)', 'not a url', '  ']) expect(landingUrl({ SPINE_LANDING_URL: bad })).toBeNull();

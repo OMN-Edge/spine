@@ -3,13 +3,13 @@ import type { FastifyInstance } from 'fastify';
 import { LocalApp } from '../../../web/src/core/local-app.js';
 import { buildTestApp, loginSession } from './helpers/app.js';
 import { OWNER_ID, seedDocument } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
-import { decorateAuth } from '../routes/middleware.js';
-import { tagRoutes } from '../routes/tags.js';
-import { doctorRoutes } from '../routes/doctors.js';
-import { trendRoutes } from '../routes/trends.js';
-import { episodeRoutes } from '../routes/episodes.js';
-import { documentRoutes } from '../routes/documents.js';
+import { getAccountsStore } from 'spine-core/store/index.js';
+import { decorateAuth } from 'spine-core/routes/middleware.js';
+import { tagRoutes } from 'spine-core/routes/tags.js';
+import { doctorRoutes } from 'spine-core/routes/doctors.js';
+import { trendRoutes } from 'spine-core/routes/trends.js';
+import { episodeRoutes } from 'spine-core/routes/episodes.js';
+import { documentRoutes } from 'spine-core/routes/documents.js';
 
 /**
  * The route files answer on the device through `LocalApp` (web/src/core/local-app.ts). This holds that to Fastify: the same requests
@@ -29,8 +29,8 @@ describe('LocalApp answers as Fastify does', () => {
 
     // The device's own sign-in: a row in `user_sessions`, which is what `requireAuth` checks.
     const sid = 'local-session';
-    await getStore().sessions.open(OWNER_ID, { id: sid, at: new Date().toISOString(), userAgent: '', address: '' });
-    const user = (await getStore().users.findById(OWNER_ID))!;
+    await getAccountsStore().sessions.open(OWNER_ID, { id: sid, at: new Date().toISOString(), userAgent: '', address: '' });
+    const user = (await getAccountsStore().users.findById(OWNER_ID))!;
     session = { userId: OWNER_ID, authVersion: user.auth_version, sid, reauthAt: Date.now() };
 
     local = new LocalApp();

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && tsc -p tsconfig.core.json && vite build",
+    "build": "tsc && tsc -p tsconfig.core.json && vite build && node scripts/check-bundle.mjs",
     "preview": "vite preview",
     "test": "vitest run --exclude \"src/core/**\" && vitest run -c vitest.core.config.mjs && vitest run -c vitest.relay.config.mjs",
     "check:browser": "node browser-check/run.mjs",
@@ -25,8 +25,9 @@
     "qrcode": "^1.5.4",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
-    "react-router-dom": "^6.24.0",
+    "react-router-dom": "^7.18.4",
     "scanic": "^1.7.1",
+    "spine-core": "*",
     "tesseract.js": "^7.0.0"
   },
   "devDependencies": {

@@ -1,0 +1,20 @@
+{
+  "name": "spine",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "core",
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "build:core": "npm run build -w spine-core",
+    "build:server": "npm run build:core && npm run build -w spine-server",
+    "build:web": "npm run build:core && npm run build -w spine-web",
+    "build": "npm run build:core && npm run build -w spine-server && npm run build -w spine-web",
+    "test": "npm test -w spine-core && npm test -w spine-server && npm test -w spine-web"
+  }
+}

@@ -12,5 +12,5 @@
     "resolveJsonModule": true
   },
   "include": ["src"],
-  "exclude": ["node_modules", "dist", "src/__tests__/helpers/wasm-driver.ts", "src/__tests__/local-app.test.ts"]
+  "exclude": ["node_modules", "dist", "src/__tests__/local-app.test.ts"]
 }

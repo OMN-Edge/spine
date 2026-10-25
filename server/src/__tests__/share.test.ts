@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { buildTestApp, loginSession } from './helpers/app.js';
 import { seedShareLink, OWNER_ID } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
-import { hashShareToken } from '../share-token.js';
+import { getStore } from 'spine-core/store/index.js';
+import { hashShareToken } from 'spine-core/share-token.js';
 
 let app: Awaited<ReturnType<typeof buildTestApp>>;
 let cookie: string;

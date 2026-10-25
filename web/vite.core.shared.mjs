@@ -3,13 +3,16 @@ import path from 'node:path';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
 /**
- * How the server's code is built for the device (docs/crypto-design.md): Node's modules become the ones in src/core/shims, and the few
- * server files that run a native tool (poppler, tesseract, sharp, ...) are swapped for the file of the same name in src/core/native.
+ * How the shared code (core/src) is built for the device (docs/crypto-design.md): Node's modules become the ones in src/core/shims, and the few
+ * files of it that run a native tool (poppler, tesseract, sharp, ...) are swapped for the file of the same name in src/core/native.
  */
 const here = path.dirname(new URL(import.meta.url).pathname);
 const shims = path.join(here, 'src/core/shims');
 const native = path.join(here, 'src/core/native');
-const server = path.resolve(here, '../server/src');
+const core = path.resolve(here, '../core/src');
+
+/** A package may be installed here or, with the workspaces, at the root. */
+const installed = rel => (fs.existsSync(path.join(here, 'node_modules', rel)) ? path.join(here, 'node_modules', rel) : path.join(here, '../node_modules', rel));
 
 /** Server file -> its replacement on the device. */
 export const REPLACED = {
@@ -28,23 +31,30 @@ const replaceNativeFiles = {
   name: 'spine-device-files',
   enforce: 'pre',
   async resolveId(source, importer) {
-    if (!importer || !source.startsWith('.')) return null;
-    const target = path.resolve(path.dirname(importer), source).replace(/\.js$/, '.ts');
-    const rel = path.relative(server, target);
+    if (!importer) return null;
+    // Reached by a relative path from inside the core, or by name from the device's own code.
+    const target = source.startsWith('.') ? path.resolve(path.dirname(importer), source) : source.startsWith('spine-core/') ? path.join(core, source.slice('spine-core/'.length)) : null;
+    if (!target) return null;
+    const rel = path.relative(core, target.replace(/\.js$/, '.ts'));
     return REPLACED[rel] ? path.join(native, REPLACED[rel]) : null;
   },
 };
 
 export const coreAliases = [
-  { find: /^vite-plugin-node-polyfills\/shims\/(.*)$/, replacement: path.join(here, 'node_modules/vite-plugin-node-polyfills/shims/$1/dist/index.js') },
+  // The shared package is used as its source here, so a change in it needs no build.
+  { find: /^spine-core\/(.*)\.js$/, replacement: `${core}/$1.ts` },
+  { find: /^spine-core\/(.*)$/, replacement: `${core}/$1` },
+  { find: /^vite-plugin-node-polyfills\/shims\/(.*)$/, replacement: path.join(installed('vite-plugin-node-polyfills'), 'shims/$1/dist/index.js') },
   { find: /^(node:)?fs\/promises$/, replacement: path.join(shims, 'fs-promises.ts') },
   { find: /^(node:)?fs$/, replacement: path.join(shims, 'fs.ts') },
   { find: /^(node:)?crypto$/, replacement: path.join(shims, 'crypto.ts') },
   { find: /^(node:)?url$/, replacement: path.join(shims, 'url.ts') },
   { find: /^(node:)?(child_process|module)$/, replacement: path.join(shims, 'empty.ts') },
-  // The one copy of LangChain the server's code uses, so a class made here is the same class there.
-  { find: /^(@langchain\/google-common)$/, replacement: path.join(here, '../server/node_modules/$1') },
+  // The one copy of LangChain the shared code uses, so a class made here is the same class there.
+  { find: /^(@langchain\/google-common)$/, replacement: installed('@langchain/google-common') },
   { find: /^pdfjs-dist\/legacy\/build\/pdf\.mjs$/, replacement: path.join(native, 'pdfjs.ts') },
+  // The real PDF.js, for the file above that wraps it: it cannot ask for it by its own name, which is the one swapped for that file.
+  { find: /^pdfjs-real\/(.*)$/, replacement: `${installed('pdfjs-dist')}/$1` },
   { find: /^(sharp|pdfkit|yauzl|yazl|google-auth-library|@langchain\/google-vertexai|@langchain\/anthropic|better-sqlite3|@node-rs\/argon2)$/, replacement: path.join(shims, 'empty.ts') },
 ];
 
@@ -61,7 +71,7 @@ const coreAliasPlugin = (aliases) => ({
   },
 });
 
-/** Browser versions of the Node modules the server's code imports (buffer, path, stream, ...). */
+/** Browser versions of the Node modules the shared code imports (buffer, path, stream, ...). */
 export const nodeModules = () => nodePolyfills({ include: ['buffer', 'path', 'stream', 'events', 'util', 'os', 'process'], globals: { Buffer: false, process: false, global: false } });
 
 export const corePlugins = ({ inNode = false } = {}) => [
@@ -72,12 +82,12 @@ export const corePlugins = ({ inNode = false } = {}) => [
 
 /** Files the core loads at run time from its own origin (the page's policy allows nothing else): PDF.js's fonts, Tesseract and its languages, DejaVu. */
 const ASSETS = [
-  ['node_modules/pdfjs-dist/standard_fonts', 'pdfjs/standard_fonts'],
-  ['node_modules/tesseract.js/dist/worker.min.js', 'tesseract/worker.min.js'],
-  ['node_modules/tesseract.js-core', 'tesseract/core', /^tesseract-core.*\.(js|wasm)$/],
-  ['node_modules/@tesseract.js-data/eng/4.0.0_best_int/eng.traineddata.gz', 'tesseract/lang/eng.traineddata.gz'],
-  ['node_modules/@tesseract.js-data/ron/4.0.0_best_int/ron.traineddata.gz', 'tesseract/lang/ron.traineddata.gz'],
-  ['node_modules/dejavu-fonts-ttf/ttf/DejaVuSans.ttf', 'fonts/DejaVuSans.ttf'],
+  ['pdfjs-dist/standard_fonts', 'pdfjs/standard_fonts'],
+  ['tesseract.js/dist/worker.min.js', 'tesseract/worker.min.js'],
+  ['tesseract.js-core', 'tesseract/core', /^tesseract-core.*\.(js|wasm)$/],
+  ['@tesseract.js-data/eng/4.0.0_best_int/eng.traineddata.gz', 'tesseract/lang/eng.traineddata.gz'],
+  ['@tesseract.js-data/ron/4.0.0_best_int/ron.traineddata.gz', 'tesseract/lang/ron.traineddata.gz'],
+  ['dejavu-fonts-ttf/ttf/DejaVuSans.ttf', 'fonts/DejaVuSans.ttf'],
 ];
 
 export const coreAssets = () => ({
@@ -88,7 +98,7 @@ export const coreAssets = () => ({
       const url = decodeURIComponent((req.url ?? '').split('?')[0]).replace(/^\//, '');
       for (const [from, to, only] of ASSETS) {
         if (!url.startsWith(to)) continue;
-        const source = path.join(here, from, url.slice(to.length));
+        const source = path.join(installed(from), url.slice(to.length));
         const file = fs.existsSync(source) && fs.statSync(source).isFile() ? source : null;
         if (file && (!only || only.test(path.basename(file)))) {
           res.setHeader('content-type', file.endsWith('.wasm') ? 'application/wasm' : file.endsWith('.js') ? 'text/javascript' : 'application/octet-stream');
@@ -101,7 +111,7 @@ export const coreAssets = () => ({
   writeBundle(options) {
     const out = options.dir;
     for (const [from, to, only] of ASSETS) {
-      const source = path.join(here, from);
+      const source = installed(from);
       const target = path.join(out, to);
       fs.mkdirSync(path.dirname(target), { recursive: true });
       if (fs.statSync(source).isDirectory()) {

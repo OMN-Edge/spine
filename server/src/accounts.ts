@@ -3,8 +3,8 @@ import { removeShare } from './shared-files.js';
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { publicUrl, resolveBackupDir, resolveDataDir } from './config.js';
-import { getStore, type UserTokenKind } from './store/index.js';
+import { publicUrl, resolveBackupDir, resolveDataDir } from 'spine-core/config.js';
+import { type UserTokenKind, getAccountsStore } from 'spine-core/store/index.js';
 import { createUserToken, hashUserToken } from './user-tokens.js';
 import type { MailMessage } from './mail/index.js';
 
@@ -25,7 +25,7 @@ export async function issueUserToken(
   kind: UserTokenKind,
   ttlMs: number,
 ): Promise<string> {
-  const store = getStore();
+  const store = getAccountsStore();
   await store.users.invalidateTokens(userId, kind);
 
   const token = createUserToken();
@@ -101,7 +101,7 @@ export interface DeletedAccount {
  * so the CLI can show it before asking for confirmation.
  */
 export async function describeAccount(userId: string): Promise<DeletedAccount> {
-  const objects = await getStore().vault.list(userId, 0);
+  const objects = await getAccountsStore().vault.list(userId, 0);
   return { objects: objects.filter(o => !o.deleted).length };
 }
 
@@ -116,7 +116,7 @@ export async function describeAccount(userId: string): Promise<DeletedAccount> {
  * nothing refers to.
  */
 export async function deleteAccount(userId: string): Promise<DeletedAccount> {
-  const store = getStore();
+  const store = getAccountsStore();
   const summary = await describeAccount(userId);
   const dataDir = resolveDataDir();
 

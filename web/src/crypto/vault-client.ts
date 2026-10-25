@@ -1,3 +1,4 @@
+import { observeServerClock } from 'spine-core/store/sync';
 import { sodium } from './sodium.js';
 import {
   createAccountKeys, deriveFromPassword, lock, newId, newProfileKey, openObject, openObjectNow, openProfileKey, openProfileRecord, sealObject, sealProfileRecord,
@@ -46,7 +47,13 @@ export class VaultFullError extends Error {
 type Fetch = typeof fetch;
 
 /** `fetch` called on its own: kept as a field and called as `this.f(...)` the browser refuses it ("Illegal invocation"), so it is wrapped. */
-const defaultFetch: Fetch = (input, init) => fetch(input, init);
+const defaultFetch: Fetch = async (input, init) => {
+  const sent = Date.now();
+  const res = await fetch(input, init);
+  // Every device sees the same server clock, and changes are stamped on it (see `observeServerClock`), so a wrong clock here does not decide a conflict.
+  observeServerClock(res.headers.get('date'), sent, Date.now());
+  return res;
+};
 
 async function fail(res: Response): Promise<never> {
   const body = (await res.json().catch(() => ({}))) as { error?: string; code?: string };

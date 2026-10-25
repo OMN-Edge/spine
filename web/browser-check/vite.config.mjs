@@ -6,5 +6,9 @@ export default defineConfig({
   root: import.meta.dirname,
   plugins: [...corePlugins(), coreAssets()],
   define: { 'process.env': 'globalThis.process.env' },
-  build: { outDir: 'dist', emptyOutDir: true, minify: false, target: 'es2022', rollupOptions: { shimMissingExports: true, onwarn() {} } },
+  build: { outDir: 'dist', emptyOutDir: true, minify: false, target: 'es2022', rollupOptions: {
+      // Every other warning is shown (a missing export is a break, not noise); zod's comments about tree shaking are the one known harmless kind.
+      onwarn(warning, warn) { if (warning.code !== 'INVALID_ANNOTATION') warn(warning); },
+      output: { inlineDynamicImports: true },  // one file: see worker in ../vite.config.ts
+    } },
 });

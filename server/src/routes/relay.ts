@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { requireAuth } from './middleware.js';
+import { requireAuth } from 'spine-core/routes/middleware.js';
 import { getMailer } from '../mail/index.js';
 import { issueToken, MIN_SECRET_LENGTH } from '../relay/token.js';
 

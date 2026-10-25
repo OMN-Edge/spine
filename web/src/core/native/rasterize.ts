@@ -1,9 +1,9 @@
 import fs from 'fs';
 import path from 'path';
-import { resolveDataDir } from '../../../../server/src/config';
+import { resolveDataDir } from 'spine-core/config';
 import { getDocument } from './pdfjs';
 
-/** Same contract as server/src/ingestion/rasterize.ts: each page of the PDF as a 200 DPI PNG under `<data>/pages/<id>/page-N.png`. */
+/** Same contract as core/src/ingestion/rasterize.ts: each page of the PDF as a 200 DPI PNG under `<data>/pages/<id>/page-N.png`. */
 const SCALE = 200 / 72;
 
 export async function rasterizePdf(sourceFileId: string, filePath: string): Promise<Array<{ page_number: number; image_path: string }>> {

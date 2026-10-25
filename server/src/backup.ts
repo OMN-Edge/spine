@@ -1,7 +1,8 @@
 import { existsSync, mkdirSync, readdirSync, statSync, copyFileSync, rmSync, utimesSync } from 'fs';
 import path from 'path';
-import { getStore } from './store/index.js';
-import { resolveBackupDir, resolveDataDir } from './config.js';
+import { getAccountsStore } from 'spine-core/store/index.js';
+import { resolveBackupDir, resolveDataDir } from 'spine-core/config.js';
+import { useAccountsStore } from './store.js';
 
 /**
  * SECURITY.md P11: `data/spine.db` and `data/originals/` must be restorable.
@@ -147,7 +148,7 @@ export async function runBackup({
 
   // How the snapshot is taken is the adapter's business (VACUUM INTO for
   // SQLite); this file only decides where it goes and what to keep.
-  await getStore().maintenance.snapshotTo(snapshot);
+  await getAccountsStore().maintenance.snapshotTo(snapshot);
 
   const originalsCopied = mirrorTree(
     path.join(dataDir, 'originals'),
@@ -163,7 +164,7 @@ export async function runBackup({
 
 /** CLI entry point: `node dist/backup.js`, run by spine-backup.service. */
 async function main(): Promise<void> {
-  process.env.SPINE_STORE_SCOPE = 'accounts';
+  useAccountsStore();
   const dataDir = resolveDataDir();
   const backupDir = resolveBackupDir();
   const keep = Number(process.env.SPINE_BACKUP_KEEP ?? 7);

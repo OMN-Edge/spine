@@ -3,25 +3,25 @@ import { LocalApp, type InjectRequest, type InjectResponse } from './local-app';
 import { WasmDatabase } from './sqlite-wasm';
 import { ready as hashingReady } from './shims/crypto';
 import { memory } from './shims/fs';
-import accountsSchema from '../../../server/src/store/sqlite/schema-accounts.sql?raw';
-import recordsSchema from '../../../server/src/store/sqlite/schema-records.sql?raw';
+import accountsSchema from 'spine-core/store/sqlite/schema-accounts.sql?raw';
+import recordsSchema from 'spine-core/store/sqlite/schema-records.sql?raw';
 
 const schema = `${accountsSchema}\n${recordsSchema}`;
-import { createSqliteStoreWith } from '../../../server/src/store/sqlite/store';
-import { resetStore } from '../../../server/src/store/index';
-import type { Change } from '../../../server/src/store/types';
-import { publicShareRoutes } from '../../../server/src/routes/public-share';
+import { createDeviceStore } from 'spine-core/store/sqlite/browser';
+import { resetStore } from 'spine-core/store/index';
+import type { Change } from 'spine-core/store/types';
+import { publicShareRoutes } from 'spine-core/routes/public-share';
 import { openPart, openPartNow } from './share/keys';
 import { useTokenUrl } from './native/relay-auth';
-import { useRelayHooks } from '../../../server/src/llm/adapters/relay';
+import { useRelayHooks } from 'spine-core/llm/adapters/relay';
 import { relayFetch, relayToken } from './native/relay-auth';
 
 /**
  * The core for someone reading a share: the sealed copy is fetched, opened with the key from the link, and the same route files that
  * served a recipient from the server answer from it, in this browser. Nothing is signed in: possession of the key is the access, and
- * the copy holds only what the link shares (server/src/store/sqlite/slice.ts).
+ * the copy holds only what the link shares (core/src/store/sqlite/slice.ts).
  */
-export interface ShareCore { inject(request: InjectRequest): Promise<InjectResponse>; lock(): void }
+export interface ShareCore { inject(request: InjectRequest): Promise<InjectResponse>; lock(): void; /** A share is read-only: nothing to save. */ close(force?: boolean): Promise<void> }
 
 export async function startShareCore(shareId: string, key: string): Promise<ShareCore> {
   await hashingReady();
@@ -54,7 +54,7 @@ export async function startShareCore(shareId: string, key: string): Promise<Shar
   useRelayHooks({ tokenProvider: relayToken, fetchImpl: relayFetch });
 
   const db = new WasmDatabase();
-  const store = createSqliteStoreWith({ adapter: 'sqlite', location: ':memory:' }, () => db, schema);
+  const store = createDeviceStore(() => db, schema);
   resetStore(store);
   // Nobody is signed in here; the copy's rows name the owner, who needs a row to be found by.
   const now = new Date().toISOString();
@@ -63,8 +63,10 @@ export async function startShareCore(shareId: string, key: string): Promise<Shar
 
   const local = new LocalApp();
   await (publicShareRoutes as unknown as (app: FastifyInstance, options?: object) => Promise<void>)(local as unknown as FastifyInstance, {});
+  const lock = () => { memory.useLoader(null); memory.clear(); db.close(); resetStore(null); };
   return {
     inject: request => local.inject(request),
-    lock() { memory.useLoader(null); memory.clear(); db.close(); resetStore(null); },
+    lock,
+    async close() { lock(); },
   };
 }

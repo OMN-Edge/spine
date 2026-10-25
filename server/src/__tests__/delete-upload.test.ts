@@ -5,10 +5,10 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { buildTestApp, loginAs } from './helpers/app.js';
 import { OWNER_ID, createTestUser, seedDocument, seedSourceFile } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
+import { getStore } from 'spine-core/store/index.js';
 
 const mockGetJobStatus = vi.hoisted(() => vi.fn().mockReturnValue(null));
-vi.mock('../ingestion/pipeline.js', () => ({
+vi.mock('spine-core/ingestion/pipeline.js', () => ({
   startIngestionJob: vi.fn(),
   getJobStatus: mockGetJobStatus,
   reconcileStalledJobs: vi.fn().mockResolvedValue(0),

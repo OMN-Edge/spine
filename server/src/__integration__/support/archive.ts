@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { getStore } from '../../store/index.js';
+import { getStore } from 'spine-core/store/index.js';
 import { OWNER_ID, seedDocument } from '../../__tests__/helpers/seed.js';
 
 /**

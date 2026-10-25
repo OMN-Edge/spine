@@ -2,7 +2,7 @@ import { beforeAll, expect, it } from 'vitest';
 import { describeLive } from './support/live.js';
 import { seedYear } from './support/archive.js';
 import { OWNER_ID, ask, startWorld, type World } from './support/world.js';
-import { getStore } from '../store/index.js';
+import { getStore } from 'spine-core/store/index.js';
 
 /**
  * Asking the assistant about the records, with the real model deciding what to look up. Asserted: the facts in the records come back, the

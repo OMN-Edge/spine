@@ -17,10 +17,13 @@ import { vaultRoutes } from './routes/vault.js';
 import { relayRoutes } from './routes/relay.js';
 import { trustAnchorRoutes } from './routes/trust-anchors.js';
 import { sharedRoutes, shareShellRoutes, sweepShares } from './routes/shared.js';
-import { decorateAuth } from './routes/middleware.js';
-import { getStore } from './store/index.js';
-import { loadConfig, ConfigError, sessionLimits, type Config } from './config.js';
-import { useLogger } from './logger.js';
+import { decorateAuth } from 'spine-core/routes/middleware.js';
+import { getAccountsStore } from 'spine-core/store/index.js';
+import { ConfigError } from 'spine-core/config.js';
+import { loadConfig, sessionLimits, type Config } from './config.js';
+import { useLogger } from 'spine-core/logger.js';
+import { useAccountsStore } from './store.js';
+import { useSessionAuth } from './session-auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -37,8 +40,9 @@ function loadConfigOrExit(): Config {
   }
 }
 
-// The server keeps accounts, the vault and sealed shares, and no table for a record (SECURITY.md M-37). Set before the store is first read.
-process.env.SPINE_STORE_SCOPE = 'accounts';
+// The server keeps accounts, the vault and sealed shares, and no table for a record (SECURITY.md M-37).
+useAccountsStore();
+useSessionAuth();
 
 const config = loadConfigOrExit();
 
@@ -123,9 +127,9 @@ app.setNotFoundHandler(async (_req, reply) => {
 
 // Open the store on startup so a bad path or a schema problem stops the
 // process here rather than on the first request.
-let accounts: Awaited<ReturnType<ReturnType<typeof getStore>['users']['list']>>;
+let accounts: Awaited<ReturnType<ReturnType<typeof getAccountsStore>['users']['list']>>;
 try {
-  accounts = await getStore().users.list();
+  accounts = await getAccountsStore().users.list();
 } catch (err) {
   // e.g. a database from before multi-user: the message says what to do.
   console.error(`Refusing to start — ${err instanceof Error ? err.message : String(err)}`);
@@ -136,7 +140,9 @@ if (accounts.length === 0) {
 }
 
 // Sealed shares that have ended are deleted: at start, and hourly.
-await sweepShares().catch(() => undefined);
-setInterval(() => void sweepShares().catch(() => undefined), 60 * 60 * 1000).unref();
+// A failure leaves an ended share's sealed bytes on disk longer than it should be, so it is said, not swallowed.
+const sweep = () => sweepShares().catch(err => app.log.error({ err: err instanceof Error ? err.message : String(err) }, 'removing ended shares failed'));
+await sweep();
+setInterval(() => void sweep(), 60 * 60 * 1000).unref();
 
 await app.listen({ port: config.port, host: config.host });

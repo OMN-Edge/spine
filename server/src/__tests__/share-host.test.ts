@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { buildTestApp, loginSession } from './helpers/app.js';
 import { OWNER_ID, seedDocument } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
-import { useShareHost, type ShareHost, type PublishInput } from '../share-host.js';
+import { getStore } from 'spine-core/store/index.js';
+import { useShareHost, type ShareHost, type PublishInput } from 'spine-core/share-host.js';
 
 /**
  * The share routes with a device behind them: what they ask it to do, in what order, and what they say when it fails. The device's own

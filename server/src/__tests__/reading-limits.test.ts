@@ -2,10 +2,10 @@ import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } 
 import { v4 as uuidv4 } from 'uuid';
 import { buildTestApp } from './helpers/app.js';
 import { seedPage, seedSourceFile, OWNER_ID } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
-import { chunkPages, mergeExtractions, readDocument } from '../ingestion/document-reading.js';
-import { EXTRACTION_FALLBACK } from '../llm/types.js';
-import type { PageSummary } from '../store/index.js';
+import { getStore } from 'spine-core/store/index.js';
+import { chunkPages, mergeExtractions, readDocument } from 'spine-core/ingestion/document-reading.js';
+import { EXTRACTION_FALLBACK } from 'spine-core/llm/types.js';
+import type { PageSummary } from 'spine-core/store/index.js';
 
 /**
  * What the model sees of a document, and where its answers land. The one cap on text is the
@@ -13,7 +13,7 @@ import type { PageSummary } from '../store/index.js';
  * right page even for a document that starts after page 1.
  */
 const mockExtractFields = vi.hoisted(() => vi.fn());
-vi.mock('../ingestion/extraction.js', () => ({ extractFields: mockExtractFields }));
+vi.mock('spine-core/ingestion/extraction.js', () => ({ extractFields: mockExtractFields }));
 
 let app: Awaited<ReturnType<typeof buildTestApp>>;
 const savedBudget = process.env.SPINE_LLM_CONTEXT_CHARS;
@@ -180,7 +180,7 @@ describe('documents are read in parallel, bounded by the concurrency setting', (
     process.env.SPINE_LLM_CONCURRENCY = '3';
     const ids = await documents(9);
     const peak = slowModel();
-    const { rereadDocuments } = await import('../ingestion/document-reading.js');
+    const { rereadDocuments } = await import('spine-core/ingestion/document-reading.js');
 
     const worked = await rereadDocuments(OWNER_ID, ids);
 
@@ -193,7 +193,7 @@ describe('documents are read in parallel, bounded by the concurrency setting', (
     process.env.SPINE_LLM_CONCURRENCY = '1';
     const ids = await documents(4);
     const peak = slowModel();
-    const { rereadDocuments } = await import('../ingestion/document-reading.js');
+    const { rereadDocuments } = await import('spine-core/ingestion/document-reading.js');
     await rereadDocuments(OWNER_ID, ids);
     expect(peak()).toBe(1);
   });
@@ -204,7 +204,7 @@ describe('documents are read in parallel, bounded by the concurrency setting', (
       if (text.includes('text 2')) throw new Error('down for this one');
       return extraction('Again');
     });
-    const { rereadDocuments } = await import('../ingestion/document-reading.js');
+    const { rereadDocuments } = await import('spine-core/ingestion/document-reading.js');
     expect(await rereadDocuments(OWNER_ID, ids)).toEqual([true, false, true]);
     expect((await getStore().documents.findFor(OWNER_ID, ids[1]))!.title).toBe('Doc 2');
   });

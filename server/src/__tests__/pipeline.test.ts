@@ -11,26 +11,26 @@ const mockParseDocument = vi.hoisted(() => vi.fn());
 const mockCheckContinuation = vi.hoisted(() => vi.fn());
 const mockExtractFields = vi.hoisted(() => vi.fn());
 
-vi.mock('../ingestion/rasterize.js', () => ({
+vi.mock('spine-core/ingestion/rasterize.js', () => ({
   rasterizePdf: mockRasterizePdf,
 }));
-vi.mock('../ingestion/image-size.js', () => ({
+vi.mock('spine-core/ingestion/image-size.js', () => ({
   getPageImageDimensions: mockGetPageImageDimensions,
 }));
-vi.mock('../ingestion/pdf-text.js', () => ({
+vi.mock('spine-core/ingestion/pdf-text.js', () => ({
   parseDocument: mockParseDocument,
 }));
-vi.mock('../ingestion/continuation.js', () => ({
+vi.mock('spine-core/ingestion/continuation.js', () => ({
   checkContinuation: mockCheckContinuation,
 }));
-vi.mock('../ingestion/extraction.js', () => ({
+vi.mock('spine-core/ingestion/extraction.js', () => ({
   extractFields: mockExtractFields,
 }));
 
-import { startIngestionJob, getJobStatus } from '../ingestion/pipeline.js';
-import { readUpload } from '../ingestion/read-upload.js';
-import { getStore } from '../store/index.js';
-import { resetParser } from '../parser/index.js';
+import { startIngestionJob, getJobStatus } from 'spine-core/ingestion/pipeline.js';
+import { readUpload } from 'spine-core/ingestion/read-upload.js';
+import { getStore } from 'spine-core/store/index.js';
+import { resetParser } from 'spine-core/parser/index.js';
 import { seedSourceFile, createTestUser, OWNER_ID } from './helpers/seed.js';
 
 // Helpers

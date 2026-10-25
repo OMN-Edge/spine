@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { openDatabase } from '../store/sqlite/connection.js';
-import { openNative } from '../store/sqlite/driver-native.js';
-import { usageRepository } from '../store/sqlite/usage.js';
+import { openDatabase } from 'spine-core/store/sqlite/connection.js';
+import { openNative } from 'spine-core/store/sqlite/driver-native.js';
+import { usageRepository } from 'spine-core/store/sqlite/usage.js';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { readFileSync } from 'node:fs';
 import { HumanMessage, mapChatMessagesToStoredMessages } from '@langchain/core/messages';
-import { LlmBlockedError } from '../llm/types.js';
+import { LlmBlockedError } from 'spine-core/llm/types.js';
 import { standInClients, type StandInCall } from '../relay/stand-in.js';
-import type { TaskClients } from '../llm/tasks.js';
+import type { TaskClients } from 'spine-core/llm/tasks.js';
 import { createRelay } from '../relay/relay.js';
 import { issueToken, verifyToken } from '../relay/token.js';
 
@@ -47,7 +47,7 @@ describe('the relay', () => {
     calls = stand.calls;
     const clients: TaskClients = { ...stand.clients, translation: { invoke: async () => { throw new LlmBlockedError('Prompt blocked: SAFETY'); } } as never };
     const handle = createRelay({
-      secret: SECRET, allowedOrigin: 'https://app.example', get dailyCalls() { return limit; }, maxBodyBytes: 2000, usage: usageRepository(openDatabase(':memory:', openNative)),
+      secret: SECRET, allowedOrigin: 'https://app.example', get dailyCalls() { return limit; }, maxBodyBytes: 2000, usage: usageRepository(openDatabase(':memory:', openNative, undefined, 'accounts')),
       clients: model => (model === undefined || model === MODEL ? clients : null),
       embedder: () => ({ enabled: true, id: 'test:3', dims: 3, embed: async texts => texts.map(() => Float32Array.from([1, 0, 0])) }),
       log: l => logs.push(l), now: () => clock,
@@ -141,7 +141,7 @@ describe('the relay', () => {
   it('stores nothing but a count: no files, no repository but `usage` (a number a day), no log of bodies', () => {
     const source = readFileSync(new URL('../relay/relay.ts', import.meta.url), 'utf8');
     const imports = [...source.matchAll(/from '([^']+)'/g)].map(m => m[1]);
-    expect(imports.sort()).toEqual(['../embedding/types.js', '../llm/tasks.js', '../llm/types.js', '../store/types.js', './protocol.js', './token.js', '@langchain/core/language_models/chat_models', '@langchain/core/messages', 'node:http']);
-    expect(source).toContain("import type { UsageRepository } from '../store/types.js'"); // a type only: the relay is given the repository, it opens no store
+    expect(imports.sort()).toEqual(['./token.js', '@langchain/core/language_models/chat_models', '@langchain/core/messages', 'node:http', 'spine-core/embedding/types.js', 'spine-core/llm/tasks.js', 'spine-core/llm/types.js', 'spine-core/relay/protocol.js', 'spine-core/store/types.js']);
+    expect(source).toContain("import type { UsageRepository } from 'spine-core/store/types.js'"); // a type only: the relay is given the repository, it opens no store
   });
 });

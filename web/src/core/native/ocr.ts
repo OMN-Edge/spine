@@ -1,12 +1,12 @@
 import fs from 'fs';
 import { createWorker, type Worker } from 'tesseract.js';
-import { parseTesseractTsv, type OcrReading } from '../../../../server/src/parser/ocr-reading';
+import { parseTesseractTsv, type OcrReading } from 'spine-core/parser/ocr-reading';
 
-export * from '../../../../server/src/parser/ocr-reading';
+export * from 'spine-core/parser/ocr-reading';
 
 /**
  * Local OCR on the device: Tesseract compiled to WebAssembly (tesseract.js), with its worker, core and language data served from this
- * origin because the page's content security policy allows nothing else. Same contract as server/src/parser/ocr.ts: lines with boxes in
+ * origin because the page's content security policy allows nothing else. Same contract as core/src/parser/ocr.ts: lines with boxes in
  * the image's own pixels, and the confidence figures that decide whether to keep the reading.
  */
 const BASE = `${import.meta.env?.BASE_URL ?? '/'}tesseract`;

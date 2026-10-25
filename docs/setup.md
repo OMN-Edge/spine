@@ -197,7 +197,7 @@ sudo systemctl start spine-backup                             # a backup now, in
 ```
 
 - **Test a restore once**, before you need one: [SECURITY.md, Operational response](../SECURITY.md#operational-response).
-- **Do not load real documents and then update across a schema change** other than a new column with a default, which is added when the database is opened. There is no migration runner yet, and an older-shaped database is refused at startup (it tells you how many records it holds). Look at the history of `server/src/store/sqlite/the schema files` for changes before updating, and take a backup first.
+- **Do not load real documents and then update across a schema change** other than a new column with a default, which is added when the database is opened. There is no migration runner yet, and an older-shaped database is refused at startup (it tells you how many records it holds). Look at the history of `core/src/store/sqlite/the schema files` for changes before updating, and take a backup first.
 - `sudo systemctl status` for any unit, and `npm run cli -- list-users` to see accounts.
 
 ## When it will not start

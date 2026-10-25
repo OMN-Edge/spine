@@ -1,5 +1,5 @@
-import { getStore, type UserRecord } from './store/index.js';
-import { logger } from './logger.js';
+import { type UserRecord, getAccountsStore } from 'spine-core/store/index.js';
+import { logger } from 'spine-core/logger.js';
 import {
   RECOVERY_CODE_COUNT,
   decryptSecret,
@@ -12,7 +12,7 @@ import {
 
 /** Whether this user must present a second factor to sign in. */
 export async function hasSecondFactor(userId: string): Promise<boolean> {
-  return (await getStore().users.getTotp(userId))?.confirmed_at != null;
+  return (await getAccountsStore().users.getTotp(userId))?.confirmed_at != null;
 }
 
 /**
@@ -21,7 +21,7 @@ export async function hasSecondFactor(userId: string): Promise<boolean> {
  * requests at once.
  */
 export async function checkSecondFactor(user: Pick<UserRecord, 'id'>, input: string, now = Date.now()): Promise<boolean> {
-  const store = getStore();
+  const store = getAccountsStore();
   const totp = await store.users.getTotp(user.id);
   if (!totp?.confirmed_at) return false;
 

@@ -2,12 +2,12 @@ import { expect, it } from 'vitest';
 import { describeLive } from './support/live.js';
 import { CONSULTATION, DISCHARGE, FACTS, LAB_REPORT } from './support/fixtures.js';
 import { OWNER_ID } from './support/world.js';
-import { getChatLlm } from '../llm/index.js';
-import { getStore } from '../store/index.js';
+import { getChatLlm } from 'spine-core/llm/index.js';
+import { getStore } from 'spine-core/store/index.js';
 import { buildTestApp } from '../__tests__/helpers/app.js';
 import { seedDocument } from '../__tests__/helpers/seed.js';
-import { findLinks } from '../linking/index.js';
-import { translateDocument } from '../translation.js';
+import { findLinks } from 'spine-core/linking/index.js';
+import { translateDocument } from 'spine-core/translation.js';
 
 /**
  * The calls the pipeline makes to the model, one at a time with the real model: is this page the next of that document, what is in this

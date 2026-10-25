@@ -7,7 +7,7 @@
       "node"
     ],
     "typeRoots": [
-      "../server/node_modules/@types",
+      "../node_modules/@types",
       "./node_modules/@types"
     ],
     "skipLibCheck": true,
@@ -17,26 +17,26 @@
       "DOM.Iterable",
       "WebWorker"
     ],
-    "baseUrl": ".",
     "paths": {
-      "fastify": [
-        "../server/node_modules/fastify/fastify.d.ts"
+      "spine-core/*": [
+        "../core/src/*"
       ],
-      "@langchain/google-common": [
-        "../server/node_modules/@langchain/google-common/dist/index.d.ts"
+      "pdfjs-real/*": [
+        "./node_modules/pdfjs-dist/*",
+        "../node_modules/pdfjs-dist/*"
       ]
     }
   },
   "include": [
     "src/core/**/*.ts",
-    "../server/src/**/*.ts"
+    "src/build/**/*.ts",
+    "../core/src/**/*.ts"
   ],
   "exclude": [
-    "../server/src/__tests__",
-    "../server/src/__integration__",
-    "../server/src/**/*.test.ts",
+    "../core/src/__tests__",
+    "../core/src/testing",
+    "../core/src/**/*.test.ts",
     "src/e2e",
-    "../server/src/relay",
     "src/core/llm.test.ts"
   ]
 }

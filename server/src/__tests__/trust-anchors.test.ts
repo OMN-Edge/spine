@@ -5,9 +5,9 @@ import path from 'path';
 import Fastify from 'fastify';
 import { loadTrustAnchors, trustAnchorsDir } from '../trust-anchors.js';
 import { trustAnchorRoutes } from '../routes/trust-anchors.js';
-import { readSigners } from '../ingestion/signatures-cms.js';
+import { readSigners } from 'spine-core/ingestion/signatures-cms.js';
 
-const fixture = (name: string) => new Uint8Array(readFileSync(path.join(__dirname, 'fixtures', name)));
+const fixture = (name: string) => new Uint8Array(readFileSync(path.join(__dirname, '../../../core/src/__tests__/fixtures', name)));
 const pem = (der: Uint8Array) => `-----BEGIN CERTIFICATE-----\n${Buffer.from(der).toString('base64').replace(/(.{64})/g, '$1\n')}\n-----END CERTIFICATE-----\n`;
 
 describe('trust anchors', () => {

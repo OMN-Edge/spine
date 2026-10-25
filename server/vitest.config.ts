@@ -1,9 +1,22 @@
 import { defineConfig } from 'vitest/config';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const core = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../core/src');
 
 export default defineConfig({
+  // The tests run against the core's source, so a change there needs no build; the built server reaches the same files as `spine-core`.
+  resolve: {
+    alias: [
+      { find: /^spine-core\/(.*)\.js$/, replacement: `${core}/$1.ts` },
+      { find: /^spine-core\/(.*)$/, replacement: `${core}/$1` },
+    ],
+  },
   test: {
     globals: true,
     environment: 'node',
+    // The tests run the routes the device runs: the first store a test opens holds records. `test:accounts` runs the server's own instead.
+    setupFiles: ['../core/src/testing/use-records-store.ts'],
     // Set here, not in test files: the store captures SPINE_DB_PATH at module load,
     // and ESM hoists imports above any top-level assignment a test makes. Tests
     // that set this themselves silently wrote to the real data/spine.db.

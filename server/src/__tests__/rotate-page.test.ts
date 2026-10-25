@@ -6,8 +6,8 @@ import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
 import { buildTestApp, loginAs, loginSession } from './helpers/app.js';
 import { createTestUser, seedDocument, seedSourceFile } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
-import { rotateBox } from '../geometry.js';
+import { getStore } from 'spine-core/store/index.js';
+import { rotateBox } from 'spine-core/geometry.js';
 
 const OWNER = 'user-owner';
 let app: Awaited<ReturnType<typeof buildTestApp>>;

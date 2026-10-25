@@ -54,7 +54,10 @@ async function start(opening: Uint8Array | { prf: Uint8Array; credentialId: stri
       remove: (id, seq) => s.remove(id, seq),
       list: since => s.list(since),
     },
-  }, { onChanged: () => (self as unknown as Worker).postMessage({ id: 0, changed: true } satisfies FromWorker) });
+  }, {
+    onChanged: () => (self as unknown as Worker).postMessage({ id: 0, changed: true } satisfies FromWorker),
+    onSaveState: state => (self as unknown as Worker).postMessage({ id: 0, save: state } satisfies FromWorker),
+  });
   trace('ready');
 }
 
@@ -75,10 +78,13 @@ self.onmessage = async (event: MessageEvent<ToWorker>) => {
       core = await startShareCore(m.shareId, m.key);
       reply({ id: m.id, ok: true });
     } else if (m.type === 'lock') {
-      if (core && 'flush' in core) await core.flush().catch(() => undefined);
-      core?.lock();
+      // Refuses (code `unsaved`) rather than dropping what could not be saved; the page asks the person, and may say `force`.
+      await core?.close(m.force);
       await session?.close();
       core = null; session = null;
+      reply({ id: m.id, ok: true });
+    } else if (m.type === 'save') {
+      if (core && 'flush' in core) await core.flush();
       reply({ id: m.id, ok: true });
     } else if (m.type === 'abort') {
       streaming.get(m.target)?.();

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { buildTestApp, loginAs } from './helpers/app.js';
 import { OWNER_EMAIL, TEST_PASSWORD, createTestUser } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
+import { getAccountsStore } from 'spine-core/store/index.js';
 import { resetMailer, type Mailer, type MailMessage } from '../mail/index.js';
 import { hashUserToken } from '../user-tokens.js';
 import { issueUserToken } from '../accounts.js';
@@ -80,7 +80,7 @@ describe('POST /api/auth/register', () => {
     expect(sent[0].to).toBe('new@example.com');
     expect(sent[0].text).toContain('/verify#');
 
-    const user = await getStore().users.findByEmail('new@example.com');
+    const user = await getAccountsStore().users.findByEmail('new@example.com');
     expect(user?.email_verified_at).toBeNull();
     expect(user?.password_hash).toMatch(/^\$argon2id\$/);
   });
@@ -100,7 +100,7 @@ describe('POST /api/auth/register', () => {
   it('does not change the password of an account that already exists', async () => {
     await post('/api/auth/register', { email: OWNER_EMAIL, password: NEW_PASSWORD, ...CONSENT });
 
-    const user = await getStore().users.findByEmail(OWNER_EMAIL);
+    const user = await getAccountsStore().users.findByEmail(OWNER_EMAIL);
     expect(await verifyPassword(user!.password_hash, TEST_PASSWORD)).toBe(true);
     expect(await verifyPassword(user!.password_hash, NEW_PASSWORD)).toBe(false);
   });
@@ -110,7 +110,7 @@ describe('POST /api/auth/register', () => {
     expect((await post('/api/auth/register', { email: 'not-an-email', password: NEW_PASSWORD, ...CONSENT })).statusCode).toBe(400);
     expect((await post('/api/auth/register', { password: NEW_PASSWORD, ...CONSENT })).statusCode).toBe(400);
 
-    expect(await getStore().users.findByEmail('a@example.com')).toBeNull();
+    expect(await getAccountsStore().users.findByEmail('a@example.com')).toBeNull();
     expect(sent).toHaveLength(0);
   });
 
@@ -121,7 +121,7 @@ describe('POST /api/auth/register', () => {
     expect(res.statusCode).toBe(200);
     await new Promise(r => setTimeout(r, 50));
     // The account exists; the owner asks for another link.
-    expect(await getStore().users.findByEmail('down@example.com')).not.toBeNull();
+    expect(await getAccountsStore().users.findByEmail('down@example.com')).not.toBeNull();
   });
 });
 
@@ -198,9 +198,9 @@ describe('POST /api/auth/verify', () => {
     const now = new Date().toISOString();
 
     // The raw token is not what is stored, so it cannot be spent as a hash...
-    expect(await getStore().users.consumeToken(token, 'verify', now)).toBeNull();
+    expect(await getAccountsStore().users.consumeToken(token, 'verify', now)).toBeNull();
     // ...but its digest is.
-    expect(await getStore().users.consumeToken(hashUserToken(token), 'verify', now)).toBe(user.id);
+    expect(await getAccountsStore().users.consumeToken(hashUserToken(token), 'verify', now)).toBe(user.id);
   });
 
   it('lets exactly one of two simultaneous requests spend a token', async () => {
@@ -314,7 +314,7 @@ describe('password recovery by email', () => {
   });
 
   it('refuses an expired link', async () => {
-    const user = await getStore().users.findByEmail(OWNER_EMAIL);
+    const user = await getAccountsStore().users.findByEmail(OWNER_EMAIL);
     const token = await issueUserToken(user!.id, 'reset', -1000);
     expect((await post('/api/auth/reset', { token, password: NEW_PASSWORD, ...CONSENT })).statusCode).toBe(400);
   });
@@ -325,7 +325,7 @@ describe('password recovery by email', () => {
 
     await post('/api/auth/reset', { token, password: NEW_PASSWORD, ...CONSENT });
 
-    expect((await getStore().users.findById(pending.id))?.email_verified_at).not.toBeNull();
+    expect((await getAccountsStore().users.findById(pending.id))?.email_verified_at).not.toBeNull();
     expect((await post('/api/auth/login', { email: pending.email, password: NEW_PASSWORD, ...CONSENT })).statusCode).toBe(200);
   });
 

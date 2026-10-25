@@ -1,9 +1,10 @@
 import type { FastifyInstance } from 'fastify';
-import { getStore } from '../store/index.js';
+import { getAccountsStore } from 'spine-core/store/index.js';
 import { verifyPassword, MAX_PASSWORD_LENGTH } from '../passwords.js';
 import { checkSecondFactor, hasSecondFactor } from '../second-factor.js';
-import { windowLimiter } from '../rate-limit.js';
-import { recentlyAuthenticated, requireAuth, type SessionData } from './middleware.js';
+import { windowLimiter } from 'spine-core/rate-limit.js';
+import { recentlyAuthenticated, requireAuth } from 'spine-core/routes/middleware.js';
+import { type SessionData } from '../session-auth.js';
 import { endOtherSessions } from '../sessions.js';
 
 const TEN_MINUTES_MS = 10 * 60 * 1000;
@@ -21,12 +22,12 @@ export interface SessionRouteOptions {
 export async function sessionRoutes(app: FastifyInstance, opts: SessionRouteOptions = {}) {
   app.get('/api/auth/sessions', { preHandler: requireAuth }, async (req, reply) => {
     const current = (req.session as SessionData).sid;
-    const rows = await getStore().sessions.list(req.userId);
+    const rows = await getAccountsStore().sessions.list(req.userId);
     return reply.send(rows.map(row => ({ ...row, current: row.id === current })));
   });
 
   app.delete<{ Params: { id: string } }>('/api/auth/sessions/:id', { preHandler: requireAuth }, async (req, reply) => {
-    const ended = await getStore().sessions.revoke(req.userId, req.params.id);
+    const ended = await getAccountsStore().sessions.revoke(req.userId, req.params.id);
     if (!ended) return reply.status(404).send({ error: 'not found' });
     return reply.send({ ok: true });
   });
@@ -56,7 +57,7 @@ export async function sessionRoutes(app: FastifyInstance, opts: SessionRouteOpti
       if (typeof password !== 'string' || !password || password.length > MAX_PASSWORD_LENGTH) {
         return reply.status(400).send({ error: 'password required' });
       }
-      const user = await getStore().users.findById(req.userId);
+      const user = await getAccountsStore().users.findById(req.userId);
       if (!user || !(await verifyPassword(user.password_hash, password))) {
         req.log.warn({ ip: req.ip, userId: req.userId }, 'wrong password when asked again');
         return reply.status(401).send({ error: 'incorrect password' });

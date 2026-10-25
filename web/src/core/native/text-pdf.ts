@@ -3,7 +3,7 @@ import { PDFDocument, rgb, type PDFFont } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 
 /**
- * Same contract as server/src/ingestion/text-pdf.ts: text on A4 pages in a font that has the accents of the languages Spine speaks, as
+ * Same contract as core/src/ingestion/text-pdf.ts: text on A4 pages in a font that has the accents of the languages Spine speaks, as
  * real text, so the PDF has the text layer the reader uses. DejaVu Sans is served from this origin.
  */
 const MAX_TEXT_CHARS = 900_000;

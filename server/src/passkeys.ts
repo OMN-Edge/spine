@@ -1,4 +1,4 @@
-import { publicUrl } from './config.js';
+import { publicUrl } from 'spine-core/config.js';
 
 /**
  * Where passkeys belong: the relying party is this site. A passkey made on one host does not work on another, which is the point

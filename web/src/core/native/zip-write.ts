@@ -2,9 +2,9 @@ import fs from 'fs';
 import { PassThrough } from 'stream';
 import { Buffer } from 'buffer';
 import { zipSync, type Zippable } from 'fflate';
-import type { ZipWriter } from '../../../../server/src/archive/zip-write';
+import type { ZipWriter } from 'spine-core/archive/zip-write';
 
-/** Same contract as server/src/archive/zip-write.ts. The zip is built in memory, which an export of this device's own records fits. */
+/** Same contract as core/src/archive/zip-write.ts. The zip is built in memory, which an export of this device's own records fits. */
 export function newZip(): ZipWriter {
   const entries: Zippable = {};
   return {

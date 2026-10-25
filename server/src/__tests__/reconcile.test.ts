@@ -3,8 +3,8 @@ import { v4 as uuidv4 } from 'uuid';
 
 process.env.SPINE_DB_PATH = ':memory:';
 
-import { reconcileStalledJobs } from '../ingestion/pipeline.js';
-import { getStore, resetStore } from '../store/index.js';
+import { reconcileStalledJobs } from 'spine-core/ingestion/pipeline.js';
+import { getStore, resetStore } from 'spine-core/store/index.js';
 import { seedSourceFile, createTestUser, OWNER_ID } from './helpers/seed.js';
 
 async function insert(id: string, status: 'pending' | 'processing' | 'done' | 'error', errorMessage: string | null = null) {

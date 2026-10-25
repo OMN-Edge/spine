@@ -2,7 +2,7 @@ import { beforeAll, expect, it } from 'vitest';
 import { describeLive } from './support/live.js';
 import { addResult } from './support/archive.js';
 import { OWNER_ID, ask, proposalOf, startWorld, type World } from './support/world.js';
-import { getStore } from '../store/index.js';
+import { getStore } from 'spine-core/store/index.js';
 import { seedDocument } from '../__tests__/helpers/seed.js';
 
 /**

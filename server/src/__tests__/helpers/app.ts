@@ -11,6 +11,9 @@ import type { AccountRouteOptions } from '../../routes/accounts.js';
 import type { TotpRouteOptions } from '../../routes/totp.js';
 import type { PasskeyRouteOptions } from '../../routes/passkeys.js';
 import type { VaultRouteOptions } from '../../routes/vault.js';
+import { holdsRecordsInThisRun } from 'spine-core/testing/store-kind.js';
+import { useSessionAuth } from '../../session-auth.js';
+import { useMailedOwnerNotices } from '../../owner-notices.js';
 import { TRUSTED_PROXIES } from '../../trust-proxy.js';
 import { OWNER_EMAIL, TEST_PASSWORD, createTestUser } from './seed.js';
 
@@ -60,8 +63,16 @@ export async function buildTestApp(options: TestAppOptions = {}) {
   process.env.SESSION_SECRET = 'test-secret-must-be-at-least-32-chars-long!!';
 
   // Reset the store singleton so each test file gets a fresh in-memory DB
-  const { resetStore } = await import('../../store/index.js');
+  const { resetStore, hasStoreFactory, useStoreFactory, createStore } = await import('spine-core/store/index.js');
+  // A run that was not set up with one of the store setup files (the web's test of the device against the server) gets the one that holds records.
+  if (!hasStoreFactory()) {
+    const { loadStoreConfig } = await import('spine-core/config.js');
+    useStoreFactory(() => createStore(loadStoreConfig()));
+  }
   resetStore();
+  // What the server's entry point registers, and the mail of the old per-route path that some tests exercise.
+  useSessionAuth();
+  useMailedOwnerNotices();
 
   // trustProxy matches production (index.ts): req.ip must come from
   // X-Forwarded-For so the per-source rate limiter keys on the real client.
@@ -84,32 +95,32 @@ export async function buildTestApp(options: TestAppOptions = {}) {
   await app.register(fastifyRateLimit, { global: false });
 
   // `npm run test:accounts` registers what the server does (index.ts) and no route of a record, on a database without their tables.
-  const records = process.env.SPINE_STORE_SCOPE !== 'accounts';
+  const records = holdsRecordsInThisRun();
 
   // Import routes after env vars are set
   const { authRoutes } = await import('../../routes/auth.js');
   const { accountRoutes } = await import('../../routes/accounts.js');
   const { totpRoutes } = await import('../../routes/totp.js');
   const { sessionRoutes } = await import('../../routes/sessions.js');
-  const { documentRoutes } = await import('../../routes/documents.js');
-  const { sourceFileRoutes } = await import('../../routes/source-files.js');
-  const { exportRoutes } = await import('../../routes/export.js');
-  const { similarityRoutes } = await import('../../routes/similarity.js');
-  const { linkRoutes } = await import('../../routes/links.js');
-  const { episodeRoutes } = await import('../../routes/episodes.js');
-  const { demoRoutes } = await import('../../routes/demo.js');
+  const { documentRoutes } = await import('spine-core/routes/documents.js');
+  const { sourceFileRoutes } = await import('spine-core/routes/source-files.js');
+  const { exportRoutes } = await import('spine-core/routes/export.js');
+  const { similarityRoutes } = await import('spine-core/routes/similarity.js');
+  const { linkRoutes } = await import('spine-core/routes/links.js');
+  const { episodeRoutes } = await import('spine-core/routes/episodes.js');
+  const { demoRoutes } = await import('spine-core/routes/demo.js');
   const { ownAccountRoutes } = await import('../../routes/own-account.js');
   const { passkeyRoutes } = await import('../../routes/passkeys.js');
   const { vaultRoutes } = await import('../../routes/vault.js');
   const { relayRoutes } = await import('../../routes/relay.js');
   const { sharedRoutes } = await import('../../routes/shared.js');
-  const { chatRoutes } = await import('../../routes/chat.js');
-  const { shareRoutes } = await import('../../routes/share.js');
-  const { publicShareRoutes } = await import('../../routes/public-share.js');
-  const { tagRoutes } = await import('../../routes/tags.js');
-  const { trendRoutes } = await import('../../routes/trends.js');
-  const { doctorRoutes } = await import('../../routes/doctors.js');
-  const { decorateAuth } = await import('../../routes/middleware.js');
+  const { chatRoutes } = await import('spine-core/routes/chat.js');
+  const { shareRoutes } = await import('spine-core/routes/share.js');
+  const { publicShareRoutes } = await import('spine-core/routes/public-share.js');
+  const { tagRoutes } = await import('spine-core/routes/tags.js');
+  const { trendRoutes } = await import('spine-core/routes/trends.js');
+  const { doctorRoutes } = await import('spine-core/routes/doctors.js');
+  const { decorateAuth } = await import('spine-core/routes/middleware.js');
 
   decorateAuth(app);
 

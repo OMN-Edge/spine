@@ -1,8 +1,8 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { sessionLimits } from './config.js';
-import { getStore } from './store/index.js';
-import type { SessionData } from './routes/middleware.js';
+import { getAccountsStore } from 'spine-core/store/index.js';
+import type { SessionData } from './session-auth.js';
 
 /**
  * Sign-ins the owner can see and end (SECURITY.md S-33). The cookie session lives in memory; the row in
@@ -36,7 +36,7 @@ export async function startSession(req: FastifyRequest, reply: FastifyReply, use
   session.sid = randomUUID();
   session.reauthAt = now.getTime(); // the password was just typed
 
-  const store = getStore();
+  const store = getAccountsStore();
   const limits = sessionLimits();
   await store.sessions.prune(userId, new Date(now.getTime() - limits.absoluteMs).toISOString(), new Date(now.getTime() - limits.idleMs).toISOString());
   await store.sessions.open(userId, {
@@ -63,7 +63,7 @@ export async function startSession(req: FastifyRequest, reply: FastifyReply, use
  */
 export async function sessionIsLive(userId: string, session: SessionData): Promise<boolean> {
   if (!session.sid) return false;
-  const store = getStore();
+  const store = getAccountsStore();
   const row = await store.sessions.get(userId, session.sid);
   if (!row) return false;
   const now = Date.now();
@@ -78,5 +78,5 @@ export async function sessionIsLive(userId: string, session: SessionData): Promi
 
 /** Ends every sign-in of this user except the one making the request (a password or second-factor change). */
 export function endOtherSessions(userId: string, session: SessionData): Promise<number> {
-  return getStore().sessions.revokeExcept(userId, session.sid ?? null);
+  return getAccountsStore().sessions.revokeExcept(userId, session.sid ?? null);
 }

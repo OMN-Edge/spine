@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
-import { getStore } from '../../store/index.js';
+import { getStore, getAccountsStore } from 'spine-core/store/index.js';
 import { hashPassword } from '../../passwords.js';
-import type { DocType } from '../../types.js';
+import type { DocType } from 'spine-core/types.js';
 import { HEALTH_CONSENT_VERSION, TERMS_VERSION } from '../../legal.js';
 
 /**
@@ -19,7 +19,7 @@ export async function createTestUser(
 ): Promise<{ id: string; email: string; password: string }> {
   const id = options.id ?? (email === OWNER_EMAIL ? OWNER_ID : uuidv4());
   const password = options.password ?? TEST_PASSWORD;
-  await getStore().users.create({
+  await getAccountsStore().users.create({
     id,
     email,
     passwordHash: await hashPassword(password),
@@ -172,6 +172,6 @@ export async function seedShareLink(overrides: {
 
 /** The stored (hashed) token for a link, for assertions about S-4. */
 export async function storedTokenFor(linkId: string): Promise<string | undefined> {
-  const rows = await getStore().maintenance.listShareLinkTokens();
+  const rows = await getAccountsStore().maintenance.listShareLinkTokens();
   return rows.find(row => row.id === linkId)?.token;
 }

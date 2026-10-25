@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { v4 as uuidv4 } from 'uuid';
-import { openDatabase } from '../store/sqlite/connection.js';
-import { openNative } from '../store/sqlite/driver-native.js';
-import { createSqliteStoreWith } from '../store/sqlite/store.js';
-import { copySlice } from '../store/sqlite/slice.js';
-import type { Database } from '../store/sqlite/driver.js';
-import { resetStore, getStore } from '../store/index.js';
+import { openDatabase } from 'spine-core/store/sqlite/connection.js';
+import { openNative } from 'spine-core/store/sqlite/driver-native.js';
+import { createSqliteStoreWith } from 'spine-core/store/sqlite/store.js';
+import { copySlice } from 'spine-core/store/sqlite/slice.js';
+import type { Database } from 'spine-core/store/sqlite/driver.js';
+import { resetStore, getStore } from 'spine-core/store/index.js';
 import { buildTestApp } from './helpers/app.js';
 import { OWNER_ID, seedDocument, seedPage, seedSourceFile } from './helpers/seed.js';
-import { hashShareToken } from '../share-token.js';
+import { hashShareToken } from 'spine-core/share-token.js';
 import { readFileSync } from 'fs';
 import path from 'path';
 
@@ -16,7 +16,7 @@ import path from 'path';
  * The copy a share is made of must hold what the recipient may read and nothing else, because the browser that opens it holds the
  * whole file. This builds one from an owner's records that include things that must stay out, and looks at every table of the result.
  */
-const SCHEMA = ['schema-accounts.sql', 'schema-records.sql'].map(f => readFileSync(path.join(__dirname, '../store/sqlite', f), 'utf8')).join('\n');
+const SCHEMA = ['schema-accounts.sql', 'schema-records.sql'].map(f => readFileSync(path.join(__dirname, '../../../core/src/store/sqlite', f), 'utf8')).join('\n');
 const LOCAL = hashShareToken('local');
 
 describe('the copy a share is made of', () => {
@@ -45,7 +45,7 @@ describe('the copy a share is made of', () => {
 
   beforeAll(async () => {
     await buildTestApp();
-    source = openDatabase(':memory:', openNative);
+    source = openDatabase(':memory:', openNative, undefined, 'full');
     sourceStore = createSqliteStoreWith({ adapter: 'sqlite', location: ':memory:' }, () => source, SCHEMA);
     resetStore(sourceStore);
     await sourceStore.users.create({ id: OWNER_ID, email: 'owner@spine.test', passwordHash: 'h', createdAt: new Date().toISOString(), verifiedAt: new Date().toISOString() });
@@ -55,7 +55,7 @@ describe('the copy a share is made of', () => {
   });
 
   const slice = (options: { includeText: boolean; includeScans: boolean; allowChat?: boolean }) => {
-    const dest = openDatabase(':memory:', openNative);
+    const dest = openDatabase(':memory:', openNative, undefined, 'full');
     const result = copySlice(source, dest, {
       userId: OWNER_ID, documentIds: shared, includeText: options.includeText, includeScans: options.includeScans, tokenHash: LOCAL,
       link: { id: 'link-1', label: 'for the cardiologist', createdAt: '2026-10-01T00:00:00.000Z', expiresAt: '2026-10-08T00:00:00.000Z', language: 'en', allowChat: options.allowChat ?? false },

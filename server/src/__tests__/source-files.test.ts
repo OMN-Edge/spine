@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import { buildTestApp, loginSession } from './helpers/app.js';
 import { seedSourceFile, OWNER_ID } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
+import { getStore } from 'spine-core/store/index.js';
 import { v4 as uuidv4 } from 'uuid';
 
 const mockStartJob = vi.hoisted(() => vi.fn());
-vi.mock('../ingestion/pipeline.js', () => ({
+vi.mock('spine-core/ingestion/pipeline.js', () => ({
   startIngestionJob: mockStartJob,
   getJobStatus: vi.fn().mockReturnValue(null),
 }));
@@ -49,7 +49,7 @@ describe('GET /api/source-files/:id/status', () => {
   });
 
   it('returns in-progress state from job registry', async () => {
-    const { getJobStatus } = await import('../ingestion/pipeline.js');
+    const { getJobStatus } = await import('spine-core/ingestion/pipeline.js');
     vi.mocked(getJobStatus).mockReturnValueOnce({
       source_file_id: 'x',
       status: 'processing',

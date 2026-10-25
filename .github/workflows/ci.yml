@@ -12,6 +12,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
+      # The export, import, photo and sample-record tests run poppler for real; without it they would be skipped and still pass.
+      - run: sudo apt-get update && sudo apt-get install -y poppler-utils
       - run: ./scripts/check.sh server
   web:
     runs-on: ubuntu-latest
@@ -20,6 +22,18 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: ./scripts/check.sh web
+  # The device's code in a real browser: each native piece (text, rendering, OCR, photos, zip, stamps, signatures), then the whole app
+  # against a real server (sign-up, vault, sample records, reload, search, upload, shares, export, a save that fails, passkeys).
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: ./scripts/check.sh browser
+        env:
+          CHROME: /usr/bin/google-chrome
+          CHROME_FLAGS: --no-sandbox
   gitleaks:
     runs-on: ubuntu-latest
     steps:
@@ -31,7 +45,7 @@ jobs:
           ./gitleaks detect --source . --redact
   semgrep:
     runs-on: ubuntu-latest
-    container: semgrep/semgrep:latest
+    container: semgrep/semgrep@sha256:3db5c7af55eb1f512eac0abf0ab69a97b52c74b5e9a27314c221aee1a78d7ab2  # pinned by digest, 2026-10-25; the rules are fetched live
     steps:
       - uses: actions/checkout@v4
       - name: semgrep
@@ -41,4 +55,4 @@ jobs:
           --config p/typescript --config p/nodejs --config p/security-audit
           --exclude-rule javascript.express.security.audit.xss.direct-response-write.direct-response-write
           --exclude __tests__ --exclude __integration__
-          server/src web/src
+          core/src server/src web/src

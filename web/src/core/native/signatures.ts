@@ -1,17 +1,17 @@
 import fs from 'fs';
 import { getDocument, OPS } from './pdfjs';
-import { getChatLlm } from '../../../../server/src/llm/index';
-import { aiReadingAllowed } from '../../../../server/src/parser/index';
-import { logger } from '../../../../server/src/logger';
-import { describeError } from '../../../../server/src/failure';
-import { MAX_PAGE_IMAGE_PIXELS, STAMP_MAX_SIDE, pickStampCandidates, type DigitalSigner, type PdfImage, type StampDoctor } from '../../../../server/src/ingestion/signatures-parse';
+import { getChatLlm } from 'spine-core/llm/index';
+import { aiReadingAllowed } from 'spine-core/parser/index';
+import { logger } from 'spine-core/logger';
+import { describeError } from 'spine-core/failure';
+import { MAX_PAGE_IMAGE_PIXELS, STAMP_MAX_SIDE, pickStampCandidates, type DigitalSigner, type PdfImage, type StampDoctor } from 'spine-core/ingestion/signatures-parse';
 
-import { readSigners } from '../../../../server/src/ingestion/signatures-cms';
+import { readSigners } from 'spine-core/ingestion/signatures-cms';
 
-export * from '../../../../server/src/ingestion/signatures-parse';
+export * from 'spine-core/ingestion/signatures-parse';
 
 /**
- * Same contract as server/src/ingestion/signatures.ts for the doctors on a stamp: the pictures on a document's last page are listed by
+ * Same contract as core/src/ingestion/signatures.ts for the doctors on a stamp: the pictures on a document's last page are listed by
  * PDF.js, the ones that may be a stamp are chosen by the same rules (`pickStampCandidates`), reduced, and only those crops, never the
  * page, go to the model, and only when image reading is allowed. A failure means no doctors from stamps; it never fails an upload.
  */

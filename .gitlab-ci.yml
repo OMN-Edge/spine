@@ -2,20 +2,31 @@
 stages: [test, scan]
 
 default:
-  image: node:22
+  image: node:22@sha256:63538dfe497cc29dfafdda25ada09b46db68a3f4cc205abf1f5d6bf0913f3384  # pinned by digest, 2026-10-25
 
 server:
   stage: test
+  # The export, import, photo and sample-record tests run poppler for real; without it they would be skipped and still pass.
+  before_script: [apt-get update -y, apt-get install -y poppler-utils]
   script: ./scripts/check.sh server
 
 web:
   stage: test
   script: ./scripts/check.sh web
 
+# The device's code in a real browser (see the GitHub job of the same name).
+browser:
+  stage: test
+  before_script: [apt-get update -y, apt-get install -y chromium]
+  script: ./scripts/check.sh browser
+  variables:
+    CHROME: /usr/bin/chromium
+    CHROME_FLAGS: --no-sandbox
+
 gitleaks:
   stage: scan
   image:
-    name: zricethezav/gitleaks:latest
+    name: zricethezav/gitleaks:v8.24.2@sha256:b5918eb91b8d2473cec722f066abb4352e4ffdc4ec9f4283ec143aba9ec9ebc4  # the version the GitHub job downloads
     entrypoint: [""]
   variables:
     GIT_DEPTH: 0
@@ -23,11 +34,11 @@ gitleaks:
 
 semgrep:
   stage: scan
-  image: semgrep/semgrep:latest
+  image: semgrep/semgrep@sha256:3db5c7af55eb1f512eac0abf0ab69a97b52c74b5e9a27314c221aee1a78d7ab2  # pinned by digest, 2026-10-25; the rules (p/typescript ...) are fetched live and cannot be pinned
   # Same rules and exclusions as scripts/check.sh (see the comment there); the image has no bash, so they are repeated here.
   script: >
     semgrep scan --error --metrics=off
     --config p/typescript --config p/nodejs --config p/security-audit
     --exclude-rule javascript.express.security.audit.xss.direct-response-write.direct-response-write
     --exclude __tests__ --exclude __integration__
-    server/src web/src
+    core/src server/src web/src

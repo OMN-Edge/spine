@@ -1,7 +1,8 @@
+import { holdsRecordsInThisRun } from 'spine-core/testing/store-kind.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildTestApp, loginAs } from './helpers/app.js';
 import { OWNER_EMAIL, OWNER_ID, TEST_PASSWORD, createTestUser } from './helpers/seed.js';
-import { getStore } from '../store/index.js';
+import { getAccountsStore } from 'spine-core/store/index.js';
 import { resetMailer, type Mailer, type MailMessage } from '../mail/index.js';
 
 /**
@@ -68,14 +69,14 @@ describe('the list of sign-ins', () => {
   it('logging out removes the row', async () => {
     const a = await loginAs(app);
     await send('POST', '/api/auth/logout', a);
-    expect(await getStore().sessions.list(OWNER_ID)).toHaveLength(0);
+    expect(await getAccountsStore().sessions.list(OWNER_ID)).toHaveLength(0);
   });
 
   it('cannot read or end another user’s sign-in (404, nothing changed)', async () => {
     const mine = await loginAs(app);
     const other = await createTestUser('other@spine.test');
     const theirs = await loginAs(app, other.email);
-    const theirRow = (await getStore().sessions.list(other.id))[0];
+    const theirRow = (await getAccountsStore().sessions.list(other.id))[0];
 
     expect((await get('/api/auth/sessions', mine)).json()).toHaveLength(1);
     expect((await send('DELETE', `/api/auth/sessions/${theirRow.id}`, mine)).statusCode).toBe(404);
@@ -91,25 +92,25 @@ describe('the list of sign-ins', () => {
 describe('how long a sign-in lasts', () => {
   it('ends after a day without use, and use keeps it going', async () => {
     const cookie = await loginAs(app);
-    const [row] = await getStore().sessions.list(OWNER_ID);
+    const [row] = await getAccountsStore().sessions.list(OWNER_ID);
 
-    await getStore().sessions.touch(OWNER_ID, row.id, new Date(Date.now() - 23 * 3600_000).toISOString());
+    await getAccountsStore().sessions.touch(OWNER_ID, row.id, new Date(Date.now() - 23 * 3600_000).toISOString());
     expect((await get('/api/auth/me', cookie)).statusCode).toBe(200);
 
-    await getStore().sessions.touch(OWNER_ID, row.id, new Date(Date.now() - 25 * 3600_000).toISOString());
+    await getAccountsStore().sessions.touch(OWNER_ID, row.id, new Date(Date.now() - 25 * 3600_000).toISOString());
     expect((await get('/api/auth/me', cookie)).statusCode).toBe(401);
-    expect(await getStore().sessions.list(OWNER_ID)).toHaveLength(0);
+    expect(await getAccountsStore().sessions.list(OWNER_ID)).toHaveLength(0);
   });
 
   it('ends after the absolute limit however much it is used', async () => {
     const cookie = await loginAs(app);
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(Date.now() + 13 * 24 * 3600_000);
-    await getStore().sessions.touch(OWNER_ID, (await getStore().sessions.list(OWNER_ID))[0].id, new Date().toISOString());
+    await getAccountsStore().sessions.touch(OWNER_ID, (await getAccountsStore().sessions.list(OWNER_ID))[0].id, new Date().toISOString());
     expect((await get('/api/auth/me', cookie)).statusCode).toBe(200);
 
     vi.setSystemTime(Date.now() + 2 * 24 * 3600_000);
-    await getStore().sessions.touch(OWNER_ID, (await getStore().sessions.list(OWNER_ID))[0].id, new Date().toISOString());
+    await getAccountsStore().sessions.touch(OWNER_ID, (await getAccountsStore().sessions.list(OWNER_ID))[0].id, new Date().toISOString());
     expect((await get('/api/auth/me', cookie)).statusCode).toBe(401);
   });
 
@@ -126,11 +127,11 @@ describe('how long a sign-in lasts', () => {
     const res = await send('POST', '/api/auth/password', a, { current: TEST_PASSWORD, next: 'a-brand-new-password-1' });
     expect(res.statusCode).toBe(200);
     expect((await get('/api/auth/me', b)).statusCode).toBe(401);
-    expect(await getStore().sessions.list(OWNER_ID)).toHaveLength(1);
+    expect(await getAccountsStore().sessions.list(OWNER_ID)).toHaveLength(1);
   });
 });
 
-const records = process.env.SPINE_STORE_SCOPE !== 'accounts'; // `npm run test:accounts` has no table for a record (SECURITY.md M-37)
+const records = holdsRecordsInThisRun(); // `npm run test:accounts` runs the server's own store, which has none (SECURITY.md M-37)
 
 describe('asking for the password again', () => {
   const exportUrl = '/api/export';
@@ -141,7 +142,7 @@ describe('asking for the password again', () => {
 
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(Date.now() + 11 * 60_000);
-    await getStore().sessions.touch(OWNER_ID, (await getStore().sessions.list(OWNER_ID))[0].id, new Date().toISOString());
+    await getAccountsStore().sessions.touch(OWNER_ID, (await getAccountsStore().sessions.list(OWNER_ID))[0].id, new Date().toISOString());
     const res = await get(exportUrl, cookie);
     expect(res.statusCode).toBe(403);
     expect(res.json()).toMatchObject({ code: 'reauth_required' });
@@ -162,7 +163,7 @@ describe('asking for the password again', () => {
 
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(Date.now() + 11 * 60_000);
-    await getStore().sessions.touch(OWNER_ID, (await getStore().sessions.list(OWNER_ID))[0].id, new Date().toISOString());
+    await getAccountsStore().sessions.touch(OWNER_ID, (await getAccountsStore().sessions.list(OWNER_ID))[0].id, new Date().toISOString());
 
     expect((await create(false)).statusCode).toBe(201);
     expect((await create(true)).statusCode).toBe(403);

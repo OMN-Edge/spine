@@ -2,7 +2,7 @@ import { beforeAll, expect, it } from 'vitest';
 import { describeLive } from './support/live.js';
 import { seedYear } from './support/archive.js';
 import { OWNER_ID, ask, confirm, proposalOf, startWorld, type World } from './support/world.js';
-import { getStore } from '../store/index.js';
+import { getStore } from 'spine-core/store/index.js';
 
 /**
  * Asking the assistant to do things, with the real model choosing the documents and the words. Every action is a proposal: asserted is
