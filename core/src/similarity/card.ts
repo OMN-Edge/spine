@@ -1,4 +1,4 @@
-import { createHash } from 'crypto';
+import { sha256Hex } from '../digest.js';
 import type { Store } from '../store/index.js';
 import type { Document } from '../types.js';
 
@@ -49,4 +49,4 @@ export async function cardOf(store: Store, userId: string, doc: Document): Promi
 
 /** The digest a stored vector is checked against: the card, the model's vector space, and how cards are made. */
 export const cardHash = (card: string, modelId: string): string =>
-  createHash('sha256').update(`${CARD_VERSION}\n${modelId}\n${card}`).digest('hex');
+  sha256Hex(`${CARD_VERSION}\n${modelId}\n${card}`);

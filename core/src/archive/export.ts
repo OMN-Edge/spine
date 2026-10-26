@@ -1,6 +1,6 @@
+import { fileSystem } from '../files.js';
 import { newZip } from './zip-write.js';
-import { createHash } from 'crypto';
-import fs from 'fs';
+import { sha256, sha256Hex } from '../digest.js';
 import path from 'path';
 import { getStore } from '../store/index.js';
 import type { Store } from '../store/index.js';
@@ -19,7 +19,7 @@ import type { Document, SourceFile } from '../types.js';
  * translations (they are made again) or page images (made again from the file).
  */
 export interface ExportZip {
-  stream: NodeJS.ReadableStream;
+  stream: AsyncIterable<Uint8Array>;
   /** Safe to put in a header: ASCII letters, digits and dashes. */
   filename: string;
 }
@@ -36,9 +36,9 @@ const stamp = () => new Date().toISOString().slice(0, 10);
 
 /** The checksum is the file's sha256 as it was uploaded; one that is not (an upload from before it was) is worked out. */
 async function sha256OfFile(filePath: string): Promise<string> {
-  const hash = createHash('sha256');
-  for await (const chunk of fs.createReadStream(filePath)) hash.update(chunk as Buffer);
-  return hash.digest('hex');
+  const hash = sha256();
+  for await (const chunk of fileSystem().readStream(filePath)) hash.update(chunk as Buffer);
+  return hash.hex();
 }
 
 /** The documents of an upload, with what was read from each, placed on the pages given by `place`. */
@@ -117,7 +117,7 @@ async function pageEntry(store: Store, userId: string, page: { id: string; hidde
 }
 
 /** The zip: the manifest, then each file as it is (PDFs and photos are already compressed, so they are stored). */
-function zipOf(manifest: Manifest, files: Array<{ path: string; from: string | Buffer }>): NodeJS.ReadableStream {
+function zipOf(manifest: Manifest, files: Array<{ path: string; from: string | Buffer }>): AsyncIterable<Uint8Array> {
   const zip = newZip();
   zip.addBuffer(Buffer.from(JSON.stringify(manifest, null, 1)), MANIFEST_NAME, { compress: true });
   for (const f of files) {
@@ -142,7 +142,7 @@ export async function exportDocument(userId: string, documentId: string): Promis
   const isPdf = upload.mime_type === 'application/pdf';
   let content: Buffer;
   try {
-    content = isPdf ? await extractPdfPages(upload.file_path, pages.map(p => p.source_page)) : fs.readFileSync(upload.file_path);
+    content = isPdf ? await extractPdfPages(upload.file_path, pages.map(p => p.source_page)) : fileSystem().readFileSync(upload.file_path);
   } catch {
     return 'cannot_trim';
   }
@@ -157,7 +157,7 @@ export async function exportDocument(userId: string, documentId: string): Promis
     path: entryName,
     original_filename: upload.original_filename,
     photo_set: upload.photo_set,
-    sha256: createHash('sha256').update(content).digest('hex'),
+    sha256: sha256Hex(content),
     page_count: pages.length,
     pages: await Promise.all(pages.map(async (p, i) => pageEntry(store, userId, { ...p, hidden: false }, i + 1, i + 1))),
     documents: [await documentEntry(store, userId, doc, numbered, 1, pages.length, personOf)],
@@ -183,7 +183,7 @@ export async function exportArchive(userId: string): Promise<ExportZip | 'empty'
 
   for (const summary of uploads) {
     const upload: SourceFile | null = await store.sourceFiles.findFor(userId, summary.id);
-    if (!upload || !fs.existsSync(upload.file_path)) continue;
+    if (!upload || !fileSystem().existsSync(upload.file_path)) continue;
     const pages = await store.pages.listForSourceFile(userId, upload.id);
     if (pages.length === 0) continue;
     const documents = (await store.documents.listFor(userId, { sourceFileId: upload.id, includeHidden: true, limit: MANY, offset: 0 }))

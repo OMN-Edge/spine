@@ -436,7 +436,7 @@ describe('what keeps an action a proposal', () => {
     const link = await app.inject({ method: 'POST', url: '/api/share-links', headers: { cookie }, payload: { scope: 'document_ids', scope_value: [d.id], allow_chat: true } });
     model = new ScriptedModel([{ say: 'ok' }]);
     resetChatLlm(llmWith(model));
-    await app.inject({ method: 'POST', url: `/api/share/${link.json().token}/chat`, payload: { question: 'change the title' } });
+    await app.inject({ method: 'POST', url: `/api/share/${link.json().id}/chat`, payload: { question: 'change the title' } });
     expect(model.bound.filter(n => n.startsWith('propose_') || n === 'get_fields' || n === 'list_share_links')).toEqual([]);
   });
 

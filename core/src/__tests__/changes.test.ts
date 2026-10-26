@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { recordsSchema } from '../store/sqlite/schema-records.js';
 import { readFileSync } from 'fs';
 import path from 'path';
 import { createSqliteStoreWith } from '../store/sqlite/store.js';
-import { openNative } from '../store/sqlite/driver-native.js';
+import { openNative } from '../testing/driver-native.js';
 import { REPLICATED } from '../store/sync.js';
 import { v4 as uuid } from 'uuid';
 import type { Change, Store } from '../store/types.js';
@@ -49,8 +50,7 @@ beforeEach(async () => {
 
 describe('the list of synced tables', () => {
   it('is every table of the records schema, except the search index', () => {
-    const sql = readFileSync(path.join(__dirname, '../store/sqlite/schema-records.sql'), 'utf8');
-    const tables = [...sql.matchAll(/CREATE TABLE IF NOT EXISTS (\w+)/g)].map(m => m[1]).sort();
+    const tables = [...recordsSchema.matchAll(/CREATE TABLE IF NOT EXISTS (\w+)/g)].map(m => m[1]).sort();
     expect([...REPLICATED].sort()).toEqual(tables);
   });
 });

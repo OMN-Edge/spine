@@ -9,16 +9,16 @@ import { documentTitle } from '../titles';
  * follow-up) and which shared documents read alike. Only documents the link shares appear, each opens in this page, and the
  * names follow the page's language where the list has translated them.
  */
-export default function SharedConnections({ token, id, titleOf }: { token: string; id: string; titleOf: (id: string) => string | null | undefined }) {
+export default function SharedConnections({ shareId, id, titleOf }: { shareId: string; id: string; titleOf: (id: string) => string | null | undefined }) {
   const { t } = useI18n();
   const [data, setData] = useState<Connections | null>(null);
 
   useEffect(() => {
     setData(null);
     let live = true;
-    api.publicShare.connections(token, id).then(d => { if (live) setData(d); }).catch(() => { if (live) setData({ chain: null, related: [] }); });
+    api.publicShare.connections(shareId, id).then(d => { if (live) setData(d); }).catch(() => { if (live) setData({ chain: null, related: [] }); });
     return () => { live = false; };
-  }, [token, id]);
+  }, [shareId, id]);
 
   if (!data || (!data.chain && data.related.length === 0)) return null;
 

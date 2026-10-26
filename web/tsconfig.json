@@ -31,9 +31,11 @@
   "exclude": [
     "src/e2e",
     "src/core/boot.ts",
+    "src/core/device-store.ts",
     "src/core/boot.test.ts",
     "src/core/persist.test.ts",
     "src/core/client.test.ts",
+    "src/core/native-tools.test.ts",
     "src/build",
     "src/core/llm.test.ts",
     "src/core/native",

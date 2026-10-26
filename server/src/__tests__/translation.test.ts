@@ -3,7 +3,6 @@ import { v4 as uuidv4 } from 'uuid';
 import { buildTestApp, loginSession } from './helpers/app.js';
 import { OWNER_ID, createTestUser, seedPage, seedSourceFile, seedShareLink } from './helpers/seed.js';
 import { getStore } from 'spine-core/store/index.js';
-import { hashShareToken } from 'spine-core/share-token.js';
 import { resetChatLlm, type ChatLlm, type TranslationBundle } from 'spine-core/llm/index.js';
 import { LlmBlockedError } from 'spine-core/llm/types.js';
 import { translateDocument } from 'spine-core/translation.js';
@@ -323,7 +322,7 @@ describe('the routes', () => {
   const link = async (scope: 'all' | 'document_ids', value: unknown, extra: object = {}) => {
     const res = await app.inject({ method: 'POST', url: '/api/share-links', headers: { cookie }, payload: { scope, scope_value: value, expires_days: 7, ...extra } });
     expect(res.statusCode).toBe(201);
-    return res.json() as { token: string; id: string };
+    return res.json() as { id: string };
   };
   const settle = async (check: () => Promise<boolean>) => {
     for (let i = 0; i < 100; i++) { if (await check()) return; await new Promise(r => setTimeout(r, 10)); }
@@ -344,15 +343,15 @@ describe('the routes', () => {
     expect((await get(`/api/documents/${d2.id}/translation?lang=fr`)).statusCode).toBe(502);
   });
 
-  it('GET /api/share/:token/documents/:id/translation: only a document the link covers, only the languages offered', async () => {
+  it('GET /api/share/:shareId/documents/:id/translation: only a document the link covers, only the languages offered', async () => {
     const inside = await romanian();
     const outside = await romanian();
-    const { token } = await link('document_ids', [inside.id]);
-    const ok = await get(`/api/share/${token}/documents/${inside.id}/translation?lang=en`, null);
+    const { id: shareId } = await link('document_ids', [inside.id]);
+    const ok = await get(`/api/share/${shareId}/documents/${inside.id}/translation?lang=en`, null);
     expect(ok.statusCode).toBe(200);
     expect(ok.json()).toMatchObject({ status: 'translated', title: 'EN[Buletin de analize]' });
-    expect((await get(`/api/share/${token}/documents/${outside.id}/translation?lang=en`, null)).statusCode).toBe(404);
-    expect((await get(`/api/share/${token}/documents/${inside.id}/translation?lang=es`, null)).statusCode).toBe(400);
+    expect((await get(`/api/share/${shareId}/documents/${outside.id}/translation?lang=en`, null)).statusCode).toBe(404);
+    expect((await get(`/api/share/${shareId}/documents/${inside.id}/translation?lang=es`, null)).statusCode).toBe(400);
     expect((await get(`/api/share/${uuidv4()}/documents/${inside.id}/translation?lang=en`, null)).statusCode).toBe(410);
     const text = ok.body;
     for (const forbidden of ['user_id', OWNER_ID, 'secret source', 'source_snippet']) expect(text).not.toContain(forbidden);
@@ -360,29 +359,29 @@ describe('the routes', () => {
 
   it('a second reader of the same language is served what the first caused to be kept', async () => {
     const d = await romanian();
-    const { token } = await link('document_ids', [d.id]);
-    await get(`/api/share/${token}/documents/${d.id}/translation?lang=en`, null);
-    const second = await get(`/api/share/${token}/documents/${d.id}/translation?lang=en`, null);
+    const { id: shareId } = await link('document_ids', [d.id]);
+    await get(`/api/share/${shareId}/documents/${d.id}/translation?lang=en`, null);
+    const second = await get(`/api/share/${shareId}/documents/${d.id}/translation?lang=en`, null);
     expect(second.json()).toMatchObject({ status: 'cached' });
     expect(calls).toHaveLength(2);
   });
 
   it('the share list in a language: pending at first, translating in the background, then ready', async () => {
     const d = await romanian();
-    const { token } = await link('document_ids', [d.id]);
-    const first = (await get(`/api/share/${token}/documents?lang=en`, null)).json() as Array<{ id: string; translation: { title: string } | null; translation_pending: boolean }>;
+    const { id: shareId } = await link('document_ids', [d.id]);
+    const first = (await get(`/api/share/${shareId}/documents?lang=en`, null)).json() as Array<{ id: string; translation: { title: string } | null; translation_pending: boolean }>;
     expect(first[0]).toMatchObject({ id: d.id, translation: null, translation_pending: true });
 
-    await settle(async () => ((await get(`/api/share/${token}/documents?lang=en`, null)).json() as Array<{ translation_pending: boolean }>)[0].translation_pending === false);
-    const ready = (await get(`/api/share/${token}/documents?lang=en`, null)).json() as Array<{ translation: { title: string; status: string } }>;
+    await settle(async () => ((await get(`/api/share/${shareId}/documents?lang=en`, null)).json() as Array<{ translation_pending: boolean }>)[0].translation_pending === false);
+    const ready = (await get(`/api/share/${shareId}/documents?lang=en`, null)).json() as Array<{ translation: { title: string; status: string } }>;
     expect(ready[0].translation).toMatchObject({ status: 'cached', title: 'EN[Buletin de analize]' });
     expect(calls).toHaveLength(2);
   });
 
   it('the share list without a language is as it was, and a language the page cannot offer is ignored', async () => {
     const d = await romanian();
-    const { token } = await link('document_ids', [d.id]);
-    for (const url of [`/api/share/${token}/documents`, `/api/share/${token}/documents?lang=es`]) {
+    const { id: shareId } = await link('document_ids', [d.id]);
+    for (const url of [`/api/share/${shareId}/documents`, `/api/share/${shareId}/documents?lang=es`]) {
       const body = (await get(url, undefined)).json() as Array<Record<string, unknown>>;
       expect(body[0]).not.toHaveProperty('translation');
     }
@@ -391,14 +390,14 @@ describe('the routes', () => {
 
   it('a link made in a language has its documents translated already, and its page starts in that language', async () => {
     const d = await romanian();
-    const { token } = await link('document_ids', [d.id], { language: 'en' });
+    const { id: shareId } = await link('document_ids', [d.id], { language: 'en' });
     await settle(async () => (await getStore().translations.get(OWNER_ID, d.id, 'en')) !== null);
-    expect((await get(`/api/share/${token}/documents/${d.id}/translation?lang=en`, null)).json()).toMatchObject({ status: 'cached' });
+    expect((await get(`/api/share/${shareId}/documents/${d.id}/translation?lang=en`, null)).json()).toMatchObject({ status: 'cached' });
 
-    const meta = (await get(`/api/share/${token}/meta`, null)).json();
-    expect(meta).toEqual({ language: 'en', languages: ['en', 'ro', 'fr', 'de'], translation: true, approval: 'open', chat: false, landing_url: null });
+    const meta = (await get(`/api/share/${shareId}/meta`, null)).json();
+    expect(meta).toEqual({ language: 'en', languages: ['en', 'ro', 'fr', 'de'], translation: true, chat: false, landing_url: null });
     const plain = await link('document_ids', [d.id]);
-    expect((await get(`/api/share/${plain.token}/meta`, null)).json().language).toBeNull();
+    expect((await get(`/api/share/${plain.id}/meta`, null)).json().language).toBeNull();
     expect((await get(`/api/share/${uuidv4()}/meta`, null)).statusCode).toBe(410);
   });
 
@@ -421,7 +420,7 @@ describe('the routes', () => {
     expect((await app.inject({ method: 'PATCH', url: `/api/documents/${d.id}`, headers: { cookie }, payload: { language: 'not a code' } })).statusCode).toBe(400);
     await app.inject({ method: 'PATCH', url: `/api/documents/${d.id}`, headers: { cookie }, payload: { language: '' } });
     expect((await getStore().documents.findFor(OWNER_ID, d.id))?.language).toBeNull();
-    void vi; void seedShareLink; void hashShareToken;
+    void vi; void seedShareLink;
   });
 });
 

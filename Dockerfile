@@ -15,6 +15,8 @@ COPY core core
 COPY server server
 COPY web web
 RUN npm run build
+# Every entry point is started once, as it will be, before the image is made. Test support is not built into core/dist or server/dist at all.
+RUN npm run smoke -w spine-server
 # What the server runs, without the build tools or the web app's own packages (they are in web/dist now)
 RUN rm -rf node_modules && npm ci --omit=dev --workspace spine-server
 

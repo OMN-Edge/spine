@@ -1,4 +1,4 @@
-import { rmSync } from 'fs';
+import { fileSystem } from '../files.js';
 import path from 'path';
 import { getStore } from '../store/index.js';
 import { acceptFile, newUploadPath } from '../ingestion/accept-upload.js';
@@ -92,7 +92,7 @@ async function importExport(userId: string, zip: ZipReader, filename: string | n
     try {
       saved = await zip.extractTo(file.path, filePath, Math.min(MAX_FILE_BYTES, MAX_TOTAL_BYTES - total));
     } catch (err) {
-      rmSync(filePath, { force: true });
+      fileSystem().rmSync(filePath);
       summary.failed += file.documents.length;
       results.push({ skipped: true, reason: err instanceof ZipTooLarge ? 'too_large' : 'export_file_missing', filename: file.original_filename });
       continue;
@@ -101,7 +101,7 @@ async function importExport(userId: string, zip: ZipReader, filename: string | n
 
     const kind = detectFileKind(filePath);
     if (kind === null) {
-      rmSync(filePath, { force: true });
+      fileSystem().rmSync(filePath);
       summary.failed += file.documents.length;
       results.push({ skipped: true, reason: 'not_pdf', filename: file.original_filename });
       continue;
@@ -110,7 +110,7 @@ async function importExport(userId: string, zip: ZipReader, filename: string | n
     // The same file already held: nothing to restore.
     const existing = await store.sourceFiles.findByChecksumFor(userId, saved.checksum);
     if (existing) {
-      rmSync(filePath, { force: true });
+      fileSystem().rmSync(filePath);
       summary.duplicates += file.documents.length;
       results.push({ skipped: true, reason: 'duplicate', existing_id: existing.id, filename: file.original_filename });
       continue;
@@ -120,7 +120,7 @@ async function importExport(userId: string, zip: ZipReader, filename: string | n
     const prints = file.documents.map(d => documentFingerprint(file.pages.filter(p => !p.hidden && p.number >= d.page_start && p.number <= d.page_end).sort((a, b) => a.number - b.number).map(p => p.raw_text)));
     const already = prints.map(p => (p ? known.get(p) ?? null : null));
     if (file.documents.length > 0 && already.every(a => a !== null)) {
-      rmSync(filePath, { force: true });
+      fileSystem().rmSync(filePath);
       summary.duplicates += file.documents.length;
       results.push({ skipped: true, reason: 'duplicate', existing_id: already[0]!.sourceFileId, filename: file.original_filename });
       continue;
@@ -181,7 +181,7 @@ async function importPlain(userId: string, zip: ZipReader, filename: string | nu
       else summary.refused += 1;
       results.push(outcome);
     } catch (err) {
-      rmSync(filePath, { force: true });
+      fileSystem().rmSync(filePath);
       summary.refused += 1;
       results.push({ skipped: true, reason: err instanceof ZipTooLarge ? 'too_large' : 'not_pdf', filename: shown });
       if (total >= MAX_TOTAL_BYTES) break;

@@ -1,7 +1,7 @@
-import type { FastifyInstance } from 'fastify';
+import { fileSystem } from '../files.js';
+import type { HttpApp } from '../http.js';
 import { v4 as uuidv4 } from 'uuid';
 import { doctorKey } from '../doctors.js';
-import { createReadStream, existsSync, renameSync, rmSync, statSync } from 'fs';
 import { rotateImage } from '../ingestion/image-ops.js';
 import { isTurn } from '../geometry.js';
 import { extname } from 'path';
@@ -260,7 +260,7 @@ function integer(value: string | undefined, fallback: number, min: number): numb
   return Number.isFinite(n) && n >= min ? n : fallback;
 }
 
-export async function documentRoutes(app: FastifyInstance) {
+export async function documentRoutes(app: HttpApp) {
   app.addHook('preHandler', requireAuth);
 
   // List documents with optional filters
@@ -637,18 +637,18 @@ export async function documentRoutes(app: FastifyInstance) {
     if ((sourceFileId && isReadingPages(sourceFileId)) || upload?.status === 'pending' || upload?.status === 'processing') {
       return reply.status(409).send({ error: 'this file is still being processed' });
     }
-    if (!existsSync(imagePath) || !statSync(imagePath).isFile()) return reply.status(404).send({ error: 'image not found on disk' });
+    if (!fileSystem().existsSync(imagePath) || !fileSystem().statSync(imagePath).isFile()) return reply.status(404).send({ error: 'image not found on disk' });
 
     // Written beside the image and moved over it, so a failure leaves the page as it was.
     const staged = `${imagePath}.turning`;
     try {
       const info = await rotateImage(imagePath, staged, degrees);
-      renameSync(staged, imagePath);
+      fileSystem().renameSync(staged, imagePath);
       await store.pages.rotate(req.userId, req.params.id, degrees, { width: info.width, height: info.height });
       const [page] = (await store.pages.listForSourceFile(req.userId, sourceFileId!)).filter(p => p.id === req.params.id);
       return reply.send({ rotation: page.rotation, image_width: info.width, image_height: info.height });
     } finally {
-      rmSync(staged, { force: true });
+      fileSystem().rmSync(staged);
     }
   });
 
@@ -676,12 +676,12 @@ export async function documentRoutes(app: FastifyInstance) {
 
     // image_path is an absolute path written by rasterize.ts, so it cannot go
     // through fastify-static's sendFile (which resolves relative to a root).
-    if (!existsSync(imagePath) || !statSync(imagePath).isFile()) {
+    if (!fileSystem().existsSync(imagePath) || !fileSystem().statSync(imagePath).isFile()) {
       return reply.status(404).send({ error: 'image not found on disk' });
     }
 
     // Kept by the browser, but asked again each time: a page can be turned, and the file's own date says whether it was.
-    const modified = statSync(imagePath).mtime;
+    const modified = fileSystem().statSync(imagePath).mtime;
     const since = Date.parse(req.headers['if-modified-since'] ?? '');
     if (Number.isFinite(since) && Math.floor(modified.getTime() / 1000) <= Math.floor(since / 1000)) return reply.status(304).send();
     const type = extname(imagePath).toLowerCase() === '.jpg' ? 'image/jpeg' : 'image/png';
@@ -689,6 +689,6 @@ export async function documentRoutes(app: FastifyInstance) {
       .type(type)
       .header('Cache-Control', 'private, no-cache')
       .header('Last-Modified', modified.toUTCString())
-      .send(createReadStream(imagePath));
+      .send(fileSystem().readStream(imagePath));
   });
 }

@@ -138,7 +138,8 @@ export async function seedDocument(
 
 export async function seedShareLink(overrides: {
   userId?: string;
-  tokenHash: string;
+  /** The link's id, which is the address a recipient's request names (default: a new one). */
+  id?: string;
   scope?: string;
   scopeValue?: string | null;
   expiresAt?: string;
@@ -149,12 +150,11 @@ export async function seedShareLink(overrides: {
   allowChat?: boolean;
 }) {
   const store = getStore();
-  const id = uuidv4();
+  const id = overrides.id ?? uuidv4();
   const userId = overrides.userId ?? OWNER_ID;
 
   await store.shareLinks.create(userId, {
     id,
-    tokenHash: overrides.tokenHash,
     label: null,
     scope: (overrides.scope ?? 'all') as 'all' | 'tag' | 'document_ids' | 'date_range',
     scopeValue: overrides.scopeValue ?? null,
@@ -168,10 +168,4 @@ export async function seedShareLink(overrides: {
 
   if (overrides.revoked) await store.shareLinks.revoke(userId, id);
   return id;
-}
-
-/** The stored (hashed) token for a link, for assertions about S-4. */
-export async function storedTokenFor(linkId: string): Promise<string | undefined> {
-  const rows = await getAccountsStore().maintenance.listShareLinkTokens();
-  return rows.find(row => row.id === linkId)?.token;
 }

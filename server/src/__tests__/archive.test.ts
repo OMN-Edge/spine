@@ -350,18 +350,20 @@ describe.skipIf(!hasPoppler)('links in the whole export', () => {
     expect((await store.links.all(OWNER_ID)).length).toBeGreaterThanOrEqual(3);
   });
 
-  it('leaves out a link whose document was already in the archive, and a single document\'s export has none', async () => {
+  it('puts back no document twice and no link twice, and a single document\'s export has no links', async () => {
     const { one } = await chain();
     const single = await unzip((await app.inject({ method: 'GET', url: `/api/documents/${one.a}/export`, headers: { cookie } })).rawPayload);
     expect(single.manifest.links).toEqual([]);
     single.reader.close();
 
-    // Back into the account that has everything: nothing is restored, so there is nothing to join, and nothing doubles.
-    const before = (await getStore().links.all(OWNER_ID)).length;
-    const again = (await upload(cookie, 'mine.zip', await exportOf())).json() as Array<Record<string, any>>;
-    expect(again.filter(r => r.restored)).toEqual([]);
-    await new Promise(r => setTimeout(r, 200));
-    expect((await getStore().links.all(OWNER_ID)).length).toBe(before);
+    // Back into the account that has everything: no document anyone can see comes twice, and no link doubles. (A file that holds a document the
+    // owner set aside is brought in with everything in it set aside, because a document with no visible page has no words to be matched by.)
+    const visible = async () => (await getStore().documents.listFor(OWNER_ID, { limit: 1000, offset: 0 })).length;
+    const [docsBefore, linksBefore] = [await visible(), (await getStore().links.all(OWNER_ID)).length];
+    await upload(cookie, 'mine.zip', await exportOf());
+    await new Promise(r => setTimeout(r, 500));
+    expect(await visible()).toBe(docsBefore);
+    expect((await getStore().links.all(OWNER_ID)).length).toBe(linksBefore);
   });
 
   it('reads an export from before links were kept, and refuses a link to a document that is not in it', async () => {

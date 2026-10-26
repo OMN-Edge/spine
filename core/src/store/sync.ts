@@ -189,6 +189,10 @@ export function createChangeLog(rows: Rows, clock: HybridClock = new HybridClock
   }
 
   return {
+    async busy() {
+      return rows.inTransaction();
+    },
+
     async pending() {
       return rows.hasNotes();
     },

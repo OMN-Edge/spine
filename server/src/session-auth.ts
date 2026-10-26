@@ -53,9 +53,10 @@ export async function authenticate(req: FastifyRequest): Promise<UserRecord | nu
 
 /** The server's way of knowing who a request is from: the session cookie, checked against the database. */
 export const sessionAuth: RequestAuth = {
-  user: authenticate,
+  // The request a hook is given on this server is Fastify's, which has the session.
+  user: req => authenticate(req as FastifyRequest),
   recent: req => {
-    const at = (req.session as SessionData).reauthAt;
+    const at = ((req as FastifyRequest).session as SessionData).reauthAt;
     return typeof at === 'number' && Date.now() - at <= REAUTH_WINDOW_MS;
   },
 };

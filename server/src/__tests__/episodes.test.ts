@@ -115,8 +115,8 @@ describe('sharing an episode', () => {
     const ep = (await call('POST', '/api/episodes', { title: 'Shared', document_ids: [a.id] })).json() as { id: string };
     const link = await call('POST', '/api/share-links', { scope: 'episode', scope_value: [ep.id] });
     expect(link.statusCode).toBe(201);
-    const { token } = link.json() as { token: string };
-    const read = async () => ((await app.inject({ method: 'GET', url: `/api/share/${token}/documents` })).json() as Array<{ id: string }>).map(d => d.id);
+    const { id: shareId } = link.json() as { id: string };
+    const read = async () => ((await app.inject({ method: 'GET', url: `/api/share/${shareId}/documents` })).json() as Array<{ id: string }>).map(d => d.id);
     expect(await read()).toEqual([a.id]);
 
     await call('PATCH', `/api/episodes/${ep.id}`, { document_ids: [a.id, b.id] }); // the episode grew: so does what is shared

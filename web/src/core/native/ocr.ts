@@ -1,4 +1,4 @@
-import fs from 'fs';
+import fs from '../shims/fs';
 import { createWorker, type Worker } from 'tesseract.js';
 import { parseTesseractTsv, type OcrReading } from 'spine-core/parser/ocr-reading';
 

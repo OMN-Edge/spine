@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { HttpApp } from '../http.js';
 import { getStore } from '../store/index.js';
 import { requireAuth } from './middleware.js';
 import { translationEnabled } from '../config.js';
@@ -7,7 +7,7 @@ import { translateDocument, warmTranslations } from '../translation.js';
 import { embeddingStatus, hybridSearch, relatedTo, scheduleSync } from '../similarity/index.js';
 
 /** Related documents, and search by words and meaning together. Owner only; every call is scoped to the signed-in user. */
-export async function similarityRoutes(app: FastifyInstance) {
+export async function similarityRoutes(app: HttpApp) {
   app.addHook('preHandler', requireAuth);
 
   // How much of the archive can be found by meaning yet. Asking also starts catching up, in the background.
@@ -48,7 +48,7 @@ export async function similarityRoutes(app: FastifyInstance) {
 
   // Titles of some of the owner's documents in a language, for lists that name documents (the chat's sources). Only what is cached comes
   // back at once; the rest start translating in the background and `pending` tells the page to ask again shortly.
-  app.get<{ Querystring: { ids?: string; lang?: string } }>('/api/translations/titles', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (req, reply) => {
+  app.get<{ Querystring: { ids?: string; lang?: string } }>('/api/translations/titles', async (req, reply) => {
     const language = req.query.lang;
     const ids = [...new Set((req.query.ids ?? '').split(',').map(x => x.trim()).filter(Boolean))].slice(0, 20);
     if (!isSupportedLanguage(language) || !translationEnabled() || ids.length === 0) return reply.header('Cache-Control', 'no-store').send({ titles: {}, pending: false });
@@ -65,7 +65,7 @@ export async function similarityRoutes(app: FastifyInstance) {
   });
 
   // The documents that match some words, or mean something like them, merged by rank.
-  app.get<{ Querystring: { q?: string; limit?: string } }>('/api/search/hybrid', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (req, reply) => {
+  app.get<{ Querystring: { q?: string; limit?: string } }>('/api/search/hybrid', async (req, reply) => {
     const q = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 500) : '';
     if (!q) return reply.status(400).send({ error: 'q is required' });
     const limit = Math.min(Math.max(Number.parseInt(req.query.limit ?? '30', 10) || 30, 1), 100);

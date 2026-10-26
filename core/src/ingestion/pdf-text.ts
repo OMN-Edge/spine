@@ -1,4 +1,4 @@
-import { readFile } from 'fs/promises';
+import { fileSystem } from '../files.js';
 import type { ParseResponse, UnstructuredElement } from '../types.js';
 
 /**
@@ -23,7 +23,7 @@ const SAME_PARAGRAPH_GAP = 0.6;
 
 export async function parseDocument(filePath: string): Promise<ParseResponse> {
   const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
-  const data = new Uint8Array(await readFile(filePath));
+  const data = new Uint8Array(await fileSystem().readFile(filePath));
   const task = getDocument({ data, useSystemFonts: true, verbosity: 0 });
   const pdf = await task.promise;
   try {

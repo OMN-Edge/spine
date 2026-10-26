@@ -1,4 +1,4 @@
-import fs from 'fs';
+import { fileSystem } from '../files.js';
 import path from 'path';
 import { uprightPng } from './image-ops.js';
 import { resolveDataDir } from '../config.js';
@@ -19,7 +19,7 @@ export async function normalisePhoto(
   filePath: string,
 ): Promise<Array<{ page_number: number; image_path: string }>> {
   const outDir = path.join(resolveDataDir(), 'pages', sourceFileId);
-  fs.mkdirSync(outDir, { recursive: true });
+  fileSystem().mkdirSync(outDir);
   const imagePath = path.join(outDir, 'page-1.png');
 
   await uprightPng(filePath, imagePath, { maxSide: MAX_PHOTO_SIDE, maxPixels: MAX_PHOTO_PIXELS });

@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { HttpApp } from '../http.js';
 import { getStore, type MeasurementPoint } from '../store/index.js';
 import { requireAuth } from './middleware.js';
 import { DOC_TYPE_GUIDES } from '../llm/doc-types.js';
@@ -9,7 +9,7 @@ import { unitKey } from '../units.js';
  * 135 g/L are one hemoglobin but not one line. So a series reports the unit most of its numeric
  * values use (spelling aside) and marks the points that can be drawn with it; the rest are listed, not charted.
  */
-export async function trendRoutes(app: FastifyInstance) {
+export async function trendRoutes(app: HttpApp) {
   app.addHook('preHandler', requireAuth);
 
   // Every test with a value, with its latest.

@@ -1,4 +1,4 @@
-import fs from 'fs';
+import { fileSystem } from '../files.js';
 import path from 'path';
 import { resolveBackupDir, resolveDataDir } from '../config.js';
 import type { SourceFile } from '../types.js';
@@ -14,14 +14,14 @@ export const rawDirOf = (relativePdfPath: string): string => relativePdfPath.rep
  */
 export function removeUploadFiles(userId: string, file: Pick<SourceFile, 'id' | 'file_path'>): void {
   const dataDir = resolveDataDir();
-  fs.rmSync(path.join(dataDir, 'pages', file.id), { recursive: true, force: true });
+  fileSystem().rmSync(path.join(dataDir, 'pages', file.id));
 
   const inside = path.relative(path.join(dataDir, 'originals', userId), path.resolve(file.file_path));
   if (inside === '' || inside.startsWith('..') || path.isAbsolute(inside)) return;
-  fs.rmSync(path.join(dataDir, 'originals', userId, inside), { force: true });
-  fs.rmSync(path.join(resolveBackupDir(), 'originals', userId, inside), { force: true });
+  fileSystem().rmSync(path.join(dataDir, 'originals', userId, inside));
+  fileSystem().rmSync(path.join(resolveBackupDir(), 'originals', userId, inside));
   // The unprocessed photos of a scan session sit in a directory named like the PDF.
   const raw = rawDirOf(inside);
-  fs.rmSync(path.join(dataDir, 'originals', userId, raw), { recursive: true, force: true });
-  fs.rmSync(path.join(resolveBackupDir(), 'originals', userId, raw), { recursive: true, force: true });
+  fileSystem().rmSync(path.join(dataDir, 'originals', userId, raw));
+  fileSystem().rmSync(path.join(resolveBackupDir(), 'originals', userId, raw));
 }

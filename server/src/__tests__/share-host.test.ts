@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import { buildTestApp, loginSession } from './helpers/app.js';
+import { buildTestApp, loginSession, testShareHost } from './helpers/app.js';
 import { OWNER_ID, seedDocument } from './helpers/seed.js';
 import { getStore } from 'spine-core/store/index.js';
 import { useShareHost, type ShareHost, type PublishInput } from 'spine-core/share-host.js';
@@ -33,18 +33,30 @@ describe('share links made by a device', () => {
     doc = (await seedDocument({})).id;
     useShareHost(host);
   });
-  afterAll(() => useShareHost(null));
+  afterAll(() => useShareHost(testShareHost));
   beforeEach(() => { calls.length = 0; published = []; failWith = null; });
 
   const call = (method: 'GET' | 'POST' | 'PATCH' | 'DELETE', url: string, payload?: unknown) => app.inject({ method, url, headers: { cookie }, payload: payload as object | undefined });
   const create = (extra: Record<string, unknown> = {}) => call('POST', '/api/share-links', { scope: 'document_ids', scope_value: [doc], ...extra });
 
+  it('refuses every owner share route in a process that has no share host, and creates nothing', async () => {
+    useShareHost(null);
+    try {
+      expect((await create()).statusCode).toBe(503);
+      expect((await create()).json()).toMatchObject({ code: 'no_share_host' });
+      expect((await call('GET', '/api/share-links')).statusCode).toBe(503);
+      expect((await call('DELETE', '/api/share-links/some-id')).statusCode).toBe(503);
+    } finally {
+      useShareHost(host);
+    }
+    expect((await call('GET', '/api/share-links')).json()).toEqual([]);
+  });
+
   it('has the device seal and send the copy, keeps the key in the owner’s records, and gives an address with the key after the #', async () => {
     const res = await create();
     expect(res.statusCode).toBe(201);
-    const body = res.json<{ id: string; url: string; token: string }>();
+    const body = res.json<{ id: string; url: string }>();
     expect(body.url).toBe(`https://spine.test/share/${body.id}#key-${keyCounter}`);
-    expect(body.token).toBe(body.id);
     expect(published).toHaveLength(1);
     expect(published[0]).toMatchObject({ userId: OWNER_ID, documentIds: [doc], newKey: true });
     expect(await getStore().shareLinks.keyFor(OWNER_ID, body.id)).toBe(`key-${keyCounter}`);

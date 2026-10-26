@@ -1,5 +1,5 @@
+import type { HttpApp } from '../http.js';
 import { ModelBudgetError } from '../llm/budget.js';
-import type { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
 import { requireAuth } from './middleware.js';
 import { streamReply } from './ndjson.js';
@@ -25,16 +25,11 @@ const titleOf = (question: string) => {
 };
 
 /**
- * Questions about the owner's own records, and the conversations they are kept in. Owner session only. A share link's recipient has their own, narrower route (`POST /api/share/:token/chat`, in
+ * Questions about the owner's own records, and the conversations they are kept in. Owner session only. A share link's recipient has their own, narrower route (`POST /api/share/:link/chat`, in
  * `public-share.ts`, SECURITY.md M-20) and none of these conversations. A conversation is the owner's medical text, so every read and write goes through the store as them, and one that
  * is not theirs is a 404.
  */
-export interface ChatRouteOptions {
-  /** Questions a minute per source. An option so tests that ask many do not meet the real limit. */
-  askPerMinute?: number;
-}
-
-export async function chatRoutes(app: FastifyInstance, opts: ChatRouteOptions = {}) {
+export async function chatRoutes(app: HttpApp) {
   app.addHook('preHandler', requireAuth);
 
   app.get('/api/chat/status', async (_req, reply) => reply.header('Cache-Control', 'no-store').send({ enabled: chatEnabled() }));
@@ -51,7 +46,7 @@ export async function chatRoutes(app: FastifyInstance, opts: ChatRouteOptions = 
   // A file attached in the chat (pasted, dropped or chosen): the ordinary upload, tied to the conversation it was attached in, so what
   // happens to it (read, found, needs checking) is reported there (SECURITY.md M-25). A `conversation_id` field sent before the files
   // names the conversation; without one a new conversation is started. Nothing is read from the message: the file is the upload route's.
-  app.post('/api/chat/attachments', { config: { rateLimit: { max: Math.max(10, Math.floor((opts.askPerMinute ?? 20) / 2)), timeWindow: '1 minute' } } }, async (req, reply) => {
+  app.post('/api/chat/attachments', async (req, reply) => {
     if (!chatEnabled()) return reply.status(409).send({ error: 'asking questions is switched off' });
     const store = getStore();
     let conversationId: string | null = null;
@@ -142,7 +137,7 @@ export async function chatRoutes(app: FastifyInstance, opts: ChatRouteOptions = 
   // reply exactly as the plain form would have sent it, or `error`. Everything is checked before the first byte, so a refusal is
   // an ordinary 4xx either way. The answer is kept only once it is complete, as before: a question the person walked away from
   // leaves nothing behind.
-  app.post<{ Body: { question?: unknown; conversation_id?: unknown; screen?: unknown; stream?: unknown } }>('/api/chat', { config: { rateLimit: { max: opts.askPerMinute ?? 20, timeWindow: '1 minute' } } }, async (req, reply) => {
+  app.post<{ Body: { question?: unknown; conversation_id?: unknown; screen?: unknown; stream?: unknown } }>('/api/chat', async (req, reply) => {
     if (!chatEnabled()) return reply.status(409).send({ error: 'asking questions is switched off' });
     const { question, conversation_id: conversationId, screen, stream } = req.body ?? {};
     if (typeof question !== 'string' || !question.trim() || question.length > MAX_QUESTION) {

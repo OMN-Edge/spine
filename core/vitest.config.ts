@@ -1,4 +1,7 @@
 import { defineConfig } from 'vitest/config';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 export default defineConfig({
   test: {
@@ -15,6 +18,8 @@ export default defineConfig({
     // Tests that need a key set one themselves.
     env: {
       SPINE_DB_PATH: ':memory:',
+      // Files the tests write go in a directory of their own, never in the repository's.
+      DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'spine-test-data-')),
       ANTHROPIC_API_KEY: '',
     },
     coverage: {

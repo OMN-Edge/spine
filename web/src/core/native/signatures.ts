@@ -1,4 +1,4 @@
-import fs from 'fs';
+import fs from '../shims/fs';
 import { getDocument, OPS } from './pdfjs';
 import { getChatLlm } from 'spine-core/llm/index';
 import { aiReadingAllowed } from 'spine-core/parser/index';

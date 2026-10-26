@@ -19,7 +19,7 @@ import {
   verificationMail,
 } from '../accounts.js';
 import { hashUserToken } from '../user-tokens.js';
-import { windowLimiter, type WindowLimit } from 'spine-core/rate-limit.js';
+import { windowLimiter, type WindowLimit } from '../rate-limit.js';
 import { loadRegistrationMode, type RegistrationMode } from '../config.js';
 import { AUTH_VALUE, parseVaultKeys } from '../vault-keys.js';
 import { removeAllObjects } from '../vault-files.js';

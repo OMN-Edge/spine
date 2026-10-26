@@ -1,3 +1,4 @@
+import { deviceSettings } from './settings';
 import { useRelayHooks } from 'spine-core/llm/adapters/relay';
 
 /**
@@ -25,7 +26,7 @@ export async function relayToken(): Promise<string> {
 }
 
 /**
- * Takes the server's settings for model calls as the core's own configuration (the core reads its settings from `process.env`, as the
+ * Takes the server's settings for model calls as the core's own configuration (the core reads its settings from `deviceSettings`, registered with `useSettings`, as the
  * server does). Without a relay the settings stay as they are, and a call that needs a model says it is not set up.
  */
 let mail = false;
@@ -37,7 +38,7 @@ export async function applyRelayConfig(): Promise<boolean> {
   if (!res.ok) return false;
   const body = (await res.json()) as { env: Record<string, string>; mail?: boolean };
   mail = body.mail === true;
-  Object.assign(process.env, body.env);
+  Object.assign(deviceSettings, body.env);
   useRelayHooks({ tokenProvider: relayToken, fetchImpl: relayFetch });
   return true;
 }

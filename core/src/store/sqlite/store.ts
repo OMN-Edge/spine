@@ -23,6 +23,7 @@ import { conversationRepository } from './conversations.js';
 import { userRepository } from './users.js';
 import { vaultRepository } from './vault.js';
 import { sharedRepository } from './shared.js';
+import { copySlice } from './slice.js';
 import type { AccountsStore, RecordsStore, Store, StoreConfig } from '../types.js';
 
 /**
@@ -34,7 +35,7 @@ import type { AccountsStore, RecordsStore, Store, StoreConfig } from '../types.j
  * revisit if concurrent ingestion becomes common.
  */
 export function createSqliteStoreWith(config: StoreConfig, open: OpenDatabase, schema?: string): Store {
-  return recordsOver(openDatabase(config.location, open, schema, 'full'), 0);
+  return recordsOver(openDatabase(config.location, open, schema, 'full'), 0, { open, schema });
 }
 
 /** The server's store: the schema of accounts alone, so there is no table that could hold a record (SECURITY.md **M-37**). */
@@ -85,7 +86,7 @@ function accountsOver(db: Database, depth: number): AccountsStore {
   };
 }
 
-function recordsOf(db: Database): RecordsStore {
+function recordsOf(db: Database): Omit<RecordsStore, "slice"> {
   return {
     sourceFiles: sourceFileRepository(db),
     pages: pageRepository(db),
@@ -107,10 +108,24 @@ function recordsOf(db: Database): RecordsStore {
   };
 }
 
-function recordsOver(db: Database, depth: number): Store {
+/** What a store needs to make another like itself: the driver and the schema it was opened with. */
+interface Opened { open: OpenDatabase; schema: string | undefined }
+
+function recordsOver(db: Database, depth: number, how: Opened): Store {
   return {
     ...accountsOver(db, depth),
     ...recordsOf(db),
-    transaction: fn => inTransaction(db, depth, () => recordsOver(db, depth + 1), fn),
+    async slice(options) {
+      // The copy is built in a database of its own, with the change log watching, and leaves it as changes: the form in which records travel.
+      const stagingDb = openDatabase(':memory:', how.open, how.schema, 'full');
+      const staging = recordsOver(stagingDb, 0, how);
+      try {
+        const result = copySlice(db, stagingDb, options);
+        return { ...result, changes: await staging.changes.drain() };
+      } finally {
+        await staging.close();
+      }
+    },
+    transaction: fn => inTransaction(db, depth, () => recordsOver(db, depth + 1, how), fn),
   };
 }

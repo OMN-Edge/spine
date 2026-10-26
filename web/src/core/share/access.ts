@@ -5,8 +5,6 @@ import { newVisitorKeys, unwrapShareKey } from './keys';
 /** Where the recipient's page stands with a link: found out from the server, then, with the key, opened in the page's own core. */
 export type ShareAccess = 'checking' | 'gone' | 'needed' | 'pending' | 'denied' | 'open' | 'broken';
 
-/** The fixed name the recipient's core answers to (core/src/store/sqlite/slice.ts: the copy has one link, under this token). */
-export const LOCAL_SHARE_TOKEN = 'local';
 
 const keyName = (id: string) => `spine-share-key:${id}`;
 const requestName = (id: string) => `spine-share-request:${id}`;

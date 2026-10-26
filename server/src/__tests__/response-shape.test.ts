@@ -2,7 +2,6 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { buildTestApp, loginSession } from './helpers/app.js';
 import { seedDocument, seedPage, seedShareLink, seedSourceFile, OWNER_ID } from './helpers/seed.js';
 import { getStore } from 'spine-core/store/index.js';
-import { hashShareToken } from 'spine-core/share-token.js';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
@@ -48,7 +47,7 @@ beforeAll(async () => {
     id: uuidv4(), documentId: docId, pageId, label: 'dx', value: 'v',
     sourceSnippet: 's', bbox: { x0: 0, y0: 0, x1: 1, y1: 1 }, confidence: 0.5,
   });
-  await seedShareLink({ tokenHash: hashShareToken('shape-token') });
+  await seedShareLink({ id: 'shape-token' });
 });
 
 afterAll(async () => { await app.close(); });
@@ -78,7 +77,7 @@ describe('responses carry no internal columns or server paths (S-8)', () => {
   });
 
   it('GET /api/share/:token/documents/:id — one document a recipient opens, scans included', async () => {
-    await seedShareLink({ tokenHash: hashShareToken('shape-doc-token'), scope: 'document_ids', scopeValue: JSON.stringify([docId]), includeScans: true });
+    await seedShareLink({ id: 'shape-doc-token', scope: 'document_ids', scopeValue: JSON.stringify([docId]), includeScans: true });
     const res = await app.inject({ method: 'GET', url: `/api/share/shape-doc-token/documents/${docId}` });
     expect(res.statusCode).toBe(200);
     expect((res.json() as { fields: unknown[] }).fields.length).toBeGreaterThan(0);

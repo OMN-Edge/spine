@@ -3,7 +3,7 @@ import process from 'process';
 
 /**
  * The server's code reaches for `Buffer` and `process` as globals. This module is imported first by the core's entry, so they exist
- * before any of that code runs. `process.env` is the core's configuration: nothing here is a secret, and nothing is read from the page.
+ * before any of that code runs. The core's own settings are not in `process.env`: they are `deviceSettings` (native/settings.ts).
  */
 /** The `buffer` package predates the 'base64url' encoding that the server's code uses for tokens; it is base64 with two characters changed and no padding. */
 const toString = Buffer.prototype.toString;
@@ -18,6 +18,4 @@ const from = Buffer.from.bind(Buffer) as (...args: unknown[]) => Buffer;
 const g = globalThis as unknown as { Buffer: typeof Buffer; process: typeof process };
 g.Buffer = Buffer;
 g.process = process;
-process.env.SPINE_DB_PATH = ':memory:';
-process.env.DATA_DIR = '/data';
 process.env.NODE_ENV = 'production';

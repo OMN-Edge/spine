@@ -16,7 +16,7 @@ const withoutCitations = (text: string) => text.replace(/\s*\[[DTCS]\d+(?:\.[a-z
  * conversation lives in this page and nowhere else (nothing is stored, a reload starts again), there is no history, and a
  * citation links to the shared document in this same page.
  */
-export default function SharedChat({ token, openId, titleOf }: { token: string; openId: string | null; titleOf: (source: ChatSource) => string | null | undefined }) {
+export default function SharedChat({ shareId, openId, titleOf }: { shareId: string; openId: string | null; titleOf: (source: ChatSource) => string | null | undefined }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -40,7 +40,7 @@ export default function SharedChat({ token, openId, titleOf }: { token: string; 
     const controller = new AbortController();
     asking.current = controller;
     try {
-      const reply = await api.publicShare.chat(token, { question, history, document_id: openId ?? undefined }, {
+      const reply = await api.publicShare.chat(shareId, { question, history, document_id: openId ?? undefined }, {
         step: step => setDraft(d => d && { ...d, steps: [...d.steps, step] }),
         delta: text => setDraft(d => d && { ...d, text: d.text + text }),
         reset: () => setDraft(d => d && { ...d, text: '' }),

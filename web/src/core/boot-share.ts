@@ -1,13 +1,14 @@
-import type { FastifyInstance } from 'fastify';
 import { LocalApp, type InjectRequest, type InjectResponse } from './local-app';
-import { WasmDatabase } from './sqlite-wasm';
-import { ready as hashingReady } from './shims/crypto';
-import { memory } from './shims/fs';
-import accountsSchema from 'spine-core/store/sqlite/schema-accounts.sql?raw';
-import recordsSchema from 'spine-core/store/sqlite/schema-records.sql?raw';
+import { openDeviceStore } from './device-store';
+import { browserTools } from './native';
+import { useNativeTools } from 'spine-core/native-tools';
+import { ready as hashingReady, browserDigests } from './native/digests';
+import { useDigests } from 'spine-core/digest';
+import { memory, browserFiles } from './shims/fs';
+import { useFiles } from 'spine-core/files';
+import { useSettings } from 'spine-core/config';
+import { deviceSettings } from './native/settings';
 
-const schema = `${accountsSchema}\n${recordsSchema}`;
-import { createDeviceStore } from 'spine-core/store/sqlite/browser';
 import { resetStore } from 'spine-core/store/index';
 import type { Change } from 'spine-core/store/types';
 import { publicShareRoutes } from 'spine-core/routes/public-share';
@@ -50,11 +51,14 @@ export async function startShareCore(shareId: string, key: string): Promise<Shar
   // Model calls (translating, a question) go through the relay with a pass for this share alone.
   useTokenUrl(`/api/shared/${id}/relay-token`, 'POST');
   const config = (await (await fetch(`/api/shared/${id}/config`)).json().catch(() => ({ env: {} }))) as { env: Record<string, string> };
-  Object.assign(process.env, config.env);
+  Object.assign(deviceSettings, config.env);
   useRelayHooks({ tokenProvider: relayToken, fetchImpl: relayFetch });
 
-  const db = new WasmDatabase();
-  const store = createDeviceStore(() => db, schema);
+  useNativeTools(browserTools);
+  useDigests(browserDigests);
+  useFiles(browserFiles);
+  useSettings(deviceSettings);
+  const store = openDeviceStore();
   resetStore(store);
   // Nobody is signed in here; the copy's rows name the owner, who needs a row to be found by.
   const now = new Date().toISOString();
@@ -62,8 +66,8 @@ export async function startShareCore(shareId: string, key: string): Promise<Shar
   await store.changes.apply(copy.changes);
 
   const local = new LocalApp();
-  await (publicShareRoutes as unknown as (app: FastifyInstance, options?: object) => Promise<void>)(local as unknown as FastifyInstance, {});
-  const lock = () => { memory.useLoader(null); memory.clear(); db.close(); resetStore(null); };
+  await publicShareRoutes(local);
+  const lock = () => { memory.useLoader(null); memory.clear(); resetStore(null); };
   return {
     inject: request => local.inject(request),
     lock,

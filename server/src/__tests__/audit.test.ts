@@ -103,8 +103,8 @@ describe('a share recipient\'s read does not change the owner\'s records', () =>
     resetChatLlm(llm);
 
     const created = await app.inject({ method: 'POST', url: '/api/share-links', headers: { cookie }, payload: { scope: 'document_ids', scope_value: [doc.id], expires_days: 7 } });
-    const { token } = created.json() as { token: string };
-    const res = await app.inject({ method: 'GET', url: `/api/share/${token}/documents/${doc.id}/translation?lang=en` });
+    const { id: shareId } = created.json() as { id: string };
+    const res = await app.inject({ method: 'GET', url: `/api/share/${shareId}/documents/${doc.id}/translation?lang=en` });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ title: 'EN Buletin' });
     expect((await getStore().documents.findFor(OWNER_ID, doc.id))?.language).toBeNull(); // untouched
@@ -117,12 +117,12 @@ describe('a share recipient\'s read does not change the owner\'s records', () =>
 describe('removing a tag a link uses narrows the link, never widens it', () => {
   it('shares nothing once the tag is gone', async () => {
     const doc = await seedDocument({ tags: ['shared-tag'] });
-    const { token } = (await app.inject({ method: 'POST', url: '/api/share-links', headers: { cookie }, payload: { scope: 'tag', scope_value: 'shared-tag', expires_days: 7 } })).json() as { token: string };
-    expect(((await app.inject({ method: 'GET', url: `/api/share/${token}/documents` })).json() as unknown[]).length).toBe(1);
+    const { id: shareId } = (await app.inject({ method: 'POST', url: '/api/share-links', headers: { cookie }, payload: { scope: 'tag', scope_value: 'shared-tag', expires_days: 7 } })).json() as { id: string };
+    expect(((await app.inject({ method: 'GET', url: `/api/share/${shareId}/documents` })).json() as unknown[]).length).toBe(1);
 
     const id = ((await app.inject({ method: 'GET', url: '/api/tags', headers: { cookie } })).json() as Array<{ id: number; name: string }>).find(t => t.name === 'shared-tag')!.id;
     expect((await app.inject({ method: 'DELETE', url: `/api/tags/${id}`, headers: { cookie } })).statusCode).toBe(200);
-    const after = await app.inject({ method: 'GET', url: `/api/share/${token}/documents` });
+    const after = await app.inject({ method: 'GET', url: `/api/share/${shareId}/documents` });
     expect(after.statusCode).toBe(200);
     expect(after.json()).toEqual([]);
     expect(await getStore().documents.findFor(OWNER_ID, doc.id)).not.toBeNull(); // the document is untouched

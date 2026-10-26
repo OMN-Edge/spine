@@ -2,7 +2,6 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { buildTestApp, loginSession } from './helpers/app.js';
 import { seedShareLink, OWNER_ID } from './helpers/seed.js';
 import { getStore } from 'spine-core/store/index.js';
-import { hashShareToken } from 'spine-core/share-token.js';
 
 let app: Awaited<ReturnType<typeof buildTestApp>>;
 let cookie: string;
@@ -22,7 +21,7 @@ describe('POST /api/share-links', () => {
     });
     expect(res.statusCode).toBe(201);
     const body = res.json();
-    expect(body.token).toBeDefined();
+    expect(body.id).toBeDefined();
     expect(body.url).toContain('/share/');
     expect(body.expires_at).toBeDefined();
   });
@@ -120,11 +119,11 @@ describe('POST /api/share-links — scope validation (P2, S-1)', () => {
       payload: { scope: 'tag', scope_value: 'cardiology' },
     });
     expect(create.statusCode).toBe(201);
-    const { token } = create.json() as { token: string };
+    const { id: shareId } = create.json() as { id: string };
 
     // The whole of S-6: creation JSON-encoded the tag and the read path
     // compared the encoded form to tags.name, so this returned 0 of 8 matches.
-    const read = await app.inject({ method: 'GET', url: `/api/share/${token}/documents` });
+    const read = await app.inject({ method: 'GET', url: `/api/share/${shareId}/documents` });
     expect(read.statusCode).toBe(200);
   });
 });
@@ -136,19 +135,22 @@ describe('GET /api/share-links', () => {
     expect(Array.isArray(res.json())).toBe(true);
   });
 
-  it('does not return the raw tokens (S-8)', async () => {
+  it('does not return the share’s key or anything token-shaped (S-8)', async () => {
     const create = await app.inject({
       method: 'POST', url: '/api/share-links',
       headers: { cookie },
       payload: { scope: 'all', expires_days: 7 },
     });
-    const { token } = create.json() as { token: string };
+    expect(create.statusCode).toBe(201);
 
     const res = await app.inject({ method: 'GET', url: '/api/share-links', headers: { cookie } });
     const links = res.json() as Array<Record<string, unknown>>;
     expect(links.length).toBeGreaterThan(0);
-    for (const link of links) expect(link).not.toHaveProperty('token');
-    expect(res.body).not.toContain(token);
+    for (const link of links) {
+      expect(link).not.toHaveProperty('token');
+      expect(link).not.toHaveProperty('key');
+    }
+    expect(res.body).not.toContain('test-share-key');
   });
 });
 
@@ -170,28 +172,28 @@ describe('DELETE /api/share-links/:id', () => {
   });
 });
 
-describe('GET /api/share/:token/documents', () => {
-  it('returns 410 for an expired token', async () => {
+describe('GET /api/share/:shareId/documents', () => {
+  it('returns 410 for an expired shareId', async () => {
     await seedShareLink({
-      tokenHash: hashShareToken('expired-token'),
+      id: 'expired-shareId',
       expiresAt: '2020-01-02T00:00:00.000Z',
     });
 
-    const res = await app.inject({ method: 'GET', url: '/api/share/expired-token/documents' });
+    const res = await app.inject({ method: 'GET', url: '/api/share/expired-shareId/documents' });
     expect(res.statusCode).toBe(410);
   });
 
-  it('returns 410 for a revoked token', async () => {
-    await seedShareLink({ tokenHash: hashShareToken('revoked-token'), revoked: true });
+  it('returns 410 for a revoked shareId', async () => {
+    await seedShareLink({ id: 'revoked-shareId', revoked: true });
 
-    const res = await app.inject({ method: 'GET', url: '/api/share/revoked-token/documents' });
+    const res = await app.inject({ method: 'GET', url: '/api/share/revoked-shareId/documents' });
     expect(res.statusCode).toBe(410);
   });
 
-  it('returns documents for a valid token', async () => {
-    await seedShareLink({ tokenHash: hashShareToken('valid-token') });
+  it('returns documents for a valid shareId', async () => {
+    await seedShareLink({ id: 'valid-shareId' });
 
-    const res = await app.inject({ method: 'GET', url: '/api/share/valid-token/documents' });
+    const res = await app.inject({ method: 'GET', url: '/api/share/valid-shareId/documents' });
     expect(res.statusCode).toBe(200);
     expect(Array.isArray(res.json())).toBe(true);
   });

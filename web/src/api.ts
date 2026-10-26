@@ -451,9 +451,6 @@ export interface ShareLinkDetail {
 }
 export interface ShareLinkChange { label?: string | null; expires_days?: number; expires_hours?: number; include_scans?: boolean; require_approval?: boolean; allow_chat?: boolean; language?: string | null; scope?: string; scope_value?: unknown }
 
-/** Where a visitor's browser stands with a link that needs approval. */
-export type ShareApproval = 'open' | 'needed' | 'pending' | 'denied';
-
 /** A document in the reader's language: the details and the owner's notes, translated and kept (see translation.ts). */
 export interface TranslatedDocument {
   language: string;
@@ -887,7 +884,7 @@ export const api = {
   share: {
     list: () => req<ShareLink[]>('/api/share-links'),
     create: (body: { label?: string; scope: string; scope_value?: unknown; expires_days?: number; expires_hours?: number; include_scans?: boolean; language?: string | null; require_approval?: boolean; allow_chat?: boolean }) =>
-      req<{ id: string; token: string; url: string; expires_at: string; approval_mail: boolean | null }>('/api/share-links', {
+      req<{ id: string; url: string; expires_at: string; approval_mail: boolean | null }>('/api/share-links', {
         method: 'POST',
         body: JSON.stringify(body),
       }),
@@ -901,21 +898,19 @@ export const api = {
   },
 
   publicShare: {
-    documents: (token: string, lang?: string) => req<SharedListDocument[]>(`/api/share/${token}/documents${lang ? `?lang=${lang}` : ''}`),
-    document: (token: string, id: string) => req<SharedDocument>(`/api/share/${token}/documents/${id}`),
-    translation: (token: string, id: string, lang: string, part: 'head' | 'full' = 'full') => req<TranslatedDocument>(`/api/share/${token}/documents/${id}/translation?lang=${lang}&part=${part}`),
+    documents: (shareId: string, lang?: string) => req<SharedListDocument[]>(`/api/share/${shareId}/documents${lang ? `?lang=${lang}` : ''}`),
+    document: (shareId: string, id: string) => req<SharedDocument>(`/api/share/${shareId}/documents/${id}`),
+    translation: (shareId: string, id: string, lang: string, part: 'head' | 'full' = 'full') => req<TranslatedDocument>(`/api/share/${shareId}/documents/${id}/translation?lang=${lang}&part=${part}`),
     /** The language the owner started the page in, the ones it can offer, and whether translating is on. */
     /** The documents the owner linked to this one and those that read alike, each only if the link shares it too. */
-    connections: (token: string, id: string) => req<SharedConnections>(`/api/share/${token}/documents/${id}/connections`),
+    connections: (shareId: string, id: string) => req<SharedConnections>(`/api/share/${shareId}/documents/${id}/connections`),
     /** Values over time, from the shared documents only. */
-    trends: (token: string) => req<TrendName[]>(`/api/share/${token}/trends`),
-    trendSeries: (token: string, canonical: string) => req<TrendSeries>(`/api/share/${token}/trends/series?name=${encodeURIComponent(canonical)}`),
-    meta: (token: string) => req<{ language: string | null; languages: string[]; translation: boolean; approval: ShareApproval; chat: boolean; landing_url: string | null }>(`/api/share/${token}/meta`),
+    trends: (shareId: string) => req<TrendName[]>(`/api/share/${shareId}/trends`),
+    trendSeries: (shareId: string, canonical: string) => req<TrendSeries>(`/api/share/${shareId}/trends/series?name=${encodeURIComponent(canonical)}`),
+    meta: (shareId: string) => req<{ language: string | null; languages: string[]; translation: boolean; chat: boolean; landing_url: string | null }>(`/api/share/${shareId}/meta`),
     /** A recipient's question. `history` is the earlier turns of this page: nothing is stored on the server. */
-    chat: (token: string, body: { question: string; history: Array<{ role: 'user' | 'assistant'; content: string }>; document_id?: string }, handlers: ChatStreamHandlers, signal?: AbortSignal) =>
-      readReplyStream<{ answer: string | null; sources: ChatSource[]; documents: number }>(`/api/share/${token}/chat`, { ...body, stream: true }, handlers, signal),
-    /** Ask the owner to let this browser in. The first call gives the browser its cookie and tells the owner. */
-    requestAccess: (token: string, note: string) => req<{ approval: ShareApproval }>(`/api/share/${token}/access-request`, { method: 'POST', body: JSON.stringify({ note }) }),
+    chat: (shareId: string, body: { question: string; history: Array<{ role: 'user' | 'assistant'; content: string }>; document_id?: string }, handlers: ChatStreamHandlers, signal?: AbortSignal) =>
+      readReplyStream<{ answer: string | null; sources: ChatSource[]; documents: number }>(`/api/share/${shareId}/chat`, { ...body, stream: true }, handlers, signal),
   },
 
   tags: {

@@ -3,7 +3,7 @@ import { mkdtempSync } from 'fs';
 import { tmpdir } from 'os';
 import path from 'path';
 import { openDatabase } from '../store/sqlite/connection.js';
-import { openNative } from '../store/sqlite/driver-native.js';
+import { openNative } from '../testing/driver-native.js';
 
 /** `documents.needs_reading` is a new column with a default, so a database made without it is brought forward on open (M-10, M-29). */
 describe('documents.needs_reading', () => {

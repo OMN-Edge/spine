@@ -2,13 +2,9 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { Persistence, type ObjectStore, type ObjectMeta } from './persist';
 import { memory } from './shims/fs';
 import fs from './shims/fs';
-import { WasmDatabase } from './sqlite-wasm';
-import { createDeviceStore } from 'spine-core/store/sqlite/browser';
+import { openDeviceStore } from './device-store';
 import type { Store } from 'spine-core/store/types';
-import accountsSchema from 'spine-core/store/sqlite/schema-accounts.sql?raw';
-import recordsSchema from 'spine-core/store/sqlite/schema-records.sql?raw';
 
-const schema = `${accountsSchema}\n${recordsSchema}`;
 const USER = 'device';
 const PROFILE = 'profile-aaaaaaaa';
 
@@ -54,7 +50,7 @@ const newId = async () => `id-${++n}-xxxxxxxx`;
 
 /** One device: a store of its own over its own database, and the layer that saves it. */
 async function device(store: ObjectStore): Promise<{ db: Store; p: Persistence; changed: number[] }> {
-  const db = createDeviceStore(() => new WasmDatabase(), schema);
+  const db = openDeviceStore();
   await db.users.create({ id: USER, email: 'device@local', passwordHash: 'x', createdAt: 'now', verifiedAt: 'now', consent: undefined, starterTags: false });
   const p = new Persistence(store, PROFILE, `ix-${PROFILE}`, newId, { changes: db.changes, files: db.files, userId: USER });
   const changed: number[] = [];

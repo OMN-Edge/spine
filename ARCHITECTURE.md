@@ -18,7 +18,9 @@ What the server does:
 - **The relay's pass** (`routes/relay.ts`); the relay itself (`server/src/relay/`) runs a device's model calls through the configured provider adapter and stores nothing.
 - **The app and the address a recipient is given.**
 
-`server/src/index.ts` registers nothing else, so the server has no route that reads or writes a record. The route files under `server/src/routes/` for documents, uploads, tags, chat and the rest stay in the repository because the core runs them; the server's tests register them to hold that code. The server's database is made from `schema-accounts.sql` alone, so it has no table for a record, and its store is a type of its own (`AccountsStore`) with no repository of records, so code written for the server cannot reach one; the device builds `schema-accounts.sql` and `schema-records.sql` and holds both kinds of repository (`Store`).
+`server/src/index.ts` registers nothing else, so the server has no route that reads or writes a record. The route files under `server/src/routes/` for documents, uploads, tags, chat and the rest stay in the repository because the core runs them; the server's tests register them to hold that code. The server's database is made from `schema-accounts.ts` alone, so it has no table for a record, and its store is a type of its own (`AccountsStore`) with no repository of records, so code written for the server cannot reach one; the device builds `schema-accounts.ts` and `schema-records.ts` and holds both kinds of repository (`Store`).
+
+The rules that keep this shape, each with the check that enforces it, are in [docs/structure-rules.md](docs/structure-rules.md).
 
 ## Design goals
 
@@ -39,43 +41,41 @@ The author's instance is a Raspberry Pi with the SQLite adapter, the in-process 
 
 ## Component map
 
+Three places run code. The records exist only in the first.
+
 ```
-                           ┌──────────────────────────────────────────────┐
-  Internet                 │  Host                                        │
- ──────────                │                                              │
-                           │   ┌────────────────────────────────────┐     │
-  Owner's browser ─────────┼──▶│ nginx :443                         │     │
-  (account login)          │   │  TLS, HSTS, security headers,      │     │
-                           │   │  rate limits                       │     │
-  Doctor's browser ────────┼──▶│                                    │     │
-  (share token, no account)│   └───────────────┬────────────────────┘     │
-                           │                   │ proxy_pass               │
-                           │                   ▼  127.0.0.1:3000          │
-                           │   ┌────────────────────────────────────┐     │
-                           │   │ Fastify                            │     │
-                           │   │  HTTP routes (requireAuth)         │     │
-                           │   │  ─────────────────────────────     │     │
-                           │   │  interfaces:                       │     │
-                           │   │  Store | LLM | Parser | Mailer     │     │
-                           │   └───┬──────┬───────┬────────┬────────┘     │
-                           │       ▼      │       ▼        │              │
-                           │  ┌─────────┐ │  ┌──────────┐  │              │
-                           │  │ SQLite  │ │  │ pdf.js   │  │              │
-                           │  │ + data/ │ │  │ in-proc  │  │              │
-                           │  └─────────┘ │  └──────────┘  │              │
-                           └──────────────┼────────────────┼──────────────┘
-                                          ▼                ▼
-                              Anthropic | Vertex AI (eu)   Brevo (mail)
+  THE DEVICE (the owner's browser)                     THE SERVER (Pi or container)            THIRD PARTIES
+  ┌──────────────────────────────────────┐             ┌─────────────────────────────┐
+  │ Page (React)                         │             │ nginx / Caddy :443 (TLS)    │
+  │   keys from the master password      │  sign-in    │   └▶ Fastify :3000          │
+  │   (libsodium); the server never      │◀───────────▶│       accounts, sessions,   │
+  │   receives it                        │  value only │       2FA, passkeys, mail ──┼──▶ Brevo (account mail)
+  │        │ postMessage                 │             │       vault: sealed objects │
+  │ Core (Web Worker, spine-core)        │  sealed     │         it cannot open      │
+  │   the routes (LocalApp), the store,  │◀───────────▶│       sealed shares + where │
+  │   ingestion, chat, search, export    │  pieces     │         they were opened    │
+  │   SQLite in WebAssembly              │             │       relay pass (10 min)   │
+  │   native tools: PDF.js, Tesseract.js,│             │       SQLite: accounts only │
+  │   canvas, pdf-lib, fflate            │             └─────────────────────────────┘
+  │        │ model calls + pass          │             ┌─────────────────────────────┐
+  │        └─────────────────────────────┼────────────▶│ Relay (own process/image)   │──▶ Anthropic | Vertex AI (eu)
+  └──────────────────────────────────────┘             │   checks the pass and a     │
+  A recipient's browser: the same core over one        │   daily count, runs the     │
+  sealed share copy, opened with the key after the #   │   task; stores/logs no      │
+                                                       │   content                   │
+                                                       └─────────────────────────────┘
 ```
+
+A document is read, grouped, searched and answered about on the device. What leaves it: sealed pieces to the vault, sealed copies for shares, the account sign-in value, and the text and (only if enabled) page images of a model call, which pass through the relay to the provider ([Egress](#egress-what-leaves-the-host)). The relay sees the plaintext of a call while it runs it; it does not store or log it.
 
 ### Trust boundaries
 
 Five. The third arrives with multi-user and is the one a routine change can break without anything failing.
 
 1. **Internet → nginx.** All inbound traffic is untrusted. nginx terminates TLS and is the only publicly bound listener.
-2. **nginx → Fastify.** Fastify trusts `X-Forwarded-*` only from the loopback proxy (`trust-proxy.ts`) and nginx overwrites `X-Forwarded-For` with the peer it saw, so a client cannot choose the address the rate limits key on (SECURITY.md **S-31**); Fastify must still never be directly reachable — otherwise those headers are attacker-controlled. It binds `127.0.0.1` unless `SPINE_HOST` overrides it (`config.ts`).
-3. **User A ↔ User B.** Two authenticated users of the same instance. Neither may read, modify, or enumerate the other's source files, documents, pages, fields, tags or share links. **Enforced in the store layer, not in route handlers** — see [Multi-user model](#multi-user-model).
-4. **Authenticated user vs. share-token reader.** A token grants read-only access to a subset of *one* user's documents and nothing else.
+2. **Proxy → Fastify.** Fastify trusts `X-Forwarded-*` only from the loopback proxy (`trust-proxy.ts`) and nginx overwrites `X-Forwarded-For` with the peer it saw, so a client cannot choose the address the rate limits key on (SECURITY.md **S-31**); Fastify must still never be directly reachable — otherwise those headers are attacker-controlled. It binds `127.0.0.1` unless `SPINE_HOST` overrides it (`config.ts`).
+3. **User A ↔ User B.** Two accounts of the same instance. Neither may read, modify, or enumerate the other's records. Records are on each owner's device and the server holds them only sealed under keys it does not have, so the server cannot cross this line by a bug; what it can still get wrong is the vault's and the shares' per-account access (`isolation.test.ts`). The store-layer scoping below still holds on the device and in the tests that run the whole app — see [Multi-user model](#multi-user-model).
+4. **Owner vs. share reader.** A share is a sealed copy of a subset of *one* owner's documents; whoever holds its key can open that copy and nothing else.
 5. **Host → third parties.** The only egress: the inference provider, and the mail provider for account links. See [Egress](#egress-what-leaves-the-host).
 
 There is no parser service: PDF text is read in the server process by PDF.js (`ingestion/pdf-text.ts`), so there is no second listener to protect. The Python sidecar that did this before ([docs/sidecar.md](docs/sidecar.md)) was loopback-bound with no authentication and read any path it was given; that exposure is gone with it.
@@ -136,7 +136,7 @@ src/parser/                types.ts (the contract), index.ts (registry), ocr.ts,
 src/mail/                  types.ts, index.ts (registry), adapters/{none,brevo}.ts
 ```
 
-Two import rules, both review failures if broken. Nothing outside `store/sqlite/` imports `better-sqlite3` or writes SQL. Nothing above `llm/adapters/` imports a **provider** package (`ChatAnthropic`, `ChatVertexAI`). `@langchain/core` is allowed above that line: an adapter returns one of its `Runnable`s per task, so it is the seam type, not a provider SDK.
+Two import rules, both review failures if broken. Nothing outside `core/src/store/sqlite/` writes SQL, and `core` imports no native library and no program at all (`better-sqlite3`, `sharp`, poppler ...): what it needs from the machine it asks for as a **native tool** (`core/src/native-tools.ts`), and what it stores in it over a **driver** the host chooses. Nothing outside `server/src/llm/adapters/` imports a **provider** package (`ChatAnthropic`, `ChatVertexAI`): `core` knows one provider, `relay`, and the relay service registers the others (`server/src/providers.ts`). `boundary.test.ts` holds both. `@langchain/core` is allowed above that line: an adapter returns one of its `Runnable`s per task, so it is the seam type, not a provider SDK.
 
 ### Store interface
 
@@ -172,7 +172,7 @@ interface DocumentRepository {
 }
 ```
 
-There is no `find(id)` without a user. **Four exceptions**, enumerated in `store/types.ts` so a fifth has to be argued for: share-token resolution, the visitor's own approval request (`findRequest`/`createRequest`) and `listForShare` (scoped by the link's owner, resolved from the token); `logAccess` (**P7** — the reader is unauthenticated by definition); `maintenance.*` (boot-time work: stalled jobs, the S-4 rewrite, `snapshotTo`); and `users.*` (the identity layer — login must find a user before there is an acting user).
+There is no `find(id)` without a user. **Four exceptions**, enumerated in `store/types.ts` so a fifth has to be argued for: `shareLinks.findLive`, `createRequest` and `listForShare` (scoped by the link's owner, resolved from the link's id); `logAccess` (**P7** — the reader is unauthenticated by definition); `maintenance.*` (boot-time work: stalled jobs, `snapshotTo`); and `users.*` (the identity layer — login must find a user before there is an acting user).
 
 What a method does with a record the caller does not own:
 
@@ -332,10 +332,12 @@ None. Every user is an equal owner of their own records, and no application path
 ## Request flow
 
 ```
-Browser → nginx (TLS) → Fastify :3000 → route → store interface → SQLite
+Page → Core (Worker) → LocalApp → route → store interface → SQLite (WebAssembly)      records, on the device
+Page → nginx (TLS) → Fastify :3000 → account / vault / shared / relay-pass routes      accounts and sealed bytes
+Core → Relay → provider                                                                model calls
 ```
 
-Fastify serves two kinds of traffic from one process:
+The records routes below are the same files in both hosts; only the device registers them. Fastify serves two kinds of traffic from one process:
 
 - **`/api/*`** — JSON. All of it requires a session except login (both steps), registration, recovery, and `/api/share/:token/documents`.
 - **everything else** — the built React app from `web/dist`, with a not-found handler falling through to `index.html` so React Router owns client-side routing. The fallback excludes `/api` and `/share/` (trailing slash, so the owner's `/share` page still reaches the SPA while public `/share/:token` URLs reach their own handler). That means `GET /share/:token` **must serve the app shell itself**; returning JSON there was S-15.
@@ -589,11 +591,11 @@ Originals are per-user paths so a filesystem mistake cannot cross users as easil
 - `share_links`, `share_link_access_log`.
 - `documents_fts` — FTS5, one row per document: `title`, `doc_type`, `provider`, `ai_summary`, `user_notes`, and `body`, which holds the text of the document's pages, its extracted values, its measurements' names and its doctors' names. The view `document_search_source` says what one document contributes, and triggers on documents, pages, fields, measurements, doctor links and doctor names rebuild the rows a change touches, so no code path can change one of those and forget the index. Accents are folded ("lombara" finds "lombară"). The index is shared; search results are filtered by joining back to `documents.user_id`, and `body` is built only from that user's rows, so it leaks nothing. Typed text is never passed to the index as query syntax: each run of letters and digits becomes a quoted word that matches by its start, all words must match, and a hit in the title ranks above one deep in a page (`search-query.ts`). A search also returns, per result, a `snippet`: FTS5's excerpt from the best-matching column of that user's own row, with each match wrapped in control characters (U+0001, U+0002), never markup, which the page turns into highlighting as text nodes.
 
-There is **no migration runner**: the schema files (`schema-accounts.sql`, `schema-records.sql`) is idempotent `CREATE TABLE IF NOT EXISTS`, re-applied every boot. That adds a new *table* to an existing database but cannot add a *column* to an existing one. So a change to an existing table needs the runner (ordered files in the placeholder `store/sqlite/migrations/` plus a table recording which have run), or an empty database. **One kind of change is made in place:** a new column with a default (`pages.hidden` was the first). `addColumnsInPlace` in `store/sqlite/connection.ts` adds it on open if it is missing, and drops and lets the schema files (`schema-accounts.sql`, `schema-records.sql`) remake any view or trigger that names it, because `CREATE ... IF NOT EXISTS` would keep the old ones. Each step is idempotent and is tested against a database made without the column. Renaming or removing a column, or changing a type, still needs the runner. Startup refuses a database from an older shape, saying how many uploads and documents it holds and whether it is safe to delete. **Build the runner before loading real records**; see [Not done yet](#not-done-yet).
+There is **no migration runner**: the schema files (`schema-accounts.ts`, `schema-records.ts`) is idempotent `CREATE TABLE IF NOT EXISTS`, re-applied every boot. That adds a new *table* to an existing database but cannot add a *column* to an existing one. So a change to an existing table needs the runner (ordered files in the placeholder `store/sqlite/migrations/` plus a table recording which have run), or an empty database. **One kind of change is made in place:** a new column with a default (`pages.hidden` was the first). `addColumnsInPlace` in `store/sqlite/connection.ts` adds it on open if it is missing, and drops and lets the schema files (`schema-accounts.ts`, `schema-records.ts`) remake any view or trigger that names it, because `CREATE ... IF NOT EXISTS` would keep the old ones. Each step is idempotent and is tested against a database made without the column. Renaming or removing a column, or changing a type, still needs the runner. Startup refuses a database from an older shape, saying how many uploads and documents it holds and whether it is safe to delete. **Build the runner before loading real records**; see [Not done yet](#not-done-yet).
 
 ### Share links
 
-A 32-byte random token (`randomBytes(32).toString('base64url')`, 256 bits) plus a scope. **The token is stored as `sha256(token)`** (`share-token.ts`): reading the database does not yield usable links, and the raw value exists only in the creation response. Both public routes hash what the recipient presented before looking it up.
+A share has a random id and a scope, and is opened with a key that lives only in the address after the `#` (**M-36**). There is no token to store: the id names a sealed copy at the server, and the recipient's browser answers `/api/share/:link/...` from the opened copy, which holds one link.
 
 | Scope | `scope_value` | Meaning |
 |---|---|---|
@@ -606,7 +608,7 @@ Expiry 1–30 days, default 7. Revocation is a soft flag checked on every read. 
 
 **Managing a link.** `/share-links/:id` (`ShareLinkDetail.tsx`, from Manage on the list) shows one link: what it allows now (name, expiry counted from now, scans, approval, recipient questions, language: `PATCH /api/share-links/:id`), what it shares now (and a picker to choose the documents instead, which makes the scope `document_ids`), who has read it (counts per address, the latest reads), who asked to open it (with Approve, Deny and Withdraw), and its history. Changes are checked as at creation (`checkScope`), a revoked link cannot be changed, and switching approval on drops the held requests. SECURITY.md **M-22**.
 
-**Approval.** A link made with `require_approval` (default off) is opened only by a browser the owner has approved. `GET /share/:token` still serves the shell; `PublicShareView` first asks `/meta`, which says `approval` is `open`, `needed`, `pending` or `denied`, and shows a request form instead of the documents until it is `open`. `POST /api/share/:token/access-request` stores a `share_access_requests` row (one per link and browser) and sets the browser's cookie, whose `sha256` is the row's `visitor_hash`; every data route calls `approvalFor` (`share-visitor.ts`) and answers 403 unless that row is `approved`. The owner sees waiting requests at the top of the Share links page and in a mail (when a mailer exists) whose link opens `/share-requests/:id`, where Approve and Deny are `POST /api/share-requests/:id/decision`; signing in from that link returns to it (`PrivateRoute` passes the path in router state). A new table and one defaulted column, so no migration. SECURITY.md **M-19**.
+**Approval.** A link made with `require_approval` (default off) has no key in its address. The visitor's browser makes a key pair and asks the server (`/api/shared/:id/access-request`); the owner sees waiting requests at the top of the Share links page and in a mail (when a mailer exists) whose link opens `/share-requests/:id`, where Approve and Deny are `POST /api/share-requests/:id/decision`; signing in from that link returns to it (`PrivateRoute` passes the path in router state). The owner's device answers by wrapping the share key to the browser's key. SECURITY.md **M-19**, **M-36**.
 
 **Questions from a recipient.** A link made with `allow_chat` (default off) shows a small chat on the recipient's page (`SharedChat.tsx`; `/meta` says `chat: true`). `POST /api/share/:token/chat` runs the same LangGraph agent as the owner's chat with a `Scope` in its state: the link's documents (`listForShare`) and their ids. The tools search, list tests and read series only inside it, the care-chain tool is not built for it (`buildTools(shared)`), the system prompt is `buildSharedAgentSystemPrompt` (the asker is a recipient, "the patient" is someone else, the link's label as quoted context), and nothing is stored: the page keeps the conversation and sends the last turns back. SECURITY.md **M-20**.
 

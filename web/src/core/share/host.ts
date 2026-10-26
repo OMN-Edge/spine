@@ -1,15 +1,11 @@
-import fs from 'fs';
+import fs from '../shims/fs';
 import { Buffer } from 'buffer';
-import { WasmDatabase } from '../sqlite-wasm';
-import { createDeviceStore, copySlice } from 'spine-core/store/sqlite/browser';
-import { hashShareToken } from 'spine-core/share-token';
 import type { Store } from 'spine-core/store/types';
 import type { ShareHost } from 'spine-core/share-host';
 import { sodium } from '../../crypto/sodium';
 import { newShareKey, sealPart, wrapShareKey } from './keys';
 
 /** The fixed address the recipient's own core answers to: it serves one share, so the name does not matter. */
-export const LOCAL_SHARE_TOKEN = 'local';
 
 /** Where a page's image is inside a share's file system: the number is its sealed file's number at the server. */
 export const SHARE_IMAGE = (n: number) => `/share/pages/${n}.png`;
@@ -26,7 +22,7 @@ async function call(method: string, url: string, init: { headers?: Record<string
  * visitors did, and answers a browser that asks to be let in. The route files (`routes/share.ts`) call this; nothing here is sent to the
  * server unsealed except the end time and the approval setting.
  */
-export function createShareHost(deps: { source: WasmDatabase; schema: string; store: () => Store; mail: () => boolean }): ShareHost {
+export function createShareHost(deps: { store: () => Store; mail: () => boolean }): ShareHost {
   return {
     async publish({ link, userId, documentIds, newKey, unlessUnchanged }) {
       const store = deps.store();
@@ -35,38 +31,32 @@ export function createShareHost(deps: { source: WasmDatabase; schema: string; st
       if (unlessUnchanged && !have) return { key: '', published: false, digest: '' };
       const key = have ?? (await newShareKey());
 
-      const dest = new WasmDatabase();
       let digest = '';
-      try {
-        // The copy is built in a store of its own, and leaves it as changes: the form in which records travel, not a database file.
-        const copyStore = createDeviceStore(() => dest, deps.schema);
-        let next = 0;
-        const result = copySlice(deps.source, dest, {
-          userId, documentIds, includeText: link.allow_chat, includeScans: link.include_scans, tokenHash: hashShareToken(LOCAL_SHARE_TOKEN),
-          link: { id: link.id, label: link.label, createdAt: link.created_at, expiresAt: link.expires_at, language: link.language, allowChat: link.allow_chat },
-          imagePathOf: () => SHARE_IMAGE(next++),
+      // The copy is built by the store, in a store of its own, and leaves it as changes: the form in which records travel, not a database file.
+      let next = 0;
+      const result = await store.slice({
+        userId, documentIds, includeText: link.allow_chat, includeScans: link.include_scans,
+        link: { id: link.id, label: link.label, createdAt: link.created_at, expiresAt: link.expires_at, language: link.language, allowChat: link.allow_chat },
+        imagePathOf: () => SHARE_IMAGE(next++),
+      });
+      const changes = result.changes;
+      // A keyed hash of what the copy holds (without the clocks, which differ every time it is made), so that a copy that would be the
+      // same is not sent again. The key makes it useless to anyone who sees it beside the sealed copy.
+      const s = await sodium();
+      const canonical = changes.map(c => JSON.stringify([c.t, c.k, c.r])).sort().join('\n') + '\n' + result.images.map(i => `${i.pageId}:${fs.statSync(i.from).size}`).sort().join(',') + `\n${link.label}|${link.expires_at}|${link.language}|${link.allow_chat}|${link.include_scans}`;
+      digest = s.to_base64(s.crypto_generichash(24, new TextEncoder().encode(canonical), s.from_base64(key, s.base64_variants.URLSAFE_NO_PADDING)), s.base64_variants.URLSAFE_NO_PADDING);
+      if (unlessUnchanged && !newKey && have && (await store.shareLinks.copyDigest(userId, link.id)) === digest) return { key, published: false, digest };
+      const sealed = await sealPart(key, link.id, 'records', new TextEncoder().encode(JSON.stringify({ v: 1, owner: userId, changes })));
+      await call('PUT', `/api/shared/${encodeURIComponent(link.id)}`, {
+        headers: { 'content-type': 'application/octet-stream', 'x-spine-expires': new Date(link.expires_at).toISOString(), 'x-spine-approval': link.require_approval ? '1' : '0' },
+        body: sealed as BodyInit,
+      });
+      for (const [n, image] of result.images.entries()) {
+        const bytes = new Uint8Array(fs.readFileSync(image.from) as Buffer);
+        await call('PUT', `/api/shared/${encodeURIComponent(link.id)}/blob/${n}`, {
+          headers: { 'content-type': 'application/octet-stream' },
+          body: (await sealPart(key, link.id, `blob-${n}`, bytes)) as BodyInit,
         });
-        const changes = await copyStore.changes.drain();
-        // A keyed hash of what the copy holds (without the clocks, which differ every time it is made), so that a copy that would be the
-        // same is not sent again. The key makes it useless to anyone who sees it beside the sealed copy.
-        const s = await sodium();
-        const canonical = changes.map(c => JSON.stringify([c.t, c.k, c.r])).sort().join('\n') + '\n' + result.images.map(i => `${i.pageId}:${fs.statSync(i.from).size}`).sort().join(',') + `\n${link.label}|${link.expires_at}|${link.language}|${link.allow_chat}|${link.include_scans}`;
-        digest = s.to_base64(s.crypto_generichash(24, new TextEncoder().encode(canonical), s.from_base64(key, s.base64_variants.URLSAFE_NO_PADDING)), s.base64_variants.URLSAFE_NO_PADDING);
-        if (unlessUnchanged && !newKey && have && (await store.shareLinks.copyDigest(userId, link.id)) === digest) return { key, published: false, digest };
-        const sealed = await sealPart(key, link.id, 'records', new TextEncoder().encode(JSON.stringify({ v: 1, owner: userId, changes })));
-        await call('PUT', `/api/shared/${encodeURIComponent(link.id)}`, {
-          headers: { 'content-type': 'application/octet-stream', 'x-spine-expires': new Date(link.expires_at).toISOString(), 'x-spine-approval': link.require_approval ? '1' : '0' },
-          body: sealed as BodyInit,
-        });
-        for (const [n, image] of result.images.entries()) {
-          const bytes = new Uint8Array(fs.readFileSync(image.from) as Buffer);
-          await call('PUT', `/api/shared/${encodeURIComponent(link.id)}/blob/${n}`, {
-            headers: { 'content-type': 'application/octet-stream' },
-            body: (await sealPart(key, link.id, `blob-${n}`, bytes)) as BodyInit,
-          });
-        }
-      } finally {
-        dest.close();
       }
       return { key, published: true, digest };
     },

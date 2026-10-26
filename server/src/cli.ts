@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { RESET_TTL_MS, deleteAccount, describeAccount, issueUserToken, resetLink } from './accounts.js';
 import { useAccountsStore } from './store.js';
+import { useModelProviders } from './providers.js';
 import {
   checkPasswordPolicy,
   generatePassword,
@@ -255,6 +256,7 @@ async function readStdinLine(): Promise<string> {
 // Only when executed directly, so importing this in a test does not run it.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   useAccountsStore(); // the operator's commands touch accounts only (SECURITY.md M-37)
+  useModelProviders();
   const code = await runCli(process.argv.slice(2), {
     out: line => console.log(line),
     err: line => console.error(line),

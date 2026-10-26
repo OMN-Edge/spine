@@ -1,6 +1,6 @@
-import type { FastifyInstance } from 'fastify';
+import { fileSystem } from '../files.js';
+import type { HttpApp } from '../http.js';
 import { readsByModel } from '../file-kind.js';
-import { createReadStream, rmSync } from 'fs';
 import path from 'path';
 import { getStore } from '../store/index.js';
 import { getJobStatus } from '../ingestion/pipeline.js';
@@ -37,7 +37,7 @@ function documentSummary(doc: Document) {
 /** One request cannot ask for an unbounded number of images to be sent. */
 const MAX_PAGES_PER_READING = 200;
 
-export async function sourceFileRoutes(app: FastifyInstance) {
+export async function sourceFileRoutes(app: HttpApp) {
   app.addHook('preHandler', requireAuth);
 
   // Every upload, newest first, with what it became, so the history can name each upload
@@ -98,7 +98,7 @@ export async function sourceFileRoutes(app: FastifyInstance) {
   });
 
   // Several photos of one document, in the order they are sent: one upload whose pages they are.
-  app.post('/api/source-files/upload-photos', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
+  app.post('/api/source-files/upload-photos', async (req, reply) => {
     return reply.send(await acceptPhotoParts(req.userId, req.parts()));
   });
 
@@ -118,7 +118,7 @@ export async function sourceFileRoutes(app: FastifyInstance) {
     const upload = await getStore().sourceFiles.findFor(req.userId, req.params.id);
     const found = upload ? rawPhotoPath(req.userId, upload, Number(req.params.n)) : null;
     if (!found) return reply.status(404).send({ error: 'not found' });
-    return reply.type(found.type).header('Cache-Control', 'private, no-store').send(createReadStream(found.file));
+    return reply.type(found.type).header('Cache-Control', 'private, no-store').send(fileSystem().readStream(found.file));
   });
 
   app.delete<{ Params: { id: string } }>('/api/source-files/:id', async (req, reply) => {
@@ -278,7 +278,7 @@ export async function sourceFileRoutes(app: FastifyInstance) {
   // Which pages of a mixed upload belong together (SECURITY.md M-24). The text read from the pages goes to the configured model
   // provider, as it did to read the documents, one call per candidate group; it runs in the background, the plan is kept, and the
   // app starts a conversation when it is ready. Nothing is changed by it.
-  app.post<{ Params: { id: string }; Body: { conversation_id?: unknown } | undefined }>('/api/source-files/:id/regroup/analyze', { config: { rateLimit: { max: 6, timeWindow: '1 minute' } } }, async (req, reply) => {
+  app.post<{ Params: { id: string }; Body: { conversation_id?: unknown } | undefined }>('/api/source-files/:id/regroup/analyze', async (req, reply) => {
     const { id } = req.params;
     const file = await getStore().sourceFiles.findFor(req.userId, id);
     if (!file) return reply.status(404).send({ error: 'not found' });

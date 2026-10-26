@@ -1,9 +1,9 @@
-import type { FastifyInstance } from 'fastify';
+import type { HttpApp } from '../http.js';
 import { DEMO_LANGUAGES, type DemoLanguage } from '../demo/records.js';
 import { demoState, loadDemo, removeDemo } from '../demo/index.js';
 import { requireAuth } from './middleware.js';
 
-export async function demoRoutes(app: FastifyInstance) {
+export async function demoRoutes(app: HttpApp) {
   app.addHook('preHandler', requireAuth);
 
   app.get('/api/demo', async (req, reply) => reply.header('Cache-Control', 'no-store').send(await demoState(req.userId)));

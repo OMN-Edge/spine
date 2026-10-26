@@ -1,5 +1,10 @@
 import '../src/core/shims/globals';
-import fs from 'fs';
+import fs, { browserFiles } from '../src/core/shims/fs';
+import { useFiles } from 'spine-core/files';
+import { useSettings } from 'spine-core/config';
+import { deviceSettings } from '../src/core/native/settings';
+import { useDigests } from 'spine-core/digest';
+import { browserDigests } from '../src/core/native/digests';
 import { startCore } from '../src/core/boot';
 import { rasterizePdf } from '../src/core/native/rasterize';
 import { ocrPage } from '../src/core/native/ocr';
@@ -10,7 +15,9 @@ import { bundlePhotos } from 'spine-core/ingestion/photo-set.js';
 import { convertUpload } from 'spine-core/ingestion/convert.js';
 import { rotateImage } from '../src/core/native/image-ops';
 import { newZip } from '../src/core/native/zip-write';
-import { ZipReader } from '../src/core/native/zip-read';
+import { ZipReader } from 'spine-core/archive/zip-read.js';
+import { useNativeTools } from 'spine-core/native-tools';
+import { browserTools } from '../src/core/native';
 import { stampImages, readDigitalSigners } from '../src/core/native/signatures';
 import heicUrl from 'spine-core/__tests__/fixtures/gradient.heic?url';
 import signedRsaUrl from 'spine-core/__tests__/fixtures/signed-rsa.pdf?url';
@@ -36,6 +43,10 @@ const step = async (out: Record<string, unknown>, name: string, fn: () => Promis
   const t = performance.now();
   try { out[name] = { ok: await fn(), ms: Math.round(performance.now() - t) }; } catch (e) { out[name] = { error: String((e as Error).stack || e).slice(0, 400) }; }
 };
+useNativeTools(browserTools);
+useFiles(browserFiles);
+useSettings(deviceSettings);
+useDigests(browserDigests); // what the core registers when it starts: the shared code asks for these
 (async () => {
   const out: Record<string, unknown> = {};
   fs.mkdirSync('/data/originals', { recursive: true });

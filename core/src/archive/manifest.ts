@@ -1,4 +1,4 @@
-import { createHash } from 'crypto';
+import { sha256Hex } from '../digest.js';
 import { z } from 'zod';
 
 /**
@@ -212,5 +212,5 @@ export function claimsToBeExport(value: unknown): { version: unknown } | null {
 export function documentFingerprint(pageTexts: Array<string | null>): string | null {
   const normalised = pageTexts.map(t => (t ?? '').toLowerCase().replace(/\s+/g, ' ').trim());
   if (normalised.join('').length < 40) return null;
-  return createHash('sha256').update(JSON.stringify(normalised)).digest('hex');
+  return sha256Hex(JSON.stringify(normalised));
 }

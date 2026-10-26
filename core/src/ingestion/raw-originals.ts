@@ -1,4 +1,4 @@
-import fs from 'fs';
+import { fileSystem } from '../files.js';
 import path from 'path';
 import { resolveDataDir } from '../config.js';
 import { detectFileKind, isImage } from '../file-kind.js';
@@ -22,9 +22,9 @@ export async function keepUnprocessed(userId: string, sourceFileId: string, file
   for (const file of files) {
     const kind = detectFileKind(file);
     if (!isImage(kind)) continue;
-    if (kept === 0) fs.mkdirSync(dir, { recursive: true });
+    if (kept === 0) fileSystem().mkdirSync(dir);
     kept += 1;
-    fs.copyFileSync(file, path.join(dir, `${String(kept).padStart(2, '0')}.${kind === 'png' ? 'png' : 'jpg'}`));
+    fileSystem().copyFileSync(file, path.join(dir, `${String(kept).padStart(2, '0')}.${kind === 'png' ? 'png' : 'jpg'}`));
   }
   if (kept > 0) await store.sourceFiles.setRawCount(userId, sourceFileId, kept);
   return kept;
@@ -39,7 +39,7 @@ export function rawPhotoPath(userId: string, upload: { file_path: string; raw_co
   const dir = path.join(root, rawDirOf(relative));
   for (const ext of ['jpg', 'png']) {
     const file = path.join(dir, `${String(n).padStart(2, '0')}.${ext}`);
-    if (fs.existsSync(file)) return { file, type: ext === 'png' ? 'image/png' : 'image/jpeg' };
+    if (fileSystem().existsSync(file)) return { file, type: ext === 'png' ? 'image/png' : 'image/jpeg' };
   }
   return null;
 }

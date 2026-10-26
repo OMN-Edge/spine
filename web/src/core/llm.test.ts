@@ -5,7 +5,9 @@ import { createRelay } from '../../../server/src/relay/relay';
 import { issueToken } from '../../../server/src/relay/token';
 import { relayFetch, relayToken, useTokenUrl } from './native/relay-auth';
 import { useRelayHooks } from 'spine-core/llm/adapters/relay';
-import { standInClients } from '../../../server/src/relay/stand-in';
+import { useSettings } from 'spine-core/config';
+import { deviceSettings } from './native/settings';
+import { standInClients } from '../../../server/src/testing/stand-in';
 
 /**
  * A model call as the device makes it: the server's own LLM interface, built with the relay client, going through the real relay code to a
@@ -18,7 +20,7 @@ const stand = standInClients({ continuation: { is_continuation: true, confidence
 
 beforeAll(async () => {
   const handle = createRelay({
-    secret: SECRET, allowedOrigin: '*', dailyCalls: 100, usage: { spend: async () => 1 }, maxBodyBytes: 5_000_000,
+    secret: SECRET, allowedOrigin: '*', dailyCalls: 100, dailySharedCalls: 100, usage: { spend: async () => 1 }, maxBodyBytes: 5_000_000,
     clients: model => (model === undefined || model === 'any-model' ? stand.clients : null),
     embedder: () => ({ enabled: true, id: 'vertex:gemini-embedding-2:128', dims: 128, embed: async texts => texts.map(() => Float32Array.from({ length: 128 }, (_, i) => (i + 1) / 128)) }),
   });
@@ -28,13 +30,17 @@ beforeAll(async () => {
   await new Promise<void>(r => tokens.listen(0, '127.0.0.1', r));
   useTokenUrl(`http://127.0.0.1:${(tokens.address() as AddressInfo).port}/api/relay/token`);
   const host = `127.0.0.1:${(relay.address() as AddressInfo).port}`;
-  Object.assign(process.env, {
+  Object.assign(deviceSettings, {
     SPINE_LLM_PROVIDER: 'relay', SPINE_LLM_ENDPOINT: host, SPINE_LLM_MODEL: 'any-model',
     SPINE_EMBEDDINGS: 'relay', SPINE_EMBEDDING_ENDPOINT: host, SPINE_EMBEDDING_MODEL: 'gemini-embedding-2', SPINE_EMBEDDING_DIMS: '128', SPINE_EMBEDDING_SPACE: 'vertex:gemini-embedding-2:128',
   });
+  useSettings(deviceSettings);
   useRelayHooks({ tokenProvider: relayToken, fetchImpl: relayFetch });
   // Every model call is counted in the store the process has (the device's own, here a database in memory).
   const { createStore, useStoreFactory } = await import('spine-core/store/index');
+  const { useDriver } = await import('spine-core/store/sqlite/index');
+  const { openNative } = await import('spine-core/testing/driver-native');
+  useDriver(openNative);
   useStoreFactory(() => createStore({ adapter: 'sqlite', location: ':memory:' }));
 });
 afterAll(() => { relay.close(); tokens.close(); });

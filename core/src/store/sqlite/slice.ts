@@ -1,5 +1,8 @@
 import type { Database } from './driver.js';
 import { sliceRow } from '../slice-policy.js';
+import type { SliceOptions, SliceResult } from '../types.js';
+
+export type { SliceOptions, SliceResult };
 
 /**
  * What a share contains (docs/crypto-design.md, stage 4): a copy, in a database of its own, of the documents a link shares and what
@@ -10,23 +13,6 @@ import { sliceRow } from '../slice-policy.js';
  * documents, which pages) and has SQLite read and write them; the columns that leave are the policy's. Page images are copied only if the
  * owner allowed scans (`includeScans`), and then as the files named in the result, not here.
  */
-export interface SliceOptions {
-  userId: string;
-  /** What `documents.listForShare` gave for the link on the owner's device: the documents the link shares. */
-  documentIds: string[];
-  includeText: boolean;
-  includeScans: boolean;
-  link: { id: string; label: string | null; createdAt: string; expiresAt: string; language: string | null; allowChat: boolean };
-  /** sha256 of the fixed address the recipient's core answers to (`LOCAL_SHARE_TOKEN`). */
-  tokenHash: string;
-  /** Where a page's image is in the share's own file system (when scans are included). */
-  imagePathOf: (pageId: string) => string;
-}
-
-export interface SliceResult {
-  images: Array<{ pageId: string; from: string; to: string }>;
-}
-
 const marks = (n: number) => Array.from({ length: n }, () => '?').join(', ');
 
 export function copySlice(source: Database, dest: Database, o: SliceOptions): SliceResult {
@@ -103,7 +89,7 @@ export function copySlice(source: Database, dest: Database, o: SliceOptions): Sl
 
   // The link as the recipient's core knows it: the documents named one by one, no approval (the key is the approval), chat as the owner set it.
   insert('share_links', {
-    id: o.link.id, user_id: o.userId, token: o.tokenHash, label: o.link.label, scope: 'document_ids', scope_value: JSON.stringify(docs),
+    id: o.link.id, user_id: o.userId, label: o.link.label, scope: 'document_ids', scope_value: JSON.stringify(docs),
     created_at: o.link.createdAt, expires_at: o.link.expiresAt, include_scans: o.includeScans ? 1 : 0, language: o.link.language,
     require_approval: 0, allow_chat: o.link.allowChat ? 1 : 0,
   });

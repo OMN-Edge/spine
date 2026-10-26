@@ -25,6 +25,8 @@ export interface RelayConfig {
   allowedOrigin: string;
   /** Calls a user may make a day. */
   dailyCalls: number;
+  /** Calls one share may make a day (a recipient's translations and questions): its pass is for `share:<id>`, counted apart from any account. */
+  dailySharedCalls: number;
   /** Where the day's calls are counted: the `usage` repository of the store the relay is configured with (`getAccountsStore()`). */
   usage: UsageRepository;
   maxBodyBytes: number;
@@ -45,7 +47,7 @@ export function createRelay(config: RelayConfig) {
   };
 
   /** Counts a call against the user's day; false if there is none left. */
-  const spend = async (userId: string): Promise<boolean> => (await config.usage.spend(userId, new Date(now()).toISOString().slice(0, 10), config.dailyCalls)) !== null;
+  const spend = async (subject: string): Promise<boolean> => (await config.usage.spend(subject, new Date(now()).toISOString().slice(0, 10), subject.startsWith('share:') ? config.dailySharedCalls : config.dailyCalls)) !== null;
 
   async function body(req: IncomingMessage): Promise<Buffer | null> {
     const chunks: Buffer[] = [];

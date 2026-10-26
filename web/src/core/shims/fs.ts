@@ -1,5 +1,5 @@
 import path from 'path';
-import { PassThrough, Writable } from 'stream';
+import type { Files } from 'spine-core/files';
 import { Buffer } from 'buffer';
 
 /**
@@ -108,41 +108,6 @@ export function readSync(fd: number, into: Uint8Array, offset: number, length: n
   return slice.length;
 }
 
-export function createReadStream(p: string): PassThrough {
-  const entry = files.get(abs(p));
-  if (!entry) fail('ENOENT', 'open', p);
-  const out = new PassThrough();
-  out.end(Buffer.from(resident(abs(p), entry)));
-  return out;
-}
-export function createWriteStream(p: string): Writable {
-  const a = abs(p);
-  const chunks: Uint8Array[] = [];
-  return new Writable({
-    write(chunk, _enc, done) { chunks.push(Uint8Array.from(chunk)); done(); },
-    final(done) {
-      try {
-        const data = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
-        let at = 0; for (const c of chunks) { data.set(c, at); at += c.length; }
-        if (!dirs.has(path.dirname(a))) fail('ENOENT', 'open', p);
-        files.set(a, { data, size: data.length, mtime: new Date() });
-        written.add(a); removed.delete(a);
-        done();
-      } catch (err) { done(err as Error); }
-    },
-  });
-}
-
-export const promises = {
-  readFile: async (p: string, options?: string | { encoding?: string }) => readFileSync(p, options),
-  writeFile: async (p: string, data: string | Uint8Array) => writeFileSync(p, data),
-  readdir: async (p: string, options?: { withFileTypes?: boolean }) => readdirSync(p, options),
-  rm: async (p: string, options?: { recursive?: boolean; force?: boolean }) => rmSync(p, options),
-  mkdir: async (p: string, options?: { recursive?: boolean }) => mkdirSync(p, options),
-  mkdtemp: async (prefix: string) => mkdtempSync(prefix),
-  stat: async (p: string) => statSync(p),
-};
-
 /**
  * For the layers above (persistence): what changed since the last `settle()`, files the vault holds but this page has not brought in
  * (`known`), bringing one in (`fill`), letting a loaded one go (`evict`), and forgetting everything (locking the vault).
@@ -163,4 +128,40 @@ export const memory = {
   clear() { files.clear(); dirs.clear(); dirs.add('/'); written.clear(); removed.clear(); },
 };
 
-export default { mkdirSync, existsSync, writeFileSync, readFileSync, copyFileSync, renameSync, rmSync, statSync, readdirSync, mkdtempSync, openSync, closeSync, readSync, createReadStream, createWriteStream, promises };
+/** The device's files as the shared code asks for them (`spine-core/files`), over the memory above. */
+export const browserFiles: Files = {
+  existsSync,
+  statSync,
+  readFileSync: p => readFileSync(p) as Buffer,
+  readTextSync: p => readFileSync(p, 'utf8') as string,
+  readFile: async p => readFileSync(p) as Buffer,
+  readHead(p, length) {
+    const entry = files.get(abs(p));
+    if (!entry) fail('ENOENT', 'open', p);
+    return Buffer.from(resident(abs(p), entry).subarray(0, length));
+  },
+  writeFileSync,
+  mkdirSync: p => void mkdirSync(p, { recursive: true }),
+  rmSync: p => rmSync(p, { recursive: true, force: true }),
+  renameSync,
+  copyFileSync,
+  async *readStream(p) {
+    const entry = files.get(abs(p));
+    if (!entry) fail('ENOENT', 'open', p);
+    yield resident(abs(p), entry);
+  },
+  writeStream(p) {
+    const chunks: Uint8Array[] = [];
+    return {
+      async write(chunk) { chunks.push(Uint8Array.from(chunk)); },
+      async end() {
+        const data = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
+        let at = 0;
+        for (const c of chunks) { data.set(c, at); at += c.length; }
+        writeFileSync(p, data);
+      },
+    };
+  },
+};
+
+export default { mkdirSync, existsSync, writeFileSync, readFileSync, copyFileSync, renameSync, rmSync, statSync, readdirSync, mkdtempSync };

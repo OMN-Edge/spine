@@ -2,18 +2,20 @@
  * A router with the part of Fastify's interface that the route files use, so the same files answer requests on the device.
  * Nothing is listening: a request is a function call (`inject`), the way the server's own tests make them. See docs/crypto-design.md.
  *
- * What it covers is what `core/src/routes/*.ts` call, and nothing else: app.get/post/put/patch/delete with `{ preHandler }`, addHook
- * ('preHandler' | 'onRequest'), decorateRequest, rateLimit (no limit: nobody else can reach a device), register, and on the request
- * params/query/body/headers/session/log/ip/url/parts, on the reply status/code/header/type/send/raw. Errors answer as Fastify's do.
+ * It implements `HttpApp` (core/src/http.ts), which is what `core/src/routes/*.ts` are written against: app.get/post/put/patch/delete with
+ * `{ preHandler }`, addHook('preHandler'), decorateRequest, and on the request params/query/body/headers/log/ip/url/userId/parts, on the
+ * reply status/header/type/send/raw. The router also keeps `session` and `register` for the device's own use. Errors answer as Fastify's do.
  * A test runs the same requests against Fastify and against this, and compares.
  */
 
-type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
-type Hook = (req: LocalRequest, reply: LocalReply) => unknown;
-type Handler = (req: LocalRequest, reply: LocalReply) => unknown;
-interface RouteOptions { preHandler?: Hook | Hook[]; onRequest?: Hook | Hook[]; config?: unknown }
+import type { HttpApp, HttpHandler, HttpHook, HttpRequest, HttpRoute, HttpRouteOptions, UploadPart } from 'spine-core/http';
 
-export interface LocalRequest {
+type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+type Hook = HttpHook;
+type Handler = HttpHandler;
+type RouteOptions = HttpRouteOptions & { onRequest?: Hook | Hook[] };
+
+export interface LocalRequest extends HttpRequest {
   method: string;
   url: string;
   params: Record<string, string>;
@@ -24,7 +26,7 @@ export interface LocalRequest {
   log: { info(...a: unknown[]): void; warn(...a: unknown[]): void; error(...a: unknown[]): void; debug(...a: unknown[]): void };
   ip: string;
   userId: string;
-  parts(): AsyncIterable<unknown>;
+  parts(): AsyncIterable<UploadPart>;
   [extra: string]: unknown;
 }
 
@@ -47,7 +49,7 @@ export interface InjectRequest {
   /** What `req.session` holds for this request; the caller is whoever has unlocked the vault. */
   session?: Record<string, unknown>;
   /** The parts of a multipart upload, as the route's `req.parts()` yields them. */
-  parts?: unknown[];
+  parts?: UploadPart[];
 }
 
 export interface InjectResponse {
@@ -84,7 +86,7 @@ async function collect(stream: AsyncIterable<unknown>): Promise<Uint8Array> {
   return out;
 }
 
-export class LocalApp {
+export class LocalApp implements HttpApp {
   private routes: Route[] = [];
   private hooks: { onRequest: Hook[]; preHandler: Hook[] } = { onRequest: [], preHandler: [] };
   private defaults: Record<string, unknown> = {};
@@ -97,11 +99,14 @@ export class LocalApp {
     for (const listener of this.routeListeners) listener({ method, url });
   }
 
-  get = (url: string, a: RouteOptions | Handler, b?: Handler) => this.add('GET', url, a, b);
-  post = (url: string, a: RouteOptions | Handler, b?: Handler) => this.add('POST', url, a, b);
-  put = (url: string, a: RouteOptions | Handler, b?: Handler) => this.add('PUT', url, a, b);
-  patch = (url: string, a: RouteOptions | Handler, b?: Handler) => this.add('PATCH', url, a, b);
-  delete = (url: string, a: RouteOptions | Handler, b?: Handler) => this.add('DELETE', url, a, b);
+  private route(method: Method): HttpRoute {
+    return ((url: string, a: RouteOptions | Handler, b?: Handler) => this.add(method, url, a, b)) as HttpRoute;
+  }
+  get = this.route('GET');
+  post = this.route('POST');
+  put = this.route('PUT');
+  patch = this.route('PATCH');
+  delete = this.route('DELETE');
 
   addHook(name: string, fn: Hook | ((route: { method: string | string[]; url: string }) => void)): void {
     if (name === 'onRoute') this.routeListeners.push(fn as never);

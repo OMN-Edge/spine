@@ -1,6 +1,6 @@
 import { loadStoreConfig } from '../config.js';
 import { createSqliteAccountsStore, createSqliteStore } from './sqlite/index.js';
-import { StoreConfigError, type AccountsStore, type RecordsStore, type Store, type StoreAdapter, type StoreConfig } from './types.js';
+import { StoreConfigError, type AccountsStore, type Store, type StoreAdapter, type StoreConfig } from './types.js';
 
 /**
  * Dispatch is a registry, as for the LLM interface: adding a store is a map entry

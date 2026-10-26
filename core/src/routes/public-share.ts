@@ -1,23 +1,16 @@
+import { fileSystem } from '../files.js';
+import type { HttpApp, HttpRequest, HttpReply } from '../http.js';
 import { sharedChainOf } from '../linking/index.js';
 import { relatedTo } from '../similarity/index.js';
-import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { createReadStream, existsSync, readFileSync, statSync } from 'fs';
-import path, { extname } from 'path';
-import { fileURLToPath } from 'url';
+import { extname } from 'path';
 import { getStore, type ResolvedShareLink, type Store } from '../store/index.js';
 import { resolveStoredScope, ScopeError } from '../share-scope.js';
-import { hashShareToken } from '../share-token.js';
 import { isSupportedLanguage, SUPPORTED_LANGUAGES } from '../languages.js';
 import { translateDocument, warmTranslations } from '../translation.js';
 import { translationEnabled } from '../config.js';
 import { buildSeries } from './trends.js';
-import { approvalFor, startVisitor, visitorHashOf, type Approval } from '../share-visitor.js';
-import { ownerNotices } from '../owner-notices.js';
-import { windowLimiter } from '../rate-limit.js';
-import { v4 as uuidv4 } from 'uuid';
 import { streamReply } from './ndjson.js';
 import { chatEnabled, landingUrl, publicUrl } from '../config.js';
-import { countryOf } from '../geo.js';
 import { getChatLlm } from '../llm/index.js';
 import { askSharedAgent } from '../chat/agent.js';
 import { MAX_QUESTION, MAX_TURN, MAX_TURNS, trimHistory } from '../chat/index.js';
@@ -27,100 +20,19 @@ import type { ChatTurn } from '../llm/types.js';
 import type { ChatProgress } from '../chat/index.js';
 import { sharedTestNames } from '../chat/share-tests.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-export interface PublicShareRouteOptions {
-  /**
-   * The built SPA's index.html. `GET /share/:token` serves it so React Router
-   * can render the share view: the SPA fallback in index.ts deliberately
-   * excludes `/share/`, so this route is the only thing that answers a
-   * recipient's URL and it has to return the app, not JSON.
-   */
-  appShellPath?: string;
-  /** Access requests: per source, and per link. Options so tests drive the real limiters (as for login). */
-  requestPerSource?: { max: number; timeWindow: string };
-  requestPerLink?: { max: number; windowMs: number };
-  /** Questions from a recipient: per source, and per link. Each costs model calls, and anyone with the link can ask. */
-  chatPerSource?: { max: number; timeWindow: string };
-  chatPerLink?: { max: number; windowMs: number };
-}
-
 /**
- * P7: every non-owner access is logged before anything is returned. Both routes
- * log, so a token being probed leaves a trace even if no document is fetched.
- *
- * `countView` is false when only the app shell was served: `view_count` counts
- * times the documents were actually read, which is what the owner is being told
- * on the Share Links page.
- *
- * S-9: X-Real-IP is trusted here, which is correct behind nginx and forgeable
- * if Fastify is reachable directly. Fastify binds loopback (config.ts) so that
- * precondition holds.
+ * What a recipient reads from a sealed share, answered in their own browser from the copy they opened (web/src/core/boot-share.ts): the
+ * copy holds one link, found by its id, and only what that link shares. Nothing here is a control against the reader, who runs it: the
+ * server's part (when the copy ends, who may open it, how often, what it counts) is in server/src/routes/shared.ts, and the model calls
+ * a reader makes are bounded by the relay's allowance for the share.
  */
-async function logAccess(
-  store: Store,
-  req: FastifyRequest,
-  linkId: string,
-  { countView, documentId = null }: { countView: boolean; documentId?: string | null },
-): Promise<void> {
-  // `req.ip` is the address the trusted proxy saw (S-31), the same in front of nginx and in front of Caddy.
-  const ip = req.ip ?? null;
-  await store.shareLinks.logAccess(linkId, new Date().toISOString(), ip, countView, { country: await countryOf(ip), documentId });
-}
-
-/** Requests waiting on one link at once. */
-const MAX_WAITING = 5;
-
-const DEAD_LINK_PAGE =
-  '<!doctype html><html lang="en"><head><meta charset="utf-8">' +
-  '<title>Link unavailable</title></head><body>' +
-  '<p>This link is no longer active.</p></body></html>';
-
-export async function publicShareRoutes(
-  app: FastifyInstance,
-  opts: PublicShareRouteOptions = {},
-) {
-  const appShellPath =
-    opts.appShellPath ?? path.join(__dirname, '../../../web/dist/index.html');
-
-  app.get<{ Params: { token: string } }>('/share/:token', async (req, reply) => {
+export async function publicShareRoutes(app: HttpApp) {
+  // The documents the link shares, in a language if one is asked for.
+  app.get<{ Params: { link: string }; Querystring: { lang?: string } }>('/api/share/:link/documents', async (req, reply) => {
     const store = getStore();
-    // P6: the column holds sha256(token), so the presented value is hashed
-    // before the lookup.
-    const link = await store.shareLinks.findLiveByTokenHash(hashShareToken(req.params.token));
-
-    // A sealed share (docs/crypto-design.md, stage 4) is opened by the page itself, which asks the server about it and says if it ended, so
-    // the app is served for its id whatever its state. The server cannot tell what is in it; the access is noted when the page opens it.
-    const sealed = !link && /^[A-Za-z0-9_-]{22,64}$/.test(req.params.token) ? await store.shared.get(req.params.token) : null;
-
-    // A dead link gets a plain page rather than the app, so a recipient whose
-    // link expired is not left looking at a spinner.
-    if (!link && !sealed) return reply.status(410).type('text/html').send(DEAD_LINK_PAGE);
-
-    if (link) await logAccess(store, req, link.id, { countView: false });
-
-    if (!existsSync(appShellPath)) {
-      req.log.error({ appShellPath }, 'share view requested but the web build is missing');
-      return reply.status(500).type('text/html').send(DEAD_LINK_PAGE);
-    }
-
-    // Read rather than sendFile: this route must work whether or not
-    // @fastify/static is registered in the surrounding app.
-    return reply.type('text/html').send(readFileSync(appShellPath, 'utf8'));
-  });
-
-  // JSON API for the public share view (used by the frontend PublicShareView page)
-  app.get<{ Params: { token: string }; Querystring: { lang?: string } }>('/api/share/:token/documents', async (req, reply) => {
-    const store = getStore();
-    const link = await store.shareLinks.findLiveByTokenHash(hashShareToken(req.params.token));
+    const link = await store.shareLinks.findLive(req.params.link);
 
     if (!link) return reply.status(410).send({ error: 'link expired or revoked' });
-
-    // M-19: a link that needs approval reads nothing until this browser has been approved. Logged either way (P7),
-    // but only a read that was allowed counts as a view.
-    const approval = await approvalFor(store, req, link);
-    await logAccess(store, req, link.id, { countView: approval === 'open' });
-    if (approval !== 'open') return reply.status(403).send({ error: 'approval required', approval });
 
     // P2: an unresolvable scope returns nothing. This was S-1: the old chain
     // skipped every branch when scope_value was absent and ran the query
@@ -163,83 +75,24 @@ export async function publicShareRoutes(
 
   // What the share page needs before it shows anything: the language the owner started it in, if any, the ones it
   // can offer, and whether translating is on. Logged, since it is a read of the link.
-  app.get<{ Params: { token: string } }>('/api/share/:token/meta', async (req, reply) => {
+  app.get<{ Params: { link: string } }>('/api/share/:link/meta', async (req, reply) => {
     const store = getStore();
-    const link = await store.shareLinks.findLiveByTokenHash(hashShareToken(req.params.token));
+    const link = await store.shareLinks.findLive(req.params.link);
     if (!link) return reply.status(410).send({ error: 'link expired or revoked' });
-    await logAccess(store, req, link.id, { countView: false });
-    // `approval` is what the page needs to decide between asking for access, waiting, and showing the documents.
-    const approval = await approvalFor(store, req, link);
-    return reply.header('Cache-Control', 'no-store').send({ language: link.language, languages: SUPPORTED_LANGUAGES, translation: translationEnabled(), approval, chat: link.allowChat && chatEnabled(), landing_url: landingUrl() });
+    return reply.header('Cache-Control', 'no-store').send({ language: link.language, languages: SUPPORTED_LANGUAGES, translation: translationEnabled(), chat: link.allowChat && chatEnabled(), landing_url: landingUrl() });
   });
 
-  // A visitor asks to be let in. The first request from a browser gives it its cookie and tells the owner (by mail, if
-  // there is a mailer; the request is on the Share links page either way); asking again changes nothing and sends
-  // nothing. Bounded three ways: per source here, per link below, and a cap on how many wait at once (the store).
-  const perLink = windowLimiter(
-    opts.requestPerLink ?? { max: 10, windowMs: 60 * 60 * 1000 },
-    req => hashShareToken((req.params as { token?: string }).token ?? ''),
-    'too many requests for this link, try again later',
-  );
-  app.post<{ Params: { token: string }; Body: { note?: unknown } }>(
-    '/api/share/:token/access-request',
-    { config: { rateLimit: opts.requestPerSource ?? { max: 10, timeWindow: '1 minute' } }, preHandler: perLink },
-    async (req, reply) => {
-      const store = getStore();
-      const link = await store.shareLinks.findLiveByTokenHash(hashShareToken(req.params.token));
-      if (!link) return reply.status(410).send({ error: 'link expired or revoked' });
-      await logAccess(store, req, link.id, { countView: false });
-      if (!link.requireApproval) return reply.header('Cache-Control', 'no-store').send({ approval: 'open' as Approval });
-
-      const existing = await approvalFor(store, req, link);
-      if (existing !== 'needed') return reply.header('Cache-Control', 'no-store').send({ approval: existing });
-
-      // Text from a stranger: cut short, control characters out. The owner sees it as text and it is not in the mail.
-      const raw = typeof req.body?.note === 'string' ? req.body.note : '';
-      const note = raw.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 120) || null;
-      const userAgent = String(req.headers['user-agent'] ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 200) || null;
-      const ip = req.ip ?? null;
-
-      const visitor = visitorHashOf(req) ?? startVisitor(reply);
-      const id = uuidv4();
-      const requestedAt = new Date().toISOString();
-      const created = await store.shareLinks.createRequest(link.id, { id, visitorHash: visitor, note, ipAddress: ip, userAgent, requestedAt }, MAX_WAITING);
-      if (!created) return reply.status(429).send({ error: 'too many requests are waiting for this link' });
-
-      // After the response, as for account mail: how long the provider takes is not the visitor's business.
-      const notices = ownerNotices();
-      if (notices?.enabled()) {
-        const owner = await store.users.findById(link.userId);
-        if (owner) {
-          void notices.accessRequested(owner, id, requestedAt, ip).catch(err => {
-            req.log.error({ shareLinkId: link.id, err: err instanceof Error ? err.message : String(err) }, 'could not send access request mail');
-          });
-        }
-      }
-      return reply.status(202).header('Cache-Control', 'no-store').send({ approval: 'pending' as Approval });
-    },
-  );
-
   /**
-   * The live link for a presented token with its scope checked, logged first (P7), or null after the
-   * reply has been sent. The same order as the list route: an unknown or revoked token is 410, a link
-   * whose scope cannot be resolved serves nothing (P2).
+   * The live link with its scope checked, or null after the reply has been sent: an unknown or revoked link is 410, and a link whose
+   * scope cannot be resolved serves nothing (P2).
    */
   async function openLink(
-    req: FastifyRequest<{ Params: { token: string } }>,
-    reply: import('fastify').FastifyReply,
-    countView: boolean,
-    documentId: string | null = null,
+    req: HttpRequest<{ Params: { link: string } }>,
+    reply: HttpReply,
   ): Promise<{ link: ResolvedShareLink; store: Store } | null> {
     const store = getStore();
-    const link = await store.shareLinks.findLiveByTokenHash(hashShareToken(req.params.token));
+    const link = await store.shareLinks.findLive(req.params.link);
     if (!link) { reply.status(410).send({ error: 'link expired or revoked' }); return null; }
-
-    const approval = await approvalFor(store, req, link);
-    // Only a document the link really shares is recorded as opened: the id comes from the recipient.
-    const opened = approval === 'open' && documentId && (await store.documents.listForShare(link)).some(d => d.id === documentId) ? documentId : null;
-    await logAccess(store, req, link.id, { countView: countView && approval === 'open', documentId: opened });
-    if (approval !== 'open') { reply.status(403).send({ error: 'approval required', approval }); return null; }
     try {
       resolveStoredScope(link.scope, link.scopeValue);
     } catch (err) {
@@ -257,11 +110,10 @@ export async function publicShareRoutes(
   // owner allowed scans for this link, which pages it has. The document must be one the link's scope
   // resolves to, so a recipient cannot name an id outside what was shared. Explicit columns throughout:
   // no owner id, no server path, no source text, no box.
-  app.get<{ Params: { token: string; id: string } }>(
-    '/api/share/:token/documents/:id',
-    { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
+  app.get<{ Params: { link: string; id: string } }>(
+    '/api/share/:link/documents/:id',
     async (req, reply) => {
-      const opened = await openLink(req, reply, true, req.params.id);
+      const opened = await openLink(req, reply);
       if (!opened) return;
       const { link, store } = opened;
 
@@ -302,13 +154,12 @@ export async function publicShareRoutes(
   // One shared document in the reader's language, translated on demand and kept, so the next reader gets it at once.
   // The document must be one the link's scope resolves to, as for the document itself. The model is only ever asked
   // to translate into one of the interface's languages, once per document and language until it changes.
-  app.get<{ Params: { token: string; id: string }; Querystring: { lang?: string; part?: string } }>(
-    '/api/share/:token/documents/:id/translation',
-    { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
+  app.get<{ Params: { link: string; id: string }; Querystring: { lang?: string; part?: string } }>(
+    '/api/share/:link/documents/:id/translation',
     async (req, reply) => {
       const language = req.query.lang;
       if (!isSupportedLanguage(language)) return reply.status(400).send({ error: `lang must be one of ${SUPPORTED_LANGUAGES.join(', ')}` });
-      const opened = await openLink(req, reply, false);
+      const opened = await openLink(req, reply);
       if (!opened) return;
       const { link, store } = opened;
       if (!(await store.documents.listForShare(link)).some(d => d.id === req.params.id)) return reply.status(404).send({ error: 'not found' });
@@ -323,11 +174,10 @@ export async function publicShareRoutes(
   // Values over time, for the documents the link shares and no others. The names are worked out from the shared
   // documents' own results: the owner's list (`measurements.names`) counts every document, and its "latest" could be
   // from one that was not shared.
-  app.get<{ Params: { token: string } }>(
-    '/api/share/:token/trends',
-    { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
+  app.get<{ Params: { link: string } }>(
+    '/api/share/:link/trends',
     async (req, reply) => {
-      const opened = await openLink(req, reply, false);
+      const opened = await openLink(req, reply);
       if (!opened) return;
       const { link, store } = opened;
       return reply.header('Cache-Control', 'no-store').send(await sharedTestNames(link.userId, await store.documents.listForShare(link)));
@@ -337,11 +187,10 @@ export async function publicShareRoutes(
   // The documents around one shared document: those the owner linked to it (confirmed links only) and those that read alike
   // (the same test or doctor, or close in meaning), each only if the link shares it too. Reads and computes; writes nothing
   // (R-4). Titles and dates are what the list already shows; no reason text, no score, no word of who made a link.
-  app.get<{ Params: { token: string; id: string } }>(
-    '/api/share/:token/documents/:id/connections',
-    { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
+  app.get<{ Params: { link: string; id: string } }>(
+    '/api/share/:link/documents/:id/connections',
     async (req, reply) => {
-      const opened = await openLink(req, reply, false);
+      const opened = await openLink(req, reply);
       if (!opened) return;
       const { link, store } = opened;
 
@@ -362,11 +211,10 @@ export async function publicShareRoutes(
     },
   );
 
-  app.get<{ Params: { token: string }; Querystring: { name?: string } }>(
-    '/api/share/:token/trends/series',
-    { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
+  app.get<{ Params: { link: string }; Querystring: { name?: string } }>(
+    '/api/share/:link/trends/series',
     async (req, reply) => {
-      const opened = await openLink(req, reply, false);
+      const opened = await openLink(req, reply);
       if (!opened) return;
       const { link, store } = opened;
       const canonical = typeof req.query.name === 'string' ? req.query.name.trim().toLowerCase() : '';
@@ -379,17 +227,10 @@ export async function publicShareRoutes(
     },
   );
 
-  // A recipient's question about what the link shares (SECURITY.md M-20). Only for a link the owner allowed chat on, and only
-  // once the link is open to this browser (approval, scope). The agent reads the owner's store, so it is held to
+  // A recipient's question about what the link shares (SECURITY.md M-20). Only for a link the owner allowed chat on. The agent reads the owner's store, so it is held to
   // `listForShare(link)` in code (`Scope`), not by its prompt; nothing is stored, and the earlier turns come from the page.
-  const chatPerLink = windowLimiter(
-    opts.chatPerLink ?? { max: 60, windowMs: 60 * 60 * 1000 },
-    req => hashShareToken((req.params as { token?: string }).token ?? ''),
-    'too many questions for this link, try again later',
-  );
-  app.post<{ Params: { token: string }; Body: { question?: unknown; history?: unknown; document_id?: unknown; stream?: unknown } }>(
-    '/api/share/:token/chat',
-    { config: { rateLimit: opts.chatPerSource ?? { max: 10, timeWindow: '1 minute' } }, preHandler: chatPerLink },
+  app.post<{ Params: { link: string }; Body: { question?: unknown; history?: unknown; document_id?: unknown; stream?: unknown } }>(
+    '/api/share/:link/chat',
     async (req, reply) => {
       const { question, history: sent, document_id: documentId, stream } = req.body ?? {};
       if (typeof question !== 'string' || !question.trim() || question.length > MAX_QUESTION) {
@@ -403,7 +244,7 @@ export async function publicShareRoutes(
       }
       if (documentId !== undefined && (typeof documentId !== 'string' || documentId.length > 64)) return reply.status(400).send({ error: 'document_id must be an id' });
 
-      const opened = await openLink(req, reply, false);
+      const opened = await openLink(req, reply);
       if (!opened) return;
       const { link, store } = opened;
       // One 404 for "not on this link" and "switched off", as for a scan the link does not allow.
@@ -438,11 +279,10 @@ export async function publicShareRoutes(
   // A page image, only for a link the owner allowed scans on, and only a page that belongs to a document in
   // that link's scope (and that the owner has not hidden). Anything else is the same 404, so the answer says
   // nothing about pages outside the share.
-  app.get<{ Params: { token: string; pageId: string } }>(
-    '/api/share/:token/pages/:pageId/image',
-    { config: { rateLimit: { max: 240, timeWindow: '1 minute' } } },
+  app.get<{ Params: { link: string; pageId: string } }>(
+    '/api/share/:link/pages/:pageId/image',
     async (req, reply) => {
-      const opened = await openLink(req, reply, false);
+      const opened = await openLink(req, reply);
       if (!opened) return;
       const { link, store } = opened;
       if (!link.includeScans) return reply.status(404).send({ error: 'not found' });
@@ -454,14 +294,14 @@ export async function publicShareRoutes(
       if (!allowed) return reply.status(404).send({ error: 'not found' });
 
       const imagePath = await store.pages.findImagePathFor(link.userId, req.params.pageId);
-      if (!imagePath || !existsSync(imagePath) || !statSync(imagePath).isFile()) {
+      if (!imagePath || !fileSystem().existsSync(imagePath) || !fileSystem().statSync(imagePath).isFile()) {
         return reply.status(404).send({ error: 'not found' });
       }
       return reply
         .type(extname(imagePath).toLowerCase() === '.jpg' ? 'image/jpeg' : 'image/png')
         .header('Cache-Control', 'no-store')
         .header('X-Robots-Tag', 'noindex, nofollow')
-        .send(createReadStream(imagePath));
+        .send(fileSystem().readStream(imagePath));
     },
   );
 }

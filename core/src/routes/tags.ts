@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { HttpApp } from '../http.js';
 import { getStore } from '../store/index.js';
 import { requireAuth } from './middleware.js';
 import { MAX_TAG_LENGTH } from '../tags.js';
@@ -10,7 +10,7 @@ const MAX_PROVIDER_LENGTH = 200;
  * their own routes, and tests are managed with their trends in `trends.ts`.) Every call is scoped to the signed-in
  * user by the store (P12); an id that is not theirs is a 404.
  */
-export async function tagRoutes(app: FastifyInstance) {
+export async function tagRoutes(app: HttpApp) {
   app.addHook('preHandler', requireAuth);
 
   const tagId = (value: unknown): number | null => {

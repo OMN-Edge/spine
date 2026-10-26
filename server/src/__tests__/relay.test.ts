@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { openDatabase } from 'spine-core/store/sqlite/connection.js';
-import { openNative } from 'spine-core/store/sqlite/driver-native.js';
+import { openNative } from 'spine-core/testing/driver-native.js';
 import { usageRepository } from 'spine-core/store/sqlite/usage.js';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { readFileSync } from 'node:fs';
 import { HumanMessage, mapChatMessagesToStoredMessages } from '@langchain/core/messages';
 import { LlmBlockedError } from 'spine-core/llm/types.js';
-import { standInClients, type StandInCall } from '../relay/stand-in.js';
+import { standInClients, type StandInCall } from '../testing/stand-in.js';
 import type { TaskClients } from 'spine-core/llm/tasks.js';
 import { createRelay } from '../relay/relay.js';
 import { issueToken, verifyToken } from '../relay/token.js';
@@ -36,6 +36,7 @@ describe('the relay', () => {
   let calls: StandInCall[];
   let logs: Array<Record<string, unknown>>;
   let limit = 100;
+  let sharedLimit = 100;
   let clock = Date.UTC(2026, 9, 23, 12);
   const mint = (user = 'user-1') => issueToken(SECRET, user, 600_000, clock).token;
   const messages = (text: string) => mapChatMessagesToStoredMessages([new HumanMessage(text)]);
@@ -43,11 +44,12 @@ describe('the relay', () => {
   beforeEach(async () => {
     logs = [];
     limit = 100;
+    sharedLimit = 100;
     const stand = standInClients({ continuation: { is_continuation: true, confidence: 0.9, reasoning: 'same table' } });
     calls = stand.calls;
     const clients: TaskClients = { ...stand.clients, translation: { invoke: async () => { throw new LlmBlockedError('Prompt blocked: SAFETY'); } } as never };
     const handle = createRelay({
-      secret: SECRET, allowedOrigin: 'https://app.example', get dailyCalls() { return limit; }, maxBodyBytes: 2000, usage: usageRepository(openDatabase(':memory:', openNative, undefined, 'accounts')),
+      secret: SECRET, allowedOrigin: 'https://app.example', get dailyCalls() { return limit; }, get dailySharedCalls() { return sharedLimit; }, maxBodyBytes: 2000, usage: usageRepository(openDatabase(':memory:', openNative, undefined, 'accounts')),
       clients: model => (model === undefined || model === MODEL ? clients : null),
       embedder: () => ({ enabled: true, id: 'test:3', dims: 3, embed: async texts => texts.map(() => Float32Array.from([1, 0, 0])) }),
       log: l => logs.push(l), now: () => clock,
@@ -106,6 +108,17 @@ describe('the relay', () => {
     expect((await post(TASK, { messages: [{ type: 'function', data: { content: 'x' } }] })).status).toBe(400);
     expect((await post(TASK, 'not json')).status).toBe(400);
     expect(calls).toHaveLength(0);
+  });
+
+  it('gives a share its own, smaller allowance, apart from every account', async () => {
+    limit = 5;
+    sharedLimit = 1;
+    const call = (subject: string) => post(TASK, { messages: messages('x') }, mint(subject));
+    expect((await call('share:s1')).status).toBe(200);
+    expect((await call('share:s1')).status).toBe(429);
+    expect((await call('share:s2')).status).toBe(200);
+    expect((await call('a')).status).toBe(200);
+    expect((await call('a')).status).toBe(200);
   });
 
   it('counts each user’s calls apart, and starts again the next day', async () => {

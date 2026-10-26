@@ -30,9 +30,9 @@ const connect = (from: string, to: string, state: 'proposed' | 'confirmed' | 'di
 async function share(ids: string[], extra: Record<string, unknown> = {}) {
   const res = await app.inject({ method: 'POST', url: '/api/share-links', headers: { cookie: owner }, payload: { scope: 'document_ids', scope_value: ids, ...extra } });
   expect(res.statusCode).toBe(201);
-  return res.json() as { id: string; token: string };
+  return res.json() as { id: string };
 }
-const connections = (token: string, id: string) => app.inject({ method: 'GET', url: `/api/share/${token}/documents/${id}/connections` });
+const connections = (shareId: string, id: string) => app.inject({ method: 'GET', url: `/api/share/${shareId}/documents/${id}/connections` });
 
 describe('the chain a recipient sees', () => {
   it('shows confirmed links between shared documents, and nothing about the ones that are not shared', async () => {
@@ -41,9 +41,9 @@ describe('the chain a recipient sees', () => {
     const secret = await doc('Private psychiatric letter', '2026-01-25');
     await connect(consult.id, scan.id, 'confirmed');
     await connect(scan.id, secret.id, 'confirmed', 'follow_up'); // the other end is not shared
-    const { token } = await share([consult.id, scan.id]);
+    const { id: shareId } = await share([consult.id, scan.id]);
 
-    const res = await connections(token, consult.id);
+    const res = await connections(shareId, consult.id);
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.chain.nodes.map((n: { id: string }) => n.id)).toEqual([consult.id, scan.id]);
@@ -59,11 +59,11 @@ describe('the chain a recipient sees', () => {
     const c = await doc('Lab', '2026-02-02');
     await connect(a.id, b.id, 'proposed', 'follow_up');
     await connect(a.id, c.id, 'dismissed');
-    const { token } = await share([a.id, b.id, c.id]);
-    expect((await connections(token, a.id)).json().chain).toBeNull();
+    const { id: shareId } = await share([a.id, b.id, c.id]);
+    expect((await connections(shareId, a.id)).json().chain).toBeNull();
 
     await getStore().links.setState(OWNER_ID, a.id, b.id, 'follow_up', 'confirmed');
-    const res = await connections(token, a.id);
+    const res = await connections(shareId, a.id);
     expect(res.json().chain.edges).toEqual([{ from: a.id, to: b.id, kind: 'follow_up' }]);
     expect(res.body).not.toMatch(/reason|private model|source|state|proposed|dismissed|confidence|user_id/i);
   });
@@ -74,8 +74,8 @@ describe('the chain a recipient sees', () => {
     const c = await doc('C', '2026-04-10');
     await connect(a.id, hidden.id, 'confirmed');
     await connect(hidden.id, c.id, 'confirmed');
-    const { token } = await share([a.id, c.id]);
-    expect((await connections(token, a.id)).json().chain).toBeNull();
+    const { id: shareId } = await share([a.id, c.id]);
+    expect((await connections(shareId, a.id)).json().chain).toBeNull();
   });
 });
 
@@ -84,9 +84,9 @@ describe('the similar documents a recipient sees', () => {
     const a = await doc('Blood count 2025', '2025-05-01', 'Hemoglobin');
     const b = await doc('Blood count 2026', '2026-05-01', 'Hemoglobin');
     const notShared = await doc('Blood count at another clinic', '2026-06-01', 'Hemoglobin');
-    const { token } = await share([a.id, b.id]);
+    const { id: shareId } = await share([a.id, b.id]);
 
-    const res = await connections(token, a.id);
+    const res = await connections(shareId, a.id);
     expect(res.json().related.map((r: { id: string }) => r.id)).toEqual([b.id]);
     expect(res.json().related[0].reasons).toEqual([{ kind: 'tests', names: ['Hemoglobin'] }]);
     expect(res.body).not.toContain(notShared.id);
@@ -99,31 +99,26 @@ describe('who may ask', () => {
   it('answers 404 for a document the link does not share, whatever else exists', async () => {
     const a = await doc('Shared', '2026-07-01');
     const other = await doc('Not shared', '2026-07-02');
-    const { token } = await share([a.id]);
-    expect((await connections(token, other.id)).statusCode).toBe(404);
-    expect((await connections(token, 'no-such-id')).statusCode).toBe(404);
-    expect((await connections('not-a-token', a.id)).statusCode).toBe(410);
+    const { id: shareId } = await share([a.id]);
+    expect((await connections(shareId, other.id)).statusCode).toBe(404);
+    expect((await connections(shareId, 'no-such-id')).statusCode).toBe(404);
+    expect((await connections('not-a-shareId', a.id)).statusCode).toBe(410);
   });
 
-  it('is refused for a revoked link, and until the browser is approved when the link needs approval', async () => {
+  it('is refused for a revoked link', async () => {
     const a = await doc('Shared', '2026-08-01');
     const live = await share([a.id]);
     await app.inject({ method: 'DELETE', url: `/api/share-links/${live.id}`, headers: { cookie: owner } });
-    expect((await connections(live.token, a.id)).statusCode).toBe(410);
-
-    const gated = await share([a.id], { require_approval: true });
-    const res = await connections(gated.token, a.id);
-    expect(res.statusCode).toBe(403);
-    expect(res.json().approval).toBeDefined();
+    expect((await connections(live.id, a.id)).statusCode).toBe(410);
   });
 
   it('changes nothing of the owner’s', async () => {
     const a = await doc('A', '2026-09-01', 'Ferritin');
     const b = await doc('B', '2026-09-02', 'Ferritin');
     await connect(a.id, b.id, 'proposed');
-    const { token } = await share([a.id, b.id]);
+    const { id: shareId } = await share([a.id, b.id]);
     const before = JSON.stringify(await getStore().links.forDocument(OWNER_ID, a.id));
-    await connections(token, a.id);
+    await connections(shareId, a.id);
     expect(JSON.stringify(await getStore().links.forDocument(OWNER_ID, a.id))).toBe(before);
   });
 });

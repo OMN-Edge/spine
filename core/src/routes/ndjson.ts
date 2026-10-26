@@ -1,5 +1,4 @@
-import { PassThrough } from 'node:stream';
-import type { FastifyReply } from 'fastify';
+import type { HttpReply } from '../http.js';
 import type { ChatProgress } from '../chat/index.js';
 import { logger } from '../logger.js';
 import { describeError } from '../failure.js';
@@ -15,8 +14,37 @@ import { describeError } from '../failure.js';
  */
 export type StreamEnd = { type: 'done'; reply: unknown } | { type: 'error'; status: number; error: string };
 
-export function streamReply(reply: FastifyReply, work: (progress: ChatProgress) => Promise<StreamEnd | null>, what: string) {
-  const out = new PassThrough();
+/** Lines written as they are made and read as they come: a small async queue, the body of a streamed reply. */
+class LineStream implements AsyncIterable<Uint8Array> {
+  private readonly queue: Uint8Array[] = [];
+  private waiting: (() => void) | null = null;
+  private done = false;
+  destroyed = false;
+  writableEnded = false;
+  private readonly encoder = new TextEncoder();
+
+  write(text: string): void {
+    if (this.destroyed || this.writableEnded) return;
+    this.queue.push(this.encoder.encode(text));
+    this.wake();
+  }
+  end(): void { this.writableEnded = true; this.done = true; this.wake(); }
+  /** The reader went away. */
+  destroy(): void { this.destroyed = true; this.queue.length = 0; this.done = true; this.wake(); }
+  private wake(): void { const w = this.waiting; this.waiting = null; w?.(); }
+
+  async *[Symbol.asyncIterator](): AsyncGenerator<Uint8Array> {
+    for (;;) {
+      const next = this.queue.shift();
+      if (next) { yield next; continue; }
+      if (this.done) return;
+      await new Promise<void>(resolve => { this.waiting = resolve; });
+    }
+  }
+}
+
+export function streamReply(reply: HttpReply, work: (progress: ChatProgress) => Promise<StreamEnd | null>, what: string) {
+  const out = new LineStream();
   const aborted = new AbortController();
   let finished = false;
   reply.raw.on('close', () => { if (!finished) aborted.abort(); });

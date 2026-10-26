@@ -1,4 +1,4 @@
-import fs from 'fs';
+import fs from '../shims/fs';
 import { Buffer } from 'buffer';
 import type { UprightOptions } from 'spine-core/ingestion/image-ops';
 

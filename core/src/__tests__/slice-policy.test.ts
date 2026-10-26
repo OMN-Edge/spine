@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest';
+import { accountsSchema } from '../store/sqlite/schema-accounts.js';
+import { recordsSchema } from '../store/sqlite/schema-records.js';
 import { readFileSync } from 'fs';
 import path from 'path';
 import { openDatabase } from '../store/sqlite/connection.js';
-import { openNative } from '../store/sqlite/driver-native.js';
+import { openNative } from '../testing/driver-native.js';
 import { SLICE, SLICE_BUILT, SLICE_NEVER, sliceRow, type SliceName } from '../store/slice-policy.js';
 import { REPLICATED } from '../store/sync.js';
 
@@ -10,7 +12,7 @@ import { REPLICATED } from '../store/sync.js';
  * What a share copy may hold is a list (store/slice-policy.ts), and the recipient's browser holds all of it. This keeps the list and the
  * schema in step: nothing in the records is out of the list without someone having said it should not leave.
  */
-const SCHEMA = ['schema-accounts.sql', 'schema-records.sql'].map(f => readFileSync(path.join(__dirname, '../store/sqlite', f), 'utf8')).join('\n');
+const SCHEMA = `${accountsSchema}\n${recordsSchema}`;
 const db = openDatabase(':memory:', openNative, SCHEMA, 'full');
 const columnsOf = (table: string) => (db.prepare(`SELECT name FROM pragma_table_info('${table}')`).all() as Array<{ name: string }>).map(c => c.name);
 

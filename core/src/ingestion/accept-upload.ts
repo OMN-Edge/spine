@@ -1,7 +1,7 @@
-import { createHash } from 'crypto';
-import { createWriteStream, mkdirSync, rmSync } from 'fs';
+import { fileSystem } from '../files.js';
+import { sha256 } from '../digest.js';
 import path from 'path';
-import type { Readable } from 'stream';
+import type { ByteSource } from '../http.js';
 import { v4 as uuidv4 } from 'uuid';
 import { getStore } from '../store/index.js';
 import { resolveDataDir } from '../config.js';
@@ -16,7 +16,7 @@ import { convertUpload, looksLikeHeic } from './convert.js';
 export function newUploadPath(userId: string, ext: string): { fileId: string; filePath: string } {
   const fileId = uuidv4();
   const outDir = path.join(resolveDataDir(), 'originals', userId, new Date().getFullYear().toString());
-  mkdirSync(outDir, { recursive: true });
+  fileSystem().mkdirSync(outDir);
   return { fileId, filePath: path.join(outDir, `${fileId}${ext}`) };
 }
 
@@ -29,30 +29,35 @@ const looksLikeZip = (head: Buffer) =>
  * be large (it can hold many files), anything else is one document or photo and is cut off much sooner, so a request
  * cannot make the server write gigabytes of something it will then refuse. If it stops at a limit, `truncated` says so.
  */
-export async function saveStream(source: Readable, filePath: string, limits: { zip: number; other: number }): Promise<{ checksum: string; bytes: number; truncated: boolean; zip: boolean }> {
-  const hash = createHash('sha256');
-  const out = createWriteStream(filePath);
+export async function saveStream(source: ByteSource, filePath: string, limits: { zip: number; other: number }): Promise<{ checksum: string; bytes: number; truncated: boolean; zip: boolean }> {
+  const hash = sha256();
+  const out = fileSystem().writeStream(filePath);
   let bytes = 0;
   let truncated = false;
   let zip = false;
   let limit = limits.other;
-  await new Promise<void>((resolve, reject) => {
-    source.on('data', (chunk: Buffer) => {
-      if (truncated) return; // draining what is left of a stream we have stopped keeping
-      if (bytes === 0) { zip = looksLikeZip(chunk); limit = zip ? limits.zip : limits.other; }
+  try {
+    for await (const chunk of source) {
+      if (truncated) continue; // draining what is left of a stream we have stopped keeping
+      if (bytes === 0) { zip = looksLikeZip(Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength)); limit = zip ? limits.zip : limits.other; }
       bytes += chunk.length;
-      if (bytes > limit) { truncated = true; out.end(); source.resume(); return; }
+      if (bytes > limit) { truncated = true; await out.end(); continue; }
       hash.update(chunk);
-      if (!out.write(chunk)) { source.pause(); out.once('drain', () => source.resume()); }
-    });
-    source.on('end', () => { if (!truncated) out.end(); });
-    out.on('finish', resolve);
-    out.on('error', reject);
-    source.on('error', reject);
-  });
+      await out.write(chunk);
+    }
+    if (!truncated) await out.end();
+  } catch (err) {
+    await out.end().catch(() => undefined);
+    throw err;
+  }
   // A stream cut by the multipart limit flags itself instead of failing.
-  truncated ||= !!(source as Readable & { truncated?: boolean }).truncated;
-  return { checksum: hash.digest('hex'), bytes, truncated, zip };
+  truncated ||= !!source.truncated;
+  return { checksum: hash.hex(), bytes, truncated, zip };
+}
+
+/** Reads a stream to its end and keeps none of it, so the request that carries it can finish. */
+export async function drain(source: ByteSource): Promise<void> {
+  for await (const _chunk of source) void _chunk;
 }
 
 /**
@@ -86,25 +91,25 @@ export async function acceptFile(userId: string, file: { id: string; path: strin
       const converted = await convertUpload(file.path);
       if (converted) file = { ...file, path: converted.path };
     } catch {
-      rmSync(file.path, { force: true });
+      fileSystem().rmSync(file.path);
       return { skipped: true, reason: 'not_pdf', filename: file.filename };
     }
   }
   const kind = detectFileKind(file.path);
   if (kind === null) {
-    rmSync(file.path, { force: true });
+    fileSystem().rmSync(file.path);
     return { skipped: true, reason: 'not_pdf', filename: file.filename };
   }
   // A photo has no text for anything local to read, so the model reads it, and that sends the
   // image off this host: refused, with the reason, unless the operator has allowed it.
   if (isImage(kind) && !aiReadingAllowed()) {
-    rmSync(file.path, { force: true });
+    fileSystem().rmSync(file.path);
     return { skipped: true, reason: 'photo_needs_ai', filename: file.filename };
   }
 
   const existing = await store.sourceFiles.findByChecksumFor(userId, file.checksum);
   if (existing) {
-    rmSync(file.path, { force: true });
+    fileSystem().rmSync(file.path);
     // The same file again after it failed is a request to try again, not a duplicate of nothing.
     if (existing.status === 'error' && (await retryFailedUpload(userId, existing.id)) === 'started') {
       return { id: existing.id, status: 'processing', retried: true };
@@ -152,13 +157,13 @@ export async function acceptPhotoSet(userId: string, files: Array<{ path: string
   try {
     await bundlePhotos(files.map(f => f.path), filePath);
   } catch {
-    rmSync(filePath, { force: true });
+    fileSystem().rmSync(filePath);
     return { skipped: true, reason: 'not_pdf', filename: files[0].filename }; // a photo that cannot be decoded is not one
   }
   const checksum = sha256OfFileSync(filePath);
   const existing = await store.sourceFiles.findByChecksumFor(userId, checksum);
   if (existing) {
-    rmSync(filePath, { force: true });
+    fileSystem().rmSync(filePath);
     if (existing.status === 'error' && (await retryFailedUpload(userId, existing.id)) === 'started') return { id: existing.id, status: 'processing', retried: true };
     return { skipped: true, reason: 'duplicate', existing_id: existing.id };
   }

@@ -1,5 +1,5 @@
 import type { Database } from './driver.js';
-import type { UnstructuredElement, Page } from '../../types.js';
+import type { UnstructuredElement } from '../../types.js';
 import type {
   GroundingContext,
   NewPage,

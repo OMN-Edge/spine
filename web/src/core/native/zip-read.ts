@@ -1,22 +1,17 @@
-import fs from 'fs';
+import fs from '../shims/fs';
 import { Buffer } from 'buffer';
 import { unzipSync } from 'fflate';
-import { createHash } from 'crypto';
-
-export interface ZipEntryInfo { name: string; declaredSize: number; isDirectory: boolean }
-
-export class ZipTooLarge extends Error {
-  constructor() { super('an entry in the zip is larger than allowed'); this.name = 'ZipTooLarge'; }
-}
+import { sha256Hex } from 'spine-core/digest';
+import { ZipTooLarge, type ZipEntryInfo, type ZipReader } from 'spine-core/archive/zip-read';
 
 /**
- * Same contract as core/src/archive/zip-read.ts: a zip given to us, entries found by name, nothing extracted to a path the zip chose,
+ * The contract of core/src/archive/zip-read.ts (`ZipReader`, and the one `ZipTooLarge` it defines): a zip given to us, entries found by name, nothing extracted to a path the zip chose,
  * and every read capped whatever the zip claims. fflate lists the entries without inflating any, then inflates one at a time.
  */
-export class ZipReader {
+export class BrowserZipReader implements ZipReader {
   private constructor(private readonly data: Uint8Array, readonly entries: ZipEntryInfo[]) {}
 
-  static async open(filePath: string, maxEntries = 20_000): Promise<ZipReader> {
+  static async open(filePath: string, maxEntries = 20_000): Promise<BrowserZipReader> {
     const data = new Uint8Array(fs.readFileSync(filePath) as Buffer);
     const entries: ZipEntryInfo[] = [];
     const seen = new Set<string>();
@@ -27,7 +22,7 @@ export class ZipReader {
         return false;
       },
     });
-    return new ZipReader(data, entries);
+    return new BrowserZipReader(data, entries);
   }
 
   private bytes(name: string, maxBytes: number): Uint8Array {
@@ -47,7 +42,7 @@ export class ZipReader {
   async extractTo(name: string, destination: string, maxBytes: number): Promise<{ checksum: string; bytes: number }> {
     const bytes = this.bytes(name, maxBytes);
     fs.writeFileSync(destination, bytes);
-    return { checksum: createHash('sha256').update(bytes).digest('hex') as string, bytes: bytes.length };
+    return { checksum: sha256Hex(bytes), bytes: bytes.length };
   }
 
   close(): void {}

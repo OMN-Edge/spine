@@ -41,6 +41,19 @@ describe('the packages', () => {
     expect(offenders).toEqual([]);
   });
 
+  it('core imports no native library and no program: what it needs from the machine it asks for as a native tool', () => {
+    const banned = /from\s+['"](sharp|pdfkit|yauzl|yazl|maxmind|better-sqlite3|google-auth-library|@langchain\/anthropic|@langchain\/google-vertexai|@node-rs\/argon2|dejavu-fonts-ttf|@ip-location-db\/[^'"]*|(node:)?(child_process|module))['"]|createRequire\(/;
+    const offenders: string[] = [];
+    for (const file of walk(core)) {
+      const rel = path.relative(repo, file);
+      if (file.includes(`${path.sep}__tests__${path.sep}`) || file.includes(`${path.sep}testing${path.sep}`)) continue;
+      if (banned.test(fs.readFileSync(file, 'utf8'))) offenders.push(rel);
+    }
+    expect(offenders).toEqual([]);
+    const pkg = JSON.parse(fs.readFileSync(path.join(repo, 'core/package.json'), 'utf8'));
+    expect(Object.keys(pkg.dependencies ?? {}).filter(n => /^(sharp|pdfkit|yauzl|yazl|maxmind|better-sqlite3|google-auth-library|@langchain\/anthropic|@langchain\/google-vertexai)$/.test(n))).toEqual([]);
+  });
+
   it('core does not name the other packages as dependencies', () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(repo, 'core/package.json'), 'utf8'));
     const names = Object.keys({ ...pkg.dependencies, ...pkg.devDependencies, ...pkg.peerDependencies });

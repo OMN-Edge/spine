@@ -258,7 +258,8 @@ describe('getChatLlm with nothing injected', () => {
   beforeEach(() => resetChatLlm(null));
 
   it('builds from configuration on first use, then memoizes', async () => {
-    process.env.ANTHROPIC_API_KEY = 'sk-ant-test';
+    // The relay is the provider this package knows (a device's); the others are the relay service's.
+    Object.assign(process.env, { SPINE_LLM_PROVIDER: 'relay', SPINE_LLM_ENDPOINT: 'relay.example' });
     const { getChatLlm } = await import('../llm/index.js');
 
     const first = getChatLlm();

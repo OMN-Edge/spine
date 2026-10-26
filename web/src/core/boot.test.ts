@@ -4,10 +4,6 @@ import { memory } from './shims/fs';
 import fs from './shims/fs';
 import type { ObjectStore } from './persist';
 import { seedDocument, seedPage, seedSourceFile } from '../../../server/src/__tests__/helpers/seed';
-import { WasmDatabase } from './sqlite-wasm';
-import { createDeviceStore } from 'spine-core/store/sqlite/browser';
-import accountsSchema from 'spine-core/store/sqlite/schema-accounts.sql?raw';
-import recordsSchema from 'spine-core/store/sqlite/schema-records.sql?raw';
 
 /** The vault as a Map: enough of it for the core to save into and load from. */
 function vault(profile = 'profile-aaaaaaaa') {
@@ -145,34 +141,11 @@ describe('the core, saving to and loading from the vault', () => {
     again.lock();
   });
 
-  it('converts a vault of the earlier kind, whose records were a database file in pieces, and keeps its files', async () => {
+  it('refuses a vault of a kind it does not know and leaves it as it is', async () => {
     const { objects, store } = vault('profile-dddddddd');
-    // The earlier kind, made by hand: a database file in one piece, a file of its own, and an index (v1) that names them.
-    const schema = `${accountsSchema}\n${recordsSchema}`;
-    const old = new WasmDatabase();
-    const oldStore = createDeviceStore(() => old, schema);
-    await oldStore.users.create({ id: 'device', email: 'device@local', passwordHash: 'x', createdAt: 'now', verifiedAt: 'now', consent: undefined });
-    await oldStore.sourceFiles.create('device', { id: 'old-file', uploadedAt: 'now', originalFilename: 'a.pdf', filePath: '/data/originals/a.pdf', mimeType: 'application/pdf', checksum: 'c' });
-    await oldStore.documents.create('device', { id: 'old-doc', sourceFileId: 'old-file', pageStart: 1, pageEnd: 1, docDate: '2026-01-01', provider: null, docType: 'lab_result', aiSummary: 'from before' });
-    const dbBytes = old.export();
-    const hash = async (b: Uint8Array) => { const s2 = await (await import('../crypto/sodium')).sodium(); return s2.to_base64(s2.crypto_generichash(24, b, null), s2.base64_variants.URLSAFE_NO_PADDING); };
-    const piece = { id: 'piece-1-xxxxxxxx', hash: await hash(dbBytes), size: dbBytes.length, seq: await store.put('bundle', 'piece-1-xxxxxxxx', dbBytes, 0) };
-    const file = new Uint8Array([9, 8, 7]);
-    const filePart = { id: 'file-1-xxxxxxxx', hash: await hash(file), size: 3, seq: await store.put('blob', 'file-1-xxxxxxxx', file, 0) };
-    await store.put('library', 'ix-profile-dddddddd', new TextEncoder().encode(JSON.stringify({ v: 1, db: [piece], files: { '/data/originals/a.pdf': filePart } })), 0);
-
-    const core = await startCore({ objects: store, profileId: 'profile-dddddddd' });
-    expect((await core.inject({ method: 'GET', url: '/api/documents/old-doc' })).statusCode).toBe(200);
-    expect([...(fs.readFileSync('/data/originals/a.pdf') as Buffer)]).toEqual([9, 8, 7]);
-    await core.flush();
-    core.lock();
-    expect(objects.has('piece-1-xxxxxxxx')).toBe(false); // the pieces of the old file are let go
-
-    // and it opens again from what the conversion wrote
-    memory.clear();
-    const again = await startCore({ objects: store, profileId: 'profile-dddddddd' });
-    expect((await again.inject({ method: 'GET', url: '/api/documents/old-doc' })).statusCode).toBe(200);
-    expect([...(fs.readFileSync('/data/originals/a.pdf') as Buffer)]).toEqual([9, 8, 7]);
-    again.lock();
+    const index = new TextEncoder().encode(JSON.stringify({ v: 1, db: [], files: {} }));
+    await store.put('library', 'ix-profile-dddddddd', index, 0);
+    await expect(startCore({ objects: store, profileId: 'profile-dddddddd' })).rejects.toThrow(/cannot open/);
+    expect(objects.has('ix-profile-dddddddd')).toBe(true);
   });
 });

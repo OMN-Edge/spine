@@ -3,7 +3,7 @@ import { mkdtempSync } from 'fs';
 import { tmpdir } from 'os';
 import path from 'path';
 import { openDatabase } from '../store/sqlite/connection.js';
-import { openNative } from '../store/sqlite/driver-native.js';
+import { openNative } from '../testing/driver-native.js';
 import { usageRepository } from '../store/sqlite/usage.js';
 
 const location = () => path.join(mkdtempSync(path.join(tmpdir(), 'spine-usage-')), 'a.db');

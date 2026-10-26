@@ -2,7 +2,6 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { buildTestApp, loginSession } from './helpers/app.js';
 import { seedDocument, seedPage, seedSourceFile, seedShareLink, OWNER_ID } from './helpers/seed.js';
 import { getStore } from 'spine-core/store/index.js';
-import { hashShareToken } from 'spine-core/share-token.js';
 import { v4 as uuidv4 } from 'uuid';
 
 let app: Awaited<ReturnType<typeof buildTestApp>>;
@@ -183,20 +182,19 @@ describe('PATCH /api/documents/:id — column whitelist', () => {
   it('rejects a key carrying SQL and leaves the row untouched', async () => {
     // A row holding something recognisable, so an injected SELECT that copied
     // it into a document field would be visible.
-    await seedShareLink({ tokenHash: hashShareToken('injection-probe-token') });
+    await seedShareLink({ id: 'inj-link' });
 
     const res = await app.inject({
       method: 'PATCH', url: `/api/documents/${docId}`,
       headers: { cookie },
       payload: {
-        "user_notes = (SELECT token FROM share_links WHERE id = 'inj-link'), provider": 'x',
+        "user_notes = (SELECT scope FROM share_links WHERE id = 'inj-link'), provider": 'x',
       },
     });
 
     expect(res.statusCode).toBe(400);
     const doc = await getStore().documents.findFor(OWNER_ID, docId);
-    expect(doc?.user_notes).not.toBe('injection-probe-token');
-    expect(doc?.user_notes).not.toContain(hashShareToken('injection-probe-token'));
+    expect(doc?.user_notes).not.toBe('all');
   });
 
   it('still writes the columns it is meant to', async () => {

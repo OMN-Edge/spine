@@ -1,10 +1,9 @@
 import type { ShareLinkSummary } from './store/types.js';
-import { ownerNotices } from './owner-notices.js';
 
 /**
  * What a device does for a share that the server's code cannot (docs/crypto-design.md, stage 4): make the sealed copy, send it to the
- * server, and answer a browser that asks to be let in. The route files call it; the device supplies it (`web/src/core/share-host.ts`).
- * Without one (the server's own tests of the old path) a link works as it did.
+ * server, and answer a browser that asks to be let in. The route files call it; the device supplies it (`web/src/core/share-host.ts`), and a
+ * process without one cannot make, change or revoke a share: the owner's share routes answer 503.
  */
 export interface PublishInput {
   link: ShareLinkSummary;
@@ -37,5 +36,5 @@ let current: ShareHost | null = null;
 export const useShareHost = (host: ShareHost | null): void => { current = host; };
 export const shareHost = (): ShareHost | null => current;
 
-/** Whether the owner will be told by mail when a browser asks to open a link: the device asks the server, and without a device the route's own mailer. */
-export const ownerCanBeMailed = (): boolean => (current ? current.mailsOwner() : ownerNotices()?.enabled() ?? false);
+/** Whether the server tells the owner by mail when a browser asks to open a link. False if this process has no share host. */
+export const ownerCanBeMailed = (): boolean => current?.mailsOwner() ?? false;

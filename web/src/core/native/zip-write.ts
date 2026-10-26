@@ -1,5 +1,4 @@
-import fs from 'fs';
-import { PassThrough } from 'stream';
+import fs from '../shims/fs';
 import { Buffer } from 'buffer';
 import { zipSync, type Zippable } from 'fflate';
 import type { ZipWriter } from 'spine-core/archive/zip-write';
@@ -10,6 +9,6 @@ export function newZip(): ZipWriter {
   return {
     addBuffer: (data, name, options) => { entries[name] = [new Uint8Array(data), { level: options?.compress ? 6 : 0 }]; },
     addFile: (path, name) => { entries[name] = [new Uint8Array(fs.readFileSync(path) as Buffer), { level: 0 }]; },
-    finish: () => { const out = new PassThrough(); out.end(Buffer.from(zipSync(entries))); return out; },
+    finish: () => (async function* () { yield zipSync(entries); })(),
   };
 }

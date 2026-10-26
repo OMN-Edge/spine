@@ -1,4 +1,4 @@
-import { createHash } from 'crypto';
+import { sha256Hex } from './digest.js';
 import { getStore } from './store/index.js';
 import { getChatLlm } from './llm/index.js';
 import { KNOWN_FIELD_LABELS } from './llm/doc-types.js';
@@ -72,7 +72,7 @@ const sourceOf = async (userId: string, document: Document, language: SupportedL
     doctors: doctors.filter(d => !blank(d.specialty)).map(d => ({ id: d.id, specialty: d.specialty })),
   };
   // `v` changes when the way a translation is made changes, so what an older way kept is not served again.
-  const hash = createHash('sha256').update(JSON.stringify({ v: 2, language, from: document.language, bundle })).digest('hex');
+  const hash = sha256Hex(JSON.stringify({ v: 2, language, from: document.language, bundle }));
   return { document, bundle, hash };
 };
 

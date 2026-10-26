@@ -15,7 +15,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['src/__integration__/**/*.it.ts'],
-    setupFiles: ['src/__integration__/support/env.ts', '../core/src/testing/use-records-store.ts'],
+    setupFiles: ['src/__integration__/support/env.ts', '../core/src/testing/use-records-store.ts', './src/__tests__/helpers/use-providers.ts'],
     testTimeout: 300_000,
     hookTimeout: 120_000,
     fileParallelism: false,

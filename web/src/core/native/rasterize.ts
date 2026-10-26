@@ -1,4 +1,4 @@
-import fs from 'fs';
+import fs from '../shims/fs';
 import path from 'path';
 import { resolveDataDir } from 'spine-core/config';
 import { getDocument } from './pdfjs';

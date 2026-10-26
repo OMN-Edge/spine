@@ -1,5 +1,5 @@
-import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { fileSystem } from '../files.js';
+import { sha256Hex } from '../digest.js';
 import { getStore } from '../store/index.js';
 import { newUploadPath } from '../ingestion/accept-upload.js';
 import { textToPdf } from '../ingestion/text-pdf.js';
@@ -21,7 +21,7 @@ export async function loadDemo(userId: string, lang: DemoLanguage): Promise<'loa
   for (const demo of demoRecords(lang)) {
     const { fileId, filePath } = newUploadPath(userId, '.pdf');
     await textToPdf(demo.text, filePath);
-    const checksum = createHash('sha256').update(readFileSync(filePath)).digest('hex');
+    const checksum = sha256Hex(fileSystem().readFileSync(filePath));
     await store.sourceFiles.create(userId, {
       id: fileId, uploadedAt: new Date().toISOString(), originalFilename: demo.file.original_filename, filePath, mimeType: 'application/pdf', checksum, sample: true,
     });

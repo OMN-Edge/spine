@@ -1,4 +1,4 @@
-import { readFileSync, renameSync, rmSync, statSync, openSync, readSync, closeSync, writeFileSync } from 'fs';
+import { fileSystem } from '../files.js';
 import path from 'path';
 import { textToPdf } from './text-pdf.js';
 import { ZipReader } from '../archive/zip-read.js';
@@ -18,15 +18,7 @@ const MAX_DOCX_XML_BYTES = 30 * 1024 * 1024;
 
 const HEIC_BRANDS = new Set(['heic', 'heix', 'hevc', 'hevx', 'heim', 'heis', 'hevm', 'hevs', 'mif1', 'msf1']);
 
-function head(filePath: string, bytes: number): Buffer {
-  const buffer = Buffer.alloc(bytes);
-  const fd = openSync(filePath, 'r');
-  try {
-    return buffer.subarray(0, readSync(fd, buffer, 0, bytes, 0));
-  } finally {
-    closeSync(fd);
-  }
-}
+const head = (filePath: string, bytes: number): Buffer => fileSystem().readHead(filePath, bytes);
 
 /** HEIC and HEIF stills: an ISO base media file whose first box is `ftyp` with one of the still-image brands (AVIF is not one). */
 export function looksLikeHeic(filePath: string): boolean {
@@ -36,8 +28,8 @@ export function looksLikeHeic(filePath: string): boolean {
 
 /** Plain text, by what is in it: small, valid UTF-8, no NUL and almost no control characters. */
 export function looksLikeText(filePath: string): boolean {
-  if (statSync(filePath).size === 0 || statSync(filePath).size > MAX_TEXT_BYTES) return false;
-  const bytes = readFileSync(filePath);
+  if (fileSystem().statSync(filePath).size === 0 || fileSystem().statSync(filePath).size > MAX_TEXT_BYTES) return false;
+  const bytes = fileSystem().readFileSync(filePath);
   let text: string;
   try {
     text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
@@ -99,10 +91,9 @@ export function textOfDocumentXml(xml: string): string {
   return paragraphs.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
-
 /**
- * Text on A4 pages in a font that has the accents of the languages Spine speaks (the stth the right extension; the source is
- * removed) and its kind, or null when the file is not one of these.
+ * Converts the file at `source` if it is one of these kinds: the converted file is written beside it with the right extension and the
+ * source is removed. Returns the new path and the kind, or null when the file is not one of these.
  */
 export async function convertUpload(source: string): Promise<{ path: string; from: ConvertibleKind } | null> {
   const kind = await convertibleKind(source);
@@ -113,10 +104,10 @@ export async function convertUpload(source: string): Promise<{ path: string; fro
     if (kind === 'heic') {
       // Loaded when a HEIC file is converted: it is two megabytes of code a device otherwise never needs.
       const { default: heicConvert } = await import('heic-convert');
-      const jpeg = await heicConvert({ buffer: readFileSync(source), format: 'JPEG', quality: 0.92 });
-      writeFileSync(staged, Buffer.from(jpeg));
+      const jpeg = await heicConvert({ buffer: fileSystem().readFileSync(source), format: 'JPEG', quality: 0.92 });
+      fileSystem().writeFileSync(staged, Buffer.from(jpeg));
     } else if (kind === 'txt') {
-      await textToPdf(readFileSync(source, 'utf8').replace(/\r\n?/g, '\n'), staged);
+      await textToPdf(fileSystem().readTextSync(source).replace(/\r\n?/g, '\n'), staged);
     } else {
       const zip = await ZipReader.open(source, 2000);
       try {
@@ -128,11 +119,11 @@ export async function convertUpload(source: string): Promise<{ path: string; fro
         zip.close();
       }
     }
-    renameSync(staged, target);
+    fileSystem().renameSync(staged, target);
   } catch (err) {
-    rmSync(staged, { force: true });
+    fileSystem().rmSync(staged);
     throw err;
   }
-  if (target !== source) rmSync(source, { force: true });
+  if (target !== source) fileSystem().rmSync(source);
   return { path: target, from: kind };
 }

@@ -8,7 +8,6 @@ import os from 'node:os';
 import path from 'node:path';
 import puppeteer from 'puppeteer-core';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
-import { startRelayWithStandIn } from './model-stand-in.mjs';
 
 const root = path.resolve(import.meta.dirname, '../..');
 const data = fs.mkdtempSync(path.join(os.tmpdir(), 'spine-app-check-'));
@@ -19,24 +18,34 @@ do { port = 3000 + Math.floor(Math.random() * 1000); } while ([port, port + 1000
 const front = port + 1000; // what the browser talks to: a proxy that adds the production content security policy, as Caddy or nginx do
 const RELAY_SECRET = 'app-check-relay-secret-app-check-relay';
 const REAL = process.env.SPINE_CHECK_REAL === '1';
-// Either a relay (the real code) with a stand-in for the model behind it, or, with SPINE_CHECK_REAL=1, the relay as a process with the
-// model and service account of the repository's .env: real calls to the real provider, on invented records only.
+// The relay is always a process, started the way it is deployed: its own entry point (dist/relay/main.js) with the model and service account
+// of the repository's .env when SPINE_CHECK_REAL=1 (real calls to the real provider, on invented records only), and otherwise the same relay
+// with a stand-in model registered in place of a vendor (server/src/testing/stand-in-relay.ts, never built).
 let relay, relayProcess;
-let modelEnv;
+let modelEnv = {};
 if (REAL) {
   const dotenv = Object.fromEntries(fs.readFileSync(path.join(root, '.env'), 'utf8').split('\n').map(l => l.match(/^([A-Z0-9_]+)=(.*)$/)).filter(Boolean).map(m => [m[1], m[2].replace(/^"(.*)"$/, '$1')]));
   const keep = ['SPINE_LLM_PROVIDER', 'SPINE_LLM_MODEL', 'SPINE_LLM_ENDPOINT', 'SPINE_LLM_REGION', 'SPINE_LLM_PROJECT', 'SPINE_LLM_MODELS', 'SPINE_EMBEDDINGS', 'SPINE_EMBEDDING_ENDPOINT', 'SPINE_EMBEDDING_REGION', 'SPINE_EMBEDDING_PROJECT', 'SPINE_EMBEDDING_MODEL', 'GOOGLE_APPLICATION_CREDENTIALS'];
   modelEnv = Object.fromEntries(keep.filter(k => dotenv[k] !== undefined).map(k => [k, dotenv[k]]));
   if (modelEnv.GOOGLE_APPLICATION_CREDENTIALS && !path.isAbsolute(modelEnv.GOOGLE_APPLICATION_CREDENTIALS)) modelEnv.GOOGLE_APPLICATION_CREDENTIALS = path.join(root, modelEnv.GOOGLE_APPLICATION_CREDENTIALS);
+}
+{
   const relayPort = 4000 + Math.floor(Math.random() * 1000);
   const calls = [];
-  relayProcess = spawn('node', ['dist/relay/main.js'], { cwd: path.join(root, 'server'), env: { PATH: process.env.PATH, HOME: process.env.HOME, ...modelEnv, SPINE_RELAY_SECRET: RELAY_SECRET, SPINE_RELAY_ORIGIN: `http://localhost:${front}`, SPINE_DB_PATH: ':memory:', PORT: String(relayPort) }, stdio: ['ignore', 'pipe', 'inherit'] });
+  const [command, args, extraEnv] = REAL
+    ? ['node', ['dist/relay/main.js'], modelEnv]
+    : [path.join(root, 'node_modules/.bin/tsx'), ['src/testing/stand-in-relay.ts'], { SPINE_LLM_PROVIDER: 'stand-in', SPINE_LLM_MODEL: 'gemini-test', SPINE_EMBEDDINGS: 'stand-in' }];
+  relayProcess = spawn(command, args, { cwd: path.join(root, 'server'), env: { PATH: process.env.PATH, HOME: process.env.HOME, ...extraEnv, SPINE_RELAY_SECRET: RELAY_SECRET, SPINE_RELAY_ORIGIN: `http://localhost:${front}`, SPINE_DB_PATH: ':memory:', PORT: String(relayPort) }, stdio: ['ignore', 'pipe', 'inherit'] });
   let partial = '';
   relayProcess.stdout.on('data', d => { partial += d; const lines = partial.split('\n'); partial = lines.pop(); for (const l of lines) { try { const { time, ...rest } = JSON.parse(l); calls.push(rest); } catch { /* not a call line */ } } });
-  await new Promise(r => setTimeout(r, 3000));
-  relay = { url: `http://127.0.0.1:${relayPort}`, calls, close: () => relayProcess.kill() };
-} else {
-  relay = await startRelayWithStandIn({ secret: RELAY_SECRET, origin: `http://localhost:${front}`, models: [{ model: 'gemini-test', endpoint: 'aiplatform.eu.example', project: 'proj-1', region: 'eu' }, { model: 'gemini-embedding-2', endpoint: 'aiplatform.eu.example', project: 'proj-1', region: 'eu' }] });
+  let exited = false;
+  relayProcess.on('exit', () => { exited = true; });
+  const url = `http://127.0.0.1:${relayPort}`;
+  for (let waited = 0; ; waited += 250) {
+    if (exited || waited > 30000) throw new Error('the relay did not start');
+    try { await fetch(url + '/healthz'); break; } catch { await new Promise(r => setTimeout(r, 250)); }
+  }
+  relay = { url, calls, close: () => relayProcess.kill() };
 }
 const standIn = { SPINE_EMBEDDINGS: 'vertex', SPINE_EMBEDDING_ENDPOINT: 'aiplatform.eu.example', SPINE_EMBEDDING_REGION: 'eu', SPINE_EMBEDDING_PROJECT: 'proj-1', SPINE_LLM_PROVIDER: 'vertex', SPINE_LLM_ENDPOINT: 'aiplatform.eu.example', SPINE_LLM_REGION: 'eu', SPINE_LLM_PROJECT: 'proj-1', SPINE_LLM_MODEL: 'gemini-test' };
 // The invented root the signed fixture chains to, named as the operator would: a directory of certificates.

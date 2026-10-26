@@ -235,7 +235,7 @@ export default function App() {
         <Route path="/purpose" element={<LegalPage doc="purpose" />} />
         <Route path="/forgot" element={<Forgot />} />
         <Route path="/reset" element={<Reset />} />
-        <Route path="/share/:token" element={<PublicShareView />} />
+        <Route path="/share/:id" element={<PublicShareView />} />
         <Route path="/" element={<PrivateRoute><Timeline /></PrivateRoute>} />
         <Route path="/upload" element={<PrivateRoute><Upload /></PrivateRoute>} />
         <Route path="/uploads/:id" element={<PrivateRoute><UploadPages /></PrivateRoute>} />

@@ -108,19 +108,8 @@ export class WasmDatabase {
   readonly raw: Sqlite3Db;
   private depth = 0;
 
-  /** Empty, or the database whose bytes (`export()`) are given. */
-  constructor(bytes?: Uint8Array) {
+  constructor() {
     this.raw = new sqlite3.oo1.DB(':memory:', 'c');
-    if (bytes) {
-      const { capi, wasm } = sqlite3;
-      const rc = capi.sqlite3_deserialize(this.raw.pointer, 'main', wasm.allocFromTypedArray(bytes), bytes.length, bytes.length, capi.SQLITE_DESERIALIZE_FREEONCLOSE | capi.SQLITE_DESERIALIZE_RESIZEABLE);
-      if (rc !== 0) throw new Error(`could not load the database (${rc})`);
-    }
-  }
-
-  /** The whole database as bytes (a SQLite file). Not while a transaction is open: it would hold what is not yet committed. */
-  export(): Uint8Array {
-    return sqlite3.capi.sqlite3_js_db_export(this.raw.pointer);
   }
 
   /** Rows inserted, changed or deleted since opening, triggers included: it differs from the last look when something was written. */
@@ -173,6 +162,3 @@ export class WasmDatabase {
 
 /** The location is ignored: the database is in memory, and what persists is the vault's business. */
 export const openWasm = (_location: string) => new WasmDatabase();
-
-/** A database loaded from the bytes `export()` gave. */
-export const openWasmFrom = (bytes: Uint8Array) => new WasmDatabase(bytes);

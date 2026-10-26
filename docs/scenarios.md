@@ -494,7 +494,7 @@ The owner creates a link scoped to everything, a tag, chosen documents, or a dat
 - The raw token appears once, when the link is created. After that only its hash is stored.
 - Opening the link in a browser shows the documents, not raw JSON.
 
-Status: auto (`share`, `public-share-scoped`, `public-share-detail`, `share-token`); screens: not yet checked by hand.
+Status: auto (`share`, `public-share-scoped`, `public-share-detail`); screens: not yet checked by hand.
 
 ### 7.2 Ask me before anyone opens it
 When making a link the owner ticks **Ask me before anyone opens it**. Whoever opens the link must ask, and the owner approves or denies from their own account; only the browser they approve can read it.
@@ -513,7 +513,7 @@ When making a link the owner ticks **Let the recipient ask questions**. The reci
 - It answers only from the documents the link shares, and tells the recipient nothing about the rest of the archive however it is asked, including by asking it to ignore the limits. It does not know the care chain between documents, and it cannot change anything.
 - It knows the asker is a recipient and not the patient: it speaks of "the patient". The label the owner gave the link is context for it (a purpose, a name), not an instruction.
 - The answer streams and cites the shared documents, each linking to that document in the recipient's page. Nothing the recipient asks is kept on the server: closing or reloading the page clears it. Each question sends their words and parts of the shared documents, including the owner's notes on them, to the model provider, and the form says so.
-- It is behind the same approval as the rest of the link, limited per source and per link, and off unless the owner ticked it (and `SPINE_CHAT` is not `off`).
+- It is limited by the relay's daily count of model calls for the share, and off unless the owner ticked it (and `SPINE_CHAT` is not `off`).
 
 Status: auto (`share-chat`); live (`recipient-chat.it.ts`: answers from the shared document and cites it, nothing from the rest of the archive however it is asked, purpose as context, cannot change anything, streams); screens: not yet checked by hand.
 
@@ -555,7 +555,7 @@ The owner signs in on a second device with the master password (or a passkey) an
 - A device that saved is told that another made changes, and offers a reload; pages do not refresh themselves.
 - A tag or doctor made on two devices with the same name becomes one. Starter tags are the same on every device.
 - After 40 segments a device writes a snapshot, so a device that was away catches up from it.
-- A vault of the earlier kind (database-file pieces) is converted on its first unlock.
+- A vault of a kind this version does not know is refused with a message and left untouched.
 - Not covered: network failures mid-save, large vaults, a device whose clock is wrong (it can win edits it should not).
 
 Status: auto (`changes`, `ids`; web `persist`, `boot`); in real browsers: `check:app` (two contexts on one account, each removes a different tag, both end with both removals); a wrong clock and a failing network: not tried.

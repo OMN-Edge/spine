@@ -159,7 +159,7 @@ export const deviceFetch = (url: string, init?: RequestInit) => device.fetch(url
 
 /**
  * Requests the server answers: the account, the vault's objects, and a share's sealed copy and handshake (`/api/shared/`, which is
- * ciphertext and metadata). What a recipient reads of a share (`/api/share/<token>/...`) is answered by the reader's core; every other
+ * ciphertext and metadata). What a recipient reads of a share (`/api/share/<id>/...`) is answered by the reader's core; every other
  * `/api` call is the owner's core.
  */
 const SERVER_SIDE = /^\/(api\/(auth|account|legal|vault|shared)\/|share\/)/;

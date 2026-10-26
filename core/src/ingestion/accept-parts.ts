@@ -1,18 +1,18 @@
-import { rmSync } from 'fs';
+import { fileSystem } from '../files.js';
+import type { UploadPart } from '../http.js';
 import path from 'path';
-import type { MultipartFile, MultipartValue } from '@fastify/multipart';
 import { importZip } from '../archive/import.js';
 import { looksLikeDocx } from './convert.js';
 import { MAX_PHOTOS_IN_SET } from './photo-set.js';
 import { keepUnprocessed } from './raw-originals.js';
-import { acceptFile, acceptPhotoSet, newUploadPath, saveStream, type UploadOutcome } from './accept-upload.js';
+import { acceptFile, acceptPhotoSet, drain, newUploadPath, saveStream, type UploadOutcome } from './accept-upload.js';
 
 /** A document or a photo. */
 export const MAX_FILE_BYTES = 200 * 1024 * 1024;
 /** A zip of them, which the request limit in `index.ts` must allow. */
 export const MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;
 
-type Part = MultipartFile | MultipartValue;
+type Part = UploadPart;
 
 /** Thrown by `conversationFor` to stop before any file of the request is saved. */
 export class AttachRefused extends Error {
@@ -61,12 +61,12 @@ export async function acceptParts(
         if (truncated) results.push({ skipped: true, reason: 'too_large', filename: part.filename ?? null });
         else results.push(...(await importZip(userId, filePath, part.filename ?? null)));
       } finally {
-        rmSync(filePath, { force: true }); // the zip itself is not kept: its contents are
+        fileSystem().rmSync(filePath); // the zip itself is not kept: its contents are
       }
       continue;
     }
     if (truncated) {
-      rmSync(filePath, { force: true });
+      fileSystem().rmSync(filePath);
       results.push({ skipped: true, reason: 'too_large', filename: part.filename ?? null });
       continue;
     }
@@ -89,14 +89,14 @@ export async function acceptPhotoParts(userId: string, parts: AsyncIterable<Part
     for await (const part of parts) {
       if (part.type !== 'file') continue;
       if (part.fieldname === 'originals') {
-        if (raws.length >= MAX_PHOTOS_IN_SET) { part.file.resume(); continue; }
+        if (raws.length >= MAX_PHOTOS_IN_SET) { void drain(part.file); continue; }
         const { filePath } = newUploadPath(userId, '.raw');
         raws.push({ path: filePath });
         const { truncated } = await saveStream(part.file, filePath, { zip: MAX_FILE_BYTES, other: MAX_FILE_BYTES });
         if (truncated && !refusal) refusal = { skipped: true, reason: 'too_large', filename: part.filename ?? null };
         continue;
       }
-      if (saved.length > MAX_PHOTOS_IN_SET) { part.file.resume(); continue; } // one past the limit says "too many"; the rest are not kept
+      if (saved.length > MAX_PHOTOS_IN_SET) { void drain(part.file); continue; } // one past the limit says "too many"; the rest are not kept
       const { filePath } = newUploadPath(userId, '.photo');
       saved.push({ path: filePath, filename: part.filename ?? null });
       const { truncated } = await saveStream(part.file, filePath, { zip: MAX_FILE_BYTES, other: MAX_FILE_BYTES });
@@ -107,7 +107,7 @@ export async function acceptPhotoParts(userId: string, parts: AsyncIterable<Part
     if ('id' in outcome && raws.length > 0) await keepUnprocessed(userId, outcome.id, raws.map(r => r.path));
     return [outcome];
   } finally {
-    for (const file of saved) rmSync(file.path, { force: true });
-    for (const file of raws) rmSync(file.path, { force: true });
+    for (const file of saved) fileSystem().rmSync(file.path);
+    for (const file of raws) fileSystem().rmSync(file.path);
   }
 }

@@ -94,7 +94,6 @@ export interface ExtractedField {
 
 export interface ShareLink {
   id: string;
-  token: string;
   label: string | null;
   scope: 'all' | 'tag' | 'document_ids' | 'date_range' | 'episode';
   scope_value: string | null; // JSON

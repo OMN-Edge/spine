@@ -5,7 +5,7 @@ import { getAccountsStore } from 'spine-core/store/index.js';
 import { verifyPassword } from '../passwords.js';
 import { requireAuth } from 'spine-core/routes/middleware.js';
 import { type SessionData } from '../session-auth.js';
-import { windowLimiter } from 'spine-core/rate-limit.js';
+import { windowLimiter } from '../rate-limit.js';
 import { checkSecondFactor, newRecoveryCodes } from '../second-factor.js';
 import {
   base32Encode,

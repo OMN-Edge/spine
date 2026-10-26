@@ -39,9 +39,8 @@ import type {
  * Five exceptions to the user-scoping rule, each named here so that a fifth
  * has to be argued for:
  *
- *  1. `shareLinks.findLiveByTokenHash`, `shareLinks.findRequest`/`createRequest`
- *     and `documents.listForShare` — scoped by the *link's* owner, resolved from
- *     the token, never from a session (P12).
+ *  1. `shareLinks.findLive`, `shareLinks.createRequest` and `documents.listForShare` — scoped by the *link's* owner, resolved from
+ *     the link's id, never from a session (P12).
  *  2. `shareLinks.logAccess` — the caller is an unauthenticated reader by
  *     definition (P7).
  *  3. `shared.get`, `shared.createRequest`/`getRequest`, `shared.logOpen` and `shared.expired` — the public side of a sealed share: scoped
@@ -79,6 +78,26 @@ export interface AccountsStore {
   close(): Promise<void>;
 }
 
+/**
+ * What a share is made of (docs/crypto-design.md, stage 4): the part of one person's records a link shares, and what the recipient may
+ * read of them. **Everything in it is readable by the recipient**, so what leaves is decided by `slice-policy.ts`, whatever holds the records.
+ */
+export interface SliceOptions {
+  userId: string;
+  /** What `documents.listForShare` gave for the link on the owner's device: the documents the link shares. */
+  documentIds: string[];
+  includeText: boolean;
+  includeScans: boolean;
+  link: { id: string; label: string | null; createdAt: string; expiresAt: string; language: string | null; allowChat: boolean };
+  /** Where a page's image is in the share's own file system (when scans are included). */
+  imagePathOf: (pageId: string) => string;
+}
+
+export interface SliceResult {
+  /** The page images to send with the copy: where each is now, and where the copy says it is. */
+  images: Array<{ pageId: string; from: string; to: string }>;
+}
+
 /** What only the device keeps: the person's records, and what is needed to sync and save them. */
 export interface RecordsStore {
   sourceFiles: SourceFileRepository;
@@ -98,6 +117,11 @@ export interface RecordsStore {
   matchDecisions: MatchDecisionRepository;
   changes: ChangeLog;
   files: FileRegistryRepository;
+  /**
+   * The part of the records a share holds, as the changes that make it up (the form in which records travel) and the page images it names.
+   * Built in a store of its own, so the records are not touched; how is the adapter's business.
+   */
+  slice(options: SliceOptions): Promise<SliceResult & { changes: Change[] }>;
 }
 
 /** The device's store, and the tests' of what the device runs: the accounts' repositories and the records'. */
@@ -411,7 +435,7 @@ export interface DocumentRepository {
   listShownByIds(userId: string, ids: string[]): Promise<Document[]>;
   /** Which of these ids are the user's. For checking a share link names only their own. */
   ownedIds(userId: string, ids: string[]): Promise<string[]>;
-  /** Resolved from a share token and scoped by the link's owner — P12's exception. */
+  /** Resolved from the link and scoped by the link's owner — P12's exception. */
   listForShare(link: ResolvedShareLink): Promise<Document[]>;
 }
 
@@ -712,6 +736,8 @@ export interface Change {
 export interface ChangeLog {
   /** The writes made here since the last call, each row once with its last state, stamped. Empty when nothing changed. Not inside a transaction. */
   drain(): Promise<Change[]>;
+  /** Whether a transaction is open. A save waits for it to end, so that what it writes is not part of someone else's half-done work. */
+  busy(): Promise<boolean>;
   /** Whether writes were made that no `drain` has taken yet: what a device that must not lose them (it holds the only copy) asks before it lets go. */
   pending(): Promise<boolean>;
   /**
@@ -771,8 +797,8 @@ export interface ShareLinkRepository {
   create(userId: string, link: NewShareLink): Promise<void>;
   /** False if the link is not the user's (or does not exist). */
   revoke(userId: string, id: string): Promise<boolean>;
-  /** By digest, never by raw token (P6). No user: the token *is* the identity. */
-  findLiveByTokenHash(tokenHash: string): Promise<ResolvedShareLink | null>;
+  /** A link that is not revoked, by its id. No user: the link is the identity, and the recipient's copy holds one. */
+  findLive(id: string): Promise<ResolvedShareLink | null>;
   /** P7. The reader is unauthenticated by definition. */
   logAccess(linkId: string, accessedAt: string, ipAddress: string | null, countView: boolean, where?: { country?: string | null; documentId?: string | null }): Promise<void>;
   /**
@@ -782,15 +808,12 @@ export interface ShareLinkRepository {
   accessLogFor(userId: string, linkId: string): Promise<AccessLogEntry[]>;
 
   /**
-   * Approval of a visitor's browser (SECURITY.md M-19). The two methods without a user are the visitor's side and
-   * belong to the first exception above: they are keyed by a link that was resolved from its token and by the digest
-   * of a cookie, and they can reach only that one row. The rest are the owner's and take the acting user.
+   * Approval of a visitor's browser (SECURITY.md M-19). `createRequest` is how the owner's device records a request the server held for
+   * it; it is keyed by the link and can reach only that one row. The rest are the owner's and take the acting user.
    */
-  /** The visitor's request for this link, by the digest of their cookie. */
-  findRequest(linkId: string, visitorHash: string): Promise<ShareRequestState | null>;
   /**
    * Records a first request. False, and nothing written, when the link already holds `maxPending` waiting requests,
-   * so a token holder cannot make the owner's list or inbox grow without bound.
+   * so a visitor cannot make the owner's list or inbox grow without bound.
    */
   createRequest(linkId: string, request: NewShareRequest, maxPending: number): Promise<boolean>;
   listRequests(userId: string, now: string, linkId?: string): Promise<ShareRequest[]>;
@@ -846,11 +869,6 @@ export interface ShareLinkEvent {
   detail: string | null;
 }
 
-export interface ShareRequestState {
-  id: string;
-  status: 'pending' | 'approved' | 'denied';
-}
-
 export interface NewShareRequest {
   id: string;
   visitorHash: string;
@@ -884,12 +902,11 @@ export interface AccessLogEntry {
   document_id: string | null;
 }
 
-/** What the owner's list view may see — never the token, not even hashed (S-8). */
-export type ShareLinkSummary = Omit<ShareLink, 'token'> & { pending_requests: number };
+/** What the owner's list view may see. */
+export type ShareLinkSummary = ShareLink & { pending_requests: number };
 
 export interface NewShareLink {
   id: string;
-  tokenHash: string;
   label: string | null;
   scope: ShareLink['scope'];
   scopeValue: string | null;
@@ -1108,9 +1125,6 @@ export interface MaintenanceRepository {
   snapshotTo(destination: string): Promise<void>;
   /** Startup: nothing can still be in flight, the registry is in-memory. */
   failStalledSourceFiles(): Promise<number>;
-  /** The share links' stored tokens: the old server-side links, which are tests' business now (S-4). */
-  listShareLinkTokens(): Promise<Array<{ id: string; token: string }>>;
-  setShareLinkToken(id: string, tokenHash: string): Promise<void>;
 }
 
 export interface StoreConfig {

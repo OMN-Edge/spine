@@ -2,9 +2,7 @@ import { loadLlmConfig } from '../config.js';
 import { logger } from '../logger.js';
 import { buildChatLlm } from './chat-llm.js';
 import { buildTaskSpecs, type TaskClients } from './tasks.js';
-import { createAnthropicChat } from './adapters/anthropic.js';
 import { createRelayChat } from './adapters/relay.js';
-import { createVertexChat } from './adapters/vertex.js';
 import {
   LlmConfigError,
   type ChatLlm,
@@ -13,16 +11,21 @@ import {
 } from './types.js';
 
 /**
- * Dispatch is a registry, not a switch: adding a provider is a map entry plus
- * an adapter file, with no conditional every provider has to pass through.
+ * Dispatch is a registry, not a switch: adding a provider is one adapter file and one registration, with no conditional every provider
+ * has to pass through. This package knows one, `relay`, which is what the device uses: it calls the relay, which holds the credential and
+ * runs the task through the provider it is configured with. The providers themselves (anthropic, vertex) are the relay service's, in
+ * `server/src/llm/adapters/`, and it registers them (`server/src/providers.ts`), so this package carries no vendor SDK.
  */
-const ADAPTERS = {
-  anthropic: createAnthropicChat,
-  vertex: createVertexChat,
+const ADAPTERS: Record<string, TaskClientsFactory> = {
   relay: createRelayChat,
-} satisfies Record<string, TaskClientsFactory>;
+};
 
-export const LLM_PROVIDERS = Object.keys(ADAPTERS);
+/** Adds a provider. Called once at start-up by the process that runs one. */
+export function registerLlmProvider(name: string, factory: TaskClientsFactory): void {
+  ADAPTERS[name] = factory;
+}
+
+export const llmProviders = (): string[] => Object.keys(ADAPTERS);
 
 /**
  * Construction. Pure: validates its config, returns a new port, touches no
@@ -43,10 +46,10 @@ export function createChatLlm(config: ChatLlmConfig): ChatLlm {
  * The adapter is handed all the tasks up front and builds a client for each.
  */
 export function createTaskClients(config: ChatLlmConfig): TaskClients {
-  const factory = (ADAPTERS as Record<string, TaskClientsFactory | undefined>)[config.provider];
+  const factory: TaskClientsFactory | undefined = ADAPTERS[config.provider];
   if (!factory) {
     throw new LlmConfigError(
-      `unknown SPINE_LLM_PROVIDER "${config.provider}"; expected one of ${LLM_PROVIDERS.join(', ')}`,
+      `unknown SPINE_LLM_PROVIDER "${config.provider}"; expected one of ${llmProviders().join(', ')}`,
     );
   }
   return factory(config, buildTaskSpecs(config));

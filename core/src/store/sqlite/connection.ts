@@ -1,9 +1,6 @@
 import type { Database, OpenDatabase } from './driver.js';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import { accountsSchema } from './schema-accounts.js';
+import { recordsSchema } from './schema-records.js';
 
 /**
  * Opening the database, applying the idempotent schema, and setting pragmas.
@@ -11,8 +8,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  * inside the adapter.
  */
 export function openDatabase(location: string, open: OpenDatabase, schema: string | undefined, scope: 'full' | 'accounts'): Database {
-  if (location !== ':memory:') fs.mkdirSync(path.dirname(location), { recursive: true });
-
   const db = open(location);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
@@ -20,18 +15,15 @@ export function openDatabase(location: string, open: OpenDatabase, schema: strin
   refuseOutdatedDatabase(db, location);
   addColumnsInPlace(db);
 
-  // Idempotent `CREATE TABLE IF NOT EXISTS`, re-applied every boot. The file
-  // sits beside this adapter because it is SQLite-specific DDL; `npm run build`
-  // copies it next to the compiled output. The browser has no such file and hands the text in.
-  db.exec(schema ?? readSchema(scope));
+  // Idempotent `CREATE TABLE IF NOT EXISTS`, re-applied every boot. The text is SQLite-specific DDL and sits beside this adapter.
+  db.exec(schema ?? schemaOf(scope));
 
   return db;
 }
 
-/** The accounts' tables, then (unless the scope is only accounts) the records'. The browser has no files and hands both texts in. */
-function readSchema(scope: 'full' | 'accounts'): string {
-  const read = (name: string) => fs.readFileSync(path.join(__dirname, name), 'utf8');
-  return scope === 'accounts' ? read('schema-accounts.sql') : `${read('schema-accounts.sql')}\n${read('schema-records.sql')}`;
+/** The accounts' tables, then (unless the scope is only accounts) the records'. */
+function schemaOf(scope: 'full' | 'accounts'): string {
+  return scope === 'accounts' ? accountsSchema : `${accountsSchema}\n${recordsSchema}`;
 }
 
 const columnsOf = (db: Database, table: string): string[] =>

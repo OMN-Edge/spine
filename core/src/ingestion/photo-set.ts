@@ -1,4 +1,4 @@
-import fs from 'fs';
+import { fileSystem } from '../files.js';
 import { uprightJpeg } from './image-ops.js';
 import { MAX_PHOTO_PIXELS, MAX_PHOTO_SIDE } from './photo.js';
 
@@ -52,5 +52,5 @@ export async function bundlePhotos(photos: string[], outPath: string): Promise<v
   let xref = `xref\n0 ${count}\n0000000000 65535 f \n`;
   for (let id = 1; id < count; id++) xref += `${String(offsets[id]).padStart(10, '0')} 00000 n \n`;
   chunks.push(Buffer.from(`${xref}trailer\n<< /Size ${count} /Root 1 0 R >>\nstartxref\n${offset}\n%%EOF\n`, 'latin1'));
-  fs.writeFileSync(outPath, Buffer.concat(chunks));
+  fileSystem().writeFileSync(outPath, Buffer.concat(chunks));
 }

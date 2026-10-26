@@ -1,4 +1,4 @@
-import fs from 'fs';
+import fs from '../shims/fs';
 import { PDFDocument, rgb, type PDFFont } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 

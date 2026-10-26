@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { HttpApp } from '../http.js';
 import { getStore } from '../store/index.js';
 import { requireAuth } from './middleware.js';
 import { normaliseLicenseCode, suggestDuplicates } from '../doctors.js';
@@ -11,7 +11,7 @@ const text = (value: unknown, max: number) => (typeof value === 'string' && valu
  * these routes let the owner correct it: rename, fill in a specialty or clinic, merge two entries
  * for one person, remove one nothing refers to.
  */
-export async function doctorRoutes(app: FastifyInstance) {
+export async function doctorRoutes(app: HttpApp) {
   app.addHook('preHandler', requireAuth);
 
   app.get('/api/doctors', async (req, reply) => reply.send(await getStore().doctors.listFor(req.userId)));

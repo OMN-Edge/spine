@@ -1,22 +1,23 @@
 import './shims/globals';
-import type { FastifyInstance } from 'fastify';
 import { LocalApp, type InjectRequest, type InjectResponse } from './local-app';
-import { WasmDatabase } from './sqlite-wasm';
+import { openDeviceStore } from './device-store';
+import { browserTools } from './native';
+import { useNativeTools } from 'spine-core/native-tools';
 import { Persistence, type ObjectStore } from './persist';
 import type { SaveState } from './protocol';
 export type { SaveState };
-import { memory } from './shims/fs';
+import { memory, browserFiles } from './shims/fs';
+import { useFiles } from 'spine-core/files';
+import { useSettings } from 'spine-core/config';
+import { deviceSettings } from './native/settings';
 import { createShareHost } from './share/host';
 import { useShareHost } from 'spine-core/share-host';
 import { relayMail } from './native/relay-auth';
 import { newId } from '../crypto/keys';
 import { STARTER_TAGS } from 'spine-core/tags';
-import { ready as hashingReady } from './shims/crypto';
-import accountsSchema from 'spine-core/store/sqlite/schema-accounts.sql?raw';
-import recordsSchema from 'spine-core/store/sqlite/schema-records.sql?raw';
+import { ready as hashingReady, browserDigests } from './native/digests';
+import { useDigests } from 'spine-core/digest';
 
-const schema = `${accountsSchema}\n${recordsSchema}`;
-import { createDeviceStore } from 'spine-core/store/sqlite/browser';
 import { resetStore } from 'spine-core/store/index';
 import type { Store } from 'spine-core/store/types';
 import { decorateAuth, useRequestAuth } from 'spine-core/routes/middleware';
@@ -65,8 +66,11 @@ export interface Core {
 
 export async function startCore(vault?: { objects: ObjectStore; profileId: string }, hooks: { onConflict?: () => void; onChanged?: () => void; onSaveState?: (state: SaveState) => void } = {}): Promise<Core> {
   await hashingReady();
-  const db = new WasmDatabase();
-  const store = createDeviceStore(() => db, schema);
+  useNativeTools(browserTools);
+  useDigests(browserDigests);
+  useFiles(browserFiles);
+  useSettings(deviceSettings);
+  const store = openDeviceStore();
   resetStore(store);
 
   const now = new Date().toISOString();
@@ -82,43 +86,29 @@ export async function startCore(vault?: { objects: ObjectStore; profileId: strin
   const persistence = vault && new Persistence(vault.objects, vault.profileId, `ix-${vault.profileId}`, newId, { changes: store.changes, files: store.files, userId: DEVICE_USER });
   if (persistence) {
     persistence.onChanged = () => { hooks.onChanged?.(); followRecords(); };
-    const { legacy, empty } = await persistence.load();
+    const { empty } = await persistence.load();
     if (empty) await store.tags.ensure(DEVICE_USER, [...STARTER_TAGS]);
-    if (legacy) {
-      // A vault from before records were synced as changes: the database file is read once, its rows become the first snapshot, and it is let go.
-      const old = new WasmDatabase(legacy);
-      const oldStore = createDeviceStore(() => old, schema);
-      await oldStore.changes.drain();
-      await store.changes.apply(await oldStore.changes.dump());
-      await oldStore.close();
-      await persistence.adoptLegacy();
-    }
   }
 
   // Links are sealed here and sent to the server (docs/crypto-design.md, stage 4).
-  useShareHost(createShareHost({ source: db, schema, store: () => store, mail: relayMail }));
+  useShareHost(createShareHost({ store: () => store, mail: relayMail }));
 
   const local = new LocalApp();
-  const app = local as unknown as FastifyInstance;
-  decorateAuth(app);
+  decorateAuth(local);
   // One person, and the password was just typed to open the vault: nothing here asks for it again.
   useRequestAuth({ user: () => store.users.findById(DEVICE_USER), recent: () => true });
   for (const routes of [tagRoutes, doctorRoutes, trendRoutes, episodeRoutes, documentRoutes, sourceFileRoutes, exportRoutes, similarityRoutes, linkRoutes, demoRoutes, chatRoutes, shareRoutes]) {
-    await (routes as unknown as (a: FastifyInstance, o?: object) => Promise<void>)(app, {});
+    await routes(local);
   }
 
-  let seen = db.totalChanges;
   let locked = false;
   let ticks = 0;
-  const dirty = () => db.totalChanges !== seen || memory.changes().written.length > 0 || memory.changes().removed.length > 0;
+  // What the vault does not have yet: writes no drain has taken, changes a failed save took and kept, and files not sent. Asked of the change
+  // log and the persistence layer, not of the engine, whose own counters also move when a save writes its bookkeeping.
+  const hasUnsent = async () => !!persistence && (await store.changes.pending() || persistence.waiting || memory.changes().written.length > 0 || memory.changes().removed.length > 0);
   let saveError: string | null = null;
   let announced = '';
-  // Unsaved means the vault does not have something: writes no drain has taken, changes a failed save took and kept, or files not sent.
-  // (SQLite's own change counter is not it: a save writes bookkeeping of its own.)
-  const saveState = async (): Promise<SaveState> => {
-    const waiting = !!persistence && (await store.changes.pending() || persistence.waiting || memory.changes().written.length > 0 || memory.changes().removed.length > 0);
-    return { unsaved: waiting || saveError !== null, error: saveError };
-  };
+  const saveState = async (): Promise<SaveState> => ({ unsaved: (await hasUnsent()) || saveError !== null, error: saveError });
   /** Tells the page when the state changes (not on every look). */
   const announce = async () => {
     const state = await saveState();
@@ -130,10 +120,9 @@ export async function startCore(vault?: { objects: ObjectStore; profileId: strin
   const flush = async () => {
     if (!persistence || locked) return;
     // A save waits for a moment when no transaction is open, so it never holds half of one.
-    for (let waited = 0; db.inTransaction && waited < 50; waited++) await new Promise(r => setTimeout(r, 20));
-    if (db.inTransaction) return;
-    const mark = db.totalChanges;
-    const wrote = dirty();
+    for (let waited = 0; (await store.changes.busy()) && waited < 50; waited++) await new Promise(r => setTimeout(r, 20));
+    if (await store.changes.busy()) return;
+    const wrote = await hasUnsent();
     try {
       await persistence.save();
     } catch (err) {
@@ -142,8 +131,7 @@ export async function startCore(vault?: { objects: ObjectStore; profileId: strin
       await announce();
       throw err;
     }
-    // Only now: a save that failed must leave the records marked as changed.
-    seen = mark;
+    // Only now: a save that failed leaves the records unsent, and the next look tries again.
     saveError = null;
     await announce();
     if (wrote) followRecords();
@@ -164,7 +152,7 @@ export async function startCore(vault?: { objects: ObjectStore; profileId: strin
   });
   // Saves what changed, and now and then looks for what other devices wrote.
   // A failed save is retried here every time round (the records stay marked as changed), and the page is told once, in `announce`.
-  const timer: ReturnType<typeof setInterval> | null = persistence ? setInterval(() => { void announce(); if (dirty() || persistence.waiting || ++ticks % 4 === 0) void flush().catch(err => console.warn('a save did not reach the vault:', (err as Error)?.message)); }, SAVE_EVERY_MS) : null;
+  const timer: ReturnType<typeof setInterval> | null = persistence ? setInterval(() => { void (async () => { void announce(); if ((await hasUnsent()) || ++ticks % 4 === 0) await flush().catch(err => console.warn('a save did not reach the vault:', (err as Error)?.message)); })(); }, SAVE_EVERY_MS) : null;
 
   const lock = () => {
     locked = true;
@@ -174,7 +162,6 @@ export async function startCore(vault?: { objects: ObjectStore; profileId: strin
     useRequestAuth(null);
     memory.useLoader(null);
     memory.clear();
-    db.close();
     resetStore(null);
   };
 

@@ -38,7 +38,6 @@ export interface Records {
 
 interface Part { id: string; hash: string; size: number; seq: number }
 interface IndexV2 { v: 2; snapshot: Part[]; covers: string[] }
-interface IndexV1 { v: 1; db: Part[]; files: Record<string, Part> }
 
 /** Scratch the core makes and removes within one request; not worth sealing. */
 const SCRATCH = /(^|\/)tmp\/|\.part$|\.turning$/;
@@ -73,8 +72,6 @@ export class Persistence {
   /** Segments this device has applied or written and that no snapshot has folded yet, with their sequence numbers. */
   private open = new Map<string, number>();
   private registry = new Map<string, { objectId: string; hash: string; size: number; seq: number }>();
-  /** An older vault: its database file in pieces, and the files it listed. Converted by `adoptLegacy`. */
-  private legacy: IndexV1 | null = null;
   /**
    * Changes taken out of the change log and not yet in the vault. Draining makes the log forget what it hands over, so a save that
    * failed after draining (the network, the vault's limit) would otherwise have lost them for good: they stay here and go first next time.
@@ -127,10 +124,10 @@ export class Persistence {
   }
 
   /**
-   * Brings the vault's records into the store: the snapshot, then every segment no snapshot folded. Returns the old database file when
-   * the vault is of the earlier kind (the caller converts it with `adoptLegacy`).
+   * Brings the vault's records into the store: the snapshot, then every segment no snapshot folded. A vault of a kind this code does not
+   * know is refused and left as it is.
    */
-  async load(): Promise<{ legacy: Uint8Array | null; empty: boolean }> {
+  async load(): Promise<{ empty: boolean }> {
     let got: { plaintext: Uint8Array; seq: number } | null = null;
     try {
       got = await this.store.get(this.indexId, 'library');
@@ -139,22 +136,9 @@ export class Persistence {
     }
     const collected: Change[] = [];
     if (got) {
-      const parsed = JSON.parse(text(got.plaintext)) as IndexV1 | IndexV2;
+      const parsed = JSON.parse(text(got.plaintext)) as IndexV2;
+      if (parsed.v !== 2) throw new Error(`this vault is of a kind (${String((parsed as { v?: unknown }).v)}) that this version cannot open`);
       this.indexSeq = got.seq;
-      if (parsed.v === 1) {
-        this.legacy = parsed;
-        const pieces: Uint8Array[] = [];
-        for (const part of parsed.db) {
-          const { plaintext } = await this.store.get(part.id, 'bundle');
-          if ((await this.hash(plaintext)) !== part.hash) throw new Error('a piece of the database is not what was saved');
-          pieces.push(plaintext);
-        }
-        const out = new Uint8Array(pieces.reduce((n, p) => n + p.length, 0));
-        let at = 0;
-        for (const p of pieces) { out.set(p, at); at += p.length; }
-        memory.useLoader(path => this.fill(path));
-        return { legacy: out, empty: false };
-      }
       this.index = parsed;
       collected.push(...await this.readParts(parsed.snapshot));
     }
@@ -163,24 +147,7 @@ export class Persistence {
     await this.refreshRegistry();
     memory.settle();
     memory.useLoader(path => this.fill(path));
-    return { legacy: null, empty: !got && collected.length === 0 };
-  }
-
-  /**
-   * An earlier vault kept the database as a file in pieces and the files in its index. The caller read the rows out of that file and applied them;
-   * this registers its files, writes the first snapshot and removes the pieces.
-   */
-  async adoptLegacy(): Promise<void> {
-    const old = this.legacy;
-    if (!old) return;
-    for (const [path, part] of Object.entries(old.files)) {
-      await this.records.files.put(this.records.userId, { path, objectId: part.id, hash: part.hash, size: part.size, seq: part.seq });
-    }
-    await this.refreshRegistry();
-    memory.settle();
-    await this.compact(true);
-    for (const part of old.db) await this.store.remove(part.id, part.seq).catch(() => undefined);
-    this.legacy = null;
+    return { empty: !got && collected.length === 0 };
   }
 
   /** Segments of this profile that are not folded into the snapshot and not already held; their changes, opened. */
@@ -208,7 +175,7 @@ export class Persistence {
 
   /** A file the vault holds, fetched when something reads it. Checked against what was saved. */
   private fill(path: string): Uint8Array {
-    const part = this.registry.get(path) ?? (this.legacy ? { objectId: this.legacy.files[path]?.id, hash: this.legacy.files[path]?.hash } : undefined);
+    const part = this.registry.get(path);
     if (!part || !part.objectId) throw Object.assign(new Error(`${path} is not in the vault`), { code: 'ENOENT' });
     const data = this.store.getSync(part.objectId, 'blob');
     const check = sodiumNow();
@@ -265,7 +232,7 @@ export class Persistence {
     const incoming: Change[] = [];
     if (index && index.seq !== this.indexSeq) {
       const got = await this.store.get(this.indexId, 'library');
-      const next = JSON.parse(text(got.plaintext)) as IndexV1 | IndexV2;
+      const next = JSON.parse(text(got.plaintext)) as IndexV2;
       if (next.v === 2) {
         const known = new Set(this.index.snapshot.map(p => p.id));
         incoming.push(...await this.readParts(next.snapshot.filter(p => !known.has(p.id))));
@@ -282,7 +249,7 @@ export class Persistence {
     }
   }
 
-  /** Folds the segments held into a new snapshot. `force` writes one even when few wait (the first one, after converting an older vault). */
+  /** Folds the segments held into a new snapshot. `force` writes one even when few wait. */
   private async compact(force: boolean): Promise<void> {
     if (!force && this.open.size < COMPACT_AFTER) return;
     // Writes made while this save was waiting on the vault are sent first, so the snapshot holds nothing a segment does not.

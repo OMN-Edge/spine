@@ -5,7 +5,7 @@ import { getAccountsStore } from 'spine-core/store/index.js';
 import { relyingParty } from '../passkeys.js';
 import { mailAfter, newSignInMail, securityChangeMail } from '../notify.js';
 import { startSession } from '../sessions.js';
-import { windowLimiter } from 'spine-core/rate-limit.js';
+import { windowLimiter } from '../rate-limit.js';
 import { sealed } from '../vault-keys.js';
 import { requireAuth, requireRecentAuth } from 'spine-core/routes/middleware.js';
 import { type SessionData } from '../session-auth.js';

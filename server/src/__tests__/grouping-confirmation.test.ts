@@ -2,7 +2,6 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from
 import { buildTestApp, loginAs, loginSession } from './helpers/app.js';
 import { OWNER_ID, createTestUser, seedDocument, seedShareLink } from './helpers/seed.js';
 import { getStore } from 'spine-core/store/index.js';
-import { hashShareToken } from 'spine-core/share-token.js';
 import { resetChatLlm, type ChatLlm } from 'spine-core/llm/index.js';
 import type { LinkCard } from 'spine-core/llm/types.js';
 import { settleLinking } from 'spine-core/linking/index.js';
@@ -46,7 +45,7 @@ const timeline = async () => ((await get('/api/documents?limit=100')).json() as 
 describe('before the grouping is confirmed', () => {
   it('keeps the documents out of the timeline, search, the review queue and shares, but shows them on the upload', async () => {
     const d = await waitingUpload('Blood count');
-    await seedShareLink({ tokenHash: hashShareToken('tok-1'), scope: 'all' });
+    await seedShareLink({ id: 'tok-1', scope: 'all' });
 
     expect(await timeline()).not.toContain(d.id);
     expect((await get('/api/documents?q=Blood&limit=20')).json()).toEqual([]);

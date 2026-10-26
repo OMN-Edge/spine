@@ -5,13 +5,13 @@ import { getAccountsStore } from 'spine-core/store/index.js';
 import { sharedLimits } from '../config.js';
 import { SHARE_ID, readBlob, readBundle, removeBlobs, removeShare, writeBlob, writeBundle } from '../shared-files.js';
 import { requireAuth } from 'spine-core/routes/middleware.js';
-import { countryOf } from 'spine-core/geo.js';
+import { countryOf } from '../geo.js';
 import { accessRequestMail } from '../accounts.js';
 import { getMailer } from '../mail/index.js';
 import { publicUrl } from 'spine-core/config.js';
 import { issueToken } from '../relay/token.js';
 import { relaySettings, relayEnv } from './relay.js';
-import { windowLimiter } from 'spine-core/rate-limit.js';
+import { windowLimiter } from '../rate-limit.js';
 import { logger } from 'spine-core/logger.js';
 
 /** What a failure of something done after the answer, with nobody waiting on it, leaves: a line, with the reason and no content. */

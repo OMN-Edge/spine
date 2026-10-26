@@ -1,4 +1,4 @@
-import fs from 'fs';
+import fs from '../shims/fs';
 import { Buffer } from 'buffer';
 import { PDFDocument } from 'pdf-lib';
 

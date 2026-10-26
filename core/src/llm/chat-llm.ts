@@ -1,5 +1,5 @@
+import { fileSystem } from '../files.js';
 import { spendModelCall } from './budget.js';
-import { readFile } from 'fs/promises';
 import { logger } from '../logger.js';
 import { HumanMessage } from '@langchain/core/messages';
 import { OutputParserException } from '@langchain/core/output_parsers';
@@ -167,7 +167,7 @@ export function buildChatLlm(clients: TaskClients, config: ChatLlmConfig): ChatL
 
     async readStamps(imagePaths): Promise<StampReading | null> {
       if (imagePaths.length === 0) return { doctors: [] };
-      const images = await Promise.all(imagePaths.map(async p => (await readFile(p)).toString('base64')));
+      const images = await Promise.all(imagePaths.map(async p => (await fileSystem().readFile(p)).toString('base64')));
       const message = new HumanMessage({
         content: [
           { type: 'text', text: buildStampReadingPrompt(images.length) },
@@ -188,7 +188,7 @@ export function buildChatLlm(clients: TaskClients, config: ChatLlmConfig): ChatL
     async readPage(imagePath, options): Promise<PageReading | null> {
       // The page goes as a data URL in a standard image block, which LangChain turns
       // into a base64 `image` block for Anthropic and `inlineData` for Gemini.
-      const image = (await readFile(imagePath)).toString('base64');
+      const image = (await fileSystem().readFile(imagePath)).toString('base64');
       const message = new HumanMessage({
         content: [
           { type: 'text', text: buildPageReadingPrompt() },

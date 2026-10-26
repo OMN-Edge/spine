@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
+import { accountsSchema } from 'spine-core/store/sqlite/schema-accounts.js';
+import { recordsSchema } from 'spine-core/store/sqlite/schema-records.js';
 import { mkdtempSync, readFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import path from 'path';
@@ -253,8 +255,7 @@ describe('a database from before pages could be hidden', () => {
   function oldDatabase(): string {
     dir = mkdtempSync(path.join(tmpdir(), 'spine-prehide-'));
     const file = path.join(dir, 'spine.db');
-    const here = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../../core/src/store/sqlite');
-    const old = ['schema-accounts.sql', 'schema-records.sql'].map(f => readFileSync(path.join(here, f), 'utf8')).join('\n')
+    const old = `${accountsSchema}\n${recordsSchema}`
       .replace(/ {2}hidden INTEGER NOT NULL DEFAULT 0,.*\n/, '')
       .replace(/last_accessed_at TEXT,\n {2}include_scans INTEGER NOT NULL DEFAULT 0,[^\n]*\n {2}language TEXT[^\n]*\n {2}require_approval[^\n]*\n {2}allow_chat[^\n]*\n\);/, 'last_accessed_at TEXT\n);')
       .replace(/reviewed INTEGER DEFAULT 0,\n {2}language TEXT[^\n]*\n\);/, 'reviewed INTEGER DEFAULT 0\n);')
@@ -274,7 +275,7 @@ describe('a database from before pages could be hidden', () => {
     page.run('p1', 1, 'kept words');
     page.run('p2', 2, 'dropped zebra words');
     db.prepare(`INSERT INTO documents (id, user_id, source_file_id, page_start, page_end, title) VALUES ('d1', 'u1', 'f1', 1, 2, 'Old report')`).run();
-    db.prepare(`INSERT INTO share_links (id, user_id, token, scope, created_at, expires_at) VALUES ('l1', 'u1', 'digest', 'all', '2026-01-01', '2999-01-01')`).run();
+    db.prepare(`INSERT INTO share_links (id, user_id, scope, created_at, expires_at) VALUES ('l1', 'u1', 'all', '2026-01-01', '2999-01-01')`).run();
     db.close();
     return file;
   }
@@ -289,9 +290,9 @@ describe('a database from before pages could be hidden', () => {
     expect((await store.documents.findFor('u1', 'd1'))?.title).toBe('Old report');
     // A link made before links could include scans does not, and the owner sees that.
     expect((await store.shareLinks.listFor('u1')).map(l => [l.id, l.include_scans])).toEqual([['l1', false]]);
-    expect((await store.shareLinks.findLiveByTokenHash('digest'))?.includeScans).toBe(false);
+    expect((await store.shareLinks.findLive('l1'))?.includeScans).toBe(false);
     // Neither a document nor a link had a language before, and that is allowed.
-    expect((await store.shareLinks.findLiveByTokenHash('digest'))?.language).toBeNull();
+    expect((await store.shareLinks.findLive('l1'))?.language).toBeNull();
     expect((await store.documents.findFor('u1', 'd1'))?.language).toBeNull();
     await store.close?.();
   });

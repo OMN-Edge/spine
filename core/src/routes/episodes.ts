@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { HttpApp } from '../http.js';
 import { v4 as uuidv4 } from 'uuid';
 import { getStore, type EpisodeState } from '../store/index.js';
 import { proposeEpisodes } from '../episodes/index.js';
@@ -17,7 +17,7 @@ const cleanTitle = (value: unknown): string | null => {
 const ids = (value: unknown): string[] | null =>
   Array.isArray(value) && value.length > 0 && value.length <= MAX_DOCUMENTS && value.every(v => typeof v === 'string' && v.length > 0) ? [...new Set(value as string[])] : null;
 
-export async function episodeRoutes(app: FastifyInstance) {
+export async function episodeRoutes(app: HttpApp) {
   app.addHook('preHandler', requireAuth);
 
   // The owner's episodes, with their documents' ids and dates. Dismissed ones are left out unless asked for.

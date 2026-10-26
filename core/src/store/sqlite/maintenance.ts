@@ -29,13 +29,5 @@ export function maintenanceRepository(db: Database): MaintenanceRepository {
         WHERE status IN ('pending', 'processing')
       `).run().changes;
     },
-
-    async listShareLinkTokens() {
-      return db.prepare('SELECT id, token FROM share_links').all() as Array<{ id: string; token: string }>;
-    },
-
-    async setShareLinkToken(id, tokenHash) {
-      db.prepare('UPDATE share_links SET token = ? WHERE id = ?').run(tokenHash, id);
-    },
   };
 }

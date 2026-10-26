@@ -10,7 +10,7 @@ import {
 } from '../passwords.js';
 import { requireAuth } from 'spine-core/routes/middleware.js';
 import { authenticate, type SessionData } from '../session-auth.js';
-import { windowLimiter } from 'spine-core/rate-limit.js';
+import { windowLimiter } from '../rate-limit.js';
 import { startSession, endOtherSessions } from '../sessions.js';
 import { mailAfter, newSignInMail, securityChangeMail } from '../notify.js';
 import { checkSecondFactor, hasSecondFactor } from '../second-factor.js';

@@ -176,7 +176,7 @@ export function describeStoreContract(name: string, make: () => Store | Promise<
       it('keeps a share that is scoped to a tag pointing at it through a rename and a merge, and at nothing after a removal', async () => {
         await document(A, { tags: ['alpha', 'beta'] });
         const id = uuid();
-        await store.shareLinks.create(A, { id, tokenHash: uuid(), label: null, scope: 'tag', scopeValue: JSON.stringify('alpha'), createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 86_400_000).toISOString(), includeScans: false, language: null, requireApproval: false, allowChat: false });
+        await store.shareLinks.create(A, { id, label: null, scope: 'tag', scopeValue: JSON.stringify('alpha'), createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 86_400_000).toISOString(), includeScans: false, language: null, requireApproval: false, allowChat: false });
         const tags = await store.tags.listFor(A);
         const alpha = tags.find(t => t.name === 'alpha')!;
         const beta = tags.find(t => t.name === 'beta')!;
@@ -199,7 +199,54 @@ export function describeStoreContract(name: string, make: () => Store | Promise<
       });
     });
 
+    describe('what a share holds', () => {
+      const slice = (documentIds: string[], over: { includeText?: boolean } = {}) => store.slice({
+        userId: A, documentIds, includeText: over.includeText ?? false, includeScans: false,
+        link: { id: 'link-1', label: null, createdAt: '2026-01-01T00:00:00.000Z', expiresAt: '2999-01-01T00:00:00.000Z', language: null, allowChat: false },
+        imagePathOf: id => `/share/${id}.png`,
+      });
+      const rowsOf = (changes: Array<{ t: string; r: Record<string, unknown> | null }>, table: string) => changes.filter(c => c.t === table && c.r).map(c => c.r!);
+
+      it('holds the documents named and what belongs to them, and no other document of the owner', async () => {
+        const shared = await document(A, { title: 'shared', tags: ['kept'] });
+        const other = await document(A, { title: 'not shared' });
+        const { changes } = await slice([shared.id]);
+        expect(rowsOf(changes, 'documents').map(r => r.id)).toEqual([shared.id]);
+        expect(rowsOf(changes, 'pages').map(r => r.id)).toEqual(shared.pageIds);
+        expect(JSON.stringify(changes)).not.toContain(other.id);
+      });
+
+      it('leaves out what the share policy leaves out: the owner’s file names and address, and the page text unless the recipient may ask questions', async () => {
+        const shared = await document(A, { title: 'shared' });
+        const without = await slice([shared.id]);
+        expect(rowsOf(without.changes, 'source_files')[0]).toMatchObject({ original_filename: 'shared', file_path: '' });
+        expect(JSON.stringify(without.changes)).not.toContain('scan.pdf');
+        expect(rowsOf(without.changes, 'pages')[0].raw_text).toBe('');
+        expect(rowsOf(without.changes, 'users')).toEqual([]); // accounts do not travel: the recipient’s core makes its own owner
+        expect(JSON.stringify(without.changes)).not.toContain('a@spine.test');
+        const withText = await slice([shared.id], { includeText: true });
+        expect(rowsOf(withText.changes, 'pages')[0].raw_text).toBe('page 1 text');
+      });
+
+      it('leaves the owner’s records as they were, and holds an owner and nothing else for no documents', async () => {
+        const mine = await document(A, { title: 'mine' });
+        await store.changes.drain();
+        const empty = await slice([]);
+        expect(rowsOf(empty.changes, 'documents')).toEqual([]);
+        expect(empty.images).toEqual([]);
+        await slice([mine.id]);
+        expect(await store.changes.pending()).toBe(false); // building the copy wrote nothing to the owner's store
+        expect((await list(A)).length).toBe(1);
+      });
+    });
+
     describe('transactions', () => {
+      it('say whether one is open, which a save waits for', async () => {
+        expect(await store.changes.busy()).toBe(false);
+        await store.transaction(async () => { expect(await store.changes.busy()).toBe(true); });
+        expect(await store.changes.busy()).toBe(false);
+      });
+
       it('commit what the callback did, all of it', async () => {
         await store.transaction(async tx => { await document2(tx, 'in one'); await document2(tx, 'transaction'); });
         expect((await list(A)).length).toBe(2);

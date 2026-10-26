@@ -3,9 +3,6 @@ import fastifyCookie from '@fastify/cookie';
 import fastifySession from '@fastify/session';
 import fastifyMultipart from '@fastify/multipart';
 import fastifyRateLimit from '@fastify/rate-limit';
-import { writeFileSync, mkdtempSync } from 'fs';
-import { tmpdir } from 'os';
-import path from 'path';
 import type { AuthRouteOptions } from '../../routes/auth.js';
 import type { AccountRouteOptions } from '../../routes/accounts.js';
 import type { TotpRouteOptions } from '../../routes/totp.js';
@@ -13,22 +10,24 @@ import type { PasskeyRouteOptions } from '../../routes/passkeys.js';
 import type { VaultRouteOptions } from '../../routes/vault.js';
 import { holdsRecordsInThisRun } from 'spine-core/testing/store-kind.js';
 import { useSessionAuth } from '../../session-auth.js';
-import { useMailedOwnerNotices } from '../../owner-notices.js';
+import { asHttp, asPlugin } from '../../http-host.js';
+import { useShareHost, type ShareHost } from 'spine-core/share-host.js';
 import { TRUSTED_PROXIES } from '../../trust-proxy.js';
 import { OWNER_EMAIL, TEST_PASSWORD, createTestUser } from './seed.js';
 
 /**
- * Stand-in for web/dist/index.html so the share entry route can be driven
- * without a built frontend. The marker is what tests assert on.
+ * The share host a device would bring, as far as the routes can tell: it takes the copy and says nothing went wrong. What a real one
+ * makes and sends is tested where it lives (web/src/core/share); the routes' own behaviour is what these tests are about.
  */
-export const APP_SHELL_MARKER = '<div id="root"></div>';
-
-function writeAppShell(): string {
-  const dir = mkdtempSync(path.join(tmpdir(), 'spine-shell-'));
-  const file = path.join(dir, 'index.html');
-  writeFileSync(file, `<!doctype html><html><body>${APP_SHELL_MARKER}</body></html>`);
-  return file;
-}
+export const testShareHost: ShareHost = {
+  publish: async () => ({ key: 'test-share-key', published: true, digest: 'test-digest' }),
+  update: async () => undefined,
+  revoke: async () => undefined,
+  pull: async () => undefined,
+  answer: async () => undefined,
+  mailsOwner: () => false,
+  addressOf: (id, key) => `https://spine.test/share/${id}${key ? `#${key}` : ''}`,
+};
 
 export interface RegisteredRoute {
   method: string;
@@ -39,8 +38,6 @@ export interface RegisteredRoute {
 export const routesOf = new WeakMap<object, RegisteredRoute[]>();
 
 export interface TestAppOptions {
-  /** Pass null to simulate a missing web build. */
-  appShellPath?: string | null;
   /**
    * Overrides for the login limiters. The plugin is always registered, so every
    * test drives the real preHandler (P10); the default max is high enough that
@@ -67,12 +64,17 @@ export async function buildTestApp(options: TestAppOptions = {}) {
   // A run that was not set up with one of the store setup files (the web's test of the device against the server) gets the one that holds records.
   if (!hasStoreFactory()) {
     const { loadStoreConfig } = await import('spine-core/config.js');
+    const { useDriver } = await import('spine-core/store/sqlite/index.js');
+    const { openNative } = await import('spine-core/testing/driver-native.js');
+    const { useNodePlatform } = await import('spine-core/testing/node-platform.js');
+    useNodePlatform();
+    useDriver(openNative);
     useStoreFactory(() => createStore(loadStoreConfig()));
   }
   resetStore();
-  // What the server's entry point registers, and the mail of the old per-route path that some tests exercise.
+  // What the server's entry point registers, and the share host a device would bring.
   useSessionAuth();
-  useMailedOwnerNotices();
+  useShareHost(testShareHost);
 
   // trustProxy matches production (index.ts): req.ip must come from
   // X-Forwarded-For so the per-source rate limiter keys on the real client.
@@ -122,7 +124,7 @@ export async function buildTestApp(options: TestAppOptions = {}) {
   const { doctorRoutes } = await import('spine-core/routes/doctors.js');
   const { decorateAuth } = await import('spine-core/routes/middleware.js');
 
-  decorateAuth(app);
+  decorateAuth(asHttp(app));
 
   await app.register(authRoutes, {
     loginRateLimit: { max: 1000, timeWindow: '1 minute' },
@@ -139,33 +141,24 @@ export async function buildTestApp(options: TestAppOptions = {}) {
     perAddress: { max: 1000, windowMs: 60 * 1000 },
     ...options.accounts,
   });
-  if (records) await app.register(documentRoutes);
-  if (records) await app.register(sourceFileRoutes);
-  if (records) await app.register(exportRoutes);
-  if (records) await app.register(similarityRoutes);
-  if (records) await app.register(linkRoutes);
-  if (records) await app.register(episodeRoutes);
-  if (records) await app.register(demoRoutes);
+  if (records) await app.register(asPlugin(documentRoutes));
+  if (records) await app.register(asPlugin(sourceFileRoutes));
+  if (records) await app.register(asPlugin(exportRoutes));
+  if (records) await app.register(asPlugin(similarityRoutes));
+  if (records) await app.register(asPlugin(linkRoutes));
+  if (records) await app.register(asPlugin(episodeRoutes));
+  if (records) await app.register(asPlugin(demoRoutes));
   await app.register(ownAccountRoutes);
   await app.register(passkeyRoutes, { perSource: 100_000, instanceWide: 100_000, ...options.passkeys });
   await app.register(vaultRoutes, options.vault ?? {});
   await app.register(relayRoutes);
   await app.register(sharedRoutes, { requestPerSource: { max: 1000, timeWindow: '1 minute' }, requestPerLink: { max: 1000, windowMs: 60 * 1000 }, readPerSource: { max: 100000, timeWindow: '1 minute' }, ...options.shared });
-  if (records) await app.register(chatRoutes, { askPerMinute: 1000 });
-  if (records) await app.register(shareRoutes);
-  if (records) await app.register(publicShareRoutes, {
-    requestPerSource: { max: 1000, timeWindow: '1 minute' },
-    requestPerLink: { max: 1000, windowMs: 60 * 1000 },
-    chatPerSource: { max: 1000, timeWindow: '1 minute' },
-    chatPerLink: { max: 1000, windowMs: 60 * 1000 },
-    appShellPath:
-      options.appShellPath === null
-        ? path.join(tmpdir(), 'spine-no-such-build', 'index.html')
-        : (options.appShellPath ?? writeAppShell()),
-  });
-  if (records) await app.register(tagRoutes);
-  if (records) await app.register(trendRoutes);
-  if (records) await app.register(doctorRoutes);
+  if (records) await app.register(asPlugin(chatRoutes));
+  if (records) await app.register(asPlugin(shareRoutes));
+  if (records) await app.register(asPlugin(publicShareRoutes));
+  if (records) await app.register(asPlugin(tagRoutes));
+  if (records) await app.register(asPlugin(trendRoutes));
+  if (records) await app.register(asPlugin(doctorRoutes));
 
   await app.ready();
 

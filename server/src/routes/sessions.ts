@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { verifyPassword, MAX_PASSWORD_LENGTH } from '../passwords.js';
 import { checkSecondFactor, hasSecondFactor } from '../second-factor.js';
-import { windowLimiter } from 'spine-core/rate-limit.js';
+import { windowLimiter } from '../rate-limit.js';
 import { recentlyAuthenticated, requireAuth } from 'spine-core/routes/middleware.js';
 import { type SessionData } from '../session-auth.js';
 import { endOtherSessions } from '../sessions.js';

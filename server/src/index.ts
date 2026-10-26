@@ -24,6 +24,7 @@ import { loadConfig, sessionLimits, type Config } from './config.js';
 import { useLogger } from 'spine-core/logger.js';
 import { useAccountsStore } from './store.js';
 import { useSessionAuth } from './session-auth.js';
+import { asHttp } from './http-host.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -90,7 +91,7 @@ await app.register(fastifyRateLimit, {
 const webDist = path.join(__dirname, '../../web/dist');
 
 // requireAuth sets req.userId; the property has to exist before routes use it.
-decorateAuth(app);
+decorateAuth(asHttp(app));
 
 // Register API routes
 await app.register(authRoutes);

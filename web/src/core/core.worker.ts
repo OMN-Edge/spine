@@ -1,5 +1,5 @@
+import type { UploadPart } from 'spine-core/http';
 import './shims/globals';
-import { PassThrough } from 'stream';
 import { Buffer } from 'buffer';
 import { startCore, type Core } from './boot';
 import { startShareCore, type ShareCore } from './boot-share';
@@ -24,13 +24,13 @@ for (const level of ['warn', 'error'] as const) {
 let core: Core | ShareCore | null = null;
 let session: VaultSession | null = null;
 
-const partOf = (p: Part) =>
+const partOf = (p: Part): UploadPart =>
   p.data === undefined
-    ? { type: 'field', fieldname: p.fieldname, value: p.value ?? '' }
+    ? { type: 'field' as const, fieldname: p.fieldname, value: p.value ?? '' }
     : (() => {
-        const file = new PassThrough();
-        file.end(Buffer.from(p.data));
-        return { type: 'file', fieldname: p.fieldname, filename: p.filename, mimetype: p.mimetype, file, truncated: false };
+        const bytes = new Uint8Array(p.data);
+        const file = (async function* () { yield bytes; })();
+        return { type: 'file' as const, fieldname: p.fieldname, filename: p.filename, mimetype: p.mimetype, file };
       })();
 
 const trace = (step: string) => (self as unknown as Worker).postMessage({ id: 0, trace: step } satisfies FromWorker);

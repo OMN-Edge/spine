@@ -3,7 +3,7 @@ import { mkdtempSync } from 'fs';
 import { tmpdir } from 'os';
 import path from 'path';
 import { openDatabase } from '../store/sqlite/connection.js';
-import { openNative } from '../store/sqlite/driver-native.js';
+import { openNative } from '../testing/driver-native.js';
 
 /** `user_passkeys.wrapped_key` is a new column without a default value other than NULL, so a database made without it is brought forward on open. */
 describe('user_passkeys.wrapped_key', () => {

@@ -11,7 +11,6 @@ import type {
   ShareLinkEvent,
   ShareLinkPatch,
   ShareRequest,
-  ShareRequestState,
 } from '../types.js';
 
 /** Every owner-facing statement filters by `user_id` (SECURITY.md P12). */
@@ -29,18 +28,16 @@ export function shareLinkRepository(db: Database): ShareLinkRepository {
   `);
 
   const insert = db.prepare(`
-    INSERT INTO share_links (id, user_id, token, label, scope, scope_value, created_at, expires_at, include_scans, language, require_approval, allow_chat)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO share_links (id, user_id, label, scope, scope_value, created_at, expires_at, include_scans, language, require_approval, allow_chat)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const revoke = db.prepare('UPDATE share_links SET revoked = 1 WHERE id = ? AND user_id = ?');
 
-  // P6: looked up by sha256(token), so possession of the database does not
-  // confer usable links.
   const findLive = db.prepare(`
     SELECT id, user_id, label, scope, scope_value, expires_at, include_scans, language, require_approval, allow_chat
     FROM share_links
-    WHERE token = ? AND revoked = 0
+    WHERE id = ? AND revoked = 0
   `);
 
   // The log row carries the link's owner, read from the link itself.
@@ -57,9 +54,6 @@ export function shareLinkRepository(db: Database): ShareLinkRepository {
     WHERE share_link_id = ? AND user_id = ? ORDER BY accessed_at
   `);
 
-  const findRequest = db.prepare(
-    'SELECT id, status FROM share_access_requests WHERE share_link_id = ? AND visitor_hash = ?',
-  );
   // The cap is inside the statement, so two requests arriving together cannot both pass the count.
   const insertRequest = db.prepare(`
     INSERT INTO share_access_requests (id, user_id, share_link_id, visitor_hash, note, ip_address, user_agent, requested_at)
@@ -163,7 +157,6 @@ export function shareLinkRepository(db: Database): ShareLinkRepository {
       insert.run(
         link.id,
         owner(userId),
-        link.tokenHash,
         link.label,
         link.scope,
         link.scopeValue,
@@ -186,8 +179,8 @@ export function shareLinkRepository(db: Database): ShareLinkRepository {
       })();
     },
 
-    async findLiveByTokenHash(tokenHash) {
-      const row = findLive.get(tokenHash) as
+    async findLive(id) {
+      const row = findLive.get(id) as
         | { id: string; user_id: string; label: string | null; scope: string; scope_value: string | null; expires_at: string; include_scans: number; language: string | null; require_approval: number; allow_chat: number }
         | undefined;
       if (!row) return null;
@@ -215,10 +208,6 @@ export function shareLinkRepository(db: Database): ShareLinkRepository {
 
     async accessLogFor(userId, linkId) {
       return accessLog.all(linkId, owner(userId)) as AccessLogEntry[];
-    },
-
-    async findRequest(linkId, visitorHash) {
-      return (findRequest.get(linkId, visitorHash) as ShareRequestState | undefined) ?? null;
     },
 
     async createRequest(linkId, r, maxPending) {

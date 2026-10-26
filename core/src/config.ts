@@ -1,10 +1,31 @@
 import path from 'path';
-import { fileURLToPath } from 'url';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+/** The settings of a process, by their usual names (`SPINE_*`, `DATA_DIR` ...): what an environment looks like, wherever the values come from. */
+export type Settings = Record<string, string | undefined>;
 
-/** This file is `core/src/config.ts` or `core/dist/config.js`; the repo is two up. */
-const REPO_ROOT = path.resolve(__dirname, '../..');
+let current: Settings | null = null;
+
+/**
+ * Called once by the process that has settings: the server and the tests give their environment variables, the device the ones its server
+ * gave it for the core. The shared code reads settings from here and never from a global, so it runs the same where there is no `process`.
+ * A process that gave none fails at the first setting asked for.
+ */
+export function useSettings(next: Settings | null): void {
+  current = next;
+}
+
+/** The settings of this process. */
+export function settings(): Settings {
+  if (!current) throw new Error('no settings have been registered for this process (useSettings)');
+  return current;
+}
+
+let defaultDataDir: string | null = null;
+
+/** The directory used when `DATA_DIR` is not set: the server's own choice (`<repo>/data`), made by the process that has one. There is no default here. */
+export function useDefaultDataDir(dir: string | null): void {
+  defaultDataDir = dir;
+}
 
 /**
  * Where the database, originals and page images live. The one place this is
@@ -12,11 +33,13 @@ const REPO_ROOT = path.resolve(__dirname, '../..');
  * different fallbacks relative to the working directory.
  *
  * Read at call time, not module load, so tests and the CLI can set it first.
- * Both systemd units set it explicitly; the fallback is `<repo>/data` wherever
- * the process was started from.
+ * Both systemd units set it explicitly. Without it, the directory the process registered with `useDefaultDataDir` (the server: `<repo>/data`);
+ * a process with neither has no place to keep files and says so.
  */
-export function resolveDataDir(env: NodeJS.ProcessEnv = process.env): string {
-  return env.DATA_DIR ? path.resolve(env.DATA_DIR) : path.join(REPO_ROOT, 'data');
+export function resolveDataDir(env: Settings = settings()): string {
+  if (env.DATA_DIR) return path.resolve(env.DATA_DIR);
+  if (!defaultDataDir) throw new Error('DATA_DIR is not set and this process has no default directory (useDefaultDataDir)');
+  return defaultDataDir;
 }
 
 /**
@@ -150,7 +173,7 @@ export interface LlmEnvConfig {
  * A link to this instance, for share URLs and the links in mail. `SPINE_DOMAIN` is
  * a bare host; localhost is plain http so development works without TLS.
  */
-export function publicUrl(urlPath: string, env: NodeJS.ProcessEnv = process.env): string {
+export function publicUrl(urlPath: string, env: Settings = settings()): string {
   const host = env.SPINE_DOMAIN || 'localhost:3000';
   const local = /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(host);
   return `${local ? 'http' : 'https'}://${host}${urlPath}`;
@@ -160,7 +183,7 @@ export function publicUrl(urlPath: string, env: NodeJS.ProcessEnv = process.env)
  * Where the "Shared securely via Spine" footer on a shared page leads (FR-SHR-07): `SPINE_LANDING_URL`, an https address,
  * or null, in which case the footer is text only. Anything else is ignored rather than put in a link a stranger will click.
  */
-export function landingUrl(env: NodeJS.ProcessEnv = process.env): string | null {
+export function landingUrl(env: Settings = settings()): string | null {
   const raw = env.SPINE_LANDING_URL?.trim();
   if (!raw) return null;
   try {
@@ -172,7 +195,7 @@ export function landingUrl(env: NodeJS.ProcessEnv = process.env): string | null 
 }
 
 /** Where backups go: `SPINE_BACKUP_DIR`, otherwise `backups/` beside the data directory. */
-export function resolveBackupDir(env: NodeJS.ProcessEnv = process.env): string {
+export function resolveBackupDir(env: Settings = settings()): string {
   return env.SPINE_BACKUP_DIR
     ? path.resolve(env.SPINE_BACKUP_DIR)
     : path.join(resolveDataDir(env), '..', 'backups');
@@ -180,7 +203,7 @@ export function resolveBackupDir(env: NodeJS.ProcessEnv = process.env): string {
 
 export const PARSER_MODES: readonly ParserMode[] = ['text', 'ocr', 'multimodal', 'hybrid'];
 
-export function readParserConfig(env: NodeJS.ProcessEnv, problems: string[]): ParserEnvConfig {
+export function readParserConfig(env: Settings, problems: string[]): ParserEnvConfig {
   // `sidecar` is the old name of `text`, which says what it does (the PDF's own text layer) and not what runs it.
   const requested = env.SPINE_PARSER ?? 'text';
   const mode = requested === 'sidecar' ? 'text' : requested;
@@ -234,7 +257,7 @@ export function readParserConfig(env: NodeJS.ProcessEnv, problems: string[]): Pa
 }
 
 /** The parser section on its own, for `getParser()`. */
-export function loadParserConfig(env: NodeJS.ProcessEnv = process.env): ParserEnvConfig {
+export function loadParserConfig(env: Settings = settings()): ParserEnvConfig {
   const problems: string[] = [];
   const parser = readParserConfig(env, problems);
   if (problems.length > 0) throw new ConfigError(problems);
@@ -245,7 +268,7 @@ export function loadParserConfig(env: NodeJS.ProcessEnv = process.env): ParserEn
  * Embeddings (similarity by meaning). Off unless asked for; on, they are Vertex at a stated endpoint, region and project
  * (taken from the chat model's settings when that is Vertex too), never defaulted: residency is a property of the endpoint.
  */
-export function readEmbeddingConfig(env: NodeJS.ProcessEnv, problems: string[]): EmbeddingEnvConfig {
+export function readEmbeddingConfig(env: Settings, problems: string[]): EmbeddingEnvConfig {
   const adapter = (env.SPINE_EMBEDDINGS ?? 'none').toLowerCase();
   const chatIsVertex = (env.SPINE_LLM_PROVIDER ?? 'anthropic') === 'vertex';
   const inherit = (own: string | undefined, llm: string | undefined) => (own || (chatIsVertex ? llm : undefined) || undefined);
@@ -270,7 +293,7 @@ export function readEmbeddingConfig(env: NodeJS.ProcessEnv, problems: string[]):
 }
 
 /** The embeddings section on its own, so `getEmbedder()` does not depend on unrelated settings. */
-export function loadEmbeddingConfig(env: NodeJS.ProcessEnv = process.env): EmbeddingEnvConfig {
+export function loadEmbeddingConfig(env: Settings = settings()): EmbeddingEnvConfig {
   const problems: string[] = [];
   const config = readEmbeddingConfig(env, problems);
   if (problems.length > 0) throw new ConfigError(problems);
@@ -284,14 +307,14 @@ export function loadEmbeddingConfig(env: NodeJS.ProcessEnv = process.env): Embed
  * `DATA_DIR` and `SPINE_DB_PATH` keep their current meaning so an existing
  * deployment needs no change.
  */
-export function loadStoreConfig(env: NodeJS.ProcessEnv = process.env): StoreEnvConfig {
+export function loadStoreConfig(env: Settings = settings()): StoreEnvConfig {
   const problems: string[] = [];
   const store = readStoreConfig(env, problems);
   if (problems.length > 0) throw new ConfigError(problems);
   return store;
 }
 
-export function readStoreConfig(env: NodeJS.ProcessEnv, problems: string[]): StoreEnvConfig {
+export function readStoreConfig(env: Settings, problems: string[]): StoreEnvConfig {
   const location = env.SPINE_DB_PATH ?? path.join(resolveDataDir(env), 'spine.db');
 
   if (location.trim().length === 0) problems.push('SPINE_DB_PATH is empty');
@@ -304,7 +327,7 @@ export function readStoreConfig(env: NodeJS.ProcessEnv, problems: string[]): Sto
  * secret validation: a missing SESSION_SECRET should stop the server at
  * startup, not make an ingestion call fail for an unrelated reason.
  */
-export function loadLlmConfig(env: NodeJS.ProcessEnv = process.env): LlmEnvConfig {
+export function loadLlmConfig(env: Settings = settings()): LlmEnvConfig {
   const problems: string[] = [];
   const llm = readLlmConfig(env, problems);
   if (problems.length > 0) throw new ConfigError(problems);
@@ -333,7 +356,7 @@ function endpointForRegion(region: string): string | null {
  * where the default is takes its own region, `id|europe-west4=Label`; its host follows from the region and
  * the response says where each choice runs, so a person is told where their pages would go.
  */
-function readModelChoices(env: NodeJS.ProcessEnv, defaultModel: string, problems: string[]): ModelChoice[] {
+function readModelChoices(env: Settings, defaultModel: string, problems: string[]): ModelChoice[] {
   const choices: ModelChoice[] = [{ id: defaultModel, label: defaultModel }];
   for (const entry of (env.SPINE_LLM_MODELS ?? '').split(',')) {
     const text = entry.trim();
@@ -368,7 +391,7 @@ function readModelChoices(env: NodeJS.ProcessEnv, defaultModel: string, problems
   return choices;
 }
 
-export function readLlmConfig(env: NodeJS.ProcessEnv, problems: string[]): LlmEnvConfig {
+export function readLlmConfig(env: Settings, problems: string[]): LlmEnvConfig {
   const llm: LlmEnvConfig = {
     provider: env.SPINE_LLM_PROVIDER ?? DEFAULT_LLM_PROVIDER,
     model: env.SPINE_LLM_MODEL ?? DEFAULT_LLM_MODEL,
@@ -420,12 +443,12 @@ export function readLlmConfig(env: NodeJS.ProcessEnv, problems: string[]): LlmEn
 }
 
 /** How many model calls may be in flight at once (`SPINE_LLM_CONCURRENCY`, default 4). */
-export function llmConcurrency(env: NodeJS.ProcessEnv = process.env): number {
+export function llmConcurrency(env: Settings = settings()): number {
   return loadParserConfig(env).concurrency;
 }
 
 /** The context window in characters, the only cap on the text sent in one request. */
-export function llmContextChars(env: NodeJS.ProcessEnv = process.env): number {
+export function llmContextChars(env: Settings = settings()): number {
   return loadLlmConfig(env).contextChars;
 }
 
@@ -434,7 +457,7 @@ export function llmContextChars(env: NodeJS.ProcessEnv = process.env): number {
  * owner's notes then stay in the language they were written in. Translating sends that text to the LLM
  * provider (SECURITY.md P8), so an operator who does not want that turns it off. On by default.
  */
-export function translationEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+export function translationEnabled(env: Settings = settings()): boolean {
   return !/^(0|false|no|off)$/i.test(env.SPINE_TRANSLATION ?? '');
 }
 
@@ -443,7 +466,7 @@ export function translationEnabled(env: NodeJS.ProcessEnv = process.env): boolea
  * follow-up). Looking sends the summary cards of up to seven documents per document to the LLM provider (SECURITY.md
  * P8, M-16), so an operator who does not want that turns it off. Links the owner adds by hand still work. On by default.
  */
-export function linkingEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+export function linkingEnabled(env: Settings = settings()): boolean {
   return !/^(0|false|no|off)$/i.test(env.SPINE_LINKING ?? '');
 }
 
@@ -452,7 +475,7 @@ export function linkingEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
  * the summary cards and results of the records found for it to the LLM provider (SECURITY.md P8, M-18), so an operator who
  * does not want that turns it off. On by default.
  */
-export function chatEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+export function chatEnabled(env: Settings = settings()): boolean {
   return !/^(0|false|no|off)$/i.test(env.SPINE_CHAT ?? '');
 }
 
@@ -461,7 +484,7 @@ export function chatEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
  * limits bound one caller; this bounds the instance, so a leaked share link with chat on, or a loop, cannot run up
  * the provider's bill unnoticed (SECURITY.md S-35). A bad value falls back to the default.
  */
-export function llmDailyCalls(env: NodeJS.ProcessEnv = process.env): number {
+export function llmDailyCalls(env: Settings = settings()): number {
   const raw = env.SPINE_LLM_DAILY_CALLS;
   if (raw === undefined || raw === '') return 5000;
   const n = Number(raw);

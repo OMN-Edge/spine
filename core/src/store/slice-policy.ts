@@ -74,7 +74,7 @@ export const SLICE = {
 
 /**
  * The link itself is written by hand, as the recipient's core knows it: the documents named one by one, no approval (the key is the
- * approval), chat as the owner set it. Its token is the fixed address, its counters start at zero.
+ * approval), chat as the owner set it. Its counters start at zero.
  */
 export const SLICE_BUILT = ['share_links'] as const;
 

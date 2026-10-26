@@ -10,7 +10,7 @@ import SpineLog from '../components/SpineLog';
 import SharedChat from '../components/SharedChat';
 import SharedConnections from '../components/SharedConnections';
 import { LanguageSwitcher, useI18n } from '../i18n';
-import { LOCAL_SHARE_TOKEN, useShareAccess } from '../core/share/access';
+import { useShareAccess } from '../core/share/access';
 import { Combobox } from '../components/Combobox';
 import { languageName, useTranslation } from '../i18n/useTranslation';
 import AiLabel from '../components/AiLabel';
@@ -22,14 +22,14 @@ import { documentByline, documentTitle, fieldName, isCriticalField, isSection, v
  * Nothing is requested from the documents' routes before that: they would answer 403.
  */
 export default function PublicShareView() {
-  const { token: shareId } = useParams<{ token: string }>();
+  const { id: shareId } = useParams<{ id: string }>();
   const { t } = useI18n();
   const { state, ask, error } = useShareAccess(shareId);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
 
   if (!shareId) return null;
-  if (state === 'open') return <SharedContent token={LOCAL_SHARE_TOKEN} shareId={shareId} />;
+  if (state === 'open') return <SharedContent shareId={shareId} />;
   if (state === 'checking') return <div className="min-h-screen flex items-center justify-center text-gray-400">{t('Loading…')}</div>;
   if (state === 'gone' || state === 'broken') {
     return (
@@ -68,7 +68,7 @@ export default function PublicShareView() {
  * shared by year, and opening a document (`?d=<id>`, so Back works) shows its details beside its scans when the owner
  * allowed them. No review, no reading again, no links into the owner's own pages.
  */
-function SharedContent({ token }: { token: string; shareId?: string }) {
+function SharedContent({ shareId }: { shareId: string }) {
   const [params, setParams] = useSearchParams();
   const { t, tn, lang, preferLang } = useI18n();
   const [docs, setDocs] = useState<SharedListDocument[]>([]);
@@ -85,23 +85,23 @@ function SharedContent({ token }: { token: string; shareId?: string }) {
   // Values over time, when any of the shared documents has some.
   const [trendNames, setTrendNames] = useState<TrendName[]>([]);
   useEffect(() => {
-    if (token) api.publicShare.trends(token).then(setTrendNames).catch(() => setTrendNames([]));
-  }, [token]);
+    if (shareId) api.publicShare.trends(shareId).then(setTrendNames).catch(() => setTrendNames([]));
+  }, [shareId]);
 
   // The page starts in the language the owner chose for this link, unless the reader has picked one here before.
   useEffect(() => {
-    if (!token) return;
-    api.publicShare.meta(token).then(m => { setTranslating(m.translation); setChatOn(m.chat); setLandingUrl(m.landing_url); preferLang(m.language); }).catch(() => {}).finally(() => setMetaReady(true));
-  }, [token, preferLang]);
+    if (!shareId) return;
+    api.publicShare.meta(shareId).then(m => { setTranslating(m.translation); setChatOn(m.chat); setLandingUrl(m.landing_url); preferLang(m.language); }).catch(() => {}).finally(() => setMetaReady(true));
+  }, [shareId, preferLang]);
 
   // The list in the reader's language. Documents not yet translated come back as pending: ask again shortly, a few times.
   useEffect(() => {
-    if (!token || !metaReady) return;
+    if (!shareId || !metaReady) return;
     let live = true;
     let timer: number | undefined;
     let tries = 0;
     const load = () => {
-      api.publicShare.documents(token, translating ? lang : undefined)
+      api.publicShare.documents(shareId, translating ? lang : undefined)
         .then(list => {
           if (!live) return;
           setDocs(list);
@@ -112,7 +112,7 @@ function SharedContent({ token }: { token: string; shareId?: string }) {
     };
     load();
     return () => { live = false; window.clearTimeout(timer); };
-  }, [token, lang, translating, metaReady, t]);
+  }, [shareId, lang, translating, metaReady, t]);
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center text-gray-400">{t('Loading…')}</div>;
@@ -172,12 +172,12 @@ function SharedContent({ token }: { token: string; shareId?: string }) {
           </p>
         )}
 
-        {chatOn && <SharedChat token={token} openId={openId} titleOf={source => (original ? null : docs.find(d => d.id === source.id)?.translation?.title)} />}
+        {chatOn && <SharedChat shareId={shareId} openId={openId} titleOf={source => (original ? null : docs.find(d => d.id === source.id)?.translation?.title)} />}
 
-        {!openId && view === 'trends' && token ? (
-          <SharedTrends token={token} names={trendNames} name={params.get('name')} />
-        ) : openId && token ? (
-          <SharedDocumentView token={token} id={openId} translating={translating} original={original} titleOf={docId => (original ? null : docs.find(d => d.id === docId)?.translation?.title)} onBack={() => setParams({}, { replace: false })} />
+        {!openId && view === 'trends' && shareId ? (
+          <SharedTrends shareId={shareId} names={trendNames} name={params.get('name')} />
+        ) : openId && shareId ? (
+          <SharedDocumentView shareId={shareId} id={openId} translating={translating} original={original} titleOf={docId => (original ? null : docs.find(d => d.id === docId)?.translation?.title)} onBack={() => setParams({}, { replace: false })} />
         ) : docs.length === 0 ? (
           <p className="text-gray-400">{t('No documents in this share.')}</p>
         ) : (
@@ -223,20 +223,20 @@ function SharedContent({ token }: { token: string; shareId?: string }) {
 const label = 'block text-xs font-medium text-gray-500 mb-1';
 
 /** One shared document: the document page without the editing, the details beside the scans when the link allows them. */
-function SharedDocumentView({ token, id, translating, original, titleOf, onBack }: { token: string; id: string; translating: boolean; original: boolean; titleOf: (id: string) => string | null | undefined; onBack: () => void }) {
+function SharedDocumentView({ shareId, id, translating, original, titleOf, onBack }: { shareId: string; id: string; translating: boolean; original: boolean; titleOf: (id: string) => string | null | undefined; onBack: () => void }) {
   const { t } = useI18n();
   const [data, setData] = useState<SharedDocument | null>(null);
   const [error, setError] = useState('');
   const [pageIdx, setPageIdx] = useState(0);
   const [showOriginal, setShowOriginal] = useState(false);
-  const tr = useTranslation(translating ? id : null, (lang: string, part: 'head' | 'full'): Promise<TranslatedDocument> => api.publicShare.translation(token, id, lang, part));
+  const tr = useTranslation(translating ? id : null, (lang: string, part: 'head' | 'full'): Promise<TranslatedDocument> => api.publicShare.translation(shareId, id, lang, part));
 
   useEffect(() => {
     setData(null);
     setError('');
     setPageIdx(0);
-    api.publicShare.document(token, id).then(setData).catch(err => setError(err.message ?? t('Could not open this document.')));
-  }, [token, id, t]);
+    api.publicShare.document(shareId, id).then(setData).catch(err => setError(err.message ?? t('Could not open this document.')));
+  }, [shareId, id, t]);
 
   // A link from the assistant's answer can point at a part of the page: ?section=results scrolls there and lights it briefly.
   // Again for the same part when the link is followed again, which is why the location's key is a dependency.
@@ -335,7 +335,7 @@ function SharedDocumentView({ token, id, translating, original, titleOf, onBack 
             </div>
           )}
 
-          <SharedConnections token={token} id={id} titleOf={titleOf} />
+          <SharedConnections shareId={shareId} id={id} titleOf={titleOf} />
         </div>
 
         {data.scans && pages.length > 0 && (
@@ -355,7 +355,7 @@ function SharedDocumentView({ token, id, translating, original, titleOf, onBack 
             {currentPage && (
               <DeviceImg
                 key={currentPage.id}
-                src={`/api/share/${token}/pages/${currentPage.id}/image`} alt={t('Page {n}', { n: pageIdx + 1 })}
+                src={`/api/share/${shareId}/pages/${currentPage.id}/image`} alt={t('Page {n}', { n: pageIdx + 1 })}
                 width={currentPage.image_width} height={currentPage.image_height}
                 className="w-full h-auto rounded border border-gray-200 shadow-sm bg-white"
               />
@@ -409,7 +409,7 @@ function Original({ text }: { text: string }) {
 }
 
 /** The shared documents' values over time: the list of tests, and one test's chart. */
-function SharedTrends({ token, names, name }: { token: string; names: TrendName[]; name: string | null }) {
+function SharedTrends({ shareId, names, name }: { shareId: string; names: TrendName[]; name: string | null }) {
   const { t } = useI18n();
   const [series, setSeries] = useState<TrendSeries | null>(null);
   const [error, setError] = useState('');
@@ -417,8 +417,8 @@ function SharedTrends({ token, names, name }: { token: string; names: TrendName[
   useEffect(() => {
     setSeries(null);
     setError('');
-    if (name) api.publicShare.trendSeries(token, name).then(setSeries).catch(err => setError(err.message ?? t('Could not load')));
-  }, [token, name, t]);
+    if (name) api.publicShare.trendSeries(shareId, name).then(setSeries).catch(err => setError(err.message ?? t('Could not load')));
+  }, [shareId, name, t]);
 
   if (!name) return <TestList names={names} hrefFor={canonical => `?view=trends&name=${encodeURIComponent(canonical)}`} />;
   return (

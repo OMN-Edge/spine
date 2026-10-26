@@ -13,7 +13,6 @@ import {
   seedSourceFile,
 } from './helpers/seed.js';
 import { getStore } from 'spine-core/store/index.js';
-import { hashShareToken } from 'spine-core/share-token.js';
 
 /**
  * SECURITY.md P12 / M-1: one user must never read, change or enumerate another's
@@ -45,14 +44,12 @@ let docA: string;
 let fileA: string;
 let pageA: string;
 let linkA: string;
-let tokenA: string;
 let tagLinkA: string;
-let tagTokenA: string;
 let checksumA: string;
 
 // What B owns
 let docB: string;
-let tokenB: string;
+let linkB: string;
 
 // One plain word: FTS5 reads a hyphen as a column filter and rejects the query.
 const SECRET = 'zebrafish';
@@ -89,11 +86,9 @@ beforeAll(async () => {
     value: 'a-private-diagnosis', sourceSnippet: null, bbox: null, confidence: 0.9,
   });
 
-  tokenA = 'token-a-all-' + uuidv4();
-  linkA = await seedShareLink({ userId: OWNER_ID, tokenHash: hashShareToken(tokenA), scope: 'all' });
-  tagTokenA = 'token-a-tag-' + uuidv4();
+  linkA = await seedShareLink({ userId: OWNER_ID, scope: 'all' });
   tagLinkA = await seedShareLink({
-    userId: OWNER_ID, tokenHash: hashShareToken(tagTokenA),
+    userId: OWNER_ID,
     scope: 'tag', scopeValue: JSON.stringify('cardiology'),
   });
 
@@ -102,8 +97,7 @@ beforeAll(async () => {
     userId: B.id, provider: 'Other Clinic', aiSummary: "B's own note", tags: ['cardiology'],
   });
   docB = b.id;
-  tokenB = 'token-b-all-' + uuidv4();
-  await seedShareLink({ userId: B.id, tokenHash: hashShareToken(tokenB), scope: 'all' });
+  linkB = await seedShareLink({ userId: B.id, scope: 'all' });
 });
 
 afterAll(async () => {
@@ -141,7 +135,6 @@ describe('P1 — deny by default', () => {
     // The salt a device needs before it can sign in, and the recovery-wrapped key a reset link is for; both answer the same for any address.
     'POST /api/auth/kdf',
     'POST /api/auth/reset/keys',
-    'GET /share/:token',
     // Public on purpose, and known only by the random id in the link: they answer with metadata and sealed bytes, nothing a person can
     // read, and accept a browser's request, its public key and its note that it opened the link (shared.test.ts).
     'GET /api/shared/:id/meta',
@@ -152,25 +145,23 @@ describe('P1 — deny by default', () => {
     'GET /api/shared/:id/access-request/:rid',
     'POST /api/shared/:id/opened',
     'POST /api/shared/:id/relay-token',
-    'GET /api/share/:token/documents',
+    'GET /api/share/:link/documents',
     // Public on purpose, and scoped by the link, not a session: public-share-detail.test.ts.
-    'GET /api/share/:token/documents/:id',
-    'GET /api/share/:token/pages/:pageId/image',
-    'GET /api/share/:token/meta',
+    'GET /api/share/:link/documents/:id',
+    'GET /api/share/:link/pages/:pageId/image',
+    'GET /api/share/:link/meta',
     // Public on purpose: the privacy notice, the terms and the intended purpose are read before an account exists (own-account.test.ts).
     'GET /api/legal/:doc',
     // Public on purpose: they are how a passkey signs in (passkeys.test.ts); each is rate limited and single use.
     'POST /api/auth/passkey/options',
     'POST /api/auth/passkey/login',
-    'GET /api/share/:token/documents/:id/translation',
-    'GET /api/share/:token/trends',
-    'GET /api/share/:token/trends/series',
+    'GET /api/share/:link/documents/:id/translation',
+    'GET /api/share/:link/trends',
+    'GET /api/share/:link/trends/series',
     // Public on purpose, and scoped by the link (its documents only, confirmed links only): share-connections.test.ts.
-    'GET /api/share/:token/documents/:id/connections',
-    // Public on purpose: a visitor asks to be let in. It writes one request for the link the token names (share-approval.test.ts).
-    'POST /api/share/:token/access-request',
+    'GET /api/share/:link/documents/:id/connections',
     // Public on purpose, and scoped by the link: share-chat.test.ts.
-    'POST /api/share/:token/chat',
+    'POST /api/share/:link/chat',
   ]);
 
   it('refuses every other route without a session', async () => {
@@ -299,7 +290,7 @@ describe('writing — B cannot change A’s records', () => {
     const res = await asB('DELETE', `/api/share-links/${linkA}`);
     expect(res.statusCode).toBe(404);
 
-    const stillWorks = await app.inject({ method: 'GET', url: `/api/share/${tokenA}/documents` });
+    const stillWorks = await app.inject({ method: 'GET', url: `/api/share/${linkA}/documents` });
     expect(stillWorks.statusCode).toBe(200);
   });
 
@@ -354,8 +345,8 @@ describe('sharing (M-5, P12)', () => {
   });
 
   it('gives each link only its owner’s documents, even with scope "all"', async () => {
-    const a = await app.inject({ method: 'GET', url: `/api/share/${tokenA}/documents` });
-    const b = await app.inject({ method: 'GET', url: `/api/share/${tokenB}/documents` });
+    const a = await app.inject({ method: 'GET', url: `/api/share/${linkA}/documents` });
+    const b = await app.inject({ method: 'GET', url: `/api/share/${linkB}/documents` });
 
     expect(ids(a)).toContain(docA);
     expect(ids(a)).not.toContain(docB);
@@ -364,12 +355,12 @@ describe('sharing (M-5, P12)', () => {
   });
 
   it('scopes a tag link to its owner’s documents when both use the tag', async () => {
-    const res = await app.inject({ method: 'GET', url: `/api/share/${tagTokenA}/documents` });
+    const res = await app.inject({ method: 'GET', url: `/api/share/${tagLinkA}/documents` });
     expect(ids(res)).toEqual([docA]);
   });
 
   it('keeps each owner’s access log to their own links', async () => {
-    await app.inject({ method: 'GET', url: `/api/share/${tokenA}/documents` });
+    await getStore().shareLinks.logAccess(linkA, new Date().toISOString(), null, true);
     expect(await getStore().shareLinks.accessLogFor(B.id, linkA)).toEqual([]);
     expect((await getStore().shareLinks.accessLogFor(OWNER_ID, linkA)).length).toBeGreaterThan(0);
   });

@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { HttpApp } from '../http.js';
 import { getStore } from '../store/index.js';
 import { LINK_KINDS, type LinkKind } from '../store/types.js';
 import { requireAuth } from './middleware.js';
@@ -9,7 +9,7 @@ const isKind = (v: unknown): v is LinkKind => typeof v === 'string' && (LINK_KIN
 const isId = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= 64;
 
 /** Care chains: the documents around one, and the owner's say over the links. Owner only; never on a share link. */
-export async function linkRoutes(app: FastifyInstance) {
+export async function linkRoutes(app: HttpApp) {
   app.addHook('preHandler', requireAuth);
 
   // The chain around a document. `searching` tells the page to ask again shortly.
@@ -46,7 +46,7 @@ export async function linkRoutes(app: FastifyInstance) {
   });
 
   // Look for links for this document now, in the background. Costs a model call, so it is limited.
-  app.post<{ Params: { id: string } }>('/api/documents/:id/chain/refresh', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
+  app.post<{ Params: { id: string } }>('/api/documents/:id/chain/refresh', async (req, reply) => {
     if (!(await getStore().documents.findFor(req.userId, req.params.id))) return reply.status(404).send({ error: 'not found' });
     if (!linkingEnabled()) return reply.status(409).send({ error: 'looking for links is switched off' });
     scheduleLinking(req.userId, [req.params.id], 0);

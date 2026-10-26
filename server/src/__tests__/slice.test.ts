@@ -1,14 +1,15 @@
 import { describe, it, expect, beforeAll } from 'vitest';
+import { accountsSchema } from 'spine-core/store/sqlite/schema-accounts.js';
+import { recordsSchema } from 'spine-core/store/sqlite/schema-records.js';
 import { v4 as uuidv4 } from 'uuid';
 import { openDatabase } from 'spine-core/store/sqlite/connection.js';
-import { openNative } from 'spine-core/store/sqlite/driver-native.js';
+import { openNative } from 'spine-core/testing/driver-native.js';
 import { createSqliteStoreWith } from 'spine-core/store/sqlite/store.js';
 import { copySlice } from 'spine-core/store/sqlite/slice.js';
 import type { Database } from 'spine-core/store/sqlite/driver.js';
 import { resetStore, getStore } from 'spine-core/store/index.js';
 import { buildTestApp } from './helpers/app.js';
 import { OWNER_ID, seedDocument, seedPage, seedSourceFile } from './helpers/seed.js';
-import { hashShareToken } from 'spine-core/share-token.js';
 import { readFileSync } from 'fs';
 import path from 'path';
 
@@ -16,8 +17,7 @@ import path from 'path';
  * The copy a share is made of must hold what the recipient may read and nothing else, because the browser that opens it holds the
  * whole file. This builds one from an owner's records that include things that must stay out, and looks at every table of the result.
  */
-const SCHEMA = ['schema-accounts.sql', 'schema-records.sql'].map(f => readFileSync(path.join(__dirname, '../../../core/src/store/sqlite', f), 'utf8')).join('\n');
-const LOCAL = hashShareToken('local');
+const SCHEMA = `${accountsSchema}\n${recordsSchema}`;
 
 describe('the copy a share is made of', () => {
   let source: Database;
@@ -57,7 +57,7 @@ describe('the copy a share is made of', () => {
   const slice = (options: { includeText: boolean; includeScans: boolean; allowChat?: boolean }) => {
     const dest = openDatabase(':memory:', openNative, undefined, 'full');
     const result = copySlice(source, dest, {
-      userId: OWNER_ID, documentIds: shared, includeText: options.includeText, includeScans: options.includeScans, tokenHash: LOCAL,
+      userId: OWNER_ID, documentIds: shared, includeText: options.includeText, includeScans: options.includeScans,
       link: { id: 'link-1', label: 'for the cardiologist', createdAt: '2026-10-01T00:00:00.000Z', expiresAt: '2026-10-08T00:00:00.000Z', language: 'en', allowChat: options.allowChat ?? false },
       imagePathOf: id => `/share/pages/${id}.png`,
     });
@@ -100,8 +100,8 @@ describe('the copy a share is made of', () => {
 
   it('names the link as the recipient’s core knows it', () => {
     const { all } = slice({ includeText: false, includeScans: false });
-    expect(all('SELECT id, scope, scope_value, require_approval, include_scans, allow_chat, token FROM share_links')).toEqual([
-      { id: 'link-1', scope: 'document_ids', scope_value: JSON.stringify(shared), require_approval: 0, include_scans: 0, allow_chat: 0, token: LOCAL },
+    expect(all('SELECT id, scope, scope_value, require_approval, include_scans, allow_chat FROM share_links')).toEqual([
+      { id: 'link-1', scope: 'document_ids', scope_value: JSON.stringify(shared), require_approval: 0, include_scans: 0, allow_chat: 0 },
     ]);
   });
 
