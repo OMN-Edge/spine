@@ -29,8 +29,8 @@ describe('could these be the same?', () => {
   });
 
   it('sees a provider with a legal suffix, and one inside the other', () => {
-    expect(nameSuggestion('provider', 'Regina Maria SRL', 'Regina Maria')).toEqual({ reason: 'legal_suffix', strength: 'likely' });
-    expect(nameSuggestion('provider', 'Regina Maria', 'Regina Maria Policlinica Floreasca')).toEqual({ reason: 'contained', strength: 'unsure' });
+    expect(nameSuggestion('provider', 'Clinica Aurora SRL', 'Clinica Aurora')).toEqual({ reason: 'legal_suffix', strength: 'likely' });
+    expect(nameSuggestion('provider', 'Clinica Aurora', 'Clinica Aurora Policlinica Nord')).toEqual({ reason: 'contained', strength: 'unsure' });
   });
 
   it('sees a doctor by an initial or a longer name, is surer with a shared specialty, and never joins two codes', () => {
@@ -62,13 +62,13 @@ async function result(documentId: string, pageId: string, name: string, canonica
 /** What was already held, then an upload that brought: a doctor, a tag, a clinic and a test each written another way. */
 async function scene() {
   const store = getStore();
-  const old = await seedDocument({ provider: 'Regina Maria', tags: ['cardiology'], docDate: '2025-01-01' });
+  const old = await seedDocument({ provider: 'Clinica Aurora', tags: ['cardiology'], docDate: '2025-01-01' });
   await result(old.id, old.pageId!, 'Hemoglobin', 'hemoglobin', 'g/dL');
-  const oldDoctor = await store.doctors.upsert(OWNER_ID, { name: 'Popescu Ion', specialty: 'cardiology', clinic: 'Regina Maria' }, '2020-01-01T00:00:00Z');
+  const oldDoctor = await store.doctors.upsert(OWNER_ID, { name: 'Popescu Ion', specialty: 'cardiology', clinic: 'Clinica Aurora' }, '2020-01-01T00:00:00Z');
   await store.doctors.link(OWNER_ID, old.id, oldDoctor!, 'author');
 
   const upload = await seedSourceFile({ status: 'done' });
-  const doc = await seedDocument({ sourceFileId: upload, provider: 'Regina Maria SRL', tags: ['cardio'], docDate: '2026-02-01' });
+  const doc = await seedDocument({ sourceFileId: upload, provider: 'Clinica Aurora SRL', tags: ['cardio'], docDate: '2026-02-01' });
   await result(doc.id, doc.pageId!, 'Hemoglobina', 'hemoglobina', 'g/L');
   const newDoctor = await store.doctors.upsert(OWNER_ID, { name: 'Popescu I.', specialty: 'cardiology' }, LATER);
   await store.doctors.link(OWNER_ID, doc.id, newDoctor!, 'author');

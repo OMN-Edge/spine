@@ -320,6 +320,7 @@ export default function Upload() {
         <p className="text-sm text-gray-400">
           <span className="hidden sm:inline">{t('or click to browse')} — </span>{t('up to 200 MB per file')}
         </p>
+        {photos?.enabled && photos.where && <p className="text-xs text-gray-400 mt-2">{t('A photo is sent to {where} to be read. A PDF with a text layer sends no image.', { where: photos.where })}</p>}
         <input
           ref={fileRef}
           type="file"

@@ -49,7 +49,7 @@ beforeAll(async () => {
 afterAll(async () => { await app.close(); rmSync(dir, { recursive: true, force: true }); });
 
 const parsePage = (n: number) => ({ page_number: n, elements: [{ type: 'NarrativeText', text: `text ${n}`, page_number: n, bbox: { x0: 0, y0: 0, x1: 100, y1: 20 }, source: 'native_text' }], extraction_source: 'native_text', image_width: 800, image_height: 1100 });
-const extraction = (over: object = {}) => ({ title: 'Raport', doc_date: '2026-05-20', provider: 'Regina Maria', doc_type: 'consultation_note', ai_summary: 's', suggested_tags: [], doctors: [], measurements: [], fields: [], ...over });
+const extraction = (over: object = {}) => ({ title: 'Raport', doc_date: '2026-05-20', provider: 'Clinica Aurora', doc_type: 'consultation_note', ai_summary: 's', suggested_tags: [], doctors: [], measurements: [], fields: [], ...over });
 
 async function wait(id: string) {
   const deadline = Date.now() + 5000;
@@ -102,7 +102,7 @@ describe('doctors from stamps, in the pipeline', () => {
     const [first, second] = await docsOf(id);
     const store = getStore();
     const onFirst = await store.doctors.forDocument(OWNER_ID, first.id);
-    expect(onFirst).toEqual([expect.objectContaining({ name: 'Elena Marinescu', specialty: 'medic specialist cardiologie', clinic: 'Regina Maria', license_code: 'X23456', role: 'author' })]);
+    expect(onFirst).toEqual([expect.objectContaining({ name: 'Elena Marinescu', specialty: 'medic specialist cardiologie', clinic: 'Clinica Aurora', license_code: 'X23456', role: 'author' })]);
     expect((await store.doctors.forDocument(OWNER_ID, second.id)).map(d => [d.name, d.role])).toEqual([['Sorin Lazar', 'author']]);
 
     // Filed as coming from a stamp, so reading the text again does not take them off the document.
@@ -182,7 +182,7 @@ describe('doctors who digitally signed the PDF', () => {
     expect(job.status).toBe('done');
     for (const d of await docsOf(id)) {
       const on = await getStore().doctors.forDocument(OWNER_ID, d.id);
-      expect(on.map(x => [x.name, x.role, x.clinic]).sort()).toEqual([['Elena Marinescu', 'author', 'Regina Maria'], ['Radu Stoica', 'author', 'Regina Maria']]);
+      expect(on.map(x => [x.name, x.role, x.clinic]).sort()).toEqual([['Elena Marinescu', 'author', 'Clinica Aurora'], ['Radu Stoica', 'author', 'Clinica Aurora']]);
     }
   });
 

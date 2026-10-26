@@ -13,9 +13,9 @@ export class ZipTooLarge extends Error {
 }
 
 /**
- * A zip opened for reading, a file that was given to us. Entries are found by name and read as a stream with their size counted as it
- * arrives; nothing is ever extracted to a path the zip chose, so a name like `../../x` is only a name (SECURITY.md **M-14**). The declared
- * size is not trusted: a small zip can claim to hold a small file and expand to gigabytes, so every read has a limit of its own.
+ * A zip opened for reading, a file that was given to us. Entries are found by name and read with their size limited; nothing is ever
+ * extracted to a path the zip chose, so a name like `../../x` is only a name (SECURITY.md **M-14**). The declared
+ * size is not trusted (the Node reader counts bytes as they arrive; the browser's refuses a declared size over the cap and inflates into a buffer of that size, so a lie cannot make an entry larger): a small zip can claim to hold a small file and expand to gigabytes, so every read has a limit of its own.
  */
 export interface ZipReader {
   readonly entries: ZipEntryInfo[];

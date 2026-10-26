@@ -127,7 +127,7 @@ export default function TwoFactor() {
       <div className={card}>
         <h2 className="font-medium text-gray-900 mb-1">{t('Save your recovery codes')}</h2>
         <p className="text-sm text-gray-500 mb-3">
-          {t('Each works once if you lose your phone. They are shown only now. Other devices signed in to this account have been signed out.')}
+          {t('Each works once if you lose your phone. They are shown only now.')}
         </p>
         <pre className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm font-mono select-all mb-3">{text}</pre>
         <button type="button" className="text-sm text-blue-600 underline mr-4"

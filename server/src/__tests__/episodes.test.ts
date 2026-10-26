@@ -19,7 +19,7 @@ const asDoc = (id: string, doc_date: string | null, provider: string | null) => 
 
 describe('which documents may belong together', () => {
   it('joins by a link, and by the same provider within two weeks, and keeps a lone document out', () => {
-    const docs = [asDoc('a', '2026-03-01', 'Regina Maria'), asDoc('b', '2026-03-10', 'Regina  MARIA'), asDoc('c', '2026-06-01', 'Regina Maria'), asDoc('d', '2026-06-02', 'Other'), asDoc('e', null, 'Regina Maria'), asDoc('f', '2026-09-09', 'Lone Clinic')];
+    const docs = [asDoc('a', '2026-03-01', 'Clinica Aurora'), asDoc('b', '2026-03-10', 'Clinica  AURORA'), asDoc('c', '2026-06-01', 'Clinica Aurora'), asDoc('d', '2026-06-02', 'Other'), asDoc('e', null, 'Clinica Aurora'), asDoc('f', '2026-09-09', 'Lone Clinic')];
     const groups = groupDocuments(docs, [{ from: 'c', to: 'd' }]).map(g => g.sort());
     expect(groups.sort()).toEqual([['a', 'b'], ['c', 'd']]);
   });

@@ -358,7 +358,7 @@ export type Proposal = { id: string } & (
 );
 export interface ChatReply { answer: string | null; sources: ChatSource[]; documents: number; looked?: string[]; proposals?: Proposal[]; conversation: { id: string; title: string } }
 /** What the agent is looking at while it works; the page words it. */
-export interface ChatStep { kind: 'search' | 'open' | 'series' | 'tests' | 'connections' | 'fields' | 'shares' | 'doctors' | 'uploads' | 'plan' | 'library' | 'propose'; detail?: string }
+export interface ChatStep { kind: 'search' | 'open' | 'series' | 'tests' | 'connections' | 'fields' | 'shares' | 'doctors' | 'uploads' | 'pages' | 'plan' | 'library' | 'propose'; detail?: string }
 export interface ChatStreamHandlers {
   step: (step: ChatStep) => void;
   delta: (text: string) => void;

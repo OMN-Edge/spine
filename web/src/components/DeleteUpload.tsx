@@ -47,7 +47,7 @@ export default function DeleteUpload({
   return (
     <div role="alertdialog" aria-label={t('Delete this upload?')} className="basis-full mt-2 bg-red-50 border border-red-200 rounded-lg p-3 text-xs">
       <p className="text-red-900">
-        {tn(documents, 'This deletes the upload, its {n} document, their details and measurements, the page images and the original file, including its backup copy. Older database backups keep it until they are replaced. It cannot be undone.', 'This deletes the upload, its {n} documents, their details and measurements, the page images and the original file, including its backup copy. Older database backups keep it until they are replaced. It cannot be undone.')}
+        {tn(documents, 'This deletes the upload, its {n} document, their details and measurements, the page images and the original file. The copy of your sealed records in the backup is replaced at the next daily backup. It cannot be undone.', 'This deletes the upload, its {n} documents, their details and measurements, the page images and the original file. The copy of your sealed records in the backup is replaced at the next daily backup. It cannot be undone.')}
       </p>
       <label className="block mt-2 text-red-900">
         {t('Type delete to confirm')}

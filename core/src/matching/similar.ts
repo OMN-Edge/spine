@@ -37,7 +37,7 @@ export function nameSuggestion(kind: 'test' | 'tag' | 'provider', a: string, b: 
     const [wa, wb] = [withoutLegal(a), withoutLegal(b)];
     if (wa.length > 0 && wa.join('') === wb.join('')) return { reason: 'legal_suffix', strength: 'likely' };
     const [short, long] = wa.length <= wb.length ? [wa, wb] : [wb, wa];
-    // "Regina Maria" in "Regina Maria Policlinica Floreasca": one name inside the other, which may be the same clinic or a branch.
+    // "Clinica Aurora" in "Clinica Aurora Policlinica Nord": one name inside the other, which may be the same clinic or a branch.
     if (short.length >= 2 && short.every(w => long.includes(w))) return { reason: 'contained', strength: 'unsure' };
   }
 

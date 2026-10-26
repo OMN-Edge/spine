@@ -219,7 +219,7 @@ describe('tidying duplicates', () => {
   it('proposes one final form for entries of one person, and Confirm merges them into it', async () => {
     const d = await doc('Visit', 'Visit');
     const a = await doctor('Popescu I.', { specialty: 'cardiology' });
-    const b = await doctor('Popescu Ion', { clinic: 'Regina Maria', licenseCode: 'A12345' });
+    const b = await doctor('Popescu Ion', { clinic: 'Clinica Aurora', licenseCode: 'A12345' });
     const c = await doctor('Zorila Maria');
     expect(a && b && c).toBeTruthy();
     await getStore().doctors.link(OWNER_ID, d.id, a!, 'author');
@@ -237,14 +237,14 @@ describe('tidying duplicates', () => {
     const [g] = p.groups;
     // Which of the two the directory listed first is not fixed; the final form takes what either knew.
     expect(new Set([g.keep.id, ...g.merge.map(m => m.id)])).toEqual(new Set([ids['Popescu I.'], ids['Popescu Ion']]));
-    expect(g.final).toEqual({ name: 'Popescu Ion', specialty: 'cardiology', clinic: 'Regina Maria', license_code: 'A12345' });
+    expect(g.final).toEqual({ name: 'Popescu Ion', specialty: 'cardiology', clinic: 'Clinica Aurora', license_code: 'A12345' });
     expect(await getStore().doctors.listFor(OWNER_ID)).toHaveLength(3);
 
     // Confirm, as the page does it: fold in, then write the final form.
     for (const m of g.merge) expect((await app.inject({ method: 'POST', url: `/api/doctors/${g.keep.id}/merge`, payload: { from: m.id }, headers: { cookie } })).statusCode).toBe(200);
     expect((await app.inject({ method: 'PATCH', url: `/api/doctors/${g.keep.id}`, payload: { ...g.final }, headers: { cookie } })).statusCode).toBe(200);
     const left = (await getStore().doctors.listFor(OWNER_ID)).find(x => x.id === g.keep.id)!;
-    expect(left).toMatchObject({ name: 'Popescu Ion', specialty: 'cardiology', clinic: 'Regina Maria', license_code: 'A12345', document_count: 1 });
+    expect(left).toMatchObject({ name: 'Popescu Ion', specialty: 'cardiology', clinic: 'Clinica Aurora', license_code: 'A12345', document_count: 1 });
     expect(await getStore().doctors.listFor(OWNER_ID)).toHaveLength(2);
   });
 
@@ -314,20 +314,20 @@ describe('results, the library and existing share links', () => {
   });
 
   it('merges tags and providers into one final name each, and Confirm folds then renames', async () => {
-    const a = await seedDocument({ docType: 'lab_result', docDate: '2026-01-10', provider: 'Regina Maria', aiSummary: 'A', tags: ['cardio'] });
-    const b = await seedDocument({ docType: 'lab_result', docDate: '2026-01-11', provider: 'REGINA MARIA SRL', aiSummary: 'B', tags: ['cardiac care'] });
+    const a = await seedDocument({ docType: 'lab_result', docDate: '2026-01-10', provider: 'Clinica Aurora', aiSummary: 'A', tags: ['cardio'] });
+    const b = await seedDocument({ docType: 'lab_result', docDate: '2026-01-11', provider: 'CLINICA AURORA SRL', aiSummary: 'B', tags: ['cardiac care'] });
     const labels = await run([{ tools: [{ name: 'list_library', args: {} }] }, { say: 'ok' }]);
     expect(labels).toBeDefined();
     const listed = toolText();
     const at = (re: RegExp) => re.exec(listed)![1];
     const [tagA, tagB] = [at(/(TG\d+): cardio \(1\)/), at(/(TG\d+): cardiac care \(1\)/)];
-    const [provA, provB] = [at(/(PR\d+): Regina Maria \(1\)/), at(/(PR\d+): REGINA MARIA SRL \(1\)/)];
+    const [provA, provB] = [at(/(PR\d+): Clinica Aurora \(1\)/), at(/(PR\d+): CLINICA AURORA SRL \(1\)/)];
 
     const reply = await run([
       { tools: [{ name: 'list_library', args: {} }] },
       { tools: [
         { name: 'propose_merge_library', args: { library: 'tags', groups: [{ keep: tagA, merge: [tagB], name: 'Cardiology' }] } },
-        { name: 'propose_merge_library', args: { library: 'providers', groups: [{ keep: provA, merge: [provB], name: 'Regina Maria' }] } },
+        { name: 'propose_merge_library', args: { library: 'providers', groups: [{ keep: provA, merge: [provB], name: 'Clinica Aurora' }] } },
         { name: 'propose_merge_library', args: { library: 'tags', groups: [{ keep: 'TG99', merge: [tagB] }] } },
       ] },
       { say: 'ok' },
@@ -349,7 +349,7 @@ describe('results, the library and existing share links', () => {
     expect(await getStore().tags.namesForDocument(OWNER_ID, a.id)).toContain('cardiology');
     expect(await getStore().tags.namesForDocument(OWNER_ID, b.id)).toContain('cardiology');
     expect(await getStore().tags.namesForDocument(OWNER_ID, b.id)).not.toContain('cardiac care');
-    expect((await getStore().documents.findFor(OWNER_ID, b.id))!.provider).toBe('Regina Maria');
+    expect((await getStore().documents.findFor(OWNER_ID, b.id))!.provider).toBe('Clinica Aurora');
   });
 
   it('changes an existing share link’s name, length and documents, but never what it exposes', async () => {
@@ -393,6 +393,7 @@ describe('what keeps an action a proposal', () => {
   it('changes nothing in the store while the agent runs, whatever it proposes', async () => {
     const d = await doc('Visit', 'Visit');
     const before = JSON.stringify([await getStore().documents.findFor(OWNER_ID, d.id), await getStore().shareLinks.listFor(OWNER_ID), await getStore().tags.namesForDocument(OWNER_ID, d.id)]);
+    await getStore().changes.drain();
     await run([
       { tools: [{ name: 'search_documents', args: { query: 'visit' } }] },
       { tools: [
@@ -405,6 +406,7 @@ describe('what keeps an action a proposal', () => {
       { say: 'Proposed all.' },
     ]);
     expect(JSON.stringify([await getStore().documents.findFor(OWNER_ID, d.id), await getStore().shareLinks.listFor(OWNER_ID), await getStore().tags.namesForDocument(OWNER_ID, d.id)])).toBe(before);
+    expect((await getStore().changes.drain()).filter(c => !c.t.startsWith('chat_'))).toEqual([]); // and no row of any table but the conversation's was written
   });
 
   it('allows five proposals for one question and tells the model when it is past that', async () => {

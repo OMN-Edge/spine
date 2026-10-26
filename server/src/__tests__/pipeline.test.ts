@@ -54,7 +54,7 @@ function makeExtraction(overrides = {}) {
   return {
     title: 'Buletin de analize',
     doc_date: '2026-01-15',
-    provider: 'Regina Maria',
+    provider: 'Clinica Aurora',
     doc_type: 'lab_result',
     ai_summary: 'Lab results summary.',
     suggested_tags: ['lab'],
@@ -119,7 +119,7 @@ describe('pipeline — single page document', () => {
     expect(docs[0].page_start).toBe(1);
     expect(docs[0].page_end).toBe(1);
     expect(docs[0].doc_date).toBe('2026-01-15');
-    expect(docs[0].provider).toBe('Regina Maria');
+    expect(docs[0].provider).toBe('Clinica Aurora');
     expect(docs[0].title).toBe('Buletin de analize');
     // A new document waits in the review queue until the owner has checked it.
     expect(docs[0].reviewed).toBe(0);

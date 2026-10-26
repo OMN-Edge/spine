@@ -222,7 +222,7 @@ describe('POST /api/pages/:id/move', () => {
   });
 
   it('keeps the search right: text moves with the page', async () => {
-    const needle = `w${uuidv4().replace(/[^a-z]/g, '').slice(0, 10)}`;
+    const needle = `w${uuidv4().replace(/-/g, '').replace(/[0-9]/g, d => 'ghijklmnop'[Number(d)]).slice(0, 14)}`;
     const { pageIds, docs } = await upload([2, 2]);
     await getStore().pages.updateReading(OWNER_ID, pageIds[0], { rawText: `rare ${needle}`, elements: [], extractionSource: 'native_text' });
     const find = async () => ((await app.inject({ method: 'GET', url: `/api/documents?q=${needle}`, headers: { cookie } })).json() as Array<{ id: string }>).map(d => d.id);

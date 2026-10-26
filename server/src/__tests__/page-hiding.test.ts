@@ -26,7 +26,7 @@ beforeAll(async () => { app = await buildTestApp(); cookie = await loginSession(
 afterAll(async () => { await app.close(); });
 beforeEach(() => { mockExtractFields.mockReset(); });
 
-const word = () => `w${uuidv4().replace(/[^a-z]/g, '').slice(0, 10)}`;
+const word = () => `w${uuidv4().replace(/-/g, '').replace(/[0-9]/g, d => 'ghijklmnop'[Number(d)]).slice(0, 14)}`;
 
 async function upload(texts: string[], userId = OWNER_ID) {
   const sf = await seedSourceFile({ userId, status: 'done' });

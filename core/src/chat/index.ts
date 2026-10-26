@@ -40,7 +40,7 @@ export const MAX_TURNS = 6;
 export const MAX_TURN = 1500;
 
 /** What the agent is doing, for the person waiting: a kind the page words in its own language, and what it concerns. */
-export interface ChatStep { kind: 'search' | 'open' | 'series' | 'tests' | 'connections' | 'fields' | 'shares' | 'doctors' | 'uploads' | 'plan' | 'library' | 'propose'; detail?: string }
+export interface ChatStep { kind: 'search' | 'open' | 'series' | 'tests' | 'connections' | 'fields' | 'shares' | 'doctors' | 'uploads' | 'pages' | 'plan' | 'library' | 'propose'; detail?: string }
 
 /** Progress of one question, for a caller that streams it. All optional: a caller that waits for the whole reply passes none. */
 export interface ChatProgress {

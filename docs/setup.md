@@ -103,7 +103,7 @@ systemctl is-active spine-web spine-backup.timer
 journalctl -u spine-web -n 30
 ```
 
-The log should contain `model settings given to devices` (the provider, model and endpoint a device is told to use) and, with no account yet, a warning to create one. The server calls no model and reads no page: the parser and the model calls run on the device and the relay, so their logs are the browser's console and the relay's own.
+The log should contain `model settings given to devices` (the provider, model, endpoint, parser and whether page images may leave, as a device is told) and, with no account yet, a warning to create one. The server calls no model and reads no page: the parser and the model calls run on the device and the relay, so their logs are the browser's console and the relay's own.
 
 ## 5. Create accounts
 

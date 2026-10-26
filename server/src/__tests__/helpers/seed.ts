@@ -124,7 +124,7 @@ export async function seedDocument(
     pageStart: 1,
     pageEnd: 1,
     docDate: overrides.docDate === undefined ? '2026-01-15' : overrides.docDate,
-    provider: overrides.provider === undefined ? 'Regina Maria' : overrides.provider,
+    provider: overrides.provider === undefined ? 'Clinica Aurora' : overrides.provider,
     docType: overrides.docType ?? 'lab_result',
     aiSummary: overrides.aiSummary ?? 'A lab result.',
   });

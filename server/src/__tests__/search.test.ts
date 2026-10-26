@@ -10,7 +10,7 @@ let cookie: string;
 beforeAll(async () => { app = await buildTestApp(); cookie = await loginSession(app); });
 afterAll(async () => { await app.close(); });
 
-const word = () => `w${uuidv4().replace(/[^a-z]/g, '').slice(0, 10)}`; // letters only, unique, never in other tests
+const word = () => `w${uuidv4().replace(/-/g, '').replace(/[0-9]/g, d => 'ghijklmnop'[Number(d)]).slice(0, 14)}`; // letters only, always 14 long (the digits are mapped to letters), unique, never in other tests: a shorter one could be the start of another word, and a search matches by start
 
 async function search(q: string, c = cookie) {
   const res = await app.inject({ method: 'GET', url: `/api/documents?q=${encodeURIComponent(q)}`, headers: { cookie: c } });

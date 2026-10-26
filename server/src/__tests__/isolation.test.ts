@@ -53,6 +53,10 @@ let linkB: string;
 
 // One plain word: FTS5 reads a hyphen as a column filter and rejects the query.
 const SECRET = 'zebrafish';
+// Words that reach the search index through a page, a result and a doctor (M-2): each must find A's document for A and nothing for B.
+const PAGE_WORD = 'quillfeather';
+const VALUE_WORD = 'thistledown';
+const DOCTOR_WORD = 'marmaduke';
 
 beforeAll(async () => {
   tmp = mkdtempSync(path.join(tmpdir(), 'spine-isolation-'));
@@ -70,7 +74,7 @@ beforeAll(async () => {
 
   const imagePath = path.join(tmp, 'a-page.png');
   writeFileSync(imagePath, Buffer.from('not-really-a-png'));
-  pageA = await seedPage(fileA, { userId: OWNER_ID, imagePath });
+  pageA = await seedPage(fileA, { userId: OWNER_ID, imagePath, rawText: `the page says ${PAGE_WORD}` });
 
   const a = await seedDocument({
     userId: OWNER_ID,
@@ -81,6 +85,9 @@ beforeAll(async () => {
     tags: ['cardiology', 'a-only-tag'],
   });
   docA = a.id;
+  await store.measurements.create(OWNER_ID, { id: uuidv4(), documentId: docA, pageId: pageA, name: 'Marker', canonical: 'marker', valueText: VALUE_WORD, valueNum: null, unit: null, refLow: null, refHigh: null, flag: null, takenOn: '2026-03-01', sourceSnippet: null, bbox: null, confidence: 1 });
+  const doctorA = (await store.doctors.upsert(OWNER_ID, { name: `Dr ${DOCTOR_WORD} Test`, specialty: 'neurology' }, '2026-03-01'))!;
+  await store.doctors.link(OWNER_ID, docA, doctorA, 'author');
   await store.fields.create(OWNER_ID, {
     id: uuidv4(), documentId: docA, pageId: pageA, label: 'diagnosis',
     value: 'a-private-diagnosis', sourceSnippet: null, bbox: null, confidence: 0.9,
@@ -203,6 +210,13 @@ describe('reading — B cannot see A’s records', () => {
 
     const theirs = await asB('GET', `/api/documents?q=${SECRET}`);
     expect(ids(theirs)).not.toContain(docA);
+  });
+
+  it('does not return A’s documents from a search for a word only in a page, a result or a doctor’s name (M-2)', async () => {
+    for (const word of [PAGE_WORD, VALUE_WORD, DOCTOR_WORD]) {
+      expect(ids(await asA('GET', `/api/documents?q=${word}`)), `the index holds ${word}`).toContain(docA);
+      expect(ids(await asB('GET', `/api/documents?q=${word}`)), `${word} must find nothing for B`).toEqual([]);
+    }
   });
 
   it('does not return A’s documents when filtering by a tag name both use', async () => {

@@ -183,7 +183,7 @@ describe('extractFields', () => {
   const valid = {
     title: 'Buletin de analize',
     doc_date: '2026-01-15',
-    provider: 'Regina Maria',
+    provider: 'Clinica Aurora',
     doc_type: 'lab_result',
     ai_summary: 'A lab result.',
     suggested_tags: ['lab'],

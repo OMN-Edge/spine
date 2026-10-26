@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS source_files (
 );
 
 -- What the analysis of a mixed upload found: which pages belong together (JSON, see regroup/analyze.ts). One per upload, replaced
--- when the analysis is run again and dropped when the upload is read again or regrouped, since its page ids would no longer mean the same.
+-- when the analysis is run again and dropped when the upload is deleted or a regrouping is applied, since its pages would then be in other documents.
 CREATE TABLE IF NOT EXISTS regroup_plans (
   source_file_id TEXT PRIMARY KEY REFERENCES source_files(id),
   user_id TEXT NOT NULL REFERENCES users(id),

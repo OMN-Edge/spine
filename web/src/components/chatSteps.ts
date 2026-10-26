@@ -13,6 +13,7 @@ export function stepText(t: (s: string, v?: Record<string, string | number>) => 
     case 'shares': return t('Looking at your share links');
     case 'doctors': return t('Looking at your doctors');
     case 'uploads': return t('Looking at your uploads');
+    case 'pages': return t('Reading the text of pages {what}', { what });
     case 'plan': return t('Reading the regrouping plan');
     case 'library': return t('Looking at your tags and providers');
     case 'propose': return t('Preparing a change for you to confirm');

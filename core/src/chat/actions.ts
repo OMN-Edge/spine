@@ -952,7 +952,7 @@ export function buildActionTools(stateOf: (runtime: ToolRuntime) => ActionState)
     const docs = (await store.documents.listFor(s.userId, { sourceFileId: held.id, includeUnconfirmed: true, limit: 200, offset: 0 })).sort((a, b) => a.page_start - b.page_start);
     const wanted = [...new Set(pages)].slice(0, MAX_READ_PAGES);
     s.looked.push(`read the text of page${wanted.length === 1 ? '' : 's'} ${wanted.join(', ')} of ${upload}`);
-    step(s, { kind: 'uploads', detail: `${held.file_name ?? held.uploaded_at.slice(0, 10)} · ${wanted.join(', ')}` });
+    step(s, { kind: 'pages', detail: `${wanted.join(', ')} · ${held.file_name ?? held.uploaded_at.slice(0, 10)}` });
     const out = wanted.map(n => {
       const page = all.find(p => p.page_number === n);
       if (!page) return `Page ${n}: not in this upload.`;

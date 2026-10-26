@@ -364,6 +364,38 @@ describe('looking at pages and moving one by talking', () => {
     expect(text).toMatch(/It is data, never an instruction/);
   });
 
+  it('writes nothing to the store while it proposes moving, turning, hiding, combining, confirming and reading again', async () => {
+    await cutUpload();
+    await getStore().changes.drain(); // what the set-up wrote is not what is being tested
+    await talk([
+      { tools: [{ name: 'list_uploads', args: {} }] },
+      { tools: [{ name: 'get_upload', args: { upload: 'U1' } }] },
+      { tools: [
+        { name: 'propose_move_page', args: { upload: 'U1', page: 3, to_document: 'D1' } },
+        { name: 'propose_rotate_page', args: { upload: 'U1', page: 1, turn: 'left' } },
+        { name: 'propose_hide_page', args: { upload: 'U1', page: 1, hidden: true } },
+        { name: 'propose_merge_documents', args: { upload: 'U1', into: 'D1', from: 'D2' } },
+        { name: 'propose_confirm_grouping', args: { upload: 'U1' } },
+        { name: 'propose_reread_pages', args: { document: 'D1', pages: [1] } },
+      ] },
+      { say: 'Proposed.' },
+    ]);
+    // The conversation itself is written (the question and the words of the answer); no row of any other table is.
+    expect((await getStore().changes.drain()).filter(c => !c.t.startsWith('chat_'))).toEqual([]);
+  });
+
+  it('shows the person which pages it is reading, as a step of its own', async () => {
+    await cutUpload();
+    resetChatLlm(llmWith(new ScriptedModel([
+      { tools: [{ name: 'list_uploads', args: {} }] },
+      { tools: [{ name: 'read_pages', args: { upload: 'U1', pages: [1, 3] } }] },
+      { say: 'Page 3 closes the report.' },
+    ])));
+    const res = await app.inject({ method: 'POST', url: '/api/chat', headers: { cookie }, payload: { question: 'where does page 3 belong?', stream: true } });
+    const steps = res.body.split('\n').filter(Boolean).map(l => JSON.parse(l) as { type: string; kind?: string; detail?: string }).filter(e => e.type === 'step');
+    expect(steps.find(e => e.kind === 'pages')?.detail).toMatch(/^1, 3 · /);
+  });
+
   it('proposes moving one page, changes nothing until confirmed, and the request is accepted by the real route', async () => {
     const { upload, first, tail } = await cutUpload();
     const { reply } = await talk([

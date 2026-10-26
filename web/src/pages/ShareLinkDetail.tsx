@@ -201,7 +201,7 @@ export default function ShareLinkDetail() {
             </table>
             <button type="button" onClick={() => setShowReads(s => !s)} className="text-xs text-blue-600 hover:underline">{showReads ? t('Hide the latest reads') : t('Show the latest reads')}</button>
             {showReads && <ul className="mt-2 space-y-0.5 text-xs text-gray-600">{access.recent.map((r, i) => <li key={i}>{when(r.accessed_at)} · {countryName(r.country, lang) ?? t('unknown')} · {r.document_id ? t('opened {title}', { title: documents.find(d => d.id === r.document_id)?.title || t('a document') }) : t('read the list')}</li>)}</ul>}
-            <p className="mt-3 text-xs text-gray-500">{t('Addresses are what the visitor’s connection showed, and the country is worked out from the address. They do not prove who it was.')}</p>
+            <p className="mt-3 text-xs text-gray-500">{t('The country is worked out from the visitor’s connection, and the address itself is not kept. It does not prove who it was.')}</p>
           </>
         )}
       </section>

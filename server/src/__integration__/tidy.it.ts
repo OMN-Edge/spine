@@ -14,12 +14,12 @@ describeLive('asking the assistant to tidy duplicates', () => {
   beforeAll(async () => {
     w = await startWorld();
     const store = getStore();
-    const a = await seedDocument({ docDate: '2026-01-10', provider: 'Regina Maria', aiSummary: 'Cardiology visit', tags: ['cardiology'], docType: 'consultation_note' });
-    const b = await seedDocument({ docDate: '2026-02-10', provider: 'REGINA MARIA SRL', aiSummary: 'Cardiology control', tags: ['cardio'], docType: 'consultation_note' });
+    const a = await seedDocument({ docDate: '2026-01-10', provider: 'Clinica Aurora', aiSummary: 'Cardiology visit', tags: ['cardiology'], docType: 'consultation_note' });
+    const b = await seedDocument({ docDate: '2026-02-10', provider: 'CLINICA AURORA SRL', aiSummary: 'Cardiology control', tags: ['cardio'], docType: 'consultation_note' });
     const c = await seedDocument({ docDate: '2026-03-10', provider: 'Spital Exemplu', aiSummary: 'Neurology visit', tags: ['neurology'], docType: 'consultation_note' });
     // One cardiologist written three ways (the third carries his code), a neurologist with the same surname and her own code.
     const p1 = await store.doctors.upsert(OWNER_ID, { name: 'Popescu I.', specialty: 'cardiology' }, '2026-01-10T00:00:00Z');
-    const p2 = await store.doctors.upsert(OWNER_ID, { name: 'Popescu Ion', specialty: 'cardiology', clinic: 'Regina Maria', licenseCode: 'A12345' }, '2026-02-10T00:00:00Z');
+    const p2 = await store.doctors.upsert(OWNER_ID, { name: 'Popescu Ion', specialty: 'cardiology', clinic: 'Clinica Aurora', licenseCode: 'A12345' }, '2026-02-10T00:00:00Z');
     const q = await store.doctors.upsert(OWNER_ID, { name: 'Popescu Irina', specialty: 'neurology', licenseCode: 'N77777' }, '2026-03-10T00:00:00Z');
     await store.doctors.link(OWNER_ID, a.id, p1!, 'author'); await store.doctors.link(OWNER_ID, b.id, p2!, 'author'); await store.doctors.link(OWNER_ID, c.id, q!, 'author');
     await addResult(a.id, a.pageId!, { name: 'Hemoglobin', canonical: 'hemoglobin', value: '13.5', unit: 'g/dL', on: '2026-01-10' });
@@ -52,9 +52,9 @@ describeLive('asking the assistant to tidy duplicates', () => {
   });
 
   it('proposes the clinic and the tag written two ways, as separate cards', async () => {
-    const providers = proposalOf(await ask(w, 'Regina Maria appears with different spellings in my documents. Tidy my providers.'), 'merge_library');
+    const providers = proposalOf(await ask(w, 'Clinica Aurora appears with different spellings in my documents. Tidy my providers.'), 'merge_library');
     expect(providers.library).toBe('providers');
-    expect(providers.groups[0].final_name.toLowerCase()).toContain('regina maria');
+    expect(providers.groups[0].final_name.toLowerCase()).toContain('clinica aurora');
     const tags = proposalOf(await ask(w, 'I have a "cardio" tag and a "cardiology" tag. Merge them into "cardiology".'), 'merge_library');
     expect(tags.library).toBe('tags');
     expect(tags.groups[0].final_name).toBe('cardiology');

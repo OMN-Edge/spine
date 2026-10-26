@@ -64,7 +64,11 @@ useLogger({
 // credential. The settings were validated with the rest of the config above (P3, M-8: endpoint, region and project stated, no stray Google
 // key). P8: residency has to be observable, so log what the device is told to use.
 app.log.info(
-  { provider: config.llm.provider, model: config.llm.model, endpoint: config.llm.endpoint, embeddings: config.embeddings.adapter },
+  {
+    provider: config.llm.provider, model: config.llm.model, endpoint: config.llm.endpoint, embeddings: config.embeddings.adapter,
+    // Whether a device may send page images off the device (the parser sends them and the second switch allows it): residency has to be observable.
+    parser: config.parser.mode, imageEgress: config.parser.multimodalEnabled && (config.parser.mode === 'multimodal' || config.parser.mode === 'hybrid'),
+  },
   'model settings given to devices',
 );
 

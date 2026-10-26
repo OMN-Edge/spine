@@ -22,7 +22,7 @@ The owner opens the site, enters their email and password, and lands on the Time
 - A right email and password signs in; a wrong password and an unknown email give the same answer in the same time.
 - Repeated failures are slowed down, per source and across the whole instance.
 - With two-factor on, the password alone does not sign in: a six-digit code (or a recovery code, once) is also needed.
-- Every page and API route except the login pages and a share link refuses a visitor with no session.
+- Every API route except the sign-in calls, the legal texts and the public side of a sealed share refuses a visitor with no session; the app's pages open for anyone but show no record until the vault is unlocked.
 
 Status: auto (`auth`, `second-factor`, `isolation`).
 
@@ -54,7 +54,7 @@ Only where the operator has opened registration (it needs a mail provider). A pe
 
 - Until the link is used the account cannot sign in, and it gets no session.
 - The link works once, expires, and is carried in the part of the address the server never sees. Asking for another link replaces the old one.
-- A taken address, an unknown one and a verified one all get the same answer, so the form cannot be used to find out who has an account, and nothing is mailed to an address that is not new.
+- A taken address, an unknown one and a verified one all get the same answer, so the form cannot be used to find out who has an account, and nothing is mailed for an address that already has an account.
 - A weak password (under 12 characters, or a common word or pattern) is refused on the device, before anything is sent; a bad address creates nothing.
 - The keys are made on the device, and the **recovery kit** is shown, printable and saveable, before the account is created: a person is asked to say it is stored somewhere safe, and no account exists whose kit was not shown. The page says plainly that Spine cannot recover the records.
 - The server receives a value derived from the password, never the password, and sealed keys it cannot open.
@@ -89,7 +89,7 @@ Status: auto (`vault`, `cli`). In a browser: hand, not yet done.
 
 ### 1.y Passkeys
 - On the account page, Add a passkey on this device asks the device for a fingerprint, face or PIN and saves a key for this site; the sign-in page then offers Sign in with a passkey, which needs no password and no code.
-- Adding and removing ask for the password again and are mailed. Removing a passkey on one device does not remove it on another.
+- Adding and removing ask for the password again and are mailed. Each device's passkey is its own entry: removing one leaves the others.
 - A passkey made for one address does not work at another, and cancelling the device's sheet is not an error.
 
 Status: auto (`passkeys`); the device's own sheet: hand.
@@ -98,7 +98,7 @@ Status: auto (`passkeys`); the device's own sheet: hand.
 - Signing up asks for two separate ticks: consent to the use of health data (with the privacy notice), and acceptance of the terms. Neither is implied by the other and the account is not made on one.
 - An account the operator made, or any account after a text changed, sees a screen asking for what is missing before anything else, and can leave from it by deleting the account.
 - The privacy notice, the terms and what Spine is for are public pages, linked from every sign-in page.
-- The account page lists which features send what to which model provider, exports everything, and deletes the account after the password is typed again and the address is written out.
+- The account page lists which features send what to which model provider, exports everything (the vault is open, so the master password was used), and deletes the account after the address is written out (and the password typed again if it was not typed in the last ten minutes).
 
 Status: auto (`own-account`, `accounts`); screens: hand.
 
@@ -147,7 +147,7 @@ Status: auto (`upload`).
 A zip goes in the same Upload box. What it is, is told by what is inside, not by its name.
 
 - A zip with a Spine `manifest.json` (an export, see 9.5) is **restored**: the files come back with their pages, grouping, hidden pages, details, results, doctors, tags and notes, **without the AI** and without sending anything anywhere. Page images are made again, so a big archive takes a while and each file shows as reading until done.
-- Any other zip is a folder of files: each PDF in it (and each photo, if photos are allowed) is added as if sent alone and read the usual way. Hidden files, `__MACOSX`, and things that are not PDFs are skipped and named. A Word or Excel file, which is also a zip, is refused as not a PDF.
+- Any other zip is a folder of files: each PDF in it (and each photo, if photos are allowed) is added as if sent alone and read the usual way. Hidden files, `__MACOSX`, and things that are not PDFs are skipped and named. A Word document sent on its own is added as one document (converted to a PDF); an Excel or PowerPoint file, which is also a zip, is refused as not a PDF.
 - The page says what the zip was and how many files were added, restored, already there or skipped.
 - Duplicates are recognised: a file already held (same checksum) is skipped, and so is a document whose text matches one already held, even if its file was cut differently (a single exported document). If one file holds both documents already there and new ones, the new ones are restored and the others are kept out of sight (their pages hidden) rather than appearing twice.
 - A manifest that is damaged, or from a newer version, is refused with that reason; one that does not fit its file leaves nothing behind and the upload shows as failed.
@@ -188,7 +188,7 @@ The owner opens an upload's **Pages and grouping**. Pages 11 and 12 belong with 
 - Neither reads anything yet. The grouping is saved, the affected documents go back to review and are marked "Changed, waiting for Done", and a bar counts them. When the owner has finished grouping, **Done** reads each changed document once, from its pages' text; the pages themselves are not read again. If a document that was reviewed is affected, the screen says so first, because reading it again replaces the owner's edits.
 - Afterwards the screen says whether the reading worked. If it fails for a document, the grouping stands and Done tries that one again.
 - Values, doctors and fields move with the pages they were read from.
-- Any page can be **dragged** to another place: before another page of its document (to reorder), into another document, or into the strip between documents to become a document of its own. The page keeps what was read from it (its fields and results go with it), pages are numbered again in their new order, and the documents it leaves and joins go back to review and wait for Done. A page that was moved shows a small star, and hovering says where it is in the file. A document left with no pages is folded into where its last page went.
+- Any page can be **dragged** to another place: before another page of its document (to reorder), into another document, or into the strip between documents to become a document of its own. The page keeps what was read from it (its fields and results go with it), pages are numbered again in their new order, and the documents it leaves and joins go back to review and wait for Done. A page that was moved shows a small asterisk, and hovering says where it is in the file. A document left with no pages is folded into where its last page went.
 - **Hide** under a page sets that page aside, and **Hide document** sets a whole document aside, however many pages it has. A hidden page is kept (with its image and text) but is left out of the document's view, search and the next reading. A document with every page hidden is left out of the timeline, search, review, share links, a doctor's list and the trends; on this screen it is dimmed with a banner and a **Show all pages** button, and the upload's card on the Upload page counts it ("1 hidden") so it can be opened and brought back.
 - Done skips a document with every page hidden, since there is nothing to read; it does not call that a failure.
 
@@ -233,7 +233,7 @@ The owner opens a document from the Timeline or the review queue. Reading mode s
 - A measurement's flag (low, high, normal) is worked out again from its value and range on save.
 - Fields that belong together, such as one medicine's drug, dose and frequency, show together.
 - A document opened from the review queue starts in edit mode; from the Timeline, in reading mode.
-- A document that has been edited, regrouped or read again shows up as unreviewed.
+- A document that has been regrouped or read again shows up as unreviewed; saving an edit with Done marks it reviewed.
 - **What the owner sets stays set.** Reading a document again fills in what the owner has not touched. A title, date, provider, type or summary the owner changed keeps their value (clearing it hands it back to the reading). A field or a result the owner added or changed stays, and the new reading does not repeat it: it holds its place, the same label in the same group, or the same test on the same day. A field or result the owner removed is not brought back, unless a later reading says something different. Tags and doctors are not kept: a new reading replaces them. The owner's notes are kept, and are given to the model when it reads again, as context only.
 
 Status: auto (`document-edit`, `structured`, `owner-edits`); screens: hand.
@@ -297,7 +297,7 @@ The owner opens **Trends**, picks "Hemoglobin", and sees a chart.
 Status: auto (`trends-doctors`, `structured`); chart look and phone layout: hand; what a real model extracts from real reports: real model.
 
 ### 4.2 Two labs call a test different things
-Regina Maria prints "TSH", another lab "Hormon tireostimulant". The owner opens one and chooses "same test as" the other.
+One laboratory prints "TSH", another lab "Hormon tireostimulant". The owner opens one and chooses "same test as" the other.
 
 - The values move to the chosen test, and the old name stops being listed.
 - A document read later that uses the old name is filed under the chosen one.
@@ -322,7 +322,7 @@ Status: auto (`structured`); the range choice on real reports: real model.
 - Confirm a suggestion, or say it is not an episode (it is not suggested again). Rename a confirmed episode, take a document out, add one, or remove the episode. Or make one by hand: tick the documents.
 - A document is in one episode at a time: putting it in another takes it out of the first.
 - The timeline can be narrowed to one episode, and each document says which episode it is in. Facility and specialty narrow the timeline and the search the same way.
-- A share link can name episodes; it then shares what they hold when it is opened (7.x).
+- A share link can name episodes; it then shares what they hold, and the copy follows the episodes as the owner's device refreshes it (7.5).
 - Episodes travel in the whole export and come back with a restore.
 
 Status: auto (`episodes`, `archive`).
@@ -359,7 +359,7 @@ The owner finds two entries for one person ("Popescu I." and "Popescu Ion").
 - A merge keeps every document and role and removes the other entry.
 - The Doctors page lists entries that are **probably the same person**, for the owner to confirm: one name is the other with more words ("Ioana Dumitrescu" and "Dumitrescu Ioana Maria"), or an initial stands for a name ("Popescu I." and "Popescu Ion"). Never two entries with different specialties, never a single word, and never merged without the owner choosing to.
 - "Merge into <fuller name>" merges them; "Not the same" hides that pair on this browser.
-- A name or code that already belongs to another doctor is refused, not silently merged.
+- A code that already belongs to another doctor is refused and says to merge; a name another entry already has is not merged silently either: the renamed entry stays a second person of that name (`ion popescu#2`, SECURITY.md **M-30**), and merging is the owner's choice.
 - An entry that no document names can be deleted; one that is named cannot.
 - A signing doctor's name and code can be entered by hand where no stamp was read.
 
@@ -389,7 +389,7 @@ Status: not built beyond the text.
 ## 6. Finding things
 
 ### 6.1 Search
-The owner searches for "lombar", or filters by date, tag, type or provider.
+The owner searches for "lombar", or filters by date, tag or type (the timeline also filters by facility, specialty and episode).
 
 - A keyword search matches a document's title, type, provider, summary and notes, the text of its pages, its extracted values, its measurements' names and its doctors' names.
 - A word matches by its start ("lombar" finds "lombară"), accents and case are ignored, and every word typed must match.
@@ -434,7 +434,7 @@ The model names things as it reads them, so one clinic, one tag or one test can 
 Status: auto (`management`, `isolation`); screens: not yet checked by hand.
 
 ### 6.5 See what belongs with this document
-On a document page, Related documents lists other documents in the archive that go with it, each with why.
+On a document page, Similar documents lists other documents in the archive that go with it, each with why.
 
 - The same test: a TSH from another lab, whatever it calls the test. The same doctor. Why is written under each.
 - Tags or a provider alone do not make two documents related.
@@ -453,7 +453,7 @@ Where embeddings are on, Search offers "also find documents that mean the same".
 Status: auto (`similarity`); quality: real model.
 
 ### 6.7 See the chain of care around a document
-On a document page, Care chain shows the consultations and tests around it as a timeline by date, the document itself marked. Under each document it says how it connects to an earlier one: "requested by", "follow-up of", "same episode as".
+On a document page, Connected documents (the care chain) shows the consultations and tests around it as a timeline by date, the document itself marked. Under each document it says how it connects to an earlier one: "requested by", "follow-up of", "same episode as".
 
 - When the owner confirms an upload's grouping, and after a document is read again, the app looks for links in the background. Nothing is searched before the grouping is confirmed, so links are never judged against a grouping that may still change. A consultation that recommended tests and the laboratory report that followed come up as suggestions, marked "suggested", with Confirm and Not related.
 - The app only suggests when the data points to a candidate (the same test or doctor, a laboratory or imaging document within 90 days after a consultation); a conservative model then decides. A request never points backwards in time.
@@ -469,7 +469,8 @@ Status: auto (`linking`, `llm-link-labels`); live (`model-seams.it.ts`: a consul
 A round **Ask** button sits in the corner of every page. It opens a panel beside the page (there is no entry for it in the menu); the owner types a question in plain words and gets an answer built only from their own documents, and the conversation follows them from page to page.
 
 - The panel says what page the owner is on. On a document page, "what does this mean?" or "is this value normal?" is about the document on screen, and about the field or result they have selected. On the Timeline or Search it knows what is listed and which filters are on; on an upload's grouping screen it knows the pages and documents and whether the grouping is confirmed.
-- The model decides what to look up: it searches the documents, opens the ones it needs, reads a test's values over time, follows a consultation to the tests it asked for. - The answer is formatted (paragraphs, lists, bold) and cites its sources as small numbers in the text, with the numbered sources listed below it by document title and, for the document on screen, the part of it. Where the answer comes from a part of the document on screen, the link goes to that part: "Measurements", "Extracted fields", "Summary", "Notes", "Doctors", "Care chain"; the page scrolls there and the section is lit for a moment. On a phone the panel closes when a link is followed.
+- The model decides what to look up: it searches the documents, opens the ones it needs, reads a test's values over time, follows a consultation to the tests it asked for.
+- The answer is formatted (paragraphs, lists, bold) and cites its sources as small numbers in the text, with the numbered sources listed below it by document title and, for the document on screen, the part of it. Where the answer comes from a part of the document on screen, the link goes to that part: "Measurements", "Extracted fields", "Summary", "Notes", "Doctors", "Connected documents"; the page scrolls there and the section is lit for a moment. On a phone the panel closes when a link is followed.
 - When no document matches, it says so. When the documents do not contain the answer, it says that, rather than guessing. It does not diagnose or advise treatment.
 - It reads, and it can **prepare** changes: a share link, a note, a correction, tags, a connection, a merge of duplicates. A prepared change is a card the owner confirms or cancels; nothing is changed until Confirm (section 12).
 - The panel says the answer is a reading of the documents, not medical advice, and what each question sends.
@@ -486,7 +487,7 @@ Status: auto (`chat`, `chat-agent`); live (`chat-qa.it.ts`: values and their cha
 ### 7.1 Send a doctor what they need
 The owner creates a link scoped to everything, a tag, chosen documents, or a date range, and sends it. Making one: a tag is picked from a dropdown of the account's tags; documents are picked from a searchable list with checkboxes; a date range is two dates. The form says how many documents the link would share and will not create one that is incomplete. Each link in the list says what it shares.
 
-- The link shows only what the scope allows; a scope that cannot be fully worked out is refused at creation and serves nothing at read time.
+- The link shows only what the scope allows; a scope that cannot be fully worked out is refused at creation, and a copy that cannot be built from a stored scope shares nothing.
 - It expires (default 7 days, at most 30) and can be revoked at once.
 - The recipient needs no account. They get the archive's own timeline of what was shared (grouped by year, with a filter by type) and can open a document to a page like the owner's, read-only: summary, notes, tags, doctors, results and details, with the scans beside them when allowed. There is no review, reading again, export or link into the owner's other pages. A Trends tab shows the shared documents' values over time, built from those documents only: a later value in a document that was not shared appears nowhere. Page images are shown only if the owner ticked "Include scans" for that link, which is off by default because a scan shows the patient's ID number and phone, which the extracted details leave out.
 - A recipient cannot open a document or a page outside what the link covers, or one the owner hid: they get the same answer as for one that does not exist.
@@ -500,7 +501,7 @@ Status: auto (`share`, `public-share-scoped`, `public-share-detail`); screens: n
 When making a link the owner ticks **Ask me before anyone opens it**. Whoever opens the link must ask, and the owner approves or denies from their own account; only the browser they approve can read it.
 
 - The recipient opens the link and sees "Approval needed", an optional "Who are you?" line, and **Ask for access**. Asking makes a key pair in that browser, kept in its session storage for as long as the tab is open, and sends the owner one email (when a mailer exists), which says only that someone is waiting and carries a link to the request. It names no document, label or note.
-- The owner opens that link (signing in first, and coming back to it), sees when and from which address the request came, with the recipient's own words marked as unverified, and presses **Approve** or **Deny**. Following the link never approves anything; only the button does. Waiting requests are also at the top of the Share links page and on the link's page; with no mailer set up that is the only place the owner is told, and creating the link says so.
+- The owner opens that link (signing in first, and coming back to it), sees when and from which country the request came (the address itself is not kept), with the recipient's own words marked as unverified, and presses **Approve** or **Deny**. Following the link never approves anything; only the button does. Waiting requests are also at the top of the Share links page and on the link's page; with no mailer set up that is the only place the owner is told, and creating the link says so.
 - Until approved the browser has no key, so there is nothing to open: the copy on the server is sealed and the page says approval is needed. The owner's device answers an approval by wrapping the share key to that browser's key, and the recipient's page waits and opens by itself.
 - The approval is for that link and that browser: its key opens no other link, a second browser asks on its own, and closing the tab means asking again. The owner can withdraw it later. At most five requests wait on a link at once, and asking is rate limited.
 - Approving on a link that has been revoked or has expired is refused. A request that is not the owner's is "not found".
@@ -597,7 +598,7 @@ Status: auto (`cli`, `accounts`, `isolation`).
 Status: auto for making the snapshot (`backup`); a restore to a blank machine: not yet rehearsed.
 
 ### 9.5 Take a copy of everything, or of one document
-- **Export one document** (Export, bottom left of its page): a zip with only that document's pages (cut out of the file it was scanned with, so the others do not come along; pages the owner hid are left out) and a manifest of what was read from it.
+- **Export one document** (Export, bottom right of its page): a zip with only that document's pages (cut out of the file it was scanned with, so the others do not come along; pages the owner hid are left out) and a manifest of what was read from it.
 - **Export everything** (Upload page): every finished upload as it is, with grouping, hidden pages, details, results, doctors, tags, notes and what was reviewed.
 - Neither holds share links (a link is access someone was given, and its key is not kept), translations (they are made again), the owner's id, server paths or page images.
 - Restoring is 2.2b; the same zip restored twice adds nothing the second time.
@@ -606,7 +607,7 @@ Status: auto for making the snapshot (`backup`); a restore to a blank machine: n
 Status: auto (`archive`); a full restore of a real archive: not yet tried.
 
 ### 9.4 Where the data goes
-- With default settings, only document text (and, for extraction, the names of the tests and tags already in the archive) goes to the model provider; translating a document into another language also sends its extracted details and the owner's notes; with embeddings on, each document's short summary card and the words of a meaning search go to the embedding endpoint (off with `SPINE_TRANSLATION=off`); with Vertex configured, to the endpoint stated.
+- With default settings these go to the model provider, through the relay: the text of the pages (to find where documents start) and of each document (to read it, with the names of the tests and tags already in the archive, and the owner's notes when it is read again); a question asked in the chat, with what the assistant looks up (summary cards, notes, results, and the text of a few pages when it sorts an upload); the summary cards of a few documents at a time to look for links (`SPINE_LINKING=off` stops it); and, when a document is opened in another language, its extracted details and the owner's notes (`SPINE_TRANSLATION=off` stops it). With embeddings on, each document's short summary card and the words of a meaning search go to the embedding endpoint. With Vertex configured, all of it goes to the endpoint stated.
 - Page images leave only for pages and files the owner chose or that image reading selected, and only when both settings are on.
 - Nothing about a document goes in an email.
 
@@ -633,7 +634,7 @@ The owner can preset the language a link opens in; the recipient can still switc
 
 - Documents already translated show at once; the rest are translated in the background and the cards switch as they finish. Creating the link starts that for the documents it covers.
 - Opening a document translates it as in 11.1.
-- A recipient can cause a model call, so it is bounded: four languages, once per document and language, a rate limit, and only for documents the link covers.
+- A recipient can cause a model call, so it is bounded: four languages, once per document and language, the relay's daily count for the share, and only for documents the link covers.
 
 Status: auto (`translation`, `public-share-detail`); real model.
 
@@ -646,7 +647,7 @@ Status: auto (`translation`, `public-share-detail`); real model.
 - Navigation collapses to a menu, and the upload page offers the file picker instead of drag and drop.
 - The spine, document page, trends, doctors, search and grouping screens use the same data as on a desktop, laid out in one column.
 
-Status: hand (no sideways scrolling checked in a headless browser at phone width for the upload, review, trends, trend, doctors, document and document-edit screens; the rest were looked at, not measured). Real devices, touch targets and the camera flow: not tried.
+Status: hand. No check in the repository measures phone width (`check:browser` and `check:app` run at desktop size), so the statement that screens fit without sideways scrolling rests on an earlier by-hand look and is not held by a test. Real devices, touch targets and the camera flow: not tried.
 
 ---
 
@@ -685,7 +686,7 @@ Status: auto (`matching`); screens: not yet checked by hand.
 ### 12.4 Sort out a mixed export
 A physician's export has tens of pages from many documents, in no order. The owner presses **Check the pages with AI** (or tells the assistant the pages are mixed, which prepares the same thing as a card).
 
-- The pages are compared on the server (words, reference numbers, dates, *page 2 of 4*, and embeddings where they are on), candidate groups of up to eight pages are made, and the model is asked about each: *do these pages form one coherent document?* Its answer wins over the comparison; a group it was unsure of, or that had no verdict, is marked so. At most 60 model calls, and the text of the pages goes to the model provider, as it did when they were read.
+- The pages are compared on the device (words, reference numbers, dates, *page 2 of 4*, and embeddings where they are on), candidate groups of up to eight pages are made, and the model is asked about each: *do these pages form one coherent document?* Its answer wins over the comparison; a group it was unsure of, or that had no verdict, is marked so. At most 60 model calls, and the text of the pages goes to the model provider, as it did when they were read.
 - It runs in the background and the conversation says when the suggestions are ready. Nothing is changed by it.
 - The assistant shows each suggested document as a card: its pages as small pictures, the model's verdict and reason, and the documents the pages are in now. The owner can leave a group out and take a page out of a group. Only groups the model was sure of are ticked.
 - Confirm makes the groups in one go (pages renumbered, fields and results moving with their pages, a document keeping its edits only if it mostly stays what it was), then reads the changed documents again from their pages' text. The grouping still has to be confirmed (12.5).
@@ -735,7 +736,7 @@ Status: auto (`chat-actions`); live (`tidy.it.ts`: three spellings of one cardio
 *The link for Dr. Vasilescu: make it work for 20 days and add the March visit. Revoke the link for Dr. Anghel.*
 
 - A change card shows the old and new name, the new end date, and the documents added and removed. It cannot change scans, approval or recipient questions; those are on the link's page (7.4). A revoked link cannot be changed.
-- If more than one link fits, the assistant asks which, and never revokes on a guess.
+- If more than one link fits, the assistant is told to ask which (the live flow checks it with two links that fit); whatever it proposes, nothing is revoked until the owner presses Confirm on a card that names the link.
 
 Status: auto (`chat-actions`); live (`chat-actions.it.ts`).
 
