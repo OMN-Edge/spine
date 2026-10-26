@@ -212,7 +212,7 @@ export default function ShareLinks() {
                   <span className="text-xs text-gray-400 shrink-0">{tn(e.document_ids.length, '{n} document', '{n} documents')}</span>
                 </label>
               ))}
-              <p className="text-xs text-gray-500">{t('The link shares what the episode holds when it is opened, so a document added to the episode later is shared too.')}</p>
+              <p className="text-xs text-gray-500">{t('The link shares what the episode holds when its copy is made, and your device makes the copy again while it is open, so a document added to the episode later is shared once that has happened.')}</p>
             </div>
           )}
 

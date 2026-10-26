@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The checks CI runs, runnable on a laptop: ./scripts/check.sh [server|web|scan|all]; `browser` is the two real-browser checks, which CI does not run
+# The checks CI runs, runnable on a laptop: ./scripts/check.sh [server|web|scan|all]; `browser` is the two real-browser checks, which CI also runs
 # SECURITY.md S-32 (dependencies) and S-36 (checks that are not the author of the change).
 set -euo pipefail
 cd "$(dirname "$0")/.."

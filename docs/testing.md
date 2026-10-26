@@ -33,7 +33,7 @@ The structural rules (layering, what the shared code may import, what ships in a
 | `cd web && npm run check:app` | The whole app in real browsers, against a real server and relay: sign-up, vault, upload, search, two devices on one account, shares that follow the records, signatures, passkeys, export and import | Chrome, a build |
 | `npm run test:integration -w spine-server` | Does a real model do the right thing with the prompts? | a model in `.env` |
 
-`./scripts/check.sh all` runs the first six, the dependency audit and the secret and code scans that CI runs. A change that touches the store, the change log or the vault is not done until `test:accounts`, `test:shim` and `check:app` have run: each has caught a bug the others could not.
+`./scripts/check.sh all` runs what CI runs: the build and typecheck, the core and server tests with `test:accounts`, the web tests, the smoke test, the dependency audit and the secret and code scans (`./scripts/check.sh browser` adds the two browser checks, which CI runs too). It does not run `test:shim` or the coverage report, and no pipeline does: run those yourself. A change that touches the store, the change log or the vault is not done until `test:accounts`, `test:shim` and `check:app` have run: each has caught a bug the others could not.
 
 ## What belongs to every store, and what to SQLite
 

@@ -31,7 +31,7 @@ Primitives come from an audited library (libsodium or equivalent); nothing is in
 4. **Data key**, one per sealed object (a segment of changes, a part of a snapshot, a file), wrapped by the profile key. Content is encrypted with XChaCha20-Poly1305, the object's id and kind bound in as associated data. (Not one per document: the unit of storage is the object.)
 5. **Account key pair** (X25519), made at sign-up. **Not built:** delegating a profile to another account, which is what it is for. Each account has one profile today.
 
-Everything about a document is encrypted, not only its pages: titles, dates, tags, doctors, episodes, extracted fields, summaries and embeddings. In plaintext on the server stay only opaque identifiers, sizes and timestamps.
+Everything about a document is encrypted, not only its pages: titles, dates, tags, doctors, episodes, extracted fields, summaries and embeddings. In plaintext on the server stay only opaque identifiers, sizes, timestamps and a coarse kind of object.
 
 **Recovery.** Only the recovery kit recovers an account. The operator has no recovery path, and sign-up says so plainly. A lost password and a lost kit together mean the data is gone.
 
@@ -39,7 +39,7 @@ Everything about a document is encrypted, not only its pages: titles, dates, tag
 
 **Rotation. Not built**, because delegation is not. The design: promoting a child's profile to an adult account at 18, and revoking any delegate, rotate the profile key, and the data keys are re-wrapped under a new key the removed party never held. Content someone already viewed cannot be recalled.
 
-**Deleting an account** removes its vault keys, its sealed objects and shares, and the backup's copy of its vault (`deleteAccount`). Database snapshots already taken still hold its rows until retention prunes them; they hold no key that opens a record.
+**Deleting an account** removes its vault keys, its sealed objects and shares, and the backup's copy of its vault (`deleteAccount`). Database snapshots already taken still hold its rows until retention prunes them; they hold the account's wrapped keys, which open only with its master password or recovery kit, and no record.
 
 Stays visible to the operator: that an account exists, how many blobs it has and how large they are, when they changed.
 
@@ -58,7 +58,7 @@ Stays visible to the operator: that a share exists, its expiry, when and from wh
 ## The AI path
 
 - Every model call starts on the device: content is decrypted locally and sent over TLS to the relay, which forwards it to the provider the relay is configured with (Vertex AI at a regional EU endpoint, never the global one, in the author's deployment; Anthropic's API is the other adapter).
-- The device never holds the provider's credential. The relay does, enforces per-user quotas, and only passes requests through: it writes nothing to a database or storage. The device encrypts every result (extraction, summary, embedding, translation) before upload.
+- The device never holds the provider's credential. The relay does, enforces per-account and per-share daily quotas, and only passes requests through: it stores no content and keeps only a count of calls a day. The device encrypts every result (extraction, summary, embedding, translation) before upload.
 - Each call carries the minimum: one document or page for extraction, a few summary cards for chat (and the text of a few pages only when the owner asks the assistant to sort an upload), never the vault. (Masking identifiers such as a national ID number where extraction does not need them is **not built**.)
 - Search runs on the device: encrypted embeddings are downloaded, decrypted into memory and compared there. There is no server-side vector database. A search sends only its query text to be embedded, treated like content.
 - Doctor-side translation goes through the same relay, authorised by the share and limited to its expiry.

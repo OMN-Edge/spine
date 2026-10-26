@@ -32,12 +32,13 @@ if (REAL) {
 {
   const relayPort = 4000 + Math.floor(Math.random() * 1000);
   const calls = [];
+  const started = []; // the lines the relay writes about itself, not about a call: `relay ready`
   const [command, args, extraEnv] = REAL
     ? ['node', ['dist/relay/main.js'], modelEnv]
     : [path.join(root, 'node_modules/.bin/tsx'), ['src/testing/stand-in-relay.ts'], { SPINE_LLM_PROVIDER: 'stand-in', SPINE_LLM_MODEL: 'gemini-test', SPINE_EMBEDDINGS: 'stand-in' }];
   relayProcess = spawn(command, args, { cwd: path.join(root, 'server'), env: { PATH: process.env.PATH, HOME: process.env.HOME, ...extraEnv, SPINE_RELAY_SECRET: RELAY_SECRET, SPINE_RELAY_ORIGIN: `http://localhost:${front}`, SPINE_DB_PATH: ':memory:', PORT: String(relayPort) }, stdio: ['ignore', 'pipe', 'inherit'] });
   let partial = '';
-  relayProcess.stdout.on('data', d => { partial += d; const lines = partial.split('\n'); partial = lines.pop(); for (const l of lines) { try { const { time, ...rest } = JSON.parse(l); calls.push(rest); } catch { /* not a call line */ } } });
+  relayProcess.stdout.on('data', d => { partial += d; const lines = partial.split('\n'); partial = lines.pop(); for (const l of lines) { try { const { time, ...rest } = JSON.parse(l); if (rest.event) { started.push(rest); continue; } calls.push(rest); } catch { /* not a call line */ } } });
   let exited = false;
   relayProcess.on('exit', () => { exited = true; });
   const url = `http://127.0.0.1:${relayPort}`;
@@ -45,7 +46,7 @@ if (REAL) {
     if (exited || waited > 30000) throw new Error('the relay did not start');
     try { await fetch(url + '/healthz'); break; } catch { await new Promise(r => setTimeout(r, 250)); }
   }
-  relay = { url, calls, close: () => relayProcess.kill() };
+  relay = { url, calls, started, close: () => relayProcess.kill() };
 }
 const standIn = { SPINE_EMBEDDINGS: 'vertex', SPINE_EMBEDDING_ENDPOINT: 'aiplatform.eu.example', SPINE_EMBEDDING_REGION: 'eu', SPINE_EMBEDDING_PROJECT: 'proj-1', SPINE_LLM_PROVIDER: 'vertex', SPINE_LLM_ENDPOINT: 'aiplatform.eu.example', SPINE_LLM_REGION: 'eu', SPINE_LLM_PROJECT: 'proj-1', SPINE_LLM_MODEL: 'gemini-test' };
 // The invented root the signed fixture chains to, named as the operator would: a directory of certificates.
@@ -166,6 +167,7 @@ try {
   const sent = relay.calls.length;
   check(sent > 0, `the model was reached through the relay (${sent} calls)`);
   check(relay.calls.every(c => Object.keys(c).sort().join() === 'bytes_in,model,ms,status,task' && c.status === 200), 'the relay noted only the task, the model, the status and the sizes');
+  check(relay.started.some(e => e.event === 'relay ready' && e.provider && 'endpoint' in e && 'region' in e), 'the relay said once, at start, which provider, model, endpoint and region it calls');
   await wait(3000); // the save
 
   // Sharing: a link is a sealed copy; the key is in the address after the #; a stranger's browser opens it with no account.

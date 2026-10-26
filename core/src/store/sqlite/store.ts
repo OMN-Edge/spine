@@ -30,9 +30,8 @@ import type { AccountsStore, RecordsStore, Store, StoreConfig } from '../types.j
  * The SQLite adapter over any driver (`driver.ts`): the only adapter, and the intended state for now. The interface
  * exists so a second is possible, not because one is planned.
  *
- * SQLite has a single-writer model. With a handful of family users that is
- * fine; WAL lets readers proceed during a write. It is the first thing to
- * revisit if concurrent ingestion becomes common.
+ * SQLite has a single-writer model. The device's database has one owner and the server's holds accounts only, so that is not a limit
+ * today; it is the first thing to revisit if one database had to serve many writers.
  */
 export function createSqliteStoreWith(config: StoreConfig, open: OpenDatabase, schema?: string): Store {
   return recordsOver(openDatabase(config.location, open, schema, 'full'), 0, { open, schema });
@@ -51,8 +50,8 @@ export function createSqliteAccountsStoreWith(config: StoreConfig, open: OpenDat
  * handled with SAVEPOINT so an inner transaction cannot commit the outer one.
  *
  * Caveat worth knowing: this connection is shared, so any statement issued by *other* code while the callback is awaiting lands inside
- * this transaction. In a single-process app where ingestion is the only multi-statement writer that is acceptable; it is the reason the
- * callback is handed a `tx` and should use nothing else.
+ * this transaction. Several paths write in transactions (reading an upload, regrouping, moving a page, merging, restoring); that is the
+ * reason the callback is handed a `tx` and should use nothing else and await nothing slow.
  */
 async function inTransaction<S, T>(db: Database, depth: number, inner: () => S, fn: (tx: S) => Promise<T>): Promise<T> {
   const savepoint = `spine_tx_${depth}`;

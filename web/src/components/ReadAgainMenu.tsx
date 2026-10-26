@@ -27,7 +27,7 @@ export default function ReadAgainMenu({
   page: Page | undefined;
   /** All the document's pages that are not hidden: what "read whole document" reads. */
   pages: Page[];
-  /** The owner has reviewed it: their edits would be replaced. */
+  /** The owner has reviewed it: it goes back to review. */
   reviewed: boolean;
 }) {
   const { t, tx } = useI18n();
@@ -70,7 +70,7 @@ export default function ReadAgainMenu({
       default: return t('It reads each page again the way an upload does here.');
     }
   };
-  const replaces = `${t("The pages' text, then the title, date, provider, type, summary, tags and fields are replaced, and the document goes back to Review. The grouping and your notes are kept.")}${reviewed ? ` ${t('You have reviewed it; your edits will be replaced.')}` : ''}`;
+  const replaces = `${t("The pages' text is read again, and the title, date, provider, type, summary, tags and fields that you did not edit are replaced; the document goes back to Review. What you edited or added by hand, the grouping and your notes are kept.")}${reviewed ? ` ${t('You have reviewed it; it will need reviewing again.')}` : ''}`;
 
   const choose = (next: Action) => { setMenu(false); setError(''); setThinking(false); setAction(next); };
   const cancel = () => { setAction(null); setError(''); };

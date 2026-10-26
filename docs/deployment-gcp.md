@@ -10,7 +10,7 @@ Relevant to Spine because the archive holds EU medical data, so where inference 
 
 Every model call is made by the owner's device and goes through the relay ([relay.md](relay.md)), which runs it through the provider you configure: Anthropic's API directly (the default), or Vertex. Document text leaves the device on every call. Moving the relay to Vertex in the EU multi-region keeps ML processing inside EU member states, which is the main reason to prefer it over calling providers directly.
 
-See [ARCHITECTURE.md](../ARCHITECTURE.md) for the current egress path and [SECURITY.md](../SECURITY.md) principle **P8** (egress is minimal, enumerated, text-only).
+See [ARCHITECTURE.md](../ARCHITECTURE.md) for the current egress path and [SECURITY.md](../SECURITY.md) principle **P8** (egress is minimal, enumerated and explicit: text by default, page images only with their own second switch).
 
 ## Residency: the endpoint decides, not the model
 
@@ -66,9 +66,9 @@ One role to call models. Enabling Claude needs a second role, held by a human fo
 - **Organization policy:** if a policy restricts Model Garden models, it must allow partner models or Claude will not enable.
 - **No downloaded JSON keys.** If the workload runs on Google Cloud, attach the service account to it. If it runs elsewhere — a Raspberry Pi, for instance — use **workload identity federation**, not a key file.
 
-### What this means in practice on a Pi
+### What this means in practice off Google Cloud (the relay on a Pi, for instance)
 
-Vertex authenticates with **Application Default Credentials (ADC)**, not an API key. ADC is a lookup order, and off-GCP the practical entry in it is a key file:
+The relay is the process that authenticates to Vertex, with **Application Default Credentials (ADC)**, not an API key. On Cloud Run attach the service account to the service and use no key file ([relay.md](relay.md)); the steps below are for a relay that runs elsewhere. ADC is a lookup order, and off-GCP the practical entry in it is a key file:
 
 1. In the console, create the service account and grant `roles/aiplatform.user`.
 2. Create a key for it. The console downloads a **JSON file** — this is the only moment it is available, and it does not expire.

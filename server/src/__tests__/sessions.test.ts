@@ -243,4 +243,16 @@ describe('ended sign-ins are deleted for every account', () => {
     expect(left).not.toContain('old-browser');
     expect(left.length).toBeGreaterThanOrEqual(1);
   });
+
+  it('forgets a browser first seen more than a year ago, as its cookie is gone by then (the privacy notice says one year)', async () => {
+    const store = getAccountsStore();
+    const now = new Date();
+    await store.sessions.rememberDevice(OWNER_ID, 'hash-of-an-old-browser', new Date(now.getTime() - 400 * 86_400_000).toISOString());
+    await store.sessions.rememberDevice(OWNER_ID, 'hash-of-a-recent-browser', new Date(now.getTime() - 30 * 86_400_000).toISOString());
+    const { sweepSessions } = await import('../sessions.js');
+    await sweepSessions(now);
+    // A browser the account still remembers is 'known' on the next sign-in; one it forgot is 'new' again.
+    expect(await store.sessions.rememberDevice(OWNER_ID, 'hash-of-a-recent-browser', now.toISOString())).toBe('known');
+    expect(await store.sessions.rememberDevice(OWNER_ID, 'hash-of-an-old-browser', now.toISOString())).toBe('new');
+  });
 });

@@ -19,7 +19,9 @@ export function maintenanceRepository(db: Database): MaintenanceRepository {
       db.exec(`VACUUM INTO '${destination.replace(/'/g, "''")}'`);
     },
 
-    async pruneSessions(startedBefore, idleSince) {
+    async pruneSessions(startedBefore, idleSince, devicesFirstSeenBefore) {
+      // A browser's cookie lasts a year (the privacy notice says so); the hash of it is not kept longer.
+      if (devicesFirstSeenBefore) db.prepare('DELETE FROM user_devices WHERE first_seen_at < ?').run(devicesFirstSeenBefore);
       return db.prepare('DELETE FROM user_sessions WHERE created_at < ? OR last_seen_at < ?').run(startedBefore, idleSince).changes;
     },
 
@@ -29,7 +31,7 @@ export function maintenanceRepository(db: Database): MaintenanceRepository {
       return db.prepare(`
         UPDATE source_files
         SET status = 'error',
-            error_message = COALESCE(error_message, 'interrupted — server restarted during processing')
+            error_message = COALESCE(error_message, 'interrupted — the page was closed or reloaded during processing')
         WHERE status IN ('pending', 'processing')
       `).run().changes;
     },

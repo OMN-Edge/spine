@@ -3,7 +3,7 @@
 One machine, one domain, three commands. For a Raspberry Pi without Docker, see [setup.md](setup.md) and `install.sh`.
 
 ```bash
-cp .env.example .env     # set SESSION_SECRET (openssl rand -base64 48) and SPINE_DOMAIN, plus a model provider
+cp .env.example .env     # set SESSION_SECRET (openssl rand -base64 48) and SPINE_DOMAIN, plus SPINE_RELAY_URL and SPINE_RELAY_SECRET for model calls (docs/relay.md)
 docker compose up -d     # builds the images, starts the app, a daily backup and the HTTPS proxy
 docker compose exec web node dist/cli.js create-user you@example.com   # prints a password once
 ```

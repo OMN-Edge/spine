@@ -74,4 +74,9 @@ describe('what a device is given to call the relay', () => {
     expect(env).toMatchObject({ SPINE_LLM_PROVIDER: 'relay', SPINE_LLM_ENDPOINT: 'relay.example', SPINE_EMBEDDINGS: 'relay', SPINE_EMBEDDING_ENDPOINT: 'relay.example', SPINE_EMBEDDING_SPACE: 'vertex:m-1:256' });
     expect(JSON.stringify(env)).not.toContain('secret-project'); // the provider's project is the relay's business
   });
+
+  it('gives a device the daily model-call ceiling the operator set (SECURITY.md S-35)', () => {
+    const env = relayEnv({ url: 'https://relay.example', secret: SECRET }, { SPINE_LLM_DAILY_CALLS: '120' });
+    expect(env.SPINE_LLM_DAILY_CALLS).toBe('120');
+  });
 });

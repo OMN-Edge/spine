@@ -277,7 +277,7 @@ export default function UploadPages() {
           <p className="text-amber-900">
             {tx('{verb} sends the changed documents back to Review, and reading them again when you press Done {replaces} in {titles}.', {
               verb: confirm.verb,
-              replaces: <strong>{t('replaces the details you reviewed')}</strong>,
+              replaces: <strong>{t('replaces the details you reviewed and did not edit by hand')}</strong>,
               titles: confirm.titles.map((title, i) => <span key={i}>{i > 0 && ', '}“{title}”</span>),
             })}
           </p>

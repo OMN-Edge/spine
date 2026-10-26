@@ -10,7 +10,7 @@ Steps marked **untested** were written from the scripts and provider documentati
 |---|---|---|
 | Who gets accounts? | **You, from the command line**, or **anyone, by signing up** (needs email, step 5) | You |
 | Where does inference run? | Behind **the relay** (step 3), with **Anthropic** (simplest, API key) or **Vertex AI in the EU** (needs a Google Cloud project, [docs/deployment-gcp.md](deployment-gcp.md)) | Anthropic |
-| May page images leave the machine? | **No**: typed PDFs work fully; scans and handwriting are read by local OCR only and may come out poorly. **Yes, for pages that need it**: `hybrid` | No |
+| May page images leave the machine? | **No**: typed PDFs work fully; a scan has no text unless you set `SPINE_PARSER=ocr`, and handwriting then reads poorly. **Yes, for pages that need it**: `hybrid` | No |
 
 The third is the one to think about. With the default, nothing but short text excerpts (the text of each page pair, to decide boundaries, and each document's full text, to extract it) goes to the model, from the owner's device through the relay. With `hybrid`, a page image is sent only when the page has no text layer **and** local OCR could not read it confidently. If your data must stay in the EU, use Vertex at an `eu` endpoint: the Anthropic adapter has no such commitment.
 
@@ -78,7 +78,7 @@ Both lines are required (in the server's `.env`, which passes them to each devic
 
 - **Local OCR is optional.** By default `hybrid` tries Tesseract before the model. It runs in the browser (Tesseract.js) with the English and Romanian packs that ship with the web app; nothing is installed on the server. `SPINE_OCR=off` skips it and sends a page with no text layer straight to the model. `SPINE_PARSER=ocr` is OCR with no model at all: it needs neither switch, but it reads handwriting poorly.
 - **The same switch allows two other things.** Signature stamps in a PDF are read as small cropped pictures (the doctor's name, specialty and professional code), never the whole page. Photos (JPEG or PNG) are accepted at upload and read by the model; without the switch a photo is refused.
-- **The thresholds are first guesses.** After a few uploads, look at the `page routed` lines in the log and adjust (see `.env.example`).
+- **The thresholds are first guesses.** After a few uploads, look at the `page routed` lines in the browser's console and adjust (see `.env.example`).
 
 ### Backups (recommended)
 

@@ -7,7 +7,7 @@ import type { SessionData } from './session-auth.js';
 /** Deletes the sign-in rows of every account that have ended, whether or not anyone signs in again (the privacy notice says at most 14 days). */
 export async function sweepSessions(now = new Date()): Promise<number> {
   const limits = sessionLimits();
-  return getAccountsStore().maintenance.pruneSessions(new Date(now.getTime() - limits.absoluteMs).toISOString(), new Date(now.getTime() - limits.idleMs).toISOString());
+  return getAccountsStore().maintenance.pruneSessions(new Date(now.getTime() - limits.absoluteMs).toISOString(), new Date(now.getTime() - limits.idleMs).toISOString(), new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000).toISOString());
 }
 
 /**

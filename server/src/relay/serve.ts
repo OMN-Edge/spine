@@ -38,6 +38,8 @@ export function serveRelay(): void {
     return have;
   }
   clients(undefined); // a bad provider setting stops the process here and not at the first call
+  // Residency has to be observable (SECURITY.md P8, M-8): say once where the calls go. No content and no credential in it.
+  console.log(JSON.stringify({ time: new Date().toISOString(), event: 'relay ready', provider: llm.provider, model: llm.model, endpoint: llm.endpoint ?? null, region: llm.region ?? null }));
 
   // The daily count lives in the store the environment names (SPINE_STORE, DATA_DIR / SPINE_DB_PATH), chosen as the model provider is. A relay
   // with no database of its own sets SPINE_DB_PATH=:memory:, which counts in this process (run one instance); one that shares the server's

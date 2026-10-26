@@ -4,8 +4,8 @@
  * a request waiting for approval. Nothing else in the application sends mail.
  *
  * There is deliberately no attachment field and no way to add one. Mail carries a
- * recipient address and at most a link, never document text, a summary or a
- * field (SECURITY.md P8) — and omitting the capability is what keeps a medical
+ * recipient address, a link and when an account event happened, never
+ * document text, a summary or a field (SECURITY.md P8) — and omitting the capability is what keeps a medical
  * document from one day leaving by accident.
  */
 export interface MailMessage {

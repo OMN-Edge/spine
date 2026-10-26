@@ -18,7 +18,7 @@ services:
     networks:
       spine: {}
 
-  # The daily snapshot (SECURITY.md, Backups): the database and the originals, into the backups volume.
+  # The daily snapshot (SECURITY.md, Backups): the accounts database and the vault's sealed objects, into the backups volume.
   backup:
     build: .
     restart: unless-stopped

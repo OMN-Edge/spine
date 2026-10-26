@@ -9,7 +9,7 @@ import { acceptFile, acceptPhotoSet, drain, newUploadPath, saveStream, type Uplo
 
 /** A document or a photo. */
 export const MAX_FILE_BYTES = 200 * 1024 * 1024;
-/** A zip of them, which the request limit in `index.ts` must allow. */
+/** A zip of them. */
 export const MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;
 
 type Part = UploadPart;

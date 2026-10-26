@@ -52,7 +52,7 @@ export default function ReauthDialog() {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" role="dialog" aria-modal="true">
       <form onSubmit={submit} className="bg-white rounded-xl shadow-lg border border-gray-200 w-full max-w-sm p-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-2">{t('Confirm it is you')}</h2>
-        <p className="text-sm text-gray-500 mb-4">{t('Type your password again to continue. This is asked before the whole archive is taken or a link shows page images.')}</p>
+        <p className="text-sm text-gray-500 mb-4">{t('Type your password again to continue. This is asked before an account is deleted, a passkey is added or removed, or the password or recovery kit is changed.')}</p>
         <input type="password" autoFocus placeholder={t('Password')} autoComplete="current-password"
           value={password} onChange={e => setPassword(e.target.value)} className={inputClass} />
         {needsCode && (

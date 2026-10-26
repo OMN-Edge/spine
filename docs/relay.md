@@ -24,7 +24,7 @@ The Spine server needs `SPINE_RELAY_URL` (the relay's https address) and `SPINE_
 ## What it does and does not do
 
 - It checks the pass, the path (one of Spine's tasks or the embedding call), the shape of the body, that the model is one it offers, the size and the account's daily allowance; then it runs the task through its provider adapter with its own credential. A tool the device names is a declaration given to the model, never run by the relay. Nothing else of the device's goes on.
-- It **stores nothing and logs no content**: one line a call with the task, model, status, request size and time. A provider's own error text is not passed back, because it may quote what was sent.
+- It **stores nothing and logs no content**: one line a call with the task, model, status, request size and time, and once at startup a line (`relay ready`) with the provider, model, endpoint and region it will call. A provider's own error text is not passed back, because it may quote what was sent.
 - It **can see** everything that passes through it, in plaintext. Say "does not store or log content" in product text, never "cannot see". An enclave relay with attestation (Google Cloud Confidential Space) would remove that and is a later step.
 
 ## Deploying on Cloud Run

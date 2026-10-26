@@ -171,6 +171,17 @@ The hard parts are the key hierarchy, the approval-mode share handshake and the 
 | TR-AI-14 | Embeddings at reduced dimension (768) and quantized for storage |
 | TR-AI-15 | Query text sent to the relay for embedding is treated like content: no logging, no retention |
 
+**Where the code differs from these rows (checked against the code on 2026-10-26).** The rows say what must hold; these do not yet, or hold differently:
+
+- **TR-CRY-02:** the data key is one per sealed object (a segment of changes, a part of a snapshot, a file), not one per document, and there is one profile per account ([key-hierarchy.md](key-hierarchy.md)).
+- **TR-CRY-05:** a new device signs in with the master password or a passkey set up to open the vault; enrolling one from a signed-in device is not built.
+- **TR-CRY-06 and TR-CRY-07:** the key pair is made at sign-up, but delegation and key rotation on revocation are not built.
+- **TR-AI-04:** masking identifiers such as a national ID number before a call is not built; the extraction prompt tells the model not to extract them.
+- **TR-AI-11:** reading an upload resumes (confirming again reads what is still marked), but an upload interrupted by closing the page is marked failed and is started again with Try again.
+- **TR-INF-03:** account mail carries a link and, for a sign-in, a changed setting or a waiting request, the time of the event (SECURITY.md **P8**); it never carries medical content.
+- **TR-CLI-01:** the web app is not an installable PWA (no manifest or service worker).
+- **TR-CLI-02:** the strict content security policy is in place; subresource integrity and reproducible builds with published hashes are not.
+
 Model provider zero-retention setup, required before the first real user (the operator's part):
 
 - [ ] Disable data caching on the cloud project
@@ -222,7 +233,7 @@ What each feature, current and planned, must satisfy in law, with the source. GD
 | CR-GDPR-12 | A doctor who receives a share becomes a controller of what they download or copy; the terms say that revocation cannot recall what was viewed | GDPR Art. 4(7); terms | Sharing | Draft |
 | CR-GDPR-13 | Assess whether a data protection officer is required once processing is at scale | GDPR Art. 37 | Operator | Future |
 | CR-GDPR-14 | No registration or authorisation with the Romanian authority is needed; the record and the DPIA are shown on request | Law 129/2018 (repeals Law 677/2001); ANSPDCP FAQ and decision (see References) | Operator | n/a |
-| CR-EPR-01 | Storing information on a person's device: Art. 5(3) applies to any storage on the terminal, not only cookies, with no minimum duration or size (EDPB Guidelines 2/2023, points 35-38). Only what is strictly necessary for a service the person explicitly asked for is exempt, so no consent banner is needed for: the owner's sign-in cookie, and what a recipient's browser keeps for the tab (the key from the link, and the key pair made to ask to open a link, in `sessionStorage`). Information the page keeps and reads only inside the device is not a "gaining of access" (point 44). There is no other cookie or tracker; any non-essential one needs the person's consent first | ePrivacy Directive 2002/58/EC Art. 5(3); Law 506/2004 Art. 4(5) (information, and the choice to refuse) and 4(6)(b) (exempt when strictly necessary for a service the user expressly requested). A bill to change the consent rules was before Parliament in 2026: check its status | Web app | Built (none non-essential) |
+| CR-EPR-01 | Storing information on a person's device: Art. 5(3) applies to any storage on the terminal, not only cookies, with no minimum duration or size (EDPB Guidelines 2/2023, points 35-38). Only what is strictly necessary for a service the person explicitly asked for is exempt, so no consent banner is needed for: the owner's sign-in cookie, a one-year browser cookie (`HttpOnly`, a random value the server keeps only hashed) that lets the service mail the owner about a sign-in from a browser it has not seen (whether that counts as strictly necessary is for the lawyer to confirm; the privacy notice names it), and what a recipient's browser keeps for the tab (the key from the link, and the key pair made to ask to open a link, in `sessionStorage`). Information the page keeps and reads only inside the device is not a "gaining of access" (point 44). There is no other cookie or tracker; any non-essential one needs the person's consent first | ePrivacy Directive 2002/58/EC Art. 5(3); Law 506/2004 Art. 4(5) (information, and the choice to refuse) and 4(6)(b) (exempt when strictly necessary for a service the user expressly requested). A bill to change the consent rules was before Parliament in 2026: check its status | Web app | Built (none non-essential) |
 
 ### Medical device, AI and health data
 

@@ -31,6 +31,7 @@ Your records are read, searched and kept on your own device, in your browser. Th
 - [docs/self-host.md](docs/self-host.md) — `docker compose up -d` on one machine, with HTTPS
 - [docs/setup.md](docs/setup.md) — the full install guide for a Raspberry Pi
 - [docs/relay.md](docs/relay.md) — the relay that runs model calls, and how to deploy it
+- [docs/operator-checklist.md](docs/operator-checklist.md) — what the person who runs an instance must do or confirm that the software cannot check
 - [docs/requirements.md](docs/requirements.md) — what it must do (the `FR-`, `TR-` and `CR-` IDs cited around the repository)
 - [docs/testing.md](docs/testing.md) and [docs/scenarios.md](docs/scenarios.md) — every check, and what each user flow is tested by
 - [CONTRIBUTING.md](CONTRIBUTING.md) — how to contribute; the repository is canonical on GitHub, and a deployed instance redirects `/source`, `/docs` and `/security` to it (set `SPINE_REPO_URL`)
@@ -118,7 +119,7 @@ Pass `--password-stdin` to choose the password instead of generating one (12+ ch
 sudo ./install.sh -n
 ```
 
-Reads `SPINE_DOMAIN` from `.env` and, if the [nginx package](https://gitlab.com/alexcocinda/packages.git) is cloned next to this folder as `../packages/nginx`, runs its `nginx-domains.sh cert` (needs certbot installed). Any nginx works; [docs/setup.md](docs/setup.md#6-https-and-nginx) has the commands with and without that package. It then to issue the Let's Encrypt cert, installs the Spine site config, and reloads nginx.
+Reads `SPINE_DOMAIN` from `.env` and, if the [nginx package](https://gitlab.com/alexcocinda/packages.git) is cloned next to this folder as `../packages/nginx`, runs its `nginx-domains.sh cert` (needs certbot installed). Any nginx works; [docs/setup.md](docs/setup.md#6-https-and-nginx) has the commands with and without that package. It then issues the Let's Encrypt cert, installs the Spine site config, and reloads nginx.
 
 ## After code changes
 
@@ -147,7 +148,7 @@ The records themselves are in each owner's browser while it is open and in the v
 
 ## Reading handwriting
 
-This runs on the device, with the settings of the server's `.env` (the ones that name no secret are passed to it). Most documents are digital PDFs, and those need no AI: their own text is used. `SPINE_PARSER=hybrid` handles the rest per page, cheapest first: the PDF's text layer, then local OCR (Tesseract) if it is confident, and only then your LLM provider, which sees a page only if both of those fell short. It needs `SPINE_MULTIMODAL_ENABLED=true` as well — sending images is a separate decision — and Tesseract, whose English and Romanian packs ship with the web app, unless you set `SPINE_OCR=off`, which goes from the text layer straight to the model. `SPINE_PARSER=ocr` is the same without any model: nothing leaves your machine, and handwriting reads poorly. Every page logs which way it went (in the browser's console), so the thresholds in `.env.example` can be tuned on your own documents. Pages the model read are marked "Read by AI · position approximate" in the review screen.
+This runs on the device, with the settings of the server's `.env` (the ones that name no secret are passed to it). Most documents are digital PDFs, and those need no AI: their own text is used. `SPINE_PARSER=hybrid` handles the rest per page, cheapest first: the PDF's text layer, then local OCR (Tesseract) if it is confident, and only then your LLM provider, which sees a page only if both of those fell short. It needs `SPINE_MULTIMODAL_ENABLED=true` as well — sending images is a separate decision — and Tesseract, whose English and Romanian packs ship with the web app, unless you set `SPINE_OCR=off`, which goes from the text layer straight to the model. `SPINE_PARSER=ocr` is the same without any model: nothing leaves your machine, and handwriting reads poorly. Every page logs which way it went (in the browser's console), so the thresholds in `.env.example` can be tuned on your own documents. Pages the model read carry an "AI" chip whose hint says it gives the text and not where on the page it is, so nothing is highlighted.
 
 If a document still comes out wrong — handwriting, a tilted or photographed page, a scan with a poor embedded text layer — open it and use **Read again** beside Review: **Read page with AI** sends this page's image to a model, **Read whole document** reads the document's pages again the way an upload does. Each tells you where any image goes and what it replaces before it does anything.
 
@@ -168,7 +169,7 @@ The code is three npm workspaces: `core/` (what the browser's core runs, and the
 
 | Area | Files | Notes |
 |---|---|---|
-| Isolation | `isolation.test.ts` | A second user against the first user's data, every route and every repository method; every route refuses an unauthenticated request |
+| Isolation | `isolation.test.ts` | A second user against the first user's data, across the routes of its test app and the upload, document, field, tag, page, share link and result repositories; every route of that app refuses an unauthenticated request |
 | Response shape | `response-shape.test.ts` | Whole responses scanned for `user_id`, server paths, checksums, tokens |
 | Auth | `auth.test.ts` | Email login, no account enumeration, session fixation, password change, rate limits |
 | Two-factor | `totp.test.ts`, `second-factor.test.ts` | RFC 4226/6238 vectors, drift and replay, encryption at rest, the two-step login, recovery codes, guess throttling, no bypass via reset |
