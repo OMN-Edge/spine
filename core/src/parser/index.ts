@@ -3,7 +3,7 @@ import { loadParserConfig } from '../config.js';
 import { logger } from '../logger.js';
 import { parseDocument } from '../ingestion/pdf-text.js';
 import { getPageImageDimensions } from '../ingestion/image-size.js';
-import { checkOcrAvailable, ocrPage } from './ocr.js';
+import { ocrPage } from './ocr.js';
 import { createHybridParser } from './adapters/hybrid.js';
 import { createMultimodalParser } from './adapters/multimodal.js';
 import { createOcrParser } from './adapters/ocr.js';
@@ -103,16 +103,6 @@ export function getModelParser(model?: string, thinking = false): Parser {
 /** Whether the operator has allowed page images to be sent to the model at all. */
 export function aiReadingAllowed(): boolean {
   return loadParserConfig().multimodalEnabled;
-}
-
-/**
- * At startup, in `ocr`, and in `hybrid` with local OCR on: Tesseract and the configured language packs must be
- * there. A missing pack does not fail, it just scores lower and sends more pages to
- * the model, which is cost and egress with nothing to say why.
- */
-export async function checkParserRequirements(): Promise<void> {
-  const config = loadParserConfig();
-  if (config.mode === 'ocr' || (config.mode === 'hybrid' && config.ocrEnabled)) await checkOcrAvailable(config.ocrLangs);
 }
 
 /** Tests only. The model parser defaults to the same replacement unless given its own. */

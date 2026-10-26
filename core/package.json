@@ -34,7 +34,6 @@
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^20.14.0",
     "@types/pdfkit": "^0.17.7",
-    "@types/uuid": "^10.0.0",
     "@vitest/coverage-v8": "^2.0.0",
     "better-sqlite3": "^13.0.3",
     "pdfkit": "^0.20.2",

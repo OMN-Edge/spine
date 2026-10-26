@@ -12,7 +12,7 @@ Product principles:
 
 - **The operator cannot read patient data.** Servers store ciphertext only; keys never leave user devices unwrapped.
 - **Every AI call is visible and opt-in.** The user knows which content goes to which provider, and why.
-- **Organize, never interpret.** Spine retrieves, summarizes and translates what the documents say. It never judges results or suggests diagnoses.
+- **Organize, never interpret.** Spine retrieves, summarizes and translates what the documents say. It never says whether a result is good or bad or suggests diagnoses; the only mark it makes is high or low, by comparing a value with the range printed beside it on the document.
 - **The original is always one tap away.** Extracted fields and translations are aids; the source page stays the record of truth.
 - **Data is portable.** Full export in open formats at any time, and the stack is self-hostable.
 
@@ -302,5 +302,5 @@ Analyses used for dates and scope:
 
 - [x] Model credential path: a relay holds the credentials (provider tokens cannot be scoped per user)
 - [x] Model provider: one of the implemented adapters, chosen by configuration, with regional endpoints and the zero-retention setup above
-- [ ] Licence: AGPL-3.0 for everything, or a separately licensed mobile app
+- [x] Licence: AGPL-3.0-only for everything (`LICENSE`); a mobile app is not in the first release
 - [ ] Whether the relay moves into an attested confidential-computing enclave, and when

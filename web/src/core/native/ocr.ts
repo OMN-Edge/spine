@@ -37,6 +37,3 @@ export async function ocrPage(imagePath: string, pageNumber: number, langs: stri
   // tesseract.js writes the rows without the command line tool's header line, which the parser reads the columns from.
   return parseTesseractTsv(`${TSV_HEADER}\n${data.tsv ?? ''}`, pageNumber);
 }
-
-/** Nothing to install: the engine and the language data ship with the app. A missing file shows as a failed reading. */
-export async function checkOcrAvailable(): Promise<void> {}

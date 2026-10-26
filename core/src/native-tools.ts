@@ -16,7 +16,6 @@ import type { Settings } from './config.js';
 export interface NativeTools {
   rasterizePdf(sourceFileId: string, filePath: string): Promise<Array<{ page_number: number; image_path: string }>>;
   ocrPage(imagePath: string, pageNumber: number, langs: string): Promise<OcrReading>;
-  checkOcrAvailable(langs: string): Promise<void>;
   extractPdfPages(source: string, sourcePages: number[]): Promise<Buffer>;
   uprightPng(src: string, dest: string, options: UprightOptions): Promise<void>;
   uprightJpeg(src: string, options: UprightOptions): Promise<{ jpeg: Buffer; width: number; height: number; channels: number }>;
@@ -31,7 +30,7 @@ export interface NativeTools {
 
 /** Every tool, by name, so that a host's set can be checked against the list (a missing one is a feature that fails when it is first used). */
 export const NATIVE_TOOL_NAMES = [
-  'rasterizePdf', 'ocrPage', 'checkOcrAvailable', 'extractPdfPages', 'uprightPng', 'uprightJpeg', 'rotateImage',
+  'rasterizePdf', 'ocrPage', 'extractPdfPages', 'uprightPng', 'uprightJpeg', 'rotateImage',
   'readSignatures', 'readDigitalSigners', 'textToPdf', 'openZip', 'newZip', 'countryOf',
 ] as const satisfies readonly (keyof NativeTools)[];
 // A tool added to the interface and left out of the list is a compile error here.

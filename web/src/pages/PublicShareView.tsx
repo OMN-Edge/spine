@@ -211,6 +211,9 @@ function SharedContent({ shareId }: { shareId: string }) {
           {t('This link was shared for a specific consultation and expires automatically.')}
         </p>
         <p className="text-xs text-gray-400 text-center mt-2">
+          {t('Opening this link is recorded for the person who shared it: the time, the country it was opened from and which document you open. Your address is not kept.')}
+        </p>
+        <p className="text-xs text-gray-400 text-center mt-2">
           {landingUrl
             ? <a href={landingUrl} target="_blank" rel="noopener noreferrer" className="hover:underline">{t('Shared securely via Spine')}</a>
             : t('Shared securely via Spine')}

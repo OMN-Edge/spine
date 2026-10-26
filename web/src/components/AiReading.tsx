@@ -114,7 +114,7 @@ export function AiReadingBanner({ dark = false }: { dark?: boolean }) {
   return (
     <div role="status" className={`text-sm ${job.status === 'failed' ? (dark ? 'text-red-300' : 'text-red-600') : base}`}>
       {job.status === 'failed' ? (
-        <p>{t('Nothing was changed. The reading did not finish; the server log says why.')}</p>
+        <p>{t('Nothing was changed. The reading did not finish; the browser console says why.')}</p>
       ) : (
         <p>
           {tn(job.pages_read, 'Read {n} page.', 'Read {n} pages.')}{' '}

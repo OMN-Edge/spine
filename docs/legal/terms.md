@@ -4,11 +4,11 @@ These terms are between you and {{operator}} ("we"), who runs this Spine service
 
 ## What the service is
 
-Spine lets you upload your health documents, keeps them in your account, helps you organise and search them, translates them and lets you share them with people you choose. What it is for, and what it is not for, is in [What Spine is for](/purpose). It is not medical advice and not a medical service.
+Spine lets you upload your health documents, keeps them in your account encrypted so that we cannot read them, helps you organise and search them, translates them and lets you share them with people you choose. What it is for, and what it is not for, is in [What Spine is for](/purpose). It is not medical advice and not a medical service.
 
 ## Your account
 
-You are responsible for your password and for what is done with your account. Tell us at once if you think someone else has got into it. You must be at least 16, or have a parent or guardian who manages the account for you.
+You are responsible for your password, your recovery kit and for what is done with your account. Tell us at once if you think someone else has got into it. Because your records are encrypted with keys only you have, we cannot recover them if you lose both your master password and your recovery kit. You must be at least 16, or have a parent or guardian who manages the account for you.
 
 ## Your records are yours
 
@@ -20,7 +20,7 @@ Summaries, titles, extracted details, translations and answers to your questions
 
 ## Sharing
 
-A share link gives whoever has it access to what you chose to share, until it expires or you revoke it. You decide who receives it. Someone who has already viewed shared records may have copied them; revoking a link cannot undo that.
+A share link gives whoever has the whole link access to what you chose to share, until it expires or you revoke it. You decide who receives it. Someone who has already viewed shared records may have copied them; revoking a link cannot undo that.
 
 ## What you must not do
 

@@ -30,7 +30,7 @@ Status: auto (`auth`, `second-factor`, `isolation`).
 The owner asks for a reset. With a mailer they get a link by email; without one, the operator produces a one-time link.
 
 - Asking for a reset looks the same whether or not the address has an account.
-- The link works once, and carries its token in the part of the URL the server never sees.
+- The link works once, and carries its token in the part of the URL the server never sees (the fragment, which a browser does not send).
 - A new password signs out the owner's other sessions.
 - The mail has no document content and no clinical words.
 - For an account with a vault the page asks for the **recovery kit** and a new password: the kit opens the account key on the device, which is sealed again under the new password, and the records stay readable. A mistyped kit is caught by its check characters; a kit from another account does not open this one.
@@ -249,7 +249,7 @@ The owner opens a document, sees an empty text view for page 3, and asks for tha
 Status: auto (`ai-reading`, `read-page`); quality: real model.
 
 ### 3.3 The details look wrong, but the text is right
-Above the scan, a small label says how the page was read ("Extraction: Text layer", OCR, AI or Not read). Beside the Review button, a **Read again** menu has the two ways to read again, kept apart: **Read page with AI** (this page's image goes to a model, then the document's details are extracted again) and **Read whole document** (the document's pages are read again the way an upload reads them on this server, grouping kept, then its details are extracted again). Choosing one shows what it will do and a model picker, and nothing runs until it is confirmed.
+Above the scan, a small label says how the page was read ("Extraction: Text layer", OCR, AI or Not read). Beside the Review button, a **Read again** menu has the two ways to read again, kept apart: **Read page with AI** (this page's image goes to a model, then the document's details are extracted again) and **Read whole document** (the document's pages are read again the way an upload reads them here, on this device, grouping kept, then its details are extracted again). Choosing one shows what it will do and a model picker, and nothing runs until it is confirmed.
 
 - It replaces fields, measurements and doctors only if the new answer is valid; otherwise the old ones stay.
 - The document goes back to unreviewed.
@@ -490,8 +490,8 @@ The owner creates a link scoped to everything, a tag, chosen documents, or a dat
 - It expires (default 7 days, at most 30) and can be revoked at once.
 - The recipient needs no account. They get the archive's own timeline of what was shared (grouped by year, with a filter by type) and can open a document to a page like the owner's, read-only: summary, notes, tags, doctors, results and details, with the scans beside them when allowed. There is no review, reading again, export or link into the owner's other pages. A Trends tab shows the shared documents' values over time, built from those documents only: a later value in a document that was not shared appears nowhere. Page images are shown only if the owner ticked "Include scans" for that link, which is off by default because a scan shows the patient's ID number and phone, which the extracted details leave out.
 - A recipient cannot open a document or a page outside what the link covers, or one the owner hid: they get the same answer as for one that does not exist.
-- Every use is logged, and a guessed token leaves a trace.
-- The raw token appears once, when the link is created. After that only its hash is stored.
+- A link is a sealed copy named by a random id; the key that opens it is in the address after the `#`, so the server and its logs never have it, and there is no token to store or guess.
+- The server records that the link was opened, when and from which country; what the recipient reads inside the copy is not logged.
 - Opening the link in a browser shows the documents, not raw JSON.
 
 Status: auto (`share`, `public-share-scoped`, `public-share-detail`); screens: not yet checked by hand.
@@ -499,20 +499,20 @@ Status: auto (`share`, `public-share-scoped`, `public-share-detail`); screens: n
 ### 7.2 Ask me before anyone opens it
 When making a link the owner ticks **Ask me before anyone opens it**. Whoever opens the link must ask, and the owner approves or denies from their own account; only the browser they approve can read it.
 
-- The recipient opens the link and sees "Approval needed", an optional "Who are you?" line, and **Ask for access**. Asking gives that browser a private cookie (the server keeps only its hash) and sends the owner one email, which says only that someone is waiting and carries a link to the request. It names no document, label or note.
+- The recipient opens the link and sees "Approval needed", an optional "Who are you?" line, and **Ask for access**. Asking makes a key pair in that browser, kept in its session storage for as long as the tab is open, and sends the owner one email (when a mailer exists), which says only that someone is waiting and carries a link to the request. It names no document, label or note.
 - The owner opens that link (signing in first, and coming back to it), sees when and from which address the request came, with the recipient's own words marked as unverified, and presses **Approve** or **Deny**. Following the link never approves anything; only the button does. Waiting requests are also at the top of the Share links page and on the link's page; with no mailer set up that is the only place the owner is told, and creating the link says so.
-- Until approved, every part of the link answers "approval required": the list, a document, a scan, the trends, the translation and the recipient's chat. A refused try is logged but is not a view. The recipient's page waits and opens by itself when approved.
-- The approval is for that link and that browser: the same cookie opens no other link, a second browser asks on its own, and clearing the cookie means asking again. The owner can withdraw it later. At most five requests wait on a link at once, and asking is rate limited.
+- Until approved the browser has no key, so there is nothing to open: the copy on the server is sealed and the page says approval is needed. The owner's device answers an approval by wrapping the share key to that browser's key, and the recipient's page waits and opens by itself.
+- The approval is for that link and that browser: its key opens no other link, a second browser asks on its own, and closing the tab means asking again. The owner can withdraw it later. At most five requests wait on a link at once, and asking is rate limited.
 - Approving on a link that has been revoked or has expired is refused. A request that is not the owner's is "not found".
 
-Status: auto (`share-approval`, `share-manage`); screens: not yet checked by hand. Mail delivery by a real provider: real provider, untested.
+Status: auto (`shared`, `share-manage`); screens: not yet checked by hand. Mail delivery by a real provider: real provider, untested.
 
 ### 7.3 Let the recipient ask questions
 When making a link the owner ticks **Let the recipient ask questions**. The recipient's page then has an **Ask** button; they type a question and the assistant answers from the shared documents.
 
 - It answers only from the documents the link shares, and tells the recipient nothing about the rest of the archive however it is asked, including by asking it to ignore the limits. It does not know the care chain between documents, and it cannot change anything.
 - It knows the asker is a recipient and not the patient: it speaks of "the patient". The label the owner gave the link is context for it (a purpose, a name), not an instruction.
-- The answer streams and cites the shared documents, each linking to that document in the recipient's page. Nothing the recipient asks is kept on the server: closing or reloading the page clears it. Each question sends their words and parts of the shared documents, including the owner's notes on them, to the model provider, and the form says so.
+- The answer streams and cites the shared documents, each linking to that document in the recipient's page. Nothing the recipient asks is stored by Spine (the relay keeps no content): closing or reloading the page clears it. Each question sends their words and parts of the shared documents, including the owner's notes on them, to the model provider, and the form says so.
 - It is limited by the relay's daily count of model calls for the share, and off unless the owner ticked it (and `SPINE_CHAT` is not `off`).
 
 Status: auto (`share-chat`); live (`recipient-chat.it.ts`: answers from the shared document and cites it, nothing from the rest of the archive however it is asked, purpose as context, cannot change anything, streams); screens: not yet checked by hand.
@@ -522,7 +522,7 @@ Status: auto (`share-chat`); live (`recipient-chat.it.ts`: answers from the shar
 
 - **Allows:** name, how long it works (counted from now, so it extends or shortens), scans, approval, recipient questions and language. Saving takes effect at once for everyone who holds the link. Turning approval on makes everyone approved so far ask again. A revoked link cannot be changed.
 - **Shares:** the documents it resolves to today (a document since set aside is not listed). **Choose documents** replaces the scope with a picked list, checked as when a link is made.
-- **Read by:** how many times and when, the addresses with counts, and the latest reads. The addresses are what the visitor's connection showed and prove nothing.
+- **Read by:** how many times and when, the countries the opens came from, and the latest opens. A country is a guess from the visitor's address and proves nothing. These are collected from the server by the owner's device, so they appear when it is open.
 - **Asked to open it:** each request with Approve, Deny, or Withdraw access.
 - **History:** created, each change with what it was and is (a scope change counts documents, never lists them), revoked, approved, denied.
 
@@ -561,7 +561,7 @@ The owner signs in on a second device with the master password (or a passkey) an
 Status: auto (`changes`, `ids`; web `persist`, `boot`); in real browsers: `check:app` (two contexts on one account, each removes a different tag, both end with both removals); a wrong clock and a failing network: not tried.
 
 ### 8.3 Quotas that outlive a process
-The relay's daily count for each user, and the instance's daily model-call budget, are kept in the store's `usage` repository (`Store.usage.spend`, atomic), not in memory: the count survives a restart and is shared by every process that uses the same store.
+The relay's daily count for each user (and for each share) is kept in the store's `usage` repository (`usage.spend`, atomic), not in memory: the count survives a restart and is shared by every process that uses the same store. The instance's own daily model-call budget (`SPINE_LLM_DAILY_CALLS`) is counted on each device, in that device's store.
 
 - A user past the limit is refused with 429 before the call reaches the provider; the next day starts again.
 - With `SPINE_DB_PATH=:memory:` (the relay image's default) the count is per process; a networked store adapter does not exist yet.
@@ -584,23 +584,22 @@ Status: auto (`config`, `legacy-database`); a full install on a fresh machine: n
 The operator creates and looks after accounts without a mail provider.
 
 - `create-user` makes an account and prints a generated password once; it is never stored. A password can be given on standard input instead, and a short one is refused. A duplicate email (in any case) or something that is not an email is refused.
-- `set-password` changes it and ends that person's sessions; `reset-link` prints a one-time link that works without a mailer; `disable-2fa` turns off a lost second factor and ends their sessions.
-- `delete-user` shows what it would remove and only does it with `--yes`; it removes the person's records, page images, originals and the backup copy of their originals, and nobody else's.
+- `set-password` changes the password of an account that has no vault and ends that person's sessions (for an account with a vault it refuses: the password is chosen on the person's device); `reset-link` prints a one-time link that works without a mailer; `disable-2fa` turns off a lost second factor and ends their sessions.
+- `delete-user` shows what it would remove and only does it with `--yes`; it removes the person's account, their sealed vault objects and shares and the backup's copy of their vault, and nobody else's.
 - `list-users` lists accounts and never prints any password material.
 
 Status: auto (`cli`, `accounts`, `isolation`).
 
 ### 9.3 Back up and restore
-- A daily snapshot of the database and a copy of the original files are made; the snapshot is never a plain file copy of a live database.
-- A restore from the snapshot brings back every record.
-- Page images are not backed up; they can be made again from the originals.
+- A daily snapshot of the accounts database and a copy of the sealed vault objects are made; the snapshot is never a plain file copy of a live database. Shares are not backed up on purpose.
+- A restore from the snapshot and the vault copy brings back every account and its sealed records, which open only with the owner's master password or recovery kit.
 
 Status: auto for making the snapshot (`backup`); a restore to a blank machine: not yet rehearsed.
 
 ### 9.5 Take a copy of everything, or of one document
 - **Export one document** (Export, bottom left of its page): a zip with only that document's pages (cut out of the file it was scanned with, so the others do not come along; pages the owner hid are left out) and a manifest of what was read from it.
 - **Export everything** (Upload page): every finished upload as it is, with grouping, hidden pages, details, results, doctors, tags, notes and what was reviewed.
-- Neither holds share links (a link is access someone was given, and its token is not kept), translations (they are made again), the owner's id, server paths or page images.
+- Neither holds share links (a link is access someone was given, and its key is not kept), translations (they are made again), the owner's id, server paths or page images.
 - Restoring is 2.2b; the same zip restored twice adds nothing the second time.
 - It is the owner's own data on their own session; another account cannot export it (404).
 

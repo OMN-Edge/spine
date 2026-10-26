@@ -8,7 +8,7 @@ import { OWNER_ID } from './helpers/seed.js';
 import { getStore } from 'spine-core/store/index.js';
 import { runBackup } from '../backup.js';
 
-/** P11: spine.db and data/originals/ must be restorable. */
+/** P11: spine.db and data/vault/ must be restorable. */
 
 let app: Awaited<ReturnType<typeof buildTestApp>>;
 let dataDir: string;
@@ -21,12 +21,6 @@ beforeEach(() => {
   dataDir = mkdtempSync(path.join(tmpdir(), 'spine-data-'));
   backupDir = mkdtempSync(path.join(tmpdir(), 'spine-backup-'));
 });
-
-function seedOriginal(year: string, name: string, body: string) {
-  const dir = path.join(dataDir, 'originals', year);
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(path.join(dir, name), body);
-}
 
 function snapshots(): string[] {
   return readdirSync(backupDir).filter(f => f.startsWith('spine-') && f.endsWith('.db')).sort();
@@ -48,44 +42,6 @@ describe('runBackup — database snapshot', () => {
     } finally {
       restored.close();
     }
-  });
-
-  it('does not copy data/pages — it is regenerable', async () => {
-    mkdirSync(path.join(dataDir, 'pages', 'sf-1'), { recursive: true });
-    writeFileSync(path.join(dataDir, 'pages', 'sf-1', 'page-1.png'), 'png');
-
-    await runBackup({ dataDir, backupDir, keep: 7 });
-
-    expect(existsSync(path.join(backupDir, 'pages'))).toBe(false);
-  });
-});
-
-describe('runBackup — originals mirror', () => {
-  it('mirrors originals preserving their layout', async () => {
-    seedOriginal('2026', 'a.pdf', 'aaa');
-    seedOriginal('2025', 'b.pdf', 'bb');
-
-    const result = await runBackup({ dataDir, backupDir, keep: 7 });
-
-    expect(result.originalsCopied).toBe(2);
-    expect(existsSync(path.join(backupDir, 'originals', '2026', 'a.pdf'))).toBe(true);
-    expect(existsSync(path.join(backupDir, 'originals', '2025', 'b.pdf'))).toBe(true);
-  });
-
-  it('copies only what is new on a second run', async () => {
-    seedOriginal('2026', 'a.pdf', 'aaa');
-    expect((await runBackup({ dataDir, backupDir, keep: 7 })).originalsCopied).toBe(1);
-
-    expect((await runBackup({ dataDir, backupDir, keep: 7 })).originalsCopied).toBe(0);
-
-    seedOriginal('2026', 'c.pdf', 'cccc');
-    expect((await runBackup({ dataDir, backupDir, keep: 7 })).originalsCopied).toBe(1);
-  });
-
-  it('works when there are no originals yet', async () => {
-    const result = await runBackup({ dataDir, backupDir, keep: 7 });
-    expect(result.originalsCopied).toBe(0);
-    expect(existsSync(result.snapshot)).toBe(true);
   });
 });
 

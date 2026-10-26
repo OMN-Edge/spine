@@ -1,11 +1,10 @@
 import { execFile } from 'child_process';
 import path from 'path';
 import { promisify } from 'util';
-import { ParserConfigError } from 'spine-core/parser/types.js';
 
 const execFileAsync = promisify(execFile);
 
-import { missingLanguages, parseTesseractTsv, type OcrReading } from 'spine-core/parser/ocr-reading.js';
+import { parseTesseractTsv, type OcrReading } from 'spine-core/parser/ocr-reading.js';
 
 export * from 'spine-core/parser/ocr-reading.js';
 
@@ -23,22 +22,4 @@ export async function ocrPage(imagePath: string, pageNumber: number, langs: stri
     { cwd: path.dirname(imagePath), maxBuffer: 64 * 1024 * 1024 },
   );
   return parseTesseractTsv(stdout, pageNumber);
-}
-
-export async function checkOcrAvailable(langs: string): Promise<void> {
-  let output: string;
-  try {
-    const { stdout, stderr } = await execFileAsync('tesseract', ['--list-langs']);
-    // Older builds print the list on stderr.
-    output = `${stdout}\n${stderr}`;
-  } catch {
-    throw new ParserConfigError('tesseract is not installed, and the configured parser needs it (apt install tesseract-ocr), or set SPINE_PARSER=text, or SPINE_OCR=off with hybrid');
-  }
-  const missing = missingLanguages(output, langs);
-  if (missing.length > 0) {
-    throw new ParserConfigError(
-      `tesseract is missing the language pack(s): ${missing.join(', ')} ` +
-        `(SPINE_OCR_LANGS=${langs}). Install them, e.g. apt install ${missing.map(l => `tesseract-ocr-${l}`).join(' ')}`,
-    );
-  }
 }

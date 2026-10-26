@@ -1,17 +1,17 @@
 # The relay for model calls
 
-A device (the browser) reads documents itself, so it is the one that sends text and page images to the model. It cannot hold Spine's provider credential, so it sends those calls to a small service, the relay, which holds the credential and runs them through the provider adapter you configured (Vertex or Anthropic; a new provider is one adapter file in `core/src/llm/adapters/`). The device speaks a neutral protocol (`core/src/relay/protocol.ts`): a task name and messages in, a parsed result, a message or a stream of chunks out, and texts to vectors for embeddings. This page says what the relay does and does not do, how to deploy it, and what the operator must still do in the cloud console. The security entry is [SECURITY.md](../SECURITY.md) **M-35**.
+A device (the browser) reads documents itself, so it is the one that sends text and page images to the model. It cannot hold Spine's provider credential, so it sends those calls to a small service, the relay, which holds the credential and runs them through the provider adapter you configured (Vertex or Anthropic; a new provider is one adapter file in `server/src/llm/adapters/`). The device speaks a neutral protocol (`core/src/relay/protocol.ts`): a task name and messages in, a parsed result, a message or a stream of chunks out, and texts to vectors for embeddings. This page says what the relay does and does not do, how to deploy it, and what the operator must still do in the cloud console. The security entry is [SECURITY.md](../SECURITY.md) **M-35**.
 
 ## What it is
 
-`server/src/relay/` in this repository, started with `node dist/relay/main.js` (`relay.Dockerfile`). It is configured by the environment only, with the same values the Spine server reads for its own model calls, so one set describes both:
+`server/src/relay/` in this repository, started with `node dist/relay/main.js` (`relay.Dockerfile`). It is configured by the environment only. The Spine server reads some of the same names (to tell devices which models are offered and whether features are on) but calls no model itself:
 
 | Variable | What it is |
 | --- | --- |
 | `SPINE_RELAY_SECRET` | At least 32 random characters, the same on the relay and on the Spine server. Signs the passes the server gives devices. |
 | `SPINE_LLM_PROVIDER` | `vertex` or `anthropic`: the provider the relay calls, with that adapter's own settings (`ANTHROPIC_API_KEY`, or the Vertex ones below). Not `relay`. |
 | `SPINE_LLM_ENDPOINT`, `SPINE_LLM_REGION`, `SPINE_LLM_PROJECT` | For Vertex: stated, never defaulted; residency is a property of the endpoint (e.g. `aiplatform.eu.rep.googleapis.com`, `eu`). |
-| `SPINE_LLM_MODEL`, `SPINE_LLM_MODELS` | The models that may be called; each may have its own region. Anything else is refused. |
+| `SPINE_LLM_MODEL`, `SPINE_LLM_MODELS` | The models that may be called (`id` or `id=Label`; `id|region=Label` for a model that is served in another region). Anything else is refused. |
 | `SPINE_EMBEDDINGS=vertex`, `SPINE_EMBEDDING_MODEL`, `_REGION`, `_PROJECT`, `_ENDPOINT` | The embedding model, if used: the relay's embedder, whichever adapter that is. |
 | `SPINE_RELAY_ORIGIN` | The address the app is served from (`https://spine.example`), the only origin the browser may call the relay from. |
 | `SPINE_RELAY_DAILY_CALLS` | Calls one account may make a day (default 500). Counted in the store (next row). |
@@ -35,7 +35,7 @@ gcloud run deploy spine-relay \
   --service-account spine-relay@PROJECT.iam.gserviceaccount.com \
   --max-instances 1 --min-instances 0 --concurrency 20 --timeout 300 \
   --allow-unauthenticated \
-  --set-env-vars SPINE_LLM_PROVIDER=vertex,SPINE_LLM_ENDPOINT=aiplatform.eu.rep.googleapis.com,SPINE_LLM_REGION=eu,SPINE_LLM_PROJECT=PROJECT,SPINE_LLM_MODEL=gemini-3.5-flash,SPINE_RELAY_ORIGIN=https://spine.example \
+  --set-env-vars SPINE_LLM_PROVIDER=vertex,SPINE_LLM_ENDPOINT=aiplatform.eu.rep.googleapis.com,SPINE_LLM_REGION=eu,SPINE_LLM_PROJECT=PROJECT,SPINE_LLM_MODEL=gemini-3.8-flash,SPINE_RELAY_ORIGIN=https://spine.example \
   --set-secrets SPINE_RELAY_SECRET=spine-relay-secret:latest
 ```
 

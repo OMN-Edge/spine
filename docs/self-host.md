@@ -15,8 +15,8 @@ Point the domain's DNS at the machine and keep ports 80 and 443 open: the proxy 
 | Service | What it is | Reachable from |
 | --- | --- | --- |
 | `proxy` | Caddy: TLS, the security headers of `nginx/spine.conf`, no-store on `/share/` | the internet, ports 80 and 443 |
-| `web` | The server and the built web app (`Dockerfile`), with poppler and Tesseract | the proxy only |
-| `backup` | `backup.js` once a day: a database snapshot and a mirror of the originals | nothing |
+| `web` | The server and the built web app (`Dockerfile`): accounts, the sealed vault, shares. No parser or OCR: the browser does that | the proxy only |
+| `backup` | `backup.js` once a day: a database snapshot and a mirror of the sealed vault | nothing |
 
 Data lives in Docker volumes: `data` (the database and the files), `backups`, `caddy-data` (certificates). `docker compose down` keeps them; `docker compose down -v` deletes them, records included.
 

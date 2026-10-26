@@ -1,18 +1,15 @@
 import type { FastifyInstance } from 'fastify';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import {
-  checkPasswordPolicy,
-  hashPassword,
   MAX_PASSWORD_LENGTH,
   normaliseEmail,
   verifyAgainstDummy,
   verifyPassword,
 } from '../passwords.js';
-import { requireAuth } from 'spine-core/routes/middleware.js';
 import { authenticate, type SessionData } from '../session-auth.js';
 import { windowLimiter } from '../rate-limit.js';
-import { startSession, endOtherSessions } from '../sessions.js';
-import { mailAfter, newSignInMail, securityChangeMail } from '../notify.js';
+import { startSession } from '../sessions.js';
+import { mailAfter, newSignInMail } from '../notify.js';
 import { checkSecondFactor, hasSecondFactor } from '../second-factor.js';
 import { consentNeeded } from '../legal.js';
 
@@ -217,36 +214,5 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions = 
       consent_needed: consentNeeded(user),
     });
   });
-
-  // P13: changing the password ends the user's other sessions. Their sessions
-  // carry the old auth_version and are refused on the next request; this one is
-  // moved to the new value so it stays signed in.
-  app.post<{ Body: { current?: string; next?: string } }>(
-    '/api/auth/password',
-    { preHandler: [requireAuth, app.rateLimit(perSource)] },
-    async (req, reply) => {
-      const { current, next } = req.body ?? {};
-      if (typeof current !== 'string' || typeof next !== 'string') {
-        return reply.status(400).send({ error: 'current and next password required' });
-      }
-
-      const problem = checkPasswordPolicy(next);
-      if (problem) return reply.status(400).send({ error: problem });
-
-      const store = getAccountsStore();
-      const user = await store.users.findById(req.userId);
-      if (!user || !(await verifyPassword(user.password_hash, current))) {
-        req.log.warn({ ip: req.ip, userId: req.userId }, 'password change with wrong current password');
-        return reply.status(401).send({ error: 'current password is incorrect' });
-      }
-
-      const authVersion = await store.users.setPassword(user.id, await hashPassword(next));
-      (req.session as SessionData).authVersion = authVersion;
-      await endOtherSessions(user.id, req.session as SessionData);
-      mailAfter(req, user.id, securityChangeMail(user.email, 'Your password was changed', new Date().toISOString()), 'password change');
-
-      req.log.info({ userId: user.id }, 'password changed');
-      return reply.send({ ok: true });
-    },
-  );
 }
+

@@ -196,11 +196,11 @@ export default function ShareLinkDetail() {
               {tn(link.view_count, 'Opened {n} time', 'Opened {n} times')} · {t('first {date}', { date: when(access.first_at!) })} · {t('last {date}', { date: when(access.last_at!) })}
             </p>
             <table className="w-full text-xs mb-3">
-              <thead><tr className="text-left text-gray-500"><th className="font-medium py-1">{t('Address')}</th><th className="font-medium py-1">{t('Country')}</th><th className="font-medium py-1">{t('Reads')}</th><th className="font-medium py-1">{t('Last')}</th></tr></thead>
-              <tbody>{access.addresses.map(a => <tr key={a.ip_address ?? 'none'} className="border-t border-gray-100"><td className="py-1">{a.ip_address ?? t('unknown')}</td><td>{countryName(a.country, lang) ?? t('unknown')}</td><td>{a.count}</td><td>{when(a.last_at)}</td></tr>)}</tbody>
+              <thead><tr className="text-left text-gray-500"><th className="font-medium py-1">{t('Country')}</th><th className="font-medium py-1">{t('Reads')}</th><th className="font-medium py-1">{t('Last')}</th></tr></thead>
+              <tbody>{access.addresses.map(a => <tr key={a.country ?? 'none'} className="border-t border-gray-100"><td className="py-1">{countryName(a.country, lang) ?? t('unknown')}</td><td>{a.count}</td><td>{when(a.last_at)}</td></tr>)}</tbody>
             </table>
             <button type="button" onClick={() => setShowReads(s => !s)} className="text-xs text-blue-600 hover:underline">{showReads ? t('Hide the latest reads') : t('Show the latest reads')}</button>
-            {showReads && <ul className="mt-2 space-y-0.5 text-xs text-gray-600">{access.recent.map((r, i) => <li key={i}>{when(r.accessed_at)} · {r.ip_address ?? t('unknown')} · {countryName(r.country, lang) ?? t('unknown')} · {r.document_id ? t('opened {title}', { title: documents.find(d => d.id === r.document_id)?.title || t('a document') }) : t('read the list')}</li>)}</ul>}
+            {showReads && <ul className="mt-2 space-y-0.5 text-xs text-gray-600">{access.recent.map((r, i) => <li key={i}>{when(r.accessed_at)} · {countryName(r.country, lang) ?? t('unknown')} · {r.document_id ? t('opened {title}', { title: documents.find(d => d.id === r.document_id)?.title || t('a document') }) : t('read the list')}</li>)}</ul>}
             <p className="mt-3 text-xs text-gray-500">{t('Addresses are what the visitor’s connection showed, and the country is worked out from the address. They do not prove who it was.')}</p>
           </>
         )}

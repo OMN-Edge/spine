@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { api, type ShareRequest } from '../api';
 import { useI18n } from '../i18n';
+import { countryName } from '../i18n/useTranslation';
 
 /**
- * One browser asking to open a share link, with the buttons that decide it. `note`, the address and the browser name
- * are the visitor's own words: shown as text, and the owner is told so, since anyone holding the link can write them.
+ * One browser asking to open a share link, with the buttons that decide it. The device keeps the country the server worked out in `ip_address`
+ * (the address itself is never kept) and the visitor's `note`, which is their own words: shown as text, and the owner is told so.
  */
 export default function ShareRequestCard({ request, onDecided }: { request: ShareRequest; onDecided: (r: ShareRequest) => void }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -29,11 +30,10 @@ export default function ShareRequestCard({ request, onDecided }: { request: Shar
       <p className="text-sm font-medium text-gray-900">{request.link_label ?? t('A share link')}</p>
       <dl className="mt-2 text-xs text-gray-600 space-y-1">
         <div><dt className="inline text-gray-500">{t('Asked')}: </dt><dd className="inline">{new Date(request.requested_at).toLocaleString()}</dd></div>
-        {request.ip_address && <div><dt className="inline text-gray-500">{t('From address')}: </dt><dd className="inline">{request.ip_address}</dd></div>}
-        {request.user_agent && <div><dt className="inline text-gray-500">{t('Browser')}: </dt><dd className="inline break-words">{request.user_agent}</dd></div>}
+        {request.ip_address && <div><dt className="inline text-gray-500">{t('Country')}: </dt><dd className="inline">{countryName(request.ip_address, lang) ?? request.ip_address}</dd></div>}
         {request.note && <div><dt className="inline text-gray-500">{t('Their note')}: </dt><dd className="inline break-words">{request.note}</dd></div>}
       </dl>
-      <p className="text-xs text-gray-500 mt-2">{t('The address, browser and note are written by whoever opened the link. They do not prove who it is.')}</p>
+      <p className="text-xs text-gray-500 mt-2">{t('The country is worked out from the visitor\'s address and the note is written by them. Neither proves who it is.')}</p>
 
       {request.status === 'pending' ? (
         <div className="flex gap-2 mt-3">

@@ -106,62 +106,6 @@ describe('POST /api/auth/logout', () => {
   });
 });
 
-/** P13: changing a password ends the user's other sessions. */
-describe('POST /api/auth/password', () => {
-  const change = (cookie: string, current: string, next: string) =>
-    app.inject({
-      method: 'POST', url: '/api/auth/password',
-      headers: { cookie }, payload: { current, next },
-    });
-
-  it('requires a session', async () => {
-    const res = await app.inject({
-      method: 'POST', url: '/api/auth/password', payload: { current: 'a', next: 'b' },
-    });
-    expect(res.statusCode).toBe(401);
-  });
-
-  it('refuses the wrong current password and changes nothing', async () => {
-    const user = await createTestUser('wrong-current@spine.test');
-    const cookie = await loginAs(app, user.email);
-
-    expect((await change(cookie, 'not-the-password!!', 'a-brand-new-password')).statusCode).toBe(401);
-    expect((await login(user.email, user.password)).statusCode).toBe(200);
-  });
-
-  it('refuses a new password that is too short', async () => {
-    const user = await createTestUser('short-new@spine.test');
-    const cookie = await loginAs(app, user.email);
-
-    const res = await change(cookie, user.password, 'short');
-    expect(res.statusCode).toBe(400);
-    expect(res.json().error).toMatch(/at least 12/);
-  });
-
-  it('ends other sessions, keeps this one, and swaps which password works', async () => {
-    const user = await createTestUser('rotate@spine.test');
-    const here = await loginAs(app, user.email);
-    const elsewhere = await loginAs(app, user.email);
-    expect((await me(elsewhere)).statusCode).toBe(200);
-
-    const res = await change(here, user.password, 'a-brand-new-password');
-    expect(res.statusCode).toBe(200);
-
-    expect((await me(elsewhere)).statusCode).toBe(401);
-    expect((await me(here)).statusCode).toBe(200);
-    expect((await login(user.email, user.password)).statusCode).toBe(401);
-    expect((await login(user.email, 'a-brand-new-password')).statusCode).toBe(200);
-  });
-
-  it('does not store the password, only an argon2id hash', async () => {
-    const user = await createTestUser('hashed@spine.test');
-    const stored = await getAccountsStore().users.findByEmail(user.email);
-
-    expect(stored!.password_hash).toMatch(/^\$argon2id\$/);
-    expect(stored!.password_hash).not.toContain(user.password);
-  });
-});
-
 /**
  * P5 / S-2: these drive the real limiters through the real handler, with a small
  * max rather than a mock.

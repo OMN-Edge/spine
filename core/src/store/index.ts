@@ -68,7 +68,4 @@ export function resetStore(replacement: AccountsStore | null = null): void {
   _store = replacement;
 }
 
-/** The environment's settings for a store, for whoever opens one. */
-export const storeConfigFromEnv = (): StoreConfig => loadStoreConfig();
-
 export * from './types.js';

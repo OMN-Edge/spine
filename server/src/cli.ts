@@ -23,7 +23,6 @@ import {
  *   npm run cli -- delete-user <email> [--yes]
  *   npm run cli -- list-users
  *   npm run cli -- check-embeddings
- *   npm run cli -- embed-all <email>
  *
  * Without --password-stdin a password is generated and printed once. It is never
  * stored anywhere readable and cannot be shown again.
@@ -43,8 +42,7 @@ const USAGE = `usage:
   disable-2fa <email>
   delete-user <email> [--yes]
   list-users
-  check-embeddings
-  embed-all <email>`;
+  check-embeddings`;
 
 async function choosePassword(flags: string[], io: CliIo): Promise<{ password: string; generated: boolean }> {
   if (flags.includes('--password-stdin')) {
@@ -225,17 +223,6 @@ export async function runCli(args: string[], io: CliIo): Promise<number> {
         }
         return 1;
       }
-    }
-
-    // Makes the vectors for one account's documents now, instead of in the background after the next change.
-    case 'embed-all': {
-      const user = await store.users.findByEmail(normaliseEmail(positional[0] ?? ''));
-      if (!user) { io.err('no such account'); return 1; }
-      const { similarityEnabled, syncEmbeddings } = await import('spine-core/similarity/index.js');
-      if (!similarityEnabled()) { io.err('embeddings are off (SPINE_EMBEDDINGS is none)'); return 1; }
-      const { embedded } = await syncEmbeddings(user.id);
-      io.out(`embedded ${embedded} document${embedded === 1 ? '' : 's'}`);
-      return 0;
     }
 
     default:

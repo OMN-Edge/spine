@@ -19,6 +19,10 @@ export function maintenanceRepository(db: Database): MaintenanceRepository {
       db.exec(`VACUUM INTO '${destination.replace(/'/g, "''")}'`);
     },
 
+    async pruneSessions(startedBefore, idleSince) {
+      return db.prepare('DELETE FROM user_sessions WHERE created_at < ? OR last_seen_at < ?').run(startedBefore, idleSince).changes;
+    },
+
     async failStalledSourceFiles() {
       // Prepared here and not when the repository is built: the server's database has no `source_files` (SECURITY.md M-37), and only the
       // device's core, which has, asks for this.

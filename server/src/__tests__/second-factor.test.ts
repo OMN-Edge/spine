@@ -4,6 +4,7 @@ import { createTestUser, OWNER_EMAIL, OWNER_ID, TEST_PASSWORD } from './helpers/
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { issueUserToken } from '../accounts.js';
 import { checkSecondFactor } from '../second-factor.js';
+import { hashPassword } from '../passwords.js';
 import { base32Decode, hotp, stepAt } from '../totp.js';
 
 /**
@@ -276,12 +277,11 @@ describe('signing in with it on', () => {
   });
 
   it('a password change between the steps voids the pending login', async () => {
-    const { secret, cookie: session } = await enrol();
+    const { secret } = await enrol();
     advanceSteps(1);
     const { cookie: pending } = await passwordStep();
 
-    const change = await post('/api/auth/password', { current: TEST_PASSWORD, next: 'a-brand-new-password-1' }, session);
-    expect(change.statusCode).toBe(200);
+    await getAccountsStore().users.setPassword(OWNER_ID, await hashPassword('a-brand-new-password-1'));
 
     const res = await post('/api/auth/login/second-factor', { code: codeFor(secret) }, pending);
     expect(res.statusCode).toBe(401);

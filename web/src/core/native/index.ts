@@ -1,5 +1,5 @@
 import type { NativeTools } from 'spine-core/native-tools';
-import { checkOcrAvailable, ocrPage } from './ocr';
+import { ocrPage } from './ocr';
 import { countryOf } from './geo';
 import { rotateImage, uprightJpeg, uprightPng } from './image-ops';
 import { extractPdfPages } from './pdf-pages';
@@ -15,7 +15,7 @@ import { newZip } from './zip-write';
  * tests register the Node ones (`server/src/native/index.ts`); both are checked against the list in `core/src/native-tools.ts`.
  */
 export const browserTools: NativeTools = {
-  rasterizePdf, ocrPage, checkOcrAvailable, extractPdfPages, uprightPng, uprightJpeg, rotateImage, readSignatures, readDigitalSigners, textToPdf,
+  rasterizePdf, ocrPage, extractPdfPages, uprightPng, uprightJpeg, rotateImage, readSignatures, readDigitalSigners, textToPdf,
   openZip: (filePath, maxEntries) => BrowserZipReader.open(filePath, maxEntries),
   newZip, countryOf,
 };

@@ -1,4 +1,4 @@
-# The Spine server and the built web app. PDF text is read in-process (pdfjs-dist); there is no second service.
+# The Spine server and the built web app. It holds accounts, the sealed vault and shares; records are read and kept on the device.
 # Pinned by digest (the multi-architecture index, 2026-10-25), so a rebuild is the same Node and the same Debian. To move it: read the new digest of
 # node:22-bookworm-slim from the registry (Docker-Content-Digest of its index), put it here, build both images, and run the checks.
 FROM node:22-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d AS build
@@ -21,12 +21,8 @@ RUN npm run smoke -w spine-server
 RUN rm -rf node_modules && npm ci --omit=dev --workspace spine-server
 
 FROM node:22-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d
-# poppler: rasterizing and trimming PDFs. tesseract: local OCR (SPINE_PARSER=ocr or hybrid); add a language pack here
-# and to SPINE_OCR_LANGS if you need one.
-RUN apt-get update \
- && apt-get install -y --no-install-recommends poppler-utils tesseract-ocr tesseract-ocr-eng tesseract-ocr-ron \
- && rm -rf /var/lib/apt/lists/* \
- && mkdir /data /backups && chown node:node /data /backups
+# The server parses and renders nothing (the device's core does, in the browser), so there is no poppler or Tesseract here: they exist only for the tests that run the whole app on Node.
+RUN mkdir /data /backups && chown node:node /data /backups
 WORKDIR /app
 COPY --from=build /app/node_modules node_modules
 COPY --from=build /app/core/package.json core/

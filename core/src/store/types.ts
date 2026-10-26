@@ -1125,6 +1125,8 @@ export interface MaintenanceRepository {
   snapshotTo(destination: string): Promise<void>;
   /** Startup: nothing can still be in flight, the registry is in-memory. */
   failStalledSourceFiles(): Promise<number>;
+  /** Every account's sign-in rows (browser, address) started before the first cutoff or idle since the second, so one that is never signed in again does not keep them (privacy notice). */
+  pruneSessions(startedBefore: string, idleSince: string): Promise<number>;
 }
 
 export interface StoreConfig {

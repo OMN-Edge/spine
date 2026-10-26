@@ -64,6 +64,19 @@ describe('the core, saving to and loading from the vault', () => {
     second.lock();
   });
 
+  it('marks an upload that was left reading as failed when the core starts again, so it does not wait for ever', async () => {
+    const { store } = vault();
+    const first = await startCore({ objects: store, profileId: 'profile-aaaaaaaa' });
+    const upload = await seedSourceFile({ userId: 'device', status: 'processing' });
+    await first.flush();
+    first.lock();
+
+    const second = await startCore({ objects: store, profileId: 'profile-aaaaaaaa' });
+    const row = (await second.inject({ method: 'GET', url: `/api/source-files/${upload}` })).json<{ status: string }>();
+    expect(row.status).toBe('error');
+    second.lock();
+  });
+
   it('gives a new vault the starter tags once, and a tag the person deleted does not come back', async () => {
     const { store } = vault('profile-cccccccc');
     const first = await startCore({ objects: store, profileId: 'profile-cccccccc' });

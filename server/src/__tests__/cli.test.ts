@@ -237,14 +237,14 @@ describe('delete-user', () => {
   }
 
   function filesFor(userId: string, sourceFileId: string) {
-    const original = path.join(dataDir, 'originals', userId, '2026');
+    const original = path.join(dataDir, 'vault', userId);
     const page = path.join(dataDir, 'pages', sourceFileId);
-    const mirrored = path.join(backupDir, 'originals', userId, '2026');
+    const mirrored = path.join(backupDir, 'vault', userId);
     for (const dir of [original, page, mirrored]) {
       mkdirSync(dir, { recursive: true });
       writeFileSync(path.join(dir, 'f'), 'x');
     }
-    return { original: path.dirname(original), page, mirrored: path.dirname(mirrored) };
+    return { original, page, mirrored };
   }
 
   it('shows what it would remove and does nothing without --yes', async () => {

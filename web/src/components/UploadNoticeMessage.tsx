@@ -100,7 +100,7 @@ function CheckPages({ uploadId }: { uploadId: string }) {
       {state === 'started' ? <p className="mt-1.5 text-gray-600" role="status">{t('Checking. I will tell you here when the suggestions are ready; nothing is changed until you confirm.')}</p> : (
         <>
           <button type="button" disabled={state === 'starting'} onClick={() => void start()} className="mt-1.5 rounded-lg bg-blue-600 px-3 py-1.5 font-medium text-white hover:bg-blue-700 disabled:opacity-50">{state === 'starting' ? t('Starting…') : t('Check the pages with AI')}</button>
-          <p className="mt-1.5 text-gray-500">{t('The pages are compared on this server, then the AI model checks each group. The text of the pages goes to the model provider, as it did when they were read.')}</p>
+          <p className="mt-1.5 text-gray-500">{t('The pages are compared on this device, then the AI model checks each group. The text of the pages goes to the model provider, as it did when they were read.')}</p>
           {state === 'failed' && <p className="mt-1 text-red-600" role="alert">{t('Could not start the check.')}</p>}
         </>
       )}

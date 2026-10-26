@@ -3,7 +3,7 @@ import { removeShare } from './shared-files.js';
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { publicUrl, resolveBackupDir, resolveDataDir } from 'spine-core/config.js';
+import { publicUrl, resolveBackupDir } from 'spine-core/config.js';
 import { type UserTokenKind, getAccountsStore } from 'spine-core/store/index.js';
 import { createUserToken, hashUserToken } from './user-tokens.js';
 import type { MailMessage } from './mail/index.js';
@@ -106,24 +106,17 @@ export async function describeAccount(userId: string): Promise<DeletedAccount> {
 }
 
 /**
- * Remove an account, its rows and its files, including the copy of its originals in
- * the backup mirror, which is forward-only and would otherwise keep them for good.
- * Database snapshots already taken still contain the rows until retention prunes
+ * Remove an account, its rows and its files, including the backup mirror's copy of its
+ * vault, which would otherwise keep them for good. Database snapshots already taken still contain the rows until retention prunes
  * them (7 by default).
  *
  * Files first: if the process dies halfway, the account still exists and the
- * command can be run again, whereas rows deleted first would leave originals
+ * command can be run again, whereas rows deleted first would leave sealed files
  * nothing refers to.
  */
 export async function deleteAccount(userId: string): Promise<DeletedAccount> {
   const store = getAccountsStore();
   const summary = await describeAccount(userId);
-  const dataDir = resolveDataDir();
-
-  // Files an earlier build wrote in plaintext, if this data directory has any (the server writes none now, SECURITY.md M-37).
-  fs.rmSync(path.join(dataDir, 'originals', userId), { recursive: true, force: true });
-  fs.rmSync(path.join(resolveBackupDir(), 'originals', userId), { recursive: true, force: true });
-
   // The sealed vault: the live copy and the backup's, so no ciphertext of the account is left.
   removeAllObjects(userId);
   fs.rmSync(path.join(resolveBackupDir(), 'vault', userId), { recursive: true, force: true });

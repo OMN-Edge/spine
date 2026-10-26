@@ -8,7 +8,7 @@ Relevant to Spine because the archive holds EU medical data, so where inference 
 
 ## Why this matters for Spine
 
-Today every model call goes to the Anthropic API directly (`ingestion/continuation.ts`, `ingestion/extraction.ts`), with document text leaving the device. Moving to Vertex in the EU multi-region keeps ML processing inside EU member states, which is the main reason to prefer it over calling providers directly.
+Every model call is made by the owner's device and goes through the relay ([relay.md](relay.md)), which runs it through the provider you configure: Anthropic's API directly (the default), or Vertex. Document text leaves the device on every call. Moving the relay to Vertex in the EU multi-region keeps ML processing inside EU member states, which is the main reason to prefer it over calling providers directly.
 
 See [ARCHITECTURE.md](../ARCHITECTURE.md) for the current egress path and [SECURITY.md](../SECURITY.md) principle **P8** (egress is minimal, enumerated, text-only).
 
@@ -73,13 +73,14 @@ Vertex authenticates with **Application Default Credentials (ADC)**, not an API 
 1. In the console, create the service account and grant `roles/aiplatform.user`.
 2. Create a key for it. The console downloads a **JSON file** — this is the only moment it is available, and it does not expire.
 3. Put it on the host outside the repo, owned by the service user, readable only by it: `/etc/spine/vertex-sa.json`, mode `600`.
-4. Point ADC at it and name the project and region:
+4. Point ADC at it and name the project, endpoint and region (these are the relay's settings, [relay.md](relay.md)):
 
    ```
    GOOGLE_APPLICATION_CREDENTIALS=/etc/spine/vertex-sa.json
    SPINE_LLM_PROVIDER=vertex
    SPINE_LLM_PROJECT=<gcp-project-id>
-   SPINE_LLM_ENDPOINT=eu          # the multi-region; never "global"
+   SPINE_LLM_ENDPOINT=aiplatform.eu.rep.googleapis.com   # the multi-region host; never a global one
+   SPINE_LLM_REGION=eu
    SPINE_LLM_MODEL=gemini-3.8-flash
    ```
 

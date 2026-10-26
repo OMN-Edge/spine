@@ -15,4 +15,4 @@ The records a controller keeps (GDPR Art. 5(2), 24, 30, 33, 35) for a Spine serv
 | Processing agreements with hosting, model, email and payment providers (Art. 28) | with each provider | **Not done: contracts, not code** |
 | Registration with a supervisory authority | none is needed in Romania since 25 May 2018 | n/a |
 
-When any text in `docs/legal/` changes, raise `HEALTH_CONSENT_VERSION` or `TERMS_VERSION` in `server/src/legal.ts`: everyone is then asked to agree again at their next sign-in.
+When any text in `docs/legal/` changes, raise `HEALTH_CONSENT_VERSION` or `TERMS_VERSION` in `core/src/consent.ts`: everyone is then asked to agree again at their next sign-in.

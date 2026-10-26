@@ -149,7 +149,7 @@ function UploadRow({ job, onRetry, onDeleted }: { job: JobState; onRetry: () => 
         </div>
       )}
       {job.documents.length === 0 && <p className="text-xs text-gray-400 mt-0.5">{job.step}</p>}
-      {job.status === 'error' && <p className="text-xs text-red-500 mt-1">{t('This upload could not be read. Try again, and if it keeps failing the server log says why.')}</p>}
+      {job.status === 'error' && <p className="text-xs text-red-500 mt-1">{t('This upload could not be read. Try again, and if it keeps failing the browser console says why.')}</p>}
       {(job.documents.length > 0 || !!job.hiddenDocuments || job.status === 'done' || job.status === 'error') && (
         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
           {job.status === 'error' && (

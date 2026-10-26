@@ -4,6 +4,7 @@ import { buildTestApp, loginAs } from './helpers/app.js';
 import { OWNER_EMAIL, OWNER_ID, TEST_PASSWORD, createTestUser } from './helpers/seed.js';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { resetMailer, type Mailer, type MailMessage } from '../mail/index.js';
+import { fakeAuthValue, fakeVaultKeys } from 'spine-core/testing/vault.js';
 
 /**
  * SECURITY.md S-33: a sign-in is a row the owner can see and end, it expires by inactivity and by age,
@@ -28,7 +29,7 @@ afterEach(async () => {
 });
 
 const get = (url: string, cookie: string) => app.inject({ method: 'GET', url, headers: { cookie } });
-const send = (method: 'POST' | 'DELETE' | 'PATCH', url: string, cookie: string, payload?: object) =>
+const send = (method: 'POST' | 'PUT' | 'DELETE' | 'PATCH', url: string, cookie: string, payload?: object) =>
   app.inject({ method, url, headers: { cookie }, payload });
 
 describe('the list of sign-ins', () => {
@@ -123,12 +124,15 @@ describe('how long a sign-in lasts', () => {
 
   it('a password change ends the other sign-ins and shows only the one that changed it', async () => {
     const a = await loginAs(app);
-    const b = await loginAs(app);
-    const res = await send('POST', '/api/auth/password', a, { current: TEST_PASSWORD, next: 'a-brand-new-password-1' });
+    const first = fakeAuthValue();
+    expect((await send('PUT', '/api/vault/keys', a, { auth_value: first, keys: fakeVaultKeys() })).statusCode).toBe(200);
+    const b = await loginAs(app, OWNER_EMAIL, first);
+    const res = await send('POST', '/api/vault/keys/rewrap', a, { auth_value: fakeAuthValue(), keys: fakeVaultKeys() });
     expect(res.statusCode).toBe(200);
     expect((await get('/api/auth/me', b)).statusCode).toBe(401);
     expect(await getAccountsStore().sessions.list(OWNER_ID)).toHaveLength(1);
   });
+
 });
 
 const records = holdsRecordsInThisRun(); // `npm run test:accounts` runs the server's own store, which has none (SECURITY.md M-37)
@@ -207,7 +211,10 @@ describe('telling the owner', () => {
 
   it('mails a password change and a change to two-factor, with nothing clinical in it', async () => {
     const cookie = await loginAs(app);
-    await send('POST', '/api/auth/password', cookie, { current: TEST_PASSWORD, next: 'a-brand-new-password-1' });
+    expect((await send('PUT', '/api/vault/keys', cookie, { auth_value: fakeAuthValue(), keys: fakeVaultKeys() })).statusCode).toBe(200);
+    await flush();
+    sent.length = 0;
+    expect((await send('POST', '/api/vault/keys/rewrap', cookie, { auth_value: fakeAuthValue(), keys: fakeVaultKeys() })).statusCode).toBe(200);
     await flush();
     expect(sent.map(m => m.subject)).toEqual(['A security setting on your account changed']);
     expect(sent[0].text).toMatch(/password was changed/i);
@@ -222,5 +229,18 @@ describe('telling the owner', () => {
     await loginAs(app);
     await flush();
     expect(sent).toHaveLength(0);
+  });
+});
+
+describe('ended sign-ins are deleted for every account', () => {
+  it('removes an expired row of a user who never signs in again, and keeps a live one', async () => {
+    await loginAs(app);
+    const store = getAccountsStore();
+    await store.sessions.open(OWNER_ID, { id: 'old-browser', at: new Date(Date.now() - 20 * 86_400_000).toISOString(), userAgent: 'x', address: '203.0.113.9' });
+    const { sweepSessions } = await import('../sessions.js');
+    expect(await sweepSessions()).toBeGreaterThanOrEqual(1);
+    const left = (await store.sessions.list(OWNER_ID)).map(s => s.id);
+    expect(left).not.toContain('old-browser');
+    expect(left.length).toBeGreaterThanOrEqual(1);
   });
 });

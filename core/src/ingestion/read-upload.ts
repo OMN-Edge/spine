@@ -63,11 +63,6 @@ function begin(sourceFileId: string, confirm: boolean): ReadingJob {
   return job;
 }
 
-/** Tests only. */
-export function resetReadingJobs(): void {
-  jobs.clear();
-}
-
 async function run(userId: string, sourceFileId: string, confirm: boolean, job: ReadingJob): Promise<void> {
   {
     const store = getStore();

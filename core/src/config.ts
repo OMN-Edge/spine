@@ -28,7 +28,7 @@ export function useDefaultDataDir(dir: string | null): void {
 }
 
 /**
- * Where the database, originals and page images live. The one place this is
+ * Where the database and the sealed files live (on a device, its in-memory file store). The one place this is
  * decided: it used to be resolved separately in four modules, with three
  * different fallbacks relative to the working directory.
  *

@@ -25,9 +25,7 @@ function install_deps() {
   apt-get update
   apt-get install -y \
     curl ca-certificates \
-    python3 python3-venv python3-pip \
-    poppler-utils \
-    tesseract-ocr tesseract-ocr-ron
+    python3   # node-gyp compiles better-sqlite3 where no prebuilt binary fits; nothing else needs it (no parser, no OCR: the device does both)
 
   # Raspberry Pi OS ships an old Node; use NodeSource LTS if needed.
   # Accept 22 (maintenance), 24 (LTS), 26 (LTS from 2026-10-28). Node 20 is EOL.

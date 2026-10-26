@@ -9,16 +9,16 @@ Steps marked **untested** were written from the scripts and provider documentati
 | Question | Options | Default |
 |---|---|---|
 | Who gets accounts? | **You, from the command line**, or **anyone, by signing up** (needs email, step 5) | You |
-| Where does inference run? | **Anthropic** (simplest, API key) or **Vertex AI in the EU** (needs a Google Cloud project, [docs/deployment-gcp.md](deployment-gcp.md)) | Anthropic |
+| Where does inference run? | Behind **the relay** (step 3), with **Anthropic** (simplest, API key) or **Vertex AI in the EU** (needs a Google Cloud project, [docs/deployment-gcp.md](deployment-gcp.md)) | Anthropic |
 | May page images leave the machine? | **No**: typed PDFs work fully; scans and handwriting are read by local OCR only and may come out poorly. **Yes, for pages that need it**: `hybrid` | No |
 
-The third is the one to think about. With the default, nothing but short text excerpts (the text of each page pair, to decide boundaries, and each document's full text, to extract it) goes to the model. With `hybrid`, a page image is sent only when the page has no text layer **and** local OCR could not read it confidently. If your data must stay in the EU, use Vertex at an `eu` endpoint: the Anthropic adapter has no such commitment.
+The third is the one to think about. With the default, nothing but short text excerpts (the text of each page pair, to decide boundaries, and each document's full text, to extract it) goes to the model, from the owner's device through the relay. With `hybrid`, a page image is sent only when the page has no text layer **and** local OCR could not read it confidently. If your data must stay in the EU, use Vertex at an `eu` endpoint: the Anthropic adapter has no such commitment.
 
 ## 1. What you need
 
 - A Linux machine with `apt` (Raspberry Pi OS bookworm or Debian/Ubuntu). A Pi is enough.
 - A **domain name** pointing at the machine (an `A` record), and, if it is at home, your router forwarding **ports 80 and 443** to it. Let's Encrypt needs 80 to issue the certificate.
-- An **API key** for your provider (step 3).
+- A **relay** for model calls and an **API key** for its provider (step 3). The relay is a second small service, not part of this machine's setup: [relay.md](relay.md) deploys it (Cloud Run, or any host that runs the image `relay.Dockerfile` builds).
 - `git` and `sudo`.
 
 ## 2. Install
@@ -26,8 +26,8 @@ The third is the one to think about. With the default, nothing but short text ex
 ```bash
 git clone <your repository URL> spine && cd spine
 
-sudo ./install.sh -d      # Node (22, 24 or 26), poppler, tesseract + Romanian pack
-./install.sh -b    # builds web and server (a few minutes on a Pi)
+sudo ./install.sh -d      # Node (22, 24 or 26), curl, certificates and python3 (for node-gyp)
+./install.sh -b    # builds the shared core, the web app and the server (a few minutes on a Pi)
 ```
 
 `-d` does **not** install nginx or certbot; step 6 does.
@@ -39,19 +39,22 @@ cp .env.example .env
 nano .env
 ```
 
-The minimum:
+The minimum for the server:
 
 ```bash
-ANTHROPIC_API_KEY=sk-ant-...             # or configure Vertex instead, see below
 SESSION_SECRET=<output of: openssl rand -base64 48>
 SPINE_DOMAIN=spine.yourdomain.com
+SPINE_RELAY_URL=https://your-relay.example     # where devices send model calls (below)
+SPINE_RELAY_SECRET=<output of: openssl rand -base64 48>   # the same value on the relay
 ```
+
+The server holds no model credential and calls no model. Devices send their model calls to the **relay**, which holds the provider's credential. Deploy it from [relay.md](relay.md) with the same `SPINE_RELAY_SECRET` and the provider settings below (`ANTHROPIC_API_KEY`, or Vertex's), and put its address in `SPINE_RELAY_URL`. Without a relay the app works but a device cannot read documents with a model, chat or translate, and says so. The settings that name no secret (`SPINE_LLM_MODEL`, `SPINE_PARSER`, `SPINE_CHAT` and the like) are read from this `.env` and passed to each signed-in device.
 
 `SESSION_SECRET` must be at least 32 characters and not the placeholder; the installer and the server both refuse otherwise. **Do not change it later without reading this**: it signs sessions *and* encrypts everyone's two-factor seeds, so changing it signs everyone out and breaks authenticator codes (recovery codes still work; SECURITY.md S-21).
 
 ### Vertex AI instead of Anthropic
 
-Complete the [GCP checklist](deployment-gcp.md#setup-checklist) first, then:
+Complete the [GCP checklist](deployment-gcp.md#setup-checklist) first, then set these **on the relay** (docs/relay.md):
 
 ```bash
 SPINE_LLM_PROVIDER=vertex
@@ -62,7 +65,7 @@ SPINE_LLM_PROJECT=your-gcp-project
 GOOGLE_APPLICATION_CREDENTIALS=/etc/spine/vertex-sa.json   # service-account key file
 ```
 
-There are no defaults on purpose. The service **refuses to start if `GOOGLE_API_KEY`, `GEMINI_API_KEY` or `GOOGLE_GENAI_API_KEY` is set anywhere in its environment**, because that silently sends requests to a global endpoint. After the first real call, check the provider's request logs to confirm the EU host was used. **Untested** against a live project.
+There are no defaults on purpose. The relay **refuses to start if `GOOGLE_API_KEY`, `GEMINI_API_KEY` or `GOOGLE_GENAI_API_KEY` is set anywhere in its environment**, because that silently sends requests to a global endpoint. After the first real call, check the provider's request logs to confirm the EU host was used. **Untested** against a live project.
 
 ### Letting scans and handwriting be read (optional)
 
@@ -71,9 +74,9 @@ SPINE_PARSER=hybrid
 SPINE_MULTIMODAL_ENABLED=true
 ```
 
-Both lines are required; either alone is refused. `hybrid` reads a page's text layer first and sends only the pages that have none to the model, as images.
+Both lines are required (in the server's `.env`, which passes them to each device); either alone is refused. `hybrid` reads a page's text layer first and sends only the pages that have none to the model, as images.
 
-- **Local OCR is optional.** By default `hybrid` tries Tesseract before the model, which needs `tesseract-ocr` and the packs in `SPINE_OCR_LANGS` (default `ron+eng`; `-d` installs Romanian; others with `sudo apt install tesseract-ocr-<lang>`). `SPINE_OCR=off` skips it and sends a page with no text layer straight to the model. `SPINE_PARSER=ocr` is OCR with no model at all: it needs neither switch, but it reads handwriting poorly.
+- **Local OCR is optional.** By default `hybrid` tries Tesseract before the model. It runs in the browser (Tesseract.js) with the English and Romanian packs that ship with the web app; nothing is installed on the server. `SPINE_OCR=off` skips it and sends a page with no text layer straight to the model. `SPINE_PARSER=ocr` is OCR with no model at all: it needs neither switch, but it reads handwriting poorly.
 - **The same switch allows two other things.** Signature stamps in a PDF are read as small cropped pictures (the doctor's name, specialty and professional code), never the whole page. Photos (JPEG or PNG) are accepted at upload and read by the model; without the switch a photo is refused.
 - **The thresholds are first guesses.** After a few uploads, look at the `page routed` lines in the log and adjust (see `.env.example`).
 
@@ -93,14 +96,14 @@ and add that path to `ReadWritePaths=` in `systemd/spine-backup.service` before 
 sudo ./install.sh -s
 ```
 
-This installs and starts `spine-web` (port 3000, loopback only) and a daily backup timer. It stops with a list of problems if the secret is unsafe. Check:
+This installs and starts `spine-web` (port 3000, loopback only) and a daily backup timer (the database and the sealed vault). It stops with a list of problems if the secret is unsafe. Check:
 
 ```bash
 systemctl is-active spine-web spine-backup.timer
 journalctl -u spine-web -n 30
 ```
 
-The log should contain `llm provider ready` (the provider, model and endpoint it resolved) and `parser ready` with `imageEgress: false`, unless you enabled `hybrid`.
+The log should contain `model settings given to devices` (the provider, model and endpoint a device is told to use) and, with no account yet, a warning to create one. The server calls no model and reads no page: the parser and the model calls run on the device and the relay, so their logs are the browser's console and the relay's own.
 
 ## 5. Create accounts
 
@@ -155,16 +158,14 @@ sudo ./install.sh -n
 
 The nginx version is the stable one the package's readme names; check it for a newer one.
 
-**Without it** (**untested** on a fresh machine), use the distribution's nginx and do the same by hand:
+**Without it** (**untested** on a fresh machine), use the distribution's nginx, get the certificate yourself, and let the installer write the site config, since it also fills in the relay's address for the page's content security policy, the optional repository redirects and `security.txt`, which a plain copy of `nginx/spine.conf` would leave as placeholders:
 
 ```bash
 sudo apt-get install -y nginx certbot
 DOMAIN=spine.yourdomain.com
 sudo certbot certonly --standalone -d "$DOMAIN" \
   --pre-hook "systemctl stop nginx" --post-hook "systemctl start nginx"
-sed "s/SPINE_DOMAIN/$DOMAIN/g" nginx/spine.conf | sudo tee /etc/nginx/sites-available/spine >/dev/null
-sudo ln -sf /etc/nginx/sites-available/spine /etc/nginx/sites-enabled/spine
-sudo nginx -t && sudo systemctl reload nginx
+sudo ./install.sh -n     # warns that packages/nginx is missing, then writes the config and reloads nginx
 ```
 
 Either way, certbot renews on its own timer. Check from another machine:
@@ -179,7 +180,7 @@ curl -s  https://spine.yourdomain.com/api/auth/options    # JSON about registrat
 Open `https://<your domain>`, sign in, and:
 
 1. **Account → Two-factor sign-in → Set up.** Scan the QR code with an authenticator app, enter the first code, and save the ten recovery codes somewhere safe. It is optional, per user, and worth doing on any instance reachable from the internet.
-2. **Upload** a PDF and watch it split into documents. Review the extracted fields.
+2. **Upload** a PDF and watch it split into documents. Review the extracted fields. Your records are read on this device and saved to the server sealed; the first time, you also get a recovery kit, which is the only way back into your records if you forget the master password.
 3. The language switcher is in the top bar. A document in another language is translated when you open it, and the result is kept; `SPINE_TRANSLATION=off` stops that (see `.env.example`), because translating sends the document's extracted text and your notes to the model provider.
 4. If a scan came out wrong and you enabled `hybrid`, open it and use **Read again → Read page with AI** (or **Read whole document**).
 5. **Share links** creates an expiring link for a doctor, scoped to everything, a tag (picked from a dropdown), documents you pick from a list, or a date range. The recipient needs no account and gets the timeline, the document pages and the trends, read-only; the page images (scans) only if you tick **Include scans** for that link, which is off by default because a scan shows the patient's ID number and phone.
@@ -197,7 +198,7 @@ sudo systemctl start spine-backup                             # a backup now, in
 ```
 
 - **Test a restore once**, before you need one: [SECURITY.md, Operational response](../SECURITY.md#operational-response).
-- **Do not load real documents and then update across a schema change** other than a new column with a default, which is added when the database is opened. There is no migration runner yet, and an older-shaped database is refused at startup (it tells you how many records it holds). Look at the history of `core/src/store/sqlite/the schema files` for changes before updating, and take a backup first.
+- **Do not load real documents and then update across a schema change** other than a new column with a default, which is added when the database is opened. There is no migration runner yet, and an older-shaped database is refused at startup (it tells you how many records it holds). Look at the history of `core/src/store/sqlite/schema-accounts.ts` and `schema-records.ts` for changes before updating, and take a backup first. (The records schema is built by each device when it opens its vault; the server's database holds accounts only.)
 - `sudo systemctl status` for any unit, and `npm run cli -- list-users` to see accounts.
 
 ## When it will not start
@@ -209,9 +210,8 @@ The server checks its configuration before it does anything else and lists every
 | `SESSION_SECRET` | Missing, under 32 characters, or the placeholder |
 | `SPINE_REGISTRATION=open` / `SPINE_MAILER` | Open signup needs a mailer; Brevo also needs `BREVO_API_KEY`, `SPINE_MAIL_SENDER` and `SPINE_DOMAIN` |
 | `SPINE_MULTIMODAL_ENABLED` | `multimodal` or `hybrid` chosen without the second switch |
-| tesseract / language pack | `hybrid` without `tesseract-ocr` or a pack in `SPINE_OCR_LANGS` |
 | `GOOGLE_API_KEY` and similar | One is set in the environment; unset it (Vertex only) |
-| `SPINE_LLM_ENDPOINT` / region / project | Vertex needs all three stated |
+| `SPINE_LLM_ENDPOINT` / region / project | Vertex needs all three stated (on the relay) |
 | outdated database | Left over from an older shape; the message says whether it is safe to delete |
-| uploads fail immediately | `journalctl -u spine-web`; a PDF that cannot be opened (damaged or password-protected) fails the upload rather than being guessed at |
+| uploads fail immediately | The browser's console (reading runs on the device); a PDF that cannot be opened (damaged or password-protected) fails the upload rather than being guessed at |
 | certificate issuance fails | DNS not pointing here yet, or ports 80/443 not forwarded |

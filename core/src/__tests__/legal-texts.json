@@ -1,0 +1,20 @@
+{
+  "versions": {
+    "HEALTH": "2026-10-26.3",
+    "TERMS": "2026-10-26"
+  },
+  "texts": {
+    "privacy": {
+      "consent": "HEALTH",
+      "sha256": "9e74b7f2e7519091c606dafee3aa2bc9a6fad368aa7da0d9c312da53b254dfff"
+    },
+    "purpose": {
+      "consent": "HEALTH",
+      "sha256": "8f752dc1e1cc86dc9367676e7aea27632469175a291bdc2709117effa94e72c2"
+    },
+    "terms": {
+      "consent": "TERMS",
+      "sha256": "d59d068e70a54ed27950d521346c8c94b6caf4cbf6d908e35e0e93a4b3bad78f"
+    }
+  }
+}

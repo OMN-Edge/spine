@@ -62,7 +62,7 @@ export default function ReadAgainMenu({
   const wholeDocument = () => {
     switch (reading?.mode) {
       case 'text': return t("It reads each page's text layer again, as an upload does here. Pages with no text layer stay empty.");
-      case 'ocr': return t('It reads each page again the way an upload does here: the text layer, then local OCR for pages that have none. Nothing leaves this server but the text for the extraction.');
+      case 'ocr': return t('It reads each page again the way an upload does here: the text layer, then local OCR for pages that have none. Nothing leaves this device but the text for the extraction.');
       case 'multimodal': return tx('It sends every page image to {where}, as an upload does here.', { where: <strong>{where}</strong> });
       case 'hybrid': return tx(reading.ocr
         ? 'It reads each page again the way an upload does here: the text layer first, then local OCR, and only pages still without text are sent as images to {where}.'

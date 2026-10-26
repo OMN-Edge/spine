@@ -4,6 +4,12 @@ import { sessionLimits } from './config.js';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import type { SessionData } from './session-auth.js';
 
+/** Deletes the sign-in rows of every account that have ended, whether or not anyone signs in again (the privacy notice says at most 14 days). */
+export async function sweepSessions(now = new Date()): Promise<number> {
+  const limits = sessionLimits();
+  return getAccountsStore().maintenance.pruneSessions(new Date(now.getTime() - limits.absoluteMs).toISOString(), new Date(now.getTime() - limits.idleMs).toISOString());
+}
+
 /**
  * Sign-ins the owner can see and end (SECURITY.md S-33). The cookie session lives in memory; the row in
  * `user_sessions` is what makes it valid, so a sign-in can be listed, ended from another browser, expired by

@@ -1,34 +1,13 @@
 # Nginx setup for Spine
 
-Uses the existing bare-metal nginx install from `packages/nginx/`.
+The site config is `spine.conf`, a template: `sudo ./install.sh -n` (from the repository root) fills in the domain, the relay's address for the page's content security policy, the optional repository redirects and `security.txt`, installs it and reloads nginx. [docs/setup.md](../docs/setup.md#6-https-and-nginx) has the full steps, with and without the author's `packages/nginx` helper, which only obtains the certificate.
 
-## 1. Get the TLS certificate
+Do not copy `spine.conf` by hand with a single `sed` of the domain: its other placeholders (`SPINE_RELAY_URL`, `SPINE_REPO_URL`) would stay in the file, and the page could not call the relay.
 
-```bash
-cd /path/to/packages/nginx
-./nginx-domains.sh cert spine.yourdomain.com
-```
-
-This runs certbot and stores the cert at `/etc/letsencrypt/live/spine.yourdomain.com/`.
-
-## 2. Install the Spine site config
+After a certificate renewal nginx has to be reloaded; add a deploy hook for it:
 
 ```bash
-# Replace SPINE_DOMAIN with your actual domain, then copy into place
-sed 's/SPINE_DOMAIN/spine.yourdomain.com/g' nginx/spine.conf \
-  | sudo tee /etc/nginx/sites-available/spine > /dev/null
-
-sudo ln -sf /etc/nginx/sites-available/spine /etc/nginx/sites-enabled/spine
-sudo nginx -t && sudo systemctl reload nginx
-```
-
-## 3. Auto-renewal
-
-certbot's renewal cron (installed automatically by certbot) handles cert renewal.
-After renewal, reload nginx:
-
-```bash
-# Add to /etc/letsencrypt/renewal-hooks/deploy/spine.sh
+# /etc/letsencrypt/renewal-hooks/deploy/spine.sh
 #!/bin/bash
 systemctl reload nginx
 ```

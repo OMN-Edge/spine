@@ -2,7 +2,7 @@
 
 Personal medical document archive. Upload PDFs and scans, let AI extract and index the content, review it, and share a read-only link with a doctor when needed.
 
-Runs on a Raspberry Pi. No cloud storage — all data stays local.
+Your records are read, searched and kept on your own device, in your browser. The server, which runs on a Raspberry Pi, holds only your account and sealed pieces of your records that it cannot open (see [docs/key-hierarchy.md](docs/key-hierarchy.md)). Model calls go through a relay that stores and logs nothing.
 
 ## What it does
 
@@ -25,31 +25,36 @@ Runs on a Raspberry Pi. No cloud storage — all data stays local.
 
 ## Documentation
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) — target architecture, trust boundaries, ports and adapters, migration path
+- [ARCHITECTURE.md](ARCHITECTURE.md) — where the code runs, trust boundaries, ports and adapters
 - [SECURITY.md](SECURITY.md) — security principles, implemented controls, and the open gaps
+- [docs/structure-rules.md](docs/structure-rules.md) — what "clean" means here, as rules a test checks
 - [docs/self-host.md](docs/self-host.md) — `docker compose up -d` on one machine, with HTTPS
+- [docs/setup.md](docs/setup.md) — the full install guide for a Raspberry Pi
+- [docs/relay.md](docs/relay.md) — the relay that runs model calls, and how to deploy it
+- [docs/requirements.md](docs/requirements.md) — what it must do (the `FR-`, `TR-` and `CR-` IDs cited around the repository)
+- [docs/testing.md](docs/testing.md) and [docs/scenarios.md](docs/scenarios.md) — every check, and what each user flow is tested by
 - [CONTRIBUTING.md](CONTRIBUTING.md) — how to contribute; the repository is canonical on GitHub, and a deployed instance redirects `/source`, `/docs` and `/security` to it (set `SPINE_REPO_URL`)
-- [docs/key-hierarchy.md](docs/key-hierarchy.md) — the key hierarchy and trust boundaries planned for the hosted service (a design, not what runs today)
+- [docs/key-hierarchy.md](docs/key-hierarchy.md) — the key hierarchy and trust boundaries: who can see what ([docs/crypto-design.md](docs/crypto-design.md) is the build plan)
 - [docs/deployment-gcp.md](docs/deployment-gcp.md) — Vertex AI as an inference provider, EU residency, IAM
 
 ### Direction
 
-What runs today is multi-user with local accounts, with storage, inference, parsing and mail behind interfaces (SQLite the only store; Anthropic and Vertex for inference), and hybrid ingestion that routes scans and handwriting to a multimodal model when you allow it. Hosting stays self-hosted on a Raspberry Pi — GCP is used for inference only, never as an app host. See [ARCHITECTURE.md](ARCHITECTURE.md) for the design and what is left.
+What runs today is multi-user with local accounts. The records are made and kept on each owner's device (a core running in a Web Worker, over SQLite in WebAssembly) and saved to the server only as sealed objects; shares are sealed copies opened with a key in the address; model calls go through a relay (Vertex or Anthropic behind it), and hybrid ingestion routes scans and handwriting to a multimodal model when you allow it. The server is self-hosted on a Raspberry Pi; GCP is used for inference only, never as an app host. See [ARCHITECTURE.md](ARCHITECTURE.md) for the design and what is left.
 
 ## Stack
 
 | | |
 |---|---|
-| Server | Node.js + Fastify (API + serves the React build) |
-| Web | React + Vite + Tailwind CSS |
-| Database | SQLite (single file, zero ops) |
-| Parsing | PDF.js reads the PDF's text layer in the server process; local Tesseract and, optionally, a vision model for scanned pages |
-| AI | Anthropic or Vertex AI, set by configuration (continuation detection, field extraction, translation, optionally reading page images) |
-| Web server | nginx (from `packages/nginx`) with Let's Encrypt |
+| Server | Node.js + Fastify: accounts, the vault of sealed objects, sealed shares, the relay's pass; serves the React build. It holds no record |
+| Device | React + Vite + Tailwind CSS; the core (the shared `spine-core` package) in a Web Worker, with libsodium for the keys |
+| Database | SQLite: in WebAssembly on the device (the records), a file on the server (accounts only) |
+| Parsing | On the device: PDF.js reads the PDF's text layer, Tesseract.js reads scans, and, optionally, a vision model reads pages the others could not |
+| AI | Anthropic or Vertex AI behind the relay, set by its configuration (continuation detection, field extraction, translation, chat, optionally reading page images) |
+| Web server | nginx (from `packages/nginx`) with Let's Encrypt, or Caddy in Docker Compose |
 
 ## First install
 
-The steps below are the short version. [docs/setup.md](docs/setup.md) is the full guide: what to decide first, Vertex, reading scans, Brevo and open signup, nginx without the packages repository, and what to do when the server refuses to start.
+The steps below are the short version. [docs/setup.md](docs/setup.md) is the full guide: what to decide first, the relay, Vertex, reading scans, Brevo and open signup, nginx without the packages repository, and what to do when the server refuses to start.
 
 ### 1. Dependencies
 
@@ -57,7 +62,7 @@ The steps below are the short version. [docs/setup.md](docs/setup.md) is the ful
 sudo ./install.sh -d
 ```
 
-Installs Node.js LTS, tesseract, poppler-utils.
+Installs Node.js LTS, curl and certificates, and `python3`, which `node-gyp` needs to compile the SQLite module where no prebuilt binary fits. No PDF or OCR program is installed: the device reads and renders files itself.
 
 ### 2. Config
 
@@ -67,9 +72,9 @@ nano .env
 ```
 
 Fill in:
-- `ANTHROPIC_API_KEY` — get one at console.anthropic.com (or configure Vertex instead; see `.env.example`)
 - `SESSION_SECRET` — a random string of at least 32 characters (`openssl rand -base64 48`)
 - `SPINE_DOMAIN` — the domain you'll serve from (e.g. `spine.yourdomain.com`)
+- `SPINE_RELAY_URL` and `SPINE_RELAY_SECRET` — the relay your devices send model calls to, and the secret you share with it (`openssl rand -base64 48`). Without them a device cannot call a model and says so; everything else works. The provider key (`ANTHROPIC_API_KEY`, or Vertex's settings) goes to the relay, not to this server: [docs/relay.md](docs/relay.md)
 
 There is no shared password. Each person has an account with their own email and password.
 
@@ -79,7 +84,7 @@ There is no shared password. Each person has an account with their own email and
 ./install.sh -b
 ```
 
-Builds the React app and compiles the TypeScript server.
+Builds the shared core, the TypeScript server and the React app.
 
 ### 4. Services
 
@@ -97,7 +102,7 @@ By default there is no signup page; create accounts from the command line (or se
 cd server
 npm run cli -- create-user you@example.com   # prints a password once
 npm run cli -- list-users
-npm run cli -- set-password you@example.com  # signs that user out everywhere
+npm run cli -- set-password you@example.com  # an account with no vault only; signs that user out everywhere
 npm run cli -- reset-link you@example.com    # a one-time link to choose a new password
 npm run cli -- disable-2fa you@example.com   # lost phone and recovery codes
 npm run cli -- delete-user you@example.com   # says what it would remove; add --yes to do it
@@ -131,24 +136,24 @@ journalctl -u spine-web -f
 
 ## Data
 
-Everything lives in `data/` (set `DATA_DIR` to move it; the default is `<repo>/data`):
-- `data/spine.db` — SQLite database
-- `data/originals/<user>/<year>/` — uploaded source files, never modified
-- `data/pages/` — rasterized page images (PNG, ~200 DPI); regenerable
+The server keeps only what it cannot read (set `DATA_DIR` to move it; the default is `<repo>/data`):
+- `data/spine.db` — SQLite database of accounts, sign-ins, the vault's index and share metadata. No record is in it
+- `data/vault/<user>/` — the sealed objects (a person's records and files, encrypted on their device)
+- `data/shares/` — sealed share copies, removed when a link ends or is revoked
 
-A daily timer copies the database and the originals to `backups/` beside `data/`, keeping the last 7 snapshots. That protects against corruption and mistakes, not against losing the disk: point `SPINE_BACKUP_DIR` at removable or network storage for that.
+The records themselves are in each owner's browser while it is open and in the vault as ciphertext. A daily timer copies the database and the vault to `backups/` beside `data/`, keeping the last 7 snapshots; shares are not backed up on purpose. That protects against corruption and mistakes, not against losing the disk: point `SPINE_BACKUP_DIR` at removable or network storage for that.
 
 **Upgrading from the single-user version:** the database layout changed and cannot be upgraded in place. Spine refuses to start on the old one and tells you how many records it holds. If it is empty, delete `spine.db`, `spine.db-wal` and `spine.db-shm` and restart. If it is not, do not delete it.
 
 ## Reading handwriting
 
-Most documents are digital PDFs, and those need no AI: their own text is used. `SPINE_PARSER=hybrid` handles the rest per page, cheapest first: the PDF's text layer, then local OCR (Tesseract) if it is confident, and only then your LLM provider, which sees a page only if both of those fell short. It needs `SPINE_MULTIMODAL_ENABLED=true` as well — sending images is a separate decision — and `tesseract-ocr` with its language packs (it refuses to start without them), unless you set `SPINE_OCR=off`, which goes from the text layer straight to the model. `SPINE_PARSER=ocr` is the same without any model: nothing leaves your machine, and handwriting reads poorly. The startup log says whether images can leave, and every page logs which way it went, so the thresholds in `.env.example` can be tuned on your own documents. Pages the model read are marked "Read by AI · position approximate" in the review screen.
+This runs on the device, with the settings of the server's `.env` (the ones that name no secret are passed to it). Most documents are digital PDFs, and those need no AI: their own text is used. `SPINE_PARSER=hybrid` handles the rest per page, cheapest first: the PDF's text layer, then local OCR (Tesseract) if it is confident, and only then your LLM provider, which sees a page only if both of those fell short. It needs `SPINE_MULTIMODAL_ENABLED=true` as well — sending images is a separate decision — and Tesseract, whose English and Romanian packs ship with the web app, unless you set `SPINE_OCR=off`, which goes from the text layer straight to the model. `SPINE_PARSER=ocr` is the same without any model: nothing leaves your machine, and handwriting reads poorly. Every page logs which way it went (in the browser's console), so the thresholds in `.env.example` can be tuned on your own documents. Pages the model read are marked "Read by AI · position approximate" in the review screen.
 
 If a document still comes out wrong — handwriting, a tilted or photographed page, a scan with a poor embedded text layer — open it and use **Read again** beside Review: **Read page with AI** sends this page's image to a model, **Read whole document** reads the document's pages again the way an upload does. Each tells you where any image goes and what it replaces before it does anything.
 
 ## Share links
 
-From the Share Links page, create a link scoped to all history, a tag, a date range, or specific documents. Default expiry is 7 days. Links can be revoked instantly. The doctor opens the link in any browser — no account or setup needed.
+From the Share Links page, create a link scoped to all history, a tag, a date range, or specific documents. Default expiry is 7 days. The device seals a copy of what the link shares and sends it to the server; the key that opens it is in the address after the `#` (or, with approval, given to the visitor's browser by your device). Links can be revoked instantly, which deletes the copy. The doctor opens the link in any browser — no account or setup needed. Your device must have been open to create or refresh a link.
 
 ## Tests
 
@@ -156,9 +161,10 @@ From the Share Links page, create a link scoped to all history, a tag, a date ra
 npm test                              # core, server and web (no model is ever called)
 npm run test:coverage -w spine-server # run with coverage report
 npm run test:integration -w spine-server   # the flows against the real model and PDFs from .env (minutes, a few hundred model calls)
+cd web && npm run check:browser && npm run check:app   # the device and the whole app in real Chrome (after `npm run build`)
 ```
 
-The code is three npm workspaces: `core/` (what the browser's core and the server both run), `server/` and `web/`. Install once at the root. Statement and branch coverage are both above 90%; the figures change with every commit, so they are not copied here.
+The code is three npm workspaces: `core/` (what the browser's core runs, and the server's tests), `server/` and `web/`. Install once at the root. The files below are in `server/src/__tests__/`, which drive the whole composed app, except the parser, OCR, read-page, continuation, grounding, legacy-database, i18n and llm ones, which are in `core/src/__tests__/`. [docs/testing.md](docs/testing.md) lists every check. Statement and branch coverage are both above 90%; the figures change with every commit, so they are not copied here.
 
 | Area | Files | Notes |
 |---|---|---|
@@ -171,9 +177,9 @@ The code is three npm workspaces: `core/` (what the browser's core and the serve
 | Config | `config.test.ts`, `llm.test.ts` | Startup refuses bad secrets, providers and endpoints |
 | Documents | `documents.test.ts` | CRUD, tag updates, split/merge boundaries, column whitelist |
 | Upload | `upload.test.ts`, `source-files.test.ts` | Multipart upload, per-user storage, duplicate detection, status polling |
-| Share links | `share.test.ts`, `public-share-scoped.test.ts`, `public-share-detail.test.ts`, `share-token.test.ts` | Scope validation, fail-closed reads, hashed tokens, the recipient's page |
+| Share links | `share.test.ts`, `public-share-scoped.test.ts`, `public-share-detail.test.ts` | Scope validation, fail-closed reads, the sealed copy, the recipient's page |
 | Store | `legacy-database.test.ts` | An old-shape database is refused |
-| Backup | `backup.test.ts` | Snapshot is a readable database; originals mirror; retention |
+| Backup | `backup.test.ts` | Snapshot is a readable database; vault mirror; retention |
 | Parser | `parser.test.ts`, `ocr.test.ts`, `read-page.test.ts`, `capabilities.test.ts` | Box scaling, one entry per page, the text-layer → OCR → model cascade and its thresholds, fallback, the two-switch rule, the image message, "Read with AI" |
 | Ingestion pipeline | `pipeline.test.ts`, `reconcile.test.ts` | Splitting, grounding, error paths, restart recovery, a blank page not shifting images, model-read pages |
 | AI | `continuation.test.ts`, `grounding.test.ts` | Validation and fallbacks, tested through fake task clients |
@@ -195,8 +201,8 @@ The code is three npm workspaces: `core/` (what the browser's core and the serve
 
 ### What isn't covered
 
-- `rasterize.ts` — PDF rasterizer; needs actual PDF files
-- the `invoke` paths in `llm/adapters/*` — need live provider credentials, so no real page has been read by a model; the image message was checked against both providers' request builders and the configuration refusals are covered
+- `rasterize.ts` — the Node PDF rasterizer; needs actual PDF files (the device's is checked in real Chrome by `check:browser`)
+- the `invoke` paths in `llm/adapters/*` — need live provider credentials. The Vertex path has been run through the relay on invented records (`SPINE_CHECK_REAL=1`); Anthropic behind the relay never has
 
 Tests use in-memory SQLite (`SPINE_DB_PATH=:memory:`) with a `resetStore()` call between files so no state leaks across test files. Fixtures are built through the store interface, not raw SQL.
 

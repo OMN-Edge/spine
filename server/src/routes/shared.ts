@@ -262,7 +262,7 @@ const ENDED_PAGE =
 /**
  * `GET /share/:id`, the address a recipient is given: the app shell for a share that exists (the page opens the sealed copy itself and
  * says if it ended), a plain page for one that never did. It reads no record and keeps no log; the visit is noted when the page opens
- * the copy. Registered by the server only: the tests' apps register the older share routes, which answer the same address.
+ * the copy. Registered by the server only.
  */
 export async function shareShellRoutes(app: FastifyInstance, opts: { appShellPath: string }) {
   app.get<{ Params: { id: string } }>('/share/:id', async (req, reply) => {

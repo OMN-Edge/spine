@@ -200,7 +200,7 @@ export default function ChatPanel() {
                 ))}
               </div>
               <p className="text-xs leading-relaxed text-gray-400">{t('Answers come only from your own documents, with links to where they came from. They are a reading of what the documents say, not medical advice: ask your doctor what they mean for you.')}</p>
-              <p className="text-xs leading-relaxed text-gray-400">{t('Each question sends your words and the summaries and results of the matching documents to the AI model this server uses. Your conversations are kept in your archive, in History, until you delete them.')}</p>
+              <p className="text-xs leading-relaxed text-gray-400">{t('Each question sends your words and the summaries and results of the matching documents (and the text of a few pages when you ask it to sort an upload) to the AI model this server uses. Your conversations are kept in your archive, in History, until you delete them.')}</p>
             </div>
           )}
           {turns.map((turn, i) => turn.attachment ? (

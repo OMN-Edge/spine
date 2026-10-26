@@ -39,7 +39,7 @@ export default function YourData() {
     t('Reading a document: the text of each document is sent to the model provider, {where}, to read out its details and summary.', { where }),
     ...(caps.reading.images ? [t('A page with no text, and every photo, is sent as an image to the same provider, because only a model can read it.')] : [t('Pages with no text and photos are not sent anywhere: they are not read, because sending images is switched off on this server.')]),
     ...(caps.features?.translation ? [t('Translating: the details and your notes for a document are sent to the provider when someone asks for another language, yours or a recipient’s.')] : []),
-    ...(caps.features?.chat ? [t('Asking your records: your question and the summaries, notes and results of the matching documents are sent to the provider. Never the pages.')] : []),
+    ...(caps.features?.chat ? [t('Asking your records: your question and the summaries, notes and results of the matching documents are sent to the provider. Never a page image; the text of a few pages only when you ask the assistant to sort an upload.')] : []),
     ...(caps.features?.linking ? [t('Looking for connected documents: the summaries of up to seven documents at a time are sent to the provider.')] : []),
     ...(caps.similarity?.enabled ? [t('Finding documents by meaning: each document’s summary is sent to the embedding provider.')] : []),
   ] : [];

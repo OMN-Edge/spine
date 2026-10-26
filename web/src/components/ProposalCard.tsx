@@ -177,7 +177,7 @@ export default function ProposalCard({ proposal }: { proposal: Proposal }) {
     case 'analyse_pages':
       return shell(t('Find which pages of “{name}” belong together', { name: proposal.upload.file_name ?? proposal.upload.uploaded_at.slice(0, 10) }),
         <div className="space-y-1">
-          <p>{t('The text of its {n} pages is compared on this server, then the AI model is asked to check each group of pages that look alike. The text goes to the model provider, as it did when the pages were read.', { n: proposal.pages })}</p>
+          <p>{t('The text of its {n} pages is compared on this device, then the AI model is asked to check each group of pages that look alike. The text goes to the model provider, as it did when the pages were read.', { n: proposal.pages })}</p>
           <p className="text-gray-500">{t('Nothing is changed. It runs in the background, and I will message you when the suggestions are ready.')}</p>
         </div>,
         // The report is written in this conversation, not in a new one.
@@ -190,7 +190,7 @@ export default function ProposalCard({ proposal }: { proposal: Proposal }) {
     case 'reread_pages':
       return shell(proposal.strategy === 'configured' ? t('Read “{title}” again', { title: title(proposal.document) }) : tn(proposal.page_numbers.length, 'Read page {pages} of “{title}” again with AI', 'Read pages {pages} of “{title}” again with AI', { pages: proposal.page_numbers.join(', '), title: title(proposal.document) }),
         <div className="space-y-1">
-          <p>{proposal.sends_images ? t('The page image is sent to the AI model to be read. The document is then extracted again; your edits are kept.') : t('The text is read again on this server. The document is then extracted again; your edits are kept.')}</p>
+          <p>{proposal.sends_images ? t('The page image is sent to the AI model to be read. The document is then extracted again; your edits are kept.') : t('The text is read again on this device. The document is then extracted again; your edits are kept.')}</p>
           <p className="text-gray-500">{t('It runs in the background; the page updates when it is done.')}</p>
         </div>,
         confirmBar(proposal.calls),

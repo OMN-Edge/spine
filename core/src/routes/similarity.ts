@@ -10,13 +10,6 @@ import { embeddingStatus, hybridSearch, relatedTo, scheduleSync } from '../simil
 export async function similarityRoutes(app: HttpApp) {
   app.addHook('preHandler', requireAuth);
 
-  // How much of the archive can be found by meaning yet. Asking also starts catching up, in the background.
-  app.get('/api/similarity/status', async (req, reply) => {
-    const status = await embeddingStatus(req.userId);
-    if (status.enabled && status.embedded < status.documents) scheduleSync(req.userId);
-    return reply.header('Cache-Control', 'no-store').send(status);
-  });
-
   // Documents related to this one, and why: the same test or doctor, and what reads alike.
   app.get<{ Params: { id: string }; Querystring: { lang?: string } }>('/api/documents/:id/related', async (req, reply) => {
     if (!(await getStore().documents.findFor(req.userId, req.params.id))) return reply.status(404).send({ error: 'not found' });

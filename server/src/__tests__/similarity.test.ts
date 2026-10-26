@@ -225,7 +225,7 @@ describe('keeping vectors current', () => {
     await doc('Orice', 'orice text');
     expect(await syncEmbeddings(OWNER_ID)).toEqual({ embedded: 0 });
     expect(await searchByMeaning(OWNER_ID, 'orice', 5)).toEqual([]);
-    expect((await get('/api/similarity/status')).json()).toMatchObject({ enabled: false });
+    expect(await embeddingStatus(OWNER_ID)).toMatchObject({ enabled: false });
   });
 });
 

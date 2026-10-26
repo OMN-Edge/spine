@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { missingLanguages, parseTesseractTsv } from '../parser/ocr.js';
+import { parseTesseractTsv } from '../parser/ocr.js';
 
 /**
  * The parser behind the screening: Tesseract's TSV. Its output format is what these pin
@@ -55,17 +55,5 @@ describe('parseTesseractTsv', () => {
   it('keeps boxes in the image’s own pixels, unscaled', () => {
     const { elements } = parseTesseractTsv([HEADER, row(1, 1, 1, 1, 12, 34, 56, 78, 95, 'x')].join('\n'), 1);
     expect(elements[0].bbox).toEqual({ x0: 12, y0: 34, x1: 68, y1: 112 });
-  });
-});
-
-describe('missingLanguages', () => {
-  const output = 'List of available languages in "/usr/share/tessdata/" (3):\neng\nron\nosd\n';
-
-  it('finds none missing when every pack is there', () => {
-    expect(missingLanguages(output, 'ron+eng')).toEqual([]);
-  });
-
-  it('names the ones that are not, since a missing pack only lowers scores quietly', () => {
-    expect(missingLanguages('List of available languages (2):\neng\nosd\n', 'ron+eng')).toEqual(['ron']);
   });
 });

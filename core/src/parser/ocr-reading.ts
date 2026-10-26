@@ -76,16 +76,3 @@ export function parseTesseractTsv(tsv: string, pageNumber: number): OcrReading {
     })),
   };
 }
-
-/**
- * Tesseract and every language pack asked for must be installed, checked up front.
- * A missing Romanian pack does not fail: Tesseract carries on with the languages it
- * has, reads diacritics worse, scores lower, and so sends more pages to the model —
- * more cost and more images leaving, with nothing to say why. Better to refuse to start.
- */
-export function missingLanguages(listLangsOutput: string, wanted: string): string[] {
-  const installed = new Set(
-    listLangsOutput.split('\n').map(line => line.trim()).filter(line => line && !line.startsWith('List of')),
-  );
-  return wanted.split('+').filter(lang => !installed.has(lang));
-}

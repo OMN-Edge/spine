@@ -1,5 +1,5 @@
 [Unit]
-Description=Spine — back up the database and originals
+Description=Spine — back up the accounts database and the sealed vault
 After=network-online.target
 
 [Service]

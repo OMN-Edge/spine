@@ -22,6 +22,7 @@ import { resetStore } from 'spine-core/store/index';
 import type { Store } from 'spine-core/store/types';
 import { decorateAuth, useRequestAuth } from 'spine-core/routes/middleware';
 import { HEALTH_CONSENT_VERSION, TERMS_VERSION } from 'spine-core/consent';
+import { reconcileStalledJobs } from 'spine-core/ingestion/pipeline';
 import { tagRoutes } from 'spine-core/routes/tags';
 import { doctorRoutes } from 'spine-core/routes/doctors';
 import { trendRoutes } from 'spine-core/routes/trends';
@@ -89,6 +90,8 @@ export async function startCore(vault?: { objects: ObjectStore; profileId: strin
     const { empty } = await persistence.load();
     if (empty) await store.tags.ensure(DEVICE_USER, [...STARTER_TAGS]);
   }
+  // Nothing can still be running in a core that has just started: an upload left reading when the page closed would otherwise wait for ever.
+  await reconcileStalledJobs();
 
   // Links are sealed here and sent to the server (docs/crypto-design.md, stage 4).
   useShareHost(createShareHost({ store: () => store, mail: relayMail }));

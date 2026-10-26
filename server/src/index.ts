@@ -3,7 +3,6 @@ import { trustedProxies } from './trust-proxy.js';
 import Fastify from 'fastify';
 import fastifyCookie from '@fastify/cookie';
 import fastifySession from '@fastify/session';
-import fastifyMultipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
 import fastifyRateLimit from '@fastify/rate-limit';
 import path from 'path';
@@ -17,6 +16,7 @@ import { vaultRoutes } from './routes/vault.js';
 import { relayRoutes } from './routes/relay.js';
 import { trustAnchorRoutes } from './routes/trust-anchors.js';
 import { sharedRoutes, shareShellRoutes, sweepShares } from './routes/shared.js';
+import { sweepSessions } from './sessions.js';
 import { decorateAuth } from 'spine-core/routes/middleware.js';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { ConfigError } from 'spine-core/config.js';
@@ -77,11 +77,6 @@ await app.register(fastifySession, {
     maxAge: sessionLimits().absoluteMs, // the row in user_sessions ends it sooner when it is idle (S-33)
     sameSite: 'strict',
   },
-});
-
-await app.register(fastifyMultipart, {
-  // A zip of files may be large; a single document or photo is held to 200 MB in the upload route.
-  limits: { fileSize: 2 * 1024 * 1024 * 1024 },
 });
 
 await app.register(fastifyRateLimit, {
@@ -145,5 +140,9 @@ if (accounts.length === 0) {
 const sweep = () => sweepShares().catch(err => app.log.error({ err: err instanceof Error ? err.message : String(err) }, 'removing ended shares failed'));
 await sweep();
 setInterval(() => void sweep(), 60 * 60 * 1000).unref();
+// Ended sign-ins (browser and address) are deleted for every account the same way, so none outlives its 14 days because its owner never came back.
+const sweepSignIns = () => sweepSessions().catch(err => app.log.error({ err: err instanceof Error ? err.message : String(err) }, 'removing ended sign-ins failed'));
+await sweepSignIns();
+setInterval(() => void sweepSignIns(), 60 * 60 * 1000).unref();
 
 await app.listen({ port: config.port, host: config.host });

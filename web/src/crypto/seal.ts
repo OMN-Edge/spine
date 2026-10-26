@@ -47,14 +47,6 @@ export function openNow(key: Uint8Array, sealed: Uint8Array, context: string): U
   }
 }
 
-export async function sealJson(key: Uint8Array, value: unknown, context: string): Promise<Uint8Array> {
-  return seal(key, utf8(JSON.stringify(value)), context);
-}
-
-export async function openJson<T>(key: Uint8Array, sealed: Uint8Array, context: string): Promise<T> {
-  return JSON.parse(new TextDecoder().decode(await open(key, sealed, context))) as T;
-}
-
 export async function randomKey(): Promise<Uint8Array> {
   const s = await sodium();
   return s.randombytes_buf(s.crypto_aead_xchacha20poly1305_ietf_KEYBYTES);
