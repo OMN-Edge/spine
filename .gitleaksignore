@@ -1,3 +1,7 @@
-# A fixed SESSION_SECRET in the integration-test setup, in the history before it was made random. It protected only an
-# in-memory database in a temporary directory that no longer exists; it was never a deployment's secret.
-185855fe63295b8f104c24589a78fdd3145685ea:server/src/__integration__/support/env.ts:generic-api-key:26
+# Throwaway values in tests and test setup, and one line of prose that looks like a key. None protects anything: each guards an
+# in-memory database or a process that exists only for the test, and none was ever a deployment's secret. They are listed by the
+# commit that introduced them (the history was squashed into milestones, so these are the milestone commits).
+d18e277a2e0fb0872e5db15c13edba62d8fb6f3f:server/src/__integration__/support/env.ts:generic-api-key:26
+868526e1f860688a167aae0c6c38488bd7471c09:server/scripts/smoke-entrypoints.mjs:generic-api-key:23
+58ac2999c18071bf6beb8f0954b69727c108c7ca:server/src/__tests__/relay-routes.test.ts:generic-api-key:6
+f0dffb9f741e157221d7166788d5a584b5589abb:CLAUDE.md:generic-api-key:199
