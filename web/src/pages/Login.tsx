@@ -97,8 +97,8 @@ export default function Login() {
       title="Spine"
       footer={
         <>
-          {options.recovery && <p><Link to="/forgot" className="text-blue-600">{t('Forgot your password?')}</Link></p>}
-          {options.registration === 'open' && <p>{t('No account?')} <Link to="/register" className="text-blue-600">{t('Create one')}</Link></p>}
+          {options.recovery && <p><Link to="/forgot" className="text-brand-600">{t('Forgot your password?')}</Link></p>}
+          {options.registration === 'open' && <p>{t('No account?')} <Link to="/register" className="text-brand-600">{t('Create one')}</Link></p>}
         </>
       }
     >
@@ -128,7 +128,7 @@ export default function Login() {
         {error && <Notice kind="error">{error}</Notice>}
         {unverified && (
           <p className="text-sm mb-3">
-            <button type="button" onClick={resend} className="text-blue-600 underline">
+            <button type="button" onClick={resend} className="text-brand-600 underline">
               {t('Send the confirmation link again')}
             </button>
           </p>
@@ -136,7 +136,7 @@ export default function Login() {
         {resent && <Notice kind="ok">{resent}</Notice>}
         <button type="submit" className={buttonClass}>{t('Sign in')}</button>
         {api.auth.passkeys.supported() && (
-          <button type="button" onClick={withPasskey} className="w-full mt-3 border border-gray-300 text-gray-700 rounded-lg px-4 py-2 font-medium hover:bg-gray-50">
+          <button type="button" onClick={withPasskey} className="w-full mt-3 border border-gray-300 text-gray-700 rounded-full px-4 py-2 font-medium hover:bg-gray-50">
             {t('Sign in with a passkey')}
           </button>
         )}

@@ -37,7 +37,7 @@ function MergeTest({ canonical, others }: { canonical: string; others: TrendName
           ariaLabel={t('Count this test as')} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white" value={into} onChange={setInto} placeholder={t('Choose a test…')}
           options={others.map(o => ({ value: o.canonical, label: o.name, hint: String(o.count) }))}
         />
-        <button onClick={merge} disabled={!into || busy} className="shrink-0 px-4 py-1.5 rounded-lg text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50">{t('Merge')}</button>
+        <button onClick={merge} disabled={!into || busy} className="shrink-0 px-4 py-1.5 rounded-full text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50">{t('Merge')}</button>
       </div>
       {error && <p className="text-sm text-red-600 mt-2" role="alert">{error}</p>}
     </div>
@@ -78,7 +78,7 @@ export default function Trends() {
         </>
       ) : (
         <>
-          <h1 className="text-2xl font-semibold text-gray-900 mb-1">{t('Trends')}</h1>
+          <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900 mb-1">{t('Trends')}</h1>
           <p className="text-sm text-gray-500 mb-4">{t('Lab values and vitals from your documents, over time.')}</p>
           {names === null ? <p className="text-sm text-gray-400">{t('Loading…')}</p>
             : names.length === 0 ? (

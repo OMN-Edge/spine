@@ -6,7 +6,7 @@ import { documentTitle } from '../titles';
 import { useI18n } from '../i18n';
 import { Combobox } from '../components/Combobox';
 
-const input = 'w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500';
+const input = 'w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-500';
 const label = 'block text-xs font-medium text-gray-500 mb-1';
 
 export default function DoctorPage() {
@@ -75,7 +75,7 @@ export default function DoctorPage() {
             <h1 className="text-xl font-semibold text-gray-900 break-words">{doctor.name}</h1>
             <p className="text-sm text-gray-500">{[doctor.specialty, doctor.clinic].filter(Boolean).join(' · ') || t('No specialty or clinic yet')}</p>
             {doctor.license_code && <p className="text-xs text-gray-400">{t('Code {code}', { code: doctor.license_code })}</p>}
-            <button className="text-sm text-blue-600 hover:underline mt-3" onClick={() => { setMessage(''); setForm({ name: doctor.name, specialty: doctor.specialty ?? '', clinic: doctor.clinic ?? '', license_code: doctor.license_code ?? '' }); }}>{t('Edit')}</button>
+            <button className="text-sm text-brand-600 hover:underline mt-3" onClick={() => { setMessage(''); setForm({ name: doctor.name, specialty: doctor.specialty ?? '', clinic: doctor.clinic ?? '', license_code: doctor.license_code ?? '' }); }}>{t('Edit')}</button>
           </>
         ) : (
           <div className="space-y-3">
@@ -88,8 +88,8 @@ export default function DoctorPage() {
               <p className="text-xs text-gray-400 mt-1">{t('Signature stamps are pictures, so this is rarely read from a scan. Entering it here lets a later document with the same code join this entry whatever the name looks like.')}</p>
             </div>
             <div className="flex gap-2">
-              <button onClick={save} disabled={busy} className="bg-blue-600 text-white rounded-lg px-4 py-1.5 text-sm font-medium hover:bg-blue-700 disabled:opacity-50">{t('Save')}</button>
-              <button onClick={() => { setForm(null); setError(''); }} disabled={busy} className="px-4 py-1.5 rounded-lg text-sm text-gray-600 border border-gray-300 hover:bg-gray-50">{t('Cancel')}</button>
+              <button onClick={save} disabled={busy} className="bg-brand-600 text-white rounded-full px-4 py-1.5 text-sm font-medium hover:bg-brand-700 disabled:opacity-50">{t('Save')}</button>
+              <button onClick={() => { setForm(null); setError(''); }} disabled={busy} className="px-4 py-1.5 rounded-full text-sm text-gray-600 border border-gray-300 hover:bg-gray-50">{t('Cancel')}</button>
             </div>
           </div>
         )}
@@ -122,7 +122,7 @@ export default function DoctorPage() {
               ariaLabel={t('Merge this entry into this doctor')} className={input} value={mergeFrom} onChange={setMergeFrom} placeholder={t('Choose a doctor…')}
               options={others.map(o => ({ value: o.id, label: o.name, hint: [o.specialty, o.license_code].filter(Boolean).join(' · ') || undefined }))}
             />
-            <button onClick={merge} disabled={!mergeFrom || busy} className="shrink-0 px-4 py-1.5 rounded-lg text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50">{t('Merge')}</button>
+            <button onClick={merge} disabled={!mergeFrom || busy} className="shrink-0 px-4 py-1.5 rounded-full text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50">{t('Merge')}</button>
           </div>
         </div>
       )}

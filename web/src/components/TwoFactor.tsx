@@ -130,7 +130,7 @@ export default function TwoFactor() {
           {t('Each works once if you lose your phone. They are shown only now.')}
         </p>
         <pre className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm font-mono select-all mb-3">{text}</pre>
-        <button type="button" className="text-sm text-blue-600 underline mr-4"
+        <button type="button" className="text-sm text-brand-600 underline mr-4"
           onClick={() => navigator.clipboard?.writeText(text)}>{t('Copy')}</button>
         <label className="flex items-center gap-2 text-sm mt-3 mb-3">
           <input type="checkbox" checked={saved} onChange={e => setSaved(e.target.checked)} />
@@ -150,7 +150,7 @@ export default function TwoFactor() {
           {t('On.')} {tn(step.left, '{n} recovery code left.', '{n} recovery codes left.')}
           {step.left <= 2 && ` ${t('Consider making new ones.')}`}
         </p>
-        <button type="button" className="text-sm text-blue-600 underline mr-4"
+        <button type="button" className="text-sm text-brand-600 underline mr-4"
           onClick={() => { reset(); setStep({ name: 'change', left: step.left, action: 'codes' }); }}>
           {t('New recovery codes')}
         </button>

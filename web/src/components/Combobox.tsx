@@ -10,7 +10,7 @@ export interface ComboOption {
 
 const fold = (text: string) => text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
-const FIELD = 'w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-400';
+const FIELD = 'w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:bg-gray-50 disabled:text-gray-400';
 
 /**
  * A dropdown you can type into: the list narrows as you type (case, accents and word order do not matter),
@@ -103,7 +103,7 @@ export function Combobox({ id, ariaLabel, options, value, onChange, placeholder,
             <li
               key={entry.option ? `o-${entry.option.value}` : 'add'} role="option" aria-selected={entry.option ? entry.option.value === value : false}
               onMouseDown={e => { e.preventDefault(); pick(entry); }} onMouseEnter={() => setAt(i)}
-              className={`px-3 py-1.5 cursor-pointer flex items-baseline justify-between gap-3 ${i === at ? 'bg-blue-50' : ''} ${entry.add ? 'text-blue-700' : 'text-gray-900'}`}
+              className={`px-3 py-1.5 cursor-pointer flex items-baseline justify-between gap-3 ${i === at ? 'bg-brand-50' : ''} ${entry.add ? 'text-brand-700' : 'text-gray-900'}`}
             >
               {entry.option ? (
                 <>

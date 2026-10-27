@@ -24,13 +24,13 @@ export default function CornerEditor({ src, width, height, quad, onChange }: { s
     <div ref={box} className="relative w-full select-none touch-none bg-black" style={{ aspectRatio: `${width} / ${height}` }}>
       <img src={src} alt={t('The photo')} className="absolute inset-0 w-full h-full object-contain pointer-events-none" draggable={false} />
       <svg viewBox={`0 0 ${width} ${height}`} className="absolute inset-0 w-full h-full pointer-events-none" aria-hidden="true">
-        <polygon points={quad.map(p => `${p.x},${p.y}`).join(' ')} fill="rgba(37,99,235,0.18)" stroke="#2563eb" strokeWidth={Math.max(2, width / 300)} />
+        <polygon points={quad.map(p => `${p.x},${p.y}`).join(' ')} fill="rgba(20,149,138,0.2)" stroke="#14958a" strokeWidth={Math.max(2, width / 300)} />
       </svg>
       {quad.map((p, i) => (
         <button
           key={i} type="button" aria-label={t('Corner: {name}', { name: names[i] })}
           style={{ left: `${(p.x / width) * 100}%`, top: `${(p.y / height) * 100}%` }}
-          className="absolute -translate-x-1/2 -translate-y-1/2 h-9 w-9 rounded-full border-2 border-white bg-blue-600/80 shadow focus:outline-none focus:ring-2 focus:ring-blue-300"
+          className="absolute -translate-x-1/2 -translate-y-1/2 h-9 w-9 rounded-full border-2 border-white bg-brand-600/80 shadow focus:outline-none focus:ring-2 focus:ring-brand-300"
           onPointerDown={e => { e.currentTarget.setPointerCapture(e.pointerId); }}
           onPointerMove={e => { if (e.currentTarget.hasPointerCapture(e.pointerId)) move(i, fromEvent(e)); }}
           onKeyDown={e => {

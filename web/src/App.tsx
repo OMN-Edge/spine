@@ -3,6 +3,7 @@ import { Routes, Route, Link, NavLink, useNavigate, useLocation, useParams, Navi
 import { api } from './api';
 import { AuthContext, useAuth } from './auth';
 import Login from './pages/Login';
+import Landing from './pages/Landing';
 import Register from './pages/Register';
 import Verify from './pages/Verify';
 import Forgot from './pages/Forgot';
@@ -93,24 +94,24 @@ function Layout({ children }: { children: React.ReactNode }) {
           <div className="max-w-md rounded-lg bg-white p-5 shadow-lg">
             <p id="losing-text" className="text-sm text-gray-800">{t('Some of your latest changes are not saved yet. If you sign out now, they will be lost.')}</p>
             <div className="mt-4 flex flex-wrap justify-end gap-3">
-              <button type="button" autoFocus onClick={() => setLosing(false)} className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">{t('Keep this page open')}</button>
-              <button type="button" onClick={() => void logout(true)} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">{t('Sign out and lose them')}</button>
+              <button type="button" autoFocus onClick={() => setLosing(false)} className="rounded-full bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700">{t('Keep this page open')}</button>
+              <button type="button" onClick={() => void logout(true)} className="rounded-full border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">{t('Sign out and lose them')}</button>
             </div>
           </div>
         </div>
       )}
       <nav className="bg-white border-b border-gray-200">
         <div className="px-4 sm:px-6 py-3 flex items-center gap-6">
-          <Link to="/" className="mr-2 md:mr-4" aria-label={t('Spine, home')}><Wordmark /></Link>
+          <Link to="/" className="mr-2 xl:mr-4" aria-label={t('Spine, home')}><Wordmark /></Link>
 
-          {/* wide screens: everything in one row */}
-          <div className="hidden md:flex items-center gap-6 flex-1">
+          {/* wide screens (1280px and up, where it fits): everything in one row */}
+          <div className="hidden xl:flex items-center gap-6 flex-1">
             {NAV_LINKS.map(link => (
               <NavLink key={link.to} to={link.to} end={link.to === '/'} className={linkClass}>{t(link.label)}</NavLink>
             ))}
             <LanguageSwitcher className="ml-auto" />
-            <Link to="/account" className="text-sm text-gray-400 hover:text-gray-600 truncate max-w-[16rem]">{email}</Link>
-            <button onClick={() => void logout()} className="text-sm text-gray-400 hover:text-gray-600">{t('Sign out')}</button>
+            <Link to="/account" className="text-sm text-gray-500 hover:text-gray-900 truncate max-w-[16rem]">{email}</Link>
+            <button onClick={() => void logout()} className="text-sm text-gray-500 hover:text-gray-900">{t('Sign out')}</button>
           </div>
 
           {/* narrow screens: a menu button */}
@@ -120,7 +121,7 @@ function Layout({ children }: { children: React.ReactNode }) {
             aria-expanded={menuOpen}
             aria-controls="nav-menu"
             aria-label={menuOpen ? t('Close menu') : t('Open menu')}
-            className="md:hidden ml-auto -mr-2 p-2 rounded-lg text-gray-600 hover:bg-gray-100"
+            className="xl:hidden ml-auto -mr-2 p-2 rounded-lg text-gray-600 hover:bg-gray-100"
           >
             <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden="true">
               {menuOpen ? <path d="M6 6l12 12M18 6L6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
@@ -129,7 +130,7 @@ function Layout({ children }: { children: React.ReactNode }) {
         </div>
 
         {menuOpen && (
-          <div id="nav-menu" className="md:hidden border-t border-gray-100 px-4 pb-3">
+          <div id="nav-menu" className="xl:hidden border-t border-gray-100 px-4 pb-3">
             {NAV_LINKS.map(link => (
               <NavLink
                 key={link.to} to={link.to} end={link.to === '/'}
@@ -139,7 +140,7 @@ function Layout({ children }: { children: React.ReactNode }) {
               </NavLink>
             ))}
             <Link to="/account" className="block py-3 text-base text-gray-600 border-b border-gray-100 truncate">
-              {t('Account')} <span className="text-gray-400">· {email}</span>
+              {t('Account')} <span className="text-gray-500">· {email}</span>
             </Link>
             <div className="py-3"><LanguageSwitcher /></div>
             <button onClick={() => void logout()} className="block w-full text-left py-3 text-base text-gray-600">{t('Sign out')}</button>
@@ -236,7 +237,7 @@ export default function App() {
         <Route path="/forgot" element={<Forgot />} />
         <Route path="/reset" element={<Reset />} />
         <Route path="/share/:id" element={<PublicShareView />} />
-        <Route path="/" element={<PrivateRoute><Timeline /></PrivateRoute>} />
+        <Route path="/" element={authenticated ? <PrivateRoute><Timeline /></PrivateRoute> : <Landing />} />
         <Route path="/upload" element={<PrivateRoute><Upload /></PrivateRoute>} />
         <Route path="/uploads/:id" element={<PrivateRoute><UploadPages /></PrivateRoute>} />
         <Route path="/review" element={<PrivateRoute><ReviewQueue /></PrivateRoute>} />

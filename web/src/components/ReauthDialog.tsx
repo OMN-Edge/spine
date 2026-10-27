@@ -61,7 +61,7 @@ export default function ReauthDialog() {
         )}
         {error && <Notice kind="error">{error}</Notice>}
         <div className="flex gap-2">
-          <button type="button" onClick={() => close(false)} className="flex-1 border border-gray-300 rounded-lg px-4 py-2 text-gray-700 hover:bg-gray-50">{t('Cancel')}</button>
+          <button type="button" onClick={() => close(false)} className="flex-1 border border-gray-300 rounded-full px-4 py-2 text-gray-700 hover:bg-gray-50">{t('Cancel')}</button>
           <button type="submit" disabled={busy || !password} className={buttonClass}>{t('Continue')}</button>
         </div>
       </form>

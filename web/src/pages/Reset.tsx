@@ -105,7 +105,7 @@ export default function Reset() {
   };
 
   return (
-    <AuthCard title={t('Choose a new password')} footer={<p><Link to="/login" className="text-blue-600">{t('Go to sign in')}</Link></p>}>
+    <AuthCard title={t('Choose a new password')} footer={<p><Link to="/login" className="text-brand-600">{t('Go to sign in')}</Link></p>}>
       {done ? (
         <Notice kind="ok">{t('Your password is changed. You have been signed out everywhere; sign in with the new one.')}</Notice>
       ) : mode.kind === 'bad' ? (

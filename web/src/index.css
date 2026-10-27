@@ -7,4 +7,18 @@
   input:not([type='checkbox']):not([type='radio']), textarea, select { font-size: 16px !important; }
 }
 html { -webkit-text-size-adjust: 100%; }
+:root { accent-color: theme('colors.brand.600'); }
+body { background-color: theme('colors.gray.50'); color: theme('colors.gray.900'); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 img, svg, video { max-width: 100%; }
+
+/* The landing page: the app's paper, ink and brand-600 as channels (tailwind.config.js), faint ruled lines behind the opening, and the
+   lines of its drawings drawing themselves once. Nothing waits for the animation: without it every line is there. */
+:root { --paper: 250 248 244; --ink: 22 24 29; --accent: 15 118 110; --accent-light: 94 234 212; }
+.landing-grid {
+  background-image: linear-gradient(rgb(var(--ink) / 0.045) 1px, transparent 1px), linear-gradient(90deg, rgb(var(--ink) / 0.045) 1px, transparent 1px);
+  background-size: 32px 32px;
+  background-position: -1px -1px;
+}
+.draw { stroke-dasharray: 1; animation: spine-draw 0.9s ease-out both; }
+@keyframes spine-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) { .draw { animation: none; } }

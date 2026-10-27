@@ -64,7 +64,7 @@ export default function RecoveryKitSettings() {
           {error && <Notice kind="error">{error}</Notice>}
         </>
       ) : !open ? (
-        <button type="button" onClick={() => { setOpen(true); setDone(false); }} className="border border-gray-300 rounded-lg px-4 py-2 text-gray-700 hover:bg-gray-50">{t('Make a new recovery kit')}</button>
+        <button type="button" onClick={() => { setOpen(true); setDone(false); }} className="border border-gray-300 rounded-full px-4 py-2 text-gray-700 hover:bg-gray-50">{t('Make a new recovery kit')}</button>
       ) : (
         <form onSubmit={make}>
           <input type="password" placeholder={t('Your password')} autoComplete="current-password"

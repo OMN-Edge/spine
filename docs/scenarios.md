@@ -16,8 +16,18 @@ How Spine is meant to be used, with the checks that say a scenario works. Not a 
 
 ## 1. Getting in
 
+### 1.0 Find out what Spine is, before signing in
+Someone with no session opens the site's address and reads what Spine does, how the records are protected, who can see what, and what Spine is not, before deciding to sign in.
+
+- `/` with no session shows the front page (`pages/Landing.tsx`), not the sign-in form; with a session it shows the Timeline. `/login` is unchanged, and the logo on the sign-in card leads back to the front page.
+- It offers Sign in always, and Create an account only when the instance's registration is `open` (`GET /api/auth/options`).
+- It makes no claim the code does not hold: the relay is described as not storing or logging, not as unable to see; the security is said not to be independently audited; there are no invented figures, logos or testimonials.
+- It loads nothing from another host (the fonts ship with the app), reads in English, Romanian, French and German, and does not scroll sideways on a phone.
+
+Status: hand (headless Chrome at 1280 and 390 px, English and Romanian, with no API server: the account options request fails and Create an account stays hidden; not yet seen with registration `open`).
+
 ### 1.1 Sign in
-The owner opens the site, enters their email and password, and lands on the Timeline.
+The owner opens the site, chooses Sign in, enters their email and password, and lands on the Timeline.
 
 - A right email and password signs in; a wrong password and an unknown email give the same answer in the same time.
 - Repeated failures are slowed down, per source and across the whole instance.

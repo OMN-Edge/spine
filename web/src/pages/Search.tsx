@@ -54,7 +54,7 @@ export default function Search() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-gray-900 mb-6">{t('Search')}</h1>
+      <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900 mb-6">{t('Search')}</h1>
 
       <div className="flex gap-2 mb-4">
         <input
@@ -63,12 +63,12 @@ export default function Search() {
           onChange={e => setQuery(e.target.value)}
           onKeyDown={onKey}
           placeholder={t('Search documents, doctors, medicines, values…')}
-          className="flex-1 border border-gray-300 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="flex-1 border border-gray-300 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
           autoFocus
         />
         <button
           onClick={search}
-          className="bg-blue-600 text-white rounded-xl px-5 py-2 font-medium hover:bg-blue-700"
+          className="bg-brand-600 text-white rounded-full px-5 py-2 font-medium hover:bg-brand-700"
         >
           {t('Search')}
         </button>
@@ -89,7 +89,7 @@ export default function Search() {
               <Combobox
                 ariaLabel={t(label)} wrapperClassName="relative w-full sm:w-44" value={filters[key] ?? ''}
                 onChange={v => setFilters(f => ({ ...f, [key]: v || undefined! }))}
-                className="w-full text-sm border border-gray-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full text-sm border border-gray-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
                 options={[
                   { value: '', label: key === 'tag' ? t('Any tag') : t('All types') },
                   ...(key === 'tag' ? tags.map(name => ({ value: name, label: name })) : Object.entries(DOC_TYPE_LABELS).map(([k, v]) => ({ value: k, label: t(v) }))),
@@ -99,13 +99,13 @@ export default function Search() {
               <input
                 type="date" value={filters[key] ?? ''} aria-label={t(label)}
                 onChange={e => setFilters(f => ({ ...f, [key]: e.target.value || undefined! }))}
-                className="w-full text-sm border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full text-sm border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-brand-500"
               />
             )}
           </div>
         ))}
         <DocumentFilters value={filters} onChange={(key, v) => setFilters(f => ({ ...f, [key]: v || undefined! }))} wrapperClassName="relative w-full sm:w-44"
-          className="w-full text-sm border border-gray-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          className="w-full text-sm border border-gray-200 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
       </div>
 
       {loading && <p className="text-gray-400 text-sm">{t('Searching…')}</p>}
@@ -125,7 +125,7 @@ export default function Search() {
                 children: (
                   <Link
                     to={`/documents/${doc.id}`}
-                    className="block bg-white border border-gray-200 rounded-xl p-4 hover:border-blue-300 transition-all"
+                    className="block bg-white border border-gray-200 rounded-xl p-4 hover:border-brand-300 transition-all"
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0">

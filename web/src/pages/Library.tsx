@@ -31,16 +31,16 @@ export default function Library() {
 
   return (
     <div className="max-w-2xl">
-      <h1 className="text-2xl font-semibold text-gray-900 mb-1">{t('Library')}</h1>
+      <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900 mb-1">{t('Library')}</h1>
       <p className="text-sm text-gray-500 mb-4">
         {t('The names read from your documents and reused across them. Tidy duplicates here.')}{' '}
-        <Link to="/doctors" className="text-blue-600 hover:underline">{t('Doctors')}</Link>
+        <Link to="/doctors" className="text-brand-600 hover:underline">{t('Doctors')}</Link>
       </p>
       <nav className="flex gap-4 border-b border-gray-200 mb-5 text-sm" aria-label={t('Sections')}>
         {tabs.map(([key, name]) => (
           <button
             key={key} type="button" onClick={() => setParams(key === 'tags' ? {} : { tab: key })} aria-current={tab === key ? 'page' : undefined}
-            className={`pb-2 -mb-px border-b-2 ${tab === key ? 'border-blue-600 text-blue-700 font-medium' : 'border-transparent text-gray-500 hover:text-gray-800'}`}
+            className={`pb-2 -mb-px border-b-2 ${tab === key ? 'border-brand-600 text-brand-700 font-medium' : 'border-transparent text-gray-500 hover:text-gray-800'}`}
           >
             {name}
           </button>

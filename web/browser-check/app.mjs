@@ -98,7 +98,7 @@ const serverLog = fs.openSync(serverLogPath, 'w');
 const server = spawn('node', ['dist/index.js'], { cwd: path.join(root, 'server'), env, stdio: ['ignore', serverLog, serverLog] });
 await new Promise(r => setTimeout(r, 3000));
 
-const browser = await puppeteer.launch({ executablePath: process.env.CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true, args: (process.env.CHROME_FLAGS ?? '').split(/\s+/).filter(Boolean), defaultViewport: { width: 1100, height: 900 } });
+const browser = await puppeteer.launch({ executablePath: process.env.CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true, args: (process.env.CHROME_FLAGS ?? '').split(/\s+/).filter(Boolean), defaultViewport: { width: 1280, height: 900 } });
 let failed = false;
 let seen = () => '';
 // What the page and the core's worker said that was wrong, and the server's own log: a failed step is explained by these, so the first

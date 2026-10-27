@@ -13,8 +13,8 @@ import { documentTitle } from '../titles';
 import { describeScope, DocumentPicker } from './ShareLinks';
 
 const box = 'bg-white border border-gray-200 rounded-xl p-5 mb-6';
-const input = 'text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500';
-const primary = 'bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50';
+const input = 'text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500';
+const primary = 'bg-brand-600 text-white rounded-full px-4 py-2 text-sm font-medium hover:bg-brand-700 disabled:opacity-50';
 
 /**
  * One share link, to look into and to change after it was made: what it allows now, what it shares now, who has read it, who
@@ -112,8 +112,8 @@ export default function ShareLinkDetail() {
 
   return (
     <div className="max-w-2xl mx-auto">
-      <p className="mb-2 text-sm"><Link to="/share" className="text-blue-600">← {t('All share links')}</Link></p>
-      <h1 className="text-2xl font-semibold text-gray-900">{link.label ?? describeScope(link, t, tn)}</h1>
+      <p className="mb-2 text-sm"><Link to="/share" className="text-brand-600">← {t('All share links')}</Link></p>
+      <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900">{link.label ?? describeScope(link, t, tn)}</h1>
       <p className="text-sm text-gray-500 mb-6">
         {link.revoked ? t('Revoked') : expired ? t('Expired') : t('Active')} · {t('Expires {date}', { date: link.expires_at.slice(0, 10) })} · {t('Made {date}', { date: link.created_at.slice(0, 10) })}
       </p>
@@ -168,7 +168,7 @@ export default function ShareLinkDetail() {
       <section className={box} aria-labelledby="shared">
         <div className="flex items-start justify-between gap-3 mb-3">
           <h2 id="shared" className="font-medium text-gray-900">{t('What it shares')} <span className="text-xs font-normal text-gray-500">· {describeScope(link, t, tn)}</span></h2>
-          {editable && !picking && <button type="button" onClick={startPicking} className="text-xs text-blue-600 hover:underline shrink-0">{t('Choose documents')}</button>}
+          {editable && !picking && <button type="button" onClick={startPicking} className="text-xs text-brand-600 hover:underline shrink-0">{t('Choose documents')}</button>}
         </div>
         {!data.scope_ok && <p className="text-sm text-red-600 mb-2">{t('This link cannot be read, so it shares nothing.')}</p>}
         {picking ? (
@@ -183,7 +183,7 @@ export default function ShareLinkDetail() {
           )
         ) : documents.length === 0 ? <p className="text-sm text-gray-400">{t('No documents in this share.')}</p> : (
           <ul className="divide-y divide-gray-100 text-sm">
-            {documents.map(d => <li key={d.id} className="py-1.5 truncate"><Link to={`/documents/${d.id}`} className="text-gray-900 hover:text-blue-700">{documentTitle(d, t)}</Link>{d.doc_date && <span className="text-gray-400"> · {d.doc_date}</span>}</li>)}
+            {documents.map(d => <li key={d.id} className="py-1.5 truncate"><Link to={`/documents/${d.id}`} className="text-gray-900 hover:text-brand-700">{documentTitle(d, t)}</Link>{d.doc_date && <span className="text-gray-400"> · {d.doc_date}</span>}</li>)}
           </ul>
         )}
       </section>
@@ -199,7 +199,7 @@ export default function ShareLinkDetail() {
               <thead><tr className="text-left text-gray-500"><th className="font-medium py-1">{t('Country')}</th><th className="font-medium py-1">{t('Reads')}</th><th className="font-medium py-1">{t('Last')}</th></tr></thead>
               <tbody>{access.addresses.map(a => <tr key={a.country ?? 'none'} className="border-t border-gray-100"><td className="py-1">{countryName(a.country, lang) ?? t('unknown')}</td><td>{a.count}</td><td>{when(a.last_at)}</td></tr>)}</tbody>
             </table>
-            <button type="button" onClick={() => setShowReads(s => !s)} className="text-xs text-blue-600 hover:underline">{showReads ? t('Hide the latest reads') : t('Show the latest reads')}</button>
+            <button type="button" onClick={() => setShowReads(s => !s)} className="text-xs text-brand-600 hover:underline">{showReads ? t('Hide the latest reads') : t('Show the latest reads')}</button>
             {showReads && <ul className="mt-2 space-y-0.5 text-xs text-gray-600">{access.recent.map((r, i) => <li key={i}>{when(r.accessed_at)} · {countryName(r.country, lang) ?? t('unknown')} · {r.document_id ? t('opened {title}', { title: documents.find(d => d.id === r.document_id)?.title || t('a document') }) : t('read the list')}</li>)}</ul>}
             <p className="mt-3 text-xs text-gray-500">{t('The country is worked out from the visitor’s connection, and the address itself is not kept. It does not prove who it was.')}</p>
           </>

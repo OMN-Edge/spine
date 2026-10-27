@@ -25,7 +25,7 @@ export function numbered(text: string, sources: ChatSource[]): ChatSource[] {
   return order;
 }
 
-export const chipClass = 'inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded px-1 text-[10px] font-semibold bg-blue-50 text-blue-700';
+export const chipClass = 'inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded px-1 text-[10px] font-semibold bg-brand-50 text-brand-700';
 
 /** The name of a source: the document (in the reader's language where there is one) and the part of it, if a part was cited. */
 export function useSourceName(titleOf?: (source: ChatSource) => string | null | undefined) {
@@ -77,12 +77,12 @@ export default function AnswerSources({ sources, hrefOf, onFollow, titleOf, owne
   const nameOf = useSourceName(owner ? fetched : titleOf);
   if (sources.length === 0) return null;
   return (
-    <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-2">
-      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-blue-700">{t('Sources')}</p>
+    <div className="mt-3 rounded-lg border border-brand-100 bg-brand-50/60 px-3 py-2">
+      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-brand-700">{t('Sources')}</p>
       <ol className="space-y-1.5">
         {sources.map((source, n) => (
           <li key={source.label}>
-            <Link to={hrefOf(source)} onClick={onFollow} className="flex items-start gap-2 text-xs text-gray-800 hover:text-blue-700">
+            <Link to={hrefOf(source)} onClick={onFollow} className="flex items-start gap-2 text-xs text-gray-800 hover:text-brand-700">
               <span className={`mt-px ${chipClass}`}>{n + 1}</span>
               <span className="min-w-0 break-words">{nameOf(source)}{source.doc_date ? <span className="text-gray-500"> · {source.doc_date}</span> : null}</span>
             </Link>

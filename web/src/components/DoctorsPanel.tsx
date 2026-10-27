@@ -53,7 +53,7 @@ export function DoctorsList({ doctors, plain = false }: { doctors: Array<Pick<Do
   );
 }
 
-const cell = 'w-full text-xs border border-gray-200 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500';
+const cell = 'w-full text-xs border border-gray-200 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-brand-500';
 
 /** A doctor in the directory, as the editor offers them. */
 export interface DoctorChoice { id: string; name: string; specialty: string | null; license_code: string | null }
@@ -101,7 +101,7 @@ export function DoctorsEditor({ rows, known, onChange, onAdd, onRemove }: {
         </div>
       ))}
       {rows.length === 0 && <p className="text-xs text-gray-400">{t('No doctors')}</p>}
-      <button type="button" onClick={onAdd} className="text-xs text-blue-600 hover:underline">+ {t('Add doctor')}</button>
+      <button type="button" onClick={onAdd} className="text-xs text-brand-600 hover:underline">+ {t('Add doctor')}</button>
     </div>
   );
 }

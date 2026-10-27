@@ -13,13 +13,13 @@ import { documentTitle } from '../titles';
 export default function UploadNoticeMessage({ notice, busy, onAsk }: { notice: UploadNotice; busy: boolean; onAsk: (question: string) => void }) {
   const { t, tn } = useI18n();
   const name = notice.file_name ?? t('The upload');
-  const chip = 'rounded-full border border-gray-200 px-3 py-1.5 text-left text-xs text-gray-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50';
+  const chip = 'rounded-full border border-gray-200 px-3 py-1.5 text-left text-xs text-gray-600 transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700 disabled:opacity-50';
 
   if (notice.state === 'failed') {
     return (
       <div className="text-sm text-gray-900">
         <p>{t('“{name}” could not be read. You can try it again from the Upload page.', { name })}</p>
-        <p className="mt-2"><Link to="/upload" className="text-blue-600 hover:underline">{t('Go to Upload')}</Link></p>
+        <p className="mt-2"><Link to="/upload" className="text-brand-600 hover:underline">{t('Go to Upload')}</Link></p>
       </div>
     );
   }
@@ -33,7 +33,7 @@ export default function UploadNoticeMessage({ notice, busy, onAsk }: { notice: U
       {notice.documents.length > 0 && (
         <ul className="mt-2 space-y-0.5 text-xs text-gray-600">
           {notice.documents.map(d => (
-            <li key={d.id} className="truncate">· <Link to={`/documents/${d.id}`} className="hover:text-blue-700 hover:underline">{notice.reading_pending && d.page_start != null ? `${d.title ? `${d.title} · ` : ''}${t('pages {pages}', { pages: d.page_start === d.page_end ? String(d.page_start) : `${d.page_start}–${d.page_end}` })}` : documentTitle(d, t)}</Link>{d.doc_date ? ` (${d.doc_date})` : ''}</li>
+            <li key={d.id} className="truncate">· <Link to={`/documents/${d.id}`} className="hover:text-brand-700 hover:underline">{notice.reading_pending && d.page_start != null ? `${d.title ? `${d.title} · ` : ''}${t('pages {pages}', { pages: d.page_start === d.page_end ? String(d.page_start) : `${d.page_start}–${d.page_end}` })}` : documentTitle(d, t)}</Link>{d.doc_date ? ` (${d.doc_date})` : ''}</li>
           ))}
           {notice.more_documents > 0 && <li>· {tn(notice.more_documents, 'and {n} more', 'and {n} more')}</li>}
         </ul>
@@ -47,7 +47,7 @@ export default function UploadNoticeMessage({ notice, busy, onAsk }: { notice: U
       {(notice.matches_open ?? 0) > 0 && <MatchQuestions uploadId={notice.upload_id} />}
       {notice.tests_new.length > 0 && <p className="mt-1 text-xs text-gray-600">{t('New tests, in no other document:')} {notice.tests_new.slice(0, 8).join(', ')}{notice.tests_new.length > 8 ? '…' : ''}</p>}
       {notice.looks_mixed && <CheckPages uploadId={notice.upload_id} />}
-      {notice.grouping_pending && <p className="mt-2 text-xs text-gray-600">{t('The grouping is waiting for you to confirm it. Until then these documents are out of the timeline and search.')} <Link to={`/uploads/${notice.upload_id}`} className="text-blue-600 hover:underline">{t('Check the grouping')}</Link></p>}
+      {notice.grouping_pending && <p className="mt-2 text-xs text-gray-600">{t('The grouping is waiting for you to confirm it. Until then these documents are out of the timeline and search.')} <Link to={`/uploads/${notice.upload_id}`} className="text-brand-600 hover:underline">{t('Check the grouping')}</Link></p>}
       {notice.unread_pages > 0 && <p className="mt-1 text-xs text-amber-700">{tn(notice.unread_pages, '{n} page has no text that could be read.', '{n} pages have no text that could be read.')}</p>}
       {notice.undated_documents > 0 && <p className="mt-1 text-xs text-amber-700">{tn(notice.undated_documents, '{n} document has no date.', '{n} documents have no date.')}</p>}
       <p className="mt-3 text-xs text-gray-500">{t('Ask me anything about it, or tell me what to fix.')}</p>
@@ -64,7 +64,7 @@ export default function UploadNoticeMessage({ notice, busy, onAsk }: { notice: U
 export function RegroupNoticeMessage({ notice, busy, onAsk }: { notice: RegroupNotice; busy: boolean; onAsk: (question: string) => void }) {
   const { t, tn } = useI18n();
   const name = notice.file_name ?? t('The upload');
-  const chip = 'rounded-full border border-gray-200 px-3 py-1.5 text-left text-xs text-gray-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50';
+  const chip = 'rounded-full border border-gray-200 px-3 py-1.5 text-left text-xs text-gray-600 transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700 disabled:opacity-50';
   if (notice.groups_changed === 0) {
     return <p className="text-sm text-gray-900">{t('I looked at the pages of “{name}”: they already sit with the pages they belong to, so nothing needs to change.', { name })}</p>;
   }
@@ -99,7 +99,7 @@ function CheckPages({ uploadId }: { uploadId: string }) {
       <p>{t('By their text, some pages look as if they belong with pages of other documents.')}</p>
       {state === 'started' ? <p className="mt-1.5 text-gray-600" role="status">{t('Checking. I will tell you here when the suggestions are ready; nothing is changed until you confirm.')}</p> : (
         <>
-          <button type="button" disabled={state === 'starting'} onClick={() => void start()} className="mt-1.5 rounded-lg bg-blue-600 px-3 py-1.5 font-medium text-white hover:bg-blue-700 disabled:opacity-50">{state === 'starting' ? t('Starting…') : t('Check the pages with AI')}</button>
+          <button type="button" disabled={state === 'starting'} onClick={() => void start()} className="mt-1.5 rounded-full bg-brand-600 px-3 py-1.5 font-medium text-white hover:bg-brand-700 disabled:opacity-50">{state === 'starting' ? t('Starting…') : t('Check the pages with AI')}</button>
           <p className="mt-1.5 text-gray-500">{t('The pages are compared on this device, then the AI model checks each group. The text of the pages goes to the model provider, as it did when they were read.')}</p>
           {state === 'failed' && <p className="mt-1 text-red-600" role="alert">{t('Could not start the check.')}</p>}
         </>
@@ -170,10 +170,10 @@ function MatchQuestions({ uploadId }: { uploadId: string }) {
 
   const label = (kind: MatchQuestion['kind']) => kind === 'doctor' ? t('doctor') : kind === 'test' ? t('test') : kind === 'tag' ? t('tag') : t('clinic or laboratory');
   const btn = 'rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50';
-  const yes = 'rounded-lg bg-blue-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50';
+  const yes = 'rounded-full bg-brand-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-50';
 
   return (
-    <section className="mt-3 rounded-lg border border-blue-100 bg-blue-50/40 p-2.5" aria-label={t('Please check these')}>
+    <section className="mt-3 rounded-lg border border-brand-100 bg-brand-50/40 p-2.5" aria-label={t('Please check these')}>
       <p className="mb-2 text-xs font-medium text-gray-900">{tn(questions.length, 'Please check this match', 'Please check these {n} matches')}</p>
       <ul className="space-y-2.5">
         {questions.map(q => {

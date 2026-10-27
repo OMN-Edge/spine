@@ -15,9 +15,9 @@ import DeviceImg from './DeviceImg';
 type State = 'waiting' | 'working' | 'done' | 'cancelled';
 
 const button = 'rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-50';
-const primary = `${button} bg-blue-600 text-white hover:bg-blue-700`;
+const primary = `${button} bg-brand-600 text-white hover:bg-brand-700`;
 const quiet = `${button} border border-gray-200 text-gray-700 hover:bg-gray-50`;
-const field = 'w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500';
+const field = 'w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500';
 
 export default function ProposalCard({ proposal }: { proposal: Proposal }) {
   const { t, tn } = useI18n();
@@ -43,7 +43,7 @@ export default function ProposalCard({ proposal }: { proposal: Proposal }) {
   };
 
   const shell = (heading: string, body: React.ReactNode, footer?: React.ReactNode, doneText?: string) => (
-    <section className="mt-3 rounded-xl border border-blue-100 bg-blue-50/40 p-3 text-xs text-gray-700" aria-label={heading}>
+    <section className="mt-3 rounded-xl border border-brand-100 bg-brand-50/40 p-3 text-xs text-gray-700" aria-label={heading}>
       <p className="mb-2 text-[0.8rem] font-medium text-gray-900">{heading}</p>
       {body}
       {state === 'done' && <p className="mt-2 font-medium text-green-700" role="status">{doneText ?? t('Done')}</p>}
@@ -85,7 +85,7 @@ export default function ProposalCard({ proposal }: { proposal: Proposal }) {
 
     case 'add_note':
       return shell(t('Add a note to “{title}”', { title: title(proposal.document) }),
-        <blockquote className="whitespace-pre-wrap break-words rounded-lg border-l-2 border-blue-300 bg-white px-2.5 py-1.5 text-gray-800">{proposal.text}</blockquote>,
+        <blockquote className="whitespace-pre-wrap break-words rounded-lg border-l-2 border-brand-300 bg-white px-2.5 py-1.5 text-gray-800">{proposal.text}</blockquote>,
         confirmBar(proposal.calls));
 
     case 'edit_document':

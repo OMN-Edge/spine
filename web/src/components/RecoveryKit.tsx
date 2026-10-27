@@ -37,9 +37,9 @@ export default function RecoveryKit({ recoveryKey, email, onDone, busy }: { reco
       <Notice kind="error">{t('Spine cannot recover your records for you: nobody but you holds a key to them. Without your password and this kit, they are gone.')}</Notice>
       <div className="font-mono text-base tracking-wide bg-gray-50 border border-gray-200 rounded-lg p-3 my-3 break-all select-all" data-testid="recovery-kit">{kit}</div>
       <div className="flex flex-wrap gap-2 mb-4 text-sm">
-        <button type="button" onClick={() => window.print()} className="border border-gray-300 rounded-lg px-3 py-1.5 text-gray-700 hover:bg-gray-50">{t('Print')}</button>
-        <button type="button" onClick={download} className="border border-gray-300 rounded-lg px-3 py-1.5 text-gray-700 hover:bg-gray-50">{t('Save as a file')}</button>
-        <button type="button" onClick={copy} className="border border-gray-300 rounded-lg px-3 py-1.5 text-gray-700 hover:bg-gray-50">{copied ? t('Copied') : t('Copy')}</button>
+        <button type="button" onClick={() => window.print()} className="border border-gray-300 rounded-full px-3 py-1.5 text-gray-700 hover:bg-gray-50">{t('Print')}</button>
+        <button type="button" onClick={download} className="border border-gray-300 rounded-full px-3 py-1.5 text-gray-700 hover:bg-gray-50">{t('Save as a file')}</button>
+        <button type="button" onClick={copy} className="border border-gray-300 rounded-full px-3 py-1.5 text-gray-700 hover:bg-gray-50">{copied ? t('Copied') : t('Copy')}</button>
       </div>
       <label className="flex items-start gap-2 text-sm text-gray-700 mb-3">
         <input type="checkbox" checked={kept} onChange={e => setKept(e.target.checked)} className="mt-1" />

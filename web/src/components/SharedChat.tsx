@@ -93,7 +93,7 @@ export default function SharedChat({ shareId, openId, titleOf }: { shareId: stri
         )}
         {turns.map((turn, i) => turn.role === 'user' ? (
           <div key={i} className="flex justify-end">
-            <p className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-blue-50 px-3.5 py-2 text-sm text-gray-900">{turn.content}</p>
+            <p className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-brand-50 px-3.5 py-2 text-sm text-gray-900">{turn.content}</p>
           </div>
         ) : turn.note ? (
           <p key={i} className={`text-sm ${turn.note === 'none' ? 'text-gray-500' : 'text-red-600'}`}>
@@ -124,7 +124,7 @@ export default function SharedChat({ shareId, openId, titleOf }: { shareId: stri
             className="max-h-32 min-h-[2rem] flex-1 resize-none bg-transparent py-1.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none" />
           {busy
             ? <button type="button" onClick={() => asking.current?.abort()} aria-label={t('Stop')} className="h-8 shrink-0 rounded-full bg-gray-800 px-3 text-sm text-white">{t('Stop')}</button>
-            : <button type="submit" disabled={!text.trim()} aria-label={t('Ask')} className="h-8 shrink-0 rounded-full bg-blue-600 px-3 text-sm text-white disabled:opacity-50">{t('Ask')}</button>}
+            : <button type="submit" disabled={!text.trim()} aria-label={t('Ask')} className="h-8 shrink-0 rounded-full bg-brand-600 px-3 text-sm text-white disabled:opacity-50">{t('Ask')}</button>}
         </div>
       </form>
       <p className="px-4 pb-2 text-[11px] leading-snug text-gray-400">{t('Answers are written by an AI model from the shared documents and can be wrong: check what matters against the original. It does not say what a result means.')}</p>
@@ -145,7 +145,7 @@ function AnswerWithSources({ turn, titleOf, onOpen }: { turn: Turn; titleOf: (so
       <Markdown text={turn.content} cite={label => {
         const source = sourceFor(label, all);
         if (!source) return null;
-        return <Link to={hrefOf(source)} title={nameOf(source)} onClick={onOpen} className={`mx-0.5 align-text-top hover:bg-blue-100 ${chipClass}`}>{sources.indexOf(source) + 1}</Link>;
+        return <Link to={hrefOf(source)} title={nameOf(source)} onClick={onOpen} className={`mx-0.5 align-text-top hover:bg-brand-100 ${chipClass}`}>{sources.indexOf(source) + 1}</Link>;
       }} />
       <AnswerSources sources={sources} hrefOf={hrefOf} onFollow={onOpen} titleOf={titleOf} />
     </div>

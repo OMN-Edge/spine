@@ -28,7 +28,7 @@ export default function Verify() {
   }, []);
 
   return (
-    <AuthCard title={t('Confirm your email')} footer={<p><Link to="/login" className="text-blue-600">{t('Go to sign in')}</Link></p>}>
+    <AuthCard title={t('Confirm your email')} footer={<p><Link to="/login" className="text-brand-600">{t('Go to sign in')}</Link></p>}>
       {state === 'working' && <p className="text-gray-500">{t('Confirming…')}</p>}
       {state === 'done' && <Notice kind="ok">{t('Your address is confirmed. You can sign in now.')}</Notice>}
       {state === 'failed' && <Notice kind="error">{error} {t('Sign in to request a new link.')}</Notice>}

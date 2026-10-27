@@ -15,8 +15,8 @@ function inline(text: string): ReactNode[] {
     const link = /^\[([^\]\n]+)\]\(([^)\s]+)\)$/.exec(part);
     if (link) {
       return link[2].startsWith('/')
-        ? <Link key={i} to={link[2]} className="text-blue-600 hover:underline">{link[1]}</Link>
-        : <a key={i} href={link[2]} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{link[1]}</a>;
+        ? <Link key={i} to={link[2]} className="text-brand-600 hover:underline">{link[1]}</Link>
+        : <a key={i} href={link[2]} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline">{link[1]}</a>;
     }
     return <Fragment key={i}>{part}</Fragment>;
   });

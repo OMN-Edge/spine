@@ -94,20 +94,20 @@ export default function ChatPanel() {
       {chat.unread > 0 && waiting && (
         <button
           type="button" onClick={() => { chat.setOpen(true); void chat.openConversation(waiting.id); }}
-          className="fixed bottom-16 right-5 z-30 max-w-[16rem] rounded-2xl rounded-br-md border border-blue-200 bg-white px-3.5 py-2 text-left text-sm text-gray-800 shadow-md transition hover:shadow-lg"
+          className="fixed bottom-16 right-5 z-30 max-w-[16rem] rounded-2xl rounded-br-md border border-brand-200 bg-white px-3.5 py-2 text-left text-sm text-gray-800 shadow-md transition hover:shadow-lg"
         >
-          {t(waiting.title)} <span className="text-blue-600">· {t('take a look')}</span>
+          {t(waiting.title)} <span className="text-brand-600">· {t('take a look')}</span>
         </button>
       )}
       <button
         type="button" onClick={() => chat.setOpen(true)} aria-label={chat.unread > 0 ? t('Ask your records') + ` (${chat.unread})` : t('Ask your records')}
         className="fixed bottom-5 right-5 z-30 flex items-center gap-2 rounded-full border border-gray-200 bg-white/95 py-2.5 pl-3.5 pr-4 text-sm text-gray-700 shadow-md backdrop-blur transition hover:shadow-lg hover:text-gray-900"
       >
-        <svg viewBox="0 0 24 24" className="h-4 w-4 text-blue-600" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <svg viewBox="0 0 24 24" className="h-4 w-4 text-brand-600" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8L12 3zM18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8L18 15z" />
         </svg>
         {t('Ask')}
-        {chat.unread > 0 && <span className="ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-semibold text-white" aria-hidden="true">{chat.unread}</span>}
+        {chat.unread > 0 && <span className="ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-600 px-1 text-[10px] font-semibold text-white" aria-hidden="true">{chat.unread}</span>}
       </button>
       </>
     );
@@ -126,7 +126,7 @@ export default function ChatPanel() {
       role="complementary" aria-label={t('Ask your records')}
       className={`fixed inset-0 z-40 flex flex-col bg-white transition duration-200 ease-out sm:inset-auto sm:bottom-3 sm:right-3 sm:top-[4.25rem] sm:w-[25rem] sm:rounded-2xl sm:border sm:border-gray-200 sm:shadow-[0_10px_40px_-12px_rgba(15,23,42,0.2)] ${entered ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0'}`}
     >
-      {dragging && <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl border-2 border-dashed border-blue-400 bg-blue-50/80 text-sm font-medium text-blue-700">{t('Drop files to attach them')}</div>}
+      {dragging && <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl border-2 border-dashed border-brand-400 bg-brand-50/80 text-sm font-medium text-brand-700">{t('Drop files to attach them')}</div>}
       <div className="flex items-start justify-between gap-3 px-4 pb-2 pt-3.5">
         <div className="min-w-0">
           <h2 className="truncate text-[0.95rem] font-medium text-gray-900">{view === 'history' ? t('Conversations') : (turns[0]?.notice || turns[0]?.regroupNotice ? t(chat.title ?? '') : (chat.title ?? t('Ask your records')))}</h2>
@@ -158,9 +158,9 @@ export default function ChatPanel() {
             <>
               <ul className="space-y-0.5">
                 {conversations.map(c => (
-                  <li key={c.id} className={`group flex items-center gap-1 rounded-lg ${c.id === chat.currentId ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
+                  <li key={c.id} className={`group flex items-center gap-1 rounded-lg ${c.id === chat.currentId ? 'bg-brand-50' : 'hover:bg-gray-50'}`}>
                     <button type="button" onClick={async () => { await chat.openConversation(c.id); setView('chat'); }} className="min-w-0 flex-1 px-3 py-2 text-left">
-                      <span className={`block truncate text-sm text-gray-900 ${c.unread ? 'font-semibold' : ''}`}>{c.unread && <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-blue-600 align-middle" aria-label={t('Unread')} />}{c.origin ? t(c.title) : c.title}</span>
+                      <span className={`block truncate text-sm text-gray-900 ${c.unread ? 'font-semibold' : ''}`}>{c.unread && <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-brand-600 align-middle" aria-label={t('Unread')} />}{c.origin ? t(c.title) : c.title}</span>
                       <span className="block text-xs text-gray-400">{c.updated_at.slice(0, 10)} · {tn(c.message_count, '{n} message', '{n} messages')}</span>
                     </button>
                     {confirming === c.id ? (
@@ -196,7 +196,7 @@ export default function ChatPanel() {
             <div className="space-y-4">
               <div className="flex flex-wrap gap-2">
                 {suggestionsFor(chat.page, t).map(q => (
-                  <button key={q} type="button" onClick={() => void chat.send(q)} className="rounded-full border border-gray-200 px-3 py-1.5 text-left text-xs text-gray-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700">{q}</button>
+                  <button key={q} type="button" onClick={() => void chat.send(q)} className="rounded-full border border-gray-200 px-3 py-1.5 text-left text-xs text-gray-600 transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700">{q}</button>
                 ))}
               </div>
               <p className="text-xs leading-relaxed text-gray-400">{t('Answers come only from your own documents, with links to where they came from. They are a reading of what the documents say, not medical advice: ask your doctor what they mean for you.')}</p>
@@ -211,7 +211,7 @@ export default function ChatPanel() {
             <div key={i}><UploadNoticeMessage notice={turn.notice} busy={busy} onAsk={q => void chat.send(q)} /></div>
           ) : turn.role === 'user' ? (
             <div key={i} className="flex justify-end">
-              <p className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-blue-50 px-3.5 py-2 text-sm text-gray-900">{turn.content}</p>
+              <p className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-brand-50 px-3.5 py-2 text-sm text-gray-900">{turn.content}</p>
             </div>
           ) : (
             <div key={i} className="text-sm">
@@ -233,7 +233,7 @@ export default function ChatPanel() {
                     return source ? (
                       <Link
                         to={hrefOf(source)} onClick={follow} title={nameOf(source)}
-                        className={`mx-0.5 align-text-top hover:bg-blue-100 ${chipClass}`}
+                        className={`mx-0.5 align-text-top hover:bg-brand-100 ${chipClass}`}
                       >{numberOf(source)}</Link>
                     ) : null;
                   };
@@ -287,7 +287,7 @@ export default function ChatPanel() {
               ))}
             </ul>
           )}
-          <div className="flex items-end gap-2 rounded-2xl border border-gray-200 bg-gray-50/60 py-1.5 pl-3.5 pr-1.5 transition focus-within:border-blue-300 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100">
+          <div className="flex items-end gap-2 rounded-2xl border border-gray-200 bg-gray-50/60 py-1.5 pl-3.5 pr-1.5 transition focus-within:border-brand-300 focus-within:bg-white focus-within:ring-2 focus-within:ring-brand-100">
             <input ref={picker} type="file" multiple accept=".pdf,.zip,.docx,.txt,.heic,.heif,application/pdf,application/zip,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,image/*" className="hidden" onChange={e => { addFiles(e.target.files); e.target.value = ''; }} />
             <button type="button" onClick={() => picker.current?.click()} disabled={busy} title={t('Attach a file')} aria-label={t('Attach a file')} className="-ml-1.5 mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50">
               <svg viewBox="0 0 24 24" className="h-4.5 w-4.5" width={18} height={18} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 12.5l-8.6 8.6a5 5 0 0 1-7-7l9-9a3.3 3.3 0 0 1 4.7 4.7l-9 9a1.7 1.7 0 0 1-2.4-2.4l8.3-8.3" /></svg>
@@ -305,7 +305,7 @@ export default function ChatPanel() {
                 <span className="h-2.5 w-2.5 rounded-sm bg-white" aria-hidden="true" />
               </button>
             ) : (
-              <button type="submit" disabled={!text.trim() && files.length === 0} title={t('Ask')} aria-label={t('Ask')} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white transition hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400">
+              <button type="submit" disabled={!text.trim() && files.length === 0} title={t('Ask')} aria-label={t('Ask')} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white transition hover:bg-brand-700 disabled:bg-gray-200 disabled:text-gray-400">
                 <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
               </button>
             )}

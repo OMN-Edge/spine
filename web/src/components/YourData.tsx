@@ -48,7 +48,7 @@ export default function YourData() {
     <section className="bg-white border border-gray-200 rounded-xl p-5 mt-6" aria-labelledby="your-data">
       <h2 id="your-data" className="font-medium text-gray-900 mb-1">{t('Your data')}</h2>
       <p className="text-xs text-gray-500 mb-4">
-        <Link to="/privacy" className="text-blue-600 hover:underline">{t('Privacy notice')}</Link> · <Link to="/terms" className="text-blue-600 hover:underline">{t('Terms of use')}</Link> · <Link to="/purpose" className="text-blue-600 hover:underline">{t('What Spine is for')}</Link>
+        <Link to="/privacy" className="text-brand-600 hover:underline">{t('Privacy notice')}</Link> · <Link to="/terms" className="text-brand-600 hover:underline">{t('Terms of use')}</Link> · <Link to="/purpose" className="text-brand-600 hover:underline">{t('What Spine is for')}</Link>
       </p>
 
       {flows.length > 0 && (
@@ -60,7 +60,7 @@ export default function YourData() {
 
       <h3 className="text-sm font-medium text-gray-900 mb-1">{t('Take everything with you')}</h3>
       <p className="text-xs text-gray-600 mb-2">{t('Every document with what was read from it, in one ZIP that Spine can read back.')}</p>
-      <button type="button" onClick={exportEverything} className="text-sm text-blue-600 hover:underline mb-5">{t('Export everything')}</button>
+      <button type="button" onClick={exportEverything} className="text-sm text-brand-600 hover:underline mb-5">{t('Export everything')}</button>
 
       <h3 className="text-sm font-medium text-gray-900 mb-1">{t('Delete the account')}</h3>
       <p className="text-xs text-gray-600 mb-2">{t('This deletes the account {email}, its records and its files, at once, with the copy of them in the backups. Database backups made earlier keep the account’s row, its wrapped keys and a list of its sealed objects, for a few days. Type your address to confirm.', { email })}</p>

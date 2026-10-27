@@ -16,11 +16,11 @@ export default function SyncNotice() {
   }, []);
   if (!changed) return null;
   return (
-    <div role="status" className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+    <div role="status" className="mb-4 rounded-lg border border-brand-200 bg-brand-50 p-4 text-sm text-brand-900">
       <p className="font-medium">{t('Another device made changes')}</p>
       <p className="mt-1">{t('They are already here. Reload to see them.')}</p>
       <div className="mt-3">
-        <button type="button" onClick={() => window.location.reload()} className="rounded-lg bg-blue-600 px-3 py-1.5 font-medium text-white hover:bg-blue-700">{t('Reload')}</button>
+        <button type="button" onClick={() => window.location.reload()} className="rounded-full bg-brand-600 px-3 py-1.5 font-medium text-white hover:bg-brand-700">{t('Reload')}</button>
       </div>
     </div>
   );

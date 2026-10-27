@@ -21,7 +21,7 @@ export default function Forgot() {
   };
 
   return (
-    <AuthCard title={t('Reset your password')} footer={<p><Link to="/login" className="text-blue-600">{t('Back to sign in')}</Link></p>}>
+    <AuthCard title={t('Reset your password')} footer={<p><Link to="/login" className="text-brand-600">{t('Back to sign in')}</Link></p>}>
       {done ? (
         <Notice kind="ok">{done}</Notice>
       ) : (

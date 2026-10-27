@@ -37,7 +37,7 @@ export default function ShareRequestCard({ request, onDecided }: { request: Shar
 
       {request.status === 'pending' ? (
         <div className="flex gap-2 mt-3">
-          <button disabled={busy || !request.link_active} onClick={() => decide('approve')} className="bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50">{t('Approve')}</button>
+          <button disabled={busy || !request.link_active} onClick={() => decide('approve')} className="bg-brand-600 text-white rounded-full px-4 py-2 text-sm font-medium hover:bg-brand-700 disabled:opacity-50">{t('Approve')}</button>
           <button disabled={busy} onClick={() => decide('deny')} className="border border-gray-200 text-gray-700 rounded-lg px-4 py-2 text-sm hover:bg-gray-50 disabled:opacity-50">{t('Deny')}</button>
         </div>
       ) : (

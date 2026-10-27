@@ -75,11 +75,11 @@ export default function CareChain({ documentId }: { documentId: string }) {
         <h2 className="font-medium text-gray-900 text-sm">{t('Connected documents')}</h2>
         <div className="flex items-center gap-3 text-xs">
           {chain.enabled && (
-            <button type="button" onClick={search} disabled={chain.searching} className="text-blue-600 hover:text-blue-800 disabled:text-gray-400">
+            <button type="button" onClick={search} disabled={chain.searching} className="text-brand-600 hover:text-brand-800 disabled:text-gray-400">
               {chain.searching ? t('Looking for links…') : t('Look for links again')}
             </button>
           )}
-          <button type="button" onClick={() => setAdding(a => !a)} className="text-blue-600 hover:text-blue-800">{adding ? t('Cancel') : t('Add a link')}</button>
+          <button type="button" onClick={() => setAdding(a => !a)} className="text-brand-600 hover:text-brand-800">{adding ? t('Cancel') : t('Add a link')}</button>
         </div>
       </div>
 
@@ -92,11 +92,11 @@ export default function CareChain({ documentId }: { documentId: string }) {
             const incoming = chain.edges.filter(e => e.to === n.id);
             return (
               <li key={n.id} className="pl-4 relative">
-                <span className={`absolute -left-[7px] top-1.5 w-3 h-3 rounded-full border-2 border-white ${here ? 'bg-blue-600' : 'bg-gray-400'}`} />
+                <span className={`absolute -left-[7px] top-1.5 w-3 h-3 rounded-full border-2 border-white ${here ? 'bg-brand-600' : 'bg-gray-400'}`} />
                 <div className="flex items-baseline justify-between gap-3">
                   {here
                     ? <span className="text-sm font-medium text-gray-900 truncate">{name(n)}</span>
-                    : <Link to={`/documents/${n.id}`} className="text-sm text-blue-700 hover:underline truncate">{name(n)}</Link>}
+                    : <Link to={`/documents/${n.id}`} className="text-sm text-brand-700 hover:underline truncate">{name(n)}</Link>}
                   <span className="text-xs text-gray-400 shrink-0">{n.doc_date ?? ''}</span>
                 </div>
                 {incoming.map(e => (
@@ -192,7 +192,7 @@ function AddLink({ documentId, onDone }: { documentId: string; onDone: () => voi
         </>
       )}
       {error && <p className="text-xs text-red-600">{t('Something went wrong. Try again.')}</p>}
-      <button type="button" onClick={save} disabled={!picked} className="px-3 py-1.5 text-sm rounded-lg bg-blue-600 text-white disabled:bg-gray-300">{t('Add link')}</button>
+      <button type="button" onClick={save} disabled={!picked} className="px-3 py-1.5 text-sm rounded-full bg-brand-600 text-white disabled:bg-gray-300">{t('Add link')}</button>
     </div>
   );
 }

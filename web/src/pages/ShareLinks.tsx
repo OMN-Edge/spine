@@ -11,7 +11,7 @@ import { DOC_TYPE_LABELS } from '../components/DocumentCard';
 import { LIFETIMES } from '../lifetimes';
 import { documentByline, documentTitle } from '../titles';
 
-const input = 'w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500';
+const input = 'w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500';
 const label = 'block text-xs font-medium text-gray-500 mb-1';
 
 /** What a link shares, in words: read from the stored scope, which is JSON for everything but `all`. */
@@ -59,8 +59,8 @@ export function DocumentPicker({ docs, chosen, onChange }: { docs: Document[]; c
       <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
         <span>{t('{n} selected', { n: chosen.length })}</span>
         <span className="flex gap-3">
-          <button type="button" className="text-blue-600 hover:underline" onClick={() => onChange([...new Set([...chosen, ...shown.map(d => d.id)])])}>{t('Select all shown')}</button>
-          <button type="button" className="text-blue-600 hover:underline disabled:text-gray-300 disabled:no-underline" disabled={chosen.length === 0} onClick={() => onChange([])}>{t('Clear')}</button>
+          <button type="button" className="text-brand-600 hover:underline" onClick={() => onChange([...new Set([...chosen, ...shown.map(d => d.id)])])}>{t('Select all shown')}</button>
+          <button type="button" className="text-brand-600 hover:underline disabled:text-gray-300 disabled:no-underline" disabled={chosen.length === 0} onClick={() => onChange([])}>{t('Clear')}</button>
         </span>
       </div>
       <ul className="max-h-72 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100 bg-white">
@@ -162,7 +162,7 @@ export default function ShareLinks() {
 
   return (
     <div className="max-w-2xl mx-auto">
-      <h1 className="text-2xl font-semibold text-gray-900 mb-6">{t('Share links')}</h1>
+      <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900 mb-6">{t('Share links')}</h1>
 
       {/* Create form */}
       <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6">
@@ -236,7 +236,7 @@ export default function ShareLinks() {
             <select
               id="s-hours" value={form.expires_hours}
               onChange={e => setForm(f => ({ ...f, expires_hours: parseInt(e.target.value) }))}
-              className="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
             >
               {LIFETIMES.map(l => <option key={l.hours} value={l.hours}>{t(l.label)}</option>)}
             </select>
@@ -284,7 +284,7 @@ export default function ShareLinks() {
           <button
             type="submit"
             disabled={creating || !ready}
-            className="bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+            className="bg-brand-600 text-white rounded-full px-4 py-2 text-sm font-medium hover:bg-brand-700 disabled:opacity-50"
           >
             {creating ? t('Creating…') : t('Create link')}
           </button>
@@ -345,7 +345,7 @@ export default function ShareLinks() {
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-3">
-                    <Link to={`/share-links/${link.id}`} className="text-xs text-blue-600 hover:underline">{t('Manage')}</Link>
+                    <Link to={`/share-links/${link.id}`} className="text-xs text-brand-600 hover:underline">{t('Manage')}</Link>
                     {!link.revoked && !expired && (
                       <button onClick={() => revoke(link.id)} className="text-xs text-red-500 hover:text-red-700">
                         {t('Revoke')}

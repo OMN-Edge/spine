@@ -17,12 +17,12 @@ export default function ShareRequestPage() {
 
   return (
     <div className="max-w-lg mx-auto">
-      <h1 className="text-2xl font-semibold text-gray-900 mb-2">{t('Someone is waiting for your approval')}</h1>
+      <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900 mb-2">{t('Someone is waiting for your approval')}</h1>
       <p className="text-sm text-gray-500 mb-6">{t('They opened a link you shared. Nothing is shown to them until you approve, and only in the browser that asked.')}</p>
       {error ? <p className="text-sm text-red-600" role="alert">{error}</p>
         : !request ? <p className="text-sm text-gray-400">{t('Loading…')}</p>
         : <ShareRequestCard request={request} onDecided={setRequest} />}
-      <p className="mt-6 text-sm"><Link to="/share" className="text-blue-600">{t('All share links')}</Link></p>
+      <p className="mt-6 text-sm"><Link to="/share" className="text-brand-600">{t('All share links')}</Link></p>
     </div>
   );
 }

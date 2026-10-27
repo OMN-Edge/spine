@@ -47,11 +47,11 @@ export default function SharedConnections({ shareId, id, titleOf }: { shareId: s
               const here = n.id === id;
               return (
                 <li key={n.id} className="pl-4 relative">
-                  <span className={`absolute -left-[7px] top-1.5 w-3 h-3 rounded-full border-2 border-white ${here ? 'bg-blue-600' : 'bg-gray-400'}`} />
+                  <span className={`absolute -left-[7px] top-1.5 w-3 h-3 rounded-full border-2 border-white ${here ? 'bg-brand-600' : 'bg-gray-400'}`} />
                   <div className="flex items-baseline justify-between gap-3">
                     {here
                       ? <span className="text-sm font-medium text-gray-900 truncate">{name(n)}</span>
-                      : <Link to={`?d=${n.id}`} className="text-sm text-blue-700 hover:underline truncate">{name(n)}</Link>}
+                      : <Link to={`?d=${n.id}`} className="text-sm text-brand-700 hover:underline truncate">{name(n)}</Link>}
                     <span className="text-xs text-gray-400 shrink-0">{n.doc_date ?? ''}</span>
                   </div>
                   {chain.edges.filter(e => e.to === n.id).map(e => (

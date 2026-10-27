@@ -94,7 +94,7 @@ export default function ReadAgainMenu({
         <button
           type="button" disabled={busy} aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(m => !m)}
           title={busy ? t('Wait for the reading to finish') : undefined}
-          className="inline-flex h-full items-center gap-1.5 rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          className="inline-flex h-full items-center gap-1.5 rounded-full border border-gray-300 bg-white px-3.5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
         >
           {t('Read again')}
           <svg viewBox="0 0 20 20" className={`h-3.5 w-3.5 text-gray-400 transition-transform ${menu ? 'rotate-180' : ''}`} fill="currentColor" aria-hidden="true">
@@ -140,7 +140,7 @@ export default function ReadAgainMenu({
           <div className="mt-3 flex gap-2">
             <button
               type="button" onClick={confirm} disabled={busy}
-              className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              className="rounded-full bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
             >
               {action === 'page' ? t('Send and read') : t('Read document')}
             </button>

@@ -56,7 +56,7 @@ export default function VaultSetup({ done }: { done: () => void }) {
   const signOut = async () => { await api.auth.logout(); setAuthenticated(false); };
 
   return (
-    <AuthCard title={t('Protect your records')} footer={<button type="button" onClick={signOut} className="text-blue-600">{t('Sign out')}</button>}>
+    <AuthCard title={t('Protect your records')} footer={<button type="button" onClick={signOut} className="text-brand-600">{t('Sign out')}</button>}>
       {account ? (
         <>
           <RecoveryKit recoveryKey={account.recoveryKey} email={email} onDone={save} busy={busy} />

@@ -55,7 +55,7 @@ export default function Passkeys() {
                 </span>
               </span>
               {prfSupported() && (
-                <button type="button" onClick={() => void act(() => (p.opens_vault ? api.auth.passkeys.disableVaultUnlock(p.id) : api.auth.passkeys.enableVaultUnlock(p.id)))} className="text-xs text-blue-600 hover:underline shrink-0">
+                <button type="button" onClick={() => void act(() => (p.opens_vault ? api.auth.passkeys.disableVaultUnlock(p.id) : api.auth.passkeys.enableVaultUnlock(p.id)))} className="text-xs text-brand-600 hover:underline shrink-0">
                   {p.opens_vault ? t('Stop opening my records with it') : t('Open my records with it')}
                 </button>
               )}

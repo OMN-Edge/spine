@@ -23,7 +23,7 @@ function niceStep(span: number, targetTicks: number): number {
   return (unit <= 1 ? 1 : unit <= 2 ? 2 : unit <= 5 ? 5 : 10) * power;
 }
 
-const colour = (flag: string | null) => (flag === 'high' ? '#dc2626' : flag === 'low' ? '#d97706' : '#2563eb');
+const colour = (flag: string | null) => (flag === 'high' ? '#dc2626' : flag === 'low' ? '#d97706' : '#0f766e');
 
 // A value known only to its month ("2026-03") sits at the start of that month.
 const day = (iso: string) => Date.parse(`${iso.length === 7 ? `${iso}-01` : iso}T00:00:00Z`);
@@ -79,16 +79,16 @@ export default function TrendChart({ points, unit, documentHref = id => `/docume
 
       {ticks.map(t => (
         <g key={t}>
-          <line x1={PAD.left} x2={W - PAD.right} y1={py(t)} y2={py(t)} stroke="#e5e7eb" strokeWidth={1} />
-          <text x={PAD.left - 8} y={py(t) + 4} textAnchor="end" fontSize={11} fill="#6b7280">{format(t)}</text>
+          <line x1={PAD.left} x2={W - PAD.right} y1={py(t)} y2={py(t)} stroke="#e7e4dd" strokeWidth={1} />
+          <text x={PAD.left - 8} y={py(t) + 4} textAnchor="end" fontSize={11} fill="#716e68">{format(t)}</text>
         </g>
       ))}
-      {unit && <text x={PAD.left - 44} y={12} fontSize={11} fill="#9ca3af">{unit}</text>}
+      {unit && <text x={PAD.left - 44} y={12} fontSize={11} fill="#a3a099">{unit}</text>}
 
-      <text x={PAD.left} y={H - 10} fontSize={11} fill="#6b7280">{first}</text>
-      {first !== last && <text x={W - PAD.right} y={H - 10} textAnchor="end" fontSize={11} fill="#6b7280">{last}</text>}
+      <text x={PAD.left} y={H - 10} fontSize={11} fill="#716e68">{first}</text>
+      {first !== last && <text x={W - PAD.right} y={H - 10} textAnchor="end" fontSize={11} fill="#716e68">{last}</text>}
 
-      {drawn.length > 1 && <polyline points={line} fill="none" stroke="#93c5fd" strokeWidth={2} strokeLinejoin="round" />}
+      {drawn.length > 1 && <polyline points={line} fill="none" stroke="#6dcfc0" strokeWidth={2} strokeLinejoin="round" />}
 
       {drawn.map(p => (
         <Link key={p.id} to={documentHref(p.document_id)}>

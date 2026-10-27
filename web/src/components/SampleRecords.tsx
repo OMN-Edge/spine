@@ -31,7 +31,7 @@ export function SampleOffer({ onChange }: { onChange: () => void }) {
   };
   return (
     <div className="mt-6">
-      <button type="button" onClick={load} disabled={busy} className="rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:border-blue-300 disabled:opacity-50">
+      <button type="button" onClick={load} disabled={busy} className="rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:border-brand-300 disabled:opacity-50">
         {busy ? t('Setting up…') : t('Explore with sample records')}
       </button>
       <p className="mt-2 text-xs text-gray-500">{t('A few invented documents about nobody, so you can look around first. You can remove them in one step.')}</p>
@@ -50,11 +50,11 @@ export function SampleBanner({ processing, onChange }: { processing: boolean; on
     setBusy(false);
   };
   return (
-    <div role="status" className="mb-6 rounded-xl bg-blue-50 border border-blue-200 px-4 py-3 text-sm text-blue-900 flex flex-wrap items-center justify-between gap-3">
+    <div role="status" className="mb-6 rounded-xl bg-brand-50 border border-brand-200 px-4 py-3 text-sm text-brand-900 flex flex-wrap items-center justify-between gap-3">
       <span>{processing ? t('Setting up the sample records…') : t('These are sample records, invented for trying Spine. Nothing here is about a person.')}</span>
       <span className="flex items-center gap-3">
         {error && <span className="text-red-700">{error}</span>}
-        <button type="button" onClick={remove} disabled={busy || processing} className="shrink-0 text-blue-700 hover:underline font-medium disabled:opacity-50">{t('Remove the sample records')}</button>
+        <button type="button" onClick={remove} disabled={busy || processing} className="shrink-0 text-brand-700 hover:underline font-medium disabled:opacity-50">{t('Remove the sample records')}</button>
       </span>
     </div>
   );

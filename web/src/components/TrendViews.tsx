@@ -28,7 +28,7 @@ export function TestList({ names, hrefFor }: { names: TrendName[]; hrefFor: (can
     <>
       <input
         type="search" aria-label={t('Filter tests')} placeholder={t('Filter tests…')} value={query} onChange={e => setQuery(e.target.value)}
-        className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 mb-4 focus:outline-none focus:ring-2 focus:ring-brand-500"
       />
       {shown.length === 0 ? <p className="text-sm text-gray-400">{t('No test matches.')}</p> : (
         <ul className="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100">
@@ -60,7 +60,7 @@ export function SeriesBody({ series, documentHref, after }: { series: TrendSerie
   const drawn = series.points.length - notDrawn;
   return (
     <div className="max-w-3xl">
-      <h1 className="text-2xl font-semibold text-gray-900 mb-1">{series.name}</h1>
+      <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900 mb-1">{series.name}</h1>
       <p className="text-sm text-gray-500 mb-4">{tn(series.points.length, '{n} value', '{n} values')}{series.unit ? `, ${t('in {unit}', { unit: series.unit })}` : ''}</p>
 
       {drawn > 0 ? (
@@ -97,7 +97,7 @@ export function SeriesBody({ series, documentHref, after }: { series: TrendSerie
                   <span className="text-gray-900">{p.value_text}</span>{p.unit && <span className="text-gray-400"> {p.unit}</span>} <FlagBadge flag={p.flag as Flag | null} />
                 </td>
                 <td className="px-2 py-2 whitespace-nowrap text-gray-400">{range(p.ref_low, p.ref_high)}</td>
-                <td className="px-4 py-2"><Link to={documentHref(p.document_id)} className="text-blue-600 hover:underline">{p.document_title ?? t('Document')}</Link></td>
+                <td className="px-4 py-2"><Link to={documentHref(p.document_id)} className="text-brand-600 hover:underline">{p.document_title ?? t('Document')}</Link></td>
               </tr>
             ))}
           </tbody>

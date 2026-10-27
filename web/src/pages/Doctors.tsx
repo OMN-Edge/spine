@@ -50,7 +50,7 @@ function Duplicates({ onMerged }: { onMerged: () => void }) {
           <li key={pairKey(p.keep.id, p.other.id)} className="text-sm text-gray-800">
             <p>{describe(p.other, tn)} <span className="text-gray-400">{t('and')}</span> {describe(p.keep, tn)}</p>
             <div className="flex gap-3 mt-1">
-              <button type="button" onClick={() => merge(p)} className="text-blue-600 hover:underline">{t('Merge into {name}', { name: p.keep.name })}</button>
+              <button type="button" onClick={() => merge(p)} className="text-brand-600 hover:underline">{t('Merge into {name}', { name: p.keep.name })}</button>
               <button type="button" onClick={() => dismiss(p)} className="text-gray-500 hover:underline">{t('Not the same')}</button>
             </div>
           </li>
@@ -76,7 +76,7 @@ export default function Doctors() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-gray-900 mb-1">{t('Doctors')}</h1>
+      <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900 mb-1">{t('Doctors')}</h1>
       <p className="text-sm text-gray-500 mb-4">{t('Everyone your documents name. The list grows as documents are read.')}</p>
       {doctors === null ? <p className="text-sm text-gray-400">{t('Loading…')}</p>
         : doctors.length === 0 ? (
@@ -86,7 +86,7 @@ export default function Doctors() {
             <Duplicates onMerged={reload} />
             <input
               type="search" aria-label={t('Filter doctors')} placeholder={t('Filter by name, specialty or clinic…')} value={query} onChange={e => setQuery(e.target.value)}
-              className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 mb-4 focus:outline-none focus:ring-2 focus:ring-brand-500"
             />
             {shown.length === 0 ? <p className="text-sm text-gray-400">{t('No doctor matches.')}</p> : (
               <ul className="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100">

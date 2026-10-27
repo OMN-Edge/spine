@@ -49,7 +49,7 @@ export default function ManageList({ items, filterLabel, removeLabel, removeWarn
     <div>
       <input
         type="search" value={query} onChange={e => setQuery(e.target.value)} aria-label={filterLabel} placeholder={filterLabel}
-        className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 mb-4 focus:outline-none focus:ring-2 focus:ring-brand-500"
       />
       {message && <p className="text-sm text-green-700 mb-3" role="status">{message}</p>}
       {error && <p className="text-sm text-red-600 mb-3" role="alert">{error}</p>}
@@ -60,12 +60,12 @@ export default function ManageList({ items, filterLabel, removeLabel, removeWarn
               <div className="flex items-center justify-between gap-3">
                 <span className="min-w-0">
                   {item.href
-                    ? <Link to={item.href} className="block text-sm font-medium text-gray-900 hover:text-blue-700 truncate">{item.name}</Link>
+                    ? <Link to={item.href} className="block text-sm font-medium text-gray-900 hover:text-brand-700 truncate">{item.name}</Link>
                     : <span className="block text-sm font-medium text-gray-900 truncate">{item.name}</span>}
                   <span className="block text-xs text-gray-400">{item.count}</span>
                 </span>
                 <span className="flex gap-3 text-xs shrink-0">
-                  <button type="button" className="text-blue-600 hover:underline" onClick={() => { setError(''); setMessage(''); setRemoving(null); setEditing({ key: item.key, name: item.name }); }}>{t('Rename or merge')}</button>
+                  <button type="button" className="text-brand-600 hover:underline" onClick={() => { setError(''); setMessage(''); setRemoving(null); setEditing({ key: item.key, name: item.name }); }}>{t('Rename or merge')}</button>
                   <button type="button" className="text-red-600 hover:underline" onClick={() => { setError(''); setMessage(''); setEditing(null); setRemoving(item.key); }}>{removeLabel}</button>
                 </span>
               </div>
@@ -77,9 +77,9 @@ export default function ManageList({ items, filterLabel, removeLabel, removeWarn
                       ariaLabel={t('New name')} value={editing.name} commitOnBlur
                       onChange={v => setEditing({ key: item.key, name: v })} newLabel={name => t('Rename to “{name}”', { name })}
                       options={items.filter(i => i.key !== item.key).map(i => ({ value: i.name, label: i.name, hint: String(i.count) }))}
-                      className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
                     />
-                    <button type="submit" disabled={busy || editing.name.trim() === '' || editing.name === item.name} className="shrink-0 bg-blue-600 text-white rounded-lg px-3 py-1.5 text-sm disabled:opacity-50">{t('Save')}</button>
+                    <button type="submit" disabled={busy || editing.name.trim() === '' || editing.name === item.name} className="shrink-0 bg-brand-600 text-white rounded-full px-3 py-1.5 text-sm disabled:opacity-50">{t('Save')}</button>
                     <button type="button" onClick={() => setEditing(null)} className="shrink-0 px-2 text-sm text-gray-500">{t('Cancel')}</button>
                   </div>
                   <p className="text-xs text-gray-500 mt-1">{t('A name that is already in the list merges the two.')}</p>

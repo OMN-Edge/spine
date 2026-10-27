@@ -34,19 +34,19 @@ export default function ConsentGate({ need, done }: { need: { health: boolean; t
   const signOut = async () => { await api.auth.logout(); setAuthenticated(false); };
 
   return (
-    <AuthCard title={t('Before you start')} footer={<button type="button" onClick={signOut} className="text-blue-600">{t('Sign out')}</button>}>
+    <AuthCard title={t('Before you start')} footer={<button type="button" onClick={signOut} className="text-brand-600">{t('Sign out')}</button>}>
       <p className="text-sm text-gray-600 mb-4">{t('Spine keeps health records. Two things need your agreement, separately, before you use it.')}</p>
       <form onSubmit={agree} className="space-y-3">
         {need.health && (
           <label className="flex items-start gap-2 text-sm text-gray-700">
             <input type="checkbox" checked={health} onChange={e => setHealth(e.target.checked)} className="mt-1" />
-            <span>{t('I consent to Spine processing the health data I upload, as the privacy notice describes. I can withdraw this at any time by deleting my account.')} <Link to="/privacy" target="_blank" className="text-blue-600 hover:underline">{t('Privacy notice')}</Link></span>
+            <span>{t('I consent to Spine processing the health data I upload, as the privacy notice describes. I can withdraw this at any time by deleting my account.')} <Link to="/privacy" target="_blank" className="text-brand-600 hover:underline">{t('Privacy notice')}</Link></span>
           </label>
         )}
         {need.terms && (
           <label className="flex items-start gap-2 text-sm text-gray-700">
             <input type="checkbox" checked={terms} onChange={e => setTerms(e.target.checked)} className="mt-1" />
-            <span>{t('I accept the terms of use.')} <Link to="/terms" target="_blank" className="text-blue-600 hover:underline">{t('Terms of use')}</Link> · <Link to="/purpose" target="_blank" className="text-blue-600 hover:underline">{t('What Spine is for')}</Link></span>
+            <span>{t('I accept the terms of use.')} <Link to="/terms" target="_blank" className="text-brand-600 hover:underline">{t('Terms of use')}</Link> · <Link to="/purpose" target="_blank" className="text-brand-600 hover:underline">{t('What Spine is for')}</Link></span>
           </label>
         )}
         {error && <Notice kind="error">{error}</Notice>}

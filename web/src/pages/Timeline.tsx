@@ -54,7 +54,7 @@ export default function Timeline() {
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <h1 className="text-2xl font-semibold text-gray-900">{t('Timeline')}</h1>
+        <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900">{t('Timeline')}</h1>
         <div className="flex flex-wrap gap-2">
           <DocumentFilters value={filter} onChange={(key, v) => setFilter(f => ({ ...f, [key]: v || undefined! }))} wrapperClassName="relative w-40" />
           <Combobox
@@ -75,7 +75,7 @@ export default function Timeline() {
       {waiting > 0 && (
         <div role="status" className="mb-6 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900 flex flex-wrap items-center justify-between gap-2">
           <span>{tn(waiting, '{n} upload is waiting for you to check how its pages were grouped. Its documents appear here once you confirm.', '{n} uploads are waiting for you to check how their pages were grouped. Their documents appear here once you confirm.')}</span>
-          <Link to="/upload" className="shrink-0 text-blue-600 hover:underline font-medium">{t('Check the grouping')}</Link>
+          <Link to="/upload" className="shrink-0 text-brand-600 hover:underline font-medium">{t('Check the grouping')}</Link>
         </div>
       )}
 
@@ -84,7 +84,7 @@ export default function Timeline() {
       ) : docs.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
           <p className="text-lg mb-2">{t('No documents yet')}</p>
-          <Link to="/upload" className="text-blue-600 text-sm hover:underline">{t('Upload your first file')} →</Link>
+          <Link to="/upload" className="text-brand-600 text-sm hover:underline">{t('Upload your first file')} →</Link>
           {samples.state && !samples.state.loaded && <SampleOffer onChange={samples.refresh} />}
         </div>
       ) : (
@@ -94,7 +94,7 @@ export default function Timeline() {
               {['', ...years.filter(y => y)].map(y => (
                 <button
                   key={y || 'all'} type="button" aria-pressed={zoom === y} onClick={() => setZoom(y)}
-                  className={`text-xs px-2.5 py-1 rounded-full border ${zoom === y ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}
+                  className={`text-xs px-2.5 py-1 rounded-full border ${zoom === y ? 'bg-brand-600 border-brand-600 text-white' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}
                 >
                   {y || t('All years')}
                 </button>
@@ -103,7 +103,7 @@ export default function Timeline() {
           )}
           {shownYears.map(year => (
             <div key={year}>
-              <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">{year || t('Unknown date')}</h2>
+              <h2 className="text-xs font-medium text-gray-500 uppercase tracking-[0.12em] mb-3">{year || t('Unknown date')}</h2>
               {/* One spine per year: a reviewed document is a solid vertebra, an unreviewed one an empty amber outline. */}
               <SpineLog
                 items={byYear[year].map(doc => ({

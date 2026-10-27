@@ -23,7 +23,7 @@ export default function ReviewQueue() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-gray-900 mb-2">{t('Review queue')}</h1>
+      <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900 mb-2">{t('Review queue')}</h1>
       <p className="text-sm text-gray-500 mb-6">
         {tn(docs.length, '{n} document waiting for review', '{n} documents waiting for review')}
       </p>

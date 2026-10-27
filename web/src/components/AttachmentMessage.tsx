@@ -42,7 +42,7 @@ function Progress({ file, onSettled }: { file: AttachedFile; onSettled: () => vo
     return (
       <span className="block" role="status">
         <span className="block text-[11px] text-gray-500">{t('Reading…')} {state?.step ? `· ${state.step}` : ''}</span>
-        <span className="mt-1 block h-1 w-40 overflow-hidden rounded bg-gray-200"><span className="block h-full bg-blue-500 transition-all" style={{ width: `${pct}%` }} /></span>
+        <span className="mt-1 block h-1 w-40 overflow-hidden rounded bg-gray-200"><span className="block h-full bg-brand-500 transition-all" style={{ width: `${pct}%` }} /></span>
       </span>
     );
   }
@@ -55,7 +55,7 @@ export default function AttachmentMessage({ files, onSettled }: { files: Attache
   const { t } = useI18n();
   return (
     <div className="flex justify-end">
-      <ul className="max-w-[85%] space-y-1.5 rounded-2xl rounded-br-md bg-blue-50 px-3.5 py-2 text-sm text-gray-900">
+      <ul className="max-w-[85%] space-y-1.5 rounded-2xl rounded-br-md bg-brand-50 px-3.5 py-2 text-sm text-gray-900">
         {files.map((f, i) => (
           <li key={i} className="min-w-0">
             <span className="flex items-center gap-1.5">
@@ -63,7 +63,7 @@ export default function AttachmentMessage({ files, onSettled }: { files: Attache
               <span className="truncate">{f.name ?? t('A file')}</span>
             </span>
             {f.state === 'reading' && <Progress file={f} onSettled={onSettled} />}
-            {f.state === 'already_held' && <span className="block text-[11px] text-gray-500">{t('Already in your archive')}{f.upload_id && <> · <Link to={`/uploads/${f.upload_id}`} className="text-blue-600 hover:underline">{t('Open')}</Link></>}</span>}
+            {f.state === 'already_held' && <span className="block text-[11px] text-gray-500">{t('Already in your archive')}{f.upload_id && <> · <Link to={`/uploads/${f.upload_id}`} className="text-brand-600 hover:underline">{t('Open')}</Link></>}</span>}
             {f.state === 'skipped' && <span className="block text-[11px] text-red-600">{t(SKIPPED[f.reason ?? ''] ?? msg('Not accepted.'))}</span>}
           </li>
         ))}

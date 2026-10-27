@@ -69,7 +69,7 @@ export function MeasurementsList<T extends MeasurementRow>({ items, selectedId, 
           >
             <span className="min-w-0">
               {!plain && m.value_num != null && m.canonical ? (
-                <Link to={`/trends?name=${encodeURIComponent(m.canonical)}`} className="font-medium text-gray-700 hover:text-blue-600 break-words">{m.name}</Link>
+                <Link to={`/trends?name=${encodeURIComponent(m.canonical)}`} className="font-medium text-gray-700 hover:text-brand-600 break-words">{m.name}</Link>
               ) : (
                 <span className="font-medium text-gray-700 break-words">{m.name}</span>
               )}
@@ -96,7 +96,7 @@ export function MeasurementsList<T extends MeasurementRow>({ items, selectedId, 
   );
 }
 
-const cell = 'w-full text-xs border border-gray-200 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500';
+const cell = 'w-full text-xs border border-gray-200 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-brand-500';
 
 /** Review mode: every part of a result is editable; the flag is worked out again on save. */
 export function MeasurementsEditor({ rows, pages, currentPageId, onChange, onAdd, knownNames }: {
@@ -144,11 +144,11 @@ export function MeasurementsEditor({ rows, pages, currentPageId, onChange, onAdd
       ))}
       {live.length === 0 && <p className="text-xs text-gray-400">{t('No measurements')}</p>}
       <div className="flex items-center gap-3">
-        <button type="button" onClick={onAdd} disabled={pages.length === 0 && !currentPageId} className="text-xs text-blue-600 hover:underline disabled:text-gray-300">+ {t('Add measurement')}</button>
+        <button type="button" onClick={onAdd} disabled={pages.length === 0 && !currentPageId} className="text-xs text-brand-600 hover:underline disabled:text-gray-300">+ {t('Add measurement')}</button>
         {rows.some(r => r.removed) && (
           <span className="text-xs text-gray-400">
             {t('{n} removed.', { n: rows.filter(r => r.removed).length })}{' '}
-            <button type="button" className="text-blue-600 hover:underline" onClick={() => rows.filter(r => r.removed).forEach(r => onChange(r.key, { removed: false }))}>{t('Undo')}</button>
+            <button type="button" className="text-brand-600 hover:underline" onClick={() => rows.filter(r => r.removed).forEach(r => onChange(r.key, { removed: false }))}>{t('Undo')}</button>
           </span>
         )}
       </div>

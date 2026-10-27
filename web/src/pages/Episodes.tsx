@@ -45,7 +45,7 @@ export default function Episodes() {
         const d = byId.get(id);
         return (
           <li key={id} className="flex items-center justify-between gap-3">
-            <Link to={`/documents/${id}`} className="text-blue-700 hover:underline truncate">{d ? documentTitle(d, t) : t('Document')}</Link>
+            <Link to={`/documents/${id}`} className="text-brand-700 hover:underline truncate">{d ? documentTitle(d, t) : t('Document')}</Link>
             <span className="text-xs text-gray-400 shrink-0">{d?.doc_date ?? ''}</span>
           </li>
         );
@@ -56,10 +56,10 @@ export default function Episodes() {
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
-        <h1 className="text-2xl font-semibold text-gray-900">{t('Episodes')}</h1>
+        <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900">{t('Episodes')}</h1>
         <div className="flex gap-3 text-sm">
-          <button type="button" onClick={look} disabled={looking} className="text-blue-600 hover:text-blue-800 disabled:text-gray-400">{looking ? t('Looking…') : t('Look for episodes')}</button>
-          <button type="button" onClick={() => setDrafting(d => (d ? null : { title: '', ids: [] }))} className="text-blue-600 hover:text-blue-800">{drafting ? t('Cancel') : t('New episode')}</button>
+          <button type="button" onClick={look} disabled={looking} className="text-brand-600 hover:text-brand-800 disabled:text-gray-400">{looking ? t('Looking…') : t('Look for episodes')}</button>
+          <button type="button" onClick={() => setDrafting(d => (d ? null : { title: '', ids: [] }))} className="text-brand-600 hover:text-brand-800">{drafting ? t('Cancel') : t('New episode')}</button>
         </div>
       </div>
       <p className="text-sm text-gray-500 mb-6">{t('An episode groups documents that belong together, such as a visit and its tests. Spine suggests groups from the provider, the dates and the links between documents; it says nothing about the care. Nothing counts until you confirm it.')}</p>
@@ -70,7 +70,7 @@ export default function Episodes() {
           <input
             value={drafting.title} maxLength={120} placeholder={t('Title (optional)')} aria-label={t('Title (optional)')}
             onChange={e => setDrafting(d => (d ? { ...d, title: e.target.value } : d))}
-            className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
           />
           <div className="max-h-64 overflow-auto space-y-1">
             {docs.map(d => (
@@ -84,7 +84,7 @@ export default function Episodes() {
           <button
             type="button" disabled={drafting.ids.length === 0}
             onClick={() => { const d = drafting; setDrafting(null); void act(() => api.episodes.create(d.title.trim(), d.ids)); }}
-            className="bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+            className="bg-brand-600 text-white rounded-full px-4 py-2 text-sm font-medium hover:bg-brand-700 disabled:opacity-50"
           >
             {t('Create the episode')}
           </button>
@@ -138,9 +138,9 @@ function EpisodeCard({ ep, docs, byId, onChange }: { ep: Episode; docs: Document
           value={title} maxLength={120} aria-label={t('Title')} placeholder={episodeName({ ...ep, title: '' }, t)}
           onChange={e => setTitle(e.target.value)}
           onBlur={() => { if (title.trim() !== ep.title) onChange(() => api.episodes.update(ep.id, { title: title.trim() })); }}
-          className="flex-1 min-w-0 text-sm font-medium text-gray-900 border border-transparent hover:border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="flex-1 min-w-0 text-sm font-medium text-gray-900 border border-transparent hover:border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-brand-500"
         />
-        <Link to={`/?episode=${ep.id}`} className="text-xs text-blue-600 hover:underline shrink-0">{t('On the timeline')}</Link>
+        <Link to={`/?episode=${ep.id}`} className="text-xs text-brand-600 hover:underline shrink-0">{t('On the timeline')}</Link>
       </div>
       <p className="text-xs text-gray-500 px-2">{tn(ep.document_ids.length, '{n} document', '{n} documents')}</p>
       <ul className="mt-2 space-y-1 text-sm px-2">
@@ -148,7 +148,7 @@ function EpisodeCard({ ep, docs, byId, onChange }: { ep: Episode; docs: Document
           const d = byId.get(id);
           return (
             <li key={id} className="flex items-center justify-between gap-3">
-              <Link to={`/documents/${id}`} className="text-blue-700 hover:underline truncate">{d ? documentTitle(d, t) : t('Document')}</Link>
+              <Link to={`/documents/${id}`} className="text-brand-700 hover:underline truncate">{d ? documentTitle(d, t) : t('Document')}</Link>
               <span className="flex items-center gap-3 shrink-0">
                 <span className="text-xs text-gray-400">{d?.doc_date ?? ''}</span>
                 {ep.document_ids.length > 1 && (

@@ -54,7 +54,7 @@ interface Draft {
   doctors: DraftDoctor[];
 }
 
-const input = 'w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500';
+const input = 'w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-500';
 const label = 'block text-xs font-medium text-gray-500 mb-1';
 
 const draftOf = (doc: Document): Draft => ({
@@ -89,7 +89,7 @@ function ReviewButton({ onClick }: { onClick: () => void }) {
       onClick={onClick}
       disabled={busy}
       title={busy ? t('Wait for the reading to finish') : undefined}
-      className="flex-1 bg-blue-600 text-white rounded-xl px-4 py-2.5 font-medium text-sm hover:bg-blue-700 disabled:opacity-50"
+      className="flex-1 bg-brand-600 text-white rounded-full px-4 py-2.5 font-medium text-sm hover:bg-brand-700 disabled:opacity-50"
     >
       {t('Review')}
     </button>
@@ -203,9 +203,9 @@ export default function DocumentPage() {
     const el = document.getElementById(`section-${section}`);
     if (!el) return;
     el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    el.classList.add('ring-2', 'ring-blue-400');
-    const timer = window.setTimeout(() => el.classList.remove('ring-2', 'ring-blue-400'), 2200);
-    return () => { window.clearTimeout(timer); el.classList.remove('ring-2', 'ring-blue-400'); };
+    el.classList.add('ring-2', 'ring-brand-400');
+    const timer = window.setTimeout(() => el.classList.remove('ring-2', 'ring-brand-400'), 2200);
+    return () => { window.clearTimeout(timer); el.classList.remove('ring-2', 'ring-brand-400'); };
   }, [location.key, location.search, loading, doc?.id]);
 
   // The document in the reader's language, once the model has had it; until then (and when it is already in that
@@ -394,7 +394,7 @@ export default function DocumentPage() {
           {doc.grouping_confirmed === false && (
             <div role="status" className="mb-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-900">
               {t('How this upload’s pages were grouped has not been confirmed yet, so this document is not in your timeline and cannot be marked reviewed.')}{' '}
-              <Link to={`/uploads/${doc.source_file_id}`} className="font-medium text-blue-600 hover:underline">{t('Check the grouping')}</Link>
+              <Link to={`/uploads/${doc.source_file_id}`} className="font-medium text-brand-600 hover:underline">{t('Check the grouping')}</Link>
             </div>
           )}
 
@@ -409,17 +409,17 @@ export default function DocumentPage() {
               <p className="text-sm text-gray-500">{documentByline(doc, t)}</p>
               {doc.episode && (
                 <p className="text-xs mt-1">
-                  <Link to={doc.episode.state === 'confirmed' ? `/?episode=${doc.episode.id}` : '/episodes'} className="text-blue-600 hover:underline">
+                  <Link to={doc.episode.state === 'confirmed' ? `/?episode=${doc.episode.id}` : '/episodes'} className="text-brand-600 hover:underline">
                     {doc.episode.state === 'confirmed' ? t('Episode: {name}', { name: episodeName(doc.episode, t) }) : t('May belong to an episode: {name}', { name: episodeName(doc.episode, t) })}
                   </Link>
                 </p>
               )}
               {needsTranslation && (tr.translating || tr.active) && (
                 <p className="text-xs text-gray-500 mt-1 flex flex-wrap items-center gap-1.5" role="status">
-                  {tr.translating && <span aria-hidden="true" className="inline-block h-3 w-3 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />}
+                  {tr.translating && <span aria-hidden="true" className="inline-block h-3 w-3 rounded-full border-2 border-brand-500 border-t-transparent animate-spin" />}
                   {tr.translating ? t('Translating…') : t('Translated from {language}.', { language: languageName(tr.translation?.source_language ?? doc.language) || t('the original language') })}{' '}
                   {tr.active && (
-                    <button type="button" onClick={() => tr.setShowOriginal(o => !o)} className="text-blue-600 hover:underline">
+                    <button type="button" onClick={() => tr.setShowOriginal(o => !o)} className="text-brand-600 hover:underline">
                       {tr.showOriginal ? t('Show translation') : t('Show original')}
                     </button>
                   )}
@@ -604,14 +604,14 @@ export default function DocumentPage() {
               {draft.fields.every(f => f.removed) && <p className="text-xs text-gray-400">{t('No fields')}</p>}
               <button
                 type="button" onClick={addField} disabled={pages.length === 0}
-                className="mt-3 text-sm text-blue-600 hover:underline disabled:opacity-50"
+                className="mt-3 text-sm text-brand-600 hover:underline disabled:opacity-50"
               >
                 + {t('Add a field')}
               </button>
               {draft.fields.some(f => f.removed) && (
                 <p className="text-xs text-gray-400 mt-2">
                   {t('{n} removed.', { n: draft.fields.filter(f => f.removed).length })}{' '}
-                  <button type="button" className="text-blue-600 hover:underline" onClick={() => setDraft(d => (d ? { ...d, fields: d.fields.map(f => ({ ...f, removed: false })) } : d))}>
+                  <button type="button" className="text-brand-600 hover:underline" onClick={() => setDraft(d => (d ? { ...d, fields: d.fields.map(f => ({ ...f, removed: false })) } : d))}>
                     {t('Undo')}
                   </button>
                 </p>
@@ -627,7 +627,7 @@ export default function DocumentPage() {
             <div className="flex gap-2">
               <button
                 onClick={done} disabled={saving}
-                className="flex-1 bg-blue-600 text-white rounded-xl px-4 py-2.5 font-medium text-sm hover:bg-blue-700 disabled:opacity-50"
+                className="flex-1 bg-brand-600 text-white rounded-full px-4 py-2.5 font-medium text-sm hover:bg-brand-700 disabled:opacity-50"
               >
                 {saving ? t('Saving…') : t('Done')}
               </button>
@@ -666,7 +666,7 @@ export default function DocumentPage() {
                       key={p.id}
                       onClick={() => setCurrentPageIdx(i)}
                       title={p.page_number !== i + 1 ? t('Page {n} of the file', { n: p.page_number }) : undefined}
-                      className={`text-xs px-2 py-1 rounded ${i === currentPageIdx ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-300'}`}
+                      className={`text-xs px-2 py-1 rounded ${i === currentPageIdx ? 'bg-brand-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-300'}`}
                     >
                       {i + 1}
                     </button>

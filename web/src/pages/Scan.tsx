@@ -111,9 +111,9 @@ export default function Scan() {
   if (canRead === false) {
     return (
       <div className="max-w-md mx-auto">
-        <h1 className="text-2xl font-semibold text-gray-900 mb-2">{t('Scan')}</h1>
+        <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900 mb-2">{t('Scan')}</h1>
         <p className="text-sm text-gray-600">{t('Pages from a camera have no text, so they can only be read here if image reading or local OCR is switched on for this server. A scanning app that saves a PDF works without either.')}</p>
-        <Link to="/upload" className="text-sm text-blue-600 hover:underline mt-3 inline-block">{t('Back to upload')}</Link>
+        <Link to="/upload" className="text-sm text-brand-600 hover:underline mt-3 inline-block">{t('Back to upload')}</Link>
       </div>
     );
   }
@@ -121,9 +121,9 @@ export default function Scan() {
   return (
     <div className="max-w-3xl mx-auto">
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-semibold text-gray-900">{t('Scan')}</h1>
+        <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900">{t('Scan')}</h1>
         {pages.length > 0 && mode !== 'review' && (
-          <button type="button" onClick={() => setMode('review')} className="text-sm text-blue-600 hover:underline">{tn(pages.length, 'Review {n} page', 'Review {n} pages')}</button>
+          <button type="button" onClick={() => setMode('review')} className="text-sm text-brand-600 hover:underline">{tn(pages.length, 'Review {n} page', 'Review {n} pages')}</button>
         )}
       </div>
       {error && <p className="text-sm text-red-600 mb-3" role="alert">{error}</p>}
@@ -133,10 +133,10 @@ export default function Scan() {
 
       {mode === 'adjust' && still && (
         <div>
-          <p className="text-sm text-gray-600 mb-2">{t('Drag each blue dot onto a corner of the page.')}</p>
+          <p className="text-sm text-gray-600 mb-2">{t('Drag each dot onto a corner of the page.')}</p>
           <CornerEditor src={still.url} width={still.loaded.width} height={still.loaded.height} quad={still.quad} onChange={quad => setStill(s => (s ? { ...s, quad } : s))} />
           <div className="flex flex-wrap gap-3 mt-3 text-sm">
-            <button type="button" onClick={accept} disabled={!!busy} className="bg-blue-600 text-white rounded-lg px-4 py-2 font-medium hover:bg-blue-700 disabled:opacity-50">{t('Use this page')}</button>
+            <button type="button" onClick={accept} disabled={!!busy} className="bg-brand-600 text-white rounded-full px-4 py-2 font-medium hover:bg-brand-700 disabled:opacity-50">{t('Use this page')}</button>
             <button type="button" onClick={() => setStill(s => (s ? { ...s, quad: defaultQuad(s.loaded.width, s.loaded.height, 0) } : s))} className="text-gray-600 hover:underline">{t('Use the whole photo')}</button>
             <button type="button" onClick={() => { URL.revokeObjectURL(still.url); const back = still.replaces !== null; setStill(null); setMode(back ? 'review' : 'camera'); }} className="text-gray-600 hover:underline">{back(still.replaces, t)}</button>
           </div>
@@ -156,7 +156,7 @@ export default function Scan() {
                   <div className="flex justify-center gap-3 text-xs mt-1">
                     <button type="button" disabled={i === 0} onClick={() => move(i, -1)} aria-label={t('Move page {n} earlier', { n: i + 1 })} className="text-gray-500 hover:text-gray-800 disabled:opacity-30">←</button>
                     <button type="button" disabled={i === pages.length - 1} onClick={() => move(i, 1)} aria-label={t('Move page {n} later', { n: i + 1 })} className="text-gray-500 hover:text-gray-800 disabled:opacity-30">→</button>
-                    <button type="button" onClick={() => void open(p.raw, p.quad, p.id)} className="text-blue-600 hover:underline">{t('Corners')}</button>
+                    <button type="button" onClick={() => void open(p.raw, p.quad, p.id)} className="text-brand-600 hover:underline">{t('Corners')}</button>
                     <button type="button" onClick={() => remove(p.id)} className="text-gray-500 hover:text-red-600">{t('Remove')}</button>
                   </div>
                   <label className="flex items-center justify-center gap-1 text-xs text-gray-600 mt-1">
@@ -173,8 +173,8 @@ export default function Scan() {
             </ol>
           )}
           <div className="flex flex-wrap gap-3 mt-4 text-sm">
-            <button type="button" onClick={() => setMode('camera')} className="text-blue-600 hover:underline">{t('Add a page')}</button>
-            <button type="button" onClick={save} disabled={pages.length === 0 || !!busy} className="bg-blue-600 text-white rounded-lg px-4 py-2 font-medium hover:bg-blue-700 disabled:opacity-50 ml-auto">{tn(pages.length, 'Save {n} page as one document', 'Save {n} pages as one document')}</button>
+            <button type="button" onClick={() => setMode('camera')} className="text-brand-600 hover:underline">{t('Add a page')}</button>
+            <button type="button" onClick={save} disabled={pages.length === 0 || !!busy} className="bg-brand-600 text-white rounded-full px-4 py-2 font-medium hover:bg-brand-700 disabled:opacity-50 ml-auto">{tn(pages.length, 'Save {n} page as one document', 'Save {n} pages as one document')}</button>
           </div>
           <p className="text-xs text-gray-500 mt-3">{t('The pages are straightened and cleaned up on this device. The photos as you took them are kept beside the document.')}</p>
         </div>
@@ -268,13 +268,13 @@ function CameraStep({ count, onShot }: { count: number; onShot: (raw: Blob) => v
       {live === 'starting' && <p className="text-sm text-gray-500">{t('Opening the camera…')}</p>}
       {live === 'off' && <p className="text-sm text-gray-600 mb-3">{t('The camera could not be opened here. Take the picture with your phone’s camera, or choose a photo.')}</p>}
       <div className="flex flex-wrap items-center gap-3 mt-3 text-sm">
-        {live === 'on' && <button type="button" onClick={shoot} className="bg-blue-600 text-white rounded-full px-5 py-2 font-medium hover:bg-blue-700">{t('Take the picture')}</button>}
+        {live === 'on' && <button type="button" onClick={shoot} className="bg-brand-600 text-white rounded-full px-5 py-2 font-medium hover:bg-brand-700">{t('Take the picture')}</button>}
         {live === 'on' && (
           <label className="flex items-center gap-1.5 text-gray-600">
             <input type="checkbox" checked={auto} onChange={e => setAuto(e.target.checked)} /> {t('Take it when the page is still')}
           </label>
         )}
-        <label className="text-blue-600 hover:underline cursor-pointer">
+        <label className="text-brand-600 hover:underline cursor-pointer">
           {live === 'on' ? t('or choose a photo') : t('Take or choose a photo')}
           <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={picked} />
         </label>

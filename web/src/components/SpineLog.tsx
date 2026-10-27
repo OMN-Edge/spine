@@ -43,11 +43,11 @@ const DISC_HEIGHT = 6;
 const AXIS = COLUMN / 2;
 
 const TONE = {
-  working: { line: '#2563eb', fill: '#2563eb' },
-  done: { line: '#2563eb', fill: '#2563eb' },
+  working: { line: '#0f766e', fill: '#0f766e' },
+  done: { line: '#0f766e', fill: '#0f766e' },
   unreviewed: { line: '#d97706', fill: '#d97706' },
   error: { line: '#dc2626', fill: '#fca5a5' },
-  duplicate: { line: '#9ca3af', fill: '#9ca3af' },
+  duplicate: { line: '#a3a099', fill: '#a3a099' },
 } as const;
 
 /** Slightly wider down the column, as real vertebrae are. */
@@ -120,7 +120,7 @@ export default function SpineLog({ items, loose = false }: { items: SpineLogItem
             {!loose && items.length > 1 && (
               <span
                 aria-hidden="true"
-                className="absolute border-l-2 border-dotted border-blue-300"
+                className="absolute border-l-2 border-dotted border-brand-300"
                 style={{
                   left: AXIS - 1,
                   top: first ? '50%' : -GAP / 2,
@@ -132,7 +132,7 @@ export default function SpineLog({ items, loose = false }: { items: SpineLogItem
             {!loose && !last && (
               <span
                 aria-hidden="true"
-                className="absolute rounded-full bg-blue-200"
+                className="absolute rounded-full bg-brand-200"
                 style={{
                   left: AXIS - discWidth / 2,
                   width: discWidth,

@@ -51,7 +51,7 @@ export default function PublicShareView() {
             <p className="text-gray-500 text-sm mb-4">{t('The person who shared this asks to approve who opens it. Send them a request; it works in this browser only.')}</p>
             <label htmlFor="req-note" className="block text-xs text-gray-500 text-left mb-1">{t('Who are you? (optional)')}</label>
             <input id="req-note" value={note} maxLength={120} onChange={e => setNote(e.target.value)} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 mb-3" />
-            <button disabled={busy} onClick={async () => { setBusy(true); try { await ask(note); } finally { setBusy(false); } }} className="w-full bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50">{t('Ask for access')}</button>
+            <button disabled={busy} onClick={async () => { setBusy(true); try { await ask(note); } finally { setBusy(false); } }} className="w-full bg-brand-600 text-white rounded-full px-4 py-2 text-sm font-medium hover:bg-brand-700 disabled:opacity-50">{t('Ask for access')}</button>
             {error && <p className="text-xs text-red-600 mt-3" role="alert">{t('Could not send the request')}</p>}
           </>
         )}
@@ -144,7 +144,7 @@ function SharedContent({ shareId }: { shareId: string }) {
       <div className={`mx-auto px-4 sm:px-6 py-8 ${openId ? 'max-w-6xl' : 'max-w-3xl'}`}>
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold text-gray-900">{t('Medical history')}</h1>
+            <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900">{t('Medical history')}</h1>
             <p className="text-sm text-gray-400 mt-1">{t('Read-only shared view')} · {tn(docs.length, '{n} document', '{n} documents')}</p>
           </div>
           <LanguageSwitcher />
@@ -154,7 +154,7 @@ function SharedContent({ shareId }: { shareId: string }) {
           <nav className="flex gap-4 border-b border-gray-200 mb-6 text-sm" aria-label={t('Sections')}>
             {([['documents', t('Documents'), '?'], ['trends', t('Trends'), '?view=trends']] as const).map(([key, name, to]) => (
               <Link key={key} to={to} aria-current={view === key ? 'page' : undefined}
-                className={`pb-2 -mb-px border-b-2 ${view === key ? 'border-blue-600 text-blue-700 font-medium' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>
+                className={`pb-2 -mb-px border-b-2 ${view === key ? 'border-brand-600 text-brand-700 font-medium' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>
                 {name}
               </Link>
             ))}
@@ -165,7 +165,7 @@ function SharedContent({ shareId }: { shareId: string }) {
           <p className="text-xs text-gray-500 mb-4" role="status">
             {pending ? t('Translating into your language…') : t('Translated into {language}.', { language: languageName(lang) })}{' '}
             {translated && (
-              <button type="button" onClick={() => setOriginal(o => !o)} className="text-blue-600 hover:underline">
+              <button type="button" onClick={() => setOriginal(o => !o)} className="text-brand-600 hover:underline">
                 {original ? t('Show translation') : t('Show original')}
               </button>
             )}
@@ -193,7 +193,7 @@ function SharedContent({ shareId }: { shareId: string }) {
             <div className="space-y-8">
               {years.map(year => (
                 <div key={year}>
-                  <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">{year || t('Unknown date')}</h2>
+                  <h2 className="text-xs font-medium text-gray-500 uppercase tracking-[0.12em] mb-3">{year || t('Unknown date')}</h2>
                   <SpineLog
                     items={byYear[year].map(doc => {
                       const said = doc.translation && !original ? doc.translation : null;
@@ -250,9 +250,9 @@ function SharedDocumentView({ shareId, id, translating, original, titleOf, onBac
     const el = document.getElementById(`section-${section}`);
     if (!el) return;
     el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    el.classList.add('ring-2', 'ring-blue-400');
-    const timer = window.setTimeout(() => el.classList.remove('ring-2', 'ring-blue-400'), 2200);
-    return () => { window.clearTimeout(timer); el.classList.remove('ring-2', 'ring-blue-400'); };
+    el.classList.add('ring-2', 'ring-brand-400');
+    const timer = window.setTimeout(() => el.classList.remove('ring-2', 'ring-brand-400'), 2200);
+    return () => { window.clearTimeout(timer); el.classList.remove('ring-2', 'ring-brand-400'); };
   }, [location.key, location.search, data]);
 
   const back = <button type="button" onClick={onBack} className="text-sm text-gray-500 hover:text-gray-800 mb-4">← {t('All documents')}</button>;
@@ -293,7 +293,7 @@ function SharedDocumentView({ shareId, id, translating, original, titleOf, onBac
               <p className="text-xs text-gray-500 mt-2" role="status">
                 {tr.translating ? t('Translating…') : t('Machine translation from {language}. The original document prevails: check it before relying on a detail.', { language: languageName(tr.translation?.source_language ?? doc.language) || t('the original language') })}{' '}
                 {tr.active && (
-                  <button type="button" onClick={() => setShowOriginal(o => !o)} className="text-blue-600 hover:underline">
+                  <button type="button" onClick={() => setShowOriginal(o => !o)} className="text-brand-600 hover:underline">
                     {showOriginal ? t('Show translation') : t('Show original')}
                   </button>
                 )}
@@ -348,7 +348,7 @@ function SharedDocumentView({ shareId, id, translating, original, titleOf, onBac
                 {pages.map((p, i) => (
                   <button
                     key={p.id} type="button" onClick={() => setPageIdx(i)}
-                    className={`text-xs px-2 py-1 rounded ${i === pageIdx ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-300'}`}
+                    className={`text-xs px-2 py-1 rounded ${i === pageIdx ? 'bg-brand-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-300'}`}
                   >
                     {i + 1}
                   </button>

@@ -12,6 +12,8 @@
     "check:app": "node browser-check/app.mjs"
   },
   "dependencies": {
+    "@fontsource-variable/inter": "5.2.8",
+    "@fontsource/ibm-plex-mono": "5.2.7",
     "@pdf-lib/fontkit": "^1.1.1",
     "@simplewebauthn/browser": "^14.0.0",
     "@sqlite.org/sqlite-wasm": "^3.54.1-build1",

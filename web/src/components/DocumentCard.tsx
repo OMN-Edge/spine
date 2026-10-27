@@ -14,12 +14,12 @@ export const DOC_TYPE_LABELS: Record<string, string> = {
 };
 
 const DOC_TYPE_COLORS: Record<string, string> = {
-  lab_result: 'bg-blue-100 text-blue-700',
+  lab_result: 'bg-sky-100 text-sky-800',
   discharge_note: 'bg-orange-100 text-orange-700',
   vaccination: 'bg-green-100 text-green-700',
   imaging: 'bg-purple-100 text-purple-700',
   prescription: 'bg-yellow-100 text-yellow-700',
-  consultation_note: 'bg-teal-100 text-teal-700',
+  consultation_note: 'bg-indigo-100 text-indigo-700',
   other: 'bg-gray-100 text-gray-600',
 };
 
@@ -36,7 +36,7 @@ export default function DocumentCard({ doc, to, owner = true }: {
   return (
     <Link
       to={to}
-      className="block bg-white border border-gray-200 rounded-xl p-5 hover:border-blue-300 hover:shadow-sm transition-all"
+      className="block bg-white border border-gray-200 rounded-xl p-5 hover:border-brand-300 hover:shadow-sm transition-all"
     >
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">

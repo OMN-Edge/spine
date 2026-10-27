@@ -111,7 +111,7 @@ function UploadRow({ job, onRetry, onDeleted }: { job: JobState; onRetry: () => 
     <div className="bg-white border border-gray-200 rounded-xl px-4 py-3">
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm font-medium text-gray-900 truncate">{heading(job, i18n)}</p>
-        <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${CHIP[job.status] ?? 'bg-blue-100 text-blue-700'}`}>
+        <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${CHIP[job.status] ?? 'bg-brand-100 text-brand-700'}`}>
           {t(STATUS_NAME[job.status] ?? job.status)}
         </span>
       </div>
@@ -130,7 +130,7 @@ function UploadRow({ job, onRetry, onDeleted }: { job: JobState; onRetry: () => 
               <span className="min-w-0 truncate text-gray-700">
                 {documentTitle(doc, t)} <span className="text-gray-400">· {pagesOf(doc, t)}</span>
               </span>
-              <Link to={`/documents/${doc.id}`} className="shrink-0 text-blue-600 hover:underline">{t('View document')}</Link>
+              <Link to={`/documents/${doc.id}`} className="shrink-0 text-brand-600 hover:underline">{t('View document')}</Link>
             </li>
           ))}
           {job.documents.length > LISTED_DOCUMENTS && (
@@ -145,7 +145,7 @@ function UploadRow({ job, onRetry, onDeleted }: { job: JobState; onRetry: () => 
       {job.status === 'done' && job.groupingConfirmed === false && (job.documents.length > 0 || !!job.hiddenDocuments) && (
         <div role="status" className="mt-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-900 flex flex-wrap items-center justify-between gap-2">
           <span>{t('Check how the pages were grouped. These documents stay out of your timeline, search and shares until you confirm it.')}</span>
-          <Link to={`/uploads/${job.fileId}`} className="shrink-0 rounded-lg bg-blue-600 px-3 py-1 font-medium text-white hover:bg-blue-700">{t('Check the grouping')}</Link>
+          <Link to={`/uploads/${job.fileId}`} className="shrink-0 rounded-full bg-brand-600 px-3 py-1 font-medium text-white hover:bg-brand-700">{t('Check the grouping')}</Link>
         </div>
       )}
       {job.documents.length === 0 && <p className="text-xs text-gray-400 mt-0.5">{job.step}</p>}
@@ -153,13 +153,13 @@ function UploadRow({ job, onRetry, onDeleted }: { job: JobState; onRetry: () => 
       {(job.documents.length > 0 || !!job.hiddenDocuments || job.status === 'done' || job.status === 'error') && (
         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
           {job.status === 'error' && (
-            <button type="button" onClick={onRetry} className="text-blue-600 hover:underline">{t('Try again')}</button>
+            <button type="button" onClick={onRetry} className="text-brand-600 hover:underline">{t('Try again')}</button>
           )}
           {job.documents.length === 1 && (
-            <Link to={`/documents/${job.documents[0].id}`} className="text-blue-600 hover:underline">{t('View document')}</Link>
+            <Link to={`/documents/${job.documents[0].id}`} className="text-brand-600 hover:underline">{t('View document')}</Link>
           )}
           {(job.documents.length > 0 || !!job.hiddenDocuments) && (
-            <Link to={`/uploads/${job.fileId}`} className="text-blue-600 hover:underline">{t('Pages and grouping')}</Link>
+            <Link to={`/uploads/${job.fileId}`} className="text-brand-600 hover:underline">{t('Pages and grouping')}</Link>
           )}
           {(job.status === 'done' || job.status === 'error') && (
             <DeleteUpload fileId={job.fileId} documents={job.documents.length} onDeleted={onDeleted} />
@@ -298,8 +298,8 @@ export default function Upload() {
   return (
     <div className="max-w-2xl mx-auto">
       <div className="flex items-baseline justify-between gap-4 mb-6">
-        <h1 className="text-2xl font-semibold text-gray-900">{t('Upload')}</h1>
-        <button type="button" onClick={exportEverything} className="text-sm text-blue-600 hover:underline" title={t('Everything you have, as a ZIP you can restore here or keep as a backup')}>{t('Export everything')}</button>
+        <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900">{t('Upload')}</h1>
+        <button type="button" onClick={exportEverything} className="text-sm text-brand-600 hover:underline" title={t('Everything you have, as a ZIP you can restore here or keep as a backup')}>{t('Export everything')}</button>
       </div>
 
       <div
@@ -309,7 +309,7 @@ export default function Upload() {
         onClick={() => fileRef.current?.click()}
         className={`
           border-2 border-dashed rounded-xl p-8 sm:p-12 text-center cursor-pointer transition-colors
-          ${dragging ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-gray-400 bg-white'}
+          ${dragging ? 'border-brand-400 bg-brand-50' : 'border-gray-300 hover:border-gray-400 bg-white'}
         `}
       >
         {/* A phone has nothing to drag from; it gets the file picker  */}
@@ -337,7 +337,7 @@ export default function Upload() {
       </div>
 
       <p className="mt-3 text-sm text-gray-500">
-        <Link to="/scan" className="text-blue-600 hover:underline">{t('Scan with the camera')}</Link>
+        <Link to="/scan" className="text-brand-600 hover:underline">{t('Scan with the camera')}</Link>
         <span className="text-gray-400"> — {t('straightened and cleaned up on this device, page after page')}</span>
       </p>
 
@@ -354,15 +354,15 @@ export default function Upload() {
             ))}
           </ol>
           <div className="mt-3 flex flex-wrap gap-2">
-            <button type="button" onClick={() => { void sendPending(true); }} className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">{t('One document')}</button>
-            <button type="button" onClick={() => { void sendPending(false); }} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">{t('Separate documents')}</button>
+            <button type="button" onClick={() => { void sendPending(true); }} className="rounded-full bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700">{t('One document')}</button>
+            <button type="button" onClick={() => { void sendPending(false); }} className="rounded-full border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">{t('Separate documents')}</button>
             <button type="button" onClick={() => setPending(null)} className="px-2 py-1.5 text-sm text-gray-500 hover:text-gray-700">{t('Cancel')}</button>
           </div>
         </div>
       )}
 
       {zips.length > 0 && (
-        <div role="status" className="mt-4 bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm text-blue-900 space-y-1">
+        <div role="status" className="mt-4 bg-brand-50 border border-brand-200 rounded-xl p-3 text-sm text-brand-900 space-y-1">
           {zips.map((z, i) => (
             <p key={i}>
               {z.kind === 'spine'

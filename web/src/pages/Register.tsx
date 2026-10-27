@@ -60,7 +60,7 @@ export default function Register() {
       : t('That password is too easy to guess: use a longer phrase that is not a common word, a pattern or part of your address.');
 
   return (
-    <AuthCard title={t('Create an account')} footer={<p><Link to="/login" className="text-blue-600">{t('Back to sign in')}</Link></p>}>
+    <AuthCard title={t('Create an account')} footer={<p><Link to="/login" className="text-brand-600">{t('Back to sign in')}</Link></p>}>
       {done ? (
         <Notice kind="ok">{done}</Notice>
       ) : account ? (
@@ -78,11 +78,11 @@ export default function Register() {
             value={again} onChange={e => setAgain(e.target.value)} className={inputClass} />
           <label className="flex items-start gap-2 text-sm text-gray-700 mb-2">
             <input type="checkbox" checked={health} onChange={e => setHealth(e.target.checked)} className="mt-1" />
-            <span>{t('I consent to Spine processing the health data I upload, as the privacy notice describes. I can withdraw this at any time by deleting my account.')} <Link to="/privacy" target="_blank" className="text-blue-600 hover:underline">{t('Privacy notice')}</Link></span>
+            <span>{t('I consent to Spine processing the health data I upload, as the privacy notice describes. I can withdraw this at any time by deleting my account.')} <Link to="/privacy" target="_blank" className="text-brand-600 hover:underline">{t('Privacy notice')}</Link></span>
           </label>
           <label className="flex items-start gap-2 text-sm text-gray-700 mb-3">
             <input type="checkbox" checked={terms} onChange={e => setTerms(e.target.checked)} className="mt-1" />
-            <span>{t('I accept the terms of use.')} <Link to="/terms" target="_blank" className="text-blue-600 hover:underline">{t('Terms of use')}</Link> · <Link to="/purpose" target="_blank" className="text-blue-600 hover:underline">{t('What Spine is for')}</Link></span>
+            <span>{t('I accept the terms of use.')} <Link to="/terms" target="_blank" className="text-brand-600 hover:underline">{t('Terms of use')}</Link> · <Link to="/purpose" target="_blank" className="text-brand-600 hover:underline">{t('What Spine is for')}</Link></span>
           </label>
           {error && <Notice kind="error">{error}</Notice>}
           <p className="text-xs text-gray-500 mb-3">{t('Your password makes the key to your records on this device. Spine never receives it and cannot reset it for you; you will get a recovery kit on the next screen.')}</p>
