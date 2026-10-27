@@ -654,10 +654,10 @@ Status: auto (`translation`, `public-share-detail`); real model.
 
 ### 10.1 Use it from a phone
 - The screens fit a 390-pixel-wide phone with no sideways scrolling.
-- Navigation collapses to a menu, and the upload page offers the file picker instead of drag and drop.
+- Navigation collapses to a menu (below 1280 px, where the full header no longer fits), and the upload page offers the file picker instead of drag and drop.
 - The spine, document page, trends, doctors, search and grouping screens use the same data as on a desktop, laid out in one column.
 
-Status: hand. No check in the repository measures phone width (`check:browser` and `check:app` run at desktop size), so the statement that screens fit without sideways scrolling rests on an earlier by-hand look and is not held by a test. Real devices, touch targets and the camera flow: not tried.
+Status: hand. No check in the repository measures phone width (`check:browser` and `check:app` run at desktop size), so the statement that screens fit without sideways scrolling rests on a by-hand look and is not held by a test (last looked at 2026-10-27 in headless Chrome: the eleven signed-in screens at 390 px, and the timeline at 390, 768, 1024, 1279 and 1280 px, none scrolled sideways). Real devices, touch targets and the camera flow: not tried.
 
 ---
 

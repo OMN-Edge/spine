@@ -73,7 +73,7 @@ export function MeasurementsList<T extends MeasurementRow>({ items, selectedId, 
               ) : (
                 <span className="font-medium text-gray-700 break-words">{m.name}</span>
               )}
-              {markCheck && m.needs_check && <CheckBadge />}
+              {markCheck && !!m.needs_check && <CheckBadge />}
               {range(m) && <span className="block text-gray-400">{t('ref')} {range(m)}{m.unit ? ` ${m.unit}` : ''}</span>}
             </span>
             <span className={wordy ? 'min-w-0 text-gray-900 break-words leading-relaxed' : 'text-right shrink-0'}>

@@ -346,7 +346,7 @@ Fire-and-forget; the browser polls `GET /api/source-files/:id/status`. An upload
 
 ```
 upload  →  write original, sha256 checksum (per-user de-duplication)
-        →  rasterize            PDF.js on a canvas → PNG, 200 DPI (poppler's pdftoppm in the Node tests)
+        →  rasterize            PDF.js on a canvas → PNG, 200 DPI, fonts a file embeds drawn as shapes (`disableFontFace`; as web fonts in the worker every letter came out as an empty box) (poppler's pdftoppm in the Node tests)
         →  parse                parser interface; with `hybrid`, per page:
                                 text layer → local OCR → model
         →  detectContinuation   per adjacent page pair → document boundaries
@@ -656,7 +656,7 @@ The interface is available in English, Romanian, French and German (`web/src/i18
 
 ## Frontend
 
-React + Vite + Tailwind, built to `web/dist`, served by Fastify. Pages: timeline, upload (and an upload's pages and grouping), camera scan, review, search, trends, episodes, doctors, library, share links (and one link's page and a waiting request), account (master password, recovery kit, passkeys, two-factor, sign-ins, your data and account deletion), login, register, verify, forgot/reset, the privacy notice, terms and purpose, and the public `/share/:id` view, each in four languages (see [Languages](#languages)). Every page works at phone width: below the `md` breakpoint the navigation collapses into a menu and the review screen stacks the fields above the page image. In dev, `npm run dev` runs Vite separately and proxies `/api` and `/share` to port 3000 (`web/vite.config.ts`).
+React + Vite + Tailwind, built to `web/dist`, served by Fastify. Pages: the front page (`/` with no session: what Spine does, how records are sealed, who can see what and what it is not; `pages/Landing.tsx`; a session shows the timeline there instead), timeline, upload (and an upload's pages and grouping), camera scan, review, search, trends, episodes, doctors, library, share links (and one link's page and a waiting request), account (master password, recovery kit, passkeys, two-factor, sign-ins, your data and account deletion), login, register, verify, forgot/reset, the privacy notice, terms and purpose, and the public `/share/:id` view, each in four languages (see [Languages](#languages)). Every page works at phone width: below 1280 px (`xl`, where the full header fits) the navigation collapses into a menu, and below `md` the review screen stacks the fields above the page image. One palette serves the whole app and is defined once, in `web/tailwind.config.js`: `brand` (a teal; `brand-600` is the main colour, 5.5:1 with white) and warm paper-to-ink greys in place of Tailwind's blue and cool greys, so a screen names a colour and never picks one. Inter is the typeface; IBM Plex Mono is loaded by the front page only. Both ship with the app (`@fontsource-*`, OFL-1.1), so `font-src 'self'` holds. In dev, `npm run dev` runs Vite separately and proxies `/api` and `/share` to port 3000 (`web/vite.config.ts`).
 
 `web/tsconfig.json` sets `noEmit: true` deliberately. Without it `tsc` writes `.js` next to every `.tsx`, and Vite resolves `.js` *before* `.ts`, so stale output silently shadows real sources.
 

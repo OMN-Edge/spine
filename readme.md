@@ -211,6 +211,8 @@ Tests use in-memory SQLite (`SPINE_DB_PATH=:memory:`) with a `resetStore()` call
 
 Countries in a share link's access log come from the [IP to Country Lite database by DB-IP.com](https://db-ip.com), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 
+The interface is set in [Inter](https://rsms.me/inter/) and, on the front page, [IBM Plex Mono](https://github.com/IBM/plex), both under the [SIL Open Font License 1.1](https://openfontlicense.org), through the `@fontsource` packages; the text a device writes into a PDF uses [DejaVu Sans](https://dejavu-fonts.github.io).
+
 ## Licence
 
 GNU Affero General Public License v3.0 only (AGPL-3.0-only), see [LICENSE](LICENSE). Anyone who runs a modified version as a network service must offer its users the corresponding source. This is software for holding medical records, provided without warranty: read [SECURITY.md](SECURITY.md) before putting real records on an instance. Whoever runs an instance is the controller of its data.
