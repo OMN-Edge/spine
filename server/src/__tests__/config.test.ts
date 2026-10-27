@@ -68,11 +68,14 @@ describe('loadConfig — bind address', () => {
 });
 
 describe('landingUrl', () => {
-  it('is an https address or nothing', async () => {
+  it('is this instance\'s own front page unless an https address is named, or the footer is switched off', async () => {
     const { landingUrl } = await import('spine-core/config.js');
-    expect(landingUrl({})).toBeNull();
+    expect(landingUrl({})).toBe('/');
     expect(landingUrl({ SPINE_LANDING_URL: 'https://spine.example.com' })).toBe('https://spine.example.com/');
-    for (const bad of ['http://spine.example.com', 'javascript:alert(1)', 'not a url', '  ']) expect(landingUrl({ SPINE_LANDING_URL: bad })).toBeNull();
+    expect(landingUrl({ SPINE_LANDING_URL: 'off' })).toBeNull();
+    expect(landingUrl({ SPINE_LANDING_URL: ' OFF ' })).toBeNull();
+    // Anything else is ignored, never put in a link a stranger will click.
+    for (const bad of ['http://spine.example.com', 'javascript:alert(1)', 'not a url', '  ']) expect(landingUrl({ SPINE_LANDING_URL: bad })).toBe('/');
   });
 });
 

@@ -180,18 +180,20 @@ export function publicUrl(urlPath: string, env: Settings = settings()): string {
 }
 
 /**
- * Where the "Shared securely via Spine" footer on a shared page leads (FR-SHR-07): `SPINE_LANDING_URL`, an https address,
- * or null, in which case the footer is text only. Anything else is ignored rather than put in a link a stranger will click.
+ * Where the "Shared securely via Spine" footer on a shared page leads (FR-SHR-07): this instance's own front page (`/`), unless
+ * `SPINE_LANDING_URL` names an https address, or is `off`, which leaves the footer as text. Any other value is ignored (the default
+ * stands) rather than put in a link a stranger will click.
  */
 export function landingUrl(env: Settings = settings()): string | null {
   const raw = env.SPINE_LANDING_URL?.trim();
-  if (!raw) return null;
-  try {
-    const url = new URL(raw);
-    return url.protocol === 'https:' ? url.toString() : null;
-  } catch {
-    return null;
+  if (raw?.toLowerCase() === 'off') return null;
+  if (raw) {
+    try {
+      const url = new URL(raw);
+      if (url.protocol === 'https:') return url.toString();
+    } catch { /* not an address: the default stands */ }
   }
+  return '/';
 }
 
 /** Where backups go: `SPINE_BACKUP_DIR`, otherwise `backups/` beside the data directory. */

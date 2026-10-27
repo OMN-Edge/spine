@@ -136,7 +136,7 @@ npm run test:coverage -w spine-server
 | `SPINE_LLM_MAX_RETRIES` | Retries inside the adapter (default 2) |
 | `SESSION_SECRET` | ≥32 char random string for cookie signing |
 | `SPINE_DOMAIN` | Domain nginx serves from (e.g. `spine.yourdomain.com`) |
-| `SPINE_LANDING_URL` | Optional https address the "Shared securely via Spine" footer on a shared page links to (`landingUrl()` in `config.ts`); unset or not https leaves the footer as text |
+| `SPINE_LANDING_URL` | Where the "Shared securely via Spine" footer on a shared page links to (`landingUrl()` in `config.ts`). Unset (or anything but an https address or `off`): this instance's own front page, `/`; an https address: that address; `off`: the footer is text. Reaches the recipient's browser through `GET /api/shared/:id/config`, because that core cannot read the server's environment |
 | `SPINE_OPERATOR_NAME`, `SPINE_OPERATOR_CONTACT`, `SPINE_LEGAL_DIR` | Who the privacy notice and terms name as the controller and where to write to them (default "the operator of this instance"), and a directory of your own `privacy.md`, `terms.md`, `purpose.md` instead of the shipped drafts in `docs/legal/` |
 | `SPINE_REPO_URL` | Optional. Repository URL that nginx redirects `/source`, `/docs` and `/security` to (read by `install.sh -n`, not by the server); unset leaves the redirects out |
 | `DATA_DIR` | Where the server's database, the vault and the shares live (the server's default is `<repo>/data`, wherever the process starts; core has no default and fails if a host registers none) |

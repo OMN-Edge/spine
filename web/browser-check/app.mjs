@@ -189,6 +189,8 @@ try {
   await guest.goto(direct, { waitUntil: 'load' });
   check(await guestWait('Chest X-ray'), 'someone with no account opens the link and reads the shared records');
   check(await guestWait('Shared securely via Spine', 2000), 'the shared page carries its footer');
+  const footerLeads = async () => { for (let w = 0; w < 5000; w += 250) { const h = await guest.evaluate(() => [...document.querySelectorAll('a')].find(a => a.innerText.includes('Shared securely via Spine'))?.getAttribute('href') ?? null); if (h) return h; await wait(250); } return null; };
+  check(await footerLeads() === '/', "and the footer leads to this instance's own front page");
   await (await guest.evaluateHandle(() => [...document.querySelectorAll('a')].find(a => a.innerText.includes('Chest X-ray')))).asElement().click();
   check(await guestWait('Findings', 20000), 'a shared document opens with its details');
   check(!asked.some(u => u.includes(key)), 'the key never went to the server');

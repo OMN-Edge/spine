@@ -174,6 +174,18 @@ describe('sealed shares on the server', () => {
     expect((await get('/api/shared/events', other)).json().opens).toEqual([]);
   });
 
+  it('tells a recipient where the footer leads whether or not the instance has a relay', async () => {
+    const share = id();
+    await publish(share, randomBytes(10), owner);
+    expect((await get(`/api/shared/${share}/config`)).json().env).toEqual({});
+    process.env.SPINE_LANDING_URL = 'https://spine.example.com';
+    try {
+      expect((await get(`/api/shared/${share}/config`)).json().env).toEqual({ SPINE_LANDING_URL: 'https://spine.example.com' });
+    } finally {
+      delete process.env.SPINE_LANDING_URL;
+    }
+  });
+
   it('gives a recipient a pass for model calls that lasts no longer than the share', async () => {
     const share = id();
     await publish(share, randomBytes(10), owner);

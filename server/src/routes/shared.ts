@@ -237,8 +237,9 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     const bundle = await live(req.params.id);
     if (!bundle || bundle === 'ended') return reply.status(bundle === 'ended' ? 410 : 404).send({ error: bundle === 'ended' ? 'this link is no longer active' : 'not found' });
     const settings = relaySettings();
-    if (!settings) return reply.header('Cache-Control', 'no-store').send({ env: {} });
-    return reply.header('Cache-Control', 'no-store').send({ env: relayEnv(settings) });
+    // Where the footer leads is the operator's to name, relay or no relay: the recipient's core cannot read this process's environment.
+    const landing = (process.env.SPINE_LANDING_URL ?? '').trim();
+    return reply.header('Cache-Control', 'no-store').send({ env: { ...(landing ? { SPINE_LANDING_URL: landing } : {}), ...(settings ? relayEnv(settings) : {}) } });
   });
 
   // A pass for the model calls a recipient's browser makes while reading (translating, asking): good for the share's own time only,

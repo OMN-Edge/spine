@@ -504,6 +504,7 @@ The owner creates a link scoped to everything, a tag, chosen documents, or a dat
 - A link is a sealed copy named by a random id; the key that opens it is in the address after the `#`, so the server and its logs never have it, and there is no token to store or guess.
 - The server records that the link was opened, when and from which country; what the recipient reads inside the copy is not logged.
 - Opening the link in a browser shows the documents, not raw JSON.
+- The foot of the page says "Shared securely via Spine" and links to this instance's own front page, so a doctor can find out what Spine is (FR-SHR-07). `SPINE_LANDING_URL` points it at another https address, or `off` leaves the words as text; the setting is passed to the recipient's browser with `GET /api/shared/:id/config`, relay or no relay (`landingUrl()` in `config.ts`, `shared.test.ts`, `config.test.ts`).
 
 Status: auto (`share`, `public-share-scoped`, `public-share-detail`); screens: not yet checked by hand.
 
