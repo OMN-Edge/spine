@@ -103,7 +103,7 @@ The integration suite drives the server's routes with `app.inject`. Since the re
 ```bash
 npm run build                 # at the root: core, server and web. The checks run the built server and web, not the sources
 npm run check:browser       # each native piece of the core: text, rendering, OCR, trimming, photos, zip, stamps
-npm run check:app           # sign-up, vault, sample records, reload and unlock, search, upload, shares, export and import
+npm run check:app           # the demo (with files of one's own, kept into an account), sign-up, vault, sample records, reload and unlock, search, upload, shares, export and import
 ```
 
 `check:app` uses a stand-in for the model behind the real relay code. Two switches change that, and nothing else:

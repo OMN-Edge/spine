@@ -27,6 +27,10 @@ We do not sell your data, use it for advertising or use it to train models. We m
 - **People you share with.** A share link shows what you chose to whoever opens it. Whoever holds the whole link can read that copy; with approval switched on, a link alone opens nothing.
 - Authorities, only where the law requires it.
 
+## The demo
+
+Where this service offers it, the demo lets someone try Spine without an account. It opens with invented records in your own browser, and nothing of it reaches us. If you also add files of your own, which the operator may allow, you are asked first to agree to the health data in them being processed to try Spine (Art. 9(2)(a) GDPR). They are read as described above: through the relay, which does not store or log what it carries, by the model provider, for that request only. The demo keeps your files only in that page; we keep no record of them and make no account. To count the model calls the demo may make, the relay is told a value derived from your address with a key, from which the address cannot be read, and counts that value's calls for the day. If you choose to keep your files in an account, your browser holds them, unencrypted, until you add them to the account or discard them, and for one day at most.
+
 ## Cookies and what the browser keeps
 
 We use no advertising or tracking cookies and nothing from third parties. The browser keeps only what the service needs or what you chose:

@@ -46,11 +46,16 @@ export function serveRelay(): void {
   // database, or a networked adapter, counts across restarts and instances.
   const usage = getAccountsStore().usage;
 
+  /** A count of calls; 0 is a count (none), and a value that is not a whole number gives the default. */
+  const count = (raw: string | undefined, fallback: number) => (raw !== undefined && Number.isInteger(Number(raw)) && Number(raw) >= 0 ? Number(raw) : fallback);
   const handle = createRelay({
     secret,
     allowedOrigin: need('SPINE_RELAY_ORIGIN'),
     dailyCalls: Number(process.env.SPINE_RELAY_DAILY_CALLS ?? 500) || 500,
     dailySharedCalls: Number(process.env.SPINE_RELAY_SHARE_DAILY_CALLS ?? 200) || 200,
+    // The demo's calls (SECURITY.md M-39): only the Spine server's SPINE_DEMO_UPLOADS=on gives a pass for them; these bound what they cost.
+    dailyDemoCalls: count(process.env.SPINE_RELAY_DEMO_DAILY_CALLS, 40),
+    dailyDemoTotalCalls: count(process.env.SPINE_RELAY_DEMO_TOTAL_DAILY_CALLS, 400),
     usage,
     maxBodyBytes: 32 * 1024 * 1024,
     clients,

@@ -152,6 +152,10 @@ describe('P1 — deny by default', () => {
     'GET /api/shared/:id/access-request/:rid',
     'POST /api/shared/:id/opened',
     'POST /api/shared/:id/relay-token',
+    // Public on purpose, and off unless the operator turns the demo's uploads on: settings, and a pass counted by the relay per address and
+    // for all of them (SECURITY.md M-39, demo-relay.test.ts).
+    'GET /api/demo-relay/config',
+    'POST /api/demo-relay/token',
     'GET /api/share/:link/documents',
     // Public on purpose, and scoped by the link, not a session: public-share-detail.test.ts.
     'GET /api/share/:link/documents/:id',

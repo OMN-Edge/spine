@@ -1152,5 +1152,22 @@
  "This is a demo with invented records. Nothing you do here is saved, and it ends when you leave or reload the page.": "Dies ist eine Demo mit erfundenen Unterlagen. Nichts, was Sie hier tun, wird gespeichert, und sie endet, wenn Sie die Seite verlassen oder neu laden.",
  "Try the demo": "Demo ausprobieren",
  "The demo opens the app with invented records, in this browser only: no account, and nothing is saved.": "Die Demo öffnet die App mit erfundenen Unterlagen, nur in diesem Browser: ohne Konto, und nichts wird gespeichert.",
- "The demo could not start in this browser. Try again, or another browser.": "Die Demo konnte in diesem Browser nicht starten. Versuchen Sie es erneut oder mit einem anderen Browser."
+ "The demo could not start in this browser. Try again, or another browser.": "Die Demo konnte in diesem Browser nicht starten. Versuchen Sie es erneut oder mit einem anderen Browser.",
+ "Your files could not be kept in this browser. Try again.": "Ihre Dateien konnten in diesem Browser nicht behalten werden. Versuchen Sie es erneut.",
+ "Wait until your files have been read": "Warten Sie, bis Ihre Dateien gelesen wurden",
+ "Create an account to keep them": "Konto erstellen, um sie zu behalten",
+ "Sign in to keep them": "Anmelden, um sie zu behalten",
+ "Your files from the demo could not be added. Try again.": "Ihre Dateien aus der Demo konnten nicht hinzugefügt werden. Versuchen Sie es erneut.",
+ "Adding…": "Wird hinzugefügt …",
+ "Add to my records": "Zu meinen Unterlagen hinzufügen",
+ "Discard": "Verwerfen",
+ "Try it with your own files: up to {uploads} files, the first {pages} pages of each. Each page is read on this device where it can be, and what was read is sent to the AI model, through this site’s relay, to find the dates, values and doctors. The relay does not store or log what it carries. Nothing is kept: your files stay in this page until you leave it, or until you keep them in an account.": "Probieren Sie es mit Ihren eigenen Dateien: bis zu {uploads} Dateien, jeweils die ersten {pages} Seiten. Jede Seite wird, wo möglich, auf diesem Gerät gelesen, und das Gelesene wird über das Relay dieser Website an das KI-Modell geschickt, um Daten, Werte und Ärzte zu finden. Das Relay speichert und protokolliert nicht, was es weiterleitet. Nichts wird behalten: Ihre Dateien bleiben in dieser Seite, bis Sie sie verlassen oder sie in einem Konto behalten.",
+ "I agree to the health data in the files I add being processed this way, to try Spine.": "Ich bin einverstanden, dass die Gesundheitsdaten in den Dateien, die ich hinzufüge, so verarbeitet werden, um Spine auszuprobieren.",
+ "You have added {n} files, the most the demo takes. To keep them and add more, keep them in an account (above).": "Sie haben {n} Dateien hinzugefügt, so viele, wie die Demo annimmt. Um sie zu behalten und weitere hinzuzufügen, behalten Sie sie in einem Konto (oben).",
+ "Demo: {used} of {uploads} files added; the first {pages} pages of each are read.": "Demo: {used} von {uploads} Dateien hinzugefügt; jeweils die ersten {pages} Seiten werden gelesen.",
+ "{name} was not added: the demo takes a few files only.": "{name} wurde nicht hinzugefügt: Die Demo nimmt nur wenige Dateien an.",
+ "{name} was not added: the demo takes files one at a time, not a ZIP.": "{name} wurde nicht hinzugefügt: Die Demo nimmt Dateien einzeln an, kein ZIP.",
+ "Your {n} file is kept only in this page until you keep it in an account.|Your {n} files are kept only in this page until you keep them in an account.": "Ihre Datei wird nur in dieser Seite behalten, bis Sie sie in einem Konto behalten.|Ihre {n} Dateien werden nur in dieser Seite behalten, bis Sie sie in einem Konto behalten.",
+ "The document from the demo is in your records now.|The {n} documents from the demo are in your records now.": "Das Dokument aus der Demo ist jetzt in Ihren Unterlagen.|Die {n} Dokumente aus der Demo sind jetzt in Ihren Unterlagen.",
+ "This browser kept the file you read in the demo. Add it to your records?|This browser kept the {n} files you read in the demo. Add them to your records?": "Dieser Browser hat die in der Demo gelesene Datei behalten. Zu Ihren Unterlagen hinzufügen?|Dieser Browser hat die {n} in der Demo gelesenen Dateien behalten. Zu Ihren Unterlagen hinzufügen?"
 }

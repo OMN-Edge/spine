@@ -3,7 +3,8 @@ import './shims/globals';
 import { Buffer } from 'buffer';
 import { startCore, type Core } from './boot';
 import { startShareCore, type ShareCore } from './boot-share';
-import { applyRelayConfig } from './native/relay-auth';
+import { applyRelayConfig, relayFetch, relayToken, useTokenUrl } from './native/relay-auth';
+import { useRelayHooks } from 'spine-core/llm/adapters/relay';
 import { deviceSettings } from './native/settings';
 import { VaultSession } from '../crypto/vault-client';
 import type { FromWorker, Part, ToWorker } from './protocol';
@@ -63,13 +64,27 @@ async function start(opening: Uint8Array | { prf: Uint8Array; credentialId: stri
 }
 
 /**
- * The demo's core: no vault, so nothing is saved, and no relay, so nothing is sent to a model. The features that would need one are off, so
- * the screens say so instead of failing; with no share host, no link can be made. The page loads the sample records into it.
+ * The demo's core: no vault, so nothing is saved, and no share host, so no link can be made. Where the operator lets visitors read files of
+ * their own (`SPINE_DEMO_UPLOADS=on`, SECURITY.md M-39), the server gives the settings for it, the demo's limits among them, and the passes
+ * are the demo's (`/api/demo-relay/token`), counted by the relay per address; otherwise there is no relay and nothing is sent to a model.
+ * Either way the questions, translations, links and vectors are off. The page loads the sample records into it.
  */
-async function startDemo(): Promise<void> {
-  Object.assign(deviceSettings, { SPINE_CHAT: 'off', SPINE_TRANSLATION: 'off', SPINE_LINKING: 'off', SPINE_EMBEDDINGS: 'none', SPINE_PARSER: 'text' });
+async function startDemo(): Promise<{ uploads: number; pages: number } | null> {
+  let limits: { uploads: number; pages: number } | null = null;
+  const res = await fetch('/api/demo-relay/config').catch(() => null);
+  if (res?.ok) {
+    const body = (await res.json()) as { env: Record<string, string>; limits: { uploads: number; pages: number } };
+    Object.assign(deviceSettings, body.env);
+    useTokenUrl('/api/demo-relay/token', 'POST');
+    useRelayHooks({ tokenProvider: relayToken, fetchImpl: relayFetch });
+    limits = body.limits;
+  } else {
+    Object.assign(deviceSettings, { SPINE_PARSER: 'text' });
+  }
+  Object.assign(deviceSettings, { SPINE_CHAT: 'off', SPINE_TRANSLATION: 'off', SPINE_LINKING: 'off', SPINE_EMBEDDINGS: 'none' });
   core = await startCore(undefined, {}, { shares: false });
   trace('ready');
+  return limits;
 }
 
 const streaming = new Map<number, () => void>();
@@ -85,8 +100,8 @@ self.onmessage = async (event: MessageEvent<ToWorker>) => {
       await start(m.passkey);
       reply({ id: m.id, ok: true });
     } else if (m.type === 'startDemo') {
-      await startDemo();
-      reply({ id: m.id, ok: true });
+      const limits = await startDemo();
+      reply({ id: m.id, ok: true, body: new TextEncoder().encode(JSON.stringify({ limits })).buffer as ArrayBuffer });
     } else if (m.type === 'startShare') {
       // Reading a share: no vault, no account; the key is the access.
       core = await startShareCore(m.shareId, m.key);

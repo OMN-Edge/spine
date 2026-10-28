@@ -6,6 +6,7 @@ import { looksLikeDocx } from './convert.js';
 import { MAX_PHOTOS_IN_SET } from './photo-set.js';
 import { keepUnprocessed } from './raw-originals.js';
 import { acceptFile, acceptPhotoSet, drain, newUploadPath, saveStream, type UploadOutcome } from './accept-upload.js';
+import { demoLimits } from '../demo/limits.js';
 
 /** A document or a photo. */
 export const MAX_FILE_BYTES = 200 * 1024 * 1024;
@@ -58,7 +59,9 @@ export async function acceptParts(
     }
     if (zip) {
       try {
-        if (truncated) results.push({ skipped: true, reason: 'too_large', filename: part.filename ?? null });
+        // A zip in the demo could hold any number of files: the demo takes them one at a time.
+        if (demoLimits()) results.push({ skipped: true, reason: 'demo_zip', filename: part.filename ?? null });
+        else if (truncated) results.push({ skipped: true, reason: 'too_large', filename: part.filename ?? null });
         else results.push(...(await importZip(userId, filePath, part.filename ?? null)));
       } finally {
         fileSystem().rmSync(filePath); // the zip itself is not kept: its contents are

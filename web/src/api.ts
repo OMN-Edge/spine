@@ -195,6 +195,8 @@ export interface UploadSummary {
   page_count: number | null;
   /** False until the owner confirms how the pages were grouped; the documents are out of the timeline until then. */
   grouping_confirmed?: boolean;
+  /** One of the sample records (`POST /api/demo`), not the owner's own. */
+  sample?: boolean | number;
   documents: UploadDocument[];
   /** Documents whose every page is hidden: not in `documents`, but there. */
   hidden_documents?: number;

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest';
 import { existsSync, mkdirSync, readdirSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -298,5 +298,39 @@ describe('POST /api/source-files/upload', () => {
       payload: body,
     });
     expect(res.statusCode).toBe(401);
+  });
+});
+
+describe('the demo takes a few files, one at a time (SECURITY.md M-39)', () => {
+  afterEach(() => { delete process.env.SPINE_DEMO_MAX_UPLOADS; delete process.env.SPINE_DEMO_MAX_PAGES; });
+
+  const send = (who: string, filename: string, content: Buffer, contentType = 'application/pdf') =>
+    app.inject({ method: 'POST', url: '/api/source-files/upload', headers: { cookie: who, 'content-type': 'multipart/form-data; boundary=DemoBoundary' }, payload: makeMultipartBody('DemoBoundary', filename, content, contentType) });
+
+  it('refuses a file past the limit, does not count the sample records, and takes no zip', async () => {
+    const visitor = await createTestUser(`demo-${Math.random().toString(36).slice(2)}@spine.test`);
+    const who = await loginAs(app, visitor.email);
+    // The sample records are uploads too, marked; they are not the visitor's own.
+    await getStore().sourceFiles.create(visitor.id, { id: `sample-${visitor.id}`, uploadedAt: new Date().toISOString(), originalFilename: 'sample.pdf', filePath: join(testDataDir, 'sample.pdf'), mimeType: 'application/pdf', checksum: `sample-${visitor.id}`, sample: true });
+    process.env.SPINE_DEMO_MAX_UPLOADS = '3';
+    process.env.SPINE_DEMO_MAX_PAGES = '5';
+    mockStartJob.mockClear();
+
+    for (const n of [1, 2, 3]) expect((await send(who, `mine-${n}.pdf`, Buffer.from(`%PDF-1.4 demo file ${n} ${visitor.id}`))).json()[0].status).toBe('processing');
+    const fourth = (await send(who, 'mine-4.pdf', Buffer.from(`%PDF-1.4 demo file 4 ${visitor.id}`))).json()[0];
+    expect(fourth).toEqual({ skipped: true, reason: 'demo_limit', filename: 'mine-4.pdf' });
+    expect(mockStartJob).toHaveBeenCalledTimes(3);
+    expect((await getStore().sourceFiles.listFor(visitor.id)).filter(u => !u.sample)).toHaveLength(3);
+    // A file already held is still said to be a duplicate, not refused.
+    expect((await send(who, 'again.pdf', Buffer.from(`%PDF-1.4 demo file 1 ${visitor.id}`))).json()[0].reason).toBe('duplicate');
+
+    const zip = (await send(who, 'many.zip', Buffer.concat([Buffer.from('PK\u0003\u0004'), Buffer.alloc(64)]), 'application/zip')).json()[0];
+    expect(zip).toEqual({ skipped: true, reason: 'demo_zip', filename: 'many.zip' });
+  });
+
+  it('has no limit for an account, whose core is not given one', async () => {
+    const owner = await createTestUser(`owner-${Math.random().toString(36).slice(2)}@spine.test`);
+    const who = await loginAs(app, owner.email);
+    for (const n of [1, 2, 3, 4]) expect((await send(who, `own-${n}.pdf`, Buffer.from(`%PDF-1.4 own file ${n} ${owner.id}`))).json()[0].status).toBe('processing');
   });
 });

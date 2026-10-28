@@ -11,6 +11,7 @@ import { getJobStatus, startIngestionJob } from './pipeline.js';
 import { bundlePhotos, MAX_PHOTOS_IN_SET } from './photo-set.js';
 import { sha256OfFileSync } from './checksum.js';
 import { convertUpload, looksLikeHeic } from './convert.js';
+import { demoLimits, demoUploadsUsed } from '../demo/limits.js';
 
 /** Where a new original goes: per user, so a filesystem mistake cannot cross users as easily as a query mistake (M-9). The id is ours, never input. */
 export function newUploadPath(userId: string, ext: string): { fileId: string; filePath: string } {
@@ -76,6 +77,8 @@ export async function retryFailedUpload(userId: string, id: string): Promise<'st
 export type UploadOutcome =
   | { id: string; status: 'processing'; retried?: true }
   | { skipped: true; reason: 'not_pdf' | 'photo_needs_ai' | 'too_large' | 'too_many'; filename: string | null }
+  /** The demo's uploads are used up (`demo/limits.ts`). */
+  | { skipped: true; reason: 'demo_limit'; filename: string | null }
   | { skipped: true; reason: 'duplicate'; existing_id: string };
 
 /**
@@ -115,6 +118,11 @@ export async function acceptFile(userId: string, file: { id: string; path: strin
       return { id: existing.id, status: 'processing', retried: true };
     }
     return { skipped: true, reason: 'duplicate', existing_id: existing.id };
+  }
+  const limits = demoLimits();
+  if (limits && (await demoUploadsUsed(userId, limits))) {
+    fileSystem().rmSync(file.path);
+    return { skipped: true, reason: 'demo_limit', filename: file.filename };
   }
 
   await store.sourceFiles.create(userId, {
@@ -166,6 +174,11 @@ export async function acceptPhotoSet(userId: string, files: Array<{ path: string
     fileSystem().rmSync(filePath);
     if (existing.status === 'error' && (await retryFailedUpload(userId, existing.id)) === 'started') return { id: existing.id, status: 'processing', retried: true };
     return { skipped: true, reason: 'duplicate', existing_id: existing.id };
+  }
+  const limits = demoLimits();
+  if (limits && (await demoUploadsUsed(userId, limits))) {
+    fileSystem().rmSync(filePath);
+    return { skipped: true, reason: 'demo_limit', filename: files[0].filename };
   }
   const first = (files[0].filename ?? 'photo').replace(/\.[^.]*$/, '').slice(0, 80) || 'photo';
   await store.sourceFiles.create(userId, {

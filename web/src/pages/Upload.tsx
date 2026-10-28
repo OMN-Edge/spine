@@ -9,6 +9,7 @@ import { askForPassword } from '../reauth';
 import { msg, useI18n } from '../i18n';
 import type { I18n } from '../i18n';
 import { downloadFromDevice } from '../core/client';
+import { useAuth } from '../auth';
 
 interface UploadResult {
   id?: string;
@@ -34,7 +35,7 @@ interface ZipSummary {
 /** What the file chooser offers besides photos. The server checks what a file is by its contents, not by this list. */
 const DOCUMENT_TYPES = '.pdf,.zip,.docx,.txt,application/pdf,application/zip,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain';
 
-const REFUSAL_REASONS = ['not_pdf', 'photo_needs_ai', 'too_large', 'zip_unreadable', 'zip_empty', 'export_invalid', 'export_version', 'export_file_missing', 'too_many'];
+const REFUSAL_REASONS = ['not_pdf', 'photo_needs_ai', 'too_large', 'zip_unreadable', 'zip_empty', 'export_invalid', 'export_version', 'export_file_missing', 'too_many', 'demo_limit', 'demo_zip'];
 
 interface JobState {
   /** Unique per row: a duplicate reuses the existing upload's id. */
@@ -170,9 +171,43 @@ function UploadRow({ job, onRetry, onDeleted }: { job: JobState; onRetry: () => 
   );
 }
 
+/**
+ * The demo's own uploads (SECURITY.md M-39): asked once, before the first file, whether the visitor agrees to their files being read by the
+ * model; then the limits, and once they are used, the way on, which is an account. The counting that binds is the relay's.
+ */
+function DemoUploadNotice({ limits, used, agreed, agree }: { limits: { uploads: number; pages: number }; used: number; agreed: boolean; agree: () => void }) {
+  const { t } = useI18n();
+  const [ticked, setTicked] = useState(false);
+  const terms = t('Try it with your own files: up to {uploads} files, the first {pages} pages of each. Each page is read on this device where it can be, and what was read is sent to the AI model, through this site’s relay, to find the dates, values and doctors. The relay does not store or log what it carries. Nothing is kept: your files stay in this page until you leave it, or until you keep them in an account.', { uploads: limits.uploads, pages: limits.pages });
+  if (!agreed) {
+    return (
+      <div className="bg-white border border-gray-200 rounded-xl p-5 text-sm text-gray-700">
+        <p>{terms}</p>
+        <label className="mt-4 flex items-start gap-2">
+          <input type="checkbox" checked={ticked} onChange={e => setTicked(e.target.checked)} className="mt-0.5" />
+          <span>{t('I agree to the health data in the files I add being processed this way, to try Spine.')} <Link to="/privacy" className="text-brand-600 hover:underline">{t('Privacy notice')}</Link></span>
+        </label>
+        <button type="button" disabled={!ticked} onClick={agree} className="mt-4 rounded-full bg-brand-600 px-4 py-2 font-medium text-white hover:bg-brand-700 disabled:opacity-50">{t('Continue')}</button>
+      </div>
+    );
+  }
+  return (
+    <p className="mb-4 text-sm text-gray-600">
+      {used >= limits.uploads
+        ? t('You have added {n} files, the most the demo takes. To keep them and add more, keep them in an account (above).', { n: used })
+        : t('Demo: {used} of {uploads} files added; the first {pages} pages of each are read.', { used, uploads: limits.uploads, pages: limits.pages })}
+    </p>
+  );
+}
+
 export default function Upload() {
   const i18n = useI18n();
   const { t } = i18n;
+  const { demo, demoUploads, demoAgreed, agreeDemo } = useAuth();
+  // The visitor's own files in the demo; the sample records are not among them.
+  const [ownUploads, setOwnUploads] = useState(0);
+  const countOwn = useCallback(() => { if (demo) api.sourceFiles.list().then(list => setOwnUploads(list.filter(u => !u.sample).length)).catch(() => {}); }, [demo]);
+  useEffect(countOwn, [countOwn]);
   // The archive in one step is what a stolen session would take, so the password is asked for first (SECURITY.md S-33).
   const exportEverything = async () => {
     try {
@@ -268,7 +303,8 @@ export default function Upload() {
     });
 
     setJobs(prev => [...newJobs.reverse(), ...prev]);
-  }, [pollStatus, update, t]);
+    countOwn();
+  }, [pollStatus, update, t, countOwn]);
 
   const handleFiles = useCallback(async (fileList: FileList) => {
     const files = Array.from(fileList);
@@ -299,8 +335,11 @@ export default function Upload() {
     <div className="max-w-2xl mx-auto">
       <div className="flex items-baseline justify-between gap-4 mb-6">
         <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900">{t('Upload')}</h1>
-        <button type="button" onClick={exportEverything} className="text-sm text-brand-600 hover:underline" title={t('Everything you have, as a ZIP you can restore here or keep as a backup')}>{t('Export everything')}</button>
+        {!demo && <button type="button" onClick={exportEverything} className="text-sm text-brand-600 hover:underline" title={t('Everything you have, as a ZIP you can restore here or keep as a backup')}>{t('Export everything')}</button>}
       </div>
+
+      {demo && demoUploads && <DemoUploadNotice limits={demoUploads} used={ownUploads} agreed={demoAgreed} agree={agreeDemo} />}
+      {!(demo && (!demoAgreed || (demoUploads && ownUploads >= demoUploads.uploads))) && (<>
 
       <div
         onDragOver={e => { e.preventDefault(); setDragging(true); }}
@@ -336,10 +375,13 @@ export default function Upload() {
         />
       </div>
 
-      <p className="mt-3 text-sm text-gray-500">
-        <Link to="/scan" className="text-brand-600 hover:underline">{t('Scan with the camera')}</Link>
-        <span className="text-gray-400"> — {t('straightened and cleaned up on this device, page after page')}</span>
-      </p>
+      {!demo && (
+        <p className="mt-3 text-sm text-gray-500">
+          <Link to="/scan" className="text-brand-600 hover:underline">{t('Scan with the camera')}</Link>
+          <span className="text-gray-400"> — {t('straightened and cleaned up on this device, page after page')}</span>
+        </p>
+      )}
+      </>)}
 
       {pending && (
         <div role="group" aria-label={t('Photos')} className="mt-4 bg-white border border-gray-200 rounded-xl p-4">
@@ -377,7 +419,11 @@ export default function Upload() {
         <div role="alert" className="mt-4 bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-900">
           {refused.map((r, i) => (
             <p key={i}>
-              {r.reason === 'too_many'
+              {r.reason === 'demo_limit'
+                ? t('{name} was not added: the demo takes a few files only.', { name: r.name })
+                : r.reason === 'demo_zip'
+                ? t('{name} was not added: the demo takes files one at a time, not a ZIP.', { name: r.name })
+                : r.reason === 'too_many'
                 ? t('Too many photos for one document: choose fewer, or add them as separate documents.')
                 : r.reason === 'too_large'
                 ? t('{name} was not added: it is too large.', { name: r.name })

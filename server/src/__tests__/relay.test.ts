@@ -37,6 +37,8 @@ describe('the relay', () => {
   let logs: Array<Record<string, unknown>>;
   let limit = 100;
   let sharedLimit = 100;
+  let demoLimit = 100;
+  let demoTotal = 100;
   let clock = Date.UTC(2026, 9, 23, 12);
   const mint = (user = 'user-1') => issueToken(SECRET, user, 600_000, clock).token;
   const messages = (text: string) => mapChatMessagesToStoredMessages([new HumanMessage(text)]);
@@ -45,11 +47,13 @@ describe('the relay', () => {
     logs = [];
     limit = 100;
     sharedLimit = 100;
+    demoLimit = 100;
+    demoTotal = 100;
     const stand = standInClients({ continuation: { is_continuation: true, confidence: 0.9, reasoning: 'same table' } });
     calls = stand.calls;
     const clients: TaskClients = { ...stand.clients, translation: { invoke: async () => { throw new LlmBlockedError('Prompt blocked: SAFETY'); } } as never };
     const handle = createRelay({
-      secret: SECRET, allowedOrigin: 'https://app.example', get dailyCalls() { return limit; }, get dailySharedCalls() { return sharedLimit; }, maxBodyBytes: 2000, usage: usageRepository(openDatabase(':memory:', openNative, undefined, 'accounts')),
+      secret: SECRET, allowedOrigin: 'https://app.example', get dailyCalls() { return limit; }, get dailySharedCalls() { return sharedLimit; }, get dailyDemoCalls() { return demoLimit; }, get dailyDemoTotalCalls() { return demoTotal; }, maxBodyBytes: 2000, usage: usageRepository(openDatabase(':memory:', openNative, undefined, 'accounts')),
       clients: model => (model === undefined || model === MODEL ? clients : null),
       embedder: () => ({ enabled: true, id: 'test:3', dims: 3, embed: async texts => texts.map(() => Float32Array.from([1, 0, 0])) }),
       log: l => logs.push(l), now: () => clock,
@@ -107,6 +111,37 @@ describe('the relay', () => {
     expect((await post(TASK, { model: 'another-model', messages: messages('x') })).status).toBe(400);
     expect((await post(TASK, { messages: [{ type: 'function', data: { content: 'x' } }] })).status).toBe(400);
     expect((await post(TASK, 'not json')).status).toBe(400);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('counts the demo per address and for every address together, apart from accounts and shares (M-39)', async () => {
+    limit = 5;
+    demoLimit = 2;
+    demoTotal = 3;
+    const call = (subject: string) => post(TASK, { messages: messages('x') }, mint(subject));
+    expect((await call('demo:addressA')).status).toBe(200);
+    expect((await call('demo:addressA')).status).toBe(200);
+    // This address has had its day.
+    expect((await call('demo:addressA')).status).toBe(429);
+    // Another address has its own, until all of them together have had the instance's.
+    expect((await call('demo:addressB')).status).toBe(200);
+    expect((await call('demo:addressB')).status).toBe(429);
+    expect((await call('demo:addressC')).status).toBe(429);
+    expect(calls).toHaveLength(3);
+    // Accounts and shares are not touched by it.
+    expect((await call('user-1')).status).toBe(200);
+    expect((await call('share:s1')).status).toBe(200);
+    // And it starts again the next day.
+    clock += 24 * 60 * 60 * 1000;
+    expect((await call('demo:addressC')).status).toBe(200);
+  });
+
+  it('allows no demo call at all with a count of 0', async () => {
+    demoLimit = 0;
+    expect((await post(TASK, { messages: messages('x') }, mint('demo:addressA'))).status).toBe(429);
+    demoLimit = 5;
+    demoTotal = 0;
+    expect((await post(TASK, { messages: messages('x') }, mint('demo:addressA'))).status).toBe(429);
     expect(calls).toHaveLength(0);
   });
 

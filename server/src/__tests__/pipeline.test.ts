@@ -10,6 +10,7 @@ const mockGetPageImageDimensions = vi.hoisted(() => vi.fn());
 const mockParseDocument = vi.hoisted(() => vi.fn());
 const mockCheckContinuation = vi.hoisted(() => vi.fn());
 const mockExtractFields = vi.hoisted(() => vi.fn());
+const mockExtractPdfPages = vi.hoisted(() => vi.fn());
 
 vi.mock('spine-core/ingestion/rasterize.js', () => ({
   rasterizePdf: mockRasterizePdf,
@@ -25,6 +26,9 @@ vi.mock('spine-core/ingestion/continuation.js', () => ({
 }));
 vi.mock('spine-core/ingestion/extraction.js', () => ({
   extractFields: mockExtractFields,
+}));
+vi.mock('spine-core/archive/pdf-pages.js', () => ({
+  extractPdfPages: mockExtractPdfPages,
 }));
 
 import { startIngestionJob, getJobStatus } from 'spine-core/ingestion/pipeline.js';
@@ -515,5 +519,50 @@ describe('pipeline — trying a failed upload again', () => {
     expect(job.error).toMatch(/sidecar down/);
     expect(await getStore().pages.listForSourceFile(OWNER_ID, id)).toHaveLength(1);
     expect((await getStore().sourceFiles.findFor(OWNER_ID, id))!.status).toBe('error');
+  });
+});
+
+describe('pipeline — the demo reads the first pages only (SECURITY.md M-39)', () => {
+  afterEach(() => { delete process.env.SPINE_DEMO_MAX_UPLOADS; delete process.env.SPINE_DEMO_MAX_PAGES; });
+
+  it('keeps, parses and judges no page past the limit', async () => {
+    mockExtractPdfPages.mockReset();
+    mockExtractPdfPages.mockResolvedValue(Buffer.from('%PDF-1.4 the first five pages'));
+    process.env.SPINE_DEMO_MAX_UPLOADS = '3';
+    process.env.SPINE_DEMO_MAX_PAGES = '5';
+    const id = uuidv4();
+    await insertSourceFile(id);
+    mockRasterizePdf.mockResolvedValueOnce(Array.from({ length: 7 }, (_, i) => makePageImage(i + 1)));
+    mockParseDocument.mockResolvedValueOnce(makeParseResult(7));
+    mockCheckContinuation.mockReset();
+    mockCheckContinuation.mockResolvedValue({ is_continuation: true, confidence: 0.9, reasoning: 'same' });
+    mockExtractFields.mockResolvedValueOnce(makeExtraction());
+
+    startIngestionJob(id, OWNER_ID);
+    expect((await waitForJob(id)).status).toBe('done');
+    const pages = await getStore().pages.listForSourceFile(OWNER_ID, id);
+    expect(pages.map(p => p.page_number)).toEqual([1, 2, 3, 4, 5]);
+    expect((await getStore().sourceFiles.findFor(OWNER_ID, id))!.page_count).toBe(5);
+    // Four neighbouring pairs among five pages: none for the sixth and seventh.
+    expect(mockCheckContinuation).toHaveBeenCalledTimes(4);
+    expect(mockCheckContinuation.mock.calls.flat().join(' ')).not.toMatch(/page [67]/);
+    // The file kept is the pages read: an export of it, and a restore, then agree on how many there are.
+    const file = (await getStore().sourceFiles.findFor(OWNER_ID, id))!;
+    expect(mockExtractPdfPages).toHaveBeenCalledWith(file.file_path, [1, 2, 3, 4, 5]);
+  });
+
+  it('reads every page with no limits set', async () => {
+    mockExtractPdfPages.mockReset();
+    const id = uuidv4();
+    await insertSourceFile(id);
+    mockRasterizePdf.mockResolvedValueOnce(Array.from({ length: 7 }, (_, i) => makePageImage(i + 1)));
+    mockParseDocument.mockResolvedValueOnce(makeParseResult(7));
+    mockCheckContinuation.mockReset();
+    mockCheckContinuation.mockResolvedValue({ is_continuation: true, confidence: 0.9, reasoning: 'same' });
+    mockExtractFields.mockResolvedValueOnce(makeExtraction());
+    startIngestionJob(id, OWNER_ID);
+    expect((await waitForJob(id)).status).toBe('done');
+    expect(await getStore().pages.listForSourceFile(OWNER_ID, id)).toHaveLength(7);
+    expect(mockExtractPdfPages).not.toHaveBeenCalled();
   });
 });

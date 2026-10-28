@@ -27,6 +27,12 @@ export interface RelayConfig {
   dailyCalls: number;
   /** Calls one share may make a day (a recipient's translations and questions): its pass is for `share:<id>`, counted apart from any account. */
   dailySharedCalls: number;
+  /**
+   * The demo (SECURITY.md M-39): its passes are for `demo:<address>`, an address kept as a keyed hash. Calls one address may make a day,
+   * and calls all of them together may make a day, the bound on what visitors with no account cost the operator. 0 allows none.
+   */
+  dailyDemoCalls: number;
+  dailyDemoTotalCalls: number;
   /** Where the day's calls are counted: the `usage` repository of the store the relay is configured with (`getAccountsStore()`). */
   usage: UsageRepository;
   maxBodyBytes: number;
@@ -37,6 +43,9 @@ export interface RelayConfig {
   now?: () => number;
 }
 
+/** The count of every demo call together: no pass is ever for it, since an address's hash never has the `*`. */
+const DEMO_TOTAL = 'demo:*';
+
 export function createRelay(config: RelayConfig) {
   const now = config.now ?? Date.now;
   const log = config.log ?? (() => undefined);
@@ -46,8 +55,15 @@ export function createRelay(config: RelayConfig) {
     res.end(JSON.stringify(code ? { error, code } : { error }));
   };
 
-  /** Counts a call against the user's day; false if there is none left. */
-  const spend = async (subject: string): Promise<boolean> => (await config.usage.spend(subject, new Date(now()).toISOString().slice(0, 10), subject.startsWith('share:') ? config.dailySharedCalls : config.dailyCalls)) !== null;
+  /** Counts a call against the user's day; false if there is none left. A demo call counts against its address and against every demo's. */
+  const spend = async (subject: string): Promise<boolean> => {
+    const day = new Date(now()).toISOString().slice(0, 10);
+    if (subject.startsWith('demo:')) {
+      if ((await config.usage.spend(subject, day, config.dailyDemoCalls)) === null) return false;
+      return (await config.usage.spend(DEMO_TOTAL, day, config.dailyDemoTotalCalls)) !== null;
+    }
+    return (await config.usage.spend(subject, day, subject.startsWith('share:') ? config.dailySharedCalls : config.dailyCalls)) !== null;
+  };
 
   async function body(req: IncomingMessage): Promise<Buffer | null> {
     const chunks: Buffer[] = [];

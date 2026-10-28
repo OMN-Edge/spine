@@ -175,6 +175,17 @@ export function vaultLimits(env: NodeJS.ProcessEnv = process.env): { accountByte
  * them. `SPINE_SHARE_MAX_MB` for one sealed database or page image (default 100), `SPINE_SHARE_MAX_TOTAL_MB` for all of an account's
  * live shares together (default 1024), `SPINE_SHARE_MAX_LIVE` for how many are live at once (default 50). A bad value gives the default.
  */
+/**
+ * Whether a visitor may upload their own files in the demo (SECURITY.md M-39), and how many: `SPINE_DEMO_UPLOADS=on` (default off: each
+ * visitor costs model calls the operator pays for), `SPINE_DEMO_MAX_UPLOADS` files (default 3), the first `SPINE_DEMO_MAX_PAGES` pages of
+ * each (default 5). A bad number gives the default. These are what the demo's core is told; the relay's count is what bounds the calls.
+ */
+export function demoUploads(env: NodeJS.ProcessEnv = process.env): { uploads: number; pages: number } | null {
+  if ((env.SPINE_DEMO_UPLOADS ?? '').trim().toLowerCase() !== 'on') return null;
+  const n = (raw: string | undefined, fallback: number) => (Number.isInteger(Number(raw)) && Number(raw) >= 1 ? Number(raw) : fallback);
+  return { uploads: n(env.SPINE_DEMO_MAX_UPLOADS, 3), pages: n(env.SPINE_DEMO_MAX_PAGES, 5) };
+}
+
 export function sharedLimits(env: NodeJS.ProcessEnv = process.env): { partBytes: number; totalBytes: number; live: number } {
   const n = (raw: string | undefined, fallback: number) => (Number.isFinite(Number(raw)) && Number(raw) >= 1 ? Math.floor(Number(raw)) : fallback);
   return { partBytes: n(env.SPINE_SHARE_MAX_MB, 100) * 1024 * 1024, totalBytes: n(env.SPINE_SHARE_MAX_TOTAL_MB, 1024) * 1024 * 1024, live: n(env.SPINE_SHARE_MAX_LIVE, 50) };

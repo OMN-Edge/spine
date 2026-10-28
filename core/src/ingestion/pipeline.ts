@@ -1,6 +1,9 @@
 import { v4 as uuidv4 } from 'uuid';
 import { getStore, getAccountsStore } from '../store/index.js';
 import { rasterizePdf } from './rasterize.js';
+import { demoLimits } from '../demo/limits.js';
+import { extractPdfPages } from '../archive/pdf-pages.js';
+import { fileSystem } from '../files.js';
 import { normalisePhoto } from './photo.js';
 import { readsByModel } from '../file-kind.js';
 import { logger } from '../logger.js';
@@ -71,6 +74,13 @@ async function runPipeline(
     const pageImages = isPhoto
       ? await normalisePhoto(sourceFileId, sourceFile.file_path)
       : await rasterizePdf(sourceFileId, sourceFile.file_path);
+    // The demo reads the first pages of a file only: what is past them is not parsed, stored or sent to a model.
+    const limits = demoLimits();
+    if (limits && pageImages.length > limits.pages) {
+      for (const dropped of pageImages.splice(limits.pages)) fileSystem().rmSync(dropped.image_path);
+      // The file kept is the pages read, so the upload and what an export of it carries agree (a restore counts the file's pages).
+      if (!isPhoto) fileSystem().writeFileSync(sourceFile.file_path, await extractPdfPages(sourceFile.file_path, pageImages.map(image => image.page_number)));
+    }
     await store.sourceFiles.setPageCount(userId, sourceFileId, pageImages.length);
 
     // Step 2: Parse. Which parser runs — the local sidecar, a vision model, or the

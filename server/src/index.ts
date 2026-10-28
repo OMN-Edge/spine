@@ -14,6 +14,7 @@ import { ownAccountRoutes } from './routes/own-account.js';
 import { passkeyRoutes } from './routes/passkeys.js';
 import { vaultRoutes } from './routes/vault.js';
 import { relayRoutes } from './routes/relay.js';
+import { demoRelayRoutes } from './routes/demo-relay.js';
 import { trustAnchorRoutes } from './routes/trust-anchors.js';
 import { sharedRoutes, shareShellRoutes, sweepShares } from './routes/shared.js';
 import { sweepSessions } from './sessions.js';
@@ -101,6 +102,7 @@ await app.register(ownAccountRoutes);
 await app.register(passkeyRoutes);
 await app.register(vaultRoutes);
 await app.register(relayRoutes);
+await app.register(demoRelayRoutes);
 await app.register(trustAnchorRoutes);
 await app.register(sharedRoutes);
 // The records are on the device (stage 5): the server registers no route that reads or writes one, and the routes the device's

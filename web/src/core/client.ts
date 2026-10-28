@@ -68,10 +68,14 @@ class CoreWorker {
     this.ready = true;
   }
 
-  /** Starts the demo: an empty archive in memory, with no vault and no account. `lock` ends it. */
-  async openDemo(): Promise<void> {
-    await this.send({ type: 'startDemo' });
+  /**
+   * Starts the demo: an empty archive in memory, with no vault and no account. `lock` ends it. Answers with what the visitor may upload of
+   * their own, or null where the operator has not let them (SECURITY.md M-39).
+   */
+  async openDemo(): Promise<{ uploads: number; pages: number } | null> {
+    const m = await this.send({ type: 'startDemo' });
     this.ready = true;
+    return m.body ? (JSON.parse(new TextDecoder().decode(m.body)) as { limits: { uploads: number; pages: number } | null }).limits : null;
   }
 
   /** Reads a share: fetches the sealed copy, opens it with the key from the link, and answers from it. */

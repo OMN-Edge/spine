@@ -20,6 +20,11 @@ export interface AuthContextValue {
   startDemo: (language: 'en' | 'ro') => Promise<void>;
   /** Ends the demo; what was in it is gone. */
   leaveDemo: () => Promise<void>;
+  /** What the visitor may upload of their own in the demo, or null where the operator has not let them (SECURITY.md M-39). */
+  demoUploads: { uploads: number; pages: number } | null;
+  /** Whether the visitor has agreed, in this demo, to their files being read by the model; asked before the first upload. */
+  demoAgreed: boolean;
+  agreeDemo: () => void;
 }
 
 export const AuthContext = createContext<AuthContextValue>({
@@ -35,6 +40,9 @@ export const AuthContext = createContext<AuthContextValue>({
   demo: false,
   startDemo: async () => {},
   leaveDemo: async () => {},
+  demoUploads: null,
+  demoAgreed: false,
+  agreeDemo: () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);

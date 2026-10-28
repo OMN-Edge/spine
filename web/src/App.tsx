@@ -25,6 +25,8 @@ import { vaultState } from './crypto/vault-state';
 import UnlockScreen from './components/UnlockScreen';
 import SyncNotice from './components/SyncNotice';
 import SaveStatus from './components/SaveStatus';
+import DemoBanner from './components/DemoBanner';
+import DemoCarryOver from './components/DemoCarryOver';
 import { UnsavedChangesError, device } from './core/client';
 import Doctors from './pages/Doctors';
 import Library from './pages/Library';
@@ -61,7 +63,7 @@ const NOT_IN_DEMO = new Set(['/upload', '/share']);
 let signedOutOnPurpose = false;
 
 function Layout({ children }: { children: React.ReactNode }) {
-  const { email, setAuthenticated, demo, leaveDemo } = useAuth();
+  const { email, setAuthenticated, demo, leaveDemo, demoUploads } = useAuth();
   const { t } = useI18n();
   const navigate = useNavigate();
   const location = useLocation();
@@ -87,7 +89,8 @@ function Layout({ children }: { children: React.ReactNode }) {
   };
 
   const leave = async () => { await leaveDemo(); navigate('/'); };
-  const links = demo ? NAV_LINKS.filter(link => !NOT_IN_DEMO.has(link.to)) : NAV_LINKS;
+  // Where the operator lets visitors read files of their own, the demo has Upload too.
+  const links = demo ? NAV_LINKS.filter(link => !NOT_IN_DEMO.has(link.to) || (link.to === '/upload' && demoUploads)) : NAV_LINKS;
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     `text-sm ${isActive ? 'text-gray-900 font-medium' : 'text-gray-600 hover:text-gray-900'}`;
@@ -162,12 +165,7 @@ function Layout({ children }: { children: React.ReactNode }) {
           </div>
         )}
       </nav>
-      {demo && (
-        <div role="status" className="bg-brand-50 border-b border-brand-200 px-4 sm:px-6 py-2.5 text-sm text-brand-900 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-          <span>{t('This is a demo with invented records. Nothing you do here is saved, and it ends when you leave or reload the page.')}</span>
-          <Link to="/login" className="shrink-0 font-medium text-brand-700 hover:underline">{t('Sign in')}</Link>
-        </div>
-      )}
+      {demo && <DemoBanner />}
       {/* With the chat open beside it, the page gives it room instead of sitting under it. */}
       <main className={`max-w-6xl mx-auto px-4 sm:px-6 py-6 pb-24 sm:py-8 transition-[margin] duration-200 ${chat?.enabled && chat.open ? 'sm:mr-[26.5rem] sm:max-w-none' : ''}`}>{children}</main>
       <ChatPanel />
@@ -195,7 +193,7 @@ function PrivateRoute({ children, inDemo = true }: { children: React.ReactNode; 
   // The records are sealed in the vault and open only on this device, with the key made from the master password.
   if (authenticated && deviceState === 'starting') return <div className="min-h-screen flex items-center justify-center text-gray-400">{t('Opening…')}</div>;
   if (authenticated && deviceState === 'locked') return <UnlockScreen opened={deviceOpened} signOut={() => setAuthenticated(false)} />;
-  return authenticated ? <Layout><SaveStatus /><SyncNotice />{children}</Layout> : <Navigate to="/login" replace state={{ from: signedOutOnPurpose ? '/' : location.pathname }} />;
+  return authenticated ? <Layout><SaveStatus /><SyncNotice /><DemoCarryOver />{children}</Layout> : <Navigate to="/login" replace state={{ from: signedOutOnPurpose ? '/' : location.pathname }} />;
 }
 
 /** Signing in from the demo ends it first: the device's core is the demo's until then. */
@@ -219,12 +217,16 @@ export default function App() {
   const [deviceState, setDeviceState] = useState<'starting' | 'locked' | 'open'>('starting');
   // The demo: the device's core, started with no vault, holding the sample records until the page is left.
   const [demo, setDemo] = useState(false);
+  const [demoUploads, setDemoUploads] = useState<{ uploads: number; pages: number } | null>(null);
+  const [demoAgreed, setDemoAgreed] = useState(false);
   const startDemo = useCallback(async (language: 'en' | 'ro') => {
-    await device.openDemo();
+    const limits = await device.openDemo();
     try { await api.demo.load(language); } catch (err) { await device.lock(true); throw err; }
+    setDemoUploads(limits);
+    setDemoAgreed(false);
     setDemo(true);
   }, []);
-  const leaveDemo = useCallback(async () => { await device.lock(true); setDemo(false); }, []);
+  const leaveDemo = useCallback(async () => { await device.lock(true); setDemo(false); setDemoUploads(null); setDemoAgreed(false); }, []);
 
   const setAuthenticated = (value: boolean, who = '') => {
     if (value) signedOutOnPurpose = false;
@@ -263,7 +265,7 @@ export default function App() {
   if (loading) return <div className="min-h-screen flex items-center justify-center text-gray-400">{t('Loading…')}</div>;
 
   return (
-    <AuthContext.Provider value={{ authenticated, email, setAuthenticated, consentNeeded, consentGiven: () => setConsentNeeded(null), vaultNeeded, vaultMade: () => setVaultNeeded(false), deviceState, deviceOpened: () => setDeviceState('open'), demo, startDemo, leaveDemo }}>
+    <AuthContext.Provider value={{ authenticated, email, setAuthenticated, consentNeeded, consentGiven: () => setConsentNeeded(null), vaultNeeded, vaultMade: () => setVaultNeeded(false), deviceState, deviceOpened: () => setDeviceState('open'), demo, startDemo, leaveDemo, demoUploads, demoAgreed, agreeDemo: () => setDemoAgreed(true) }}>
       <ChatProvider authenticated={authenticated || demo}>
       <ReauthDialog />
       <Routes>
@@ -277,7 +279,7 @@ export default function App() {
         <Route path="/reset" element={<Reset />} />
         <Route path="/share/:id" element={<PublicShareView />} />
         <Route path="/" element={authenticated || demo ? <PrivateRoute><Timeline /></PrivateRoute> : <Landing />} />
-        <Route path="/upload" element={<PrivateRoute inDemo={false}><Upload /></PrivateRoute>} />
+        <Route path="/upload" element={<PrivateRoute inDemo={!!demoUploads}><Upload /></PrivateRoute>} />
         <Route path="/uploads/:id" element={<PrivateRoute><UploadPages /></PrivateRoute>} />
         <Route path="/review" element={<PrivateRoute><ReviewQueue /></PrivateRoute>} />
         <Route path="/documents/:id" element={<PrivateRoute><DocumentPage /></PrivateRoute>} />

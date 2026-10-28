@@ -58,6 +58,7 @@ const env = {
   ...(REAL ? modelEnv : standIn), // the model settings are the .env's alone in real mode: the relay and the server must describe the same targets
   SPINE_RELAY_URL: relay.url, SPINE_RELAY_SECRET: RELAY_SECRET,
   SPINE_DOMAIN: `localhost:${front}`, // where passkeys belong: the address the browser uses
+  SPINE_DEMO_UPLOADS: 'on', // a visitor may read a few files of their own in the demo (SECURITY.md M-39)
 };
 // An invented two-page file with a text layer.
 const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'spine-app-check-files-')); // not in the server's data directory: that is searched below
@@ -74,7 +75,17 @@ const upload = path.join(sandbox, 'invented.pdf');
 const shownInTimeline = (f, d) => !f.pages.slice(d.page_start - 1, d.page_end).every(pg => pg.hidden); // a document whose every page is set aside is kept, not drawn
 const MASTER = 'violet-tractor-9Qx-pelican-ledger-42';
 
+// Invented files for the demo: one longer than the demo reads, and two of one page.
+const demoFiles = [];
+for (const [name, count] of [['demo-long.pdf', 7], ['demo-two.pdf', 1], ['demo-three.pdf', 1]]) {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  for (let n = 1; n <= count; n++) doc.addPage([595.28, 841.89]).drawText(`Demo Example Clinic ${name} - page ${n} of ${count} (invented)`, { x: 60, y: 760, size: 14, font });
+  demoFiles.push(path.join(sandbox, name));
+  fs.writeFileSync(demoFiles.at(-1), await doc.save());
+}
 const made = execFileSync('node', ['dist/cli.js', 'create-user', 'check@example.com'], { cwd: path.join(root, 'server'), env, encoding: 'utf8' });
+const keeperPassword = execFileSync('node', ['dist/cli.js', 'create-user', 'keeper@example.com'], { cwd: path.join(root, 'server'), env, encoding: 'utf8' }).match(/password \(shown once\): (\S+)/)[1];
 const password = made.match(/password \(shown once\): (\S+)/)[1];
 const CSP = fs.readFileSync(path.join(root, 'Caddyfile'), 'utf8').match(/Content-Security-Policy "([^"]+)"/)[1].replace('{$SPINE_RELAY_URL:}', relay.url);
 const puts = []; // when the owner's device sent a sealed copy
@@ -116,22 +127,26 @@ try {
     const d = await ctx.newPage();
     d.on('pageerror', e => diagnostics.push(`demo page error: ${e.message}`));
     d.on('console', m => { if (/^(error|warn)/.test(m.type()) || /\[core\]/.test(m.text())) diagnostics.push(`demo console ${m.type()}: ${m.text().slice(0, 300)}`); });
+    // Leaving with files of one's own asks first; the check says yes.
+    d.on('dialog', dialog => void dialog.accept());
     const said = () => d.evaluate(() => document.body.innerText);
     const waitDemo = async (what, ms = 30000) => { for (let t = 0; t < ms; t += 250) { const now = await said(); seen = () => now; if (now.includes(what)) return true; await new Promise(r => setTimeout(r, 250)); } return false; };
     const press = label => d.evaluate(l => [...document.querySelectorAll('button,a')].find(e => e.offsetParent && e.innerText.trim().startsWith(l))?.click(), label);
+    const go = route => d.evaluate(r => { history.pushState(null, '', r); dispatchEvent(new PopStateEvent('popstate')); }, route);
+    const pause = ms => new Promise(r => setTimeout(r, ms));
     await d.goto(`http://localhost:${front}/`, { waitUntil: 'networkidle0' });
     const from = asked.length;
     await press('Try the demo');
     check(await waitDemo('This is a demo with invented records'), 'the front page opens the demo with no account');
     check(await waitDemo('Chest X-ray'), 'and the demo shows the sample records');
     const nav = await d.evaluate(() => [...document.querySelectorAll('nav a, nav button')].map(e => e.innerText.trim()).filter(Boolean));
-    check(!nav.includes('Upload') && !nav.includes('Share links') && !nav.includes('Sign out') && nav.includes('Leave the demo'), `and offers no upload, sharing or account (${nav.join(', ')})`);
+    check(nav.includes('Upload') && !nav.includes('Share links') && !nav.includes('Sign out') && nav.includes('Leave the demo'), `and offers uploading, but no sharing or account (${nav.join(', ')})`);
     await d.evaluate(() => [...document.querySelectorAll('a')].find(a => a.innerText.includes('Chest X-ray'))?.click());
     check(await waitDemo('the report states that there are no changes', 20000) && (await d.evaluate(() => location.pathname)).startsWith('/documents/'), 'a sample document opens');
-    await d.evaluate(() => { history.pushState(null, '', '/upload'); dispatchEvent(new PopStateEvent('popstate')); });
-    await new Promise(r => setTimeout(r, 500));
-    check(await d.evaluate(() => location.pathname) === '/', 'the upload screen is not in the demo');
-    const reached = asked.slice(from).filter(u => /^\/api\/(vault|shared|relay|demo|documents|source-files|auth\/(login|register))/.test(u));
+    await go('/scan');
+    await pause(500);
+    check(await d.evaluate(() => location.pathname) === '/', 'the camera is not in the demo');
+    const reached = asked.slice(from).filter(u => /^\/api\/(vault|shared|relay\/|demo(\/|\?|$)|documents|source-files|auth\/(login|register))/.test(u));
     check(reached.length === 0, `the demo sent the server nothing of the records${reached.length ? `: ${reached.join(', ')}` : ''}`);
     await d.reload({ waitUntil: 'networkidle0' });
     check(await waitDemo('Try the demo', 10000) && !(await said()).includes('Chest X-ray'), 'a reload ends the demo and keeps nothing');
@@ -139,8 +154,64 @@ try {
     check(await waitDemo('Chest X-ray'), 'the demo opens again');
     await press('Sign in');
     check(await d.waitForSelector('input[type=email]', { visible: true, timeout: 10000 }).then(() => true, () => false), 'and Sign in from the demo ends it and shows the sign-in form');
-    await d.evaluate(() => { history.pushState(null, '', '/'); dispatchEvent(new PopStateEvent('popstate')); });
+    await go('/');
     check(await waitDemo('Try the demo', 10000) && !(await said()).includes('Chest X-ray'), 'after which the front page is the front page again');
+
+    // Files of the visitor's own: agreed to first, a few only, the first pages of each, read through the relay with the demo's pass.
+    await press('Try the demo');
+    await waitDemo('Chest X-ray');
+    await press('Upload');
+    check(await waitDemo('I agree to the health data') && !(await d.$('input[type=file]')), 'the demo asks before the first file of the visitor’s own, and offers none until then');
+    await d.evaluate(() => document.querySelector('input[type=checkbox]').click());
+    await press('Continue');
+    check(await waitDemo('Demo: 0 of 3 files added'), 'then says what it takes');
+    const tokensBefore = asked.filter(u => u === '/api/demo-relay/token').length;
+    const callsBefore = relay.calls.length;
+    await (await d.$('input[type=file]')).uploadFile(demoFiles[0]);
+    check(await waitDemo('Check the grouping', 60000), 'a file of the visitor’s own is read in the demo');
+    const continuations = relay.calls.slice(callsBefore).filter(c => c.task === 'continuation').length;
+    check(continuations === 4, `only its first 5 of 7 pages are read (${continuations} pairs judged, 4 expected)`);
+    check(asked.filter(u => u === '/api/demo-relay/token').length > tokensBefore, 'with the demo’s own pass for the relay');
+    await press('Check the grouping');
+    if (await waitDemo('Grouping is right', 20000)) await press('Grouping is right');
+    for (let t = 0; t < 60000; t += 1000) { await pause(1000); const now = await said(); if (!now.includes('Reading the documents') && !now.includes('Grouping is right')) break; }
+    check(relay.calls.slice(callsBefore).some(c => c.task === 'extraction'), 'and its details are read once the grouping is confirmed');
+    await press('Upload');
+    await waitDemo('Demo: 1 of 3');
+    for (const file of demoFiles.slice(1)) { await (await d.$('input[type=file]')).uploadFile(file); await pause(1500); }
+    check(await waitDemo('the most the demo takes', 30000) && !(await d.$('input[type=file]')), 'after three files the demo takes no more');
+    const leaked = asked.slice(from).filter(u => /^\/api\/(vault|shared|relay\/token|auth\/(login|register))/.test(u));
+    check(leaked.length === 0, `and nothing of the visitor’s files went to the server${leaked.length ? `: ${leaked.join(', ')}` : ''}`);
+
+    // Kept: the demo's export waits in this browser, and the account the visitor signs in to is offered it.
+    for (let t = 0; t < 30000 && (await d.evaluate(() => [...document.querySelectorAll('button')].find(b => b.innerText.includes('to keep them'))?.disabled ?? true)); t += 500) await pause(500);
+    await press('Sign in to keep them');
+    check(await d.waitForSelector('input[type=email]', { visible: true, timeout: 15000 }).then(() => true, () => false), 'keeping them leads to signing in');
+    await d.type('input[type=email]', 'keeper@example.com'); await d.type('input[type=password]', keeperPassword); await press('Sign in');
+    await waitDemo('Before you start');
+    for (const c of await d.$$('input[type=checkbox]')) await c.click();
+    await press('Agree and continue');
+    await waitDemo('Protect your records');
+    const pwd = await d.$$('input[type=password]'); await pwd[0].type(MASTER); await pwd[1].type(MASTER); await press('Continue');
+    await waitDemo('recovery kit');
+    await (await d.$('input[type=checkbox]')).click(); await press('Continue');
+    await waitDemo('Open your records');
+    await d.type('input[type=password]', MASTER); await press('Open');
+    check(await waitDemo('This browser kept the 3 files you read in the demo', 30000), 'the new account is offered the files kept from the demo');
+    const callsAtAdd = relay.calls.length;
+    await press('Add to my records');
+    check(await waitDemo('documents from the demo are in your records now', 60000), 'and adds them');
+    await d.reload({ waitUntil: 'networkidle0' });
+    await waitDemo('Open your records');
+    await d.type('input[type=password]', MASTER); await press('Open');
+    const countDocs = () => d.evaluate(() => new Set([...document.querySelectorAll('a')].map(a => a.getAttribute('href')).filter(h => h?.startsWith('/documents/'))).size);
+    let docs = 0;
+    for (let t = 0; t < 30000 && (docs = await countDocs()) < 3; t += 500) await pause(500);
+    await pause(1000);
+    docs = await countDocs();
+    const after = await said();
+    check(docs >= 3 && !after.includes('Chest X-ray') && !after.includes('This browser kept'), `after a reload the account holds them (${docs} documents), not the sample records, and is not offered them again`);
+    check(relay.calls.slice(callsAtAdd).filter(c => c.task !== 'embed').length === 0, 'adding them called no model');
     await ctx.close();
   }
 

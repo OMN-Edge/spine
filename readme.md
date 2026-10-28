@@ -21,6 +21,7 @@ Your records are read, searched and kept on your own device, in your browser. Th
 - Episodes: documents that belong together, suggested from the provider, the dates and the links between documents and confirmed by you; the timeline and the search filter by episode, facility and specialty, and a share link can name episodes
 - Related documents (the same test or doctor, and, with Vertex embeddings on, ones that read alike) and search by words and meaning together
 - The interface is in English, Romanian, French and German, and a document's extracted details and your notes are translated into the reader's language on demand (and kept), including on a shared page
+- A demo on the front page: the app with invented records, in the visitor's browser, with no account and nothing saved. Where the operator turns it on (`SPINE_DEMO_UPLOADS=on`), a visitor can also read a few files of their own, capped at the relay, and keep them in an account
 - Export one document, or everything, as a zip with a manifest of what was read; upload that zip anywhere to restore it without the AI, with duplicates recognised. Any other zip of PDFs is added like separate uploads
 
 ## Documentation

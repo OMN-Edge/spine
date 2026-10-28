@@ -1152,5 +1152,22 @@
  "This is a demo with invented records. Nothing you do here is saved, and it ends when you leave or reload the page.": "Aceasta este o demonstrație cu documente inventate. Nimic din ce faceți aici nu se salvează, iar demonstrația se încheie când părăsiți sau reîncărcați pagina.",
  "Try the demo": "Încercați demonstrația",
  "The demo opens the app with invented records, in this browser only: no account, and nothing is saved.": "Demonstrația deschide aplicația cu documente inventate, doar în acest browser: fără cont și fără să se salveze nimic.",
- "The demo could not start in this browser. Try again, or another browser.": "Demonstrația nu a putut porni în acest browser. Încercați din nou sau folosiți alt browser."
+ "The demo could not start in this browser. Try again, or another browser.": "Demonstrația nu a putut porni în acest browser. Încercați din nou sau folosiți alt browser.",
+ "Your files could not be kept in this browser. Try again.": "Fișierele dumneavoastră nu au putut fi păstrate în acest browser. Încercați din nou.",
+ "Wait until your files have been read": "Așteptați până când fișierele dumneavoastră au fost citite",
+ "Create an account to keep them": "Creați un cont pentru a le păstra",
+ "Sign in to keep them": "Conectați-vă pentru a le păstra",
+ "Your files from the demo could not be added. Try again.": "Fișierele dumneavoastră din demonstrație nu au putut fi adăugate. Încercați din nou.",
+ "Adding…": "Se adaugă…",
+ "Add to my records": "Adăugați-le la documentele mele",
+ "Discard": "Renunțați",
+ "Try it with your own files: up to {uploads} files, the first {pages} pages of each. Each page is read on this device where it can be, and what was read is sent to the AI model, through this site’s relay, to find the dates, values and doctors. The relay does not store or log what it carries. Nothing is kept: your files stay in this page until you leave it, or until you keep them in an account.": "Încercați cu propriile fișiere: cel mult {uploads} fișiere, primele {pages} pagini din fiecare. Fiecare pagină este citită pe acest dispozitiv acolo unde se poate, iar ce s-a citit este trimis modelului AI, prin releul acestui site, pentru a găsi datele, valorile și medicii. Releul nu stochează și nu înregistrează ce transmite. Nu se păstrează nimic: fișierele rămân în această pagină până când o părăsiți sau până când le păstrați într-un cont.",
+ "I agree to the health data in the files I add being processed this way, to try Spine.": "Sunt de acord ca datele de sănătate din fișierele pe care le adaug să fie prelucrate astfel, pentru a încerca Spine.",
+ "You have added {n} files, the most the demo takes. To keep them and add more, keep them in an account (above).": "Ați adăugat {n} fișiere, cât permite demonstrația. Pentru a le păstra și a adăuga altele, păstrați-le într-un cont (mai sus).",
+ "Demo: {used} of {uploads} files added; the first {pages} pages of each are read.": "Demonstrație: {used} din {uploads} fișiere adăugate; se citesc primele {pages} pagini din fiecare.",
+ "{name} was not added: the demo takes a few files only.": "{name} nu a fost adăugat: demonstrația acceptă doar câteva fișiere.",
+ "{name} was not added: the demo takes files one at a time, not a ZIP.": "{name} nu a fost adăugat: demonstrația acceptă fișierele pe rând, nu o arhivă ZIP.",
+ "Your {n} file is kept only in this page until you keep it in an account.|Your {n} files are kept only in this page until you keep them in an account.": "Fișierul dumneavoastră este păstrat doar în această pagină până când îl păstrați într-un cont.|Cele {n} fișiere ale dumneavoastră sunt păstrate doar în această pagină până când le păstrați într-un cont.|Cele {n} de fișiere ale dumneavoastră sunt păstrate doar în această pagină până când le păstrați într-un cont.",
+ "The document from the demo is in your records now.|The {n} documents from the demo are in your records now.": "Documentul din demonstrație este acum în documentele dumneavoastră.|Cele {n} documente din demonstrație sunt acum în documentele dumneavoastră.|Cele {n} de documente din demonstrație sunt acum în documentele dumneavoastră.",
+ "This browser kept the file you read in the demo. Add it to your records?|This browser kept the {n} files you read in the demo. Add them to your records?": "Acest browser a păstrat fișierul citit în demonstrație. Îl adăugați la documentele dumneavoastră?|Acest browser a păstrat cele {n} fișiere citite în demonstrație. Le adăugați la documentele dumneavoastră?|Acest browser a păstrat cele {n} de fișiere citite în demonstrație. Le adăugați la documentele dumneavoastră?"
 }

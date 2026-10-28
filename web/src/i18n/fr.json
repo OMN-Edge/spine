@@ -1152,5 +1152,22 @@
  "This is a demo with invented records. Nothing you do here is saved, and it ends when you leave or reload the page.": "Ceci est une démo avec des documents inventés. Rien de ce que vous faites ici n’est enregistré, et elle prend fin quand vous quittez ou rechargez la page.",
  "Try the demo": "Essayer la démo",
  "The demo opens the app with invented records, in this browser only: no account, and nothing is saved.": "La démo ouvre l’application avec des documents inventés, dans ce navigateur uniquement : sans compte, et rien n’est enregistré.",
- "The demo could not start in this browser. Try again, or another browser.": "La démo n’a pas pu démarrer dans ce navigateur. Réessayez, ou utilisez un autre navigateur."
+ "The demo could not start in this browser. Try again, or another browser.": "La démo n’a pas pu démarrer dans ce navigateur. Réessayez, ou utilisez un autre navigateur.",
+ "Your files could not be kept in this browser. Try again.": "Vos fichiers n’ont pas pu être conservés dans ce navigateur. Réessayez.",
+ "Wait until your files have been read": "Attendez que vos fichiers aient été lus",
+ "Create an account to keep them": "Créer un compte pour les garder",
+ "Sign in to keep them": "Se connecter pour les garder",
+ "Your files from the demo could not be added. Try again.": "Vos fichiers de la démo n’ont pas pu être ajoutés. Réessayez.",
+ "Adding…": "Ajout…",
+ "Add to my records": "Ajouter à mes documents",
+ "Discard": "Abandonner",
+ "Try it with your own files: up to {uploads} files, the first {pages} pages of each. Each page is read on this device where it can be, and what was read is sent to the AI model, through this site’s relay, to find the dates, values and doctors. The relay does not store or log what it carries. Nothing is kept: your files stay in this page until you leave it, or until you keep them in an account.": "Essayez avec vos propres fichiers : jusqu’à {uploads} fichiers, les {pages} premières pages de chacun. Chaque page est lue sur cet appareil quand c’est possible, et ce qui a été lu est envoyé au modèle d’IA, par le relais de ce site, pour trouver les dates, les valeurs et les médecins. Le relais ne conserve ni ne journalise ce qu’il transmet. Rien n’est gardé : vos fichiers restent dans cette page jusqu’à ce que vous la quittiez, ou que vous les gardiez dans un compte.",
+ "I agree to the health data in the files I add being processed this way, to try Spine.": "J’accepte que les données de santé des fichiers que j’ajoute soient traitées de cette façon, pour essayer Spine.",
+ "You have added {n} files, the most the demo takes. To keep them and add more, keep them in an account (above).": "Vous avez ajouté {n} fichiers, le maximum de la démo. Pour les garder et en ajouter d’autres, gardez-les dans un compte (ci-dessus).",
+ "Demo: {used} of {uploads} files added; the first {pages} pages of each are read.": "Démo : {used} fichiers ajoutés sur {uploads} ; les {pages} premières pages de chacun sont lues.",
+ "{name} was not added: the demo takes a few files only.": "{name} n’a pas été ajouté : la démo n’accepte que quelques fichiers.",
+ "{name} was not added: the demo takes files one at a time, not a ZIP.": "{name} n’a pas été ajouté : la démo accepte les fichiers un par un, pas un ZIP.",
+ "Your {n} file is kept only in this page until you keep it in an account.|Your {n} files are kept only in this page until you keep them in an account.": "Votre fichier n’est gardé que dans cette page jusqu’à ce que vous le gardiez dans un compte.|Vos {n} fichiers ne sont gardés que dans cette page jusqu’à ce que vous les gardiez dans un compte.",
+ "The document from the demo is in your records now.|The {n} documents from the demo are in your records now.": "Le document de la démo est maintenant dans vos documents.|Les {n} documents de la démo sont maintenant dans vos documents.",
+ "This browser kept the file you read in the demo. Add it to your records?|This browser kept the {n} files you read in the demo. Add them to your records?": "Ce navigateur a gardé le fichier lu dans la démo. L’ajouter à vos documents ?|Ce navigateur a gardé les {n} fichiers lus dans la démo. Les ajouter à vos documents ?"
 }
