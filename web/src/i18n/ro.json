@@ -1147,5 +1147,10 @@
  "Read, searched and kept in your browser, opened with your password.": "Citite, căutate și păstrate în browser, deschise cu parola dumneavoastră.",
  "Locked with keys made from your password, before anything is saved.": "Încuiate cu chei create din parola dumneavoastră, înainte de a fi salvate.",
  "On the server": "Pe server",
- "Kept as sealed pieces it cannot open.": "Păstrate ca bucăți sigilate pe care nu le poate deschide."
+ "Kept as sealed pieces it cannot open.": "Păstrate ca bucăți sigilate pe care nu le poate deschide.",
+ "Leave the demo": "Ieșiți din demonstrație",
+ "This is a demo with invented records. Nothing you do here is saved, and it ends when you leave or reload the page.": "Aceasta este o demonstrație cu documente inventate. Nimic din ce faceți aici nu se salvează, iar demonstrația se încheie când părăsiți sau reîncărcați pagina.",
+ "Try the demo": "Încercați demonstrația",
+ "The demo opens the app with invented records, in this browser only: no account, and nothing is saved.": "Demonstrația deschide aplicația cu documente inventate, doar în acest browser: fără cont și fără să se salveze nimic.",
+ "The demo could not start in this browser. Try again, or another browser.": "Demonstrația nu a putut porni în acest browser. Încercați din nou sau folosiți alt browser."
 }

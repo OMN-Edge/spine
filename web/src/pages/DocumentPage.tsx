@@ -19,6 +19,7 @@ import { DOC_TYPE_NAMES, documentByline, documentTitle, fieldName, isSection, la
 import { LANGUAGES, useI18n } from '../i18n';
 import { languageName, useTranslation } from '../i18n/useTranslation';
 import { downloadFromDevice } from '../core/client';
+import { useAuth } from '../auth';
 
 /**
  * A document, in two modes on the same page. Reading shows what was extracted next to the
@@ -120,6 +121,8 @@ function EmptyPage({ canRead }: { canRead: boolean }) {
 
 export default function DocumentPage() {
   const { t, lang } = useI18n();
+  // The demo has no model to read a page with.
+  const { demo } = useAuth();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
@@ -453,11 +456,13 @@ export default function DocumentPage() {
               )}
               <div className="mt-2 flex flex-wrap items-stretch gap-2">
                 <ReviewButton onClick={startEditing} />
-                <ReadAgainMenu
-                  page={currentPage}
-                  pages={pages}
-                  reviewed={reviewed}
-                />
+                {!demo && (
+                  <ReadAgainMenu
+                    page={currentPage}
+                    pages={pages}
+                    reviewed={reviewed}
+                  />
+                )}
               </div>
             </>
           ) : (

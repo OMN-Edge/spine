@@ -110,6 +110,40 @@ const explain = () => {
 };
 const check = (ok, what) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${what}`); if (!ok) { if (!failed) explain(); failed = true; console.log(`     page says: ${seen().replace(/\s+/g, ' ').slice(0, 300)}`); } };
 try {
+  // The demo, before any account exists: the app with the sample records, in this browser only, and nothing of it reaches the server.
+  {
+    const ctx = await browser.createBrowserContext();
+    const d = await ctx.newPage();
+    d.on('pageerror', e => diagnostics.push(`demo page error: ${e.message}`));
+    d.on('console', m => { if (/^(error|warn)/.test(m.type()) || /\[core\]/.test(m.text())) diagnostics.push(`demo console ${m.type()}: ${m.text().slice(0, 300)}`); });
+    const said = () => d.evaluate(() => document.body.innerText);
+    const waitDemo = async (what, ms = 30000) => { for (let t = 0; t < ms; t += 250) { const now = await said(); seen = () => now; if (now.includes(what)) return true; await new Promise(r => setTimeout(r, 250)); } return false; };
+    const press = label => d.evaluate(l => [...document.querySelectorAll('button,a')].find(e => e.offsetParent && e.innerText.trim().startsWith(l))?.click(), label);
+    await d.goto(`http://localhost:${front}/`, { waitUntil: 'networkidle0' });
+    const from = asked.length;
+    await press('Try the demo');
+    check(await waitDemo('This is a demo with invented records'), 'the front page opens the demo with no account');
+    check(await waitDemo('Chest X-ray'), 'and the demo shows the sample records');
+    const nav = await d.evaluate(() => [...document.querySelectorAll('nav a, nav button')].map(e => e.innerText.trim()).filter(Boolean));
+    check(!nav.includes('Upload') && !nav.includes('Share links') && !nav.includes('Sign out') && nav.includes('Leave the demo'), `and offers no upload, sharing or account (${nav.join(', ')})`);
+    await d.evaluate(() => [...document.querySelectorAll('a')].find(a => a.innerText.includes('Chest X-ray'))?.click());
+    check(await waitDemo('the report states that there are no changes', 20000) && (await d.evaluate(() => location.pathname)).startsWith('/documents/'), 'a sample document opens');
+    await d.evaluate(() => { history.pushState(null, '', '/upload'); dispatchEvent(new PopStateEvent('popstate')); });
+    await new Promise(r => setTimeout(r, 500));
+    check(await d.evaluate(() => location.pathname) === '/', 'the upload screen is not in the demo');
+    const reached = asked.slice(from).filter(u => /^\/api\/(vault|shared|relay|demo|documents|source-files|auth\/(login|register))/.test(u));
+    check(reached.length === 0, `the demo sent the server nothing of the records${reached.length ? `: ${reached.join(', ')}` : ''}`);
+    await d.reload({ waitUntil: 'networkidle0' });
+    check(await waitDemo('Try the demo', 10000) && !(await said()).includes('Chest X-ray'), 'a reload ends the demo and keeps nothing');
+    await press('Try the demo');
+    check(await waitDemo('Chest X-ray'), 'the demo opens again');
+    await press('Sign in');
+    check(await d.waitForSelector('input[type=email]', { visible: true, timeout: 10000 }).then(() => true, () => false), 'and Sign in from the demo ends it and shows the sign-in form');
+    await d.evaluate(() => { history.pushState(null, '', '/'); dispatchEvent(new PopStateEvent('popstate')); });
+    check(await waitDemo('Try the demo', 10000) && !(await said()).includes('Chest X-ray'), 'after which the front page is the front page again');
+    await ctx.close();
+  }
+
   const p = await browser.newPage();
   const errors = [];
   p.on('pageerror', e => { errors.push(e.message); diagnostics.push(`page error: ${(e.stack || e.message).split('\n').slice(0, 3).join(' | ')}`); });

@@ -5,6 +5,8 @@
  * It implements `HttpApp` (core/src/http.ts), which is what `core/src/routes/*.ts` are written against: app.get/post/put/patch/delete with
  * `{ preHandler }`, addHook('preHandler'), decorateRequest, and on the request params/query/body/headers/log/ip/url/userId/parts, on the
  * reply status/header/type/send/raw. The router also keeps `session` and `register` for the device's own use. Errors answer as Fastify's do.
+ * As in Fastify, a hook added inside `register` applies to the routes that plugin adds, and one added outside any to every route: a route
+ * file's own checks (the share routes' "is there a share host") stay its own.
  * A test runs the same requests against Fastify and against this, and compares.
  */
 
@@ -64,7 +66,8 @@ export interface InjectResponse {
   close?: () => void;
 }
 
-interface Route { method: Method; pattern: RegExp; keys: string[]; options: RouteOptions; handler: Handler; url: string }
+/** `scopes`: the plugins the route was added inside, outermost first; 0 is the app itself. */
+interface Route { method: Method; pattern: RegExp; keys: string[]; options: RouteOptions; handler: Handler; url: string; scopes: number[] }
 
 const quiet = { info() {}, warn() {}, error() {}, debug() {} };
 
@@ -88,14 +91,17 @@ async function collect(stream: AsyncIterable<unknown>): Promise<Uint8Array> {
 
 export class LocalApp implements HttpApp {
   private routes: Route[] = [];
-  private hooks: { onRequest: Hook[]; preHandler: Hook[] } = { onRequest: [], preHandler: [] };
+  private hooks: { onRequest: Array<{ fn: Hook; scope: number }>; preHandler: Array<{ fn: Hook; scope: number }> } = { onRequest: [], preHandler: [] };
+  /** The plugins being registered now, outermost first. */
+  private scopes = [0];
+  private nextScope = 1;
   private defaults: Record<string, unknown> = {};
   private routeListeners: Array<(route: { method: string; url: string }) => void> = [];
 
   private add(method: Method, url: string, a: RouteOptions | Handler, b?: Handler) {
     const options = typeof a === 'function' ? {} : a;
     const handler = (typeof a === 'function' ? a : b) as Handler;
-    this.routes.push({ method, url, options, handler, ...compile(url) });
+    this.routes.push({ method, url, options, handler, scopes: [...this.scopes], ...compile(url) });
     for (const listener of this.routeListeners) listener({ method, url });
   }
 
@@ -110,7 +116,7 @@ export class LocalApp implements HttpApp {
 
   addHook(name: string, fn: Hook | ((route: { method: string | string[]; url: string }) => void)): void {
     if (name === 'onRoute') this.routeListeners.push(fn as never);
-    else if (name === 'preHandler' || name === 'onRequest') this.hooks[name].push(fn as Hook);
+    else if (name === 'preHandler' || name === 'onRequest') this.hooks[name].push({ fn: fn as Hook, scope: this.scopes[this.scopes.length - 1] });
     else throw new Error(`LocalApp has no "${name}" hook`);
   }
 
@@ -120,7 +126,8 @@ export class LocalApp implements HttpApp {
   rateLimit(): Hook { return () => undefined; }
 
   async register<O>(plugin: (app: LocalApp, options: O) => Promise<void> | void, options?: O): Promise<void> {
-    await plugin(this, (options ?? {}) as O);
+    this.scopes.push(this.nextScope++);
+    try { await plugin(this, (options ?? {}) as O); } finally { this.scopes.pop(); }
   }
 
   async inject(input: InjectRequest): Promise<InjectResponse> {
@@ -196,7 +203,8 @@ export class LocalApp implements HttpApp {
 
     const listOf = (h?: Hook | Hook[]) => (h === undefined ? [] : Array.isArray(h) ? h : [h]);
     try {
-      for (const hook of [...this.hooks.onRequest, ...listOf(route.options.onRequest), ...this.hooks.preHandler, ...listOf(route.options.preHandler)]) {
+      const own = (hooks: Array<{ fn: Hook; scope: number }>) => hooks.filter(h => route.scopes.includes(h.scope)).map(h => h.fn);
+      for (const hook of [...own(this.hooks.onRequest), ...listOf(route.options.onRequest), ...own(this.hooks.preHandler), ...listOf(route.options.preHandler)]) {
         const result = await hook(req, reply);
         if (out.sent) return finish();
         void result;

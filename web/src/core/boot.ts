@@ -65,7 +65,7 @@ export interface Core {
   store: Store;
 }
 
-export async function startCore(vault?: { objects: ObjectStore; profileId: string }, hooks: { onConflict?: () => void; onChanged?: () => void; onSaveState?: (state: SaveState) => void } = {}): Promise<Core> {
+export async function startCore(vault?: { objects: ObjectStore; profileId: string }, hooks: { onConflict?: () => void; onChanged?: () => void; onSaveState?: (state: SaveState) => void } = {}, options: { shares?: boolean } = {}): Promise<Core> {
   await hashingReady();
   useNativeTools(browserTools);
   useDigests(browserDigests);
@@ -93,15 +93,17 @@ export async function startCore(vault?: { objects: ObjectStore; profileId: strin
   // Nothing can still be running in a core that has just started: an upload left reading when the page closed would otherwise wait for ever.
   await reconcileStalledJobs();
 
-  // Links are sealed here and sent to the server (docs/crypto-design.md, stage 4).
-  useShareHost(createShareHost({ store: () => store, mail: relayMail }));
+  // Links are sealed here and sent to the server (docs/crypto-design.md, stage 4). The demo has no account to send them for: with no host,
+  // every owner share route answers 503.
+  useShareHost(options.shares === false ? null : createShareHost({ store: () => store, mail: relayMail }));
 
   const local = new LocalApp();
   decorateAuth(local);
   // One person, and the password was just typed to open the vault: nothing here asks for it again.
   useRequestAuth({ user: () => store.users.findById(DEVICE_USER), recent: () => true });
+  // Each file as a plugin, so its hooks are its own, as on Fastify.
   for (const routes of [tagRoutes, doctorRoutes, trendRoutes, episodeRoutes, documentRoutes, sourceFileRoutes, exportRoutes, similarityRoutes, linkRoutes, demoRoutes, chatRoutes, shareRoutes]) {
-    await routes(local);
+    await local.register(routes);
   }
 
   let locked = false;

@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import '@fontsource/ibm-plex-mono/400.css';
 import '@fontsource/ibm-plex-mono/500.css';
 import { api } from '../api';
+import { useAuth } from '../auth';
 import { LogoMark } from '../components/Logo';
 import { LanguageSwitcher, useI18n } from '../i18n';
 
@@ -161,14 +162,29 @@ const INK = 'rgb(var(--ink))';
 const FAINT = 'rgb(var(--ink) / 0.14)';
 const ACCENT = 'rgb(var(--accent))';
 
+/** Signing up or in, and the demo: the app itself with invented records, in this browser only, with no account. */
 function Actions({ open, className = '' }: { open: boolean; className?: string }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
+  const { startDemo } = useAuth();
+  const navigate = useNavigate();
+  const [starting, setStarting] = useState(false);
+  const [failed, setFailed] = useState(false);
   const solid = 'rounded-full bg-ink px-6 py-3 font-medium text-paper hover:bg-ink/85';
-  const outline = 'rounded-full border border-ink/25 px-6 py-3 font-medium text-ink hover:bg-ink/5';
+  const outline = 'rounded-full border border-ink/25 px-6 py-3 font-medium text-ink hover:bg-ink/5 disabled:opacity-50';
+  const tryDemo = async () => {
+    setStarting(true); setFailed(false);
+    try { await startDemo(lang === 'ro' ? 'ro' : 'en'); navigate('/'); } catch (err) { console.warn('the demo could not start:', (err as Error)?.message); setFailed(true); }
+    setStarting(false);
+  };
   return (
-    <div className={`flex flex-wrap gap-3 ${className}`}>
-      {open && <Link to="/register" className={solid}>{t('Create an account')}</Link>}
-      <Link to="/login" className={open ? outline : solid}>{t('Sign in')}</Link>
+    <div className={className}>
+      <div className="flex flex-wrap gap-3">
+        {open && <Link to="/register" className={solid}>{t('Create an account')}</Link>}
+        <Link to="/login" className={open ? outline : solid}>{t('Sign in')}</Link>
+        <button type="button" onClick={() => void tryDemo()} disabled={starting} className={outline}>{starting ? t('Opening…') : t('Try the demo')}</button>
+      </div>
+      <p className="mt-3 text-sm text-ink/60">{t('The demo opens the app with invented records, in this browser only: no account, and nothing is saved.')}</p>
+      {failed && <p role="alert" className="mt-2 text-sm text-red-700">{t('The demo could not start in this browser. Try again, or another browser.')}</p>}
     </div>
   );
 }

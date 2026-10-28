@@ -4,6 +4,7 @@ import { Buffer } from 'buffer';
 import { startCore, type Core } from './boot';
 import { startShareCore, type ShareCore } from './boot-share';
 import { applyRelayConfig } from './native/relay-auth';
+import { deviceSettings } from './native/settings';
 import { VaultSession } from '../crypto/vault-client';
 import type { FromWorker, Part, ToWorker } from './protocol';
 
@@ -61,6 +62,16 @@ async function start(opening: Uint8Array | { prf: Uint8Array; credentialId: stri
   trace('ready');
 }
 
+/**
+ * The demo's core: no vault, so nothing is saved, and no relay, so nothing is sent to a model. The features that would need one are off, so
+ * the screens say so instead of failing; with no share host, no link can be made. The page loads the sample records into it.
+ */
+async function startDemo(): Promise<void> {
+  Object.assign(deviceSettings, { SPINE_CHAT: 'off', SPINE_TRANSLATION: 'off', SPINE_LINKING: 'off', SPINE_EMBEDDINGS: 'none', SPINE_PARSER: 'text' });
+  core = await startCore(undefined, {}, { shares: false });
+  trace('ready');
+}
+
 const streaming = new Map<number, () => void>();
 
 self.onmessage = async (event: MessageEvent<ToWorker>) => {
@@ -72,6 +83,9 @@ self.onmessage = async (event: MessageEvent<ToWorker>) => {
       reply({ id: m.id, ok: true });
     } else if (m.type === 'startWithPasskey') {
       await start(m.passkey);
+      reply({ id: m.id, ok: true });
+    } else if (m.type === 'startDemo') {
+      await startDemo();
       reply({ id: m.id, ok: true });
     } else if (m.type === 'startShare') {
       // Reading a share: no vault, no account; the key is the access.

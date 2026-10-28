@@ -68,6 +68,12 @@ class CoreWorker {
     this.ready = true;
   }
 
+  /** Starts the demo: an empty archive in memory, with no vault and no account. `lock` ends it. */
+  async openDemo(): Promise<void> {
+    await this.send({ type: 'startDemo' });
+    this.ready = true;
+  }
+
   /** Reads a share: fetches the sealed copy, opens it with the key from the link, and answers from it. */
   async openShare(shareId: string, key: string): Promise<void> {
     await this.send({ type: 'startShare', shareId, key });

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Link, NavLink, useNavigate, useLocation, useParams, Navigate } from 'react-router-dom';
 import { api } from './api';
 import { AuthContext, useAuth } from './auth';
@@ -25,7 +25,7 @@ import { vaultState } from './crypto/vault-state';
 import UnlockScreen from './components/UnlockScreen';
 import SyncNotice from './components/SyncNotice';
 import SaveStatus from './components/SaveStatus';
-import { UnsavedChangesError } from './core/client';
+import { UnsavedChangesError, device } from './core/client';
 import Doctors from './pages/Doctors';
 import Library from './pages/Library';
 import DoctorPage from './pages/DoctorPage';
@@ -50,6 +50,8 @@ const NAV_LINKS = [
   { to: '/search', label: msg('Search') },
   { to: '/share', label: msg('Share links') },
 ];
+/** What the demo leaves out: there is no account to upload into or to share from, and nothing in it is kept. */
+const NOT_IN_DEMO = new Set(['/upload', '/share']);
 
 /**
  * Whether the person signed out on purpose, as opposed to a session that ended where they were. A session that ended sends them back to
@@ -59,7 +61,7 @@ const NAV_LINKS = [
 let signedOutOnPurpose = false;
 
 function Layout({ children }: { children: React.ReactNode }) {
-  const { email, setAuthenticated } = useAuth();
+  const { email, setAuthenticated, demo, leaveDemo } = useAuth();
   const { t } = useI18n();
   const navigate = useNavigate();
   const location = useLocation();
@@ -84,6 +86,9 @@ function Layout({ children }: { children: React.ReactNode }) {
     navigate('/login');
   };
 
+  const leave = async () => { await leaveDemo(); navigate('/'); };
+  const links = demo ? NAV_LINKS.filter(link => !NOT_IN_DEMO.has(link.to)) : NAV_LINKS;
+
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     `text-sm ${isActive ? 'text-gray-900 font-medium' : 'text-gray-600 hover:text-gray-900'}`;
 
@@ -106,12 +111,18 @@ function Layout({ children }: { children: React.ReactNode }) {
 
           {/* wide screens (1280px and up, where it fits): everything in one row */}
           <div className="hidden xl:flex items-center gap-6 flex-1">
-            {NAV_LINKS.map(link => (
+            {links.map(link => (
               <NavLink key={link.to} to={link.to} end={link.to === '/'} className={linkClass}>{t(link.label)}</NavLink>
             ))}
             <LanguageSwitcher className="ml-auto" />
-            <Link to="/account" className="text-sm text-gray-500 hover:text-gray-900 truncate max-w-[16rem]">{email}</Link>
-            <button onClick={() => void logout()} className="text-sm text-gray-500 hover:text-gray-900">{t('Sign out')}</button>
+            {demo ? (
+              <button onClick={() => void leave()} className="text-sm text-gray-500 hover:text-gray-900">{t('Leave the demo')}</button>
+            ) : (
+              <>
+                <Link to="/account" className="text-sm text-gray-500 hover:text-gray-900 truncate max-w-[16rem]">{email}</Link>
+                <button onClick={() => void logout()} className="text-sm text-gray-500 hover:text-gray-900">{t('Sign out')}</button>
+              </>
+            )}
           </div>
 
           {/* narrow screens: a menu button */}
@@ -131,7 +142,7 @@ function Layout({ children }: { children: React.ReactNode }) {
 
         {menuOpen && (
           <div id="nav-menu" className="xl:hidden border-t border-gray-100 px-4 pb-3">
-            {NAV_LINKS.map(link => (
+            {links.map(link => (
               <NavLink
                 key={link.to} to={link.to} end={link.to === '/'}
                 className={({ isActive }) => `block py-3 text-base border-b border-gray-100 ${isActive ? 'text-gray-900 font-medium' : 'text-gray-600'}`}
@@ -139,14 +150,24 @@ function Layout({ children }: { children: React.ReactNode }) {
                 {t(link.label)}
               </NavLink>
             ))}
-            <Link to="/account" className="block py-3 text-base text-gray-600 border-b border-gray-100 truncate">
-              {t('Account')} <span className="text-gray-500">· {email}</span>
-            </Link>
+            {!demo && (
+              <Link to="/account" className="block py-3 text-base text-gray-600 border-b border-gray-100 truncate">
+                {t('Account')} <span className="text-gray-500">· {email}</span>
+              </Link>
+            )}
             <div className="py-3"><LanguageSwitcher /></div>
-            <button onClick={() => void logout()} className="block w-full text-left py-3 text-base text-gray-600">{t('Sign out')}</button>
+            {demo
+              ? <button onClick={() => void leave()} className="block w-full text-left py-3 text-base text-gray-600">{t('Leave the demo')}</button>
+              : <button onClick={() => void logout()} className="block w-full text-left py-3 text-base text-gray-600">{t('Sign out')}</button>}
           </div>
         )}
       </nav>
+      {demo && (
+        <div role="status" className="bg-brand-50 border-b border-brand-200 px-4 sm:px-6 py-2.5 text-sm text-brand-900 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+          <span>{t('This is a demo with invented records. Nothing you do here is saved, and it ends when you leave or reload the page.')}</span>
+          <Link to="/login" className="shrink-0 font-medium text-brand-700 hover:underline">{t('Sign in')}</Link>
+        </div>
+      )}
       {/* With the chat open beside it, the page gives it room instead of sitting under it. */}
       <main className={`max-w-6xl mx-auto px-4 sm:px-6 py-6 pb-24 sm:py-8 transition-[margin] duration-200 ${chat?.enabled && chat.open ? 'sm:mr-[26.5rem] sm:max-w-none' : ''}`}>{children}</main>
       <ChatPanel />
@@ -160,10 +181,12 @@ function ReviewRedirect() {
   return <Navigate to={`/documents/${id}`} replace />;
 }
 
-function PrivateRoute({ children }: { children: React.ReactNode }) {
+function PrivateRoute({ children, inDemo = true }: { children: React.ReactNode; inDemo?: boolean }) {
   const { t } = useI18n();
-  const { authenticated, consentNeeded, consentGiven, vaultNeeded, vaultMade, deviceState, deviceOpened, setAuthenticated } = useAuth();
+  const { authenticated, consentNeeded, consentGiven, vaultNeeded, vaultMade, deviceState, deviceOpened, setAuthenticated, demo } = useAuth();
   const location = useLocation();
+  // The demo has no account: no consent, vault or sign-in to ask for, and the screens that need an account are not there.
+  if (demo) return inDemo ? <Layout>{children}</Layout> : <Navigate to="/" replace />;
   // Where they were going, so signing in lands there: a mailed link to a request is the case that matters.
   // Until the server has said what this account still has to agree to, nothing is asked of it.
   if (authenticated && consentNeeded === undefined) return <div className="min-h-screen flex items-center justify-center text-gray-400">{t('Loading…')}</div>;
@@ -173,6 +196,14 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
   if (authenticated && deviceState === 'starting') return <div className="min-h-screen flex items-center justify-center text-gray-400">{t('Opening…')}</div>;
   if (authenticated && deviceState === 'locked') return <UnlockScreen opened={deviceOpened} signOut={() => setAuthenticated(false)} />;
   return authenticated ? <Layout><SaveStatus /><SyncNotice />{children}</Layout> : <Navigate to="/login" replace state={{ from: signedOutOnPurpose ? '/' : location.pathname }} />;
+}
+
+/** Signing in from the demo ends it first: the device's core is the demo's until then. */
+function NotInDemo({ children }: { children: React.ReactNode }) {
+  const { t } = useI18n();
+  const { demo, leaveDemo } = useAuth();
+  useEffect(() => { if (demo) void leaveDemo(); }, [demo, leaveDemo]);
+  return demo ? <div className="min-h-screen flex items-center justify-center text-gray-400">{t('Loading…')}</div> : <>{children}</>;
 }
 
 export default function App() {
@@ -186,6 +217,14 @@ export default function App() {
   const [vaultNeeded, setVaultNeeded] = useState(false);
   // Whether the records are open on this device: 'starting' while the key is handed to the core, 'locked' when it must be asked for.
   const [deviceState, setDeviceState] = useState<'starting' | 'locked' | 'open'>('starting');
+  // The demo: the device's core, started with no vault, holding the sample records until the page is left.
+  const [demo, setDemo] = useState(false);
+  const startDemo = useCallback(async (language: 'en' | 'ro') => {
+    await device.openDemo();
+    try { await api.demo.load(language); } catch (err) { await device.lock(true); throw err; }
+    setDemo(true);
+  }, []);
+  const leaveDemo = useCallback(async () => { await device.lock(true); setDemo(false); }, []);
 
   const setAuthenticated = (value: boolean, who = '') => {
     if (value) signedOutOnPurpose = false;
@@ -224,12 +263,12 @@ export default function App() {
   if (loading) return <div className="min-h-screen flex items-center justify-center text-gray-400">{t('Loading…')}</div>;
 
   return (
-    <AuthContext.Provider value={{ authenticated, email, setAuthenticated, consentNeeded, consentGiven: () => setConsentNeeded(null), vaultNeeded, vaultMade: () => setVaultNeeded(false), deviceState, deviceOpened: () => setDeviceState('open') }}>
-      <ChatProvider authenticated={authenticated}>
+    <AuthContext.Provider value={{ authenticated, email, setAuthenticated, consentNeeded, consentGiven: () => setConsentNeeded(null), vaultNeeded, vaultMade: () => setVaultNeeded(false), deviceState, deviceOpened: () => setDeviceState('open'), demo, startDemo, leaveDemo }}>
+      <ChatProvider authenticated={authenticated || demo}>
       <ReauthDialog />
       <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
+        <Route path="/login" element={<NotInDemo><Login /></NotInDemo>} />
+        <Route path="/register" element={<NotInDemo><Register /></NotInDemo>} />
         <Route path="/verify" element={<Verify />} />
         <Route path="/privacy" element={<LegalPage doc="privacy" />} />
         <Route path="/terms" element={<LegalPage doc="terms" />} />
@@ -237,23 +276,23 @@ export default function App() {
         <Route path="/forgot" element={<Forgot />} />
         <Route path="/reset" element={<Reset />} />
         <Route path="/share/:id" element={<PublicShareView />} />
-        <Route path="/" element={authenticated ? <PrivateRoute><Timeline /></PrivateRoute> : <Landing />} />
-        <Route path="/upload" element={<PrivateRoute><Upload /></PrivateRoute>} />
+        <Route path="/" element={authenticated || demo ? <PrivateRoute><Timeline /></PrivateRoute> : <Landing />} />
+        <Route path="/upload" element={<PrivateRoute inDemo={false}><Upload /></PrivateRoute>} />
         <Route path="/uploads/:id" element={<PrivateRoute><UploadPages /></PrivateRoute>} />
         <Route path="/review" element={<PrivateRoute><ReviewQueue /></PrivateRoute>} />
         <Route path="/documents/:id" element={<PrivateRoute><DocumentPage /></PrivateRoute>} />
         <Route path="/review/:id" element={<ReviewRedirect />} />
         <Route path="/trends" element={<PrivateRoute><Trends /></PrivateRoute>} />
         <Route path="/episodes" element={<PrivateRoute><Episodes /></PrivateRoute>} />
-        <Route path="/scan" element={<PrivateRoute><Scan /></PrivateRoute>} />
+        <Route path="/scan" element={<PrivateRoute inDemo={false}><Scan /></PrivateRoute>} />
         <Route path="/doctors" element={<PrivateRoute><Doctors /></PrivateRoute>} />
         <Route path="/library" element={<PrivateRoute><Library /></PrivateRoute>} />
         <Route path="/doctors/:id" element={<PrivateRoute><DoctorPage /></PrivateRoute>} />
         <Route path="/search" element={<PrivateRoute><Search /></PrivateRoute>} />
-        <Route path="/share" element={<PrivateRoute><ShareLinks /></PrivateRoute>} />
-        <Route path="/share-links/:id" element={<PrivateRoute><ShareLinkDetail /></PrivateRoute>} />
-        <Route path="/share-requests/:id" element={<PrivateRoute><ShareRequestPage /></PrivateRoute>} />
-        <Route path="/account" element={<PrivateRoute><Account /></PrivateRoute>} />
+        <Route path="/share" element={<PrivateRoute inDemo={false}><ShareLinks /></PrivateRoute>} />
+        <Route path="/share-links/:id" element={<PrivateRoute inDemo={false}><ShareLinkDetail /></PrivateRoute>} />
+        <Route path="/share-requests/:id" element={<PrivateRoute inDemo={false}><ShareRequestPage /></PrivateRoute>} />
+        <Route path="/account" element={<PrivateRoute inDemo={false}><Account /></PrivateRoute>} />
       </Routes>
       </ChatProvider>
     </AuthContext.Provider>

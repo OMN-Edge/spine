@@ -1147,5 +1147,10 @@
  "Read, searched and kept in your browser, opened with your password.": "Lus, recherchés et conservés dans votre navigateur, ouverts avec votre mot de passe.",
  "Locked with keys made from your password, before anything is saved.": "Verrouillés avec des clés tirées de votre mot de passe, avant toute sauvegarde.",
  "On the server": "Sur le serveur",
- "Kept as sealed pieces it cannot open.": "Conservés en morceaux scellés qu'il ne peut pas ouvrir."
+ "Kept as sealed pieces it cannot open.": "Conservés en morceaux scellés qu'il ne peut pas ouvrir.",
+ "Leave the demo": "Quitter la démo",
+ "This is a demo with invented records. Nothing you do here is saved, and it ends when you leave or reload the page.": "Ceci est une démo avec des documents inventés. Rien de ce que vous faites ici n’est enregistré, et elle prend fin quand vous quittez ou rechargez la page.",
+ "Try the demo": "Essayer la démo",
+ "The demo opens the app with invented records, in this browser only: no account, and nothing is saved.": "La démo ouvre l’application avec des documents inventés, dans ce navigateur uniquement : sans compte, et rien n’est enregistré.",
+ "The demo could not start in this browser. Try again, or another browser.": "La démo n’a pas pu démarrer dans ce navigateur. Réessayez, ou utilisez un autre navigateur."
 }

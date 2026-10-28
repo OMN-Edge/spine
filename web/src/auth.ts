@@ -14,6 +14,12 @@ export interface AuthContextValue {
   /** Whether the records are open on this device (the vault is opened with a key made from the master password). */
   deviceState: 'starting' | 'locked' | 'open';
   deviceOpened: () => void;
+  /** The demo is open: sample records in this browser's memory, with no account and no vault behind them. */
+  demo: boolean;
+  /** Starts the demo and loads the sample records; throws if the core could not start. */
+  startDemo: (language: 'en' | 'ro') => Promise<void>;
+  /** Ends the demo; what was in it is gone. */
+  leaveDemo: () => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextValue>({
@@ -26,6 +32,9 @@ export const AuthContext = createContext<AuthContextValue>({
   vaultMade: () => {},
   deviceState: 'open',
   deviceOpened: () => {},
+  demo: false,
+  startDemo: async () => {},
+  leaveDemo: async () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);

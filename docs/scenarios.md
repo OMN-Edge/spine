@@ -26,6 +26,15 @@ Someone with no session opens the site's address and reads what Spine does, how 
 
 Status: hand (headless Chrome at 1280 and 390 px, English and Romanian, with no API server: the account options request fails and Create an account stays hidden; not yet seen with registration `open`).
 
+### 1.0a Try the app without an account
+Someone with no account wants to see what the app looks like with records in it before signing up.
+
+- The front page offers Try the demo. It opens the timeline with the sample records (English or Romanian, by the interface language) and a banner saying it is a demo with invented records, that nothing done there is saved, and that it ends on leaving or reloading.
+- Everything that reads works: the timeline, a document's page with its image and values, review and editing, episodes, trends, doctors, the library and search. There is no Upload, Scan, Share links, Account, chat or Read again: there is no account to keep anything in and no model to call.
+- Leave the demo, a reload, or Sign in ends it, and nothing of it is kept; the server receives no record, makes no account and keeps nothing (SECURITY.md **M-39**).
+
+Status: auto (`local-app`); in a real browser: `check:app` (opens it with no account, sees the records, opens a document, finds the upload screen not offered and nothing of the records at the server, and the demo gone after a reload). Screens: hand (headless Chrome at 1280 and 390 px: timeline, a document, trends, doctors, search, review, episodes, library); editing a document in the demo has not been tried.
+
 ### 1.1 Sign in
 The owner opens the site, chooses Sign in, enters their email and password, and lands on the Timeline.
 

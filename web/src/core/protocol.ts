@@ -5,6 +5,8 @@ export type ToWorker =
   | { id: number; type: 'startWithPasskey'; passkey: { prf: Uint8Array; credentialId: string; wrapped: string } }
   | { id: number; type: 'request'; method: string; url: string; headers: Record<string, string>; body?: string; parts?: Part[] }
   | { id: number; type: 'startShare'; shareId: string; key: string }
+  /** The demo: no vault and no account, an archive in memory that is gone when the page is, and nothing that needs a model or the server. */
+  | { id: number; type: 'startDemo' }
   /** Saves, then lets go of everything. Refused with code `unsaved` if something could not be saved, unless the person chose to lose it (`force`). */
   | { id: number; type: 'lock'; force?: boolean }
   /** Save now. Fails if the vault did not take it. */

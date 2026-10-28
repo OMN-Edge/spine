@@ -9,6 +9,7 @@ import { Combobox } from '../components/Combobox';
 import { useScreen } from '../components/ChatProvider';
 import DocumentFilters from '../components/DocumentFilters';
 import { SampleBanner, SampleOffer, useSampleRecords } from '../components/SampleRecords';
+import { useAuth } from '../auth';
 
 export default function Timeline() {
   const { t, tn } = useI18n();
@@ -47,6 +48,8 @@ export default function Timeline() {
   // Zoom to one year (FR-TL-01); a year that is no longer in the list (another filter was chosen) shows everything.
   const [zoom, setZoom] = useState('');
   const samples = useSampleRecords();
+  // The demo says what it is above every page, and has nowhere to upload to.
+  const { demo } = useAuth();
   // '' is "All years" and also the key of the undated group, so it must not count as a year that was chosen: with any undated document
   // in the list, "All years" would otherwise show only those.
   const shownYears = zoom !== '' && years.includes(zoom) ? [zoom] : years;
@@ -70,7 +73,7 @@ export default function Timeline() {
         </div>
       </div>
 
-      {samples.state?.loaded && <SampleBanner processing={samples.state.processing} onChange={samples.refresh} />}
+      {!demo && samples.state?.loaded && <SampleBanner processing={samples.state.processing} onChange={samples.refresh} />}
 
       {waiting > 0 && (
         <div role="status" className="mb-6 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900 flex flex-wrap items-center justify-between gap-2">
@@ -84,7 +87,7 @@ export default function Timeline() {
       ) : docs.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
           <p className="text-lg mb-2">{t('No documents yet')}</p>
-          <Link to="/upload" className="text-brand-600 text-sm hover:underline">{t('Upload your first file')} →</Link>
+          {!demo && <Link to="/upload" className="text-brand-600 text-sm hover:underline">{t('Upload your first file')} →</Link>}
           {samples.state && !samples.state.loaded && <SampleOffer onChange={samples.refresh} />}
         </div>
       ) : (
