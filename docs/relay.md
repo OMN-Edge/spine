@@ -18,7 +18,8 @@ A device (the browser) reads documents itself, so it is the one that sends text 
 | `SPINE_RELAY_DEMO_DAILY_CALLS`, `SPINE_RELAY_DEMO_TOTAL_DAILY_CALLS` | For the demo's uploads, which the Spine server gives passes for only with `SPINE_DEMO_UPLOADS=on`: calls one visitor's address may make a day (default 40) and calls every visitor of the demo together may make a day (default 400), the bound on what people with no account cost. The address reaches the relay only as a keyed hash. `0` allows none (SECURITY.md **M-39**). |
 | `SPINE_RELAY_SHARE_DAILY_CALLS` | Calls one share link may make a day, for what its recipient translates or asks (default 200), counted apart from the owner's account. |
 | `SPINE_STORE`, `DATA_DIR`, `SPINE_DB_PATH` | The store the relay counts in, chosen as the server's is. It records only a number a day per account (table `model_usage`), so the relay may share the server's database, have one of its own on a volume, or set `SPINE_DB_PATH=:memory:` to count in the process (**run one instance** then). The SQLite adapter is a file, so instances that share a count must share the file; a networked adapter would not need that. |
-| `PORT` | The port to listen on (Cloud Run sets it). |
+| `SPINE_RELAY_PORT`, `PORT` | The port to listen on: `SPINE_RELAY_PORT` if set, else `PORT` (Cloud Run sets it), else 8080. Beside the server, whose `.env` sets `PORT` for itself, the first is what counts. |
+| `SPINE_RELAY_HOST` | The interface to listen on (default `0.0.0.0`, which Cloud Run needs). `127.0.0.1` beside the server, behind the proxy. |
 
 The Spine server needs `SPINE_RELAY_URL` (the relay's https address) and `SPINE_RELAY_SECRET`. Without them a device cannot call a model and says so. Docker Compose passes `SPINE_RELAY_URL` to the proxy so the page's content security policy allows it (`nginx/spine.conf` gets it from `install.sh -n`).
 
@@ -46,6 +47,15 @@ gcloud run deploy spine-relay \
 - **One instance** while the store is `:memory:` (the usual Cloud Run setting): raise `--max-instances` only after the count is in a store every instance reaches.
 - **Region**: an EU region for the service itself, as the requirements say. Request logging is metadata only; do not enable request-body logging.
 - Put the service's address in `SPINE_RELAY_URL` on the Spine server and in `SPINE_RELAY_ORIGIN`'s counterpart: the relay allows the app's origin, and the app's content security policy allows the relay's.
+
+## On the same machine as the server
+
+The browser calls the relay at an origin with no path, so beside the server it needs a hostname of its own (`relay.spine.example`), pointed at the same machine. Its settings come from two files: the server's `.env` for what both read (`SPINE_RELAY_SECRET`, the models, the feature switches), then `relay.env` ([relay.env.example](../relay.env.example)) for the provider's credential, which the server process never gets. `SESSION_SECRET` and `BREVO_API_KEY` are taken out of the relay's environment. In `.env`: `SPINE_RELAY_DOMAIN=relay.spine.example` and `SPINE_RELAY_URL=https://relay.spine.example`. `install.sh -e` writes all of it, given a domain and a provider key.
+
+- **Docker Compose:** the `relay` service of `compose.yaml`, started with the profile (`COMPOSE_PROFILES=relay` in `.env`). Caddy serves the relay's name as a second address of the site and gets its certificate; the count is kept in the `relay-data` volume.
+- **systemd and nginx:** `sudo ./install.sh -r` installs `spine-relay` (`systemd/spine-relay.service`: `127.0.0.1:8080`, the count in `relay-data/`), and `sudo ./install.sh -n` adds the relay's site (`nginx/spine-relay.conf`) and its certificate when `SPINE_RELAY_DOMAIN` is set.
+
+Check it with `curl -f https://relay.spine.example/healthz` (a 200) and, in the relay's log, the `relay ready` line. The relay still sees the plaintext of what it runs; on the same machine, whoever operates it operates both (SECURITY.md **M-35**).
 
 ## Before the first real user (the operator's, in the Google Cloud console)
 

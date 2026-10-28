@@ -17,7 +17,8 @@ spine/
 ├── SECURITY.md             # Principles, controls, known gaps, how to report a vulnerability
 ├── CONTRIBUTING.md         # GitHub is canonical; licence, checks, no real data
 ├── Dockerfile, compose.yaml, Caddyfile  # one-command self-host (docs/self-host.md)
-├── install.sh              # All install steps: -d (deps), -b (build), -s (services), -n (nginx+cert)
+├── install.sh              # All install steps: -a (all of them), -d (deps), -e (.env and relay.env, secrets generated), -b (build), -s (services), -r (the relay here), -n (nginx+cert)
+├── relay.env               # The relay's provider credential when it runs beside the server (copy from relay.env.example); the server never reads it
 ├── .env                    # Runtime config (copy from .env.example)
 ├── package.json            # npm workspaces: core, server, web (one install, one lockfile at the root)
 ├── core/                   # `spine-core`: everything the device's core (a Web Worker) runs, and the server too. Built to core/dist; web and the tests use core/src
@@ -77,8 +78,14 @@ spine/
 ## Common commands
 
 ```bash
+# Everything, first time (asks for what is not in the environment)
+sudo SPINE_DOMAIN=spine.example.com ./install.sh -a
+
 # Install deps (first time, needs sudo)
 sudo ./install.sh -d
+
+# Write .env (and relay.env, given ANTHROPIC_API_KEY) with generated secrets; an existing file is left alone
+./install.sh -e
 
 # Build everything (server TS + React)
 ./install.sh -b
@@ -86,7 +93,10 @@ sudo ./install.sh -d
 # Install and start systemd services
 sudo ./install.sh -s
 
-# Issue Let's Encrypt cert and install nginx config
+# The relay on this machine (needs relay.env and SPINE_RELAY_DOMAIN)
+sudo ./install.sh -r
+
+# Issue Let's Encrypt cert and install nginx config (the relay's too when SPINE_RELAY_DOMAIN is set)
 sudo ./install.sh -n
 
 # Restart after code changes
@@ -150,6 +160,7 @@ npm run test:coverage -w spine-server
 | `SPINE_MAILER` | `none` (default) \| `brevo` |
 | `BREVO_API_KEY`, `SPINE_MAIL_SENDER` | Required for `brevo`. The sender has no default: pick a neutral name, it is visible in the recipient's inbox |
 | `SPINE_TRUSTED_PROXIES` | Comma separated addresses of a proxy that is not on this host and whose `X-Forwarded-For` is believed (the Compose proxy); loopback is always trusted; a wide range or `true` stops startup (`trustedProxies()`, **S-31**) |
+| `SPINE_RELAY_DOMAIN`, `COMPOSE_PROFILES=relay` | The relay on this machine: its own hostname (`SPINE_RELAY_URL` is then `https://<it>`), read by `install.sh -r`/`-n` and Caddy, and the profile that starts Compose's `relay` service. Its provider key is in `relay.env`; it listens on `SPINE_RELAY_HOST`/`SPINE_RELAY_PORT` (`docs/relay.md`) |
 | `SPINE_RELAY_URL`, `SPINE_RELAY_SECRET` | The relay a device sends model calls to (https, or `http://localhost` to try one) and the secret (32+ characters) shared with it, which signs the ten-minute passes `GET /api/relay/token` gives. Unset: a device cannot call a model. The relay's own settings, including the store its daily count lives in, are in `docs/relay.md` (SECURITY.md **M-35**) |
 | `SPINE_TRUST_ANCHORS_DIR` | A directory of certificates (`.pem`, `.crt`, `.cer`, `.der`) the operator trusts as authorities for digital signatures; served at `GET /api/trust-anchors`. With them a signer whose certificates chain to one is filed `verified_signature` (SECURITY.md **S-23**); without, a signature is a label. Nothing ships by default: pick them yourself (for Romania, the qualified trust service providers on the EU trusted list) |
 | `SPINE_VAULT_MAX_MB`, `SPINE_VAULT_MAX_OBJECT_MB` | What one account may keep in its vault, sealed objects only (default 5120 and 100); a bad value gives the default |

@@ -1,6 +1,6 @@
 # One-command self-host:  cp .env.example .env  (set SESSION_SECRET and SPINE_DOMAIN)  &&  docker compose up -d
 # Then create the first account:  docker compose exec web node dist/cli.js create-user you@example.com
-# See docs/self-host.md.
+# The relay on this machine too (docs/relay.md): relay.env, plus COMPOSE_PROFILES=relay and SPINE_RELAY_DOMAIN in .env. See docs/self-host.md.
 name: spine
 
 services:
@@ -33,6 +33,30 @@ services:
     networks:
       spine: {}
 
+  # The relay for model calls, on this machine (docs/relay.md). Started only with the `relay` profile (COMPOSE_PROFILES=relay in .env), since
+  # it may run elsewhere instead (Cloud Run). It reads .env for the settings it shares with the server, then relay.env for the provider's
+  # credential, which the server never sees; the server's own secrets are blanked here.
+  relay:
+    build:
+      context: .
+      dockerfile: relay.Dockerfile
+    profiles: [relay]
+    restart: unless-stopped
+    env_file:
+      - .env
+      - relay.env
+    environment:
+      SESSION_SECRET: ""
+      BREVO_API_KEY: ""
+      SPINE_RELAY_ORIGIN: https://${SPINE_DOMAIN}
+      SPINE_RELAY_PORT: "8080"
+      # The daily count, kept across restarts; one relay instance uses this file
+      SPINE_DB_PATH: /data/relay.db
+    volumes:
+      - relay-data:/data
+    networks:
+      spine: {}
+
   proxy:
     image: caddy:2@sha256:504a44d7d74bd2bc28a66afc4774912fc21223ca8a67734af1c54ab2f999b489  # pinned by digest, 2026-10-25
     restart: unless-stopped
@@ -43,6 +67,8 @@ services:
       SPINE_DOMAIN: ${SPINE_DOMAIN:?set SPINE_DOMAIN in .env}
       # The address the page may send model calls to (docs/relay.md); empty when there is none.
       SPINE_RELAY_URL: ${SPINE_RELAY_URL:-}
+      # The relay's hostname when it runs here (the relay service above); its SPINE_RELAY_URL is https://<this name>
+      SPINE_RELAY_DOMAIN: ${SPINE_RELAY_DOMAIN:-}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
@@ -61,4 +87,5 @@ networks:
 volumes:
   data:
   backups:
+  relay-data:
   caddy-data:

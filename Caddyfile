@@ -1,6 +1,7 @@
 # The public listener of the Docker Compose setup: TLS from Let's Encrypt, and the same headers as nginx/spine.conf.
-# SPINE_DOMAIN comes from .env through compose.yaml.
-{$SPINE_DOMAIN} {
+# SPINE_DOMAIN and SPINE_RELAY_DOMAIN come from .env through compose.yaml. The relay's name is a second address of this site, and empty
+# when the relay runs elsewhere; a site address cannot be empty, so it is not a block of its own.
+{$SPINE_DOMAIN} {$SPINE_RELAY_DOMAIN} {
 	encode zstd gzip
 	request_body {
 		max_size 200MB
@@ -26,14 +27,30 @@
 		path_regexp \/\.
 		not path /.well-known/*
 	}
-	respond @dotfiles 403
 
-	# Caddy replaces X-Forwarded-For with the client's address, which is what SPINE_TRUSTED_PROXIES relies on (SECURITY.md S-31).
-	reverse_proxy web:3000 {
-		flush_interval -1
-		transport http {
-			response_header_timeout 300s
-			read_timeout 300s
+	# The relay (docs/relay.md), when it runs here. It answers its own CORS, and streams chat replies.
+	# An expression, not `host`: Compose passes an empty name when there is no relay here, and a `host` matcher with none stops Caddy.
+	@relay expression `"{$SPINE_RELAY_DOMAIN}" != "" && {host} == "{$SPINE_RELAY_DOMAIN}"`
+	handle @relay {
+		reverse_proxy relay:8080 {
+			flush_interval -1
+			transport http {
+				response_header_timeout 300s
+				read_timeout 300s
+			}
+		}
+	}
+
+	handle {
+		respond @dotfiles 403
+
+		# Caddy replaces X-Forwarded-For with the client's address, which is what SPINE_TRUSTED_PROXIES relies on (SECURITY.md S-31).
+		reverse_proxy web:3000 {
+			flush_interval -1
+			transport http {
+				response_header_timeout 300s
+				read_timeout 300s
+			}
 		}
 	}
 }

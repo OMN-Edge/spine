@@ -16,6 +16,8 @@ COPY server server
 RUN npm run build:server && npm run smoke -w spine-server && rm -rf node_modules && npm ci --omit=dev --workspace spine-server
 
 FROM node:22-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d
+# Where a relay beside the server keeps its daily count (compose.yaml mounts a volume here); unused on Cloud Run
+RUN mkdir /data && chown node:node /data
 WORKDIR /app
 COPY --from=build /app/node_modules node_modules
 COPY --from=build /app/core/package.json core/

@@ -56,7 +56,15 @@ What runs today is multi-user with local accounts. The records are made and kept
 
 ## First install
 
-The steps below are the short version. [docs/setup.md](docs/setup.md) is the full guide: what to decide first, the relay, Vertex, reading scans, Brevo and open signup, nginx without the packages repository, and what to do when the server refuses to start.
+In one line, on a Debian or Raspberry Pi OS machine that the domain (and `relay.<domain>`, for the relay) already points at:
+
+```bash
+sudo SPINE_DOMAIN=spine.yourdomain.com ./install.sh -a
+```
+
+It installs the dependencies, writes `.env` with generated secrets (and `relay.env`, if you give it an Anthropic API key when it asks), builds, starts the services and the relay, and sets up nginx with Let's Encrypt. Then create your account (step 5). With Docker instead: `./install.sh -e && docker compose up -d` ([docs/self-host.md](docs/self-host.md)).
+
+The steps below are the same, one at a time. [docs/setup.md](docs/setup.md) is the full guide: what to decide first, the relay, Vertex, reading scans, Brevo and open signup, nginx without the packages repository, and what to do when the server refuses to start.
 
 ### 1. Dependencies
 
@@ -69,6 +77,7 @@ Installs Node.js LTS, curl and certificates, and `python3`, which `node-gyp` nee
 ### 2. Config
 
 ```bash
+./install.sh -e     # writes .env with generated secrets (and relay.env, given a key), or by hand:
 cp .env.example .env
 nano .env
 ```
@@ -76,7 +85,7 @@ nano .env
 Fill in:
 - `SESSION_SECRET` — a random string of at least 32 characters (`openssl rand -base64 48`)
 - `SPINE_DOMAIN` — the domain you'll serve from (e.g. `spine.yourdomain.com`)
-- `SPINE_RELAY_URL` and `SPINE_RELAY_SECRET` — the relay your devices send model calls to, and the secret you share with it (`openssl rand -base64 48`). Without them a device cannot call a model and says so; everything else works. The provider key (`ANTHROPIC_API_KEY`, or Vertex's settings) goes to the relay, not to this server: [docs/relay.md](docs/relay.md)
+- `SPINE_RELAY_URL` and `SPINE_RELAY_SECRET` — the relay your devices send model calls to, and the secret you share with it (`openssl rand -base64 48`). Without them a device cannot call a model and says so; everything else works. The provider key (`ANTHROPIC_API_KEY`, or Vertex's settings) goes to the relay, not to this server: in `relay.env` when the relay runs on this machine (with `SPINE_RELAY_DOMAIN`, and `sudo ./install.sh -r` after step 4), else wherever it runs: [docs/relay.md](docs/relay.md)
 
 There is no shared password. Each person has an account with their own email and password.
 

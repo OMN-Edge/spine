@@ -1,7 +1,10 @@
 .git
 .env
+relay.env
 .venv
 data
+relay-data
+backups
 secrets
 **/node_modules
 **/dist

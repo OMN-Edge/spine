@@ -18,8 +18,17 @@ The third is the one to think about. With the default, nothing but short text ex
 
 - A Linux machine with `apt` (Raspberry Pi OS bookworm or Debian/Ubuntu). A Pi is enough.
 - A **domain name** pointing at the machine (an `A` record), and, if it is at home, your router forwarding **ports 80 and 443** to it. Let's Encrypt needs 80 to issue the certificate.
-- A **relay** for model calls and an **API key** for its provider (step 3). The relay is a second small service, not part of this machine's setup: [relay.md](relay.md) deploys it (Cloud Run, or any host that runs the image `relay.Dockerfile` builds).
+- A **relay** for model calls and an **API key** for its provider (step 3). The relay is a second small service: on this machine (`install.sh -r`, and a second hostname pointed here, `relay.<domain>`), or elsewhere ([relay.md](relay.md): Cloud Run, or any host that runs the image `relay.Dockerfile` builds).
 - `git` and `sudo`.
+
+## The short way
+
+```bash
+git clone <your repository URL> spine && cd spine
+sudo SPINE_DOMAIN=spine.yourdomain.com ./install.sh -a
+```
+
+`-a` runs every step below in order: `-d` (dependencies), `-e` (writes `.env` with generated secrets, and `relay.env` if you give it an Anthropic API key; it asks for the key and the domain when they are not in the environment, and never overwrites either file), `-b` (build, as you, not as root), `-s` (services), `-r` (the relay on this machine, when `relay.env` exists) and `-n` (nginx and the certificates, with the distribution's nginx and certbot when `../packages/nginx` is not there; `SPINE_CERT_EMAIL` gives Let's Encrypt an address for expiry notices). Point the domain, and `relay.<domain>` when the relay runs here, at the machine first, or the certificates cannot be issued. Then create your account (step 5). **Untested** on a fresh machine: `-a`, `-r` and the certbot path of `-n` were written from the steps below and checked only on a Mac (`-e`, and the same relay in Docker Compose). Each step can still be run on its own, as the rest of this guide does; run `-a` again after fixing whatever stopped it. Vertex, reading scans and open signup are edits to `.env` or `relay.env` afterwards (step 3), then `sudo ./install.sh -s -r`.
 
 ## 2. Install
 
@@ -48,13 +57,25 @@ SPINE_RELAY_URL=https://your-relay.example     # where devices send model calls 
 SPINE_RELAY_SECRET=<output of: openssl rand -base64 48>   # the same value on the relay
 ```
 
-The server holds no model credential and calls no model. Devices send their model calls to the **relay**, which holds the provider's credential. Deploy it from [relay.md](relay.md) with the same `SPINE_RELAY_SECRET` and the provider settings below (`ANTHROPIC_API_KEY`, or Vertex's), and put its address in `SPINE_RELAY_URL`. Without a relay the app works but a device cannot read documents with a model, chat or translate, and says so. The settings that name no secret (`SPINE_LLM_MODEL`, `SPINE_PARSER`, `SPINE_CHAT` and the like) are read from this `.env` and passed to each signed-in device.
+`./install.sh -e` writes this file for you, secrets generated (and `relay.env`, below, if you give it a provider key); it leaves an existing `.env` alone.
+
+The server holds no model credential and calls no model. Devices send their model calls to the **relay**, which holds the provider's credential. To run it on this machine, give it a hostname of its own pointed here, then:
+
+```bash
+# in .env
+SPINE_RELAY_DOMAIN=relay.spine.yourdomain.com
+SPINE_RELAY_URL=https://relay.spine.yourdomain.com
+# relay.env (cp relay.env.example relay.env): the provider's key, which the server never reads
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+and `sudo ./install.sh -r` after step 4 (`-n` in step 6 then adds its site and certificate). To run it elsewhere, deploy it from [relay.md](relay.md) with the same `SPINE_RELAY_SECRET` and the provider settings below (`ANTHROPIC_API_KEY`, or Vertex's), and put its address in `SPINE_RELAY_URL`. Without a relay the app works but a device cannot read documents with a model, chat or translate, and says so. The settings that name no secret (`SPINE_LLM_MODEL`, `SPINE_PARSER`, `SPINE_CHAT` and the like) are read from this `.env` and passed to each signed-in device.
 
 `SESSION_SECRET` must be at least 32 characters and not the placeholder; the installer and the server both refuse otherwise. **Do not change it later without reading this**: it signs sessions *and* encrypts everyone's two-factor seeds, so changing it signs everyone out and breaks authenticator codes (recovery codes still work; SECURITY.md S-21).
 
 ### Vertex AI instead of Anthropic
 
-Complete the [GCP checklist](deployment-gcp.md#setup-checklist) first, then set these **on the relay** (docs/relay.md):
+Complete the [GCP checklist](deployment-gcp.md#setup-checklist) first, then set these **on the relay** (in `relay.env` when it runs here; docs/relay.md):
 
 ```bash
 SPINE_LLM_PROVIDER=vertex
@@ -158,15 +179,9 @@ sudo ./install.sh -n
 
 The nginx version is the stable one the package's readme names; check it for a newer one.
 
-**Without it** (**untested** on a fresh machine), use the distribution's nginx, get the certificate yourself, and let the installer write the site config, since it also fills in the relay's address for the page's content security policy, the optional repository redirects and `security.txt`, which a plain copy of `nginx/spine.conf` would leave as placeholders:
+**Without it** (**untested** on a fresh machine), `sudo ./install.sh -n` installs the distribution's nginx and certbot if they are missing, adds the `main` log format the site config names (`/etc/nginx/conf.d/spine-log-format.conf`), gets each certificate with `certbot certonly --standalone` (nginx stopped for the minute it takes; `SPINE_CERT_EMAIL` for expiry notices) unless it exists, and writes the site config, filling in the relay's address for the page's content security policy, the optional repository redirects and `security.txt`, which a plain copy of `nginx/spine.conf` would leave as placeholders.
 
-```bash
-sudo apt-get install -y nginx certbot
-DOMAIN=spine.yourdomain.com
-sudo certbot certonly --standalone -d "$DOMAIN" \
-  --pre-hook "systemctl stop nginx" --post-hook "systemctl start nginx"
-sudo ./install.sh -n     # warns that packages/nginx is missing, then writes the config and reloads nginx
-```
+With the relay on this machine (`SPINE_RELAY_DOMAIN` in `.env`), `-n` does the same for its name and writes `nginx/spine-relay.conf` as its site.
 
 Either way, certbot renews on its own timer. Check from another machine:
 
@@ -191,7 +206,7 @@ Open `https://<your domain>`, sign in, and:
 
 ```bash
 # after pulling new code
-./install.sh -b && sudo systemctl restart spine-web
+./install.sh -b && sudo systemctl restart spine-web   # and spine-relay, when it runs here
 
 journalctl -u spine-web -f                                    # logs
 sudo systemctl start spine-backup                             # a backup now, instead of waiting for the timer
