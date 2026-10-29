@@ -16,9 +16,9 @@ EnvironmentFile=SPINE_DIR/relay.env
 # The server's secrets are not the relay's to hold; this applies after both files
 UnsetEnvironment=SESSION_SECRET BREVO_API_KEY
 Environment=NODE_ENV=production
-# Loopback only, behind nginx; not PORT, which is the server's
+# Loopback only, behind nginx; not PORT, which is the server's. The port is SPINE_RELAY_PORT in .env (default 8080), written by install.sh -r
 Environment=SPINE_RELAY_HOST=127.0.0.1
-Environment=SPINE_RELAY_PORT=8080
+Environment=SPINE_RELAY_PORT=RELAY_PORT_HERE
 Environment=SPINE_RELAY_ORIGIN=https://SPINE_DOMAIN
 # The daily count, kept across restarts
 Environment=SPINE_DB_PATH=SPINE_DIR/relay-data/relay.db

@@ -259,6 +259,18 @@ function install_services() {
   fi
 }
 
+# The port the relay listens on, on loopback: SPINE_RELAY_PORT in .env, else 8080. Another app on the machine may hold 8080.
+function relay_port() {
+  local port
+  port=$(env_value SPINE_RELAY_PORT)
+  port="${port:-8080}"
+  if ! [[ "${port}" =~ ^[0-9]+$ ]] || [ "${port}" -lt 1 ] || [ "${port}" -gt 65535 ]; then
+    echo "ERROR: SPINE_RELAY_PORT in .env is '${port}', not a port number" >&2
+    exit 1
+  fi
+  printf '%s' "${port}"
+}
+
 # The relay for model calls, beside the server (docs/relay.md). It reads .env for what it shares with the server and relay.env for the
 # provider's credential; it listens on loopback and nginx gives it its own hostname (-n).
 function install_relay() {
@@ -297,13 +309,17 @@ function install_relay() {
     exit 1
   fi
 
-  echo "Installing the relay..."
+  local port
+  port=$(relay_port)
+
+  echo "Installing the relay (127.0.0.1:${port})..."
   mkdir -p "${SPINE_DIR}/relay-data"
   chown -R "${SPINE_USER}:${SPINE_USER}" "${SPINE_DIR}/relay-data"
   sed \
     -e "s|SPINE_DIR|${SPINE_DIR}|g" \
     -e "s|SPINE_USER|${SPINE_USER}|g" \
     -e "s|SPINE_DOMAIN|${domain}|g" \
+    -e "s|RELAY_PORT_HERE|${port}|g" \
     "${SPINE_DIR}/systemd/spine-relay.service" \
     > /etc/systemd/system/spine-relay.service
   echo "  installed /etc/systemd/system/spine-relay.service"
@@ -314,14 +330,17 @@ function install_relay() {
 
   local up=""
   for _ in $(seq 1 20); do
-    if curl -fsS http://127.0.0.1:8080/healthz >/dev/null 2>&1; then up=1; break; fi
+    if curl -fsS "http://127.0.0.1:${port}/healthz" >/dev/null 2>&1; then up=1; break; fi
     sleep 0.5
   done
   if [ -z "${up}" ]; then
     echo "ERROR: the relay did not start. See: journalctl -u spine-relay -n 30" >&2
+    if command -v ss >/dev/null && ss -ltn "sport = :${port}" | grep -q LISTEN; then
+      echo "Something else listens on port ${port} (see: sudo ss -ltnp 'sport = :${port}'). Set SPINE_RELAY_PORT in .env to a free port and run -r and -n again." >&2
+    fi
     exit 1
   fi
-  echo "  spine-relay:     $(systemctl is-active spine-relay) (127.0.0.1:8080; public at https://${relay_domain} once -n has run)"
+  echo "  spine-relay:     $(systemctl is-active spine-relay) (127.0.0.1:${port}; public at https://${relay_domain} once -n has run)"
 }
 
 # A certificate for one name: kept if it exists, else from the nginx package when it is there, else from certbot on its own
@@ -393,7 +412,7 @@ function setup_nginx() {
 
   # The relay's site, when it runs here; removed when SPINE_RELAY_DOMAIN is no longer set
   if [ -n "${RELAY_DOMAIN}" ]; then
-    sed -e "s/SPINE_RELAY_DOMAIN/${RELAY_DOMAIN}/g" "${SPINE_DIR}/nginx/spine-relay.conf" > /etc/nginx/sites-available/spine-relay
+    sed -e "s/SPINE_RELAY_DOMAIN/${RELAY_DOMAIN}/g" -e "s/RELAY_PORT_HERE/$(relay_port)/g" "${SPINE_DIR}/nginx/spine-relay.conf" > /etc/nginx/sites-available/spine-relay
     ln -sf /etc/nginx/sites-available/spine-relay /etc/nginx/sites-enabled/spine-relay
   else
     rm -f /etc/nginx/sites-enabled/spine-relay
