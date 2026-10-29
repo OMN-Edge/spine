@@ -46,7 +46,7 @@ export default function Landing() {
           <div className="mx-auto grid max-w-6xl items-center gap-12 px-4 pb-16 pt-14 sm:px-6 sm:pt-20 lg:grid-cols-[1fr_1.05fr] lg:pb-24">
             <div>
               <Eyebrow>{t('Your health documents, kept private')}</Eyebrow>
-              <h1 className="text-[clamp(2.4rem,5.2vw,4.1rem)] font-light leading-[1.05] tracking-[-0.025em]">
+              <h1 className="text-[clamp(2.4rem,4.4vw,3.3rem)] font-light leading-[1.05] tracking-[-0.025em]">
                 {t('All your medical records, in one place only you can open.')}
               </h1>
               <p className="mt-6 max-w-xl text-lg leading-relaxed text-ink/70">
