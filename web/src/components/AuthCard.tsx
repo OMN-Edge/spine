@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { LogoMark } from './Logo';
 import { Link } from 'react-router-dom';
 import { LanguageSwitcher, useI18n } from '../i18n';
+import { ThemeSwitcher } from './ThemeSwitcher';
 
 /** The centred card the sign-in, signup and recovery pages share. */
 export default function AuthCard({
@@ -19,7 +20,7 @@ export default function AuthCard({
       <div className="bg-white p-6 sm:p-8 rounded-2xl shadow-[0_1px_2px_rgb(22_24_29/0.04),0_8px_24px_-12px_rgb(22_24_29/0.12)] border border-gray-200 w-full max-w-sm">
         <div className="flex items-start justify-between">
           <Link to="/" aria-label={t('Home')}><LogoMark className="h-9 w-9 text-brand-600 mb-4" /></Link>
-          <LanguageSwitcher />
+          <div className="flex items-center gap-2"><LanguageSwitcher /><ThemeSwitcher /></div>
         </div>
         <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900 mb-6">{title}</h1>
         {children}

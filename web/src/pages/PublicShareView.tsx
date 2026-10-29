@@ -10,6 +10,7 @@ import SpineLog from '../components/SpineLog';
 import SharedChat from '../components/SharedChat';
 import SharedConnections from '../components/SharedConnections';
 import { LanguageSwitcher, useI18n } from '../i18n';
+import { ThemeSwitcher } from '../components/ThemeSwitcher';
 import { useShareAccess } from '../core/share/access';
 import { Combobox } from '../components/Combobox';
 import { languageName, useTranslation } from '../i18n/useTranslation';
@@ -57,7 +58,7 @@ export default function PublicShareView() {
         )}
         {state === 'pending' && <p className="text-gray-500 text-sm" role="status">{t('Your request was sent. Keep this page open: it opens when the owner approves.')}</p>}
         {state === 'denied' && <p className="text-gray-500 text-sm" role="alert">{t('The owner did not approve this request.')}</p>}
-        <div className="mt-6 flex justify-center"><LanguageSwitcher /></div>
+        <div className="mt-6 flex items-center justify-center gap-2"><LanguageSwitcher /><ThemeSwitcher /></div>
       </div>
     </div>
   );
@@ -147,7 +148,7 @@ function SharedContent({ shareId }: { shareId: string }) {
             <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900">{t('Medical history')}</h1>
             <p className="text-sm text-gray-400 mt-1">{t('Read-only shared view')} · {tn(docs.length, '{n} document', '{n} documents')}</p>
           </div>
-          <LanguageSwitcher />
+          <div className="flex items-center gap-2"><LanguageSwitcher /><ThemeSwitcher /></div>
         </div>
 
         {trendNames.length > 0 && !openId && (

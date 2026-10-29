@@ -1165,5 +1165,7 @@
  "{name} was not added: the demo takes files one at a time, not a ZIP.": "{name} n’a pas été ajouté : la démo accepte les fichiers un par un, pas un ZIP.",
  "Your {n} file is kept only in this page until you keep it in an account.|Your {n} files are kept only in this page until you keep them in an account.": "Votre fichier n’est gardé que dans cette page jusqu’à ce que vous le gardiez dans un compte.|Vos {n} fichiers ne sont gardés que dans cette page jusqu’à ce que vous les gardiez dans un compte.",
  "The document from the demo is in your records now.|The {n} documents from the demo are in your records now.": "Le document de la démo est maintenant dans vos documents.|Les {n} documents de la démo sont maintenant dans vos documents.",
- "This browser kept the file you read in the demo. Add it to your records?|This browser kept the {n} files you read in the demo. Add them to your records?": "Ce navigateur a gardé le fichier lu dans la démo. L’ajouter à vos documents ?|Ce navigateur a gardé les {n} fichiers lus dans la démo. Les ajouter à vos documents ?"
+ "This browser kept the file you read in the demo. Add it to your records?|This browser kept the {n} files you read in the demo. Add them to your records?": "Ce navigateur a gardé le fichier lu dans la démo. L’ajouter à vos documents ?|Ce navigateur a gardé les {n} fichiers lus dans la démo. Les ajouter à vos documents ?",
+ "Switch to dark mode": "Passer en mode sombre",
+ "Switch to light mode": "Passer en mode clair"
 }

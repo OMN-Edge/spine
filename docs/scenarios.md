@@ -660,6 +660,17 @@ The owner can preset the language a link opens in; the recipient can still switc
 
 Status: auto (`translation`, `public-share-detail`); real model.
 
+
+### 11.3 Light or dark
+Every page, the front page, the sign-in pages and a shared link's pages included, follows the device's light or dark setting. A round button beside the language picker (a moon in the light look, a sun in the dark one) switches to the other.
+
+- The choice is kept in this browser (`spine.theme`), not in the account, and applies before the page is drawn, so a dark page never flashes light. If the browser will not let the page store it, it lasts for the visit.
+- Switching back to the look the device has forgets the choice, so the page follows the device again; there is no third setting to find.
+- A scan or a photographed page shows as it is, light, in either look; the page viewer and the camera are dark in both.
+- Nothing about the look reaches the server.
+
+Status: auto (`web/src/theme.test.ts`: the choice, the device, a blocked store, another tab, the switch back); looked at in Chrome on the front page, the demo's timeline, a document and its review, trends and a trend's chart, the library and search, at 1280 and 390 px. Not looked at in Safari, or on a share link or the account pages.
+
 ---
 
 ## 10. On a phone

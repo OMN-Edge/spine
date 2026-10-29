@@ -96,7 +96,7 @@ function Vertebra({ item, index, loose }: { item: SpineLogItem; index: number; l
           <path d={d} />
         </clipPath>
       </defs>
-      <path d={d} fill="#ffffff" />
+      <path d={d} className="fill-white" />
       <rect
         x={0} y={1 + BODY_HEIGHT - fillHeight} width={COLUMN} height={fillHeight}
         fill={tone.fill} clipPath={`url(#${clip})`}

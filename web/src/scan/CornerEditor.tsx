@@ -30,7 +30,7 @@ export default function CornerEditor({ src, width, height, quad, onChange }: { s
         <button
           key={i} type="button" aria-label={t('Corner: {name}', { name: names[i] })}
           style={{ left: `${(p.x / width) * 100}%`, top: `${(p.y / height) * 100}%` }}
-          className="absolute -translate-x-1/2 -translate-y-1/2 h-9 w-9 rounded-full border-2 border-white bg-brand-600/80 shadow focus:outline-none focus:ring-2 focus:ring-brand-300"
+          className="absolute -translate-x-1/2 -translate-y-1/2 h-9 w-9 rounded-full border-2 border-snow bg-brand-600/80 shadow focus:outline-none focus:ring-2 focus:ring-brand-300"
           onPointerDown={e => { e.currentTarget.setPointerCapture(e.pointerId); }}
           onPointerMove={e => { if (e.currentTarget.hasPointerCapture(e.pointerId)) move(i, fromEvent(e)); }}
           onKeyDown={e => {

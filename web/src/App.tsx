@@ -40,6 +40,7 @@ import ShareRequestPage from './pages/ShareRequest';
 import ShareLinkDetail from './pages/ShareLinkDetail';
 import { Wordmark } from './components/Logo';
 import { LanguageSwitcher, msg, useI18n } from './i18n';
+import { ThemeSwitcher } from './components/ThemeSwitcher';
 
 const NAV_LINKS = [
   { to: '/', label: msg('Timeline') },
@@ -118,6 +119,7 @@ function Layout({ children }: { children: React.ReactNode }) {
               <NavLink key={link.to} to={link.to} end={link.to === '/'} className={linkClass}>{t(link.label)}</NavLink>
             ))}
             <LanguageSwitcher className="ml-auto" />
+            <ThemeSwitcher />
             {demo ? (
               <button onClick={() => void leave()} className="text-sm text-gray-500 hover:text-gray-900">{t('Leave the demo')}</button>
             ) : (
@@ -158,7 +160,7 @@ function Layout({ children }: { children: React.ReactNode }) {
                 {t('Account')} <span className="text-gray-500">· {email}</span>
               </Link>
             )}
-            <div className="py-3"><LanguageSwitcher /></div>
+            <div className="py-3 flex items-center gap-2"><LanguageSwitcher /><ThemeSwitcher /></div>
             {demo
               ? <button onClick={() => void leave()} className="block w-full text-left py-3 text-base text-gray-600">{t('Leave the demo')}</button>
               : <button onClick={() => void logout()} className="block w-full text-left py-3 text-base text-gray-600">{t('Sign out')}</button>}

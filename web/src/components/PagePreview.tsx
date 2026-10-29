@@ -60,7 +60,7 @@ export default function PagePreview({
   const go = (to: number) => { if (to >= 0 && to < pages.length) onIndex(to); };
 
   const button =
-    'h-11 w-11 rounded-full bg-white/10 text-white hover:bg-white/20 focus:bg-white/20 disabled:opacity-30 disabled:hover:bg-white/10 flex items-center justify-center';
+    'h-11 w-11 rounded-full bg-snow/10 text-snow hover:bg-snow/20 focus:bg-snow/20 disabled:opacity-30 disabled:hover:bg-snow/10 flex items-center justify-center';
 
   return (
     <dialog
@@ -75,10 +75,10 @@ export default function PagePreview({
       className="m-0 p-0 w-screen h-screen max-w-none max-h-none bg-neutral-950 backdrop:bg-black"
     >
       <div className="h-full flex flex-col" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-        <div className="flex items-center justify-between gap-3 px-4 py-3 text-white">
+        <div className="flex items-center justify-between gap-3 px-4 py-3 text-snow">
           <div className="min-w-0">
             <p className="text-sm font-medium">{t('Page {n} of {total}', { n: page.page_number, total: pages.length })}</p>
-            <p className="text-xs text-white/70 truncate">{caption(page)}</p>
+            <p className="text-xs text-snow/70 truncate">{caption(page)}</p>
           </div>
           <button type="button" onClick={onClose} aria-label={t('Close preview')} className={button}>
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden="true">
@@ -96,19 +96,19 @@ export default function PagePreview({
             src={`/api/pages/${page.id}/image?r=${page.rotation ?? 0}`}
             alt={t('Page {n}', { n: page.page_number })}
             onClick={() => setZoomed(z => !z)}
-            className={`bg-white rounded shadow-lg select-none ${
+            className={`bg-snow rounded shadow-lg select-none ${
               zoomed ? 'w-full max-w-none cursor-zoom-out mx-auto' : 'max-h-full max-w-full object-contain cursor-zoom-in'
             }`}
           />
         </div>
 
-        {extras && <div className="px-4 pt-2 max-w-xl w-full self-center text-white">{extras(page)}</div>}
+        {extras && <div className="px-4 pt-2 max-w-xl w-full self-center text-snow">{extras(page)}</div>}
 
         <div className="flex items-center justify-center gap-4 px-4 py-3">
           <button type="button" onClick={() => go(index - 1)} disabled={index === 0} aria-label={t('Previous page')} className={button}>
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
           </button>
-          <span className="text-xs text-white/70 w-24 text-center">{zoomed ? t('tap to fit') : t('tap to zoom')}</span>
+          <span className="text-xs text-snow/70 w-24 text-center">{zoomed ? t('tap to fit') : t('tap to zoom')}</span>
           <button type="button" onClick={() => go(index + 1)} disabled={index === pages.length - 1} aria-label={t('Next page')} className={button}>
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
           </button>

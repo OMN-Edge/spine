@@ -7,6 +7,7 @@ import { api } from '../api';
 import { useAuth } from '../auth';
 import { LogoMark } from '../components/Logo';
 import { LanguageSwitcher, useI18n } from '../i18n';
+import { ThemeSwitcher } from '../components/ThemeSwitcher';
 
 /**
  * What a signed-out visitor sees at `/`: what Spine does, and who can see what, before they are asked for a password.
@@ -36,6 +37,7 @@ export default function Landing() {
           </span>
           <div className="flex items-center gap-3">
             <LanguageSwitcher />
+            <ThemeSwitcher />
             <Link to="/login" className="rounded-full border border-ink/20 px-4 py-1.5 text-sm font-medium hover:bg-ink/5">{t('Sign in')}</Link>
           </div>
         </div>
@@ -88,12 +90,12 @@ export default function Landing() {
           </div>
         </section>
 
-        <section className="bg-ink text-paper">
+        <section className="bg-band text-band-fg">
           <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
             <Eyebrow n="02" dark>{t('Visibility')}</Eyebrow>
             <h2 className={h2}>{t('Who can see what')}</h2>
-            <p className="mt-3 text-lg text-paper/70">{t('Plainly, with nothing left out.')}</p>
-            <dl className="mt-10 border-t border-paper/15">
+            <p className="mt-3 text-lg text-band-fg/70">{t('Plainly, with nothing left out.')}</p>
+            <dl className="mt-10 border-t border-band-fg/15">
               <Who who={t('You')}>{t('Everything, on your own device, once you have unlocked it.')}</Who>
               <Who who={t('A doctor you share with')}>{t('Only what the link shares, until it ends. No account or app needed.')}</Who>
               <Who who={t('The AI relay')}>{t('The text of a request while it is answered. It does not store or log it.')}</Who>
@@ -179,7 +181,7 @@ function Eyebrow({ n, dark = false, children }: { n?: string; dark?: boolean; ch
   return (
     <p className={`mb-5 flex items-center gap-2 font-label text-xs font-medium uppercase tracking-[0.14em] ${dark ? 'text-accent-light' : 'text-accent'}`}>
       <span aria-hidden="true" className="inline-block h-1.5 w-1.5 rounded-full bg-current" />
-      {n && <span className={dark ? 'text-paper/50' : 'text-ink/40'}>{n}</span>}
+      {n && <span className={dark ? 'text-band-fg/50' : 'text-ink/40'}>{n}</span>}
       {children}
     </p>
   );
@@ -197,9 +199,9 @@ function Pillar({ label, title, children }: { label: string; title: string; chil
 
 function Who({ who, children }: { who: string; children: ReactNode }) {
   return (
-    <div className="grid gap-1 border-b border-paper/15 py-5 sm:grid-cols-[16rem_1fr] sm:gap-8">
+    <div className="grid gap-1 border-b border-band-fg/15 py-5 sm:grid-cols-[16rem_1fr] sm:gap-8">
       <dt className="font-label text-sm uppercase tracking-[0.1em] text-accent-light">{who}</dt>
-      <dd className="text-lg leading-relaxed text-paper/90">{children}</dd>
+      <dd className="text-lg leading-relaxed text-band-fg/90">{children}</dd>
     </div>
   );
 }
@@ -242,7 +244,7 @@ function ReadingDrawing() {
   return (
     <svg viewBox="0 0 560 440" className="h-auto w-full" aria-hidden="true">
       {/* the page */}
-      <rect x="18" y="18" width="286" height="404" rx="6" fill="#fff" stroke={INK} strokeWidth="1.25" />
+      <rect x="18" y="18" width="286" height="404" rx="6" className="fill-white" stroke={INK} strokeWidth="1.25" />
       <rect x="40" y="42" width="26" height="26" rx="5" fill="none" stroke={INK} strokeWidth="1.1" />
       <rect x="76" y="46" width="96" height="6" rx="3" fill={FAINT} />
       <rect x="76" y="58" width="62" height="4" rx="2" fill={FAINT} />
@@ -265,7 +267,7 @@ function ReadingDrawing() {
       <path d="M176 378c14-22 22-22 26-6s14 12 22-6 16-10 20 2 14 6 24-8" fill="none" stroke={INK} strokeWidth="1.2" opacity="0.5" />
 
       {/* what was read from it */}
-      <rect x="342" y="112" width="200" height="236" rx="12" fill="#fff" stroke={INK} strokeWidth="1.25" />
+      <rect x="342" y="112" width="200" height="236" rx="12" className="fill-white" stroke={INK} strokeWidth="1.25" />
       <text x="360" y="144" fontSize="16" fontWeight="600" fill={INK}>{t('Blood test')}</text>
       <text x="360" y="164" fontFamily={MONO} fontSize="11" fill={INK} opacity="0.5">12.03.2026</text>
       {results.map((r, i) => {
@@ -277,8 +279,8 @@ function ReadingDrawing() {
             <text x="360" y={r.y + 11} fontFamily={MONO} fontSize="15" fontWeight="500" fill={INK}>{r.value}</text>
             {r.low && (
               <g>
-                <rect x="472" y={r.y - 1} width="52" height="17" rx="8.5" fill="#fef3c7" />
-                <text x="498" y={r.y + 11} textAnchor="middle" fontSize="10" fontWeight="600" fill="#92400e">{t('Low')}</text>
+                <rect x="472" y={r.y - 1} width="52" height="17" rx="8.5" className="fill-amber-100" />
+                <text x="498" y={r.y + 11} textAnchor="middle" fontSize="10" fontWeight="600" className="fill-amber-800">{t('Low')}</text>
               </g>
             )}
             <path className="draw" pathLength={1} style={{ animationDelay: `${0.55 + i * 0.35}s` }}
@@ -301,7 +303,7 @@ function SealingDrawing() {
       text: t('Read, searched and kept in your browser, opened with your password.'),
       art: (
         <>
-          <rect x="20" y="16" width="200" height="128" rx="10" fill="#fff" stroke={INK} strokeWidth="1.25" />
+          <rect x="20" y="16" width="200" height="128" rx="10" className="fill-white" stroke={INK} strokeWidth="1.25" />
           <line x1="20" y1="36" x2="220" y2="36" stroke={FAINT} />
           {[34, 44, 54].map(x => <circle key={x} cx={x} cy="26" r="3" fill={FAINT} />)}
           <rect x="44" y="50" width="70" height="80" rx="4" fill="none" stroke={INK} strokeWidth="1.1" />
@@ -317,7 +319,7 @@ function SealingDrawing() {
         <>
           {[0, 1, 2].map(i => (
             <g key={i} transform={`translate(${56 + i * 16} ${18 + i * 14})`}>
-              <rect width="112" height="84" rx="8" fill="#fff" stroke={INK} strokeWidth="1.2" />
+              <rect width="112" height="84" rx="8" className="fill-white" stroke={INK} strokeWidth="1.2" />
               {cipher.map((_, r) => (
                 <text key={r} x="10" y={18 + r * 14} fontFamily={MONO} fontSize="8.5" fill={INK} opacity="0.28">{cipher[(r + i) % cipher.length]}</text>
               ))}
@@ -332,7 +334,7 @@ function SealingDrawing() {
       text: t('Kept as sealed pieces it cannot open.'),
       art: (
         <>
-          <rect x="52" y="14" width="136" height="132" rx="10" fill="#fff" stroke={INK} strokeWidth="1.25" />
+          <rect x="52" y="14" width="136" height="132" rx="10" className="fill-white" stroke={INK} strokeWidth="1.25" />
           {[0, 1, 2].map(i => (
             <g key={i}>
               <rect x="66" y={28 + i * 38} width="108" height="28" rx="5" fill="none" stroke={FAINT} strokeWidth="1.2" />

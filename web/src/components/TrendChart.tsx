@@ -71,7 +71,7 @@ export default function TrendChart({ points, unit, documentHref = id => `/docume
         <rect
           x={PAD.left} width={W - PAD.left - PAD.right}
           y={py(high ?? yMax)} height={Math.max(0, py(low ?? yMin) - py(high ?? yMax))}
-          fill="#dcfce7" opacity={0.7}
+          className="fill-green-100" opacity={0.7}
         >
           <title>{tr('Reference range {low} to {high}{unit}', { low: low !== null ? format(low) : '…', high: high !== null ? format(high) : '…', unit: unit ? ` ${unit}` : '' })}</title>
         </rect>
@@ -79,20 +79,20 @@ export default function TrendChart({ points, unit, documentHref = id => `/docume
 
       {ticks.map(t => (
         <g key={t}>
-          <line x1={PAD.left} x2={W - PAD.right} y1={py(t)} y2={py(t)} stroke="#e7e4dd" strokeWidth={1} />
-          <text x={PAD.left - 8} y={py(t) + 4} textAnchor="end" fontSize={11} fill="#716e68">{format(t)}</text>
+          <line x1={PAD.left} x2={W - PAD.right} y1={py(t)} y2={py(t)} className="stroke-gray-200" strokeWidth={1} />
+          <text x={PAD.left - 8} y={py(t) + 4} textAnchor="end" fontSize={11} className="fill-gray-500">{format(t)}</text>
         </g>
       ))}
-      {unit && <text x={PAD.left - 44} y={12} fontSize={11} fill="#a3a099">{unit}</text>}
+      {unit && <text x={PAD.left - 44} y={12} fontSize={11} className="fill-gray-400">{unit}</text>}
 
-      <text x={PAD.left} y={H - 10} fontSize={11} fill="#716e68">{first}</text>
-      {first !== last && <text x={W - PAD.right} y={H - 10} textAnchor="end" fontSize={11} fill="#716e68">{last}</text>}
+      <text x={PAD.left} y={H - 10} fontSize={11} className="fill-gray-500">{first}</text>
+      {first !== last && <text x={W - PAD.right} y={H - 10} textAnchor="end" fontSize={11} className="fill-gray-500">{last}</text>}
 
       {drawn.length > 1 && <polyline points={line} fill="none" stroke="#6dcfc0" strokeWidth={2} strokeLinejoin="round" />}
 
       {drawn.map(p => (
         <Link key={p.id} to={documentHref(p.document_id)}>
-          <circle cx={px(day(p.taken_on!))} cy={py(p.value_num!)} r={5.5} fill={colour(p.flag)} stroke="#fff" strokeWidth={2}>
+          <circle cx={px(day(p.taken_on!))} cy={py(p.value_num!)} r={5.5} fill={colour(p.flag)} className="stroke-white" strokeWidth={2}>
             <title>{`${p.value_text}${p.unit ? ` ${p.unit}` : ''} · ${p.taken_on}${p.taken_on!.length === 7 ? ` (${tr('month only')})` : ''}${p.document_title ? ` · ${p.document_title}` : ''}`}</title>
           </circle>
         </Link>
