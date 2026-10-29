@@ -37,6 +37,16 @@ Someone with no account wants to see what the app looks like with records in it,
 
 Status: auto (`local-app`, `upload`, `pipeline`, `demo-relay`, `relay`); in a real browser: `check:app` (opens it with no account, sees the records, opens a document, finds the camera not offered and nothing of the records at the server, the demo gone after a reload; agrees, uploads a 7-page file and sees only 5 pages read, reaches the limit at three, keeps them, signs in to a new account, adds them, and finds them there after a reload). Screens: hand (headless Chrome at 1280 and 390 px: timeline, a document, trends, doctors, search, review, episodes, library; at 1280 px the consent, the limit and the offer to add); editing a document in the demo, and the demo on a phone with files of one's own, have not been tried. Registration `open` (Create an account to keep them, then the email link) has not been tried: `check:app` keeps them through Sign in.
 
+### 1.0b Put Spine on the home screen
+Someone adds the site to their phone's home screen (Safari: Share, Add to Home Screen; Chrome: Install app) and opens it from there like an app.
+
+- The icon is Spine's logo on the paper colour (`web/public/icons/`): iOS takes `apple-touch-icon.png` and the title from the page's head, other systems the manifest (`manifest.webmanifest`), with a maskable icon that survives a round crop.
+- It opens full screen at the front page or the Timeline, with no browser bar.
+- On iOS the home-screen copy keeps its own storage, apart from Safari's: it asks to sign in once, and a light or dark choice made in Safari does not carry over.
+- There is no service worker: nothing works offline, and every launch loads the current version.
+
+Status: auto (`web/src/build/home-screen.test.ts`: the page, the manifest and the images agree); Chrome reads the manifest with no error and reports the site installable. Not tried on a phone.
+
 ### 1.1 Sign in
 The owner opens the site, chooses Sign in, enters their email and password, and lands on the Timeline.
 

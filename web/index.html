@@ -10,6 +10,12 @@
     <!-- Sets data-theme on <html> before anything is drawn, so a dark page never flashes light. A file of its own: the page allows no inline script. -->
     <script src="/theme.js"></script>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <!-- Added to a home screen: iOS takes the apple-touch-icon (a PNG; it ignores an SVG) and the title; others read the manifest. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-title" content="Spine" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
   </head>
   <body>
     <div id="root"></div>
