@@ -1,6 +1,8 @@
 [Unit]
 Description=Spine — back up the accounts database and the sealed vault
 After=network-online.target
+# The repository and the backup target may be on disks mounted at boot: run once both are there
+RequiresMountsFor=SPINE_DIR SPINE_BACKUP_TARGET
 
 [Service]
 Type=oneshot
@@ -13,11 +15,11 @@ Environment=DATA_DIR=SPINE_DIR/data
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-# Needs the archive to read and the backup target to write. Point
-# SPINE_BACKUP_DIR at removable or network storage to survive losing the SD
-# card, and add that path here — ProtectSystem=strict makes it read-only
-# otherwise.
-ReadWritePaths=SPINE_DIR/data SPINE_DIR/backups
+# Needs the archive to read and the backup target to write: install.sh -s puts
+# SPINE_BACKUP_DIR from .env here (default <repo>/backups), because
+# ProtectSystem=strict makes any other path read-only. Point it at another disk
+# than the data's to survive losing one.
+ReadWritePaths=SPINE_DIR/data SPINE_BACKUP_TARGET
 
 [Install]
 WantedBy=multi-user.target

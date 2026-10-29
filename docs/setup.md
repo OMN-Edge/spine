@@ -103,13 +103,13 @@ Both lines are required (in the server's `.env`, which passes them to each devic
 
 ### Backups (recommended)
 
-By default backups land beside `data/`, which protects against mistakes but not a dead SD card. Point them elsewhere:
+By default backups land beside `data/`, on the same disk, which protects against mistakes but not a dead disk. Point them at another one:
 
 ```bash
-SPINE_BACKUP_DIR=/mnt/usb/spine-backup
+SPINE_BACKUP_DIR=/var/backups/spine     # e.g. the SD card, when the repository is on a USB drive (or the other way round)
 ```
 
-and add that path to `ReadWritePaths=` in `systemd/spine-backup.service` before step 4.
+`install.sh -s` creates it and gives the backup service write access to it (`ReadWritePaths=` in `systemd/spine-backup.service`); run it again after changing the setting. The repository itself can be on a drive mounted at boot (`/mnt/...`): the services wait for the mount (`RequiresMountsFor=`). Not under `/home`, which the units hide (`ProtectHome=true`), and on a Linux filesystem such as ext4, since the installer sets owners and SQLite needs real file locks.
 
 ## 4. Start the services
 
@@ -179,7 +179,7 @@ sudo ./install.sh -n
 
 The nginx version is the stable one the package's readme names; check it for a newer one.
 
-**Without it** (**untested** on a fresh machine), `sudo ./install.sh -n` installs the distribution's nginx and certbot if they are missing, adds the `main` log format the site config names (`/etc/nginx/conf.d/spine-log-format.conf`), gets each certificate with `certbot certonly --standalone` (nginx stopped for the minute it takes; `SPINE_CERT_EMAIL` for expiry notices) unless it exists, and writes the site config, filling in the relay's address for the page's content security policy, the optional repository redirects and `security.txt`, which a plain copy of `nginx/spine.conf` would leave as placeholders.
+**Without it** (**untested** on a fresh machine), `sudo ./install.sh -n` installs the distribution's nginx and certbot if they are missing, adds the `main` log format the site config names (a file of its own in `/etc/nginx/conf.d/`), gets each certificate with `certbot certonly --standalone` (nginx stopped for the minute it takes; `SPINE_CERT_EMAIL` for expiry notices) unless it exists, and writes the site config, filling in the relay's address for the page's content security policy, the optional repository redirects and `security.txt`, which a plain copy of `nginx/spine.conf` would leave as placeholders.
 
 With the relay on this machine (`SPINE_RELAY_DOMAIN` in `.env`), `-n` does the same for its name and writes `nginx/spine-relay.conf` as its site.
 

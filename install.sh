@@ -207,12 +207,6 @@ function install_services() {
   mkdir -p "${SPINE_DIR}/data"
   chown -R "${SPINE_USER}:${SPINE_USER}" "${SPINE_DIR}/data"
 
-  # P11. Same medium as the archive, so this covers corruption and mistakes,
-  # not a dead SD card — set SPINE_BACKUP_DIR to removable or network storage
-  # and add it to ReadWritePaths in spine-backup.service for that.
-  mkdir -p "${SPINE_DIR}/backups"
-  chown -R "${SPINE_USER}:${SPINE_USER}" "${SPINE_DIR}/backups"
-
   if [ ! -f "${SPINE_DIR}/.env" ]; then
     echo "ERROR: ${SPINE_DIR}/.env not found. Copy .env.example and fill it in first, or run $(basename "$0") -e."
     exit 1
@@ -220,8 +214,18 @@ function install_services() {
 
   check_secrets
 
+  # P11. By default the same disk as the archive, which covers corruption and
+  # mistakes, not losing the disk: set SPINE_BACKUP_DIR in .env to another one.
+  # It goes into spine-backup.service's ReadWritePaths.
+  local backup_dir
+  backup_dir=$(env_value SPINE_BACKUP_DIR | sed 's|/*$||')
+  backup_dir="${backup_dir:-${SPINE_DIR}/backups}"
+  mkdir -p "${backup_dir}"
+  chown -R "${SPINE_USER}:${SPINE_USER}" "${backup_dir}"
+
   for unit in spine-web.service spine-backup.service spine-backup.timer; do
     sed \
+      -e "s|SPINE_BACKUP_TARGET|${backup_dir}|g" \
       -e "s|SPINE_DIR|${SPINE_DIR}|g" \
       -e "s|SPINE_USER|${SPINE_USER}|g" \
       "${SPINE_DIR}/systemd/${unit}" \
@@ -242,7 +246,7 @@ function install_services() {
   echo ""
   echo "Services started."
   echo "  spine-web:       $(systemctl is-active spine-web)"
-  echo "  spine-backup:    $(systemctl is-active spine-backup.timer) (timer)"
+  echo "  spine-backup:    $(systemctl is-active spine-backup.timer) (timer, into ${backup_dir})"
 
   # There is no default account and no signup: the first one is made here.
   local accounts

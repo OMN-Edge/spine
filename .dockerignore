@@ -1,6 +1,9 @@
 .git
 .env
 relay.env
+.env.*
+!.env.example
+relay.env.*
 .venv
 data
 relay-data

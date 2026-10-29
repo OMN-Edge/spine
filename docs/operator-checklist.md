@@ -30,7 +30,7 @@ None of these can be seen from the code. Each needs you to look at the provider'
 - [ ] **Vertex only:** `SPINE_LLM_ENDPOINT`, `SPINE_LLM_REGION`, `SPINE_LLM_PROJECT` stated, no `GOOGLE_API_KEY`, `GEMINI_API_KEY` or `GOOGLE_GENAI_API_KEY` anywhere in the relay's environment, a service-account key for the relay only.
 - [ ] **TLS and the proxy.** A certificate for `SPINE_DOMAIN`; ports 80 and 443. Behind a proxy of your own, name its address in `SPINE_TRUSTED_PROXIES` and make it overwrite `X-Forwarded-For` ([self-host.md](self-host.md), SECURITY.md **S-31**). The server binds loopback unless `SPINE_HOST` says otherwise.
 - [ ] **Registration.** `operator` (default) or `open`, which needs a working mailer.
-- [ ] **Backups off the disk.** The daily backup lands beside `data/` by default, which does not survive losing the disk. Point `SPINE_BACKUP_DIR` at other storage and add that path to `ReadWritePaths=` in `systemd/spine-backup.service` ([setup.md](setup.md)).
+- [ ] **Backups off the disk.** The daily backup lands beside `data/` by default, which does not survive losing the disk. Point `SPINE_BACKUP_DIR` at other storage; `install.sh -s` gives the backup service access to it ([setup.md](setup.md)).
 
 ## Check that it did what you meant
 

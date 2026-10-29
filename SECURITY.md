@@ -195,7 +195,7 @@ Verified present. Rows about records, parsing, ingestion, search, chat and the s
 
 | Control | Where |
 |---|---|
-| `NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`, `ReadWritePaths=data/` | both units |
+| `NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`, `ReadWritePaths=data/` (and the backup target, the relay's count) | every unit |
 | `PrivateTmp`: temporary files are not in a shared `/tmp` | `spine-web.service` |
 | Services run as the invoking user, not root | both units |
 

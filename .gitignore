@@ -1,5 +1,9 @@
 .env
 relay.env
+.env.*
+!.env.example
+relay.env.*
+!relay.env.example
 node_modules/
 dist/
 coverage/
