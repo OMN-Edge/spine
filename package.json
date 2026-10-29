@@ -16,5 +16,11 @@
     "build:web": "npm run build:core && npm run build -w spine-web",
     "build": "npm run build:core && npm run build -w spine-server && npm run build -w spine-web",
     "test": "npm test -w spine-core && npm test -w spine-server && npm test -w spine-web"
+  },
+  "allowScripts": {
+    "better-sqlite3@13.0.3": true,
+    "esbuild@0.28.2": true,
+    "esbuild@0.21.5": true,
+    "tesseract.js": false
   }
 }
