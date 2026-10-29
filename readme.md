@@ -219,7 +219,7 @@ Tests use in-memory SQLite (`SPINE_DB_PATH=:memory:`) with a `resetStore()` call
 
 ## Credits
 
-Countries in a share link's access log come from the [IP to Country Lite database by DB-IP.com](https://db-ip.com), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+Countries in a share link's access log come from the [ip-location-db](https://github.com/sapics/ip-location-db) “user-country” database, in the public domain ([PDDL](https://opendatacommons.org/licenses/pddl/1-0/)), which its maintainers build daily from the regional internet registries' published statistics, the Route Views and RIPE RIS routing archives and operators' geofeeds. Spine downloads it to `data/geoip/` (`server/src/geoip-update.ts`).
 
 The interface is set in [Inter](https://rsms.me/inter/) and, on the front page, [IBM Plex Mono](https://github.com/IBM/plex), both under the [SIL Open Font License 1.1](https://openfontlicense.org), through the `@fontsource` packages; the text a device writes into a PDF uses [DejaVu Sans](https://dejavu-fonts.github.io).
 

@@ -56,7 +56,8 @@ spine/
 │       ├── accounts.ts, sessions.ts, user-tokens.ts, legal.ts, vault-files.ts, shared-files.ts  # accounts, sign-ins, one-time tokens, the legal texts, the vault's and sealed shares' files
 │       ├── mail/           # mailer interface: types.ts, index.ts (registry), adapters/{none,brevo}.ts
 │       ├── native/         # the Node versions of the tools the shared code asks for (poppler, Tesseract, sharp, pdfkit, yauzl, yazl, maxmind): for the tests that run the whole app on Node; none is used in production
-│       ├── geo.ts          # the country a share was opened from (maxmind, the DB-IP Lite file or SPINE_GEOIP_DB): the one native library the production server uses
+│       ├── geo.ts          # the country a share was opened from (maxmind, reading data/geoip/country.mmdb or SPINE_GEOIP_DB; looked at again every minute): the one native library the production server uses
+│       ├── geoip-update.ts # downloads that file (ip-location-db "user-country", public domain) and checks it before it replaces the one in use; best effort, always ends well; run by install.sh -s and daily before the backup
 │       ├── providers.ts    # registers the model providers the relay service runs; llm/adapters/ (anthropic, vertex) and embedding/adapters/ (vertex) hold them
 │       ├── driver-native.ts # the native SQLite driver, chosen by useAccountsStore()
 │       ├── passwords.ts    # argon2id hash/verify, policy, email normalisation
@@ -165,7 +166,7 @@ npm run test:coverage -w spine-server
 | `SPINE_TRUST_ANCHORS_DIR` | A directory of certificates (`.pem`, `.crt`, `.cer`, `.der`) the operator trusts as authorities for digital signatures; served at `GET /api/trust-anchors`. With them a signer whose certificates chain to one is filed `verified_signature` (SECURITY.md **S-23**); without, a signature is a label. Nothing ships by default: pick them yourself (for Romania, the qualified trust service providers on the EU trusted list) |
 | `SPINE_VAULT_MAX_MB`, `SPINE_VAULT_MAX_OBJECT_MB` | What one account may keep in its vault, sealed objects only (default 5120 and 100); a bad value gives the default |
 | `SPINE_SHARE_MAX_MB`, `SPINE_SHARE_MAX_TOTAL_MB`, `SPINE_SHARE_MAX_LIVE` | What one account may keep as sealed shares: one object (default 100 MB), all live shares together (1024 MB) and how many are live at once (50); a bad value gives the default (`sharedLimits()` in `server/src/config.ts`) |
-| `SPINE_GEOIP_DB` | A `.mmdb` country file to use instead of the shipped DB-IP Lite one, for the country a share was opened from (`server/src/geo.ts`) |
+| `SPINE_GEOIP_DB`, `SPINE_GEOIP_URL` | The country a share was opened from is read from `data/geoip/country.mmdb`, which `server/src/geoip-update.ts` downloads (from `SPINE_GEOIP_URL`: https, or http to this machine, default the ip-location-db release on GitHub). `SPINE_GEOIP_DB` names a `.mmdb` country file of your own instead, and nothing is downloaded (`server/src/geo.ts`) |
 | `SPINE_HOST` | Interface Fastify binds (default `127.0.0.1` — nginx is the only public listener) |
 | `SPINE_BACKUP_DIR` | Snapshot + vault mirror target (default beside `data/`; set it to removable or network storage to survive media loss) |
 | `SPINE_BACKUP_KEEP` | Snapshots to retain (default `7`) |

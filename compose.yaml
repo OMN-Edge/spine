@@ -18,11 +18,12 @@ services:
     networks:
       spine: {}
 
-  # The daily snapshot (SECURITY.md, Backups): the accounts database and the vault's sealed objects, into the backups volume.
+  # The daily snapshot (SECURITY.md, Backups): the accounts database and the vault's sealed objects, into the backups volume. It also refreshes the
+  # country file the share log reads (server/src/geoip-update.ts), in the data volume the web service shares.
   backup:
     build: .
     restart: unless-stopped
-    entrypoint: ["sh", "-c", "while true; do node dist/backup.js; sleep 86400; done"]
+    entrypoint: ["sh", "-c", "while true; do node dist/geoip-update.js; node dist/backup.js; sleep 86400; done"]
     env_file: .env
     environment:
       DATA_DIR: /data

@@ -117,7 +117,7 @@ SPINE_BACKUP_DIR=/var/backups/spine     # e.g. the SD card, when the repository 
 sudo ./install.sh -s
 ```
 
-This installs and starts `spine-web` (port 3000, loopback only) and a daily backup timer (the database and the sealed vault). It stops with a list of problems if the secret is unsafe. Check:
+This installs and starts `spine-web` (port 3000, loopback only) and a daily backup timer (the database and the sealed vault). It also downloads the country file that a share link's access log reads (`data/geoip/country.mmdb`, 8 MB, public domain, from GitHub), and the backup timer refreshes it daily; if the download fails nothing else does, and countries show as unknown until the next one. `SPINE_GEOIP_DB` names a file of your own instead, and nothing is then downloaded. It stops with a list of problems if the secret is unsafe. Check:
 
 ```bash
 systemctl is-active spine-web spine-backup.timer

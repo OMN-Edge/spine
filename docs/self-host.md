@@ -16,7 +16,7 @@ docker compose exec web node dist/cli.js create-user you@example.com   # prints 
 | --- | --- | --- |
 | `proxy` | Caddy: TLS, the security headers of `nginx/spine.conf`, no-store on `/share/` | the internet, ports 80 and 443 |
 | `web` | The server and the built web app (`Dockerfile`): accounts, the sealed vault, shares. No parser or OCR: the browser does that | the proxy only |
-| `backup` | `backup.js` once a day: a database snapshot and a mirror of the sealed vault | nothing |
+| `backup` | `backup.js` once a day: a database snapshot and a mirror of the sealed vault; before it, `geoip-update.ts` refreshes the country file the share log reads | nothing |
 | `relay` | The relay for model calls (`relay.Dockerfile`, [relay.md](relay.md)), only with `COMPOSE_PROFILES=relay` in `.env`. It reads `.env` and `relay.env`, which holds the provider's key; the server never gets that file | the proxy only, at `SPINE_RELAY_DOMAIN` |
 
 Data lives in Docker volumes: `data` (the database and the files), `backups`, `relay-data` (the relay's daily count), `caddy-data` (certificates). `docker compose down` keeps them; `docker compose down -v` deletes them, records included.

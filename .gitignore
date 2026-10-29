@@ -12,6 +12,7 @@ data/spine.db-shm
 data/spine.db-wal
 data/originals/
 data/pages/
+data/geoip/
 relay-data/
 __pycache__/
 *.pyc

@@ -248,6 +248,12 @@ function install_services() {
   echo "  spine-web:       $(systemctl is-active spine-web)"
   echo "  spine-backup:    $(systemctl is-active spine-backup.timer) (timer, into ${backup_dir})"
 
+  # The country file for the share log (server/src/geoip-update.ts): best effort, a download that fails never fails the install.
+  # The backup unit refreshes it daily.
+  echo "Fetching the country file for share logs..."
+  (cd "${SPINE_DIR}/server" && sudo -u "${SPINE_USER}" env DATA_DIR="${SPINE_DIR}/data" \
+    node --env-file="${SPINE_DIR}/.env" dist/geoip-update.js) || true
+
   # There is no default account and no signup: the first one is made here.
   local accounts
   accounts=$(cd "${SPINE_DIR}/server" && sudo -u "${SPINE_USER}" env DATA_DIR="${SPINE_DIR}/data" \

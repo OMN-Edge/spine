@@ -1,5 +1,5 @@
 [Unit]
-Description=Spine — back up the accounts database and the sealed vault
+Description=Spine — back up the accounts database and the sealed vault (and refresh the country file)
 After=network-online.target
 # The repository and the backup target may be on disks mounted at boot: run once both are there
 RequiresMountsFor=SPINE_DIR SPINE_BACKUP_TARGET
@@ -8,6 +8,8 @@ RequiresMountsFor=SPINE_DIR SPINE_BACKUP_TARGET
 Type=oneshot
 User=SPINE_USER
 WorkingDirectory=SPINE_DIR/server
+# The `-` makes a failed download (GitHub unreachable) no reason to skip the backup; the script itself always ends well
+ExecStartPre=-/usr/bin/node SPINE_DIR/server/dist/geoip-update.js
 ExecStart=/usr/bin/node SPINE_DIR/server/dist/backup.js
 EnvironmentFile=SPINE_DIR/.env
 Environment=NODE_ENV=production
