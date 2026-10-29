@@ -11,7 +11,7 @@ import { LanguageSwitcher, useI18n } from '../i18n';
 /**
  * What a signed-out visitor sees at `/`: what Spine does, and who can see what, before they are asked for a password.
  * Every claim here is one SECURITY.md or the README makes (M-34 to M-38 for the sealing, M-35 for the relay, M-36
- * for shares, the purpose text for what Spine is not); change one only together with the document it comes from.
+ * for shares); change one only together with the document it comes from. What Spine is not for is the purpose text, linked in the footer.
  * The drawings show how it works rather than decorate: a page whose values point to what was read from them
  * (grounding), and a record sealed on the device before the server keeps it. The record in them is invented.
  * The fonts are bundled (the policy allows fonts from this origin only) and used on this page alone.
@@ -113,21 +113,6 @@ export default function Landing() {
               <Feature title={t('Search and ask')}>{t('Find any word on any page, or ask a question about your records in plain language.')}</Feature>
               <Feature title={t('In your language')}>{t("Read a document's details in English, Romanian, French or German.")}</Feature>
               <Feature title={t('Yours to take')}>{t('Export one document or everything as a file you can restore anywhere.')}</Feature>
-            </div>
-          </div>
-        </section>
-
-        <section className="border-t border-ink/10">
-          <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
-            <Eyebrow n="04">{t('Limits')}</Eyebrow>
-            <h2 className={h2}>{t('What Spine is not')}</h2>
-            <div className="mt-10 grid gap-6 lg:grid-cols-2">
-              <p className="rounded-2xl border border-amber-300/70 bg-amber-50 p-6 text-lg leading-relaxed text-amber-950">
-                {t('Spine is not a medical device. It does not diagnose, does not tell you whether a result is good or bad, and is not for emergencies. Ask your doctor what your records mean.')}
-              </p>
-              <p className="rounded-2xl border border-ink/10 bg-white p-6 text-lg leading-relaxed text-ink/80">
-                {t("Spine's security document states what is protected, how, and the gaps still open.")}
-              </p>
             </div>
           </div>
         </section>
