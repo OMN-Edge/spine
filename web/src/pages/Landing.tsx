@@ -126,7 +126,7 @@ export default function Landing() {
                 {t('Spine is not a medical device. It does not diagnose, does not tell you whether a result is good or bad, and is not for emergencies. Ask your doctor what your records mean.')}
               </p>
               <p className="rounded-2xl border border-ink/10 bg-white p-6 text-lg leading-relaxed text-ink/80">
-                {t('Its security has not yet been independently audited. Its security document states what is protected, how, and the gaps still open.')}
+                {t("Spine's security document states what is protected, how, and the gaps still open.")}
               </p>
             </div>
           </div>

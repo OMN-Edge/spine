@@ -1125,7 +1125,7 @@
  "Export one document or everything as a file you can restore anywhere.": "Exportați un document sau totul, ca fișier pe care îl puteți restaura oriunde.",
  "What Spine is not": "Ce nu este Spine",
  "Spine is not a medical device. It does not diagnose, does not tell you whether a result is good or bad, and is not for emergencies. Ask your doctor what your records mean.": "Spine nu este un dispozitiv medical. Nu pune diagnostice, nu vă spune dacă un rezultat este bun sau rău și nu este pentru urgențe. Întrebați-vă medicul ce înseamnă documentele dumneavoastră.",
- "Its security has not yet been independently audited. Its security document states what is protected, how, and the gaps still open.": "Securitatea sa nu a fost încă auditată independent. Documentul său de securitate spune ce este protejat, cum și ce lipsuri sunt încă deschise.",
+ "Spine's security document states what is protected, how, and the gaps still open.": "Documentul de securitate al Spine spune ce este protejat, cum și ce lipsuri sunt încă deschise.",
  "Start with your own records.": "Începeți cu propriile documente.",
  "Open-source software, licensed under the AGPL-3.0.": "Software open-source, sub licența AGPL-3.0.",
  "Blood test": "Analize de sânge",

@@ -1125,7 +1125,7 @@
  "Export one document or everything as a file you can restore anywhere.": "Exportez un document ou tout, dans un fichier que vous pouvez restaurer n'importe où.",
  "What Spine is not": "Ce que Spine n'est pas",
  "Spine is not a medical device. It does not diagnose, does not tell you whether a result is good or bad, and is not for emergencies. Ask your doctor what your records mean.": "Spine n'est pas un dispositif médical. Il ne pose pas de diagnostic, ne vous dit pas si un résultat est bon ou mauvais et n'est pas fait pour les urgences. Demandez à votre médecin ce que signifient vos documents.",
- "Its security has not yet been independently audited. Its security document states what is protected, how, and the gaps still open.": "Sa sécurité n'a pas encore été auditée de manière indépendante. Son document de sécurité indique ce qui est protégé, comment, et les lacunes encore ouvertes.",
+ "Spine's security document states what is protected, how, and the gaps still open.": "Le document de sécurité de Spine indique ce qui est protégé, comment, et les lacunes encore ouvertes.",
  "Start with your own records.": "Commencez par vos propres documents.",
  "Open-source software, licensed under the AGPL-3.0.": "Logiciel libre, sous licence AGPL-3.0.",
  "Blood test": "Analyse de sang",
