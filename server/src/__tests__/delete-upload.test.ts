@@ -11,7 +11,7 @@ const mockGetJobStatus = vi.hoisted(() => vi.fn().mockReturnValue(null));
 vi.mock('spine-core/ingestion/pipeline.js', () => ({
   startIngestionJob: vi.fn(),
   getJobStatus: mockGetJobStatus,
-  reconcileStalledJobs: vi.fn().mockResolvedValue(0),
+  resumeStalledJobs: vi.fn().mockResolvedValue({ resumed: 0, failed: 0 }),
 }));
 
 /**

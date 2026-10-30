@@ -25,7 +25,9 @@ CREATE TABLE IF NOT EXISTS source_files (
   -- Made by "explore with sample records": invented records the person can remove again in one step.
   sample INTEGER NOT NULL DEFAULT 0,
   -- Photos the upload was made from, kept as they came (before straightening and enhancing) beside the PDF: the original stays the original.
-  raw_count INTEGER NOT NULL DEFAULT 0
+  raw_count INTEGER NOT NULL DEFAULT 0,
+  -- Made by restoring an export, which calls no model and cannot be started again from the file alone: a reload that interrupts it fails it instead of reading it.
+  from_export INTEGER NOT NULL DEFAULT 0
 );
 
 -- What the analysis of a mixed upload found: which pages belong together (JSON, see regroup/analyze.ts). One per upload, replaced

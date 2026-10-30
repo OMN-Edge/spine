@@ -301,6 +301,8 @@ export interface NewSourceFile {
   photoSet?: boolean;
   /** One of the invented sample records. */
   sample?: boolean;
+  /** Made by restoring an export. */
+  fromExport?: boolean;
 }
 
 export interface PageRepository {
@@ -1123,8 +1125,10 @@ export interface MaintenanceRepository {
    * under load is unsafe in WAL mode; another store would dump differently.
    */
   snapshotTo(destination: string): Promise<void>;
-  /** Startup: nothing can still be in flight, the registry is in-memory. */
-  failStalledSourceFiles(): Promise<number>;
+  /** Startup: the uploads a closed page left reading or waiting (nothing can still be in flight, the registry is in-memory). */
+  stalledSourceFiles(): Promise<Array<{ id: string; user_id: string; file_path: string; from_export: boolean }>>;
+  /** Startup: fails the stalled uploads except the ones named, which are being started again. */
+  failStalledSourceFiles(keep?: string[]): Promise<number>;
   /** Every account's sign-in rows (browser, address) started before the first cutoff or idle since the second, so one that is never signed in again does not keep them (privacy notice). */
   pruneSessions(startedBefore: string, idleSince: string, devicesFirstSeenBefore?: string): Promise<number>;
 }

@@ -192,7 +192,7 @@ The code is three npm workspaces: `core/` (what the browser's core runs, and the
 | Store | `legacy-database.test.ts` | An old-shape database is refused |
 | Backup | `backup.test.ts` | Snapshot is a readable database; vault mirror; retention |
 | Parser | `parser.test.ts`, `ocr.test.ts`, `read-page.test.ts`, `capabilities.test.ts` | Box scaling, one entry per page, the text-layer → OCR → model cascade and its thresholds, fallback, the two-switch rule, the image message, "Read with AI" |
-| Ingestion pipeline | `pipeline.test.ts`, `reconcile.test.ts` | Splitting, grounding, error paths, restart recovery, a blank page not shifting images, model-read pages |
+| Ingestion pipeline | `pipeline.test.ts`, `resume-stalled.test.ts` | Splitting, grounding, error paths, restart recovery (an interrupted upload is read again), a blank page not shifting images, model-read pages |
 | AI | `continuation.test.ts`, `grounding.test.ts` | Validation and fallbacks, tested through fake task clients |
 | Page images | `page-image.test.ts` | Auth required, streams PNG, 404 on missing row or file |
 | Translation | `translation.test.ts`, `i18n-coverage.test.ts` | Digest-validated cache, two stages, retry of missing or rambling values, language detection, the public routes; every interface string present in all dictionaries |

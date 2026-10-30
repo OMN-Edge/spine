@@ -49,6 +49,7 @@ export async function seedSourceFile(
     mimeType?: string;
     filePath?: string;
     photoSet?: boolean;
+    fromExport?: boolean;
   } = {},
 ) {
   const store = getStore();
@@ -63,6 +64,7 @@ export async function seedSourceFile(
     mimeType: overrides.mimeType ?? 'application/pdf',
     checksum: overrides.checksum ?? uuidv4(),
     photoSet: overrides.photoSet,
+    fromExport: overrides.fromExport,
   });
 
   if (overrides.status && overrides.status !== 'pending') {

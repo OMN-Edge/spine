@@ -3,8 +3,8 @@ import type { SourceFile } from '../../types.js';
 import type { NewSourceFile, SourceFileRepository, SourceFileSummary } from '../types.js';
 import { owner } from './owner.js';
 
-type RawUpload = Omit<SourceFile, 'grouping_confirmed' | 'photo_set' | 'sample'> & { grouping_confirmed: number; photo_set: number; sample: number };
-const asUpload = (row: RawUpload): SourceFile => ({ ...row, grouping_confirmed: row.grouping_confirmed === 1, photo_set: row.photo_set === 1, sample: row.sample === 1 });
+type RawUpload = Omit<SourceFile, 'grouping_confirmed' | 'photo_set' | 'sample' | 'from_export'> & { grouping_confirmed: number; photo_set: number; sample: number; from_export: number };
+const asUpload = (row: RawUpload): SourceFile => ({ ...row, grouping_confirmed: row.grouping_confirmed === 1, photo_set: row.photo_set === 1, sample: row.sample === 1, from_export: row.from_export === 1 });
 
 /** Every statement filters by `user_id` (SECURITY.md P12). */
 export function sourceFileRepository(db: Database): SourceFileRepository {
@@ -18,8 +18,8 @@ export function sourceFileRepository(db: Database): SourceFileRepository {
   const find = db.prepare('SELECT * FROM source_files WHERE id = ? AND user_id = ?');
   const findByChecksum = db.prepare('SELECT * FROM source_files WHERE checksum = ? AND user_id = ?');
   const insert = db.prepare(`
-    INSERT INTO source_files (id, user_id, uploaded_at, original_filename, file_path, mime_type, checksum, status, chat_conversation_id, photo_set, sample)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+    INSERT INTO source_files (id, user_id, uploaded_at, original_filename, file_path, mime_type, checksum, status, chat_conversation_id, photo_set, sample, from_export)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)
   `);
   const setStatus = db.prepare(
     'UPDATE source_files SET status = ?, error_message = ? WHERE id = ? AND user_id = ?',
@@ -117,6 +117,7 @@ export function sourceFileRepository(db: Database): SourceFileRepository {
         input.chatConversationId ?? null,
         input.photoSet ? 1 : 0,
         input.sample ? 1 : 0,
+        input.fromExport ? 1 : 0,
       );
     },
 

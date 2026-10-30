@@ -246,10 +246,10 @@ The provider is down, or its answer is unusable, while a file is being read.
 - A failed read of one document's details (as opposed to the whole upload) leaves a document that says so and waits in Review.
 - The failed row offers **Try again**. It runs the upload again the way it was first read (the configured parser, not the model for every page, so nothing is sent off the machine that would not have been the first time), and replaces what the failed attempt left only once the new reading has succeeded, so a second failure changes nothing.
 - Uploading the same file again does the same, instead of being refused as a duplicate of the failed one. A file whose earlier upload is done, or still running, is a duplicate as before.
+- Closing or reloading the page while an upload is being read does not fail it: when the core starts again the upload is read again from its file (a restore, and an upload whose file never reached the vault, is marked failed with "interrupted").
 - Try again is for an upload that failed: for any other it is refused, and for another user's it is reported as not found.
-- A restart that interrupts a reading marks it failed, so it can be tried again too.
 
-Status: auto (`pipeline`, `upload`); the Try again button and a failure, then a recovered provider, then a retry in the running app: hand.
+Status: auto (`pipeline`, `upload`, `resume-stalled`); the Try again button, closing the page while an upload is read and opening it again, and a failure, then a recovered provider, then a retry in the running app: hand.
 
 ---
 

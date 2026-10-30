@@ -2,8 +2,8 @@ import type { JobStatus } from '../types.js';
 
 /**
  * Progress of the work on an upload, by upload id: reading it (`pipeline.ts`) or restoring it from an export
- * (`archive/import-file.ts`). In memory, because a restart ends the work anyway and `reconcileStalledJobs`
- * fails the rows it left behind. The browser polls it through `GET /api/source-files/:id/status`.
+ * (`archive/import-file.ts`). In memory, because a restart ends the work anyway and `resumeStalledJobs`
+ * starts the rows it left behind again. The browser polls it through `GET /api/source-files/:id/status`.
  */
 const jobs = new Map<string, JobStatus>();
 

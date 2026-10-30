@@ -25,15 +25,20 @@ export function maintenanceRepository(db: Database): MaintenanceRepository {
       return db.prepare('DELETE FROM user_sessions WHERE created_at < ? OR last_seen_at < ?').run(startedBefore, idleSince).changes;
     },
 
-    async failStalledSourceFiles() {
+    async stalledSourceFiles() {
+      const rows = db.prepare(`SELECT id, user_id, file_path, from_export FROM source_files WHERE status IN ('pending', 'processing')`).all() as Array<{ id: string; user_id: string; file_path: string; from_export: number }>;
+      return rows.map(row => ({ ...row, from_export: row.from_export === 1 }));
+    },
+
+    async failStalledSourceFiles(keep = []) {
       // Prepared here and not when the repository is built: the server's database has no `source_files` (SECURITY.md M-37), and only the
       // device's core, which has, asks for this.
       return db.prepare(`
         UPDATE source_files
         SET status = 'error',
             error_message = COALESCE(error_message, 'interrupted — the page was closed or reloaded during processing')
-        WHERE status IN ('pending', 'processing')
-      `).run().changes;
+        WHERE status IN ('pending', 'processing')${keep.length > 0 ? ` AND id NOT IN (${keep.map(() => '?').join(', ')})` : ''}
+      `).run(...keep).changes;
     },
   };
 }

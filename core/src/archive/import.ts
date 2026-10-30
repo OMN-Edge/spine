@@ -131,7 +131,7 @@ async function importExport(userId: string, zip: ZipReader, filename: string | n
     for (const p of prints) if (p) known.set(p, { sourceFileId: fileId }); // two copies inside one zip are one document
 
     await store.sourceFiles.create(userId, {
-      id: fileId, uploadedAt: new Date().toISOString(), originalFilename: file.original_filename, filePath, mimeType: MIME_OF[kind], checksum: saved.checksum, photoSet: file.photo_set,
+      id: fileId, uploadedAt: new Date().toISOString(), originalFilename: file.original_filename, filePath, mimeType: MIME_OF[kind], checksum: saved.checksum, photoSet: file.photo_set, fromExport: true,
     });
     links.expect();
     startRestore(userId, fileId, filePath, kind !== 'pdf', file, setAside, people, ids => links.finished(fileIndex, ids));

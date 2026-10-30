@@ -18,6 +18,8 @@ export interface SourceFile {
   sample: boolean;
   /** Unprocessed photos kept beside the PDF of a scan session; 0 for any other upload. */
   raw_count: number;
+  /** Made by restoring an export: no model reads it, and it is not started again after an interruption. */
+  from_export: boolean;
 }
 
 export interface Page {

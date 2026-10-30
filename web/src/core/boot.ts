@@ -22,7 +22,7 @@ import { resetStore } from 'spine-core/store/index';
 import type { Store } from 'spine-core/store/types';
 import { decorateAuth, useRequestAuth } from 'spine-core/routes/middleware';
 import { HEALTH_CONSENT_VERSION, TERMS_VERSION } from 'spine-core/consent';
-import { reconcileStalledJobs } from 'spine-core/ingestion/pipeline';
+import { resumeStalledJobs } from 'spine-core/ingestion/pipeline';
 import { tagRoutes } from 'spine-core/routes/tags';
 import { doctorRoutes } from 'spine-core/routes/doctors';
 import { trendRoutes } from 'spine-core/routes/trends';
@@ -90,9 +90,6 @@ export async function startCore(vault?: { objects: ObjectStore; profileId: strin
     const { empty } = await persistence.load();
     if (empty) await store.tags.ensure(DEVICE_USER, [...STARTER_TAGS]);
   }
-  // Nothing can still be running in a core that has just started: an upload left reading when the page closed would otherwise wait for ever.
-  await reconcileStalledJobs();
-
   // Links are sealed here and sent to the server (docs/crypto-design.md, stage 4). The demo has no account to send them for: with no host,
   // every owner share route answers 503.
   useShareHost(options.shares === false ? null : createShareHost({ store: () => store, mail: relayMail }));
@@ -105,6 +102,10 @@ export async function startCore(vault?: { objects: ObjectStore; profileId: strin
   for (const routes of [tagRoutes, doctorRoutes, trendRoutes, episodeRoutes, documentRoutes, sourceFileRoutes, exportRoutes, similarityRoutes, linkRoutes, demoRoutes, chatRoutes, shareRoutes]) {
     await local.register(routes);
   }
+
+  // Nothing can still be running in a core that has just started: an upload left reading when the page closed is read again (TR-AI-11),
+  // and one that cannot be is failed, or it would wait for ever. After the routes, because reading may call a model.
+  await resumeStalledJobs();
 
   let locked = false;
   let ticks = 0;

@@ -30,7 +30,7 @@ const mockStartJob = vi.hoisted(() => vi.fn());
 vi.mock('spine-core/ingestion/pipeline.js', () => ({
   startIngestionJob: mockStartJob,
   getJobStatus: vi.fn().mockReturnValue(null),
-  reconcileStalledJobs: vi.fn().mockResolvedValue(0),
+  resumeStalledJobs: vi.fn().mockResolvedValue({ resumed: 0, failed: 0 }),
 }));
 
 let app: Awaited<ReturnType<typeof buildTestApp>>;

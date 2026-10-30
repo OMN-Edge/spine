@@ -177,7 +177,7 @@ The hard parts are the key hierarchy, the approval-mode share handshake and the 
 - **TR-CRY-05:** a new device signs in with the master password or a passkey set up to open the vault; enrolling one from a signed-in device is not built.
 - **TR-CRY-06 and TR-CRY-07:** the key pair is made at sign-up, but delegation and key rotation on revocation are not built.
 - **TR-AI-04:** masking identifiers such as a national ID number before a call is not built; the extraction prompt tells the model not to extract them.
-- **TR-AI-11:** reading an upload resumes (confirming again reads what is still marked), but an upload interrupted by closing the page is marked failed and is started again with Try again.
+- **TR-AI-11:** reading an upload resumes (confirming again reads what is still marked), and an upload the page was closed on is read again when the core next starts (`resumeStalledJobs`). A restore interrupted that way, and an upload whose file had not reached the vault, is marked failed. The queue is the app's own two-at-a-time limit and is not a persisted list: what resumes is what the rows say is unfinished.
 - **TR-INF-03:** account mail carries a link and, for a sign-in, a changed setting or a waiting request, the time of the event (SECURITY.md **P8**); it never carries medical content.
 - **TR-CLI-01:** the web app can be put on a home screen (a manifest and icons), but has no service worker on purpose: one would put a cache that can serve an old core in front of every route, share links included, so there is no offline use and the local index is not a cache the page keeps.
 - **TR-CLI-02:** the strict content security policy is in place; subresource integrity and reproducible builds with published hashes are not.

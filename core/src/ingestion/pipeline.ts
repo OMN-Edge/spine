@@ -19,15 +19,19 @@ import { describeError } from '../failure.js';
 export { getJobStatus };
 
 /**
- * Fail over any source_file left mid-flight by a previous process.
+ * Pick up the uploads a closed or reloaded page left reading (TR-AI-11).
  *
- * Progress lives in the in-memory registry above, so a restart loses it.
- * Rows still marked 'pending' or 'processing' have no job behind them and
- * would otherwise poll forever in the review queue. Safe to call only at
- * startup, before any job is registered.
+ * Progress lives in the in-memory registry above, so a restart loses it, but the upload's row and its file are in the vault: an upload
+ * the pipeline was reading is started again from its file, as "Try again" would. A restore is not (it has no model to ask and needs its
+ * manifest, which only the request held), nor is an upload whose file did not reach the vault: those are failed, so they do not poll for
+ * ever. Call it once at startup, after the core can run a job, and before any job is registered.
  */
-export async function reconcileStalledJobs(): Promise<number> {
-  return getAccountsStore().maintenance.failStalledSourceFiles();
+export async function resumeStalledJobs(): Promise<{ resumed: number; failed: number }> {
+  const maintenance = getAccountsStore().maintenance;
+  const resume = (await maintenance.stalledSourceFiles()).filter(upload => !upload.from_export && fileSystem().existsSync(upload.file_path));
+  const failed = await maintenance.failStalledSourceFiles(resume.map(upload => upload.id));
+  for (const upload of resume) startIngestionJob(upload.id, upload.user_id, { retry: true });
+  return { resumed: resume.length, failed };
 }
 
 export interface IngestionOptions {

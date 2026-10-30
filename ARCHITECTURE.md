@@ -371,7 +371,7 @@ A **photo** has no text layer and nothing local can read it well, so it is not t
 
 ### Failed uploads
 
-A failure (the provider was down, a page could not be read, the process restarted mid-reading) marks the upload failed with its reason and keeps the original. It is not the file's fault, so it should not need re-uploading, which the duplicate check would refuse: `POST /api/source-files/:id/retry` (the Upload page's Try again) runs it again, and so does uploading the same file again, whose checksum matches only an upload that failed. It reads the way the first attempt did (the configured parser, never the model for every page unless it is a photo), and, like a re-read, removes what the failed attempt left only after the new reading has succeeded. Only a failed upload can be retried.
+A failure (the provider was down, a page could not be read) marks the upload failed with its reason and keeps the original. It is not the file's fault, so it should not need re-uploading, which the duplicate check would refuse: `POST /api/source-files/:id/retry` (the Upload page's Try again) runs it again, and so does uploading the same file again, whose checksum matches only an upload that failed. It reads the way the first attempt did (the configured parser, never the model for every page unless it is a photo), and, like a re-read, removes what the failed attempt left only after the new reading has succeeded. Only a failed upload can be retried.
 
 ### Hybrid routing
 
@@ -551,7 +551,7 @@ Boundary detection will sometimes be wrong, most of all in a long scan holding m
 
 ### Job state
 
-Progress lives in an in-memory `Map` (`ingestion/jobs.ts`) — the one piece of state that does not survive a restart. `reconcileStalledJobs()` runs when the device's core starts (`web/src/core/boot.ts`) and fails over any row still `pending` or `processing`, since a fresh process cannot have a job behind it.
+Progress lives in an in-memory `Map` (`ingestion/jobs.ts`) — the one piece of state that does not survive a restart. `resumeStalledJobs()` runs when the device's core starts (`web/src/core/boot.ts`): a row still `pending` or `processing` has no job behind it in a fresh process, but its row and file are in the vault, so the upload is read again from its file, as Try again would (it removes what the interrupted attempt left only once the new reading has succeeded). A row made by restoring an export (`source_files.from_export`, which has no model and needs its manifest, which only the request held) and one whose file did not reach the vault before the page closed are failed instead, so they do not poll for ever.
 
 ### Grounding
 

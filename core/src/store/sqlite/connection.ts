@@ -125,6 +125,8 @@ function addColumnsInPlace(db: Database): void {
   if (uploads.length > 0 && !uploads.includes('sample')) db.exec('ALTER TABLE source_files ADD COLUMN sample INTEGER NOT NULL DEFAULT 0');
   // How many unprocessed photos an upload keeps beside its PDF (a scan session). Earlier uploads keep none.
   if (uploads.length > 0 && !uploads.includes('raw_count')) db.exec('ALTER TABLE source_files ADD COLUMN raw_count INTEGER NOT NULL DEFAULT 0');
+  // Told apart from an upload read by the pipeline, so one interrupted by a reload is read again and a restore is not. Every earlier upload was read.
+  if (uploads.length > 0 && !uploads.includes('from_export')) db.exec('ALTER TABLE source_files ADD COLUMN from_export INTEGER NOT NULL DEFAULT 0');
   if (uploads.length > 0 && !uploads.includes('grouping_confirmed')) db.exec('ALTER TABLE source_files ADD COLUMN grouping_confirmed INTEGER NOT NULL DEFAULT 1');
 }
 

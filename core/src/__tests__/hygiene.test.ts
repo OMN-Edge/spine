@@ -74,7 +74,7 @@ describe('code', () => {
   const text = new Map(src.map(f => [f, code(read(f))]));
 
   // Exports that production code never refers to, not even in their own file. These are the functions a test calls and nothing else does;
-  // a function that must run at start and has no caller is exactly this (reconcileStalledJobs was one for a long time). Each one below is
+  // a function that must run at start and has no caller is exactly this (resumeStalledJobs was one for a long time). Each one below is
   // on purpose: a helper for tests, or an entry point for tests that wait for the work.
   const TEST_ONLY = new Set([
     'resetEmbedder', 'resetAiReadings', 'resetChatLlm', 'resetParser', 'resetRegroupJobs', 'resetServerClock', 'resetMailer', // between tests

@@ -23,7 +23,7 @@ export async function loadDemo(userId: string, lang: DemoLanguage): Promise<'loa
     await textToPdf(demo.text, filePath);
     const checksum = sha256Hex(fileSystem().readFileSync(filePath));
     await store.sourceFiles.create(userId, {
-      id: fileId, uploadedAt: new Date().toISOString(), originalFilename: demo.file.original_filename, filePath, mimeType: 'application/pdf', checksum, sample: true,
+      id: fileId, uploadedAt: new Date().toISOString(), originalFilename: demo.file.original_filename, filePath, mimeType: 'application/pdf', checksum, sample: true, fromExport: true,
     });
     startRestore(userId, fileId, filePath, false, demo.file, new Set(), []);
   }

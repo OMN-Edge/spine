@@ -26,7 +26,7 @@ export const SLICE = {
     // No file name, no path, no checksum: the recipient is shown a document, not an upload.
     copy: ['id', 'user_id', 'uploaded_at', 'mime_type', 'page_count'],
     set: { original_filename: 'shared', file_path: '', status: 'done', grouping_confirmed: 1 },
-    left: ['checksum', 'error_message', 'chat_conversation_id', 'photo_set', 'sample', 'raw_count'],
+    left: ['checksum', 'error_message', 'chat_conversation_id', 'photo_set', 'sample', 'raw_count', 'from_export'],
   },
   pages: {
     // `image_path` is set by the caller: the file in the share's own file system, only when scans are included.
