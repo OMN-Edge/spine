@@ -179,7 +179,7 @@ The hard parts are the key hierarchy, the approval-mode share handshake and the 
 - **TR-AI-04:** masking identifiers such as a national ID number before a call is not built; the extraction prompt tells the model not to extract them.
 - **TR-AI-11:** reading an upload resumes (confirming again reads what is still marked), but an upload interrupted by closing the page is marked failed and is started again with Try again.
 - **TR-INF-03:** account mail carries a link and, for a sign-in, a changed setting or a waiting request, the time of the event (SECURITY.md **P8**); it never carries medical content.
-- **TR-CLI-01:** the web app is not an installable PWA (no manifest or service worker).
+- **TR-CLI-01:** the web app can be put on a home screen (a manifest and icons), but has no service worker on purpose: one would put a cache that can serve an old core in front of every route, share links included, so there is no offline use and the local index is not a cache the page keeps.
 - **TR-CLI-02:** the strict content security policy is in place; subresource integrity and reproducible builds with published hashes are not.
 
 Model provider zero-retention setup, required before the first real user (the operator's part):
