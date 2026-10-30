@@ -1,5 +1,5 @@
 import type { Cell } from '../store/types.js';
-import type { Clash, Note, Rows } from '../store/sync.js';
+import type { Clash, Note, Rows, Stamp } from '../store/sync.js';
 
 type Row = Record<string, Cell>;
 
@@ -13,7 +13,7 @@ export interface TableSpec { key: string[]; unique?: string[][] }
  */
 export class MemoryRows implements Rows {
   readonly data = new Map<string, Map<string, Row>>();
-  private clockOf = new Map<string, string>();
+  private stampOf = new Map<string, Stamp>();
   private aliasOf = new Map<string, string>();
   private log: Note[] = [];
   private merged = false;
@@ -41,8 +41,10 @@ export class MemoryRows implements Rows {
   set(table: string, row: Row): void {
     const clash = this.clashWith(table, row);
     if (clash) throw new Error(`UNIQUE constraint failed: ${clash.map(c => `${table}.${c}`).join(', ')}`);
-    this.data.get(table)!.set(JSON.stringify(this.keyOf(table, row)), { ...row });
-    this.log.push({ t: table, k: this.keyOf(table, row), r: { ...row }, at: this.now() });
+    const id = JSON.stringify(this.keyOf(table, row));
+    const before = this.data.get(table)!.get(id);
+    this.data.get(table)!.set(id, { ...row });
+    this.log.push({ t: table, k: this.keyOf(table, row), r: { ...row }, at: this.now(), ...(before ? { o: { ...before } } : {}) });
   }
 
   /** The application's delete. */
@@ -67,16 +69,19 @@ export class MemoryRows implements Rows {
   hasNotes = () => this.log.length > 0;
   clearNotes() { this.log = []; }
 
-  clock = (table: string, key: string) => this.clockOf.get(`${table}|${key}`);
-  setClock(table: string, key: string, h: string) { this.clockOf.set(`${table}|${key}`, h); }
-  clocks = () => [...this.clockOf].map(([id, h]) => ({ t: id.slice(0, id.indexOf('|')), k: id.slice(id.indexOf('|') + 1), h }));
+  stamp = (table: string, key: string) => this.stampOf.get(`${table}|${key}`);
+  setStamp(table: string, key: string, stamp: Stamp) { this.stampOf.set(`${table}|${key}`, stamp); }
+  stamps = () => [...this.stampOf].map(([id, stamp]) => ({ t: id.slice(0, id.indexOf('|')), k: id.slice(id.indexOf('|') + 1), stamp }));
+  exists = (table: string, key: Row) => this.data.get(table)!.has(JSON.stringify(this.keyOf(table, key)));
   alias = (table: string, incoming: string) => this.aliasOf.get(`${table}|${incoming}`);
   addAlias(table: string, incoming: string, local: string) { this.aliasOf.set(`${table}|${incoming}`, local); }
 
   write(table: string, row: Row): Clash | null {
     const columns = this.clashWith(table, row);
     if (columns) return { columns };
-    this.data.get(table)!.set(JSON.stringify(this.keyOf(table, row)), { ...row });
+    const id = JSON.stringify(this.keyOf(table, row));
+    // Only the columns given are written, as in a database: the others stay as they are.
+    this.data.get(table)!.set(id, { ...this.data.get(table)!.get(id), ...row });
     if (!this.merged) this.log.push({ t: table, k: this.keyOf(table, row), r: { ...row }, at: this.now() });
     return null;
   }

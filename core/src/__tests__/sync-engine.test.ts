@@ -297,3 +297,193 @@ describe('the list of synced tables', () => {
     expect(await createChangeLog(empty).drain()).toEqual([]);
   });
 });
+
+describe('columns of one row', () => {
+  const doc = { id: 'd1', title: 'Original', date: '2026-01-01', notes: 'none' };
+  /** Two devices that both hold `doc`, with nothing left to send. */
+  async function pair() {
+    const a = device('aaaa'); const b = device('bbbb');
+    a.rows.set('documents', doc);
+    await exchange(a, b);
+    tick += 1000;
+    return { a, b };
+  }
+  const row = (d: Device) => d.rows.get('documents', { id: 'd1' });
+
+  it('keeps both edits when two devices change different columns of a row before they meet', async () => {
+    const { a, b } = await pair();
+    a.rows.set('documents', { ...doc, title: 'Renamed' });
+    tick += 1000;
+    b.rows.set('documents', { ...doc, date: '2026-02-02' }); // later than a’s edit, and from a row that still had the old title
+    await exchange(a, b);
+    expect(row(a)).toEqual({ ...doc, title: 'Renamed', date: '2026-02-02' });
+    expect(row(b)).toEqual(row(a));
+  });
+
+  it('gives a column both devices changed to the later edit', async () => {
+    const { a, b } = await pair();
+    a.rows.set('documents', { ...doc, title: 'From a' });
+    tick += 1000;
+    b.rows.set('documents', { ...doc, title: 'From b' });
+    await exchange(a, b);
+    expect(row(a)?.title).toBe('From b');
+    expect(row(b)?.title).toBe('From b');
+  });
+
+  it('says in a change which columns it wrote, and writes only those when it is a small edit', async () => {
+    const { a } = await pair();
+    a.rows.set('documents', { ...doc, date: '2026-03-03' });
+    const sent = await a.log.drain();
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.c).toEqual(['date']);
+    expect(sent[0]!.r).toEqual({ ...doc, date: '2026-03-03' });
+  });
+
+  it('sends nothing for an update that wrote the values it had', async () => {
+    const { a } = await pair();
+    a.rows.set('documents', { ...doc });
+    expect(await a.log.drain()).toEqual([]);
+  });
+
+  it('sends a new row whole, even when it was changed again before it was sent', async () => {
+    const a = device('aaaa');
+    a.rows.set('documents', doc);
+    a.rows.set('documents', { ...doc, title: 'Changed at once' });
+    const sent = await a.log.drain();
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.c).toBeUndefined();
+  });
+
+  it('collects the columns of several edits made before they were sent', async () => {
+    const { a, b } = await pair();
+    a.rows.set('documents', { ...doc, title: 'One' });
+    a.rows.set('documents', { ...doc, title: 'One', notes: 'Two' });
+    const sent = await a.log.drain();
+    expect(sent[0]!.c).toEqual(['notes', 'title']);
+    await b.log.apply(sent);
+    expect(row(b)).toEqual({ ...doc, title: 'One', notes: 'Two' });
+  });
+
+  it('ends the same whichever order the changes arrive in', async () => {
+    const { a, b } = await pair();
+    const c = device('cccc');
+    const base = await a.log.dump();
+    await c.log.apply(base);
+    a.rows.set('documents', { ...doc, title: 'A1' });
+    tick += 10;
+    b.rows.set('documents', { ...doc, date: 'B1' });
+    tick += 10;
+    c.rows.set('documents', { ...doc, title: 'C1', notes: 'C1' });
+    const sent = [await a.log.drain(), await b.log.drain(), await c.log.drain()];
+    const all = sent.flat();
+    const orders = [[0, 1, 2], [2, 1, 0], [1, 0, 2], [1, 2, 0], [2, 0, 1], [0, 2, 1]];
+    const results = new Set<string>();
+    for (const order of orders) {
+      const fresh = device('dddd');
+      await fresh.log.apply(base);
+      for (const i of order) await fresh.log.apply(sent[i]!);
+      results.add(JSON.stringify(row(fresh)));
+    }
+    // and all at once, which sorts them
+    const once = device('eeee');
+    await once.log.apply(base);
+    await once.log.apply(all);
+    results.add(JSON.stringify(row(once)));
+    expect(results.size).toBe(1);
+    expect(row(once)).toEqual({ id: 'd1', title: 'C1', date: 'B1', notes: 'C1' });
+  });
+
+  it('does not let an older write of a column beat a newer one that arrived first', async () => {
+    const { a, b } = await pair();
+    b.rows.set('documents', { ...doc, title: 'Old' });
+    const old = await b.log.drain();
+    tick += 5000;
+    a.rows.set('documents', { ...doc, title: 'New' });
+    await a.log.drain();
+    await a.log.apply(old);
+    expect(row(a)?.title).toBe('New');
+  });
+
+  it('keeps a deletion that is later than an edit, and lets an edit later than the deletion bring the row back', async () => {
+    const { a, b } = await pair();
+    a.rows.set('documents', { ...doc, title: 'Edited' });
+    tick += 1000;
+    b.rows.del('documents', { id: 'd1' });
+    await exchange(a, b);
+    expect(row(a)).toBeUndefined();
+    expect(row(b)).toBeUndefined();
+
+    const { a: c, b: d } = await pair();
+    d.rows.del('documents', { id: 'd1' });
+    tick += 1000;
+    c.rows.set('documents', { ...doc, date: 'After' });
+    await exchange(c, d);
+    expect(row(c)).toEqual({ ...doc, date: 'After' });
+    expect(row(d)).toEqual(row(c));
+  });
+
+  it('reads a change from before columns were stamped as the whole row', async () => {
+    const { a } = await pair();
+    tick += 1000;
+    const old: Change = { t: 'documents', k: { id: 'd1' }, r: { id: 'd1', title: 'Whole', date: 'Whole', notes: 'Whole' }, h: `${String(tick).padStart(14, '0')}.00000.cccccccc` };
+    await a.log.apply([old]);
+    expect(row(a)).toEqual(old.r);
+    // and a column edited later is not beaten by a whole row from before it, while its other columns still take what is newer than they are
+    tick += 1000;
+    a.rows.set('documents', { ...old.r!, title: 'Later' } as Record<string, string>);
+    await a.log.drain();
+    const earlier: Change = { ...old, r: { id: 'd1', title: 'Whole', date: 'Earlier', notes: 'Whole' }, h: `${String(tick - 500).padStart(14, '0')}.00000.dddddddd` };
+    await a.log.apply([earlier]);
+    expect(row(a)).toEqual({ id: 'd1', title: 'Later', date: 'Earlier', notes: 'Whole' });
+  });
+
+  it('gives a device started from a dump the same row and the same standing of each column', async () => {
+    const { a, b } = await pair();
+    a.rows.set('documents', { ...doc, title: 'A edit' });
+    tick += 1000;
+    b.rows.set('documents', { ...doc, date: 'B edit' });
+    await exchange(a, b);
+    const fresh = device('ffff');
+    await fresh.log.apply(await a.log.dump());
+    expect(row(fresh)).toEqual(row(a));
+    // a write of the title older than a’s edit loses on both
+    const late = device('gggg');
+    late.rows.set('documents', doc);
+    await late.log.drain();
+    const staleTitle: Change = { t: 'documents', k: { id: 'd1' }, r: { ...doc, title: 'Stale' }, h: `${String(Date.UTC(2026, 9, 1) + 500).padStart(14, '0')}.00000.zzzzzzzz`, c: ['title'] };
+    await fresh.log.apply([staleTitle]);
+    await a.log.apply([staleTitle]);
+    expect(row(fresh)?.title).toBe('A edit');
+    expect(row(a)?.title).toBe('A edit');
+    // and the dump of the fresh device is the same as the dump of the old one
+    const same = (x: Change[]) => x.map(c => JSON.stringify({ ...c, h: undefined })).sort();
+    expect(same(await fresh.log.dump())).toEqual(same(await a.log.dump()));
+  });
+
+  it('converges over many random edits of several columns on three devices, delivered in different orders', async () => {
+    let seed = 7;
+    const rand = (n: number) => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed % n; };
+    for (let round = 0; round < 25; round++) {
+      const devices = [device('aaaa'), device('bbbb'), device('cccc')];
+      const columns = ['title', 'date', 'notes'];
+      devices[0].rows.set('documents', doc);
+      await exchange(...devices);
+      for (let step = 0; step < 12; step++) {
+        tick += 1 + rand(3);
+        const d = devices[rand(3)]!;
+        const current = d.rows.get('documents', { id: 'd1' });
+        if (!current) { if (rand(2) === 0) d.rows.set('documents', { ...doc, title: `back${step}` }); continue; }
+        if (rand(10) === 0) d.rows.del('documents', { id: 'd1' });
+        else d.rows.set('documents', { ...current, [columns[rand(3)]!]: `v${rand(100)}` });
+        if (rand(4) === 0) await exchange(...devices);
+      }
+      const sent = await Promise.all(devices.map(d => d.log.drain()));
+      const orders = [[0, 1, 2], [2, 0, 1], [1, 2, 0]];
+      for (let i = 0; i < 3; i++) for (const j of orders[i]!) if (j !== i) await devices[i]!.log.apply(sent[j]!);
+      await exchange(...devices);
+      await exchange(...devices);
+      expect(row(devices[1]!)).toEqual(row(devices[0]!));
+      expect(row(devices[2]!)).toEqual(row(devices[0]!));
+    }
+  });
+});

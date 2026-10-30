@@ -23,8 +23,22 @@ export const ALIASED: Record<string, Array<[string, string]>> = {
   doctors: [['id', 'doctors']], document_doctors: [['doctor_id', 'doctors']],
 };
 
-/** A write the store noted, in the order it happened. `r` is the whole row after it (null: deleted); `at` is when, in milliseconds. */
-export interface Note { t: string; k: Record<string, Cell>; r: Record<string, Cell> | null; at: number }
+/**
+ * A write the store noted, in the order it happened. `r` is the whole row after it (null: deleted); `at` is when, in milliseconds. `o` is
+ * the row as it was before an update that kept its key, which is how the columns it changed are found; absent for an insert, a delete, and a
+ * store that does not note it (the write is then taken to be of the whole row).
+ */
+export interface Note { t: string; k: Record<string, Cell>; r: Record<string, Cell> | null; at: number; o?: Record<string, Cell> | null }
+
+/**
+ * When a row's columns were last written. `h` is the newest of them (and, for a deleted row, when it was deleted). Columns not named in
+ * `cols` were written at `b`, or at `h` when there is no `b`: a row written whole has just `h`, and a row some of whose columns were
+ * edited since has the stamp of the whole write as `b` and the later ones in `cols`.
+ */
+export interface Stamp { h: string; b?: string; cols?: Record<string, string> }
+
+/** Older than any stamp a device makes: what a column nobody has written is taken to have been written at. */
+export const NEVER = '00000000000000.00000.00000000';
 
 /** A row that could not be written because another already holds the values of a unique constraint: the columns of that constraint. */
 export interface Clash { columns: string[] }
@@ -46,10 +60,12 @@ export interface Rows {
   hasNotes(): boolean;
   clearNotes(): void;
 
-  /** The clock of a row, `key` being its key as `JSON.stringify` of the key object. */
-  clock(table: string, key: string): string | undefined;
-  setClock(table: string, key: string, h: string): void;
-  clocks(): Array<{ t: string; k: string; h: string }>;
+  /** The stamp of a row (deleted ones too), `key` being its key as `JSON.stringify` of the key object. */
+  stamp(table: string, key: string): Stamp | undefined;
+  setStamp(table: string, key: string, stamp: Stamp): void;
+  stamps(): Array<{ t: string; k: string; stamp: Stamp }>;
+  /** Whether the row is there now. */
+  exists(table: string, key: Key): boolean;
   alias(table: string, incoming: string): string | undefined;
   addAlias(table: string, incoming: string, local: string): void;
 
@@ -144,6 +160,26 @@ export class HybridClock {
 
 const norm = (k: Key) => JSON.stringify(k);
 
+/** When `column` was last written, according to `stamp`. */
+const stampOf = (stamp: Stamp | undefined, column: string): string => stamp?.cols?.[column] ?? stamp?.b ?? stamp?.h ?? NEVER;
+
+/** A stamp with the same meaning and the least in it: a column written when the rest were is not listed. */
+function tidy(stamp: Stamp): Stamp {
+  if (!stamp.cols) return stamp.b === undefined ? { h: stamp.h } : stamp;
+  const cols = Object.fromEntries(Object.entries(stamp.cols).filter(([, h]) => h !== stamp.b));
+  if (Object.keys(cols).length === 0) return { h: stamp.b ?? stamp.h };
+  return { h: stamp.h, b: stamp.b, cols };
+}
+
+/** The stamp after `columns` were written at `h`. */
+function written(stamp: Stamp | undefined, columns: string[], h: string): Stamp {
+  const cols = { ...stamp?.cols };
+  for (const column of columns) cols[column] = h;
+  return tidy({ h: stamp && stamp.h > h ? stamp.h : h, b: stamp ? (stamp.b ?? stamp.h) : NEVER, cols });
+}
+
+const same = (a: Cell | undefined, b: Cell | undefined) => (a ?? null) === (b ?? null);
+
 /** The change log over any store that can supply `Rows`. One per store: it holds that device's clock. */
 export function createChangeLog(rows: Rows, clock: HybridClock = new HybridClock()): ChangeLog {
   const known = new Set(rows.tables());
@@ -180,7 +216,7 @@ export function createChangeLog(rows: Rows, clock: HybridClock = new HybridClock
     // written later keeps it and the incoming one is dropped, and every device ends with the same row whichever order the changes reach it.
     const holders = rows.holders(change.t, clash.columns, values, Object.fromEntries(keyColumns.map(c => [c, row[c]])));
     const later = holders.some(h => {
-      const held = rows.clock(change.t, norm(h));
+      const held = rows.stamp(change.t, norm(h))?.h;
       return held !== undefined && held > change.h;
     });
     if (later) return;
@@ -201,18 +237,36 @@ export function createChangeLog(rows: Rows, clock: HybridClock = new HybridClock
       if (rows.inTransaction()) throw new Error('the change log cannot be drained inside a transaction');
       const notes = rows.notes();
       if (notes.length === 0) return [];
-      const last = new Map<string, Note>();
+      // A row written twice is stamped when it was written last, after the rows written between. Of the columns it changed, those of every
+      // write since the row was last whole here: an update after an insert (or a delete) in the same batch is the whole row.
+      const last = new Map<string, { note: Note; columns: Set<string> | null }>();
       for (const note of notes) {
         const id = `${note.t}|${norm(note.k)}`;
-        last.delete(id); // a row written twice is stamped when it was written last, after the rows written between
-        last.set(id, note);
+        const before = last.get(id);
+        last.delete(id);
+        let columns: Set<string> | null = null;
+        if (note.r !== null && note.o && !(before && before.columns === null)) {
+          columns = new Set(before?.columns);
+          for (const column of Object.keys(note.r)) if (!(column in note.k) && !same(note.o[column], note.r[column])) columns.add(column);
+        }
+        last.set(id, { note, columns });
       }
       const changes: Change[] = [];
       rows.atomic(() => {
-        for (const note of last.values()) {
+        for (const { note, columns } of last.values()) {
+          const key = norm(note.k);
+          const held = rows.stamp(note.t, key);
+          // Nothing changed (an update that wrote the values it had): nothing to send.
+          if (columns && columns.size === 0 && held) continue;
           const h = clock.stamp(note.at);
-          changes.push({ t: note.t, k: note.k, r: note.r, h });
-          rows.setClock(note.t, norm(note.k), h);
+          if (columns && held) {
+            const named = [...columns].sort();
+            changes.push({ t: note.t, k: note.k, r: note.r, h, c: named });
+            rows.setStamp(note.t, key, written(held, named, h));
+          } else {
+            changes.push({ t: note.t, k: note.k, r: note.r, h });
+            rows.setStamp(note.t, key, { h });
+          }
         }
         rows.clearNotes();
       });
@@ -232,10 +286,27 @@ export function createChangeLog(rows: Rows, clock: HybridClock = new HybridClock
           if (!known.has(incoming.t)) continue;
           const change = translate(incoming);
           const key = norm(change.k);
-          const had = rows.clock(change.t, key);
-          if (had !== undefined && had >= change.h) continue;
-          if (change.r === null) rows.remove(change.t, change.k); else put(change);
-          rows.setClock(change.t, key, change.h);
+          const held = rows.stamp(change.t, key);
+          if (change.r === null) {
+            if (held && held.h >= change.h) continue;
+            rows.remove(change.t, change.k);
+            rows.setStamp(change.t, key, { h: change.h });
+          } else if (!rows.exists(change.t, change.k)) {
+            // A new row, or one deleted since (a deletion newer than this write stays): the whole row comes, the columns the write did not
+            // change as old as the deletion, so an older write to them is still beaten.
+            if (held && held.h >= change.h) continue;
+            put(change);
+            rows.setStamp(change.t, key, change.c
+              ? written({ h: held?.h ?? NEVER }, change.c, change.h)
+              : { h: change.h });
+          } else {
+            // A row that is here: each column goes to the newest write of it, so two devices that changed different columns both keep theirs.
+            const columns = (change.c ?? Object.keys(change.r)).filter(c => c in change.r! && !(c in change.k));
+            const won = columns.filter(c => change.h > stampOf(held, c));
+            if (won.length === 0) continue;
+            put({ ...change, r: { ...change.k, ...Object.fromEntries(won.map(c => [c, change.r![c]!])) } });
+            rows.setStamp(change.t, key, !change.c && won.length === columns.length ? { h: change.h } : written(held, won, change.h));
+          }
           applied++;
           touched.add(change.t);
         }
@@ -246,21 +317,26 @@ export function createChangeLog(rows: Rows, clock: HybridClock = new HybridClock
 
     async dump() {
       if (rows.hasNotes()) throw new Error('drain the change log before taking a snapshot');
-      const clocks = new Map<string, string>();
-      for (const c of rows.clocks()) clocks.set(`${c.t}|${c.k}`, c.h);
+      const stamps = new Map<string, Stamp>();
+      for (const c of rows.stamps()) stamps.set(`${c.t}|${c.k}`, c.stamp);
       const out: Change[] = [];
       const seen = new Set<string>();
       for (const table of rows.tables()) {
         for (const { k, r } of rows.every(table)) {
           const id = `${table}|${norm(k)}`;
           seen.add(id);
-          out.push({ t: table, k, r, h: clocks.get(id) ?? '00000000000000.00000.00000000' });
+          const stamp = stamps.get(id);
+          // The row as a whole at the time of the oldest column, then the later columns each at theirs: a device that applies them in any order ends with the same row.
+          out.push({ t: table, k, r, h: stamp ? (stamp.cols ? (stamp.b ?? NEVER) : stamp.h) : NEVER });
+          const byTime = new Map<string, string[]>();
+          for (const [column, h] of Object.entries(stamp?.cols ?? {})) byTime.set(h, [...(byTime.get(h) ?? []), column]);
+          for (const [h, columns] of [...byTime].sort(([x], [y]) => (x < y ? -1 : 1))) out.push({ t: table, k, r, h, c: columns.sort() });
         }
       }
-      for (const [id, h] of clocks) {
+      for (const [id, stamp] of stamps) {
         if (seen.has(id)) continue;
         const at = id.indexOf('|');
-        out.push({ t: id.slice(0, at), k: JSON.parse(id.slice(at + 1)) as Key, r: null, h });
+        out.push({ t: id.slice(0, at), k: JSON.parse(id.slice(at + 1)) as Key, r: null, h: stamp.h });
       }
       return out;
     },

@@ -732,6 +732,12 @@ export interface Change {
   k: Record<string, Cell>;
   r: Record<string, Cell> | null;
   h: string;
+  /**
+   * The columns this write changed, when it changed some of an existing row (`r` is still the whole row). A device that holds a newer value
+   * for a column not named here keeps it. Absent: the write is of the whole row (a new row, a restored one, or a change made before this field
+   * existed), and every column of it competes at `h`.
+   */
+  c?: string[];
 }
 
 /** The writes this device has made and the writes other devices made, kept apart from how the store holds them. */

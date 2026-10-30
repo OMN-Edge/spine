@@ -81,6 +81,41 @@ describe('devices that write and then exchange changes', () => {
     expect(await held(a)).toEqual(await held(b));
   });
 
+  it('keeps both edits when two devices change different fields of one document', async () => {
+    const doc = await seedDocument(a, { docDate: '2026-01-01', aiSummary: 'Before.' });
+    await exchange(a, b);
+    await a.documents.update(USER, doc.id, { title: 'Title from a' });
+    await new Promise(r => setTimeout(r, 5));
+    await b.documents.update(USER, doc.id, { doc_date: '2026-05-05', user_notes: 'Note from b' });
+    await exchange(a, b);
+    for (const s of [a, b]) {
+      const found = await s.documents.findFor(USER, doc.id);
+      expect(found?.title).toBe('Title from a');
+      expect(found?.doc_date).toBe('2026-05-05');
+      expect(found?.user_notes).toBe('Note from b');
+      expect(found?.ai_summary).toBe('Before.');
+    }
+    expect(await held(a)).toEqual(await held(b));
+  });
+
+  it('keeps each field’s standing across a snapshot: a device started from a dump still refuses an older edit of a newer field', async () => {
+    const doc = await seedDocument(a);
+    await exchange(a, b);
+    await b.documents.update(USER, doc.id, { title: 'Old title' });
+    const older = await b.changes.drain();
+    await new Promise(r => setTimeout(r, 10));
+    await a.documents.update(USER, doc.id, { title: 'New title' });
+    await a.changes.drain();
+    const fresh = open();
+    await account(fresh);
+    await fresh.changes.drain();
+    await fresh.changes.apply(await a.changes.dump());
+    await fresh.changes.apply(older);
+    await a.changes.apply(older);
+    expect((await fresh.documents.findFor(USER, doc.id))?.title).toBe('New title');
+    expect((await a.documents.findFor(USER, doc.id))?.title).toBe('New title');
+  });
+
   it('two edits to one row agree on the later one, whichever order they arrive in', async () => {
     const doc = await seedDocument(a);
     await exchange(a, b);
