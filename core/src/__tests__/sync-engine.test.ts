@@ -93,13 +93,31 @@ describe('the server’s clock', () => {
     observeServerClock(header(at(12)), at(11), at(11) + 100);
     const quick = currentClockOffset();
     expect(quick).toBeGreaterThan(3_000_000);
-    observeServerClock(header(at(13)), at(11), at(11) + 900); // slower: its reading is worth less
+    observeServerClock(header(at(12) + 2_000), at(11), at(11) + 900); // slower, and a little off: its reading is worth less
     expect(currentClockOffset()).toBe(quick);
     resetServerClock();
     observeServerClock(header(at(13)), at(11), at(11) + 20_000); // too slow to say anything
     expect(currentClockOffset()).toBe(0);
     observeServerClock(header(at(11) + 3_000), at(11), at(11) + 100); // three seconds: noise, not a wrong clock
     expect(currentClockOffset()).toBe(0);
+  });
+
+  it('follows the device’s clock when it is set or jumps, instead of stamping later writes with the old error', () => {
+    observeServerClock(header(at(12)), at(11), at(11) + 100); // the device thinks it is an hour behind
+    expect(currentClockOffset()).toBeGreaterThan(3_000_000);
+    // the clock is set right (an NTP step, a changed setting): the next answer agrees with the device
+    observeServerClock(header(at(12) + 60_000), at(12) + 60_000, at(12) + 60_000 + 150);
+    expect(currentClockOffset()).toBe(0);
+    // and a clock that was right and is now a day ahead
+    observeServerClock(header(at(12) + 120_000), at(12) + 120_000 + 86_400_000, at(12) + 120_000 + 86_400_000 + 100);
+    expect(currentClockOffset()).toBeLessThan(-86_000_000);
+  });
+
+  it('does not take a few odd readings for a changed clock', () => {
+    for (let i = 0; i < 6; i++) observeServerClock(header(at(12)), at(11), at(11) + 100 + i * 10);
+    const settled = currentClockOffset();
+    observeServerClock(header(at(12) + 1_000), at(11), at(11) + 2_000); // slow, and a second off
+    expect(currentClockOffset()).toBe(settled);
   });
 
   it('leaves a device with a right clock alone', () => {
@@ -284,6 +302,26 @@ describe('devices that write and then exchange changes', () => {
       expect(devices[1].held.pages).toEqual(devices[0].held.pages);
       expect(devices[2].held.pages).toEqual(devices[0].held.pages);
     }
+  });
+});
+
+describe('a write is never stamped later than the moment it is stamped', () => {
+  it('stamps a write the device’s clock puts in the future at the present, as when the clock was set back after the write', async () => {
+    const written = Date.UTC(2026, 9, 5, 12); // the clock said this when the row was written
+    const nowOnTheClock = Date.UTC(2026, 9, 5, 10); // and has been set back two hours since
+    const rows = new MemoryRows(SPEC, () => written);
+    const log = createChangeLog(rows, new HybridClock('aaaaaaaa'), () => nowOnTheClock);
+    rows.set('documents', { id: 'd1', title: 'x' });
+    const [sent] = await log.drain();
+    expect(Number(sent!.h.slice(0, 14))).toBe(nowOnTheClock);
+  });
+
+  it('leaves a write from the past as it was', async () => {
+    const written = Date.UTC(2026, 9, 5, 10);
+    const rows = new MemoryRows(SPEC, () => written);
+    const log = createChangeLog(rows, new HybridClock('aaaaaaaa'), () => Date.UTC(2026, 9, 5, 12));
+    rows.set('documents', { id: 'd1', title: 'x' });
+    expect(Number((await log.drain())[0]!.h.slice(0, 14))).toBe(written);
   });
 });
 

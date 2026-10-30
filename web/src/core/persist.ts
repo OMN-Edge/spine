@@ -104,6 +104,10 @@ export class Persistence {
 
   /** Sends what the log holds, after what an earlier failed save left. A group leaves the list only once the vault has it. */
   private async sendChanges(): Promise<void> {
+    // The server's clock is read just before the changes are stamped, not some seconds before, so a clock that was set in between does not
+    // stamp them. Out of reach of the vault there is no reading: the changes stay in the log, unstamped, and this save fails and is
+    // tried again, like any save the vault did not take. They are stamped from when they were written, on the clock read when it is back.
+    if (await this.records.changes.pending()) await this.store.list(this.seen);
     // A loop, not push(...list): a first save after a large import can be more arguments than a call allows.
     for (const change of await this.records.changes.drain()) this.unsent.push(change);
     for (const group of chunks(this.unsent)) {

@@ -99,7 +99,10 @@ let clockOffset = 0;
 const CLOCK_DEAD_ZONE_MS = 5_000;
 /** A reading from a request that took longer than this says little about the moment the server answered. */
 const CLOCK_MAX_ROUND_TRIP_MS = 10_000;
-let bestRoundTrip = Infinity;
+/** How many of the latest readings are kept. The quickest of them is used, so one slow request does not move the offset, and the offset follows the device's clock within this many requests. */
+const CLOCK_READINGS = 8;
+interface Reading { offset: number; roundTrip: number }
+let readings: Reading[] = [];
 
 /**
  * The server's time from the `Date` header of its answer, to `sentAt` and `receivedAt` (this device's times): the offset, or null if the
@@ -113,18 +116,25 @@ export function serverClockOffset(dateHeader: string | null, sentAt: number, rec
   return server + 500 - (sentAt + receivedAt) / 2;
 }
 
-/** Takes one reading. The one from the quickest round trip is kept, since it is the one that says most about the server's time. */
+/**
+ * Takes one reading. Of the latest few, the one from the quickest round trip is kept, since it is the one that says most about the server's
+ * time. Two honest readings differ by no more than their round trips and the header's second; a reading that differs by more than that
+ * means this device's clock was set or jumped since the others, so they are forgotten and the offset follows the new one at once. (An
+ * offset kept for ever would stamp every later write with the old error.)
+ */
 export function observeServerClock(dateHeader: string | null, sentAt: number, receivedAt: number): void {
   const roundTrip = receivedAt - sentAt;
   const offset = serverClockOffset(dateHeader, sentAt, receivedAt);
-  if (offset === null || roundTrip < 0 || roundTrip > CLOCK_MAX_ROUND_TRIP_MS || roundTrip >= bestRoundTrip) return;
-  bestRoundTrip = roundTrip;
-  clockOffset = Math.abs(offset) < CLOCK_DEAD_ZONE_MS ? 0 : Math.round(offset);
+  if (offset === null || roundTrip < 0 || roundTrip > CLOCK_MAX_ROUND_TRIP_MS) return;
+  if (readings.some(r => Math.abs(r.offset - offset) > r.roundTrip / 2 + roundTrip / 2 + 1_500 + CLOCK_DEAD_ZONE_MS)) readings = [];
+  readings = [...readings, { offset, roundTrip }].slice(-CLOCK_READINGS);
+  const best = readings.reduce((x, y) => (y.roundTrip < x.roundTrip ? y : x));
+  clockOffset = Math.abs(best.offset) < CLOCK_DEAD_ZONE_MS ? 0 : Math.round(best.offset);
 }
 
 /** The offset in use, and a way to set it (tests, and a device that locks and forgets). */
 export const currentClockOffset = (): number => clockOffset;
-export function resetServerClock(): void { clockOffset = 0; bestRoundTrip = Infinity; }
+export function resetServerClock(): void { clockOffset = 0; readings = []; }
 
 /** The clock. Sorts as text: the time in milliseconds, a counter for changes in the same millisecond, and the device that made it. */
 export class HybridClock {
@@ -180,8 +190,8 @@ function written(stamp: Stamp | undefined, columns: string[], h: string): Stamp 
 
 const same = (a: Cell | undefined, b: Cell | undefined) => (a ?? null) === (b ?? null);
 
-/** The change log over any store that can supply `Rows`. One per store: it holds that device's clock. */
-export function createChangeLog(rows: Rows, clock: HybridClock = new HybridClock()): ChangeLog {
+/** The change log over any store that can supply `Rows`. One per store: it holds that device's clock. `now` is the device's own clock, which a write is never stamped after. */
+export function createChangeLog(rows: Rows, clock: HybridClock = new HybridClock(), now: () => number = Date.now): ChangeLog {
   const known = new Set(rows.tables());
 
   /** The change as this device names things: a key that another device made for a tag or doctor this one already has is replaced by its own. */
@@ -258,7 +268,9 @@ export function createChangeLog(rows: Rows, clock: HybridClock = new HybridClock
           const held = rows.stamp(note.t, key);
           // Nothing changed (an update that wrote the values it had): nothing to send.
           if (columns && columns.size === 0 && held) continue;
-          const h = clock.stamp(note.at);
+          // Never later than now: a write cannot have happened after the moment it is stamped, so a write that seems to is on a clock that was set
+          // back since, and a stamp ahead of the server's time would win conflicts it should lose.
+          const h = clock.stamp(Math.min(note.at, now()));
           if (columns && held) {
             const named = [...columns].sort();
             changes.push({ t: note.t, k: note.k, r: note.r, h, c: named });

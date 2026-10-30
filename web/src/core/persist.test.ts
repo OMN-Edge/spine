@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Persistence, type ObjectStore, type ObjectMeta } from './persist';
+import { observeServerClock, resetServerClock } from 'spine-core/store/sync';
 import { memory } from './shims/fs';
 import fs from './shims/fs';
 import { openDeviceStore } from './device-store';
@@ -113,6 +114,58 @@ describe('what the device keeps in the vault', () => {
     const b = await device(store);
     await b.p.load();
     expect((await b.db.documents.findFor(USER, 'd1'))?.ai_summary).toBe('amlodipine');
+  });
+
+  it('reads the server’s clock right before it stamps the changes, not before', async () => {
+    const { store } = fakeVault();
+    const events: string[] = [];
+    const watched: ObjectStore = {
+      ...store,
+      list: async since => { events.push('read the clock'); return store.list(since); },
+      put: async (...args) => { events.push(`put ${args[0]}`); return store.put(...args); },
+    };
+    const a = await device(watched);
+    await a.p.load();
+    await addDoc(a.db, 'd1', 'one');
+    events.length = 0;
+    await a.p.save();
+    expect(events.indexOf('read the clock')).toBeGreaterThanOrEqual(0);
+    expect(events.indexOf('read the clock')).toBeLessThan(events.indexOf('put log'));
+  });
+
+  it('out of reach of the vault leaves the changes unstamped in the log, and stamps them on the clock read when it is back', async () => {
+    resetServerClock();
+    try {
+      const { store } = fakeVault();
+      let offline = false;
+      const hour = 3_600_000;
+      const reaching: ObjectStore = {
+        ...store,
+        async list(since) {
+          if (offline) throw new Error('offline');
+          // the server says it is an hour later than this device thinks
+          const sent = Date.now();
+          observeServerClock(new Date(sent + hour).toUTCString(), sent, sent + 50);
+          return store.list(since);
+        },
+      };
+      const a = await device(reaching);
+      await a.p.load();
+      offline = true;
+      await addDoc(a.db, 'd1', 'written offline');
+      await expect(a.p.save()).rejects.toThrow('offline');
+      expect(a.p.waiting).toBe(false); // nothing was taken out of the log
+      expect(await a.db.changes.pending()).toBe(true);
+
+      offline = false;
+      await a.p.save();
+      expect(await a.db.changes.pending()).toBe(false);
+      const b = await device(store);
+      await b.p.load();
+      const stamp = (await b.db.changes.dump()).find(c => c.t === 'documents' && c.r !== null)!.h;
+      // on the server's clock, which was an hour ahead of this device's, and not on the device's own
+      expect(Math.abs(Number(stamp.slice(0, 14)) - (Date.now() + hour))).toBeLessThan(60_000);
+    } finally { resetServerClock(); }
   });
 
   it('two devices that write and save see each other’s writes, and neither is lost', async () => {
