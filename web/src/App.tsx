@@ -269,7 +269,8 @@ export default function App() {
 
   return (
     <AuthContext.Provider value={{ authenticated, email, setAuthenticated, consentNeeded, consentGiven: () => setConsentNeeded(null), vaultNeeded, vaultMade: () => setVaultNeeded(false), deviceState, deviceOpened: () => setDeviceState('open'), demo, startDemo, leaveDemo, demoUploads, demoAgreed, agreeDemo: () => setDemoAgreed(true) }}>
-      <ChatProvider authenticated={authenticated || demo}>
+      {/* Chat asks the device's core, which answers 423 until the vault is open: asked sooner, the panel is switched off for good. */}
+      <ChatProvider authenticated={(authenticated && deviceState === 'open') || demo}>
       <ReauthDialog />
       <Routes>
         <Route path="/login" element={<NotInDemo><Login /></NotInDemo>} />
