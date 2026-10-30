@@ -94,14 +94,14 @@ export default function ChatPanel() {
       {chat.unread > 0 && waiting && (
         <button
           type="button" onClick={() => { chat.setOpen(true); void chat.openConversation(waiting.id); }}
-          className="fixed bottom-16 right-5 z-30 max-w-[16rem] rounded-2xl rounded-br-md border border-brand-200 bg-white px-3.5 py-2 text-left text-sm text-gray-800 shadow-md transition hover:shadow-lg"
+          className="fixed bottom-40 right-5 z-30 max-w-[16rem] sm:bottom-16 rounded-2xl rounded-br-md border border-brand-200 bg-white px-3.5 py-2 text-left text-sm text-gray-800 shadow-md transition hover:shadow-lg"
         >
           {t(waiting.title)} <span className="text-brand-600">· {t('take a look')}</span>
         </button>
       )}
       <button
         type="button" onClick={() => chat.setOpen(true)} aria-label={chat.unread > 0 ? t('Ask your records') + ` (${chat.unread})` : t('Ask your records')}
-        className="fixed bottom-5 right-5 z-30 flex items-center gap-2 rounded-full border border-gray-200 bg-white/95 py-2.5 pl-3.5 pr-4 text-sm text-gray-700 shadow-md backdrop-blur transition hover:shadow-lg hover:text-gray-900"
+        className="fixed bottom-24 right-5 z-30 flex items-center sm:bottom-5 gap-2 rounded-full border border-gray-200 bg-white/95 py-2.5 pl-3.5 pr-4 text-sm text-gray-700 shadow-md backdrop-blur transition hover:shadow-lg hover:text-gray-900"
       >
         <svg viewBox="0 0 24 24" className="h-4 w-4 text-brand-600" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8L12 3zM18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8L18 15z" />

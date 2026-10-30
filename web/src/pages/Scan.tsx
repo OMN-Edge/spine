@@ -2,14 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import CornerEditor from '../scan/CornerEditor';
-import { defaultQuad, detectDocument, steady } from '../scan/detect';
+import { defaultQuad, detectDocument } from '../scan/detect';
 import type { Quad } from '../scan/image';
 import { loadRaster, processPage, type Loaded, type PageFilter } from '../scan/process';
 import { useI18n } from '../i18n';
 
 /**
- * Scanning with the camera (FR-ING-06, -08, -09, -10). The page is found in the live picture, the camera takes it when the page has
- * been still for a moment, the corners can be moved, and the page is straightened and cleaned up, all on this device: the only thing
+ * Scanning with the camera (FR-ING-06, -08, -09, -10). The phone's camera takes the picture, the page is found in it and its corners
+ * can be moved, and the page is straightened and cleaned up, all on this device: the only thing
  * that leaves it is the finished set of pages (and the photos as taken, kept as the originals), sent like any upload. Pages are
  * taken one after another, then reviewed, put in order and saved as one document.
  */
@@ -21,10 +21,6 @@ interface Page {
   filter: PageFilter;
   quad: Quad;
 }
-
-const STEADY_MS = 900;
-const TICK_MS = 250;
-const COOLDOWN_MS = 2500;
 
 export default function Scan() {
   const { t, tn } = useI18n();
@@ -185,101 +181,21 @@ export default function Scan() {
 
 const back = (replaces: number | null, t: (s: string) => string) => (replaces !== null ? t('Keep the page as it was') : t('Retake'));
 
-/** The live camera with the page outlined on it, and the shutter; or, where there is no camera to open, the phone's own camera or a file. */
+/** The phone's own camera, then the corners: no live picture to find the page in, so nothing moves while the photo is taken. Where there is no camera, a file. */
 function CameraStep({ count, onShot }: { count: number; onShot: (raw: Blob) => void }) {
   const { t } = useI18n();
-  const video = useRef<HTMLVideoElement>(null);
-  const overlay = useRef<HTMLCanvasElement>(null);
-  const work = useRef<HTMLCanvasElement | null>(null);
-  const [live, setLive] = useState<'starting' | 'on' | 'off'>('starting');
-  const [auto, setAuto] = useState(true);
-  const last = useRef<{ quad: Quad | null; since: number; shot: number }>({ quad: null, since: 0, shot: 0 });
-  const autoRef = useRef(true);
-
-  const shoot = useCallback(() => {
-    const v = video.current;
-    if (!v || !v.videoWidth) return;
-    const canvas = document.createElement('canvas');
-    canvas.width = v.videoWidth; canvas.height = v.videoHeight;
-    canvas.getContext('2d')?.drawImage(v, 0, 0);
-    last.current.shot = Date.now();
-    canvas.toBlob(b => { if (b) onShot(b); }, 'image/jpeg', 0.95);
-  }, [onShot]);
-
-  useEffect(() => {
-    let stream: MediaStream | null = null;
-    let timer: number | undefined;
-    let gone = false;
-    (async () => {
-      if (!navigator.mediaDevices?.getUserMedia) { setLive('off'); return; }
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
-        if (gone) { stream.getTracks().forEach(tr => tr.stop()); return; }
-        if (video.current) { video.current.srcObject = stream; await video.current.play().catch(() => undefined); }
-        setLive('on');
-        let looking = false;
-        timer = window.setInterval(async () => {
-          const v = video.current; const o = overlay.current;
-          if (!v || !o || !v.videoWidth || looking) return;
-          looking = true;
-          try {
-            const w = work.current ?? (work.current = document.createElement('canvas'));
-            const scale = 320 / v.videoWidth;
-            w.width = 320; w.height = Math.round(v.videoHeight * scale);
-            const ctx = w.getContext('2d', { willReadFrequently: true });
-            if (!ctx) return;
-            ctx.drawImage(v, 0, 0, w.width, w.height);
-            const frame = ctx.getImageData(0, 0, w.width, w.height);
-            const quad = await detectDocument({ data: frame.data, width: w.width, height: w.height }).catch(() => null);
-            o.width = w.width; o.height = w.height;
-            const octx = o.getContext('2d');
-            octx?.clearRect(0, 0, o.width, o.height);
-            if (quad && octx) {
-              octx.strokeStyle = '#22c55e'; octx.lineWidth = 3; octx.fillStyle = 'rgba(34,197,94,0.15)';
-              octx.beginPath(); quad.forEach((p, i) => (i === 0 ? octx.moveTo(p.x, p.y) : octx.lineTo(p.x, p.y))); octx.closePath(); octx.fill(); octx.stroke();
-            }
-            const now = Date.now();
-            const state = last.current;
-            if (steady(state.quad, quad, { width: w.width, height: w.height })) {
-              if (now - state.since >= STEADY_MS && now - state.shot >= COOLDOWN_MS && autoRef.current) { state.since = now; shoot(); }
-            } else {
-              state.since = now;
-            }
-            state.quad = quad;
-          } finally { looking = false; }
-        }, TICK_MS);
-      } catch {
-        setLive('off');
-      }
-    })();
-    return () => { gone = true; window.clearInterval(timer); stream?.getTracks().forEach(tr => tr.stop()); };
-  }, [shoot]);
-
-  useEffect(() => { autoRef.current = auto; }, [auto]);
-
   const picked = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onShot(f); };
-
   return (
     <div>
-      <div className={`relative bg-black rounded-xl overflow-hidden ${live === 'on' ? '' : 'hidden'}`}>
-        <video ref={video} playsInline muted className="w-full h-auto block" />
-        <canvas ref={overlay} className="absolute inset-0 w-full h-full pointer-events-none" aria-hidden="true" />
-      </div>
-      {live === 'starting' && <p className="text-sm text-gray-500">{t('Opening the camera…')}</p>}
-      {live === 'off' && <p className="text-sm text-gray-600 mb-3">{t('The camera could not be opened here. Take the picture with your phone’s camera, or choose a photo.')}</p>}
-      <div className="flex flex-wrap items-center gap-3 mt-3 text-sm">
-        {live === 'on' && <button type="button" onClick={shoot} className="bg-brand-600 text-white rounded-full px-5 py-2 font-medium hover:bg-brand-700">{t('Take the picture')}</button>}
-        {live === 'on' && (
-          <label className="flex items-center gap-1.5 text-gray-600">
-            <input type="checkbox" checked={auto} onChange={e => setAuto(e.target.checked)} /> {t('Take it when the page is still')}
-          </label>
-        )}
-        <label className="text-brand-600 hover:underline cursor-pointer">
-          {live === 'on' ? t('or choose a photo') : t('Take or choose a photo')}
-          <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={picked} />
-        </label>
-      </div>
-      <p className="text-xs text-gray-500 mt-3">{count === 0 ? t('Lay the page flat with a darker surface around it. The green outline is the page Spine found; it takes the picture when you hold still.') : t('Next page. Lay it flat and hold still.')}</p>
+      <label className="block cursor-pointer rounded-full bg-brand-600 px-5 py-3 text-center text-base font-medium text-white hover:bg-brand-700">
+        {t('Take the picture')}
+        <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={picked} />
+      </label>
+      <label className="mt-3 block cursor-pointer text-center text-sm text-brand-600 hover:underline">
+        {t('or choose a photo')}
+        <input type="file" accept="image/*" className="sr-only" onChange={picked} />
+      </label>
+      {count === 0 && <p className="mt-4 text-xs text-gray-500">{t('Lay the page flat on a darker surface. You will set its corners next.')}</p>}
     </div>
   );
 }

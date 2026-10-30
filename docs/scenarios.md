@@ -144,7 +144,7 @@ Status: auto (`enrolment`, `crypto/enrolment`); a third browser let in with a co
 Status: auto (`own-account`, `accounts`); screens: hand.
 
 ### 2.1 Scan paper with the camera
-- Scan opens the camera (or a phone's own camera, or a chosen photo where there is no camera to open), outlines the page it finds in green and takes the picture when the page has been still for a moment, or when the button is pressed.
+- Scan has a button that opens the phone's own camera (or a chosen photo); after each picture the page is found and the corners can be moved before it is straightened.
 - The four corners can be moved by hand; the page is then straightened and, unless turned off for that page, cleaned up (shadows and fading flattened, handwriting kept). All of it happens on the device.
 - Pages are taken one after another, then reviewed: reordered, removed, their corners redone, and saved as one document. The photos as taken are kept beside it.
 - Where neither image reading nor local OCR is switched on, Scan says so instead of filling the archive with pages nobody can search.

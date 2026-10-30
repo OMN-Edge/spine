@@ -5,10 +5,8 @@ import SpineLog, { type VertebraState } from '../components/SpineLog';
 import { documentTitle } from '../titles';
 import { whereTo } from '../components/aiTarget';
 import DeleteUpload from '../components/DeleteUpload';
-import { askForPassword } from '../reauth';
 import { msg, useI18n } from '../i18n';
 import type { I18n } from '../i18n';
-import { downloadFromDevice } from '../core/client';
 import { useAuth } from '../auth';
 
 interface UploadResult {
@@ -208,16 +206,6 @@ export default function Upload() {
   const [ownUploads, setOwnUploads] = useState(0);
   const countOwn = useCallback(() => { if (demo) api.sourceFiles.list().then(list => setOwnUploads(list.filter(u => !u.sample).length)).catch(() => {}); }, [demo]);
   useEffect(countOwn, [countOwn]);
-  // The archive in one step is what a stolen session would take, so the password is asked for first (SECURITY.md S-33).
-  const exportEverything = async () => {
-    try {
-      const { fresh } = await api.auth.reauthStatus();
-      if (!fresh && !(await askForPassword())) return;
-    } catch {
-      return;
-    }
-    await downloadFromDevice('/api/export', 'spine-export.zip');
-  };
   const [dragging, setDragging] = useState(false);
   const [jobs, setJobs] = useState<JobState[]>([]);
   // Files the server would not take, by name.
@@ -333,10 +321,7 @@ export default function Upload() {
 
   return (
     <div className="max-w-2xl mx-auto">
-      <div className="flex items-baseline justify-between gap-4 mb-6">
-        <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900">{t('Upload')}</h1>
-        {!demo && <button type="button" onClick={exportEverything} className="text-sm text-brand-600 hover:underline" title={t('Everything you have, as a ZIP you can restore here or keep as a backup')}>{t('Export everything')}</button>}
-      </div>
+      <h1 className="mb-6 text-[1.75rem] leading-tight font-light tracking-tight text-gray-900">{t('Upload')}</h1>
 
       {demo && demoUploads && <DemoUploadNotice limits={demoUploads} used={ownUploads} agreed={demoAgreed} agree={agreeDemo} />}
       {!(demo && (!demoAgreed || (demoUploads && ownUploads >= demoUploads.uploads))) && (<>
@@ -347,18 +332,16 @@ export default function Upload() {
         onDrop={onDrop}
         onClick={() => fileRef.current?.click()}
         className={`
-          border-2 border-dashed rounded-xl p-8 sm:p-12 text-center cursor-pointer transition-colors
+          border-2 border-dashed rounded-xl p-10 sm:p-12 text-center cursor-pointer transition-colors
           ${dragging ? 'border-brand-400 bg-brand-50' : 'border-gray-300 hover:border-gray-400 bg-white'}
         `}
       >
         {/* A phone has nothing to drag from; it gets the file picker  */}
-        <p className="text-gray-500 mb-2">
+        <p className="text-gray-500 sm:mb-2">
           <span className="hidden sm:inline">{photos?.enabled ? t('Drag & drop PDFs or photos here') : t('Drag & drop PDFs here')}</span>
           <span className="sm:hidden">{photos?.enabled ? t('Tap to choose PDFs or photos') : t('Tap to choose PDFs')}</span>
         </p>
-        <p className="text-sm text-gray-400">
-          <span className="hidden sm:inline">{t('or click to browse')} — </span>{t('up to 200 MB per file')}
-        </p>
+        <p className="hidden text-sm text-gray-400 sm:block">{t('or click to browse')} — {t('up to 200 MB per file')}</p>
         {photos?.enabled && photos.where && <p className="text-xs text-gray-400 mt-2">{t('A photo is sent to {where} to be read. A PDF with a text layer sends no image.', { where: photos.where })}</p>}
         <input
           ref={fileRef}
@@ -376,10 +359,7 @@ export default function Upload() {
       </div>
 
       {!demo && (
-        <p className="mt-3 text-sm text-gray-500">
-          <Link to="/scan" className="text-brand-600 hover:underline">{t('Scan with the camera')}</Link>
-          <span className="text-gray-400"> — {t('straightened and cleaned up on this device, page after page')}</span>
-        </p>
+        <Link to="/scan" className="mt-3 block rounded-xl border border-gray-200 bg-white px-4 py-3 text-center text-sm font-medium text-brand-600 hover:bg-gray-50">{t('Scan with the camera')}</Link>
       )}
       </>)}
 

@@ -45,7 +45,7 @@ One constraint shapes the AI path: the client cannot hold Spine's model API key,
 | FR-ING-05 | Run page operations by chat ("do pages 3 to 5 belong together?", "move page 7 into the 2004 referral") | Must | Launch |
 | FR-ING-06 | Camera scanning: live edge detection, automatic corner finding with manual adjustment, perspective correction and crop | Must | Launch |
 | FR-ING-07 | Flag duplicate uploads using a content hash | Should | Soon |
-| FR-ING-08 | Multi-page scan session: capture pages one after another, with auto-capture when the page is steady, then review and reorder before saving | Must | Launch |
+| FR-ING-08 | Multi-page scan session: capture pages one after another with the phone's camera, set the corners after each, then review and reorder before saving | Must | Launch |
 | FR-ING-09 | Scan enhancement for faded and handwritten pages: deskew, shadow removal, contrast boost; the unprocessed photo is kept as the original | Should | Launch |
 | FR-ING-10 | All scan processing runs on the device; raw photos never leave it unencrypted | Must | Launch |
 
