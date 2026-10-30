@@ -6,6 +6,7 @@ import { checkPasswordPolicy } from './crypto/password-policy';
 import { rewrapForPassword, wrapForPasskey, type KdfParams, type VaultKeyPayload } from './crypto/keys';
 import { startAuthentication, startRegistration, type PublicKeyCredentialCreationOptionsJSON, type PublicKeyCredentialRequestOptionsJSON } from '@simplewebauthn/browser';
 import { appFetch } from './core/client';
+import { fromCode, makeOffer, readEnrolmentCode } from './crypto/enrolment';
 export type DocType =
   | 'lab_result'
   | 'discharge_note'
@@ -570,7 +571,52 @@ const patch = <T>(url: string, body: unknown) =>
 const del = <T>(url: string) =>
   req<T>(url, { method: 'DELETE' });
 
+/** A browser asking to be let in, as the device that made the code sees it. */
+export interface EnrolmentOffer { id: string; state: 'offered' | 'requested' | 'approved' | 'denied'; expires_at: string; requested_at: string | null; requester_agent: string | null; requester_country: string | null }
+
+const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, reject) => {
+  const timer = setTimeout(resolve, ms);
+  signal?.addEventListener('abort', () => { clearTimeout(timer); reject(new DOMException('stopped', 'AbortError')); }, { once: true });
+});
+
 export const api = {
+  /** Letting a new device in from one that is signed in (SECURITY.md M-41). The code never goes to the server. */
+  enrol: {
+    /** The signed-in device: a new one-time code, with its sealed key left at the server. */
+    offer: async (): Promise<{ code: string; expiresAt: string }> => {
+      const session = vaultState.session();
+      if (!session) throw new ApiError('Open your records first.', 0);
+      const made = await makeOffer(session.unlocked);
+      const done = await post<{ expires_at: string }>('/api/enrol/offer', { id: made.id, wrapped: made.wrapped });
+      return { code: made.code, expiresAt: done.expires_at };
+    },
+    current: () => req<{ offer: EnrolmentOffer | null }>('/api/enrol/offer'),
+    decide: (approve: boolean) => post<{ ok: boolean }>('/api/enrol/decision', { approve }),
+    cancel: () => del<{ ok: boolean }>('/api/enrol/offer'),
+    /**
+     * The new device: says it holds the code, waits for the owner to approve it on the other device, and is signed in. Returns what opens
+     * the records, the way a passkey sign-in does. Throws `ApiError` with code `bad_code`, `refused` or `expired`.
+     */
+    join: async (typed: string, signal?: AbortSignal): Promise<{ email: string; unlock: PasskeyUnlock }> => {
+      const read = await readEnrolmentCode(typed);
+      if (!read.ok) throw new ApiError(read.reason === 'check' ? 'A character of the code is wrong.' : read.reason === 'length' ? 'The code has 18 characters.' : 'The code has a character it cannot have.', 0, 'bad_code');
+      const { id, key } = await fromCode(read.code);
+      const { token } = await post<{ token: string }>('/api/enrol/request', { id }).catch(err => {
+        throw err instanceof ApiError && err.status === 404 ? new ApiError('This code is not valid, or it has expired.', 404, 'expired') : err;
+      });
+      // The owner has ten minutes from making the code; polled every two seconds, which the server's limit allows for.
+      for (let waited = 0; waited < 11 * 60 * 1000; waited += 2000) {
+        const got = await post<{ ok?: boolean; waiting?: boolean; email?: string; credential_id?: string; wrapped_key?: string }>('/api/enrol/claim', { id, token }).catch(err => {
+          if (err instanceof ApiError && err.code === 'refused') throw new ApiError('The other device did not allow this one.', 403, 'refused');
+          if (err instanceof ApiError && err.status === 404) throw new ApiError('This code has expired.', 404, 'expired');
+          throw err;
+        });
+        if (got.ok && got.email && got.credential_id && got.wrapped_key) return { email: got.email, unlock: { prf: key, credentialId: got.credential_id, wrapped: got.wrapped_key } };
+        await sleep(2000, signal);
+      }
+      throw new ApiError('This code has expired.', 404, 'expired');
+    },
+  },
   trends: {
     names: () => req<TrendName[]>('/api/measurements'),
     /** `from`'s values are counted as `into`, and later documents that use `from` are filed there too. */

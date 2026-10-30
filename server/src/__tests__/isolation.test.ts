@@ -166,6 +166,10 @@ describe('P1 — deny by default', () => {
     // Public on purpose: they are how a passkey signs in (passkeys.test.ts); each is rate limited and single use.
     'POST /api/auth/passkey/options',
     'POST /api/auth/passkey/login',
+    // Public on purpose: they are how a device that holds a one-time code asks to be let in and collects what the owner approved
+    // (enrolment.test.ts); the id is made by the code and the token is the asking browser's, each is rate limited, and the offer is single use.
+    'POST /api/enrol/request',
+    'POST /api/enrol/claim',
     'GET /api/share/:link/documents/:id/translation',
     'GET /api/share/:link/trends',
     'GET /api/share/:link/trends/series',

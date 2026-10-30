@@ -42,7 +42,7 @@ describe('the server’s store and the device’s', () => {
 
   it('gives the server’s store no repository of records at all, not one that refuses', async () => {
     const store = createAccountsStore({ adapter: 'sqlite', location: ':memory:' });
-    expect(Object.keys(store).sort()).toEqual(['close', 'maintenance', 'sessions', 'shared', 'transaction', 'usage', 'users', 'vault']);
+    expect(Object.keys(store).sort()).toEqual(['close', 'enrolments', 'maintenance', 'sessions', 'shared', 'transaction', 'usage', 'users', 'vault']);
     expect(holdsRecords(store)).toBe(false);
     await store.close();
   });

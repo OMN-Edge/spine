@@ -174,7 +174,7 @@ The hard parts are the key hierarchy, the approval-mode share handshake and the 
 **Where the code differs from these rows (checked against the code on 2026-10-26).** The rows say what must hold; these do not yet, or hold differently:
 
 - **TR-CRY-02:** the data key is one per sealed object (a segment of changes, a part of a snapshot, a file), not one per document, and there is one profile per account ([key-hierarchy.md](key-hierarchy.md)).
-- **TR-CRY-05:** a new device signs in with the master password or a passkey set up to open the vault; enrolling one from a signed-in device is not built.
+- **TR-CRY-05:** built (SECURITY.md **M-41**): a new device signs in with the master password, a passkey set up to open the vault, or a one-time code from a device that is signed in. The new device holds the keys in memory only, as after any sign-in, so a reload asks again; there is no list of enrolled devices apart from the sign-ins the account page shows, and a device cannot be revoked in the cryptographic sense (the account key does not change), only signed out.
 - **TR-CRY-06 and TR-CRY-07:** the key pair is made at sign-up, but delegation and key rotation on revocation are not built.
 - **TR-AI-04:** masking identifiers such as a national ID number before a call is not built; the extraction prompt tells the model not to extract them.
 - **TR-AI-11:** reading an upload resumes (confirming again reads what is still marked), and an upload the page was closed on is read again when the core next starts (`resumeStalledJobs`). A restore interrupted that way, and an upload whose file had not reached the vault, is marked failed. The queue is the app's own two-at-a-time limit and is not a persisted list: what resumes is what the rows say is unfinished.

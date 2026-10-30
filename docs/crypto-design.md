@@ -31,7 +31,7 @@ The decision that keeps this tractable: **the browser runs the same core the ser
 
 **Account export.** Unchanged for the person: the zip is built in the browser from the decrypted vault, and the importer reads the format that exists (manifest version 3). The server no longer builds it.
 
-**Multiple devices.** Sign in with the master password; the wrapped keys come down with the account, so no separate enrolment step is needed. Enrolling from a signed-in device (a pairing code) is later.
+**Multiple devices.** Sign in with the master password; the wrapped keys come down with the account, so no separate enrolment step is needed. A device that is already signed in can also let a new one in with a one-time code (SECURITY.md **M-41**): it seals the account key under a key the code makes and leaves it at the server under an id the code also makes; the new device asks with the id, the person approves it, and it collects the sealed key with a sign-in that does not count as the password typed.
 
 ## Order of work and acceptance
 

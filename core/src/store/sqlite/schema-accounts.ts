@@ -65,6 +65,25 @@ CREATE TABLE IF NOT EXISTS user_passkeys (
 );
 CREATE INDEX IF NOT EXISTS idx_user_passkeys_user ON user_passkeys(user_id);
 
+-- A new device let in by one that is signed in (SECURITY.md M-41): the signed-in device makes a one-time code, seals the account key under
+-- a key the code makes (the server never has the code) and leaves the sealed key here with an id the code also makes. The new device
+-- asks with that id, the owner approves the ask, and the device collects the sealed key and a sign-in. \`wrapped\` is ciphertext the
+-- server cannot open. One offer per account, a few minutes long; \`token_hash\` is the hash of what only the asking browser was given.
+CREATE TABLE IF NOT EXISTS device_enrolments (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  wrapped TEXT NOT NULL,
+  auth_version INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  state TEXT NOT NULL DEFAULT 'offered', -- 'offered' | 'requested' | 'approved' | 'denied' | 'used'
+  token_hash TEXT,
+  requested_at TEXT,
+  requester_agent TEXT,
+  requester_country TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_device_enrolments_user ON device_enrolments(user_id);
+
 CREATE TABLE IF NOT EXISTS user_recovery_codes (
   user_id TEXT NOT NULL REFERENCES users(id),
   code_hash TEXT NOT NULL,

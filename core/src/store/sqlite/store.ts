@@ -10,6 +10,7 @@ import { shareLinkRepository } from './share-links.js';
 import { sourceFileRepository } from './source-files.js';
 import { regroupPlanRepository } from './regroup-plans.js';
 import { sessionRepository } from './sessions.js';
+import { enrolmentRepository } from './enrolments.js';
 import { usageRepository } from './usage.js';
 import { changeLog } from './changes.js';
 import { fileRegistryRepository } from './file-registry.js';
@@ -74,6 +75,7 @@ function accountsOver(db: Database, depth: number): AccountsStore {
   return {
     users: userRepository(db),
     sessions: sessionRepository(db),
+    enrolments: enrolmentRepository(db),
     usage: usageRepository(db),
     vault: vaultRepository(db),
     shared: sharedRepository(db),

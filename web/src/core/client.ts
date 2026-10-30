@@ -172,7 +172,7 @@ export const deviceFetch = (url: string, init?: RequestInit) => device.fetch(url
  * ciphertext and metadata). What a recipient reads of a share (`/api/share/<id>/...`) is answered by the reader's core; every other
  * `/api` call is the owner's core.
  */
-const SERVER_SIDE = /^\/(api\/(auth|account|legal|vault|shared)\/|share\/)/;
+const SERVER_SIDE = /^\/(api\/(auth|account|legal|vault|shared|enrol)\/|share\/)/;
 const READER = /^\/api\/share\//;
 
 /** The share the reader's core has open, so that what the recipient opens can be noted at the server. */

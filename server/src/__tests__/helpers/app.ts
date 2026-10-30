@@ -51,6 +51,7 @@ export interface TestAppOptions {
   totp?: TotpRouteOptions;
   /** Passkey sign-in limits. */
   passkeys?: PasskeyRouteOptions;
+  enrolment?: import('../../routes/enrolment.js').EnrolmentRouteOptions;
   vault?: VaultRouteOptions;
   shared?: import('../../routes/shared.js').SharedRouteOptions;
   demoRelay?: import('../../routes/demo-relay.js').DemoRelayRouteOptions;
@@ -114,6 +115,7 @@ export async function buildTestApp(options: TestAppOptions = {}) {
   const { demoRoutes } = await import('spine-core/routes/demo.js');
   const { ownAccountRoutes } = await import('../../routes/own-account.js');
   const { passkeyRoutes } = await import('../../routes/passkeys.js');
+  const { enrolmentRoutes } = await import('../../routes/enrolment.js');
   const { vaultRoutes } = await import('../../routes/vault.js');
   const { relayRoutes } = await import('../../routes/relay.js');
   const { sharedRoutes } = await import('../../routes/shared.js');
@@ -152,6 +154,7 @@ export async function buildTestApp(options: TestAppOptions = {}) {
   if (records) await app.register(asPlugin(demoRoutes));
   await app.register(ownAccountRoutes);
   await app.register(passkeyRoutes, { perSource: 100_000, instanceWide: 100_000, ...options.passkeys });
+  await app.register(enrolmentRoutes, { requestsPerSource: 100_000, claimsPerSource: 100_000, instanceWide: 100_000, ...options.enrolment });
   await app.register(vaultRoutes, options.vault ?? {});
   await app.register(relayRoutes);
   await app.register(demoRelayRoutes, options.demoRelay ?? {});

@@ -26,21 +26,25 @@ export const REAUTH_WINDOW_MS = 10 * 60 * 1000;
 const clean = (value: unknown, max: number) =>
   typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f]/g, '').slice(0, max) : '';
 
+export const cleanHeader = clean;
+
 export const deviceHash = (cookie: string) => createHash('sha256').update(cookie).digest('hex');
 
 export type DeviceState = 'first' | 'known' | 'new';
 
 /**
- * Records a sign-in for a user whose password (and second factor) has just been accepted. The caller has already
+ * Records a sign-in for a user whose password (and second factor) has just been accepted, or whom a device that is signed in has let in
+ * (`passwordTyped: false`). The caller has already
  * regenerated the cookie session. Returns whether this browser is new to the account, so it can be mailed about.
  */
-export async function startSession(req: FastifyRequest, reply: FastifyReply, userId: string, authVersion: number): Promise<DeviceState> {
+export async function startSession(req: FastifyRequest, reply: FastifyReply, userId: string, authVersion: number, options: { passwordTyped?: boolean } = {}): Promise<DeviceState> {
   const now = new Date();
   const session = req.session as SessionData;
   session.userId = userId;
   session.authVersion = authVersion;
   session.sid = randomUUID();
-  session.reauthAt = now.getTime(); // the password was just typed
+  // The password was just typed, unless this device was let in by one that is signed in (routes/enrolment.ts): its sensitive actions ask for it.
+  session.reauthAt = options.passwordTyped === false ? 0 : now.getTime();
 
   const store = getAccountsStore();
   const limits = sessionLimits();

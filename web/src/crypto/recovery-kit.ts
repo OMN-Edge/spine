@@ -5,11 +5,11 @@ import { sodium } from './sodium.js';
  * then four check characters, in groups of four. The check is part of the BLAKE2b hash of the key, so a typing error is caught on the
  * spot instead of becoming a key that opens nothing. Reading ignores case, dashes and spaces and takes O for 0 and I or L for 1.
  */
-const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+export const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 const KEY_CHARS = 52;
 const CHECK_CHARS = 4;
 
-function encode32(bytes: Uint8Array): string {
+export function encode32(bytes: Uint8Array): string {
   let bits = 0;
   let acc = 0;
   let out = '';
@@ -26,7 +26,7 @@ function encode32(bytes: Uint8Array): string {
   return out;
 }
 
-function decode32(text: string): Uint8Array {
+export function decode32(text: string): Uint8Array {
   const out: number[] = [];
   let bits = 0;
   let acc = 0;

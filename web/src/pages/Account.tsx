@@ -6,6 +6,7 @@ import TwoFactor from '../components/TwoFactor';
 import Sessions from '../components/Sessions';
 import YourData from '../components/YourData';
 import Passkeys from '../components/Passkeys';
+import AddDevice from '../components/AddDevice';
 import RecoveryKitSettings from '../components/RecoveryKitSettings';
 import { checkPasswordPolicy } from '../crypto/password-policy';
 import { useI18n } from '../i18n';
@@ -56,6 +57,7 @@ export default function Account() {
       <RecoveryKitSettings />
 
       <Passkeys />
+      <AddDevice />
 
       <TwoFactor />
 

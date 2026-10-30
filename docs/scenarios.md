@@ -125,6 +125,16 @@ Status: auto (`vault`, `cli`). In a browser: hand, not yet done.
 
 Status: auto (`passkeys`); the device's own sheet: hand.
 
+### 1.z Letting in a new device from one that is signed in
+- On the account page, Add a device (needs the password again if it was typed long ago) shows a one-time code of eighteen characters in groups, and a QR code that opens the pairing page with the code after the `#`. It works once and for ten minutes; showing another replaces it.
+- On the other device, the sign-in page's Use a code from another device takes the code (case, dashes and spaces do not matter, and a mistyped character is caught at once). It then waits.
+- The first device is told that a browser is asking, and shows which browser and which country; only Approve lets it in, and approving needs the password lately typed. Refuse sends nothing, and the code is spent.
+- Once approved, the new device opens the same records without the master password typed on it. After a reload it asks for the password or a passkey, like any sign-in.
+- The same code does not work twice, nor from a second browser, nor after ten minutes, nor after the password was changed. An unknown code and an expired one are answered the same.
+- The code is never in anything sent to the server. The account is mailed about the new sign-in.
+
+Status: auto (`enrolment`, `crypto/enrolment`); a third browser let in with a code, and its QR: `check:app`; the QR scanned by a phone camera: hand.
+
 ### 1.x Agreeing, and leaving
 - Signing up asks for two separate ticks: consent to the use of health data (with the privacy notice), and acceptance of the terms. Neither is implied by the other and the account is not made on one.
 - An account the operator made, or any account after a text changed, sees a screen asking for what is missing before anything else, and can leave from it by deleting the account.

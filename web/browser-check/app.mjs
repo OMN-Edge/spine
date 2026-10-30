@@ -727,6 +727,64 @@ try {
     await ctx.close();
   }
 
+  // A third device is let in by the first with a one-time code, with no master password typed on it: the first shows the code on the account
+  // page, the new one enters it, the first sees what asked and approves it, and the new one opens the same records. The server never has the code.
+  {
+    const ctx = await browser.createBrowserContext();
+    const e = await ctx.newPage();
+    const eErrors = [];
+    e.on('pageerror', err => eErrors.push(err.message));
+    // Everything either device sends over the network, to look for the code in it afterwards.
+    const sentOut = [];
+    for (const page of [p, e]) page.on('request', r => sentOut.push(`${r.method()} ${r.url()} ${r.postData() ?? ''}`));
+    const eText = () => e.evaluate(() => document.body.innerText);
+    const eWait = async (what, ms = 30000) => { for (let t = 0; t < ms; t += 250) { if ((await eText()).includes(what)) return true; await wait(250); } return false; };
+    const clickIn = async (page, label) => { const h = await page.evaluateHandle(l => [...document.querySelectorAll('button,a')].find(b => b.offsetParent && b.innerText.trim().toLowerCase().startsWith(l.toLowerCase())), label); await h.asElement().click(); };
+    // A sensitive action asks for the password again if it was typed long ago.
+    const confirmIfAsked = async page => {
+      for (let t = 0; t < 3000; t += 250) {
+        if ((await page.evaluate(() => document.body.innerText)).includes('Confirm it is you')) {
+          await page.type('[role=dialog] input[type=password]', MASTER);
+          await page.evaluate(() => [...document.querySelectorAll('[role=dialog] button')].find(b => b.innerText.trim() === 'Continue').click());
+          return;
+        }
+        await wait(250);
+      }
+    };
+    await p.evaluate(() => [...document.querySelectorAll('a')].find(a => a.getAttribute('href') === '/account')?.click());
+    check(await waitFor('Add a device', 15000), 'the account page offers to add a device');
+    await clickIn(p, 'Show a code');
+    await confirmIfAsked(p);
+    check(await waitFor('Waiting for the other device', 15000), 'the first device shows a one-time code');
+    const code = await p.evaluate(() => document.querySelector('[aria-label="Your code"]')?.textContent ?? '');
+    check(/^([0-9A-Z]{4}-){4}[0-9A-Z]{2}$/.test(code), 'the code is eighteen characters in groups');
+
+    await e.goto(`http://localhost:${front}/pair`, { waitUntil: 'networkidle0' });
+    await e.type('input[placeholder="Code"]', code);
+    await clickIn(e, 'Continue');
+    const waiting = await eWait('Waiting for you to approve');
+    check(waiting, 'the new device waits for the other to approve it');
+    if (!waiting) console.log(`     the new device says: ${(await eText()).replace(/\s+/g, ' ').slice(0, 500)} ${JSON.stringify(eErrors)}`);
+    check(await waitFor('A browser is asking to open your records', 20000), 'the first device is told that a browser is asking, and can see which');
+    check(!(await eText()).includes('Chest X-ray'), 'the new device has nothing until it is approved');
+    await clickIn(p, 'Approve');
+    await confirmIfAsked(p);
+    check(await eWait('Chest X-ray', 60000), 'once approved, the new device opens the same records without a master password typed on it');
+    check(await e.$('input[type=password]') === null, 'and no password field was shown to it');
+    check(await waitFor('Approved', 15000), 'the first device says it was approved');
+
+    // The code worked once.
+    const again = await ctx.newPage();
+    await again.goto(`http://localhost:${front}/pair`, { waitUntil: 'networkidle0' });
+    await again.type('input[placeholder="Code"]', code);
+    await clickIn(again, 'Continue');
+    check(await (async () => { for (let t = 0; t < 15000; t += 250) { if ((await again.evaluate(() => document.body.innerText)).includes('not valid, or it has expired')) return true; await wait(250); } return false; })(), 'the same code does not work a second time');
+    // What the server holds is sealed: it never saw the code or the key it makes.
+    check(sentOut.some(line => line.includes('/api/enrol/')) && !sentOut.some(line => line.includes(code.replace(/-/g, '')) || line.includes(code)), 'the code is not in anything the devices sent to the server');
+    check(eErrors.length === 0, `no errors on the new device${eErrors.length ? `: ${eErrors[0]}` : ''}`);
+    await ctx.close();
+  }
+
   // A save that fails is shown, not hidden. The vault refuses writes, a change is made on this device, and the page says the latest changes are
   // not saved; signing out then asks first, and keeping the page open loses nothing; once the vault takes writes again the notice goes.
   {

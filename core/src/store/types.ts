@@ -36,7 +36,7 @@ import type {
  * interface would weld it to `better-sqlite3`. The SQLite adapter returns
  * already-resolved values, which costs a microtask per call.
  *
- * Five exceptions to the user-scoping rule, each named here so that a fifth
+ * Six exceptions to the user-scoping rule, each named here so that a fifth
  * has to be argued for:
  *
  *  1. `shareLinks.findLive`, `shareLinks.createRequest` and `documents.listForShare` — scoped by the *link's* owner, resolved from
@@ -45,9 +45,11 @@ import type {
  *     definition (P7).
  *  3. `shared.get`, `shared.createRequest`/`getRequest`, `shared.logOpen` and `shared.expired` — the public side of a sealed share: scoped
  *     by the bundle's id, which is random and in the link, and answering only what the link's holder may see (metadata and sealed bytes).
- *  4. `maintenance.*` — boot-time operations across all rows, run by the
+ *  4. `enrolments.request`, `enrolments.claim` — the unauthenticated side of letting a new device in (SECURITY.md **M-41**): scoped by the
+ *     offer's id, which the one-time code makes and the server cannot reverse, and answering only whether the holder may go on.
+ *  5. `maintenance.*` — boot-time operations across all rows, run by the
  *     process itself with no acting user.
- *  5. `users.*` — the identity layer. Login has to find a user by email before
+ *  6. `users.*` — the identity layer. Login has to find a user by email before
  *     there is an acting user, and every request resolves its session to a user
  *     here.
  */
@@ -62,6 +64,7 @@ export interface AccountsStore {
   usage: UsageRepository;
   vault: VaultRepository;
   shared: SharedRepository;
+  enrolments: EnrolmentRepository;
   maintenance: MaintenanceRepository;
 
   /**
@@ -698,6 +701,37 @@ export interface SessionRecord {
   last_seen_at: string;
   user_agent: string;
   address: string;
+}
+
+/** An offer to let a new device in, as the signed-in side sees it. Never the sealed key. */
+export interface EnrolmentOffer {
+  id: string;
+  state: 'offered' | 'requested' | 'approved' | 'denied';
+  expires_at: string;
+  requested_at: string | null;
+  /** What the asking browser reported and where it was, for the owner to recognise it by. */
+  requester_agent: string | null;
+  requester_country: string | null;
+}
+
+export type EnrolmentClaim =
+  | { status: 'approved'; userId: string; authVersion: number; wrapped: string }
+  | { status: 'waiting' | 'denied' | 'gone' };
+
+export interface EnrolmentRepository {
+  /** Makes the account's one offer (a second replaces the first). */
+  offer(userId: string, offer: { id: string; wrapped: string; authVersion: number; at: string; expiresAt: string }): Promise<void>;
+  /** The account's offer if it is still good. */
+  current(userId: string, now: string): Promise<EnrolmentOffer | null>;
+  /** Approves or refuses the browser that asked; false when none is waiting. */
+  decide(userId: string, approve: boolean, now: string): Promise<boolean>;
+  cancel(userId: string): Promise<void>;
+  /** A browser says it holds the code: only the first to ask gets the offer, and only while it is good. */
+  request(id: string, tokenHash: string, who: { agent: string; country: string | null; at: string }, now: string): Promise<boolean>;
+  /** The asking browser collects what the owner approved, once. */
+  claim(id: string, tokenHash: string, now: string): Promise<EnrolmentClaim>;
+  /** Offers past their time, and used ones. */
+  sweep(now: string): Promise<number>;
 }
 
 export interface SessionRepository {

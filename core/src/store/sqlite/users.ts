@@ -146,6 +146,7 @@ export function userRepository(db: Database): UserRepository {
     'user_devices',
     'user_tokens',
     'user_passkeys',
+    'device_enrolments',
     'vault_objects',
     'vault_keys',
     'user_recovery_codes',

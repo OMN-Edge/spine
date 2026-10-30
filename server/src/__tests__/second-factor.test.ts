@@ -503,7 +503,7 @@ describe('other ways in do not skip it', () => {
 
   it('the only code path that issues a session is the login pair', async () => {
     // A guard on the guard: a session is assigned in one function (server/src/sessions.ts startSession), and only the
-    // two login steps in routes/auth.ts, and the passkey login, may call it. A new caller is a bypass unless it checks the factor,
+    // two login steps in routes/auth.ts, the passkey login and the enrolment of a device, may call it. A new caller is a bypass unless it checks the factor,
     // and needs adding here and justifying in SECURITY.md. Every route file counts, in the server and in core.
     const { readFileSync, readdirSync } = await import('fs');
     const routeDirs = [new URL('../routes/', import.meta.url), new URL('../../../core/src/routes/', import.meta.url)];
@@ -514,8 +514,9 @@ describe('other ways in do not skip it', () => {
 
     const callers = routeFiles.filter(f => /startSession\(/.test(f.text)).map(f => f.name).sort();
     // routes/passkeys.ts is the second, justified in SECURITY.md M-33: a passkey is used with user verification required, so it
-    // is the password and the second factor together.
-    expect(callers).toEqual(['auth.ts', 'passkeys.ts']);
+    // is the password and the second factor together. routes/enrolment.ts is the third (M-41): a device already signed in, by a person
+    // who typed their password lately, approved this one; it is not taken to have typed the password itself.
+    expect(callers).toEqual(['auth.ts', 'enrolment.ts', 'passkeys.ts']);
   });
 });
 

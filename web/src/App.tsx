@@ -7,6 +7,7 @@ import Landing from './pages/Landing';
 import Register from './pages/Register';
 import Verify from './pages/Verify';
 import Forgot from './pages/Forgot';
+import Pair from './pages/Pair';
 import Reset from './pages/Reset';
 import Account from './pages/Account';
 import Timeline from './pages/Timeline';
@@ -277,6 +278,7 @@ export default function App() {
         <Route path="/privacy" element={<LegalPage doc="privacy" />} />
         <Route path="/terms" element={<LegalPage doc="terms" />} />
         <Route path="/purpose" element={<LegalPage doc="purpose" />} />
+        <Route path="/pair" element={<NotInDemo><Pair /></NotInDemo>} />
         <Route path="/forgot" element={<Forgot />} />
         <Route path="/reset" element={<Reset />} />
         <Route path="/share/:id" element={<PublicShareView />} />

@@ -98,6 +98,7 @@ export default function Login() {
       footer={
         <>
           {options.recovery && <p><Link to="/forgot" className="text-brand-600">{t('Forgot your password?')}</Link></p>}
+          <p><Link to="/pair" className="text-brand-600">{t('Use a code from another device')}</Link></p>
           {options.registration === 'open' && <p>{t('No account?')} <Link to="/register" className="text-brand-600">{t('Create one')}</Link></p>}
         </>
       }

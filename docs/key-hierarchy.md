@@ -35,7 +35,7 @@ Everything about a document is encrypted, not only its pages: titles, dates, tag
 
 **Recovery.** Only the recovery kit recovers an account. The operator has no recovery path, and sign-up says so plainly. A lost password and a lost kit together mean the data is gone.
 
-**New devices** sign in with the master password, or with a passkey that was set up to open the vault (WebAuthn PRF). **Not built:** enrolling one from a device that is already signed in (a pairing code).
+**New devices** sign in with the master password, or with a passkey that was set up to open the vault (WebAuthn PRF). Or **from a device that is already signed in**: that device shows a one-time code (80 bits, never sent to the server), seals the account key under a key the code makes and leaves it at the server for ten minutes; the new device asks, the person approves it on the first device after seeing what asked, and it collects the sealed key and a sign-in (SECURITY.md **M-41**). The server holds an id the code makes and ciphertext, neither of which opens anything without the code.
 
 **Rotation. Not built**, because delegation is not. The design: promoting a child's profile to an adult account at 18, and revoking any delegate, rotate the profile key, and the data keys are re-wrapped under a new key the removed party never held. Content someone already viewed cannot be recalled.
 
