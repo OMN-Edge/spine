@@ -7,12 +7,9 @@ relay.env.*
 node_modules/
 dist/
 coverage/
-data/spine.db
-data/spine.db-shm
-data/spine.db-wal
-data/originals/
-data/pages/
-data/geoip/
+# Everything the server keeps (the accounts database, the vault, sealed shares, the country file, backups) stays out; only the directory is tracked.
+data/*
+!data/.gitkeep
 relay-data/
 __pycache__/
 *.pyc
