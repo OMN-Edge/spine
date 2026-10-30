@@ -67,7 +67,7 @@ Stays visible to the operator: that a share exists, its expiry, when and from wh
 
 ## Limits we state rather than hide
 
-- A web client served by the operator could in principle be swapped for a malicious one that steals keys. The mitigations are a strict content security policy (in place), and, **not built**, subresource integrity, reproducible builds with published hashes, and native apps as the reference client (cut from the first release). They reduce the risk; they do not remove the need to trust the build you run. The code is open (AGPL-3.0) so the build can be checked.
+- A web client served by the operator could in principle be swapped for a malicious one that steals keys. The mitigations are a strict content security policy, subresource integrity on the page's scripts and styles, and a reproducible build whose `hashes.txt` anyone can compare with a build of the commit ([verify-build.md](verify-build.md), SECURITY.md **M-40**), all in place; **not built**, a list of hashes signed and published apart from the site, and native apps as the reference client (cut from the first release). They reduce the risk; they do not remove the need to trust the build you run. The code is open (AGPL-3.0) so the build can be checked.
 - Metadata that must be visible to work (sizes, timestamps, share counts, the account email) is visible.
 - A model provider sees the plaintext of the calls you choose to make.
 - Nothing here has been audited.

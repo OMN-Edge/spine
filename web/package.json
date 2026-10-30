@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && tsc -p tsconfig.core.json && vite build && node scripts/check-bundle.mjs",
+    "build": "tsc && tsc -p tsconfig.core.json && vite build && node scripts/check-bundle.mjs && node scripts/seal-build.mjs",
     "preview": "vite preview",
     "test": "vitest run --exclude \"src/core/**\" && vitest run -c vitest.core.config.mjs && vitest run -c vitest.relay.config.mjs",
     "check:browser": "node browser-check/run.mjs",

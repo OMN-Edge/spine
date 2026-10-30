@@ -180,7 +180,7 @@ The hard parts are the key hierarchy, the approval-mode share handshake and the 
 - **TR-AI-11:** reading an upload resumes (confirming again reads what is still marked), and an upload the page was closed on is read again when the core next starts (`resumeStalledJobs`). A restore interrupted that way, and an upload whose file had not reached the vault, is marked failed. The queue is the app's own two-at-a-time limit and is not a persisted list: what resumes is what the rows say is unfinished.
 - **TR-INF-03:** account mail carries a link and, for a sign-in, a changed setting or a waiting request, the time of the event (SECURITY.md **P8**); it never carries medical content.
 - **TR-CLI-01:** the web app can be put on a home screen (a manifest and icons), but has no service worker on purpose: one would put a cache that can serve an old core in front of every route, share links included, so there is no offline use and the local index is not a cache the page keeps.
-- **TR-CLI-02:** the strict content security policy is in place; subresource integrity and reproducible builds with published hashes are not.
+- **TR-CLI-02:** the strict content security policy is in place; the page's scripts and styles carry subresource integrity (not the worker, the WebAssembly files or lazily loaded chunks, which the attribute cannot cover); the build is the same files for the same commit and lists their hashes in `hashes.txt`, which the site serves and [verify-build.md](verify-build.md) compares with a build of your own. What is not built: the hashes are not signed or published anywhere but the site and the CI run, and nothing in the page checks them for you.
 
 Model provider zero-retention setup, required before the first real user (the operator's part):
 

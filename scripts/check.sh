@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The checks CI runs, runnable on a laptop: ./scripts/check.sh [server|web|scan|all]; `browser` is the two real-browser checks, which CI also runs
+# The checks CI runs, runnable on a laptop: ./scripts/check.sh [server|web|repro|scan|all]; `browser` is the two real-browser checks, which CI also runs
 # SECURITY.md S-32 (dependencies) and S-36 (checks that are not the author of the change).
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -9,6 +9,9 @@ server() { npm ci && npm run build:core && npm run typecheck -w spine-core && np
   && npm run typecheck -w spine-server && npm test -w spine-server && npm run test:accounts -w spine-server \
   && npm run build -w spine-server && npm run smoke -w spine-server && npm audit --omit=dev --audit-level=high; }
 web()    { npm ci && npm run build:core && npm test -w spine-web && npm run build -w spine-web && npm audit --omit=dev --audit-level=high; }
+# The web app builds to the same files twice: hashes.txt (what a site publishes and verify-build.mjs compares) must not depend on the run.
+repro()   { npm ci && npm run build:core && npm run build -w spine-web && cp web/dist/hashes.txt "${TMPDIR:-/tmp}/spine-hashes-1.txt" \
+  && npm run build -w spine-web && diff "${TMPDIR:-/tmp}/spine-hashes-1.txt" web/dist/hashes.txt && echo "reproducible: $(wc -l < web/dist/hashes.txt) files, the same twice"; }
 # The two checks in a real browser (they need Google Chrome; set CHROME elsewhere than macOS): each native piece of the device, and the whole app against a real server.
 browser() { npm ci && npm run build && npm run check:browser -w spine-web && npm run check:app -w spine-web; }
 scan() {
@@ -33,8 +36,9 @@ case "${1:-all}" in
   server) server ;;
   web) web ;;
   browser) browser ;;
+  repro) repro ;;
   scan) scan ;;
   scan-semgrep) scan_semgrep ;;
   all) server; web; scan ;;
-  *) echo "usage: $0 [server|web|browser|scan|all]" >&2; exit 2 ;;
+  *) echo "usage: $0 [server|web|browser|repro|scan|all]" >&2; exit 2 ;;
 esac

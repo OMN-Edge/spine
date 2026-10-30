@@ -679,7 +679,7 @@ Everything above is built. What is left, in the order it matters:
 - **Live checks nobody has run:** Anthropic behind the relay (Vertex has been run through it on invented records); the Cloud Run deployment of the relay; a real Brevo send; argon2id timing on the Pi; the OCR thresholds on real scans of handwriting; the CI browser jobs on a real runner; a restore of a backup to a blank machine.
 - **Brevo's DPA**, to be confirmed by reading it.
 - **Requiring two-factor** instance-wide (SECURITY.md **S-20**).
-- **Requirements the code does not yet meet:** the list in [docs/requirements.md](docs/requirements.md), "Where the code differs from these rows" (delegation, key rotation, enrolling a device from another, identifier masking, an installable PWA, subresource integrity).
+- **Requirements the code does not yet meet:** the list in [docs/requirements.md](docs/requirements.md), "Where the code differs from these rows" (delegation, key rotation, enrolling a device from another, identifier masking, a signed list of the build's hashes published apart from the site; the page itself has a manifest and, on purpose, no service worker).
 - **Choosing the model** on Vertex (`gemini-3.8-flash` or `claude-sonnet-5`) by running 50–100 real Romanian handwriting samples through each, and a rotation cadence for the service-account key.
 - The open facts in [docs/deployment-gcp.md](docs/deployment-gcp.md#open-items).
 

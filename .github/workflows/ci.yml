@@ -34,6 +34,18 @@ jobs:
         env:
           CHROME: /usr/bin/google-chrome
           CHROME_FLAGS: --no-sandbox
+  # The web app builds to the same files twice, and its hashes.txt (the list a site publishes, which scripts/verify-build.mjs compares) is kept with the run.
+  reproducible:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: ./scripts/check.sh repro
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-hashes-${{ github.sha }}
+          path: web/dist/hashes.txt
   gitleaks:
     runs-on: ubuntu-latest
     steps:

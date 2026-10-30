@@ -23,6 +23,13 @@ browser:
     CHROME: /usr/bin/chromium
     CHROME_FLAGS: --no-sandbox
 
+# The web app builds to the same files twice (see the GitHub job of the same name).
+reproducible:
+  stage: test
+  script: ./scripts/check.sh repro
+  artifacts:
+    paths: [web/dist/hashes.txt]
+
 gitleaks:
   stage: scan
   image:
