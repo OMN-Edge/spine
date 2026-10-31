@@ -41,6 +41,6 @@ gh release download v1.0.0 --repo OMN-Edge/spine --pattern hashes.txt
 gh attestation verify hashes.txt --repo OMN-Edge/spine --signer-workflow OMN-Edge/spine/.github/workflows/release.yml
 ```
 
-The operator deploys a release by checking out the tag, building (the same files, since the build is reproducible) and running `scripts/deploy-check.sh v1.0.0`, which verifies the attestation of the release's `hashes.txt` and compares it with the `web/dist/hashes.txt` it just built. A personal deploy needs none of this: build and restart, and the page shows `-dirty` if the tree was not clean.
+The operator deploys a release by checking out the tag, building (the same files, since the build is reproducible) and running `scripts/deploy-check.sh v1.0.0`, which verifies the attestation of the release's `hashes.txt` and compares it with the `hashes.txt` it just built into `web/dist`. A personal deploy needs none of this: build and restart, and the page shows `-dirty` if the tree was not clean.
 
 What the attestation adds is a second party's signature on "this commit builds to this list", so the list no longer comes only from the site. It does not change the limit above: a page swapped for one visitor is seen by no one else.
