@@ -5,6 +5,7 @@ Spine is versioned `0.x` until its first production release: anything may change
 ## Unreleased
 
 - The server's store can be Postgres (`SPINE_STORE=postgres`, `SPINE_DATABASE_URL`), so more than one instance, or a host with no disk, can share accounts, sign-ins, the vault's index and sealed shares and the relay's counts. `npm run test:postgres` runs the accounts' tests on it.
+- Let someone else into a person's records with a code, as someone who can change them or only read them, from the account's People page; ending it gives the records a new key (M-49). The trial includes it; Premium alone does not, the family plan will.
 - Records for more than one person in an account (M-48): a child's or a parent's records apart from your own, each with a key, search, share links and emergency card of their own; one is open at a time. The trial allows six, the free plan and Premium one.
 - The emergency card (M-47): the owner writes a short card, turns it on, and anyone who scans its code reads it with no account; every opening is logged and the owner is mailed. An optional code holds the card as plain text for use with no signal. It is on every plan.
 - The sealed bytes can be kept in a Google Cloud Storage bucket instead of files (`SPINE_OBJECTS=gcs`, `SPINE_GCS_BUCKET`), so the server needs no disk of its own; files stay the default.

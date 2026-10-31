@@ -10,6 +10,7 @@ import { shareLinkRepository } from './share-links.js';
 import { sourceFileRepository } from './source-files.js';
 import { guideRepository } from './guide.js';
 import { emergencyRepository } from './emergency.js';
+import { delegationRepository } from './delegations.js';
 import { regroupPlanRepository } from './regroup-plans.js';
 import { sessionRepository } from './sessions.js';
 import { cookieSessionRepository } from './cookie-sessions.js';
@@ -88,6 +89,7 @@ function accountsOver(db: Database, depth: number): AccountsStore {
     billing: billingRepository(db),
     metrics: metricsRepository(db),
     waitlist: waitlistRepository(db),
+    delegations: delegationRepository(db),
     transaction: fn => inTransaction(db, depth, () => accountsOver(db, depth + 1), fn),
     async close() {
       db.close();

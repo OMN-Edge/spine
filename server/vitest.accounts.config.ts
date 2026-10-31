@@ -11,7 +11,7 @@ export default mergeConfig(base, defineConfig({
     setupFiles: ['../core/src/testing/use-accounts-store.ts'],
     include: [
       'accounts', 'auth', 'sessions', 'second-factor', 'totp', 'passkeys', 'vault', 'relay-routes', 'shared', 'share-shell', 'own-account',
-      'backup', 'cli', 'config', 'mail', 'billing', 'growth', 'objects', 'emergency',
+      'backup', 'cli', 'config', 'mail', 'billing', 'growth', 'objects', 'emergency', 'delegation',
     ].map(name => `src/__tests__/${name}.test.ts`),
   },
 }));

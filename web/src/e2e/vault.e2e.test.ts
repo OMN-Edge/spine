@@ -5,6 +5,9 @@ import type { AddressInfo } from 'net';
 import { createAccountKeys, resetWithRecovery, type KdfParams } from '../crypto/keys.js';
 import { readRecoveryKey, writeRecoveryKey } from '../crypto/recovery-kit.js';
 import { ConflictError, VaultSession, fetchKeys, prepareSignIn } from '../crypto/vault-client.js';
+import { newInviteCode } from '../crypto/delegation.js';
+import { openObject } from '../crypto/keys.js';
+import { OpenError } from '../crypto/seal.js';
 import type { SealedCache, SealedObject } from '../crypto/sealed-cache.js';
 
 /**
@@ -246,5 +249,58 @@ describe.skipIf(!haveServer)('the device and the server together', () => {
     const session = await VaultSession.open(masterKey!, g);
     expect(await session.loadProfiles()).toEqual([]);
     await session.close();
+  });
+
+  it('lets another account into a profile with a code, and what it held stops opening anything once access is ended', async () => {
+    const OWNER_PASSWORD = 'yet another master password';
+    const GUEST = 'guest@example.com';
+    const GUEST_PASSWORD = 'the guest’s own master password';
+
+    // The owner, with a profile and a record in it.
+    const ownerBrowser = browser();
+    const { masterKey } = await signIn(ownerBrowser, OWNER_PASSWORD);
+    const owner = await VaultSession.open(masterKey!, ownerBrowser);
+    const profile = await owner.createProfile('Grandmother');
+    await owner.put(profile, 'bundle', 'bundle-shared-001', new TextEncoder().encode('her blood pressure, 120 over 80'));
+
+    // Another person, with an account of their own made on their own device.
+    const made = await createAccountKeys(GUEST_PASSWORD, FAST);
+    const guestBrowser = browser();
+    expect((await post(guestBrowser, '/api/auth/register', { email: GUEST, auth_value: made.authValue, keys: made.keys, consent_health_data: true, accept_terms: true })).status).toBe(200);
+    await store.getStore().users.markVerified((await store.getStore().users.findByEmail(GUEST))!.id, new Date().toISOString());
+    const prepared = await prepareSignIn(GUEST, GUEST_PASSWORD, guestBrowser);
+    expect((await post(guestBrowser, '/api/auth/login', { email: GUEST, password: prepared.credential })).status).toBe(200);
+    const guest = await VaultSession.open(prepared.masterKey!, guestBrowser);
+
+    // The invitation: the code is told to the guest and never sent; a code nobody made opens nothing.
+    const { code } = await owner.invite(profile, 'guardian');
+    await expect(guest.accept(await newInviteCode())).rejects.toMatchObject({ status: 404 });
+    const accepted = await guest.accept(code);
+    expect(accepted).toMatchObject({ ownerEmail: 'person@example.com', role: 'guardian' });
+    await expect(guest.accept(code)).rejects.toMatchObject({ status: 404 }); // spent
+
+    // The guest opens the profile with a key sealed to their own key pair, reads what is in it, and writes into it.
+    const received = (await guest.delegations()).received;
+    const [{ grant, profileKey }] = await guest.openReceived(received);
+    const held = profileKey.slice(); // what a former delegate would keep
+    const view = VaultSession.delegated(guest, grant.id, grant.profile_id, profileKey);
+    expect(await view.profileName(profile)).toBe('Grandmother');
+    expect(new TextDecoder().decode((await view.get('bundle-shared-001', 'bundle')).plaintext)).toBe('her blood pressure, 120 over 80');
+    await view.put(profile, 'bundle', 'bundle-by-guest-1', new TextEncoder().encode('a note by the guardian'));
+    expect(new TextDecoder().decode((await owner.get('bundle-by-guest-1', 'bundle')).plaintext)).toBe('a note by the guardian');
+
+    // Ending it replaces the key: the guest can reach nothing, what they held opens no stored object, and the owner still reads everything.
+    await owner.revoke(grant.id);
+    await expect(view.get('bundle-shared-001', 'bundle')).rejects.toMatchObject({ status: 404 });
+    expect((await guest.delegations()).received).toEqual([]);
+    const after = (await owner.list(0)).objects.filter(o => o.profile_id === profile && !o.deleted);
+    for (const meta of after.filter(o => o.kind !== 'profile')) {
+      const body = new Uint8Array(await (await ownerBrowser(`/api/vault/objects/${meta.id}`)).arrayBuffer());
+      await expect(openObject(held, meta.kind === 'bundle' ? 'bundle' : meta.kind, meta.id, body, meta.wrapped_key)).rejects.toBeInstanceOf(OpenError);
+    }
+    expect(new TextDecoder().decode((await owner.get('bundle-shared-001', 'bundle')).plaintext)).toBe('her blood pressure, 120 over 80');
+    expect(await owner.loadProfiles()).toEqual([{ id: profile, name: 'Grandmother' }]);
+    await owner.close();
+    await guest.close();
   });
 });

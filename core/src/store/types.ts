@@ -76,6 +76,7 @@ export interface AccountsStore {
   billing: BillingRepository;
   metrics: MetricsRepository;
   waitlist: WaitlistRepository;
+  delegations: DelegationRepository;
 
   /**
    * Ingestion writes a document, its tags and its fields together; a partial
@@ -863,6 +864,55 @@ export interface BillingRepository {
   pruneEvents(before: string): Promise<number>;
 }
 
+/**
+ * Letting another account see (and, for a guardian, write to) one profile of the owner's vault (FR-PRF-02, SECURITY.md **M-49**). The
+ * invitation holds the profile key sealed under a key only the code makes; a grant holds it sealed to the delegate's own key pair. The
+ * server learns who may open which profile, never a key.
+ */
+export type DelegationRole = 'guardian' | 'viewer';
+export type DelegationState = 'pending' | 'active' | 'paused' | 'revoked';
+
+export interface DelegationRecord {
+  id: string;
+  owner_user_id: string;
+  profile_id: string;
+  delegate_user_id: string;
+  role: DelegationRole;
+  /** The profile key sealed to the delegate's public key; null until the delegate has completed the grant. */
+  wrapped_key: string | null;
+  state: DelegationState;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DelegationInvite { id: string; profile_id: string; role: DelegationRole; expires_at: string }
+
+export interface DelegationRepository {
+  /** The owner's: leaves an invitation for a profile. `proofHash` is what the claimant must show the hash of. */
+  invite(ownerId: string, invite: { id: string; profileId: string; role: DelegationRole; wrapped: string; proofHash: string; now: string; expiresAt: string }): Promise<void>;
+  invites(ownerId: string, now: string): Promise<DelegationInvite[]>;
+  cancelInvite(ownerId: string, id: string): Promise<boolean>;
+  /**
+   * The delegate's: spends an invitation (once, before it ends, to the one who shows the proof) and makes a pending grant to the acting
+   * account. Null if the code is wrong, used, ended, or is the owner's own. Answers the sealed profile key the code opens.
+   */
+  claim(delegateId: string, id: string, proofHash: string, now: string, grantId: string): Promise<{ grant: DelegationRecord; wrapped: string } | null>;
+  /** The delegate completes a pending grant with the profile key sealed to their own key; false if it is not theirs or not pending. */
+  complete(delegateId: string, id: string, wrappedKey: string, now: string): Promise<boolean>;
+  /** One grant, by its id; the caller checks whose it is (the owner's, or the delegate's, with `delegateId`). */
+  get(id: string): Promise<DelegationRecord | null>;
+  /** Grants of the owner's profiles, with the delegate's address and public key (to seal a replaced profile key to them). */
+  ownedBy(ownerId: string): Promise<Array<DelegationRecord & { delegate_email: string; delegate_public_key: string | null }>>;
+  /** Grants made to this account that are active or paused, with the owner's address. */
+  madeTo(delegateId: string): Promise<Array<DelegationRecord & { owner_email: string }>>;
+  /** The owner's: pauses, resumes or ends a grant. False if it is not theirs. */
+  setState(ownerId: string, id: string, state: DelegationState, now: string): Promise<boolean>;
+  /** The delegate's: gives the grant up. */
+  leave(delegateId: string, id: string, now: string): Promise<boolean>;
+  /** The owner's, after a profile key rotates: the new sealed key for each remaining grant of the profile. */
+  rewrap(ownerId: string, profileId: string, keys: Array<{ id: string; wrappedKey: string }>, now: string): Promise<number>;
+}
+
 /** Counts the sign-ups and share openings that tell whether the loops in the marketing plan work. A number a day under a name; never who. */
 export interface MetricsRepository {
   bump(name: string, day: string): Promise<void>;
@@ -1384,6 +1434,13 @@ export interface VaultRepository {
   /** A tombstone, so another device learns of the deletion; false if there is no such live object or `baseSeq` is stale. */
   remove(userId: string, id: string, baseSeq: number, now: string): Promise<{ seq: number } | false>;
   usage(userId: string): Promise<{ objects: number; bytes: number }>;
+  /**
+   * The owner's: a profile's key was replaced. Every live object of the profile gets its data key sealed under the new profile key, and the
+   * profile object its new wrapped key and size, in one step; the sequence advances for each, so other devices see them. `before` runs once the
+   * objects named are known to be exactly the profile's live ones and before anything is changed (the new profile record is stored there), so a
+   * failure of it changes nothing. Null if an object is missing, not the profile's, or left out.
+   */
+  rotateProfile(userId: string, profileId: string, update: { profileWrapped: string; profileSize: number; objects: Array<{ id: string; wrappedKey: string }> }, now: string, before: () => Promise<void>): Promise<{ seq: number } | null>;
   /** Removes the vault and every object row; the ids, so the caller can delete the files. */
   erase(userId: string): Promise<string[]>;
 }

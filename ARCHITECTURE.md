@@ -300,6 +300,10 @@ Accounts come from the operator (`npm run cli -- create-user <email>`; also `set
 
 An account keeps records for one or more people (`profile` objects in the vault, **M-48**). The device's worker holds one person's core at a time: `switchProfile` saves it, starts the core on the other person's sealed objects and the page starts over (`web/src/profiles.ts`, `pages/Profiles.tsx`). The list is read once at sign-in and added to when someone is made. The plan's `profiles` limit is enforced where a profile object is created (`routes/vault.ts`).
 
+### Letting another account in
+
+A profile can be opened by another account (`routes/delegation.ts`, **M-49**): an invitation code, a grant holding the profile key sealed to the other account's key pair, and `/api/delegated/:grant/objects…`, which are the vault's own handlers with the profile fixed. The worker lists such profiles beside the account's own (`grant:<id>`), and opens one with a `VaultSession.delegated` on the grant. Ending access replaces the profile's key (`POST /api/vault/profiles/:id/rotate`).
+
 ### The emergency card
 
 `core/src/emergency.ts` defines the card and the plain text an offline code holds; `routes/emergency.ts` (run by the device) edits it and turns it on and off through the share host's `publishCard` and `revokeCard`; the device seals it and sends it to the server as a `card` bundle (`routes/shared.ts`), which has no end, is one for each person the account keeps records for (at most ten), and is not counted as a share. The viewer is at the same `/share/<id>` address as a share (`ShareRouter` asks the server which it is), so the proxy's rules for shared addresses, the content security policy and the shell route needed no change. See SECURITY.md **M-47**.

@@ -168,6 +168,9 @@ export function userRepository(q: Query, begin: Begin): UserRepository {
     async delete(id) {
       await begin(async run => {
         for (const table of OWNED_TABLES) await run(`DELETE FROM ${table} WHERE user_id = $1`, [id]);
+        // Grants and invitations name the account as the owner or as the delegate, not as `user_id`.
+        await run('DELETE FROM delegations WHERE owner_user_id = $1 OR delegate_user_id = $1', [id]);
+        await run('DELETE FROM profile_invites WHERE owner_user_id = $1', [id]);
         await run('DELETE FROM users WHERE id = $1', [id]);
       });
     },

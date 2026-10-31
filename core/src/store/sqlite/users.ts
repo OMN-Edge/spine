@@ -159,9 +159,14 @@ export function userRepository(db: Database): UserRepository {
     'user_totp',
   ];
   const deleteFrom = OWNED_TABLES.filter(table => tables.has(table)).map(table => db.prepare(`DELETE FROM ${table} WHERE user_id = ?`));
+  // Grants and invitations name the account as the owner or as the delegate, not as `user_id`.
+  const deleteGrants = db.prepare('DELETE FROM delegations WHERE owner_user_id = ? OR delegate_user_id = ?');
+  const deleteInvites = db.prepare('DELETE FROM profile_invites WHERE owner_user_id = ?');
   const deleteUser = db.prepare('DELETE FROM users WHERE id = ?');
   const deleteEverything = db.transaction((id: string) => {
     for (const statement of deleteFrom) statement.run(id);
+    deleteGrants.run(id, id);
+    deleteInvites.run(id);
     deleteUser.run(id);
   });
 

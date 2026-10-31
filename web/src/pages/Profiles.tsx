@@ -1,9 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { device, UnsavedChangesError } from '../core/client';
 import { openPerson, useProfiles } from '../profiles';
 import { planRefusal } from '../billing';
 import { buttonClass, inputClass, Notice } from '../components/AuthCard';
+import ProfileAccess from '../components/ProfileAccess';
+import { vaultState } from '../crypto/vault-state';
+import { readInviteCode } from '../crypto/delegation';
+import { pendingInvite, forgetInvite } from '../invite';
 import { useI18n } from '../i18n';
 
 /**
@@ -18,6 +22,37 @@ export default function Profiles() {
   const [error, setError] = useState('');
   const [unsaved, setUnsaved] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [joining, setJoining] = useState(pendingInvite() ?? '');
+  const [joined, setJoined] = useState('');
+  const [openAccess, setOpenAccess] = useState('');
+
+  // The page's own session needs the people's keys to make an invitation.
+  useEffect(() => { void vaultState.session()?.loadProfiles().catch(() => undefined); }, []);
+
+  const join = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(''); setBusy(true);
+    try {
+      const read = await readInviteCode(joining);
+      if (!read.ok) { setError(t('That code is not right. Check it and try again.')); return; }
+      const session = vaultState.session();
+      if (!session) { setError(t('Open your records first.')); return; }
+      const accepted = await session.accept(read.code);
+      forgetInvite();
+      setJoining('');
+      await device.reloadKeys();
+      await refresh();
+      setJoined(accepted.ownerEmail);
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      setError(status === 404 ? t('That code is not valid, or it has been used or has expired.') : t('Could not use this code'));
+    } finally { setBusy(false); }
+  };
+
+  const leave = async (id: string) => {
+    setError(''); setBusy(true);
+    try { await vaultState.session()?.leave(id.replace(/^grant:/, '')); await device.reloadKeys(); await refresh(); } catch { setError(t('Could not leave')); } finally { setBusy(false); }
+  };
 
   const open = async (id: string, force = false) => {
     setError(''); setBusy(true);
@@ -54,9 +89,20 @@ export default function Profiles() {
 
       <ul className="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100">
         {people.profiles.map(p => (
-          <li key={p.id} className="p-4 flex items-center justify-between gap-3">
-            <span className="text-gray-900">{p.name}{p.id === people.current && <span className="ml-2 text-xs text-green-700">{t('Open now')}</span>}</span>
-            {p.id !== people.current && <button disabled={busy} onClick={() => void open(p.id)} className="text-sm text-brand-600 hover:underline">{t('Open')}</button>}
+          <li key={p.id} className="p-4">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-gray-900">
+                {p.name}
+                {p.id === people.current && <span className="ml-2 text-xs text-green-700">{t('Open now')}</span>}
+                {p.shared && <span className="block text-xs text-gray-500">{t('Shared by {owner}', { owner: p.shared.owner })} · {p.shared.role === 'guardian' ? t('you can change the records') : t('you can only read the records')}</span>}
+              </span>
+              <span className="shrink-0 flex gap-3 text-sm">
+                {p.id !== people.current && <button disabled={busy} onClick={() => void open(p.id)} className="text-brand-600 hover:underline">{t('Open')}</button>}
+                {p.shared ? <button disabled={busy} onClick={() => void leave(p.id)} className="text-red-600 hover:underline">{t('Leave')}</button>
+                  : <button className="text-gray-500 hover:underline" onClick={() => setOpenAccess(openAccess === p.id ? '' : p.id)}>{t('Access')}</button>}
+              </span>
+            </div>
+            {!p.shared && openAccess === p.id && <ProfileAccess profileId={p.id} name={p.name} />}
           </li>
         ))}
       </ul>
@@ -66,6 +112,14 @@ export default function Profiles() {
           <button className="underline" onClick={() => void open(unsaved, true)}>{t('Open anyway')}</button>
         </Notice>
       )}
+
+      <form onSubmit={e => void join(e)} className="bg-white border border-gray-200 rounded-xl p-5 mt-6">
+        <h2 className="font-medium text-gray-900 mb-1">{t('Join with a code')}</h2>
+        <p className="text-sm text-gray-500 mb-3">{t('Someone who looks after a person can give you a code that lets you open that person’s records, here.')}</p>
+        <input className={inputClass} value={joining} onChange={e => setJoining(e.target.value)} placeholder={t('The code')} aria-label={t('The code')} autoComplete="off" />
+        {joined && <Notice kind="ok">{t('You can now open the records {owner} shared with you.', { owner: joined })}</Notice>}
+        <button type="submit" disabled={busy || !joining.trim()} className={buttonClass}>{t('Join')}</button>
+      </form>
 
       <form onSubmit={e => void add(e)} className="bg-white border border-gray-200 rounded-xl p-5 mt-6">
         <h2 className="font-medium text-gray-900 mb-1">{t('Add a person')}</h2>

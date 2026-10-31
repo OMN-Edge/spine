@@ -6,7 +6,7 @@ How an instance sells Spine, and how an operator sets it up. **Off by default**:
 
 | Plan | Price | What it is |
 | --- | --- | --- |
-| Free trial | €0 for six months from sign-up | Everything, with 150 pages of AI reading in all, and records for up to six people |
+| Free trial | €0 for six months from sign-up | Everything, with 150 pages of AI reading in all, records for up to six people, and letting other accounts into them |
 | Free | €0 | One person's records, storage up to 1 GB, the timeline, search, export, the emergency card, one live share link without translation, about 30 pages of AI reading a month |
 | Premium | €39 a year or €3.99 a month | One person's records, reading within fair use (4000 pages a month), translation, questions, connections and related documents, any number of share links, approval mode |
 | Founding member | €29 a year | The yearly Premium for the first 500 paying accounts, kept for as long as the subscription runs |

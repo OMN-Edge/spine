@@ -188,6 +188,20 @@ export async function openProfileKey(unlocked: UnlockedKeys, profileId: string, 
   return open(unlocked.accountKey, fromB64(s, wrapped), CTX.profileKey(profileId));
 }
 
+/**
+ * Replacing a profile's key (SECURITY.md **M-49**, TR-CRY-07): one object's data key, sealed again under the new profile key. The data key is
+ * the same, so the object's body is untouched; what changes is which profile key opens it.
+ */
+export async function rewrapObjectKey(oldProfileKey: Uint8Array, newProfileKey: Uint8Array, objectId: string, wrappedKey: string): Promise<string> {
+  const s = await sodium();
+  const dataKey = await open(oldProfileKey, fromB64(s, wrappedKey), CTX.dataKey(objectId));
+  try {
+    return toB64(s, await seal(newProfileKey, dataKey, CTX.dataKey(objectId)));
+  } finally {
+    s.memzero(dataKey);
+  }
+}
+
 /** A sealed object: the bytes to upload and the data key that opens them, sealed under the profile key. */
 export interface SealedObject {
   body: Uint8Array;

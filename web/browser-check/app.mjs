@@ -847,6 +847,24 @@ try {
     check(await waitFor('Add a person'), 'the page of people opens again from the name');
     await (await p.evaluateHandle(() => [...document.querySelectorAll('li')].find(li => !li.innerText.includes('Open now'))?.querySelector('button'))).asElement().click();
     check(await waitFor('Chest X-ray', 30000), "the first person's records are back, as they were");
+
+    // Letting someone in: a code is made on the device, shown once, and an invitation that is not used can be cancelled.
+    await click('check@example.com');
+    await waitFor('See and add people');
+    await click('See and add people');
+    await waitFor('Add a person');
+    await click('Access');
+    check(await waitFor('Let someone in'), "a person's access can be opened");
+    await click('Let someone in');
+    check(await waitFor('Tell this code to the person', 20000), 'a code is made for the invitation');
+    check(/\b[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{2}\b/.test(await text()), 'in groups of four that can be read out');
+    await click('Done');
+    check(await waitFor('An invitation is waiting'), 'the invitation is listed until it is used');
+    await click('Cancel');
+    for (let t = 0; t < 8000 && (await text()).includes('An invitation is waiting'); t += 250) await wait(250);
+    check(!(await text()).includes('An invitation is waiting'), 'and cancelled');
+    await click('Timeline');
+    await waitFor('Chest X-ray');
   }
 
   // A passkey that opens the vault (the WebAuthn PRF extension), with Chrome's virtual authenticator standing in for the person's device.

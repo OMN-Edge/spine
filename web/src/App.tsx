@@ -22,6 +22,8 @@ import Scan from './pages/Scan';
 import Pricing from './pages/Pricing';
 import Emergency from './pages/Emergency';
 import Profiles from './pages/Profiles';
+import Invite from './pages/Invite';
+import { pendingInvite } from './invite';
 import { useProfiles } from './profiles';
 import ForDoctors from './pages/ForDoctors';
 import Trust from './pages/Trust';
@@ -179,6 +181,11 @@ function Layout({ children }: { children: React.ReactNode }) {
           </div>
         )}
       </nav>
+      {!demo && pendingInvite() && location.pathname !== '/profiles' && (
+        <div className="bg-brand-50 border-b border-brand-100 px-4 sm:px-6 py-2 text-sm text-brand-800">
+          {t('You have an invitation waiting.')} <Link to="/profiles" className="underline">{t('Open it')}</Link>
+        </div>
+      )}
       {demo && <DemoBanner />}
       {/* With the chat open beside it, the page gives it room instead of sitting under it. */}
       <main className={`max-w-6xl mx-auto px-4 sm:px-6 py-6 pb-24 sm:py-8 transition-[margin] duration-200 ${chat?.enabled && chat.open ? 'sm:mr-[26.5rem] sm:max-w-none' : ''}`}>{children}</main>
@@ -318,6 +325,7 @@ export default function App() {
         <Route path="/library" element={<PrivateRoute><Library /></PrivateRoute>} />
         <Route path="/doctors/:id" element={<PrivateRoute><DoctorPage /></PrivateRoute>} />
         <Route path="/search" element={<PrivateRoute><Search /></PrivateRoute>} />
+        <Route path="/invite" element={<Invite />} />
         <Route path="/profiles" element={<PrivateRoute inDemo={false}><Profiles /></PrivateRoute>} />
         <Route path="/emergency" element={<PrivateRoute inDemo={false}><Emergency /></PrivateRoute>} />
         <Route path="/share" element={<PrivateRoute inDemo={false}><ShareLinks /></PrivateRoute>} />

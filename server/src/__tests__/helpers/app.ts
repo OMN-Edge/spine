@@ -126,6 +126,7 @@ export async function buildTestApp(options: TestAppOptions = {}) {
   const { passkeyRoutes } = await import('../../routes/passkeys.js');
   const { enrolmentRoutes } = await import('../../routes/enrolment.js');
   const { vaultRoutes } = await import('../../routes/vault.js');
+  const { delegationRoutes } = await import('../../routes/delegation.js');
   const { relayRoutes } = await import('../../routes/relay.js');
   const { billingRoutes } = await import('../../routes/billing.js');
   const { waitlistRoutes } = await import('../../routes/waitlist.js');
@@ -170,6 +171,7 @@ export async function buildTestApp(options: TestAppOptions = {}) {
   await app.register(passkeyRoutes, { perSource: 100_000, instanceWide: 100_000, ...options.passkeys });
   await app.register(enrolmentRoutes, { requestsPerSource: 100_000, claimsPerSource: 100_000, instanceWide: 100_000, ...options.enrolment });
   await app.register(vaultRoutes, options.vault ?? {});
+  await app.register(delegationRoutes, { claimsPerSource: 1000, instanceWide: 100000 });
   await app.register(relayRoutes);
   await app.register(billingRoutes);
   await app.register(waitlistRoutes, { perSource: { max: 1000, timeWindow: '1 minute' }, ...options.waitlist });

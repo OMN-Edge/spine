@@ -864,6 +864,14 @@ On the account page, "See and add people" opens a page that lists the people the
 
 Status: auto (`billing`, `crypto`); real browser (`check:app`: add a person, their records start empty, back to the first); not on a phone.
 
+### 15.2 Let someone else in
+On a person's Access, "Let someone in" makes a code (in groups of four) and a link, for someone to open that person's records either as someone who can change them or who can only read them. The code works once, for a week; Spine does not keep it. The other person signs in or makes an account (the link takes them to `/invite`, and the code waits for them on the page of people), types the code under "Join with a code", and the person appears in their list, marked as shared by the owner and with what they may do. Opening it shows the owner's records; what they add is in the owner's vault and the owner sees it.
+
+- A wrong, used or expired code is refused in words. The owner can cancel an invitation that is waiting, and pause or resume access.
+- Ending access (password asked again) gives the records a new key and signs the owner out of their other devices; the person let in stops reaching them at once, and what they already read stays with them. Leaving is the person's own call.
+
+Status: auto (`delegation`, `vault.e2e`: the crypto, the server and the lock-out); real browser: the code and the cancelling (`check:app`); the joining and the second account's screens: not yet checked by hand.
+
 ---
 
 ## 14. The emergency card

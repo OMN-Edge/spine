@@ -124,9 +124,15 @@ class CoreWorker {
   }
 
   /** The people this account keeps records for, and the one that is open. */
-  async profiles(): Promise<{ profiles: Array<{ id: string; name: string }>; current: string }> {
+  async profiles(): Promise<{ profiles: Array<{ id: string; name: string; shared?: { owner: string; role: 'guardian' | 'viewer' } }>; current: string }> {
     const m = await this.send({ type: 'profiles' });
     return JSON.parse(new TextDecoder().decode(m.body ?? new ArrayBuffer(0)));
+  }
+
+  /** Takes the keys and the people as they now are, after a key was replaced or access changed. Stays on the same person. */
+  async reloadKeys(): Promise<void> {
+    await this.send({ type: 'reloadKeys' });
+    window.dispatchEvent(new Event(PROFILE_CHANGED));
   }
 
   /** Makes records for another person (a child, a parent), with a key of their own. Does not open them. */

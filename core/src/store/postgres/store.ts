@@ -5,6 +5,7 @@ import type { Begin, Query } from './query.js';
 import { billingRepository, metricsRepository, waitlistRepository } from './billing.js';
 import { maintenanceRepository } from './maintenance.js';
 import { sharedRepository } from './shared.js';
+import { delegationRepository } from './delegations.js';
 import { cookieSessionRepository, enrolmentRepository, sessionRepository, usageRepository } from './small.js';
 import { userRepository } from './users.js';
 import { vaultRepository } from './vault.js';
@@ -75,6 +76,7 @@ function accountsOver(q: Query, begin: Begin): Omit<AccountsStore, 'close'> {
     billing: billingRepository(q),
     metrics: metricsRepository(q),
     waitlist: waitlistRepository(q),
+    delegations: delegationRepository(q, begin),
     transaction: fn => begin((tq, nested) => fn({ ...accountsOver(tq, nested), async close() {} })),
   };
 }

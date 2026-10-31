@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { PROFILE_CHANGED, device, rememberProfile } from './core/client';
 import { vaultState } from './crypto/vault-state';
 
-export interface Person { id: string; name: string }
+export interface Person { id: string; name: string; shared?: { owner: string; role: 'guardian' | 'viewer' } }
 export interface People { profiles: Person[]; current: string }
 
 /**

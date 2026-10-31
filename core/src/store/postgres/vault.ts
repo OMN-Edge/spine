@@ -80,6 +80,27 @@ export function vaultRepository(q: Query, begin: Begin): VaultRepository {
       return { objects: Number(row.objects), bytes: Number(row.bytes) };
     },
 
+    async rotateProfile(userId, profileId, update, now, before) {
+      return begin(async run => {
+        await run('SELECT 1 FROM vault_keys WHERE user_id = $1 FOR UPDATE', [userId]);
+        const profile = await one(run, `SELECT ${COLUMNS} FROM vault_objects WHERE user_id = $1 AND id = $2`, [userId, profileId]);
+        if (!profile || profile.kind !== 'profile' || profile.deleted === 1) return null;
+        const live = (await many<{ id: string }>(run, "SELECT id FROM vault_objects WHERE user_id = $1 AND profile_id = $2 AND deleted = 0 AND kind <> 'profile'", [userId, profileId])).map(r => r.id).sort();
+        const named = update.objects.map(o => o.id).sort();
+        if (live.length !== named.length || live.some((id, i) => id !== named[i])) return null;
+        // The new profile record is stored inside the step: if that fails, the step is undone.
+        await before();
+        let seq = 0;
+        for (const o of update.objects) {
+          seq = await bumpSeq(run, userId);
+          await run('UPDATE vault_objects SET wrapped_key = $1, seq = $2, updated_at = $3 WHERE user_id = $4 AND id = $5', [o.wrappedKey, seq, now, userId, o.id]);
+        }
+        seq = await bumpSeq(run, userId);
+        await run('UPDATE vault_objects SET wrapped_key = $1, seq = $2, size = $3, updated_at = $4 WHERE user_id = $5 AND id = $6', [update.profileWrapped, seq, update.profileSize, now, userId, profileId]);
+        return { seq };
+      });
+    },
+
     async erase(userId) {
       return begin(async run => {
         const gone = (await many<{ id: string }>(run, 'SELECT id FROM vault_objects WHERE user_id = $1', [userId])).map(r => r.id);

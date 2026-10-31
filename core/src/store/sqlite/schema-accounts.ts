@@ -260,4 +260,33 @@ CREATE TABLE IF NOT EXISTS waitlist (
   created_at TEXT NOT NULL,
   source TEXT
 );
+
+-- Another account's access to one profile of an owner's vault (SECURITY.md M-49). An invitation holds the profile key sealed under a key that
+-- only the code makes (the server holds an id and a hash of a proof it cannot reverse); a grant holds it sealed to the delegate's public key.
+CREATE TABLE IF NOT EXISTS profile_invites (
+  id TEXT PRIMARY KEY,
+  owner_user_id TEXT NOT NULL REFERENCES users(id),
+  profile_id TEXT NOT NULL,
+  role TEXT NOT NULL,
+  wrapped TEXT NOT NULL,
+  proof_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  state TEXT NOT NULL DEFAULT 'offered'
+);
+CREATE INDEX IF NOT EXISTS idx_profile_invites_owner ON profile_invites(owner_user_id);
+
+CREATE TABLE IF NOT EXISTS delegations (
+  id TEXT PRIMARY KEY,
+  owner_user_id TEXT NOT NULL REFERENCES users(id),
+  profile_id TEXT NOT NULL,
+  delegate_user_id TEXT NOT NULL REFERENCES users(id),
+  role TEXT NOT NULL,
+  wrapped_key TEXT,
+  state TEXT NOT NULL DEFAULT 'pending',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_delegations_owner ON delegations(owner_user_id);
+CREATE INDEX IF NOT EXISTS idx_delegations_delegate ON delegations(delegate_user_id);
 `;

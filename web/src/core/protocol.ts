@@ -12,6 +12,8 @@ export type ToWorker =
   | { id: number; type: 'profiles' }
   /** Makes another person's records, with a key of their own; answers with `{ id }`. The server refuses past what the plan allows. */
   | { id: number; type: 'createProfile'; name: string }
+  /** Look again at the keys and the people the account may open (after a profile's key was replaced, or access was given or taken). */
+  | { id: number; type: 'reloadKeys' }
   /** Saves what is open, then opens another person's records. Refused with code `unsaved` unless `force`. */
   | { id: number; type: 'switchProfile'; profileId: string; force?: boolean }
   | { id: number; type: 'request'; method: string; url: string; headers: Record<string, string>; body?: string; parts?: Part[] }
