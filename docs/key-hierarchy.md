@@ -51,7 +51,7 @@ A share is a **sealed copy**: the owner's device builds a copy that holds only w
 - **Approval mode.** The doctor's browser makes an ephemeral key pair and sends the public key with its request. The patient's app approves and wraps the share key to that public key. A leaked link alone then opens nothing.
 - **Expiry and revocation** delete the sealed copy on the server. Content already viewed may have been copied; the interface says so.
 - **A share is a snapshot** that the owner's device builds again after the records change (15 seconds later, while it is open) and sends if it would differ, under the same key. A closed device cannot refresh it.
-- **Emergency card: cut** from the first release, not built.
+- **Emergency card** (SECURITY.md **M-47**): a card the owner writes, sealed on the device under a key of its own and kept at the server as a bundle that opens with no approval and has no end. The key is in the address and the QR code after the `#`, so anyone who has the whole address reads the card, and the server never has the key. The owner turns it off and the sealed bytes are deleted. A second, optional code holds the card itself as plain text, so it needs no network and no server at all; it cannot be turned off or counted, and the page says so. Stays visible to the operator: that a card exists, its size, and when and from which country it was opened.
 
 Stays visible to the operator: that a share exists, its expiry, when and from which country it was opened. Not which documents it holds: it sees only the id, meaningless to it, of a document a recipient says they opened.
 

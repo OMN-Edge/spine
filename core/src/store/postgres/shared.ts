@@ -11,6 +11,7 @@ const bundleOf = (r: Record<string, unknown>): SharedBundle => ({
   blobs: Number(r.blobs),
   blobBytes: Number(r.blob_bytes),
   revokedAt: (r.revoked_at as string | null) ?? null,
+  kind: r.kind === 'card' ? 'card' : 'share',
 });
 
 const requestOf = (r: Record<string, unknown>): SharedRequest => ({
@@ -25,7 +26,7 @@ const requestOf = (r: Record<string, unknown>): SharedRequest => ({
   decidedAt: (r.decided_at as string | null) ?? null,
 });
 
-const BUNDLE = 'id, user_id, created_at, expires_at, require_approval, size, blobs, blob_bytes, revoked_at';
+const BUNDLE = 'id, user_id, created_at, expires_at, require_approval, size, blobs, blob_bytes, revoked_at, kind';
 const REQUEST = 'id, bundle_id, visitor_key, status, wrapped_key, note, country, requested_at, decided_at';
 
 export function sharedRepository(q: Query, begin: Begin): SharedRepository {
@@ -41,7 +42,9 @@ export function sharedRepository(q: Query, begin: Begin): SharedRepository {
       return begin(async run => {
         const have = await bundle(run, b.id, true);
         if (!have) {
-          await run('INSERT INTO shared_bundles (id, user_id, created_at, expires_at, require_approval, size, blobs, blob_bytes) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)', [b.id, userId, now, b.expiresAt, b.requireApproval ? 1 : 0, b.size, b.blobs, b.blobBytes]);
+          // One emergency card at a time: a new one is made after the old one is revoked.
+          if (b.kind === 'card' && (await one(run, `SELECT 1 FROM shared_bundles WHERE user_id = $1 AND kind = 'card' AND revoked_at IS NULL FOR UPDATE`, [userId]))) return 'one_card' as const;
+          await run('INSERT INTO shared_bundles (id, user_id, created_at, expires_at, require_approval, size, blobs, blob_bytes, kind) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)', [b.id, userId, now, b.expiresAt, b.requireApproval ? 1 : 0, b.size, b.blobs, b.blobBytes, b.kind ?? 'share']);
           return 'ok' as const;
         }
         if (have.user_id !== userId) return 'taken' as const;
@@ -49,6 +52,11 @@ export function sharedRepository(q: Query, begin: Begin): SharedRepository {
         await run('UPDATE shared_bundles SET expires_at = $1, require_approval = $2, size = $3, blobs = $4, blob_bytes = $5 WHERE id = $6 AND user_id = $7', [b.expiresAt, b.requireApproval ? 1 : 0, b.size, b.blobs, b.blobBytes, b.id, userId]);
         return 'ok' as const;
       });
+    },
+
+    async cardOf(userId) {
+      const r = await one(q, `SELECT ${BUNDLE} FROM shared_bundles WHERE user_id = $1 AND kind = 'card' AND revoked_at IS NULL`, [userId]);
+      return r ? bundleOf(r) : null;
     },
 
     async addBlob(userId, id, bytes) {
@@ -75,7 +83,7 @@ export function sharedRepository(q: Query, begin: Begin): SharedRepository {
     },
 
     async usage(userId, now) {
-      const row = (await one<{ bundles: number; bytes: number }>(q, 'SELECT COUNT(*) AS bundles, COALESCE(SUM(size + blob_bytes), 0) AS bytes FROM shared_bundles WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > $2', [userId, now]))!;
+      const row = (await one<{ bundles: number; bytes: number }>(q, "SELECT COUNT(*) AS bundles, COALESCE(SUM(size + blob_bytes), 0) AS bytes FROM shared_bundles WHERE user_id = $1 AND kind = 'share' AND revoked_at IS NULL AND expires_at > $2", [userId, now]))!;
       return { bundles: Number(row.bundles), bytes: Number(row.bytes) };
     },
 

@@ -20,6 +20,7 @@ import Trends from './pages/Trends';
 import Episodes from './pages/Episodes';
 import Scan from './pages/Scan';
 import Pricing from './pages/Pricing';
+import Emergency from './pages/Emergency';
 import ForDoctors from './pages/ForDoctors';
 import Trust from './pages/Trust';
 import LegalPage from './pages/LegalPage';
@@ -40,7 +41,7 @@ import ChatPanel from './components/ChatPanel';
 import ReauthDialog from './components/ReauthDialog';
 import { ChatProvider, useChat } from './components/ChatProvider';
 import { GuideProvider } from './guide';
-import PublicShareView from './pages/PublicShareView';
+import ShareRouter from './pages/ShareRouter';
 import ShareRequestPage from './pages/ShareRequest';
 import ShareLinkDetail from './pages/ShareLinkDetail';
 import { Wordmark } from './components/Logo';
@@ -290,7 +291,7 @@ export default function App() {
         <Route path="/pair" element={<NotInDemo><Pair /></NotInDemo>} />
         <Route path="/forgot" element={<Forgot />} />
         <Route path="/reset" element={<Reset />} />
-        <Route path="/share/:id" element={<PublicShareView />} />
+        <Route path="/share/:id" element={<ShareRouter />} />
         <Route path="/" element={authenticated || demo ? <PrivateRoute><Timeline /></PrivateRoute> : <Landing />} />
         <Route path="/upload" element={<PrivateRoute inDemo={!!demoUploads}><Upload /></PrivateRoute>} />
         <Route path="/uploads/:id" element={<PrivateRoute><UploadPages /></PrivateRoute>} />
@@ -304,6 +305,7 @@ export default function App() {
         <Route path="/library" element={<PrivateRoute><Library /></PrivateRoute>} />
         <Route path="/doctors/:id" element={<PrivateRoute><DoctorPage /></PrivateRoute>} />
         <Route path="/search" element={<PrivateRoute><Search /></PrivateRoute>} />
+        <Route path="/emergency" element={<PrivateRoute inDemo={false}><Emergency /></PrivateRoute>} />
         <Route path="/share" element={<PrivateRoute inDemo={false}><ShareLinks /></PrivateRoute>} />
         <Route path="/share-links/:id" element={<PrivateRoute inDemo={false}><ShareLinkDetail /></PrivateRoute>} />
         <Route path="/share-requests/:id" element={<PrivateRoute inDemo={false}><ShareRequestPage /></PrivateRoute>} />

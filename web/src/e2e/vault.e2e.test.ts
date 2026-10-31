@@ -63,6 +63,9 @@ describe.skipIf(!haveServer)('the device and the server together', () => {
     accounts = await import('../../../server/src/accounts.js');
     mail = await import('../../../server/src/mail/index.js');
     mail.resetMailer({ enabled: true, async send() {} });
+    // The server's entry points say where the sealed bytes go (S3); this test is one, over files in the directory above.
+    const objects = await import('../../../server/src/objects/index.js');
+    objects.useObjects(() => objects.createObjects());
     const app = await server.buildTestApp({ accounts: { registration: 'open' } });
     await app.listen({ port: 0, host: '127.0.0.1' });
     base = `http://127.0.0.1:${(app.server.address() as AddressInfo).port}`;

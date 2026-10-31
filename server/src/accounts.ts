@@ -90,6 +90,17 @@ export function resetMail(to: string, link: string): MailMessage {
  * note, nothing about what is shared (the label is the owner's own words and may name a doctor or a condition, the
  * note is a stranger's). The link opens a page that asks them to sign in, so it grants nothing by itself.
  */
+/** Said when someone opens the owner's card; the wording names no record, because the mail is the provider's to see (SECURITY.md P8). */
+export function cardOpenedMail(to: string, at: string, country: string | null): MailMessage {
+  return {
+    to,
+    subject: 'Your Spine card was opened',
+    text:
+      `Your Spine card was opened at ${at} (UTC)${country ? `, from ${country}` : ''}.\n\n` +
+      `If you, or someone you showed it to, opened it, there is nothing to do. If not, sign in, open the card and turn it off.\n`,
+  };
+}
+
 export function accessRequestMail(to: string, link: string, requestedAt: string, ip: string | null): MailMessage {
   return {
     to,

@@ -376,6 +376,24 @@ CREATE TABLE IF NOT EXISTS guide_marks (
   done_at TEXT,
   PRIMARY KEY (user_id, key)
 );
+-- The owner's emergency card (src/emergency.ts): what is written on it, and, once it is published, the id and key of its sealed bundle at the
+-- server. Kept with the records so a second device shows the same card; never in a share, not exported. \`card_key\` is a secret of the owner's.
+CREATE TABLE IF NOT EXISTS emergency_cards (
+  user_id TEXT PRIMARY KEY REFERENCES users(id),
+  content TEXT NOT NULL,
+  card_id TEXT,
+  card_key TEXT,
+  published_at TEXT,
+  updated_at TEXT NOT NULL
+);
+-- Each time the published card was opened: when, and from which country. The address is never kept.
+CREATE TABLE IF NOT EXISTS emergency_scans (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  at TEXT NOT NULL,
+  country TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_emergency_scans_user ON emergency_scans(user_id, at);
 CREATE INDEX IF NOT EXISTS idx_chat_conversations_user ON chat_conversations(user_id, updated_at);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation ON chat_messages(conversation_id, seq);
 

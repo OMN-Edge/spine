@@ -182,7 +182,8 @@ CREATE TABLE IF NOT EXISTS shared_bundles (
   size INTEGER NOT NULL DEFAULT 0, -- the sealed database
   blobs INTEGER NOT NULL DEFAULT 0, -- sealed files beside it (page images)
   blob_bytes INTEGER NOT NULL DEFAULT 0,
-  revoked_at TEXT
+  revoked_at TEXT,
+  kind TEXT NOT NULL DEFAULT 'share' -- 'share' | 'card' (the owner's emergency card: one, with no end)
 );
 
 CREATE TABLE IF NOT EXISTS shared_requests (

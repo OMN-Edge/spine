@@ -5,6 +5,7 @@ Spine is versioned `0.x` until its first production release: anything may change
 ## Unreleased
 
 - The server's store can be Postgres (`SPINE_STORE=postgres`, `SPINE_DATABASE_URL`), so more than one instance, or a host with no disk, can share accounts, sign-ins, the vault's index and sealed shares and the relay's counts. `npm run test:postgres` runs the accounts' tests on it.
+- The emergency card (M-47): the owner writes a short card, turns it on, and anyone who scans its code reads it with no account; every opening is logged and the owner is mailed. An optional code holds the card as plain text for use with no signal. It is on every plan.
 - The sealed bytes can be kept in a Google Cloud Storage bucket instead of files (`SPINE_OBJECTS=gcs`, `SPINE_GCS_BUCKET`), so the server needs no disk of its own; files stay the default.
 - Plans and payment, off unless `SPINE_BILLING=on` (M-45, `docs/billing.md`): a six-month trial, a free plan and Premium, sold by Paddle; AI reading is measured at the relay, and translation, questions, connections, any number of share links and visitor approval are Premium's. The privacy notice and terms say so, and every account is asked to agree to them again.
 - A pricing page, a plan card on the account page, a waitlist, and a page for doctors reached from a shared page's footer; `grant-plan`, `waitlist` and `metrics` for the operator.

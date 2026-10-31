@@ -88,6 +88,10 @@ function addColumnsInPlace(db: Database): void {
   // Whether the administrator has approved the account (SPINE_REGISTRATION=approval). Every account from before is.
   if (accounts.length > 0 && !accounts.includes('approved')) db.exec('ALTER TABLE users ADD COLUMN approved INTEGER NOT NULL DEFAULT 1');
 
+  // The emergency card is a sealed bundle of its own kind; every earlier bundle is a share.
+  const bundles = columnsOf(db, 'shared_bundles');
+  if (bundles.length > 0 && !bundles.includes('kind')) db.exec("ALTER TABLE shared_bundles ADD COLUMN kind TEXT NOT NULL DEFAULT 'share'");
+
   const links = columnsOf(db, 'share_links');
   if (links.length > 0 && !links.includes('include_scans')) {
     db.exec('ALTER TABLE share_links ADD COLUMN include_scans INTEGER NOT NULL DEFAULT 0');

@@ -618,7 +618,22 @@ export interface BillingView {
   founding_left?: number;
 }
 
+export interface EmergencyView {
+  card: import('spine-core/emergency').CardContent;
+  updated_at: string | null;
+  published: { id: string; address: string; since: string | null } | null;
+  /** The card as the plain text an offline code holds, and how many items did not fit. */
+  offline: { text: string; omitted: number };
+  scans: Array<{ id: string; at: string; country: string | null }>;
+}
+
 export const api = {
+  emergency: {
+    get: () => req<EmergencyView>('/api/emergency'),
+    save: (card: import('spine-core/emergency').CardContent) => put<EmergencyView>('/api/emergency', card),
+    publish: () => post<EmergencyView>('/api/emergency/publish', undefined),
+    unpublish: () => del<EmergencyView>('/api/emergency/publish'),
+  },
   billing: {
     pricing: () => req<Pricing>('/api/pricing'),
     get: () => req<BillingView>('/api/billing'),

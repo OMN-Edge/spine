@@ -139,6 +139,8 @@ export function userRepository(db: Database): UserRepository {
     'documents',
     'doctors',
     'pages',
+    'emergency_scans',
+    'emergency_cards',
     'regroup_plans',
     'source_files',
     'tags',

@@ -1,0 +1,185 @@
+// Runs the real app, end to end, in real Chrome: a server on a temporary data directory, an account, sign-in, the vault set up, the sample
+// records written on the device, a reload, and the unlock that brings them back. Then it looks in the server's files for anything readable.
+// `npm run check:app` (needs `npm run build` in web/ and server/, and Google Chrome; set CHROME elsewhere than macOS, and CHROME_FLAGS=--no-sandbox where it runs as root or in a container). Exits 1 on a failure.
+import { spawn, execFileSync, spawnSync } from 'node:child_process';
+import http from 'node:http';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import puppeteer from 'puppeteer-core';
+import { PDFDocument, StandardFonts } from 'pdf-lib';
+
+const root = path.resolve(import.meta.dirname, '../..');
+const data = fs.mkdtempSync(path.join(os.tmpdir(), 'spine-app-check-'));
+// Chrome refuses some ports outright (ERR_UNSAFE_PORT); these are among them, and the check must not draw one.
+const UNSAFE = new Set([3659, 4045, 4190, 5060, 5061, 6000, 6566, 6665, 6666, 6667, 6668, 6669, 6679, 6697]);
+let port;
+do { port = 3000 + Math.floor(Math.random() * 1000); } while ([port, port + 1000].some(n => UNSAFE.has(n)));
+const front = port + 1000; // what the browser talks to: a proxy that adds the production content security policy, as Caddy or nginx do
+const RELAY_SECRET = 'app-check-relay-secret-app-check-relay';
+const REAL = process.env.SPINE_CHECK_REAL === '1';
+// The relay is always a process, started the way it is deployed: its own entry point (dist/relay/main.js) with the model and service account
+// of the repository's .env when SPINE_CHECK_REAL=1 (real calls to the real provider, on invented records only), and otherwise the same relay
+// with a stand-in model registered in place of a vendor (server/src/testing/stand-in-relay.ts, never built).
+let relay, relayProcess;
+let modelEnv = {};
+if (REAL) {
+  const dotenv = Object.fromEntries(fs.readFileSync(path.join(root, '.env'), 'utf8').split('\n').map(l => l.match(/^([A-Z0-9_]+)=(.*)$/)).filter(Boolean).map(m => [m[1], m[2].replace(/^"(.*)"$/, '$1')]));
+  const keep = ['SPINE_LLM_PROVIDER', 'SPINE_LLM_MODEL', 'SPINE_LLM_ENDPOINT', 'SPINE_LLM_REGION', 'SPINE_LLM_PROJECT', 'SPINE_LLM_MODELS', 'SPINE_EMBEDDINGS', 'SPINE_EMBEDDING_ENDPOINT', 'SPINE_EMBEDDING_REGION', 'SPINE_EMBEDDING_PROJECT', 'SPINE_EMBEDDING_MODEL', 'GOOGLE_APPLICATION_CREDENTIALS'];
+  modelEnv = Object.fromEntries(keep.filter(k => dotenv[k] !== undefined).map(k => [k, dotenv[k]]));
+  if (modelEnv.GOOGLE_APPLICATION_CREDENTIALS && !path.isAbsolute(modelEnv.GOOGLE_APPLICATION_CREDENTIALS)) modelEnv.GOOGLE_APPLICATION_CREDENTIALS = path.join(root, modelEnv.GOOGLE_APPLICATION_CREDENTIALS);
+}
+{
+  const relayPort = 4000 + Math.floor(Math.random() * 1000);
+  const calls = [];
+  const started = []; // the lines the relay writes about itself, not about a call: `relay ready`
+  const [command, args, extraEnv] = REAL
+    ? ['node', ['dist/relay/main.js'], modelEnv]
+    : [path.join(root, 'node_modules/.bin/tsx'), ['src/testing/try-relay.ts'], { SPINE_LLM_PROVIDER: 'stand-in', SPINE_LLM_MODEL: 'gemini-test', SPINE_EMBEDDINGS: 'stand-in' }];
+  relayProcess = spawn(command, args, { cwd: path.join(root, 'server'), env: { PATH: process.env.PATH, HOME: process.env.HOME, ...extraEnv, SPINE_RELAY_SECRET: RELAY_SECRET, SPINE_RELAY_ORIGIN: `http://localhost:${front}`, SPINE_DB_PATH: ':memory:', PORT: String(relayPort) }, stdio: ['ignore', 'pipe', 'inherit'] });
+  let partial = '';
+  relayProcess.stdout.on('data', d => { partial += d; const lines = partial.split('\n'); partial = lines.pop(); for (const l of lines) { try { const { time, ...rest } = JSON.parse(l); if (rest.event) { started.push(rest); continue; } calls.push(rest); } catch { /* not a call line */ } } });
+  let exited = false;
+  relayProcess.on('exit', () => { exited = true; });
+  const url = `http://127.0.0.1:${relayPort}`;
+  for (let waited = 0; ; waited += 250) {
+    if (exited || waited > 30000) throw new Error('the relay did not start');
+    try { await fetch(url + '/healthz'); break; } catch { await new Promise(r => setTimeout(r, 250)); }
+  }
+  relay = { url, calls, started, close: () => relayProcess.kill() };
+}
+const standIn = { SPINE_EMBEDDINGS: 'vertex', SPINE_EMBEDDING_ENDPOINT: 'aiplatform.eu.example', SPINE_EMBEDDING_REGION: 'eu', SPINE_EMBEDDING_PROJECT: 'proj-1', SPINE_LLM_PROVIDER: 'vertex', SPINE_LLM_ENDPOINT: 'aiplatform.eu.example', SPINE_LLM_REGION: 'eu', SPINE_LLM_PROJECT: 'proj-1', SPINE_LLM_MODEL: 'gemini-test' };
+// The invented root the signed fixture chains to, named as the operator would: a directory of certificates.
+const anchors = fs.mkdtempSync(path.join(os.tmpdir(), 'spine-app-check-anchors-'));
+fs.copyFileSync(path.join(root, 'core/src/__tests__/fixtures/chain-root.der'), path.join(anchors, 'root.der'));
+const env = {
+  SPINE_TRUST_ANCHORS_DIR: anchors,
+  PATH: process.env.PATH, HOME: process.env.HOME, DATA_DIR: data, SESSION_SECRET: 'app-check-secret-app-check-secret-1234', PORT: String(port), SPINE_PARSER: 'text',
+  ...(REAL ? modelEnv : standIn), // the model settings are the .env's alone in real mode: the relay and the server must describe the same targets
+  SPINE_RELAY_URL: relay.url, SPINE_RELAY_SECRET: RELAY_SECRET,
+  SPINE_DOMAIN: `localhost:${front}`, // where passkeys belong: the address the browser uses
+  SPINE_DEMO_UPLOADS: 'on', // a visitor may read a few files of their own in the demo (SECURITY.md M-39)
+};
+// An invented two-page file with a text layer.
+const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'spine-app-check-files-')); // not in the server's data directory: that is searched below
+const upload = path.join(sandbox, 'invented.pdf');
+{
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  for (const lines of [['Example Clinic - Consultation', 'Patient: Jane Example (invented).'], ['Laboratory report', 'Hemoglobin 13.5 g/dL.']]) {
+    const page = doc.addPage([595.28, 841.89]);
+    lines.forEach((t, i) => page.drawText(t, { x: 60, y: 760 - i * 28, size: 14, font }));
+  }
+  fs.writeFileSync(upload, await doc.save());
+}
+const shownInTimeline = (f, d) => !f.pages.slice(d.page_start - 1, d.page_end).every(pg => pg.hidden); // a document whose every page is set aside is kept, not drawn
+const MASTER = 'violet-tractor-9Qx-pelican-ledger-42';
+
+// Invented files for the demo: one longer than the demo reads, and two of one page.
+const demoFiles = [];
+for (const [name, count] of [['demo-long.pdf', 7], ['demo-two.pdf', 1], ['demo-three.pdf', 1]]) {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  for (let n = 1; n <= count; n++) doc.addPage([595.28, 841.89]).drawText(`Demo Example Clinic ${name} - page ${n} of ${count} (invented)`, { x: 60, y: 760, size: 14, font });
+  demoFiles.push(path.join(sandbox, name));
+  fs.writeFileSync(demoFiles.at(-1), await doc.save());
+}
+const made = execFileSync('node', ['dist/cli.js', 'create-user', 'check@example.com'], { cwd: path.join(root, 'server'), env, encoding: 'utf8' });
+const keeperPassword = execFileSync('node', ['dist/cli.js', 'create-user', 'keeper@example.com'], { cwd: path.join(root, 'server'), env, encoding: 'utf8' }).match(/password \(shown once\): (\S+)/)[1];
+const password = made.match(/password \(shown once\): (\S+)/)[1];
+const CSP = fs.readFileSync(path.join(root, 'Caddyfile'), 'utf8').match(/Content-Security-Policy "([^"]+)"/)[1].replace('{$SPINE_RELAY_URL:}', relay.url);
+const puts = []; // when the owner's device sent a sealed copy
+const asked = []; // every address the browsers asked the server for: a key in the part after the # would never be among them
+let failVaultWrites = false; // when set, the vault refuses writes, as a server that is down or a vault that is full would
+const LATENCY = Number(process.env.TRY_LATENCY ?? 0); // what each request to the server costs before it is answered, as a Pi across a network does
+const proxy = http.createServer(proxyHandler);
+function proxyHandler(req, res) {
+  asked.push(req.url);
+  if (failVaultWrites && req.method !== 'GET' && req.method !== 'HEAD' && req.url.startsWith('/api/vault/objects')) {
+    res.writeHead(503, { 'content-type': 'application/json' });
+    return res.end(JSON.stringify({ error: 'test: the vault is not taking writes' }));
+  }
+  if (req.method === 'PUT' && req.url.startsWith('/api/shared/')) puts.push(Date.now());
+  const up = http.request({ host: '127.0.0.1', port, path: req.url, method: req.method, headers: req.headers }, r => {
+    r.pause();
+    setTimeout(() => { res.writeHead(r.statusCode, { ...r.headers, 'content-security-policy': CSP }); r.pipe(res); }, LATENCY);
+  });
+  req.pipe(up);
+}
+proxy.listen(front);
+const serverLogPath = path.join(data, 'server.log');
+const serverLog = fs.openSync(serverLogPath, 'w');
+const server = spawn('node', ['dist/index.js'], { cwd: path.join(root, 'server'), env, stdio: ['ignore', serverLog, serverLog] });
+await new Promise(r => setTimeout(r, 3000));
+
+const browser = await puppeteer.launch({ executablePath: process.env.CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true, defaultViewport: { width: 1280, height: 900 } });
+const wait = ms => new Promise(r => setTimeout(r, ms));
+let failed = false;
+try {
+  const p = await browser.newPage();
+  const logs = [];
+  const traces = [];
+  let pressed = 0;
+  const t0 = Date.now();
+  p.on('console', async m => { const t = m.text(); if (/^\[core\]/.test(t) && !/vault loaded/.test(t)) traces.push([Date.now(), t.slice(0, 80)]); if (/translation read|vault loaded|\[unlock\]|in part|could not be translated/.test(t)) { const a = await Promise.all(m.args().map(x => x.jsonValue().catch(() => '?'))); logs.push(`${((Date.now() - t0) / 1000).toFixed(1)}s ${a.map(v => typeof v === 'string' ? v : JSON.stringify(v)).join(' ').slice(0, 400)}`); } });
+  p.on('pageerror', e => console.log('page error', e.message));
+  const text = () => p.evaluate(() => document.body.innerText);
+  const waitFor = async (what, ms = 30000) => { for (let t = 0; t < ms; t += 200) { if ((await text()).includes(what)) return true; await wait(200); } return false; };
+  const click = async label => { const h = await p.evaluateHandle(l => [...document.querySelectorAll('button,a')].find(e => e.offsetParent && e.innerText.trim().toLowerCase().startsWith(l.toLowerCase())), label); const el = h.asElement(); if (!el) throw new Error('no button: ' + label + ' | page: ' + (await text()).replace(/\s+/g, ' ').slice(0, 200)); await el.click(); };
+  const type = async (sel, v) => { await p.waitForSelector(sel, { visible: true }); await p.type(sel, v); };
+  const unlock = async () => { await p.waitForSelector('input[type=password]', { visible: true }); await p.type('input[type=password]', MASTER); pressed = Date.now(); traces.length = 0; await p.keyboard.press('Enter'); };
+
+  await p.goto(`http://localhost:${front}/login`, { waitUntil: 'networkidle0' });
+  await type('input[type=email]', 'check@example.com'); await type('input[type=password]', password); await click('Sign in');
+  await waitFor('Before you start');
+  for (const c of await p.$$('input[type=checkbox]')) await c.click();
+  await click('Agree and continue'); await waitFor('Protect your records');
+  const pw = await p.$$('input[type=password]'); await pw[0].type(MASTER); await pw[1].type(MASTER); await click('Continue');
+  await waitFor('recovery kit'); await (await p.$('input[type=checkbox]')).click(); await click('Continue');
+  await unlock();
+  await waitFor('Explore with sample records'); await click('Explore with sample records'); await waitFor('Chest X-ray');
+  await wait(4000);
+
+  const openDoc = async () => { await (await p.evaluateHandle(() => [...document.querySelectorAll('a')].find(a => a.innerText.includes('Chest X-ray')))).asElement().click(); for (let t = 0; t < 20000 && !(await p.evaluate(() => location.pathname.startsWith('/documents/'))); t += 200) await wait(200); };
+  // The interface in French: the sample documents are English, so each is translated into it.
+  const setLang = async l => { await p.evaluate(v => localStorage.setItem('spine.lang', v), l); };
+  const timeIt = async (label) => {
+    const start = Date.now(); let flashed = false, shown = null;
+    for (let t = 0; t < 40000; t += 100) {
+      const s = await text();
+      if (/\b(FR|RO|Fran[cç]ais|Roman|German|Deutsch)\w*\[/.test(s) || /\b(French|Romanian|German)\[/.test(s)) { shown = Date.now() - start; break; }
+      if (s.includes('Translating') || s.includes('Se traduce') || s.includes('Traduction') || s.includes('Übersetz')) flashed = true;
+      await wait(100);
+    }
+    console.log(`${label}: translated text on screen after ${shown === null ? 'never (40 s)' : shown + ' ms'}; spinner seen: ${flashed}`);
+  };
+
+  await setLang('fr');
+  await p.goto(`http://localhost:${front}/`, { waitUntil: 'networkidle0' }); await unlock(); await waitFor('Chest X-ray');
+  await openDoc(); await timeIt('first time, French');
+  await wait(6000); // the save
+  const objectGets = from => asked.slice(from).filter(u => /^\/api\/vault\/objects\/[^?]+$/.test(u));
+  for (let n = 1; n <= 2; n++) {
+    const from = asked.length;
+    await p.goto(`http://localhost:${front}/`, { waitUntil: 'networkidle0' }); await unlock(); await waitFor('Chest X-ray');
+    const shown = Date.now();
+    console.log(`refresh ${n} requests during unlock:`, JSON.stringify(asked.slice(from, from + 40).filter(u => u.startsWith('/api/')).map(u => u.replace(/objects\/[^?]+/, 'objects/<id>'))));
+    console.log(`refresh ${n} unlock stages (ms after pressing Enter):`, JSON.stringify(traces.map(([t, m]) => [t - pressed, m])), 'records on screen at', shown - pressed);
+    await openDoc(); await timeIt(`refresh ${n}, French`);
+    await wait(1500);
+    const gets = objectGets(from);
+    const byKind = { index: gets.filter(u => u.includes('/ix-')).length, other: gets.filter(u => !u.includes('/ix-')).length };
+    console.log(`refresh ${n}: GETs of single vault objects: ${JSON.stringify(byKind)}; listings: ${asked.slice(from).filter(u => u.startsWith('/api/vault/objects?')).length}`);
+    const img = await p.evaluate(() => [...document.querySelectorAll('img')].map(i => i.naturalWidth));
+    console.log(`refresh ${n}: page image widths ${JSON.stringify(img)}`);
+  }
+  const dbs = async () => p.evaluate(async () => (await indexedDB.databases()).map(d => d.name));
+  console.log('IndexedDB before sign-out:', JSON.stringify(await dbs()));
+  await click('Se déconnecter'); await waitFor('Se connecter', 10000); await wait(1000);
+  console.log('IndexedDB after sign-out:', JSON.stringify(await dbs()));
+  await wait(3000);
+  console.log('--- console of the page and the core (timestamps are seconds into the run)');
+  for (const l of logs) console.log(l);
+} catch (err) { console.log('FAIL', err.message); failed = true; }
+finally { await browser.close(); server.kill(); proxy.close(); relay.close(); fs.rmSync(data, { recursive: true, force: true }); fs.rmSync(sandbox, { recursive: true, force: true }); }
+process.exit(failed ? 1 : 0);

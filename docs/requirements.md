@@ -127,9 +127,17 @@ One constraint shapes the AI path: the client cannot hold Spine's model API key,
 | FR-BIL-04 | A self-hosted or private instance has no plans and no limits but its own | Must | Launch |
 | FR-GRW-01 | The loops in the marketing plan can be counted without identifying anyone: sign-ups from a shared page or a doctor's page, shared pages opened, checkouts started; a waitlist holds an address and a day | Should | Launch |
 
-### Not in the first release
+### Reintroduced after the first scope was cut
 
-These stay as requirements but are not built or scheduled for the first release: the emergency card (FR-EMG: a card curated by the user with allergies, conditions, medications and contacts, opened from a QR code without approval, every scan logged and notified, readable offline), delegating a profile to another account (FR-PRF-02), family and guardian accounts (FR-FAM: teen access, promotion at 18, guardian access paused until the new adult chooses), installable mobile apps (TR-MOB), and the paid tier.
+The cuts of 2026-10-23 are being undone in this order, each with its documents (the marketing plan needs them): the emergency card, several profiles per account, delegating a profile, child profiles and guardians, promotion at 18, and the Family plan. Installable mobile apps (TR-MOB) stay out.
+
+| ID | Requirement | Priority | Release | Status |
+| --- | --- | --- | --- | --- |
+| FR-EMG-01 | A card the owner writes of what someone helping them must know at once (allergies, conditions, medications, contacts, blood type, notes); only what is written is on it | Must | Launch | Built (**M-47**) |
+| FR-EMG-02 | The card opens from a QR code with no account and no approval, in the reader's language for everything but the owner's own words, and says what Spine is | Must | Launch | Built |
+| FR-EMG-03 | Every opening is logged (time and country, never an address) and the owner is mailed, at most once in fifteen minutes | Must | Launch | Built |
+| FR-EMG-04 | An optional code that holds the card as plain text, readable with no signal, said plainly to be readable by anyone who sees it and to hold only what fits | Should | Launch | Built |
+| FR-EMG-05 | The owner turns the card off and its address stops opening; the interface says a card already seen may have been copied | Must | Launch | Built |
 
 ## Technical requirements
 
@@ -270,7 +278,7 @@ What each feature, current and planned, must satisfy in law, with the source. GD
 | CR-FAM-02 | At 18, guardian access continues only with the new adult's consent; access is paused until they choose, and the profile key is rotated | GDPR Art. 6, 9; TR-CRY-07 | Promotion at 18 | Future |
 | CR-FAM-03 | Lawyer review of a minor's rights over their own medical data, including whether some records may be hidden from guardians before 18 | Law 46/2003 (patient rights: the legal representative's consent, and the patient's involvement as far as they can understand); Order 386/2004; Civil Code | Teen access | Future |
 | CR-DEL-01 | Delegating a profile to another account is a disclosure the owner chooses; the delegate's rights and the owner's right to revoke are stated, and each grant is logged | GDPR Art. 6, 9(2)(a), 26 if roles are joint | Delegation | Future |
-| CR-EMG-01 | The emergency card is data the owner chooses to expose without approval: consent for that exposure is explicit, a scan is logged and notified, and the offline QR (data in the code) warns that anyone who sees the code reads the card | GDPR Art. 9(2)(a), 25, 32 | Emergency card | Future |
+| CR-EMG-01 | The emergency card is data the owner chooses to expose without approval: consent for that exposure is explicit, a scan is logged and notified, and the offline QR (data in the code) warns that anyone who sees the code reads the card | GDPR Art. 9(2)(a), 25, 32 | Emergency card | Built (the owner turns it on after being told who can read it; the lawyer confirms the consent wording) |
 | CR-REM-01 | Reminders restate the document, hold no medical text on the lock screen and are the owner's to switch off | GDPR Art. 5(1)(c); MDCG 2019-11 | Reminders | Future |
 | CR-PAY-01 | A paid tier: price, renewal and cancellation shown before purchase, 14-day withdrawal right and digital-content rules, a processor agreement with the payment provider | Consumer Rights Directive 2011/83; Digital Content Directive (EU) 2019/770; GDPR Art. 28 | Subscription | Draft (pricing page, terms and privacy notice say it; the agreement with Paddle is the operator's to sign) |
 | CR-MOB-01 | Store listings and privacy forms match the privacy notice and the intended purpose | Store policies; GDPR Art. 13; MDR Art. 7 | Mobile apps | Future |

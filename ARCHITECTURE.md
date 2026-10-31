@@ -296,6 +296,10 @@ Metadata still leaks: a sender, subject or domain naming a service tells the pro
 
 Accounts come from the operator (`npm run cli -- create-user <email>`; also `set-password`, `reset-link`, `disable-2fa`, `delete-user`, `list-users`) or, if enabled, from open signup.
 
+### The emergency card
+
+`core/src/emergency.ts` defines the card and the plain text an offline code holds; `routes/emergency.ts` (run by the device) edits it and turns it on and off through the share host's `publishCard` and `revokeCard`; the device seals it and sends it to the server as a `card` bundle (`routes/shared.ts`), which has no end, one per account, and is not counted as a share. The viewer is at the same `/share/<id>` address as a share (`ShareRouter` asks the server which it is), so the proxy's rules for shared addresses, the content security policy and the shell route needed no change. See SECURITY.md **M-47**.
+
 ### Plans and payment
 
 `SPINE_BILLING=on` gives accounts a plan (**M-45**, [docs/billing.md](docs/billing.md)): a six-month trial, a free plan and Premium, worked out from the account's age and its subscription (`entitlementsOf` in `core/src/billing/plans.ts`, never stored). The relay asks `billing/gate.ts` before and after each call; the vault and sealed-share routes ask `billing/entitlements.ts`; Paddle's signed messages (`routes/billing.ts`) write the subscription; the app only sends a person to Paddle's checkout (`checkout/`, an origin of its own) and to its customer portal. Off, none of it runs, which is the state of a self-hosted or private instance.

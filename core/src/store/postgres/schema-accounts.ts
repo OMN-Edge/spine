@@ -146,8 +146,10 @@ CREATE TABLE IF NOT EXISTS shared_bundles (
   size BIGINT NOT NULL DEFAULT 0,
   blobs INTEGER NOT NULL DEFAULT 0,
   blob_bytes BIGINT NOT NULL DEFAULT 0,
-  revoked_at TEXT
+  revoked_at TEXT,
+  kind TEXT NOT NULL DEFAULT 'share' -- 'share' | 'card' (the owner's emergency card: one, with no end)
 );
+ALTER TABLE shared_bundles ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'share';
 
 CREATE TABLE IF NOT EXISTS shared_requests (
   id TEXT PRIMARY KEY,

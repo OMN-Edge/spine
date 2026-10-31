@@ -854,6 +854,28 @@ Status: auto (`growth`); the footer: not yet checked by hand.
 
 ---
 
+## 14. The emergency card
+
+### 14.1 Write the card and turn it on
+The owner opens Share links, then "Write an emergency card", writes what someone helping them must know (nothing is taken from the documents), saves, and turns it on. The page says, before it does, that anyone with the address or the code reads the card without asking, that they are told when it is opened, and that a card already seen may have been copied. A code and an address appear; printing is one click. An edit is sent again under the same address, so a printed code keeps working.
+
+- It is on every plan, and does not count as a share link.
+- Turning it off deletes the sealed copy; the old address says the card is not available. Turning it on again gives a new address.
+
+Status: auto (`emergency`, `plans`, `keys`); screens: not yet checked by hand.
+
+### 14.2 Someone scans it
+A person with a phone scans the code and sees the card in their language (the labels; the owner's words stay as written), with the owner's phone numbers as links, a line that the owner wrote it and it should be checked, and a short note on what Spine is with a link to it. No account, no question. The owner is mailed the first time in fifteen minutes and sees the time and country in the card's list.
+
+Status: auto (`emergency`); the page and a real scan: not yet checked by hand or on a phone.
+
+### 14.3 The code with no signal
+An optional second code holds the card as plain text (the most urgent first). The page says anyone who sees it reads the card and that it cannot be turned off or counted, and says how many items did not fit.
+
+Status: auto (`emergency` in core: the text and its limit); the code on a real phone: not yet checked.
+
+---
+
 ## Gaps found while writing this
 
 Found by checking each scenario against the code.

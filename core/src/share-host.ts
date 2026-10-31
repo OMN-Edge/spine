@@ -26,6 +26,13 @@ export interface ShareHost {
   pull(userId: string): Promise<void>;
   /** An answer to a visitor's request: for an approval, the share key wrapped to that visitor's key. */
   answer(userId: string, request: { id: string; linkId: string; visitorKey: string }, decision: 'approve' | 'deny', shareKey: string | null): Promise<void>;
+  /**
+   * The emergency card: seals it under a key and sends it as a bundle of its own kind that opens with no approval and no end. With no id and
+   * no key a new pair is made; with them the same card is replaced, so the address already printed keeps working.
+   */
+  publishCard(input: { id: string | null; key: string | null; content: string }): Promise<{ id: string; key: string }>;
+  /** Turns the card off at the server: its sealed bytes are deleted and its address stops opening. */
+  revokeCard(id: string): Promise<void>;
   /** Whether the server tells the owner by mail when a browser asks to be let in. */
   mailsOwner(): boolean;
   /** The address to give the recipient: the link's id and, for a link that needs no approval, its key after the #. */

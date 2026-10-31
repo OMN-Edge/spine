@@ -43,7 +43,7 @@ Each stage ends with the suite green, the documents updated, and a commit. Nothi
 | 1b | The core in the browser: SQLite in WebAssembly, bundle serialization, sync, ingestion without the sidecar | An upload is read on the device and stored only as ciphertext; the timeline works from the local database |
 | 2 | Model calls through the relay; extraction, summaries, chat, linking, translation on the device | No route on the server receives plaintext content |
 | 3 | Search and embeddings on the device | Hybrid search runs locally; no vector index on the server |
-| 4 | Share links with a key in the fragment, approval mode, emergency card | A recipient reads a shared bundle the server cannot open |
+| 4 | Share links with a key in the fragment, approval mode, emergency card (built with the reintroduction of the cut features, **M-47**) | A recipient reads a shared bundle the server cannot open |
 | 5 | Ciphertext-only backups, deletion by destroying keys, removal of the old plaintext tables and routes | A backup contains no plaintext; the old tables are gone |
 
 ## Syncing devices

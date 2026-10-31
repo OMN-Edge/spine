@@ -128,6 +128,7 @@ export interface RecordsStore {
   conversations: ConversationRepository;
   regroupPlans: RegroupPlanRepository;
   guide: GuideRepository;
+  emergency: EmergencyRepository;
   matchDecisions: MatchDecisionRepository;
   changes: ChangeLog;
   files: FileRegistryRepository;
@@ -1100,6 +1101,28 @@ export interface GuideMark {
   done_at: string | null;
 }
 
+/** The owner's emergency card and the record of its being opened (src/emergency.ts). Owner only. */
+export interface EmergencyCardRow {
+  /** The card's JSON (`CardContent`), as normalised when it was saved. */
+  content: string;
+  card_id: string | null;
+  card_key: string | null;
+  published_at: string | null;
+  updated_at: string;
+}
+
+export interface EmergencyScan { id: string; at: string; country: string | null }
+
+export interface EmergencyRepository {
+  get(userId: string): Promise<EmergencyCardRow | null>;
+  /** Saves what is written on the card; the published id and key are kept. */
+  save(userId: string, content: string, now: string): Promise<void>;
+  /** Records that the card is published under an id and key, or (null) that it is not. */
+  setPublished(userId: string, published: { id: string; key: string } | null, now: string): Promise<void>;
+  addScan(userId: string, scan: EmergencyScan): Promise<void>;
+  scans(userId: string, limit: number): Promise<EmergencyScan[]>;
+}
+
 export interface GuideRepository {
   list(userId: string): Promise<GuideMark[]>;
   /** Counts one more showing. */
@@ -1376,6 +1399,8 @@ export interface SharedBundle {
   blobs: number;
   blobBytes: number;
   revokedAt: string | null;
+  /** `share`: a copy of chosen records with an end time. `card`: the owner's emergency card, one at a time, with no end (its own switch is the owner's). */
+  kind: 'share' | 'card';
 }
 
 export interface SharedRequest {
@@ -1403,14 +1428,16 @@ export interface SharedRepository {
   /** Public: by the id in the link. Revoked and expired ones are returned as they are; the caller decides. */
   get(id: string): Promise<SharedBundle | null>;
   /** The owner's: makes the row, or replaces its metadata when the same owner publishes again; 'taken' if the id is someone else's. */
-  put(userId: string, bundle: { id: string; expiresAt: string; requireApproval: boolean; size: number; blobs: number; blobBytes: number }, now: string): Promise<'ok' | 'taken' | 'revoked'>;
+  put(userId: string, bundle: { id: string; expiresAt: string; requireApproval: boolean; size: number; blobs: number; blobBytes: number; kind?: 'share' | 'card' }, now: string): Promise<'ok' | 'taken' | 'revoked' | 'one_card'>;
+  /** The owner's live emergency card bundle, if there is one. */
+  cardOf(userId: string): Promise<SharedBundle | null>;
   /** Counts a sealed file uploaded beside the database. */
   addBlob(userId: string, id: string, bytes: number): Promise<boolean>;
   /** A change of end date or approval, for the owner's own live bundle. */
   update(userId: string, id: string, patch: { expiresAt?: string; requireApproval?: boolean }): Promise<boolean>;
   /** Ends it now and forgets every wrapped key; false if it is not this owner's or already revoked. */
   revoke(userId: string, id: string, now: string): Promise<boolean>;
-  /** Live bundles and the bytes they hold, for the owner's limits. */
+  /** Live shares (not the emergency card) and the bytes they hold, for the owner's limits. */
   usage(userId: string, now: string): Promise<{ bundles: number; bytes: number }>;
   /** Bundles that have ended (past their end, or revoked) and still have files: their wrapped keys are forgotten and their sizes zeroed, and the ids come back so the caller deletes the files. */
   endedWithFiles(now: string): Promise<Array<{ id: string; userId: string }>>;

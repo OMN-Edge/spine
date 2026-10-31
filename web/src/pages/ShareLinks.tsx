@@ -165,7 +165,8 @@ export default function ShareLinks() {
 
   return (
     <div className="max-w-2xl mx-auto">
-      <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900 mb-6">{t('Share links')}</h1>
+      <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900 mb-2">{t('Share links')}</h1>
+      <p className="text-sm text-gray-500 mb-6"><Link to="/emergency" className="text-brand-600 hover:underline">{t('Write an emergency card')}</Link> {t('for someone who has to help you quickly, opened from a code.')}</p>
 
       {/* Create form */}
       <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6">

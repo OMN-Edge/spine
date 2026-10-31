@@ -31,7 +31,7 @@ export default function Pricing() {
 
               <h2 className="text-base font-semibold text-gray-900 pt-2">{t('Free')} · {money(0)}</h2>
               <ul className="list-disc pl-5 space-y-1">
-                <li>{t('Your records, the timeline, search on your device, and export')}</li>
+                <li>{t('Your records, the timeline, search on your device, export and the emergency card')}</li>
                 <li>{t('1 GB of storage')}</li>
                 <li>{t('One live share link, without translation')}</li>
                 <li>{t('About 30 pages of AI reading a month')}</li>

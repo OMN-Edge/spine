@@ -35,7 +35,7 @@ export default function PlanCard() {
     <section className="bg-white border border-gray-200 rounded-xl p-5 mt-6">
       <h2 className="font-medium text-gray-900 mb-1">{t('Your plan')}: {name}</h2>
       {plan === 'trial' && billing.trial_ends_at && <p className="text-sm text-gray-500 mb-3">{t('Everything is included until {when}. After that you keep the free plan unless you upgrade.', { when: day(billing.trial_ends_at) })}</p>}
-      {plan === 'free' && <p className="text-sm text-gray-500 mb-3">{t('The free plan keeps your records, the timeline, search, export and one share link. Translation, questions, connections and approving visitors are part of Premium.')}</p>}
+      {plan === 'free' && <p className="text-sm text-gray-500 mb-3">{t('The free plan keeps your records, the timeline, search, export, the emergency card and one share link. Translation, questions, connections and approving visitors are part of Premium.')}</p>}
       {sub && (
         <p className="text-sm text-gray-500 mb-3">
           {sub.provider === 'operator'
