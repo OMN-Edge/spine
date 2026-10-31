@@ -143,6 +143,8 @@ export interface UserRecord {
   /** Bumped on a password change; a session issued under an older value is refused. */
   auth_version: number;
   email_verified_at: string | null;
+  /** 0 until the administrator approves an account that signed up under `SPINE_REGISTRATION=approval`; such an account has no session. */
+  approved: number;
   created_at: string;
   health_consent_at: string | null;
   health_consent_version: string | null;
@@ -172,6 +174,8 @@ export interface NewUser {
   createdAt: string;
   /** Null for a self-registered account that has not confirmed its address yet. */
   verifiedAt: string | null;
+  /** False for a sign-up waiting for the administrator (`SPINE_REGISTRATION=approval`). Default true. */
+  approved?: boolean;
   /** Given at sign-up, by the person; absent for an account the operator creates, which is asked at its first sign-in. */
   consent?: { healthVersion: string; termsVersion: string };
   /** False for the one person a device holds, whose tags come from the vault (a deleted starter tag must not come back on every unlock). Default true. */
@@ -205,8 +209,10 @@ export interface UserRepository {
   findById(id: string): Promise<UserRecord | null>;
   /** Replaces the hash and bumps `auth_version`, ending the user's other sessions. */
   setPassword(id: string, passwordHash: string): Promise<number>;
-  list(): Promise<Array<Pick<UserRecord, 'id' | 'email' | 'created_at' | 'email_verified_at'>>>;
+  list(): Promise<Array<Pick<UserRecord, 'id' | 'email' | 'created_at' | 'email_verified_at' | 'approved'>>>;
   markVerified(id: string, at: string): Promise<void>;
+  /** Approves an account that was waiting, and confirms its address if it was not (the administrator vouches for it). False if it was not waiting. */
+  approve(id: string, at: string): Promise<boolean>;
   createToken(token: NewUserToken): Promise<void>;
   /**
    * Spends a token and returns whose it was, or null if it is unknown, the wrong

@@ -298,7 +298,7 @@ Accounts come from the operator (`npm run cli -- create-user <email>`; also `set
 
 ### Registration
 
-`SPINE_REGISTRATION` is `operator` (default; accounts come from the CLI) or `open`. `open` requires a mailer and refuses to start without one (**P3**); this instance runs `open` with Brevo, and a fresh install defaults to `operator` so it boots with no mailer.
+`SPINE_REGISTRATION` is `operator` (default; accounts come from the CLI), `open` or `approval`. `open` requires a mailer and refuses to start without one (**P3**). `approval` lets anyone ask for an account, which holds no session until the administrator approves it with `approve-user` or, for an address in `SPINE_ADMIN_EMAILS`, from the account page; it needs no mailer, because approval then stands for confirming the address (**M-44**). `SPINE_INSTANCE=private` labels the deployment as private and refuses `open`; this instance runs `open` with Brevo, and a fresh install defaults to `operator` so it boots with no mailer.
 
 Signing up creates an **unverified** account with no session until the emailed link is used; the right password before that answers 403 with a code the page uses to offer a new link. Signup is rate limited per source and per address (**P5**), and an existing address gets the same answer as a new one and is left unchanged. The links, their handling and the throttles are in SECURITY.md **M-6** and **M-11**.
 

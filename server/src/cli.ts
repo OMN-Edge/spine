@@ -20,6 +20,7 @@ import {
  *   npm run cli -- set-password <email> [--password-stdin]
  *   npm run cli -- reset-link <email> [--hours N]
  *   npm run cli -- disable-2fa <email>
+ *   npm run cli -- approve-user <email>
  *   npm run cli -- delete-user <email> [--yes]
  *   npm run cli -- list-users
  *   npm run cli -- check-embeddings
@@ -40,6 +41,7 @@ const USAGE = `usage:
   set-password <email> [--password-stdin]
   reset-link <email> [--hours N]
   disable-2fa <email>
+  approve-user <email>
   delete-user <email> [--yes]
   list-users
   check-embeddings`;
@@ -187,11 +189,21 @@ export async function runCli(args: string[], io: CliIo): Promise<number> {
       return 0;
     }
 
+    // For an account that signed up under SPINE_REGISTRATION=approval. Its address counts as confirmed from here: the operator vouches for it.
+    case 'approve-user': {
+      const email = normaliseEmail(positional[0] ?? '');
+      const user = await store.users.findByEmail(email);
+      if (!user) { io.err(`no account for ${email}`); return 1; }
+      if (!(await store.users.approve(user.id, new Date().toISOString()))) { io.err(`${email} is not waiting for approval`); return 1; }
+      io.out(`approved ${email}; they can sign in now`);
+      return 0;
+    }
+
     case 'list-users': {
       const users = await store.users.list();
       if (users.length === 0) io.out('no accounts');
       for (const user of users) {
-        const status = user.email_verified_at ? '' : '\tUNVERIFIED';
+        const status = (user.approved === 0 ? '\tWAITING FOR APPROVAL' : '') + (user.email_verified_at ? '' : '\tUNVERIFIED');
         io.out(`${user.email}\tcreated ${user.created_at}${status}`);
       }
       return 0;

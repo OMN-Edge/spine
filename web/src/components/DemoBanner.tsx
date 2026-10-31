@@ -17,7 +17,7 @@ export default function DemoBanner() {
   const navigate = useNavigate();
   const location = useLocation();
   const [own, setOwn] = useState<UploadSummary[]>([]);
-  const [registration, setRegistration] = useState<'open' | 'operator'>('operator');
+  const [registration, setRegistration] = useState<'open' | 'operator' | 'approval'>('operator');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -48,7 +48,7 @@ export default function DemoBanner() {
       if (!res.ok) throw new Error('export');
       await keepForAccount(await res.blob(), own.length);
       await leaveDemo();
-      navigate(registration === 'open' ? '/register' : '/login');
+      navigate(registration === 'operator' ? '/login' : '/register');
     } catch {
       setError(t('Your files could not be kept in this browser. Try again.'));
       setBusy(false);
@@ -67,7 +67,7 @@ export default function DemoBanner() {
           type="button" onClick={() => void keep()} disabled={busy || reading} title={reading ? t('Wait until your files have been read') : undefined}
           className="shrink-0 rounded-full bg-brand-600 px-3 py-1 font-medium text-white hover:bg-brand-700 disabled:opacity-50"
         >
-          {registration === 'open' ? t('Create an account to keep them') : t('Sign in to keep them')}
+          {registration === 'open' ? t('Create an account to keep them') : registration === 'approval' ? t('Ask for an account to keep them') : t('Sign in to keep them')}
         </button>
       ) : (
         <Link to="/login" className="shrink-0 font-medium text-brand-700 hover:underline">{t('Sign in')}</Link>

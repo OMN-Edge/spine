@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import AuthCard, { buttonClass, inputClass, Notice } from '../components/AuthCard';
@@ -15,6 +15,9 @@ export default function Register() {
   const [again, setAgain] = useState('');
   const [error, setError] = useState('');
   const [done, setDone] = useState('');
+  // Under approval the account waits for the administrator, and the page says so in the reader's language rather than with the server's words.
+  const [asks, setAsks] = useState(false);
+  useEffect(() => { api.auth.options().then(o => setAsks(o.registration === 'approval')).catch(() => {}); }, []);
   // The keys are made here, on the device, and the kit is shown before anything is sent: no account exists whose kit was not seen.
   const [account, setAccount] = useState<NewAccount | null>(null);
   const [busy, setBusy] = useState(false);
@@ -44,7 +47,8 @@ export default function Register() {
     setError('');
     setBusy(true);
     try {
-      setDone((await api.auth.register(email, account, { health_data: health, terms })).message);
+      const result = await api.auth.register(email, account, { health_data: health, terms });
+      setDone(result.pending ? t('Your account request is in. It can be used once the administrator has approved it.') : result.message);
       setAccount(null);
     } catch (err) {
       setAccount(null);
@@ -60,7 +64,7 @@ export default function Register() {
       : t('That password is too easy to guess: use a longer phrase that is not a common word, a pattern or part of your address.');
 
   return (
-    <AuthCard title={t('Create an account')} footer={<p><Link to="/login" className="text-brand-600">{t('Back to sign in')}</Link></p>}>
+    <AuthCard title={asks ? t('Ask for an account') : t('Create an account')} footer={<p><Link to="/login" className="text-brand-600">{t('Back to sign in')}</Link></p>}>
       {done ? (
         <Notice kind="ok">{done}</Notice>
       ) : account ? (
@@ -86,7 +90,7 @@ export default function Register() {
           </label>
           {error && <Notice kind="error">{error}</Notice>}
           <p className="text-xs text-gray-500 mb-3">{t('Your password makes the key to your records on this device. Spine never receives it and cannot reset it for you; you will get a recovery kit on the next screen.')}</p>
-          <button type="submit" disabled={busy} className={`${buttonClass} disabled:opacity-50`}>{busy ? t('Making your keys…') : t('Create account')}</button>
+          <button type="submit" disabled={busy} className={`${buttonClass} disabled:opacity-50`}>{busy ? t('Making your keys…') : asks ? t('Ask for an account') : t('Create account')}</button>
         </form>
       )}
     </AuthCard>

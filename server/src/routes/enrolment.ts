@@ -6,7 +6,7 @@ import { countryOf } from '../geo.js';
 import { mailAfter, newSignInMail, securityChangeMail } from '../notify.js';
 import { windowLimiter } from '../rate-limit.js';
 import { cleanHeader, startSession } from '../sessions.js';
-import { type SessionData } from '../session-auth.js';
+import { maySignIn, type SessionData } from '../session-auth.js';
 import { sealed } from '../vault-keys.js';
 
 /**
@@ -49,7 +49,7 @@ export async function enrolmentRoutes(app: FastifyInstance, opts: EnrolmentRoute
     if (typeof id !== 'string' || !ID.test(id)) return reply.status(400).send({ error: 'the code is not what it should be' });
     if (!sealed(wrapped, 90, 200)) return reply.status(400).send({ error: 'the sealed key is not what it should be' });
     const user = await getAccountsStore().users.findById(req.userId);
-    if (!user || !user.email_verified_at) return reply.status(401).send({ error: 'not authenticated' });
+    if (!user || !maySignIn(user)) return reply.status(401).send({ error: 'not authenticated' });
     const now = Date.now();
     await store().sweep(new Date(now).toISOString());
     await store().offer(req.userId, { id, wrapped, authVersion: user.auth_version, at: new Date(now).toISOString(), expiresAt: new Date(now + OFFER_MS).toISOString() });
@@ -104,7 +104,7 @@ export async function enrolmentRoutes(app: FastifyInstance, opts: EnrolmentRoute
 
     // Approved, and now spent. The account must be the one the offer was made for: a changed password or a removed account voids it.
     const user = await getAccountsStore().users.findById(got.userId);
-    if (!user || !user.email_verified_at || user.auth_version !== got.authVersion) return gone();
+    if (!user || !maySignIn(user) || user.auth_version !== got.authVersion) return gone();
     await req.session.regenerate();
     const device = await startSession(req, reply, user.id, user.auth_version, { passwordTyped: false });
     // Always told: a way in that needed no password is worth a mail even from a browser the account knows.

@@ -6,7 +6,7 @@ const SHA = 'a'.repeat(40);
 
 async function render(commit: string): Promise<string> {
   vi.resetModules();
-  vi.doMock('../build-info', () => ({ BUILD_COMMIT: commit }));
+  vi.doMock('../build-info', () => ({ BUILD_COMMIT: commit, BUILD_VERSION: '0.1.0' }));
   const { default: Trust } = await import('./Trust');
   return renderToStaticMarkup(<MemoryRouter><Trust /></MemoryRouter>);
 }
@@ -15,6 +15,7 @@ describe('the page that says how to check the app', () => {
   it('names the commit the build says, in full', async () => {
     const html = await render(SHA);
     expect(html).toContain(SHA);
+    expect(html).toContain('0.1.0');
     expect(html).not.toContain('not published');
   });
 

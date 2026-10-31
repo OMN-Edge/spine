@@ -103,10 +103,11 @@ sudo ./install.sh -n
 # Restart after code changes
 ./install.sh -b && sudo systemctl restart spine-web
 
-# Accounts (the operator creates them, or SPINE_REGISTRATION=open lets people sign up)
+# Accounts (the operator creates them; SPINE_REGISTRATION=open lets people sign up; =approval lets them ask and waits for the operator)
 cd server && npm run cli -- create-user you@example.com      # prints a password once
 cd server && npm run cli -- set-password you@example.com     # an account with no vault only; ends that user's sessions
 cd server && npm run cli -- reset-link you@example.com       # one-time link; works with no mailer
+cd server && npm run cli -- approve-user you@example.com      # an account waiting under SPINE_REGISTRATION=approval; list-users marks it
 cd server && npm run cli -- disable-2fa you@example.com      # lost phone and recovery codes
 cd server && npm run cli -- delete-user you@example.com      # shows what it would remove; --yes to do it
 cd server && npm run cli -- list-users
@@ -157,7 +158,8 @@ npm run test:coverage -w spine-server
 | `SPINE_MULTIMODAL_ENABLED` | `true` to allow page images to be sent to the LLM provider. **A second switch on purpose**: `multimodal`/`hybrid` without it refuse to start |
 | `SPINE_OCR` | `off` skips local OCR in `hybrid`: a page with no text layer goes straight to the model, and Tesseract is not needed (default on) |
 | `SPINE_TEXT_LAYER_MIN_CHARS`, `SPINE_OCR_MIN_CONFIDENCE`, `SPINE_OCR_MAX_LOW_SHARE`, `SPINE_OCR_LANGS` | `hybrid`'s screening thresholds (50 / 85 / 0.10) and Tesseract languages (`ron+eng`; the packs ship with the web app). First guesses: tune from the `page routed` lines in the browser console |
-| `SPINE_REGISTRATION` | `operator` (default: accounts come from the CLI) \| `open` (signup with email verification; **refuses to start without a mailer**) |
+| `SPINE_REGISTRATION` | `operator` (default: accounts come from the CLI) \| `open` (signup with email verification; **refuses to start without a mailer**) \| `approval` (people ask for an account and it waits for the administrator; needs no mailer, SECURITY.md **M-44**) |
+| `SPINE_INSTANCE`, `SPINE_ADMIN_EMAILS` | `private` labels the deployment as private (front page, sign-in, `/trust`) and refuses `SPINE_REGISTRATION=open`; default `public`. `SPINE_ADMIN_EMAILS` (comma separated) are the signed-in addresses that see and decide the accounts waiting under `approval` on the account page; the CLI needs none (SECURITY.md **M-44**) |
 | `SPINE_MAILER` | `none` (default) \| `brevo` |
 | `BREVO_API_KEY`, `SPINE_MAIL_SENDER` | Required for `brevo`. The sender has no default: pick a neutral name, it is visible in the recipient's inbox |
 | `SPINE_TRUSTED_PROXIES` | Comma separated addresses of a proxy that is not on this host and whose `X-Forwarded-For` is believed (the Compose proxy); loopback is always trusted; a wide range or `true` stops startup (`trustedProxies()`, **S-31**) |

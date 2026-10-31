@@ -14,6 +14,9 @@ CREATE TABLE IF NOT EXISTS users (
   -- NULL until the address is confirmed. An unverified account never gets a
   -- session. Accounts the operator creates are verified at creation.
   email_verified_at TEXT,
+  -- 0 for an account that signed up under SPINE_REGISTRATION=approval and has not been approved by the administrator: it never gets a
+  -- session. Every other account (the operator's, a self-registered one in open mode, all from before) is 1.
+  approved INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL,
   -- Consent to process health data (GDPR Art. 9(2)(a)) and acceptance of the terms: separate acts, each with the version of the
   -- text that was shown. NULL until given; an account without them is held at the consent screen (CR-GDPR-01).
