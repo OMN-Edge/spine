@@ -26,6 +26,10 @@ jobs:
         with: { node-version: 22 }
       - name: The tag is on main
         run: git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "::error::$GITHUB_REF_NAME is not a commit of main"; exit 1; }
+      - name: The tag is the version in package.json
+        run: |
+          version="$(node -p "require('./web/package.json').version")"
+          [ "$GITHUB_REF_NAME" = "v$version" ] || { echo "::error::the tag is $GITHUB_REF_NAME but web/package.json says $version"; exit 1; }
       - run: npm ci && npm run build:core
       - name: Build the web app from this commit
         run: SPINE_COMMIT="$GITHUB_SHA" npm run build -w spine-web
@@ -45,4 +49,7 @@ jobs:
             spine-web-${{ github.ref_name }}.tar.gz
       - name: Publish
         env: { GH_TOKEN: '${{ github.token }}' }
-        run: gh release create "$GITHUB_REF_NAME" hashes.txt "spine-web-$GITHUB_REF_NAME.tar.gz" --title "$GITHUB_REF_NAME" --generate-notes --verify-tag
+        # 0.x is before the first production release, and a version with a - is a candidate: both are marked as pre-releases.
+        run: |
+          case "$GITHUB_REF_NAME" in v0.*|*-*) pre=--prerelease ;; *) pre= ;; esac
+          gh release create "$GITHUB_REF_NAME" hashes.txt "spine-web-$GITHUB_REF_NAME.tar.gz" --title "$GITHUB_REF_NAME" --generate-notes --verify-tag $pre
