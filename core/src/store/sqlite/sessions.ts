@@ -1,5 +1,5 @@
 import type { Database } from './driver.js';
-import { owner } from './owner.js';
+import { owner } from '../owner.js';
 import type { SessionRecord, SessionRepository } from '../types.js';
 
 const COLUMNS = 'id, created_at, last_seen_at, user_agent, address';

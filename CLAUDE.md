@@ -41,7 +41,7 @@ spine/
 │       ├── tags.ts         # STARTER_TAGS and cleanTag(): what a tag is and a new account starts with
 │       ├── share-scope.ts  # the only place a share-link scope is validated or resolved
 │       ├── llm/            # LLM interface: types.ts, prompts.ts, chat-llm.ts, budget.ts (daily call allowance), index.ts (registry), adapters/
-│       ├── store/          # store interface: types.ts (interfaces), index.ts (registry), sync.ts (the rules for syncing devices, any store), slice-policy.ts (what a share copy holds), visibility.ts (which documents are shown), ids.ts, sqlite/ (the only adapter; browser.ts is the one file the device imports)
+│       ├── store/          # store interface: types.ts (interfaces), index.ts (registry), sync.ts (the rules for syncing devices, any store), slice-policy.ts (what a share copy holds), visibility.ts (which documents are shown), ids.ts, owner.ts, sqlite/ (records and accounts; browser.ts is the one file the device imports), postgres/ (the server's accounts only, over a pool the host registers with `usePool`)
 │       ├── archive/        # export.ts (a document or the whole archive as a zip), import.ts (Spine export or plain zip), import-file.ts (restore one file, no model), manifest.ts (zod schema, fingerprint), zip-read.ts, pdf-pages.ts
 │       ├── ingestion/      # accept-upload.ts, jobs.ts, pipeline.ts, extraction.ts, continuation.ts, grounding.ts, rasterize.ts, pdf-text.ts (the PDF text layer, PDF.js)
 │       ├── routes/         # the records routes (documents.ts, source-files.ts, share.ts, public-share.ts, tags.ts, trends.ts, doctors.ts, ...) and middleware.ts; the device's LocalApp registers these
@@ -59,7 +59,7 @@ spine/
 │       ├── geo.ts          # the country a share was opened from (maxmind, reading data/geoip/country.mmdb or SPINE_GEOIP_DB; looked at again every minute): the one native library the production server uses
 │       ├── geoip-update.ts # downloads that file (ip-location-db "user-country", public domain) and checks it before it replaces the one in use; best effort, always ends well; run by install.sh -s and daily before the backup
 │       ├── providers.ts    # registers the model providers the relay service runs; llm/adapters/ (anthropic, vertex) and embedding/adapters/ (vertex) hold them
-│       ├── driver-native.ts # the native SQLite driver, chosen by useAccountsStore()
+│       ├── driver-native.ts, driver-pg.ts # the native SQLite driver and the `pg` pool, both registered by useAccountsStore(); the store config says which is opened
 │       ├── passwords.ts    # argon2id hash/verify, policy, email normalisation
 │       ├── totp.ts         # RFC 6238 codes, secret encryption at rest, recovery codes (pure; no store)
 │       ├── second-factor.ts # checkSecondFactor(): joins totp.ts to the store; atomic spend
@@ -120,6 +120,7 @@ npm test -w spine-core
 npm test -w spine-server
 npm run test:accounts -w spine-server   # the server's own tests on the accounts-only database (M-37); core has one too
 npm run test:shim -w spine-server       # the same on the WebAssembly SQLite the browser uses; core has one too
+npm run test:postgres -w spine-server   # the accounts' tests on the Postgres adapter, over PGlite (Postgres in WebAssembly)
 npm run test:coverage -w spine-server
 
 # The checks CI runs (tests, typecheck, dependency audit, gitleaks, semgrep): needs `brew install gitleaks semgrep` for `scan`
@@ -153,6 +154,7 @@ npm run test:coverage -w spine-server
 | `SPINE_OPERATOR_NAME`, `SPINE_OPERATOR_CONTACT`, `SPINE_LEGAL_DIR` | Who the privacy notice and terms name as the controller and where to write to them (default "the operator of this instance"), and a directory of your own `privacy.md`, `terms.md`, `purpose.md` instead of the shipped drafts in `docs/legal/` |
 | `SPINE_REPO_URL` | Optional. Repository URL that nginx redirects `/source`, `/docs` and `/security` to (read by `install.sh -n`, not by the server); unset leaves the redirects out |
 | `DATA_DIR` | Where the server's database, the vault and the shares live (the server's default is `<repo>/data`, wherever the process starts; core has no default and fails if a host registers none) |
+| `SPINE_STORE`, `SPINE_DATABASE_URL`, `SPINE_DATABASE_POOL` | `sqlite` (default; a file at `SPINE_DB_PATH` or `DATA_DIR`) \| `postgres`: the address (`postgres://…`, with `sslmode=require` off this host) and connections per instance (10). The server's store only: records are on the device, so a device or a test of one refuses `postgres`. A Postgres database is backed up by its host, not by `backup.ts` |
 | `PORT` | Fastify listen port (default `3000`) |
 | `SPINE_PARSER` | `text` (default: the PDF's own text layer; nothing leaves the host; `sidecar` is the old name) \| `ocr` (text layer, then local Tesseract; nothing leaves) \| `multimodal` (a vision model reads every page) \| `hybrid` (text layer first, then local OCR unless `SPINE_OCR=off`, then a vision model for the pages still unread) |
 | `SPINE_MULTIMODAL_ENABLED` | `true` to allow page images to be sent to the LLM provider. **A second switch on purpose**: `multimodal`/`hybrid` without it refuse to start |

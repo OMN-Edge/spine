@@ -2,7 +2,7 @@ import { LOW_CONFIDENCE } from '../../confidence.js';
 import type { Database } from './driver.js';
 import type { ExtractedField } from '../../types.js';
 import type { ExtractedFieldRepository, NewExtractedField } from '../types.js';
-import { expectInserted, owner } from './owner.js';
+import { expectInserted, owner } from '../owner.js';
 import { fieldKey } from '../reading-keys.js';
 
 /** Every statement filters by `user_id` (SECURITY.md P12). */

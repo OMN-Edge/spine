@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { Doctor, DoctorRole } from '../../types.js';
 import type { DoctorDocument, DoctorOnDocument, DoctorRepository, DoctorWithCounts } from '../types.js';
 import { doctorDisplayName, doctorKey, MAX_DOCTOR_TEXT, normaliseLicenseCode } from '../../doctors.js';
-import { owner } from './owner.js';
+import { owner } from '../owner.js';
 import { VISIBLE } from './visibility.js';
 
 /** Every statement filters by `user_id` (SECURITY.md P12). */

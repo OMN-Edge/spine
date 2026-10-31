@@ -1,6 +1,6 @@
 import type { Database } from './driver.js';
 import type { EmbeddingRepository, StoredEmbedding } from '../types.js';
-import { owner } from './owner.js';
+import { owner } from '../owner.js';
 import { VISIBLE } from './visibility.js';
 
 /** Every statement filters by `user_id` (SECURITY.md P12). A vector can be read back into the text it came from, so it is as private as the document. */

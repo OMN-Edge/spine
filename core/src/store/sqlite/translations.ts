@@ -1,6 +1,6 @@
 import type { Database } from './driver.js';
 import type { TranslationRepository } from '../types.js';
-import { owner } from './owner.js';
+import { owner } from '../owner.js';
 
 /** Every statement filters by `user_id` (SECURITY.md P12). The cache holds the owner's medical text, so it is theirs like the rest. */
 export function translationRepository(db: Database): TranslationRepository {

@@ -1,5 +1,5 @@
 import type { Database } from './driver.js';
-import { owner } from './owner.js';
+import { owner } from '../owner.js';
 import type { EnrolmentClaim, EnrolmentOffer, EnrolmentRepository } from '../types.js';
 
 const OFFER_COLUMNS = 'id, state, expires_at, requested_at, requester_agent, requester_country';

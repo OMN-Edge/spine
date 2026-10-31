@@ -1,0 +1,180 @@
+/**
+ * The accounts' tables for Postgres: the same tables and columns as `sqlite/schema-accounts.ts`, so a repository reads the same row in
+ * either. A flag is an integer (0 or 1) and a time is the ISO text the application writes, as there, so no code converts between engines.
+ * What differs is the engine's own: an e-mail address is unique ignoring case through an index (SQLite's `COLLATE NOCASE`), a counter that
+ * the engine hands out is `BIGSERIAL`, and sizes are `BIGINT` because a total of them passes two gigabytes.
+ *
+ * Idempotent `CREATE TABLE IF NOT EXISTS`, applied at every start under an advisory lock (two instances starting together must not both
+ * run it). It cannot alter a table: a column added later is added with `ADD COLUMN IF NOT EXISTS` in `postgres/store.ts`, before this runs.
+ */
+export const accountsSchema = `
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  email TEXT NOT NULL,
+  password_hash TEXT NOT NULL,
+  auth_version INTEGER NOT NULL DEFAULT 0,
+  email_verified_at TEXT,
+  approved INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  health_consent_at TEXT,
+  health_consent_version TEXT,
+  terms_accepted_at TEXT,
+  terms_version TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (lower(email));
+
+CREATE TABLE IF NOT EXISTS user_tokens (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  kind TEXT NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  used_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS user_totp (
+  user_id TEXT PRIMARY KEY REFERENCES users(id),
+  secret_enc TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  confirmed_at TEXT,
+  last_step BIGINT NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS user_passkeys (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  public_key TEXT NOT NULL,
+  counter BIGINT NOT NULL DEFAULT 0,
+  transports TEXT,
+  name TEXT NOT NULL,
+  backed_up INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  last_used_at TEXT,
+  wrapped_key TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_user_passkeys_user ON user_passkeys(user_id);
+
+CREATE TABLE IF NOT EXISTS device_enrolments (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  wrapped TEXT NOT NULL,
+  auth_version INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  state TEXT NOT NULL DEFAULT 'offered',
+  token_hash TEXT,
+  requested_at TEXT,
+  requester_agent TEXT,
+  requester_country TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_device_enrolments_user ON device_enrolments(user_id);
+
+CREATE TABLE IF NOT EXISTS user_recovery_codes (
+  user_id TEXT NOT NULL REFERENCES users(id),
+  code_hash TEXT NOT NULL,
+  used_at TEXT,
+  PRIMARY KEY (user_id, code_hash)
+);
+
+CREATE TABLE IF NOT EXISTS cookie_sessions (
+  sid_hash TEXT PRIMARY KEY,
+  user_id TEXT,
+  data TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_cookie_sessions_user ON cookie_sessions(user_id);
+
+CREATE TABLE IF NOT EXISTS user_sessions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  last_seen_at TEXT NOT NULL,
+  user_agent TEXT NOT NULL DEFAULT '',
+  address TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id);
+
+CREATE TABLE IF NOT EXISTS model_usage (
+  user_id TEXT NOT NULL,
+  day TEXT NOT NULL,
+  calls BIGINT NOT NULL,
+  PRIMARY KEY (user_id, day)
+);
+
+CREATE TABLE IF NOT EXISTS user_devices (
+  user_id TEXT NOT NULL REFERENCES users(id),
+  device_hash TEXT NOT NULL,
+  first_seen_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, device_hash)
+);
+
+CREATE TABLE IF NOT EXISTS vault_keys (
+  user_id TEXT PRIMARY KEY REFERENCES users(id),
+  kdf_salt TEXT NOT NULL,
+  kdf_params TEXT NOT NULL,
+  wrapped_by_master TEXT NOT NULL,
+  wrapped_by_recovery TEXT NOT NULL,
+  public_key TEXT NOT NULL,
+  wrapped_private_key TEXT NOT NULL,
+  seq BIGINT NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS vault_objects (
+  user_id TEXT NOT NULL REFERENCES users(id),
+  id TEXT NOT NULL,
+  profile_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  seq BIGINT NOT NULL,
+  size BIGINT NOT NULL,
+  wrapped_key TEXT NOT NULL,
+  deleted INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, id)
+);
+CREATE INDEX IF NOT EXISTS idx_vault_objects_seq ON vault_objects(user_id, seq);
+
+CREATE TABLE IF NOT EXISTS shared_bundles (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  require_approval INTEGER NOT NULL DEFAULT 0,
+  size BIGINT NOT NULL DEFAULT 0,
+  blobs INTEGER NOT NULL DEFAULT 0,
+  blob_bytes BIGINT NOT NULL DEFAULT 0,
+  revoked_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS shared_requests (
+  id TEXT PRIMARY KEY,
+  bundle_id TEXT NOT NULL REFERENCES shared_bundles(id),
+  user_id TEXT NOT NULL REFERENCES users(id),
+  visitor_key TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  wrapped_key TEXT,
+  note TEXT,
+  country TEXT,
+  requested_at TEXT NOT NULL,
+  decided_at TEXT,
+  pulled INTEGER NOT NULL DEFAULT 0,
+  UNIQUE (bundle_id, visitor_key)
+);
+
+CREATE TABLE IF NOT EXISTS shared_opens (
+  id BIGSERIAL PRIMARY KEY,
+  bundle_id TEXT NOT NULL REFERENCES shared_bundles(id),
+  user_id TEXT NOT NULL REFERENCES users(id),
+  at TEXT NOT NULL,
+  country TEXT,
+  document_id TEXT,
+  count_view INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_shared_bundles_user ON shared_bundles(user_id);
+CREATE INDEX IF NOT EXISTS idx_shared_requests_user ON shared_requests(user_id, pulled);
+CREATE INDEX IF NOT EXISTS idx_shared_opens_user ON shared_opens(user_id);
+`;

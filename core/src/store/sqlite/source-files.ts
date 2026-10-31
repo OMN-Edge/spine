@@ -1,7 +1,7 @@
 import type { Database } from './driver.js';
 import type { SourceFile } from '../../types.js';
 import type { NewSourceFile, SourceFileRepository, SourceFileSummary } from '../types.js';
-import { owner } from './owner.js';
+import { owner } from '../owner.js';
 
 type RawUpload = Omit<SourceFile, 'grouping_confirmed' | 'photo_set' | 'sample' | 'from_export'> & { grouping_confirmed: number; photo_set: number; sample: number; from_export: number };
 const asUpload = (row: RawUpload): SourceFile => ({ ...row, grouping_confirmed: row.grouping_confirmed === 1, photo_set: row.photo_set === 1, sample: row.sample === 1, from_export: row.from_export === 1 });

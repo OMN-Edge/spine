@@ -1,6 +1,6 @@
 import type { Database } from './driver.js';
 import type { Episode, EpisodeRepository, EpisodeState } from '../types.js';
-import { owner } from './owner.js';
+import { owner } from '../owner.js';
 import { VISIBLE } from './visibility.js';
 
 interface Row { id: string; title: string; state: EpisodeState; source: 'auto' | 'owner'; created_at: string }
