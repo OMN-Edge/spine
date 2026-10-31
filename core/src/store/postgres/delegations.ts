@@ -42,7 +42,7 @@ export function delegationRepository(q: Query, begin: Begin): DelegationReposito
         await copy(seq, update.profileSize, update.profileWrapped, profileId);
         await tombstone(profileId);
         for (const x of update.grants) await run("UPDATE delegations SET owner_user_id = $1, state = 'paused', wrapped_key = $2, updated_at = $3 WHERE id = $4 AND owner_user_id = $5", [id, x.wrappedKey, now, x.id, from]);
-        await run("UPDATE delegations SET state = 'revoked', wrapped_key = NULL, updated_at = $1 WHERE id = $2", [now, grantId]);
+        await run("UPDATE delegations SET state = 'promoted', wrapped_key = NULL, updated_at = $1 WHERE id = $2", [now, grantId]);
         await run('DELETE FROM profile_invites WHERE owner_user_id = $1 AND profile_id = $2', [from, profileId]);
         return { seq, fromUserId: from, objectIds: live };
       });
@@ -74,7 +74,7 @@ export function delegationRepository(q: Query, begin: Begin): DelegationReposito
       return r ? asGrant(r) : null;
     },
     async ownedBy(ownerId) {
-      return (await many(q, `SELECT ${prefixed('d')}, u.email AS delegate_email, k.public_key AS delegate_public_key FROM delegations d JOIN users u ON u.id = d.delegate_user_id LEFT JOIN vault_keys k ON k.user_id = d.delegate_user_id WHERE d.owner_user_id = $1 AND d.state <> 'revoked' ORDER BY d.created_at`, [owner(ownerId)]))
+      return (await many(q, `SELECT ${prefixed('d')}, u.email AS delegate_email, k.public_key AS delegate_public_key FROM delegations d JOIN users u ON u.id = d.delegate_user_id LEFT JOIN vault_keys k ON k.user_id = d.delegate_user_id WHERE d.owner_user_id = $1 AND d.state NOT IN ('revoked', 'promoted') ORDER BY d.created_at`, [owner(ownerId)]))
         .map(r => ({ ...asGrant(r), delegate_email: r.delegate_email as string, delegate_public_key: (r.delegate_public_key as string | null) ?? null }));
     },
     async madeTo(delegateId) {
@@ -89,10 +89,10 @@ export function delegationRepository(q: Query, begin: Begin): DelegationReposito
       return out;
     },
     async setState(ownerId, id, state, now) {
-      return (await changed(q, "UPDATE delegations SET state = $1, updated_at = $2, wrapped_key = CASE WHEN $1 = 'revoked' THEN NULL ELSE wrapped_key END WHERE owner_user_id = $3 AND id = $4 AND state <> 'revoked'", [state, now, owner(ownerId), id])) === 1;
+      return (await changed(q, "UPDATE delegations SET state = $1, updated_at = $2, wrapped_key = CASE WHEN $1 = 'revoked' THEN NULL ELSE wrapped_key END WHERE owner_user_id = $3 AND id = $4 AND state NOT IN ('revoked', 'promoted')", [state, now, owner(ownerId), id])) === 1;
     },
     async leave(delegateId, id, now) {
-      return (await changed(q, "UPDATE delegations SET state = 'revoked', wrapped_key = NULL, updated_at = $1 WHERE delegate_user_id = $2 AND id = $3 AND state <> 'revoked'", [now, owner(delegateId), id])) === 1;
+      return (await changed(q, "UPDATE delegations SET state = 'revoked', wrapped_key = NULL, updated_at = $1 WHERE delegate_user_id = $2 AND id = $3 AND state NOT IN ('revoked', 'promoted')", [now, owner(delegateId), id])) === 1;
     },
     async rewrap(ownerId, profileId, keys, now) {
       let n = 0;

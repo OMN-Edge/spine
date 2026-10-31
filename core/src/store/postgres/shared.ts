@@ -68,6 +68,19 @@ export function sharedRepository(q: Query, begin: Begin): SharedRepository {
     async cardsToRemind(reviewedBefore, remindedBefore) {
       return (await many<{ id: string; user_id: string }>(q, "SELECT id, user_id FROM shared_bundles WHERE kind = 'card' AND revoked_at IS NULL AND COALESCE(reviewed_at, created_at) < $1 AND (reminded_at IS NULL OR reminded_at < $2)", [reviewedBefore, remindedBefore])).map(r => ({ id: r.id, userId: r.user_id }));
     },
+    async take(callerId, id, now) {
+      return begin(async run => {
+        const b = await one<{ user_id: string }>(run, "SELECT user_id FROM shared_bundles WHERE id = $1 AND kind = 'card' AND revoked_at IS NULL FOR UPDATE", [id]);
+        if (!b) return 'not_found' as const;
+        if (b.user_id === callerId) return 'ok' as const;
+        if (!(await one(run, "SELECT 1 FROM delegations WHERE owner_user_id = $1 AND delegate_user_id = $2 AND state = 'promoted' AND role = 'self'", [b.user_id, callerId]))) return 'not_found' as const;
+        await run('SELECT 1 FROM users WHERE id = $1 FOR UPDATE', [callerId]);
+        if (Number((await one<{ n: number }>(run, "SELECT COUNT(*) AS n FROM shared_bundles WHERE user_id = $1 AND kind = 'card' AND revoked_at IS NULL", [callerId]))!.n) >= MAX_CARDS) return 'too_many' as const;
+        for (const table of ['shared_bundles', 'shared_requests', 'shared_opens']) await run(`UPDATE ${table} SET user_id = $1 WHERE ${table === 'shared_bundles' ? 'id' : 'bundle_id'} = $2 AND user_id = $3`, [callerId, id, b.user_id]);
+        await run('UPDATE shared_bundles SET reviewed_at = $1, reminded_at = NULL WHERE id = $2', [now, id]);
+        return 'ok' as const;
+      });
+    },
     async markReminded(id, now) {
       await q('UPDATE shared_bundles SET reminded_at = $1 WHERE id = $2', [now, id]);
     },

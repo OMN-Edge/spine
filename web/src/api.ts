@@ -640,6 +640,8 @@ export const api = {
     unpublish: () => del<EmergencyView>('/api/emergency/publish'),
     /** The owner looked and it is still right. */
     reviewed: () => post<EmergencyView>('/api/emergency/reviewed', undefined),
+    /** After taking a profile at eighteen: the card published for it becomes this account's. */
+    takeOver: () => post<EmergencyView>('/api/emergency/take-over', undefined),
     /** A new code for the card (the old one is turned off first), for when the printed one is lost. */
     replace: () => post<EmergencyView>('/api/emergency/replace', undefined),
   },

@@ -873,7 +873,8 @@ export interface BillingRepository {
  */
 /** `guardian` reads and writes; `viewer` reads; `self` is the person the profile is of, with an account of their own (a teenager, from sixteen), who reads and writes. */
 export type DelegationRole = 'guardian' | 'viewer' | 'self';
-export type DelegationState = 'pending' | 'active' | 'paused' | 'revoked';
+/** `promoted`: the person's own grant, ended because they took the profile into their own vault (**M-51**); it is theirs alone to see and does nothing but allow them to take over the cards published for it. */
+export type DelegationState = 'pending' | 'active' | 'paused' | 'revoked' | 'promoted';
 
 export interface DelegationRecord {
   id: string;
@@ -908,7 +909,7 @@ export interface DelegationRepository {
   ownedBy(ownerId: string): Promise<Array<DelegationRecord & { delegate_email: string; delegate_public_key: string | null }>>;
   /** Grants made to this account that are active or paused, with the owner's address; for the person themselves (`self`), also who else is let in, whose keys a promotion seals the new one to. */
   madeTo(delegateId: string): Promise<Array<DelegationRecord & { owner_email: string; others: Array<{ id: string; role: DelegationRole; state: DelegationState; delegate_email: string; delegate_public_key: string | null }> }>>;
-  /** The owner's: pauses, resumes or ends a grant. False if it is not theirs. */
+  /** The owner's: pauses, resumes or ends a grant (one already ended, or promoted, is not theirs to change). False if it is not theirs. */
   setState(ownerId: string, id: string, state: DelegationState, now: string): Promise<boolean>;
   /** The delegate's: gives the grant up. */
   leave(delegateId: string, id: string, now: string): Promise<boolean>;
@@ -1516,6 +1517,13 @@ export interface SharedRepository {
   /** Live cards last reviewed before one date and not reminded since another: whom to remind. */
   cardsToRemind(reviewedBefore: string, remindedBefore: string): Promise<CardDue[]>;
   markReminded(id: string, now: string): Promise<void>;
+  /**
+   * After a promotion (**M-51**): the new owner takes over an emergency card bundle published, for the profile they took, by the old owner's
+   * account, so the printed code keeps working and is theirs to turn off or replace. Allowed only to an account that holds a `promoted`
+   * grant from the bundle's owner, and who names the bundle's id, which is unguessable and known to them only from the records they took.
+   * `ok` also when the bundle is already theirs.
+   */
+  take(callerId: string, id: string, now: string): Promise<'ok' | 'not_found' | 'too_many'>;
   /** Counts a sealed file uploaded beside the database. */
   addBlob(userId: string, id: string, bytes: number): Promise<boolean>;
   /** A change of end date or approval, for the owner's own live bundle. */

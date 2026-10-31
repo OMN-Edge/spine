@@ -142,6 +142,16 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     return reply.status(201).send({ ok: true });
   });
 
+  // After a promotion (SECURITY.md **M-51**): the person who took a profile takes over the card the old owner's account published for it, so the
+  // printed code goes on working and is theirs to replace or turn off. Only an account holding a promoted grant from the card's owner, naming its id.
+  app.post<{ Params: { id: string } }>('/api/shared/:id/take', { preHandler: [requireAuth, app.rateLimit({ max: 20, timeWindow: '10 minutes' })] }, async (req, reply) => {
+    if (!SHARE_ID.test(req.params.id)) return reply.status(404).send({ error: 'not found' });
+    const done = await getAccountsStore().shared.take(req.userId, req.params.id, new Date().toISOString());
+    if (done === 'not_found') return reply.status(404).send({ error: 'not found' });
+    if (done === 'too_many') return reply.status(409).send({ error: 'too many cards are on; turn one off first', code: 'too_many_cards' });
+    return reply.send({ ok: true });
+  });
+
   // The owner says their card is still right: the year for the reminder starts over. (Sending the card again does the same.)
   app.post<{ Params: { id: string } }>('/api/shared/:id/review', { preHandler: requireAuth }, async (req, reply) => {
     if (!SHARE_ID.test(req.params.id) || !(await getAccountsStore().shared.touchCard(req.userId, req.params.id, new Date().toISOString()))) return reply.status(404).send({ error: 'not found' });

@@ -93,7 +93,7 @@ export async function delegationRoutes(app: FastifyInstance, opts: DelegationRou
     const state = req.body?.state;
     if (state !== 'active' && state !== 'paused') return reply.status(400).send({ error: 'state must be active or paused' });
     const grant = await repo().get(req.params.id);
-    if (!grant || grant.owner_user_id !== req.userId || grant.state === 'revoked' || grant.state === 'pending') return reply.status(404).send({ error: 'not found' });
+    if (!grant || grant.owner_user_id !== req.userId || grant.state === 'revoked' || grant.state === 'promoted' || grant.state === 'pending') return reply.status(404).send({ error: 'not found' });
     await repo().setState(req.userId, grant.id, state, new Date().toISOString());
     return reply.send({ ok: true, profile_id: grant.profile_id });
   });
@@ -102,7 +102,7 @@ export async function delegationRoutes(app: FastifyInstance, opts: DelegationRou
   // profile, because its key must be replaced next (the rotation route below).
   app.post<{ Params: { id: string } }>('/api/delegations/:id/revoke', { preHandler: [requireAuth, requireRecentAuth, app.rateLimit({ max: 60, timeWindow: '10 minutes' })] }, async (req, reply) => {
     const grant = await repo().get(req.params.id);
-    if (!grant || grant.owner_user_id !== req.userId || grant.state === 'revoked') return reply.status(404).send({ error: 'not found' });
+    if (!grant || grant.owner_user_id !== req.userId || grant.state === 'revoked' || grant.state === 'promoted') return reply.status(404).send({ error: 'not found' });
     await repo().setState(req.userId, grant.id, 'revoked', new Date().toISOString());
     return reply.send({ ok: true, profile_id: grant.profile_id });
   });

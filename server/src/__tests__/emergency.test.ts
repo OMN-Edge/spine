@@ -17,6 +17,7 @@ describe.runIf(records)('the owner’s emergency card', () => {
   const sent: Array<{ id: string | null; key: string | null; content: string }> = [];
   const revoked: string[] = [];
   const reviewedIds: string[] = [];
+  const taken: string[] = [];
   let made = 0;
   let failNext: (Error & { code?: string }) | null = null;
   let revokeFails = false;
@@ -25,11 +26,12 @@ describe.runIf(records)('the owner’s emergency card', () => {
     async publishCard(input) { if (failNext) { const e = failNext; failNext = null; throw e; } sent.push(input); return { id: input.id ?? (made++ === 0 ? CARD_ID : `${CARD_ID}-${made}`), key: input.key ?? (made === 1 ? 'k'.repeat(43) : String(made).repeat(43).slice(0, 43)) }; },
     async revokeCard(id) { if (revokeFails) throw new Error('down'); revoked.push(id); },
     async reviewCard(id) { reviewedIds.push(id); },
+    async takeCard(id) { taken.push(id); },
   };
 
   beforeAll(async () => { app = await buildTestApp(); cookie = await loginSession(app); useShareHost(host); });
   afterAll(() => useShareHost(testShareHost));
-  beforeEach(() => { sent.length = 0; revoked.length = 0; reviewedIds.length = 0; failNext = null; revokeFails = false; });
+  beforeEach(() => { sent.length = 0; revoked.length = 0; reviewedIds.length = 0; taken.length = 0; failNext = null; revokeFails = false; });
 
   const call = (method: 'GET' | 'PUT' | 'POST' | 'DELETE', url: string, payload?: unknown, who = cookie) => app.inject({ method, url, headers: { cookie: who }, payload: payload as object | undefined });
 
@@ -163,6 +165,18 @@ describe.runIf(records)('the owner’s emergency card', () => {
     expect(off.json().code).toBe('old_off');
     expect((await call('GET', '/api/emergency')).json().published).toBeNull();
     await call('POST', '/api/emergency/publish'); // and turning it on again works
+    await call('DELETE', '/api/emergency/publish');
+  });
+
+  it('takes over the card an earlier owner published, only where there is one, and says so when it cannot', async () => {
+    await call('DELETE', '/api/emergency/publish');
+    expect((await call('POST', '/api/emergency/take-over')).statusCode).toBe(200);
+    expect(taken).toEqual([]); // no card, nothing to take
+    await call('PUT', '/api/emergency', CARD_BODY);
+    const on = (await call('POST', '/api/emergency/publish')).json().published;
+    expect((await call('POST', '/api/emergency/take-over')).statusCode).toBe(200);
+    expect(taken).toEqual([on.id]);
+    failNext = null;
     await call('DELETE', '/api/emergency/publish');
   });
 

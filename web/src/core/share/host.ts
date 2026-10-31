@@ -115,6 +115,10 @@ export function createShareHost(deps: { store: () => Store; mail: () => boolean 
       return { id: cardId, key: cardKey };
     },
 
+    async takeCard(id) {
+      await call('POST', `/api/shared/${encodeURIComponent(id)}/take`, { ok404: true });
+    },
+
     async reviewCard(id) {
       await call('POST', `/api/shared/${encodeURIComponent(id)}/review`, { ok404: true });
     },

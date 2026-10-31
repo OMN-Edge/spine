@@ -25,6 +25,7 @@ describe('share links made by a device', () => {
     async answer(_u, r, decision, shareKey) { if (failWith) throw failWith; calls.push(`answer:${decision}:${r.visitorKey}:${shareKey}`); },
     async publishCard({ id, key }) { return { id: id ?? 'card-id', key: key ?? 'card-key' }; },
     async reviewCard() { return undefined; },
+    async takeCard() { return undefined; },
     async revokeCard() { return undefined; },
     mailsOwner: () => true,
     addressOf: (id, key) => `https://spine.test/share/${id}${key ? `#${key}` : ''}`,

@@ -175,8 +175,22 @@ describe('letting another account into a profile', () => {
       expect((await call('POST', `/api/delegations/${asSelf}/promote`, teen.cookie, promoteBody(['object-c-0001'], []))).statusCode).toBe(409); // a grant left out
       expect((await call('GET', '/api/vault/objects/object-c-0001', owner)).statusCode).toBe(200); // nothing moved
 
+      // A card the old owner published for the profile: nobody can take it over before the promotion, and only the person who took it after.
+      const CARD = 'card-promoted-0000000000000000';
+      expect((await app.inject({ method: 'PUT', url: `/api/shared/${CARD}`, headers: { cookie: owner, 'content-type': 'application/octet-stream', 'x-spine-kind': 'card' }, payload: Buffer.from('a sealed card') })).statusCode).toBe(201);
+      expect((await call('POST', `/api/shared/${CARD}/take`, teen.cookie)).statusCode).toBe(404);
+
       const moved = await call('POST', `/api/delegations/${asSelf}/promote`, teen.cookie, promoteBody(['object-c-0001'], [{ id: asGuardian }]));
       expect(moved.statusCode).toBe(200);
+      expect((await call('GET', '/api/delegations', owner)).json().owned.some((g: { id: string }) => g.id === asSelf)).toBe(false); // a promoted grant is not the old owner's to see
+      expect((await call('POST', `/api/delegations/${asSelf}/revoke`, owner)).statusCode).toBe(404);
+      expect((await call('POST', `/api/shared/${CARD}/take`, guardian.cookie)).statusCode).toBe(404); // not the person
+      expect((await call('POST', '/api/shared/card-not-a-card-at-all-0000000/take', teen.cookie)).statusCode).toBe(404);
+      expect((await call('POST', `/api/shared/${CARD}/take`, teen.cookie)).statusCode).toBe(200);
+      expect((await call('POST', `/api/shared/${CARD}/take`, teen.cookie)).statusCode).toBe(200); // said twice is harmless
+      expect((await getAccountsStore().shared.get(CARD))?.userId).toBe(teen.id);
+      expect((await call('DELETE', `/api/shared/${CARD}`, owner)).statusCode).toBe(404); // no longer the old owner's to turn off
+      expect((await call('DELETE', `/api/shared/${CARD}`, teen.cookie)).statusCode).toBe(200); // and now theirs
       // It is the teenager's now, and the old owner's copies are gone.
       expect((await call('GET', '/api/vault/objects/object-c-0001', teen.cookie)).rawPayload.toString()).toBe('a child’s note');
       expect((await call('GET', '/api/vault/objects/object-c-0001', teen.cookie)).headers['x-spine-wrapped-key']).toBe(K('q'));

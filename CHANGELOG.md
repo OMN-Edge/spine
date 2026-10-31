@@ -6,7 +6,7 @@ Spine is versioned `0.x` until its first production release: anything may change
 
 - The server's store can be Postgres (`SPINE_STORE=postgres`, `SPINE_DATABASE_URL`), so more than one instance, or a host with no disk, can share accounts, sign-ins, the vault's index and sealed shares and the relay's counts. `npm run test:postgres` runs the accounts' tests on it.
 - The family plan (€79 a year or €7.99 a month): Premium for up to six people, with children's records, other accounts let in, teenagers' own accounts and promotion at eighteen.
-- At eighteen the person a profile is of can take it into their own account under a new key; the people who looked after them are paused until they choose (M-51).
+- At eighteen the person a profile is of can take it into their own account under a new key; the people who looked after them are paused until they choose, and an emergency card published for the profile becomes theirs (M-51).
 - A child's records can be kept apart with a birth date (sealed, never seen by the server); other guardians can be let in, and from sixteen the child can have an account of their own at the guardian's invitation (M-50).
 - Let someone else into a person's records with a code, as someone who can change them or only read them, from the account's People page; ending it gives the records a new key (M-49). The trial and the family plan include it; Premium alone does not.
 - Records for more than one person in an account (M-48): a child's or a parent's records apart from your own, each with a key, search, share links and emergency card of their own; one is open at a time. The trial allows six, the free plan and Premium one.

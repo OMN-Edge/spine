@@ -89,6 +89,18 @@ export function sharedRepository(db: Database): SharedRepository {
     async cardsToRemind(reviewedBefore, remindedBefore) {
       return (db.prepare("SELECT id, user_id FROM shared_bundles WHERE kind = 'card' AND revoked_at IS NULL AND COALESCE(reviewed_at, created_at) < ? AND (reminded_at IS NULL OR reminded_at < ?)").all(reviewedBefore, remindedBefore) as Array<{ id: string; user_id: string }>).map(r => ({ id: r.id, userId: r.user_id }));
     },
+    async take(callerId, id, now) {
+      const b = db.prepare("SELECT user_id FROM shared_bundles WHERE id = ? AND kind = 'card' AND revoked_at IS NULL").get(id) as { user_id: string } | undefined;
+      if (!b) return 'not_found';
+      if (b.user_id === callerId) return 'ok';
+      if (!db.prepare("SELECT 1 FROM delegations WHERE owner_user_id = ? AND delegate_user_id = ? AND state = 'promoted' AND role = 'self'").get(b.user_id, callerId)) return 'not_found';
+      if ((cards.get(callerId) as { n: number }).n >= MAX_CARDS) return 'too_many';
+      db.transaction(() => {
+        for (const table of ['shared_bundles', 'shared_requests', 'shared_opens']) db.prepare(`UPDATE ${table} SET user_id = ? WHERE ${table === 'shared_bundles' ? 'id' : 'bundle_id'} = ? AND user_id = ?`).run(callerId, id, b.user_id);
+        db.prepare('UPDATE shared_bundles SET reviewed_at = ?, reminded_at = NULL WHERE id = ?').run(now, id);
+      })();
+      return 'ok';
+    },
     async markReminded(id, now) {
       db.prepare('UPDATE shared_bundles SET reminded_at = ? WHERE id = ?').run(now, id);
     },

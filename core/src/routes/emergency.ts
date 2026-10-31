@@ -83,6 +83,16 @@ export async function emergencyRoutes(app: HttpApp) {
     return reply.send(await view(req.userId));
   });
 
+  // After taking a profile at eighteen: the card the old owner's account published for it becomes this account's, so the printed code keeps
+  // working and can be replaced or turned off from here (SECURITY.md M-51). Said again harmlessly if it already is.
+  app.post('/api/emergency/take-over', async (req, reply) => {
+    const row = await getStore().emergency.get(req.userId);
+    const host = shareHost();
+    if (!row?.card_id || !host) return reply.send(await view(req.userId));
+    try { await host.takeCard(row.card_id); } catch { return reply.status(502).send({ error: 'the card could not be taken over; try again', code: 'not_sent' }); }
+    return reply.send(await view(req.userId));
+  });
+
   // A new code for the card, when the old one is lost: the old address is turned off first (a lost card must stop opening before anything
   // else), then the card is sent again under a new id and key. The offline code, if one was printed, cannot be replaced: it is the card itself.
   app.post('/api/emergency/replace', async (req, reply) => {

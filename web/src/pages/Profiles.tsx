@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { api } from '../api';
 import { device, UnsavedChangesError } from '../core/client';
 import { openPerson, useProfiles } from '../profiles';
 import { planRefusal } from '../billing';
@@ -70,6 +71,8 @@ export default function Profiles() {
       await session.promote(entry);
       await device.reloadKeys();
       await openPerson(entry.grant.profile_id);
+      // A card the old owner's account published for this person becomes this account's, so its printed code is theirs to replace or turn off.
+      await api.emergency.takeOver().catch(() => undefined);
       setTaking('');
       navigate('/');
     } catch (err) {
