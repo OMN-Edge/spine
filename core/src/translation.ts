@@ -38,6 +38,8 @@ export interface TranslatedDocument {
   status: TranslationStatus;
   /** `head`: the title, summary, notes and specialties only; the fields and results follow in the `full` one. */
   part: 'head' | 'full';
+  /** Some of it could not be translated and shows in the original; the rest is asked for again later. Only in a `full` one. */
+  incomplete?: boolean;
   title: string | null;
   ai_summary: string | null;
   user_notes: string | null;
@@ -91,6 +93,7 @@ function shape(source: Source, translated: TranslationBundle, language: Supporte
     source_language: source.document.language,
     status,
     part,
+    ...(part === 'full' && !isEmpty(leftOver(source.bundle, translated)) ? { incomplete: true } : {}),
     title: pick(translated.title, source.bundle.title),
     ai_summary: pick(translated.summary, source.bundle.summary),
     user_notes: pick(translated.notes, source.bundle.notes),
@@ -255,6 +258,8 @@ export async function translateDocument(
   if (!translationEnabled()) return unchanged('off');
   if (document.language === language || isEmpty(source.bundle)) return unchanged('same');
 
+  /** What is kept and still good, when it does not cover the whole document: only the rest is asked for. */
+  let base: TranslationBundle | null = null;
   const cached = await store.translations.get(userId, documentId, language);
   if (cached && cached.sourceHash === source.hash) {
     try {
@@ -269,15 +274,17 @@ export async function translateDocument(
         await store.translations.put(userId, documentId, language, recorded.hash, cached.content, cached.createdAt);
         return shape(recorded, kept, language, 'cached');
       }
-      return shape(source, kept, language, 'cached');
+      if (isEmpty(leftOver(source.bundle, kept))) return shape(source, kept, language, 'cached');
+      base = kept;
     } catch { /* an unreadable row is the same as a stale one: translate again */ }
   }
-  if (options.cachedOnly) return null;
+  const keptPart = () => (base ? shape(source, base, language, 'cached') : null);
+  if (options.cachedOnly) return keptPart();
 
   // One translation of a document into a language at a time, however many readers ask at once.
   const key = `${documentId}:${language}:${source.hash}`;
   const failedAt = failures.get(key);
-  if (failedAt && Date.now() - failedAt < FAILURE_PAUSE_MS) return null;
+  if (failedAt && Date.now() - failedAt < FAILURE_PAUSE_MS) return keptPart();
   let run = inFlight.get(key);
   if (!run) {
     let resolveHead!: (value: TranslatedDocument | null) => void;
@@ -313,8 +320,10 @@ export async function translateDocument(
         };
 
         // Stage one: the short parts, so a page has something in its language after one quick call.
-        const headBundle: TranslationBundle = { ...source.bundle, fields: [], measurements: [] };
-        const bodyBundle: TranslationBundle = { title: null, summary: null, notes: null, doctors: [], fields: source.bundle.fields, measurements: source.bundle.measurements };
+        const wanted = base ? leftOver(source.bundle, base) : source.bundle;
+        const withBase = (b: TranslationBundle): TranslationBundle => (base ? overlaid(base, b) : b);
+        const headBundle: TranslationBundle = { ...wanted, fields: [], measurements: [] };
+        const bodyBundle: TranslationBundle = { title: null, summary: null, notes: null, doctors: [], fields: wanted.fields, measurements: wanted.measurements };
         const headAnswer = isEmpty(headBundle) ? null : await ask(headBundle);
         if (!isEmpty(headBundle) && !headAnswer) return null; // an outage is tried again next time; only a half answer is paused
 
@@ -336,7 +345,7 @@ export async function translateDocument(
         }
 
         const headDone = headAnswer ? await settle(headBundle, headAnswer) : { ...headBundle, source_language: null };
-        resolveHead(shape(current, headDone, language, 'translated', 'head'));
+        resolveHead(shape(current, withBase(headDone), language, 'translated', 'head'));
 
         // Stage two: the fields and results, in pieces if there are many.
         let bodyDone: TranslationBundle = { ...bodyBundle, source_language: null };
@@ -346,12 +355,12 @@ export async function translateDocument(
           bodyDone = await settle(bodyBundle, bodyAnswer);
         }
 
-        const merged: TranslationBundle = { ...overlaid(headDone, bodyDone), source_language: headAnswer?.source_language ?? null };
+        const merged: TranslationBundle = { ...overlaid(withBase(headDone), bodyDone), source_language: headAnswer?.source_language ?? base?.source_language ?? null };
         if (!isEmpty(leftOver(current.bundle, merged))) {
-          // Not kept: a stored half-translation would be served as if it were whole until the document changed.
+          // What is usable is kept all the same, so the next view starts from it; what is missing reads as missing (`incomplete`) and is asked
+          // for again, alone, once the pause has passed.
           failures.set(key, Date.now());
           logger.warn('a document could only be translated in part', { documentId, language });
-          return shape(current, merged, language, 'translated');
         }
         await store.translations.put(userId, documentId, language, current.hash, JSON.stringify(merged), new Date().toISOString());
         return shape(current, merged, language, 'translated');

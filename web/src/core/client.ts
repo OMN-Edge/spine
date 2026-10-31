@@ -1,4 +1,6 @@
 import type { FromWorker, Part, SaveState, ToWorker } from './protocol';
+import type { KeysResponse } from '../crypto/vault-client';
+import type { KdfParams } from '../crypto/keys';
 
 /**
  * The page's side of the core: starts the worker, and answers `fetch`-shaped calls from it. `deviceFetch` is what the app's requests
@@ -56,9 +58,26 @@ class CoreWorker {
     });
   }
 
-  /** Opens the vault with this master key and loads the records. The key is handed over, not copied: this page no longer has it. */
-  async unlock(masterKey: Uint8Array): Promise<void> {
-    await this.send({ type: 'start', masterKey }, [masterKey.buffer]);
+  /**
+   * Starts the worker if it is not running, so that it is loaded (7 MB of script and SQLite) by the time the person has typed their password
+   * and not after. Holds no key and does nothing else; `lock` ends it as it ends one that was used.
+   */
+  warm(): void {
+    try { this.ensure(); } catch { /* no worker here: the first real use says so */ }
+  }
+
+  /**
+   * The master key and the sign-in value for a password, made in the worker: Argon2id takes a second or more and 64 MiB, a phone several
+   * times that, and in the page it would stop the screen for all of it. The password is sent to a worker of this page and no further.
+   */
+  async derive(password: string, salt: string, params: KdfParams): Promise<{ masterKey: Uint8Array; authValue: string }> {
+    const m = await this.send({ type: 'derive', password, salt, params });
+    return { masterKey: new Uint8Array(m.body ?? new ArrayBuffer(0)), authValue: m.headers?.authValue ?? '' };
+  }
+
+  /** Opens the vault with this master key and loads the records. The key is handed over, not copied: this page no longer has it. `keys` are the sealed keys the page already fetched. */
+  async unlock(masterKey: Uint8Array, keys?: KeysResponse): Promise<void> {
+    await this.send({ type: 'start', masterKey, keys }, [masterKey.buffer]);
     this.ready = true;
   }
 

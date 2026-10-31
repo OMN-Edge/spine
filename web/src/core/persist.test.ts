@@ -13,7 +13,7 @@ const PROFILE = 'profile-aaaaaaaa';
 function fakeVault() {
   const objects = new Map<string, { kind: string; profile: string; data: Uint8Array; seq: number; deleted: boolean }>();
   let counter = 0;
-  const log = { puts: [] as string[], removes: [] as string[] };
+  const log = { puts: [] as string[], removes: [] as string[], gets: [] as string[], syncs: 0 };
   const store: ObjectStore = {
     async put(kind, id, data, baseSeq) {
       const have = objects.get(id);
@@ -24,11 +24,13 @@ function fakeVault() {
     },
     async get(id, kind) {
       const o = objects.get(id);
+      log.gets.push(id);
       if (!o || o.kind !== kind || o.deleted) throw Object.assign(new Error('not found'), { status: 404 });
       return { plaintext: Uint8Array.from(o.data), seq: o.seq };
     },
     getSync(id, kind) {
       const o = objects.get(id);
+      log.syncs++;
       if (!o || o.kind !== kind) throw new Error('not found');
       return Uint8Array.from(o.data);
     },
@@ -215,6 +217,83 @@ describe('what the device keeps in the vault', () => {
     expect(await c.db.documents.findFor(USER, 'early')).not.toBeNull(); // b's write was folded in, not lost
   });
 
+  /** The index the vault holds: which parts, and which of them are partial. */
+  const indexOf = (objects: Map<string, { kind: string; data: Uint8Array }>) => {
+    const o = [...objects.entries()].find(([, v]) => v.kind === 'library')!;
+    return JSON.parse(new TextDecoder().decode(o[1].data)) as { snapshot: Array<{ id: string; of?: string[] }>; covers: string[] };
+  };
+  const bundleBytes = (objects: Map<string, { kind: string; data: Uint8Array }>) => [...objects.values()].filter(o => o.kind === 'bundle').map(o => o.data.length);
+
+  it('folds waiting segments into a small part, not a rewrite of everything', async () => {
+    const { store, objects } = fakeVault();
+    const a = await device(store);
+    await a.p.load();
+    for (let i = 0; i < 30; i++) { await addDoc(a.db, `d${i}`, `doc ${'x'.repeat(2000)} ${i}`); await a.p.save(); }
+    await (a.p as unknown as { compact(force: boolean): Promise<void> }).compact(true); // a snapshot of everything to start from
+    const whole = Math.max(...bundleBytes(objects));
+    const before = new Set([...objects.keys()]);
+    for (let i = 30; i < 41; i++) { await addDoc(a.db, `d${i}`, `doc ${i}`); await a.p.save(); }
+    const index = indexOf(objects);
+    const added = [...objects.entries()].filter(([id, o]) => o.kind === 'bundle' && !before.has(id));
+    expect(added.length).toBeGreaterThan(0);
+    expect(added.every(([, o]) => o.data.length < whole / 2)).toBe(true); // what changed, not the archive
+    expect(index.snapshot.some(part => part.of)).toBe(true);
+    expect(index.snapshot.some(part => !part.of)).toBe(true); // the earlier snapshot is still named
+
+    const b = await device(store);
+    await b.p.load();
+    for (const i of [0, 29, 40]) expect(await b.db.documents.findFor(USER, `d${i}`)).not.toBeNull();
+  });
+
+  it('does not download a partial part made of segments this device wrote or already applied', async () => {
+    const { store, log, objects } = fakeVault();
+    const b = await device(store);
+    await b.p.load();
+    for (let i = 0; i < 5; i++) { await addDoc(b.db, `d${i}`, `doc ${i}`); await b.p.save(); }
+    // another device opens, finds five loose segments and folds them
+    const a = await device(store);
+    await a.p.load();
+    await a.p.save();
+    expect(indexOf(objects).snapshot.some(part => part.of)).toBe(true);
+    const gets = log.gets.length;
+    await b.p.save(); // finds the index with a part made of what b wrote
+    const read = log.gets.slice(gets);
+    expect(read.filter(id => id.startsWith('ix-'))).toHaveLength(1); // the index
+    expect(read.filter(id => id.startsWith('id-'))).toHaveLength(0); // and no part, nor segment
+    const c = await device(store);
+    await c.p.load();
+    for (let i = 0; i < 5; i++) expect(await c.db.documents.findFor(USER, `d${i}`)).not.toBeNull();
+  });
+
+  it('writes a new snapshot of everything once enough partial parts have gathered', async () => {
+    const { store, objects } = fakeVault();
+    const a = await device(store);
+    await a.p.load();
+    for (let i = 0; i < 100; i++) { await addDoc(a.db, `d${i}`, `doc ${i}`); await a.p.save(); }
+    const index = indexOf(objects);
+    expect(index.snapshot.filter(part => part.of).length).toBeLessThanOrEqual(6);
+    expect(bundleBytes(objects).length).toBeLessThan(10); // old parts are removed with the snapshot they were folded into
+    const b = await device(store);
+    await b.p.load();
+    for (const i of [0, 50, 99]) expect(await b.db.documents.findFor(USER, `d${i}`)).not.toBeNull();
+  });
+
+  it('folds loose segments on the first save after a load that found several', async () => {
+    const { store, objects } = fakeVault();
+    const a = await device(store);
+    await a.p.load();
+    for (let i = 0; i < 5; i++) { await addDoc(a.db, `d${i}`, `doc ${i}`); await a.p.save(); }
+    const logs = () => [...objects.values()].filter(o => o.kind === 'log').length;
+    expect(logs()).toBe(5);
+    const b = await device(store);
+    await b.p.load();
+    await b.p.save();
+    expect(logs()).toBe(0);
+    const c = await device(store);
+    await c.p.load();
+    expect(await c.db.documents.findFor(USER, 'd4')).not.toBeNull();
+  });
+
   it('keeps files apart from the records and brings one in only when asked', async () => {
     const { store } = fakeVault();
     const first = await device(store);
@@ -236,6 +315,40 @@ describe('what the device keeps in the vault', () => {
     expect([...(fs.readFileSync('/data/originals/a.pdf') as Buffer)]).toEqual([1, 2, 3, 4]);
     expect(memory.isResident('/data/originals/a.pdf')).toBe(true);
     expect(fs.existsSync('/data/tmp/scratch')).toBe(false);
+  });
+
+  it('brings a file in on request without the synchronous read that holds everything else up', async () => {
+    const { store, log } = fakeVault();
+    const first = await device(store);
+    await first.p.load();
+    fs.mkdirSync('/data/pages', { recursive: true });
+    fs.writeFileSync('/data/pages/a.png', new Uint8Array([9, 8, 7]));
+    await first.p.save();
+    memory.clear();
+    const fresh = await device(store);
+    await fresh.p.load();
+    expect(memory.isResident('/data/pages/a.png')).toBe(false);
+    await Promise.all([fresh.p.ensure('/data/pages/a.png'), fresh.p.ensure('/data/pages/a.png')]); // asked twice, fetched once
+    expect(memory.isResident('/data/pages/a.png')).toBe(true);
+    expect([...(fs.readFileSync('/data/pages/a.png') as Buffer)]).toEqual([9, 8, 7]);
+    expect(log.syncs).toBe(0);
+    await fresh.p.ensure('/data/pages/unknown.png'); // not a file of the vault: nothing happens
+  });
+
+  it('does not put a fetched file over one that was written meanwhile', async () => {
+    const { store } = fakeVault();
+    const first = await device(store);
+    await first.p.load();
+    fs.mkdirSync('/data/pages', { recursive: true });
+    fs.writeFileSync('/data/pages/a.png', new Uint8Array([1, 1, 1]));
+    await first.p.save();
+    memory.clear();
+    const fresh = await device(store);
+    await fresh.p.load();
+    const fetching = fresh.p.ensure('/data/pages/a.png');
+    fs.writeFileSync('/data/pages/a.png', new Uint8Array([2, 2]));
+    await fetching;
+    expect([...(fs.readFileSync('/data/pages/a.png') as Buffer)]).toEqual([2, 2]);
   });
 
   it('removes a file from the vault when it is deleted here', async () => {

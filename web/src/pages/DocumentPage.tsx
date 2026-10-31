@@ -229,6 +229,7 @@ export default function DocumentPage() {
   const tr = useTranslation(
     needsTranslation && doc ? `${doc.id}|${doc.title}|${doc.ai_summary}|${doc.user_notes}|${(doc.fields ?? []).map(f => f.id + f.value).join()}` : null,
     (l, part) => api.documents.translation(doc!.id, l, part),
+    l => api.documents.translationKept(doc!.id, l),
   );
 
   if (loading) return <p className="text-gray-400 text-sm">{t('Loading…')}</p>;

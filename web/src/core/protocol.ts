@@ -1,7 +1,12 @@
+import type { KeysResponse } from '../crypto/vault-client';
+import type { KdfParams } from '../crypto/keys';
 /** What the page and the core's worker say to one another. */
 export type Part = { fieldname: string; filename?: string; mimetype?: string; data?: ArrayBuffer; value?: string };
 export type ToWorker =
-  | { id: number; type: 'start'; masterKey: Uint8Array }
+  /** `keys`: what the page already fetched from `/api/vault/keys`, so the worker does not ask again. */
+  | { id: number; type: 'start'; masterKey: Uint8Array; keys?: KeysResponse }
+  /** The master key from a password, here and not in the page: it takes a second or more and 64 MiB, and the page must keep moving meanwhile. Answers with the key as the body and the sign-in value in `headers.authValue`. */
+  | { id: number; type: 'derive'; password: string; salt: string; params: KdfParams }
   | { id: number; type: 'startWithPasskey'; passkey: { prf: Uint8Array; credentialId: string; wrapped: string } }
   | { id: number; type: 'request'; method: string; url: string; headers: Record<string, string>; body?: string; parts?: Part[] }
   | { id: number; type: 'startShare'; shareId: string; key: string }

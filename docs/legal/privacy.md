@@ -38,6 +38,7 @@ We use no advertising or tracking cookies and nothing from third parties. The br
 - A **sign-in cookie**, so that you stay signed in, ended when you sign out or when the sign-in expires.
 - A **browser cookie** (one year) that lets us tell a browser you have signed in from before from a new one, so we can tell you about a new one.
 - On your device: the **language** you chose, the conversation you had open in the assistant and the doctors you dismissed from a suggestion list, so that the screens remember them; the documents you changed on the regrouping screen and have not yet had read again (their ids, no text), and, for someone opening a share link that needs approval, the key pair made for that request; these last two are forgotten when the tab is closed.
+- On your device: a **copy of your encrypted objects**, exactly as they are held on our servers and no more readable than there (it holds no record's text and no key), kept so that opening your records after a reload does not download them again. It stays in the browser until you sign out or delete your account, when it is removed; if you close the browser without signing out it stays until you next sign out, so on a browser you share, sign out.
 
 ## How long, and how safe
 

@@ -1,5 +1,5 @@
 import { askForPassword } from './reauth';
-import { credentialFor, vaultState } from './crypto/vault-state';
+import { credentialFor, deriveKey, vaultState } from './crypto/vault-state';
 import { prepareSignIn, type PasskeyUnlock } from './crypto/vault-client';
 import { getWithPrf, prfSupported } from './crypto/passkey-prf';
 import { checkPasswordPolicy } from './crypto/password-policy';
@@ -7,6 +7,7 @@ import { rewrapForPassword, wrapForPasskey, type KdfParams, type VaultKeyPayload
 import { startAuthentication, startRegistration, type PublicKeyCredentialCreationOptionsJSON, type PublicKeyCredentialRequestOptionsJSON } from '@simplewebauthn/browser';
 import { appFetch } from './core/client';
 import { fromCode, makeOffer, readEnrolmentCode } from './crypto/enrolment';
+import { clearSealedCache } from './crypto/sealed-cache';
 export type DocType =
   | 'lab_result'
   | 'discharge_note'
@@ -478,6 +479,8 @@ export interface TranslatedDocument {
   status: 'same' | 'cached' | 'translated' | 'off';
   /** `head`: the title, summary, notes and specialties, which come first; the fields and results follow in `full`. */
   part: 'head' | 'full';
+  /** Some of it could not be translated and shows in the original; the rest is asked for again later. */
+  incomplete?: boolean;
   title: string | null;
   ai_summary: string | null;
   user_notes: string | null;
@@ -667,7 +670,7 @@ export const api = {
     /** Either signed in, or the password was right and a second factor is still needed. */
     login: async (email: string, password: string) => {
       // The password never leaves the device: what is sent in its place is derived from it (docs/crypto-design.md).
-      const { credential, masterKey } = await prepareSignIn(email, password);
+      const { credential, masterKey } = await prepareSignIn(email, password, undefined, deriveKey);
       vaultState.setEmail(email);
       try {
         const result = await req<{ ok?: boolean; email?: string; second_factor_required?: boolean }>('/api/auth/login', {
@@ -686,6 +689,8 @@ export const api = {
     /** Throws `UnsavedChangesError` (and signs nothing out) while changes are not in the vault; `force` is the person's choice to lose them. */
     logout: async (force = false) => {
       await vaultState.lock(force);
+      // The copy of sealed objects kept for faster opening goes with the sign-in (SECURITY.md M-43).
+      await clearSealedCache();
       return req('/api/auth/logout', { method: 'POST' });
     },
     me: () => req<{ authenticated: boolean; email: string; second_factor_enabled?: boolean; vault?: boolean; consent_needed?: { health: boolean; terms: boolean } }>('/api/auth/me'),
@@ -844,6 +849,13 @@ export const api = {
     hybrid: (q: string) => req<Array<Document & { via: Array<'words' | 'meaning'> }>>(`/api/search/hybrid?q=${encodeURIComponent(q)}`),
     /** The document in a language, translated on demand and kept. */
     translation: (id: string, lang: string, part: 'head' | 'full' = 'full') => req<TranslatedDocument>(`/api/documents/${id}/translation?lang=${lang}&part=${part}`),
+    /** The translation if one is kept, else null: never asks a model, so the page can look before it shows that it is waiting. */
+    translationKept: async (id: string, lang: string): Promise<TranslatedDocument | null> => {
+      const res = await appFetch(`/api/documents/${id}/translation?lang=${lang}&cached=1`);
+      if (res.status === 204) return null;
+      if (!res.ok) throw new ApiError(((await res.json().catch(() => ({}))) as { error?: string }).error ?? res.statusText, res.status);
+      return res.json() as Promise<TranslatedDocument>;
+    },
     list: (params?: Record<string, string>) => {
       const qs = params ? '?' + new URLSearchParams(params).toString() : '';
       return req<Document[]>(`/api/documents${qs}`);
@@ -990,7 +1002,11 @@ export const api = {
     /** Agree to the use of health data and the terms, given apart. */
     consent: (healthData: boolean, terms: boolean) => post<{ ok: boolean }>('/api/account/consent', { health_data: healthData, terms }),
     /** Delete the account and everything in it. Asks for the password again if it has not been typed lately. */
-    remove: (confirm: string) => post<{ deleted: boolean }>('/api/account/delete', { confirm }),
+    remove: async (confirm: string) => {
+      const result = await post<{ deleted: boolean }>('/api/account/delete', { confirm });
+      await clearSealedCache();
+      return result;
+    },
   },
 
   /** What has been shown to help the person start, and how far they have got. */

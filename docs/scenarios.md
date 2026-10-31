@@ -612,7 +612,10 @@ The owner signs in on a second device with the master password (or a passkey) an
 - Two devices that change different things at the same moment end with both changes. The newest change to a row wins; a deletion is a change.
 - A device that saved is told that another made changes, and offers a reload; pages do not refresh themselves.
 - A tag or doctor made on two devices with the same name becomes one. Starter tags are the same on every device.
-- After 40 segments a device writes a snapshot, so a device that was away catches up from it.
+- After 10 segments a device folds them into a small part (and after six such parts, writes a snapshot of everything), so a device that was away catches up from them.
+- After a reload the records come back from the copy kept on the device and the server is asked only for what is new; signing out removes the copy.
+- On the unlock screen the page does not freeze while the password is turned into a key, and what the server is asked for before the password is typed is not asked again afterwards.
+- The page's scripts are not asked about again at a reload: only the page itself is.
 - A vault of a kind this version does not know is refused with a message and left untouched.
 - Not covered: network failures mid-save, large vaults, a device whose clock is wrong (it can win edits it should not).
 
