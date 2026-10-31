@@ -3,6 +3,7 @@ import { trustedProxies } from './trust-proxy.js';
 import Fastify from 'fastify';
 import fastifyCookie from '@fastify/cookie';
 import fastifySession from '@fastify/session';
+import { sessionPersistence } from './session-store.js';
 import fastifyStatic from '@fastify/static';
 import fastifyRateLimit from '@fastify/rate-limit';
 import path from 'path';
@@ -77,6 +78,8 @@ app.log.info(
 await app.register(fastifyCookie);
 await app.register(fastifySession, {
   secret: config.sessionSecret,
+  // In the accounts database, so a restart signs no one out (S-16).
+  ...sessionPersistence,
   cookie: {
     secure: config.isProduction,
     httpOnly: true,

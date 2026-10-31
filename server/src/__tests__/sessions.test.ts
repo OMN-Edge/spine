@@ -256,3 +256,20 @@ describe('ended sign-ins are deleted for every account', () => {
     expect(await store.sessions.rememberDevice(OWNER_ID, 'hash-of-an-old-browser', now.toISOString())).toBe('new');
   });
 });
+
+describe('a restart of the server (S-16)', () => {
+  it('keeps a sign-in: the session is in the accounts database, under a digest of its id', async () => {
+    const cookie = await loginAs(app);
+    const restarted = await buildTestApp({ keepStore: true });
+    try {
+      expect((await restarted.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie } })).json()).toMatchObject({ authenticated: true });
+    } finally {
+      await restarted.close();
+    }
+  });
+
+  it('stores nothing for a visitor who has not signed in', async () => {
+    const res = await get('/api/auth/me', '');
+    expect(res.cookies.find(c => c.name === 'sessionId')).toBeUndefined();
+  });
+});

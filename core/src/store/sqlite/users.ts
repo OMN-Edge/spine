@@ -142,6 +142,7 @@ export function userRepository(db: Database): UserRepository {
     'source_files',
     'tags',
     'user_sessions',
+    'cookie_sessions',
     'model_usage',
     'user_devices',
     'user_tokens',

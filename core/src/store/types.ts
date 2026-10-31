@@ -52,6 +52,8 @@ import type {
  *  6. `users.*` — the identity layer. Login has to find a user by email before
  *     there is an acting user, and every request resolves its session to a user
  *     here.
+ *  7. `cookieSessions.*` — the cookie session's state, found by the digest of the cookie's random id before there is an acting
+ *     user (it is what says who that is), and holding no record.
  */
 /**
  * What the server keeps: accounts, sessions, the vault's sealed objects and the sealed copies of shares (SECURITY.md **M-37**). It is a
@@ -65,6 +67,7 @@ export interface AccountsStore {
   vault: VaultRepository;
   shared: SharedRepository;
   enrolments: EnrolmentRepository;
+  cookieSessions: CookieSessionRepository;
   maintenance: MaintenanceRepository;
 
   /**
@@ -734,6 +737,16 @@ export interface EnrolmentRepository {
   sweep(now: string): Promise<number>;
 }
 
+/**
+ * The state of a cookie session (SECURITY.md S-16), by the sha256 of its id: never the id itself. `data` is the session as JSON;
+ * an expired row reads as none.
+ */
+export interface CookieSessionRepository {
+  get(sidHash: string, now: string): Promise<string | null>;
+  set(sidHash: string, row: { userId: string | null; data: string; expiresAt: string }): Promise<void>;
+  destroy(sidHash: string): Promise<void>;
+}
+
 export interface SessionRepository {
   open(userId: string, session: { id: string; at: string; userAgent: string; address: string }): Promise<void>;
   get(userId: string, id: string): Promise<SessionRecord | null>;
@@ -1170,7 +1183,7 @@ export interface MaintenanceRepository {
   /** Startup: fails the stalled uploads except the ones named, which are being started again. */
   failStalledSourceFiles(keep?: string[]): Promise<number>;
   /** Every account's sign-in rows (browser, address) started before the first cutoff or idle since the second, so one that is never signed in again does not keep them (privacy notice). */
-  pruneSessions(startedBefore: string, idleSince: string, devicesFirstSeenBefore?: string): Promise<number>;
+  pruneSessions(startedBefore: string, idleSince: string, devicesFirstSeenBefore?: string, cookiesExpiredBefore?: string): Promise<number>;
 }
 
 export interface StoreConfig {

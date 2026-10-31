@@ -19,7 +19,8 @@ export function maintenanceRepository(db: Database): MaintenanceRepository {
       db.exec(`VACUUM INTO '${destination.replace(/'/g, "''")}'`);
     },
 
-    async pruneSessions(startedBefore, idleSince, devicesFirstSeenBefore) {
+    async pruneSessions(startedBefore, idleSince, devicesFirstSeenBefore, cookiesExpiredBefore) {
+      if (cookiesExpiredBefore) db.prepare('DELETE FROM cookie_sessions WHERE expires_at < ?').run(cookiesExpiredBefore);
       // A browser's cookie lasts a year (the privacy notice says so); the hash of it is not kept longer.
       if (devicesFirstSeenBefore) db.prepare('DELETE FROM user_devices WHERE first_seen_at < ?').run(devicesFirstSeenBefore);
       return db.prepare('DELETE FROM user_sessions WHERE created_at < ? OR last_seen_at < ?').run(startedBefore, idleSince).changes;
