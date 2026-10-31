@@ -48,6 +48,8 @@ export interface BackupResult {
 
 const SNAPSHOT_PREFIX = 'spine-';
 const SNAPSHOT_SUFFIX = '.db';
+/** How much older than its source a copied object's time may read and still be current: the resolution of a time held as a double of seconds (measured at about 0.001 ms), with room, and far below any real edit. */
+const MTIME_EPSILON_MS = 0.01;
 
 function timestamp(now: Date): string {
   return now.toISOString().replace(/[:.]/g, '-').replace(/Z$/, '');
@@ -80,10 +82,13 @@ function mirrorVault(from: string, to: string): number {
       const s = statSync(source);
       if (existsSync(target)) {
         const t = statSync(target);
-        if (t.size === s.size && Math.floor(t.mtimeMs) >= Math.floor(s.mtimeMs)) continue; // utimes keeps milliseconds only
+        // The copy carries the source's time to the finest a double holds (about a microsecond at today's date), so it is current when it
+        // is not older than that. Going through `s.mtime`, a Date, cut it to whole milliseconds and, as float seconds, came back up to
+        // a millisecond older on Linux with Node 22: about half the vault looked changed on every run.
+        if (t.size === s.size && t.mtimeMs >= s.mtimeMs - MTIME_EPSILON_MS) continue;
       }
       copyFileSync(source, target);
-      utimesSync(target, s.atime, s.mtime);
+      utimesSync(target, s.atimeMs / 1000, s.mtimeMs / 1000);
       copied += 1;
     }
     for (const entry of readdirSync(targetDir, { withFileTypes: true })) {
