@@ -22,7 +22,7 @@ import {
  *   npm run cli -- disable-2fa <email>
  *   npm run cli -- approve-user <email>
  *   npm run cli -- delete-user <email> [--yes]
- *   npm run cli -- grant-plan <email> [--days=N]
+ *   npm run cli -- grant-plan <email> [--days=N] [--plan=premium|family]
  *   npm run cli -- revoke-plan <email>
  *   npm run cli -- waitlist
  *   npm run cli -- waitlist-remove <email>
@@ -47,7 +47,7 @@ const USAGE = `usage:
   reset-link <email> [--hours N]
   disable-2fa <email>
   approve-user <email>
-  grant-plan <email> [--days=N]
+  grant-plan <email> [--days=N] [--plan=premium|family]
   revoke-plan <email>
   waitlist
   waitlist-remove <email>
@@ -217,14 +217,16 @@ export async function runCli(args: string[], io: CliIo): Promise<number> {
       const daysFlag = flags.find(flag => flag.startsWith('--days='));
       const days = daysFlag ? Number(daysFlag.split('=')[1]) : 365;
       if (!Number.isInteger(days) || days < 1 || days > 3650) { io.err('--days must be a whole number from 1 to 3650'); return 2; }
+      const planFlag = flags.find(flag => flag.startsWith('--plan='))?.split('=')[1] ?? 'premium';
+      if (planFlag !== 'premium' && planFlag !== 'family') { io.err('--plan must be premium or family'); return 2; }
       const existing = await store.billing.get(user.id);
       if (existing?.provider === 'paddle' && existing.status !== 'canceled') { io.err(`${email} pays for a plan; change it in the payment provider's dashboard`); return 1; }
       const now = new Date();
       await store.billing.put({
-        user_id: user.id, provider: 'operator', customer_id: null, subscription_id: null, interval: null, status: 'active', founding: false,
+        user_id: user.id, provider: 'operator', customer_id: null, subscription_id: null, interval: null, plan: planFlag, status: 'active', founding: false,
         current_period_end: new Date(now.getTime() + days * 86_400_000).toISOString(), cancel_scheduled: true, updated_at: now.toISOString(),
       });
-      io.out(`${email} has the paid plan for ${days} day${days === 1 ? '' : 's'} (shown to them as granted); it takes effect only where SPINE_BILLING=on`);
+      io.out(`${email} has the ${planFlag} plan for ${days} day${days === 1 ? '' : 's'} (shown to them as granted); it takes effect only where SPINE_BILLING=on`);
       return 0;
     }
 

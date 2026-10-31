@@ -125,11 +125,12 @@ One constraint shapes the AI path: the client cannot hold Spine's model API key,
 | FR-BIL-02 | Price, renewal and cancellation shown before a purchase, one-step cancellation, the card never seen by Spine, and an account with a running subscription not deleted until it is cancelled | Must | Launch |
 | FR-BIL-03 | The first 500 paying accounts keep the yearly founding price for as long as the subscription runs | Should | Launch |
 | FR-BIL-04 | A self-hosted or private instance has no plans and no limits but its own | Must | Launch |
+| FR-BIL-05 | A family plan for up to six people, sold only where the operator has named its prices; Premium and the family plan are told apart by the prices of the subscription | Should | Launch |
 | FR-GRW-01 | The loops in the marketing plan can be counted without identifying anyone: sign-ups from a shared page or a doctor's page, shared pages opened, checkouts started; a waitlist holds an address and a day | Should | Launch |
 
 ### Reintroduced after the first scope was cut
 
-The cuts of 2026-10-23 are being undone in this order, each with its documents (the marketing plan needs them): the emergency card, several profiles per account, delegating a profile, child profiles and guardians, promotion at 18 (all built), and the Family plan. FR-PRF-01 (several profiles per account) is built (**M-48**); delegation, child profiles and guardians, promotion at 18 and the Family plan follow. Installable mobile apps (TR-MOB) stay out.
+The cuts of 2026-10-23 are being undone in this order, each with its documents (the marketing plan needs them): the emergency card, several profiles per account, delegating a profile, child profiles and guardians, promotion at 18 (all built), and the Family plan (built, sold where its prices are named). FR-PRF-01 (several profiles per account) is built (**M-48**); delegation, child profiles and guardians, promotion at 18 and the Family plan follow. Installable mobile apps (TR-MOB) stay out.
 
 | ID | Requirement | Priority | Release | Status |
 | --- | --- | --- | --- | --- |

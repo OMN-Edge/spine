@@ -4,7 +4,7 @@ import type { SubscriptionRecord } from '../store/types.js';
 
 const DAY = 86_400_000;
 const sub = (over: Partial<SubscriptionRecord>): SubscriptionRecord => ({
-  user_id: 'u', provider: 'paddle', customer_id: 'ctm', subscription_id: 'sub', interval: 'year', status: 'active', founding: false,
+  user_id: 'u', provider: 'paddle', customer_id: 'ctm', subscription_id: 'sub', interval: 'year', plan: 'premium', status: 'active', founding: false,
   current_period_end: null, cancel_scheduled: false, updated_at: '2026-01-01T00:00:00.000Z', ...over,
 });
 const now = new Date('2026-06-15T12:00:00.000Z');
@@ -50,6 +50,17 @@ describe('what a plan includes', () => {
     const free = entitlementsOf(created(300), null, now);
     expect(free).toMatchObject({ plan: 'free', aiAllowance: 30 * PAGE, vaultBytes: 1024 ** 3, liveShares: 1, chat: false });
     expect(usagePeriod(free, now)).toBe('2026-06');
+  });
+});
+
+describe('the family plan', () => {
+  it('is Premium for six people, who may be children, with accounts of their own, and three times the reading', () => {
+    const family = entitlementsOf(created(400), sub({ plan: 'family', current_period_end: new Date(now.getTime() + 30 * DAY).toISOString() }), now);
+    expect(family).toMatchObject({ plan: 'family', profiles: 6, delegation: true, translation: true, chat: true, aiAllowance: 12000 * PAGE });
+    const premium = entitlementsOf(created(400), sub({ current_period_end: new Date(now.getTime() + 30 * DAY).toISOString() }), now);
+    expect(premium).toMatchObject({ plan: 'premium', profiles: 1, delegation: false });
+    // Ending a family subscription goes the way every one does.
+    expect(planOf(created(400), sub({ plan: 'family', status: 'canceled', current_period_end: new Date(now.getTime() - DAY).toISOString() }), now)).toBe('free');
   });
 });
 

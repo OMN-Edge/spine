@@ -7,7 +7,9 @@ import type { SubscriptionRecord } from '../store/types.js';
  *
  * With billing off (`SPINE_BILLING`, the default, and every self-hosted instance) nothing here applies: `entitlementsOf` is not asked.
  */
-export type PlanId = 'trial' | 'free' | 'premium';
+export type PlanId = 'trial' | 'free' | 'premium' | 'family';
+/** What a subscription can be for. */
+export type PaidPlan = 'premium' | 'family';
 
 /** A page of AI processing is 1000, so a call can cost a part of one and the totals stay whole numbers. */
 export const PAGE = 1000;
@@ -20,6 +22,7 @@ export const PAST_DUE_GRACE_DAYS = 7;
 export const PRICES = {
   premium: { year: 39, month: 3.99 },
   founding: { year: 29 },
+  family: { year: 79, month: 7.99 },
   currency: 'EUR',
 } as const;
 
@@ -56,6 +59,8 @@ export const PLANS: Record<PlanId, Omit<Entitlements, 'plan'>> = {
   free: { aiAllowance: 30 * PAGE, aiPeriod: 'month', vaultBytes: GB, liveShares: 1, translation: false, chat: false, linking: false, related: false, approvalMode: false, profiles: 1, delegation: false },
   // "Unlimited (fair use)": a ceiling no ordinary use meets and a stuck loop does.
   premium: { aiAllowance: 4000 * PAGE, aiPeriod: 'month', vaultBytes: null, liveShares: null, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 1, delegation: false },
+  // Premium for up to six people, who may be children and may have accounts of their own: the allowance is shared by all of them.
+  family: { aiAllowance: 12000 * PAGE, aiPeriod: 'month', vaultBytes: null, liveShares: null, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 6, delegation: true },
 };
 
 const addMonths = (iso: string, months: number): Date => {
@@ -77,7 +82,7 @@ export function subscriptionEntitles(sub: SubscriptionRecord | null, now: Date):
 }
 
 export function planOf(account: { created_at: string }, sub: SubscriptionRecord | null, now: Date): PlanId {
-  if (subscriptionEntitles(sub, now)) return 'premium';
+  if (sub && subscriptionEntitles(sub, now)) return sub.plan;
   return now.getTime() < Date.parse(trialEnd(account.created_at)) ? 'trial' : 'free';
 }
 

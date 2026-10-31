@@ -838,6 +838,8 @@ export interface SubscriptionRecord {
   customer_id: string | null;
   subscription_id: string | null;
   interval: 'month' | 'year' | null;
+  /** What it is a subscription to. */
+  plan: 'premium' | 'family';
   /** The provider's word: active, trialing, past_due, paused, canceled. */
   status: string;
   /** Pays the founding price, locked for as long as the subscription runs. */

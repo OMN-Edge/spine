@@ -1454,5 +1454,12 @@
  "You are 18: these records can be yours.": "Sie sind 18: Diese Unterlagen können Ihnen gehören.",
  "Taking them over moves them into your own account, under a new key that only your account opens. The people who looked after you lose access until you let them back in, one by one. This cannot be undone.": "Wenn Sie sie übernehmen, ziehen sie in Ihr eigenes Konto um, unter einem neuen Schlüssel, den nur Ihr Konto öffnet. Die Personen, die sich um Sie gekümmert haben, verlieren den Zugriff, bis Sie sie nach und nach wieder hereinlassen. Das lässt sich nicht rückgängig machen.",
  "Yes, take them over": "Ja, übernehmen",
- "Take over my records": "Meine Unterlagen übernehmen"
+ "Take over my records": "Meine Unterlagen übernehmen",
+ "Family": "Familie",
+ "People: up to {n}": "Personen: bis zu {n}",
+ "For a family, with up to six people, children and teenagers among them:": "Für eine Familie, mit bis zu sechs Personen, darunter Kinder und Jugendliche:",
+ "Family for {price} a year": "Familie für {price} im Jahr",
+ "Everything in Premium, for up to six people": "Alles aus Premium, für bis zu sechs Personen",
+ "Records for children, kept by their guardians, with other guardians let in": "Unterlagen für Kinder, von ihren Erziehungsberechtigten geführt, mit weiteren Erziehungsberechtigten",
+ "A teenager from sixteen can have an account of their own, and at eighteen the records can become theirs": "Jugendliche können ab sechzehn ein eigenes Konto haben, und mit achtzehn können die Unterlagen ihnen gehören"
 }

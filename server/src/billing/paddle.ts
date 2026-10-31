@@ -66,6 +66,12 @@ export const userOf = (event: PaddleEvent): string | null => {
   return typeof id === 'string' && id.length > 0 && id.length <= 64 ? id : null;
 };
 
+/** What a purchase is for, from the prices on it: the family plan if one of its prices is there, else Premium. */
+export function planOfItems(items: PaddleEvent['data']['items'], config: Enabled): 'premium' | 'family' {
+  const family = config.family;
+  return family && (items ?? []).some(i => i.price?.id === family.year || i.price?.id === family.month) ? 'family' : 'premium';
+}
+
 /** The account's row after a `subscription.*` delivery. Fields the delivery lacks keep what was known. */
 export function applySubscriptionEvent(previous: SubscriptionRecord | null, userId: string, event: PaddleEvent, config: Enabled, now: string): SubscriptionRecord {
   const d = event.data;
@@ -76,6 +82,8 @@ export function applySubscriptionEvent(previous: SubscriptionRecord | null, user
     customer_id: d.customer_id ?? previous?.customer_id ?? null,
     subscription_id: d.id ?? previous?.subscription_id ?? null,
     interval,
+    // Which plan is what the prices on the subscription say; a message that lists none keeps what was known.
+    plan: (d.items ?? []).length > 0 ? planOfItems(d.items, config) : previous?.plan ?? 'premium',
     status: d.status ?? previous?.status ?? 'active',
     founding: previous?.founding === true || (d.items ?? []).some(i => i.price?.id === config.prices.founding),
     // A subscription that ended keeps the end it had: that is what was paid for.

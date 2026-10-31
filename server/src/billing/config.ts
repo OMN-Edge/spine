@@ -14,6 +14,8 @@ export type BillingConfig =
       apiKey: string;
       webhookSecret: string;
       prices: { year: string; month: string; founding: string };
+      /** The family plan's two prices, when the operator sells it (both or neither). */
+      family: { year: string; month: string } | null;
       /** The address of the page that opens Paddle's checkout: an origin of its own, so the provider's script never runs where the vault is. */
       checkoutUrl: string;
     };
@@ -36,12 +38,18 @@ export function readBillingConfig(env: NodeJS.ProcessEnv, instance: 'public' | '
   const checkoutUrl = need('SPINE_CHECKOUT_URL');
   if (checkoutUrl && !/^https:\/\/[^/\s]+(\/\S*)?$/.test(checkoutUrl) && !/^http:\/\/localhost(:\d+)?(\/\S*)?$/.test(checkoutUrl)) problems.push('SPINE_CHECKOUT_URL must be an https address');
 
+  // The family plan is sold only when both its prices are named; one alone is a mistake worth stopping for.
+  const familyYear = (env.SPINE_PADDLE_PRICE_FAMILY_YEAR ?? '').trim();
+  const familyMonth = (env.SPINE_PADDLE_PRICE_FAMILY_MONTH ?? '').trim();
+  if (!!familyYear !== !!familyMonth) problems.push('the family plan needs both SPINE_PADDLE_PRICE_FAMILY_YEAR and SPINE_PADDLE_PRICE_FAMILY_MONTH, or neither');
+
   return {
     enabled: true,
     environment: environment === 'production' ? 'production' : 'sandbox',
     apiKey: need('PADDLE_API_KEY'),
     webhookSecret: need('PADDLE_WEBHOOK_SECRET'),
     prices: { year: need('SPINE_PADDLE_PRICE_YEAR'), month: need('SPINE_PADDLE_PRICE_MONTH'), founding: need('SPINE_PADDLE_PRICE_FOUNDING') },
+    family: familyYear && familyMonth ? { year: familyYear, month: familyMonth } : null,
     checkoutUrl,
   };
 }

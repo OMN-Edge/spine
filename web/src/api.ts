@@ -601,19 +601,21 @@ const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, 
   signal?.addEventListener('abort', () => { clearTimeout(timer); reject(new DOMException('stopped', 'AbortError')); }, { once: true });
 });
 
-export interface Prices { premium: { year: number; month: number }; founding: { year: number }; currency: string }
-export interface Pricing { enabled: boolean; prices?: Prices; founding_left?: number }
+export interface Prices { premium: { year: number; month: number }; founding: { year: number }; family: { year: number; month: number }; currency: string }
+export interface Pricing { enabled: boolean; prices?: Prices; founding_left?: number; /** The family plan is sold here. */ family?: boolean }
 /** What the account page shows of the plan (the server's `GET /api/billing`). */
 export interface BillingView {
   enabled: boolean;
-  plan?: 'trial' | 'free' | 'premium';
+  plan?: 'trial' | 'free' | 'premium' | 'family';
   trial_ends_at?: string | null;
   subscription?: { status: string; interval: 'month' | 'year' | null; founding: boolean; ends_at: string | null; renews_at: string | null; provider: 'paddle' | 'operator' } | null;
   can_manage?: boolean;
   ai?: { used: number; allowance: number; period: 'trial' | 'month' };
   vault?: { used_bytes: number; limit_bytes: number };
   shares?: { live: number; limit: number };
-  features?: { translation: boolean; chat: boolean; linking: boolean; related: boolean; approval_mode: boolean };
+  features?: { translation: boolean; chat: boolean; linking: boolean; related: boolean; approval_mode: boolean; delegation: boolean };
+  people?: { limit: number };
+  family?: boolean;
   prices?: Prices;
   founding_left?: number;
 }
@@ -638,7 +640,7 @@ export const api = {
     pricing: () => req<Pricing>('/api/pricing'),
     get: () => req<BillingView>('/api/billing'),
     /** Where to send the person to pay: the provider's checkout, on a page of its own. */
-    checkout: (interval: 'month' | 'year') => post<{ url: string }>('/api/billing/checkout', { interval }),
+    checkout: (interval: 'month' | 'year', plan: 'premium' | 'family' = 'premium') => post<{ url: string }>('/api/billing/checkout', { interval, plan }),
     portal: () => post<{ url: string }>('/api/billing/portal', {}),
   },
   /** Asking to be told when Spine opens. The answer is the same whether or not the address was already there. */

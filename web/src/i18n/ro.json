@@ -1454,5 +1454,12 @@
  "You are 18: these records can be yours.": "Ai 18 ani: aceste documente pot fi ale tale.",
  "Taking them over moves them into your own account, under a new key that only your account opens. The people who looked after you lose access until you let them back in, one by one. This cannot be undone.": "Preluarea lor le mută în contul tău, sub o cheie nouă pe care o deschide doar contul tău. Cei care au avut grijă de tine pierd accesul până îi lași înapoi, pe rând. Nu se poate anula.",
  "Yes, take them over": "Da, le preiau",
- "Take over my records": "Preia documentele mele"
+ "Take over my records": "Preia documentele mele",
+ "Family": "Familie",
+ "People: up to {n}": "Persoane: până la {n}",
+ "For a family, with up to six people, children and teenagers among them:": "Pentru o familie, cu până la șase persoane, printre ele copii și adolescenți:",
+ "Family for {price} a year": "Familie cu {price} pe an",
+ "Everything in Premium, for up to six people": "Tot ce are Premium, pentru până la șase persoane",
+ "Records for children, kept by their guardians, with other guardians let in": "Documente pentru copii, păstrate de tutorii lor, cu alți tutori lăsați să intre",
+ "A teenager from sixteen can have an account of their own, and at eighteen the records can become theirs": "Un adolescent de la șaisprezece ani poate avea un cont propriu, iar la optsprezece ani documentele pot deveni ale lui"
 }

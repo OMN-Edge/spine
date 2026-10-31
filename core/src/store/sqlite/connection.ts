@@ -92,6 +92,10 @@ function addColumnsInPlace(db: Database): void {
   const bundles = columnsOf(db, 'shared_bundles');
   if (bundles.length > 0 && !bundles.includes('kind')) db.exec("ALTER TABLE shared_bundles ADD COLUMN kind TEXT NOT NULL DEFAULT 'share'");
 
+  // What a subscription is to (Premium, or the family plan). Every earlier one is Premium.
+  const subscriptions = columnsOf(db, 'subscriptions');
+  if (subscriptions.length > 0 && !subscriptions.includes('plan')) db.exec("ALTER TABLE subscriptions ADD COLUMN plan TEXT NOT NULL DEFAULT 'premium'");
+
   const links = columnsOf(db, 'share_links');
   if (links.length > 0 && !links.includes('include_scans')) {
     db.exec('ALTER TABLE share_links ADD COLUMN include_scans INTEGER NOT NULL DEFAULT 0');

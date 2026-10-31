@@ -1,7 +1,7 @@
 import type { BillingRepository, MetricsRepository, SubscriptionRecord, WaitlistRepository } from '../types.js';
 import { changed, many, one, type Query } from './query.js';
 
-const COLUMNS = 'user_id, provider, customer_id, subscription_id, billing_interval, status, founding, current_period_end, cancel_scheduled, updated_at';
+const COLUMNS = 'user_id, provider, customer_id, subscription_id, billing_interval, plan, status, founding, current_period_end, cancel_scheduled, updated_at';
 
 const asSubscription = (r: Record<string, unknown>): SubscriptionRecord => ({
   user_id: r.user_id as string,
@@ -9,6 +9,7 @@ const asSubscription = (r: Record<string, unknown>): SubscriptionRecord => ({
   customer_id: (r.customer_id as string | null) ?? null,
   subscription_id: (r.subscription_id as string | null) ?? null,
   interval: (r.billing_interval as SubscriptionRecord['interval']) ?? null,
+  plan: r.plan === 'family' ? 'family' : 'premium',
   status: r.status as string,
   founding: r.founding === 1,
   current_period_end: (r.current_period_end as string | null) ?? null,
@@ -26,11 +27,11 @@ export function billingRepository(q: Query): BillingRepository {
     findBySubscription: id => find('subscription_id', id),
     findByCustomer: id => find('customer_id', id),
     async put(s) {
-      await q(`INSERT INTO subscriptions (${COLUMNS}) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      await q(`INSERT INTO subscriptions (${COLUMNS}) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         ON CONFLICT (user_id) DO UPDATE SET provider = excluded.provider, customer_id = excluded.customer_id, subscription_id = excluded.subscription_id,
-          billing_interval = excluded.billing_interval, status = excluded.status, founding = excluded.founding,
+          billing_interval = excluded.billing_interval, plan = excluded.plan, status = excluded.status, founding = excluded.founding,
           current_period_end = excluded.current_period_end, cancel_scheduled = excluded.cancel_scheduled, updated_at = excluded.updated_at`,
-      [s.user_id, s.provider, s.customer_id, s.subscription_id, s.interval, s.status, s.founding ? 1 : 0, s.current_period_end, s.cancel_scheduled ? 1 : 0, s.updated_at]);
+      [s.user_id, s.provider, s.customer_id, s.subscription_id, s.interval, s.plan, s.status, s.founding ? 1 : 0, s.current_period_end, s.cancel_scheduled ? 1 : 0, s.updated_at]);
     },
     async foundingHeld(now) {
       return Number((await one<{ n: number }>(q, `SELECT COUNT(*) AS n FROM subscriptions WHERE founding = 1 AND (status IN ('active', 'trialing', 'past_due') OR current_period_end > $1)`, [now]))!.n);

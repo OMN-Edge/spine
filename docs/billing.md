@@ -10,8 +10,9 @@ How an instance sells Spine, and how an operator sets it up. **Off by default**:
 | Free | €0 | One person's records, storage up to 1 GB, the timeline, search, export, the emergency card, one live share link without translation, about 30 pages of AI reading a month |
 | Premium | €39 a year or €3.99 a month | One person's records, reading within fair use (4000 pages a month), translation, questions, connections and related documents, any number of share links, approval mode |
 | Founding member | €29 a year | The yearly Premium for the first 500 paying accounts, kept for as long as the subscription runs |
+| Family | €79 a year or €7.99 a month | Premium for up to six people, with child profiles, other accounts let in, teenagers' own accounts and promotion at eighteen; reading within fair use of 12,000 pages a month for them all. Sold only where both its prices are named |
 
-`core/src/billing/plans.ts` is the one place these are written: the relay, the routes and the account page all ask it, and the pricing page shows what the server tells it. The amounts must match the prices created at the payment provider. Nothing is ever deleted when a plan ends: the records stay and export; what changes is what an account may add and use. The family plan, child profiles and the emergency card are not part of this release.
+`core/src/billing/plans.ts` is the one place these are written: the relay, the routes and the account page all ask it, and the pricing page shows what the server tells it. The amounts must match the prices created at the payment provider. Nothing is ever deleted when a plan ends: the records stay and export; what changes is what an account may add and use. The family plan is sold only when `SPINE_PADDLE_PRICE_FAMILY_YEAR` and `SPINE_PADDLE_PRICE_FAMILY_MONTH` are set. Changing from Premium to the family plan, or back, is done in Paddle's customer portal (a subscription to a price of the other plan is the other plan: the webhook reads it from the prices), not by a second checkout.
 
 An account's plan is worked out, never stored: a running subscription gives Premium; otherwise the trial counts from the day the account was made; otherwise Free (`entitlementsOf`). A cancelled subscription keeps Premium to the end of what was paid for, and a late payment keeps it a few days (`PAST_DUE_GRACE_DAYS`) while the provider tries again.
 
@@ -25,7 +26,7 @@ The vault's size and the number of live shares are limited by plan in the routes
 
 Paddle is the merchant of record: it charges, issues invoices and accounts for VAT, and Spine never sees a card.
 
-1. In Paddle, create three prices on one product: yearly (€39), monthly (€3.99) and the founding yearly price (€29). Create a notification destination for `https://<your domain>/api/billing/webhook` with the events `subscription.created`, `subscription.activated`, `subscription.updated`, `subscription.canceled`, `subscription.past_due`, `subscription.paused`, `subscription.resumed`, `subscription.trialing` and `transaction.completed`, and copy its secret. Create an API key and a client-side token.
+1. In Paddle, create three prices on one product: yearly (€39), monthly (€3.99) and the founding yearly price (€29), and, to sell the family plan, two more: yearly (€79) and monthly (€7.99). Create a notification destination for `https://<your domain>/api/billing/webhook` with the events `subscription.created`, `subscription.activated`, `subscription.updated`, `subscription.canceled`, `subscription.past_due`, `subscription.paused`, `subscription.resumed`, `subscription.trialing` and `transaction.completed`, and copy its secret. Create an API key and a client-side token.
 2. Serve `checkout/` from **its own origin** (for example `pay.<your domain>`), copy `checkout/config.example.js` there under the name config.js and fill it in, and make that address Paddle's default payment link. It must not be the app's origin: Paddle's script then never runs where a person's records are open. Its content security policy needs Paddle's script, frames and connections (see Paddle's guidance) and nothing of the app's.
 3. Set the variables below on the server and restart. `PADDLE_ENVIRONMENT` has no default because one value charges real money: try everything in `sandbox` first.
 
@@ -35,6 +36,7 @@ Paddle is the merchant of record: it charges, issues invoices and accounts for V
 | `PADDLE_ENVIRONMENT` | `sandbox` or `production` |
 | `PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET` | The API key (creates a checkout, opens the customer portal) and the notification destination's secret (checks a message is Paddle's) |
 | `SPINE_PADDLE_PRICE_YEAR`, `SPINE_PADDLE_PRICE_MONTH`, `SPINE_PADDLE_PRICE_FOUNDING` | The ids of the three prices |
+| `SPINE_PADDLE_PRICE_FAMILY_YEAR`, `SPINE_PADDLE_PRICE_FAMILY_MONTH` | The family plan's two prices; both or neither |
 | `SPINE_CHECKOUT_URL` | The address of the checkout page above |
 | `SPINE_WAITLIST` | `on` shows "Tell me when Spine opens" on the front page while accounts cannot be made |
 
@@ -46,7 +48,7 @@ The relay reads the same variables (it needs only `SPINE_BILLING` and the store)
 
 ## Operating it
 
-- `npm run cli -- grant-plan you@example.com --days=90` gives the paid plan without a payment (a friend, a reviewer); `revoke-plan` ends it.
+- `npm run cli -- grant-plan you@example.com --days=90 [--plan=family]` gives the paid plan without a payment (a friend, a reviewer); `revoke-plan` ends it.
 - `npm run cli -- waitlist` lists the addresses that asked to be told when Spine opens, `waitlist-remove` removes one.
 - `npm run cli -- metrics --days=30` shows the counts the marketing plan measures: `signup`, `signup_from_share`, `signup_from_doctors`, `share_opened`, `checkout_started`, `paid_event`. They are numbers a day under a name, never who.
 - An account with a running subscription cannot be deleted until the subscription is cancelled, so a person who leaves is not charged afterwards.

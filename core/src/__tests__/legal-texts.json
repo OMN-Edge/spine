@@ -1,7 +1,7 @@
 {
   "versions": {
     "HEALTH": "2026-11-05",
-    "TERMS": "2026-11-01"
+    "TERMS": "2026-11-06"
   },
   "texts": {
     "privacy": {
@@ -14,7 +14,7 @@
     },
     "terms": {
       "consent": "TERMS",
-      "sha256": "6a4d43ef4ef90bd6d139a3e44f0afbdc858b510a3392ddd62824f33489eaf05e"
+      "sha256": "1da923ea7c2f2ed3bfc65dd1abe9ab3fc1fec823f0c94cbd25164bc363230216"
     }
   }
 }

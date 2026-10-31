@@ -195,7 +195,7 @@ describe('plans and payment', () => {
       for (let n = 0; n < 500; n++) {
         const id = `founder-${n}`;
         await store.users.create({ id, email: `f${n}@spine.test`, passwordHash: 'x', createdAt: LONG_AGO, verifiedAt: LONG_AGO, consent: undefined });
-        await store.billing.put({ user_id: id, provider: 'paddle', customer_id: null, subscription_id: `sub_f${n}`, interval: 'year', status: 'active', founding: true, current_period_end: null, cancel_scheduled: false, updated_at: LONG_AGO });
+        await store.billing.put({ user_id: id, provider: 'paddle', customer_id: null, subscription_id: `sub_f${n}`, interval: 'year', plan: 'premium', status: 'active', founding: true, current_period_end: null, cancel_scheduled: false, updated_at: LONG_AGO });
       }
       expect((await get('/api/pricing', {})).json().founding_left).toBe(0);
       const fetchMock = stubProvider({ data: { checkout: { url: 'https://pay.spine.example/?_ptxn=txn_3' } } });
@@ -208,7 +208,7 @@ describe('plans and payment', () => {
       stubProvider({}, 500);
       expect((await checkout('month')).statusCode).toBe(502);
       const user = await createTestUser('twice@spine.test');
-      await getAccountsStore().billing.put({ user_id: user.id, provider: 'paddle', customer_id: 'ctm_t', subscription_id: 'sub_t', interval: 'month', status: 'active', founding: false, current_period_end: null, cancel_scheduled: false, updated_at: LONG_AGO });
+      await getAccountsStore().billing.put({ user_id: user.id, provider: 'paddle', customer_id: 'ctm_t', subscription_id: 'sub_t', interval: 'month', plan: 'premium', status: 'active', founding: false, current_period_end: null, cancel_scheduled: false, updated_at: LONG_AGO });
       const res = await checkout('month', { cookie: await loginAs(app, user.email, user.password) });
       expect(res.statusCode).toBe(409);
       expect(res.json().code).toBe('already_subscribed');
@@ -219,7 +219,7 @@ describe('plans and payment', () => {
       expect((await app.inject({ method: 'POST', url: '/api/billing/portal', headers: { cookie } })).statusCode).toBe(404);
       const fetchMock = stubProvider({ data: { urls: { general: { overview: 'https://customer-portal.paddle.com/cpl_1' } } } });
       const user = await createTestUser('manager@spine.test');
-      await getAccountsStore().billing.put({ user_id: user.id, provider: 'paddle', customer_id: 'ctm_m', subscription_id: 'sub_m', interval: 'year', status: 'active', founding: false, current_period_end: null, cancel_scheduled: false, updated_at: LONG_AGO });
+      await getAccountsStore().billing.put({ user_id: user.id, provider: 'paddle', customer_id: 'ctm_m', subscription_id: 'sub_m', interval: 'year', plan: 'premium', status: 'active', founding: false, current_period_end: null, cancel_scheduled: false, updated_at: LONG_AGO });
       const res = await app.inject({ method: 'POST', url: '/api/billing/portal', headers: { cookie: await loginAs(app, user.email, user.password) } });
       expect(res.json()).toEqual({ url: 'https://customer-portal.paddle.com/cpl_1' });
       expect((fetchMock.mock.calls[0] as unknown as [string])[0]).toBe('https://sandbox-api.paddle.com/customers/ctm_m/portal-sessions');
@@ -312,6 +312,64 @@ describe('plans and payment', () => {
       const cookiePeople = await loginAs(app, who.email, who.password);
       await app.inject({ method: 'PUT', url: '/api/vault/keys', headers: { cookie: cookiePeople }, payload: { auth_value: fakeAuthValue(), keys: fakeVaultKeys() } });
       for (const n of ['profile-cccc-0001', 'profile-dddd-0002', 'profile-eeee-0003']) expect((await addPerson(cookiePeople, n)).statusCode).toBe(200);
+    });
+  });
+
+  describe('the family plan', () => {
+    const FAMILY = { SPINE_PADDLE_PRICE_FAMILY_YEAR: 'pri_family_year', SPINE_PADDLE_PRICE_FAMILY_MONTH: 'pri_family_month' };
+
+    it('is sold only when both its prices are named', () => {
+      expect(loadBillingConfig(BILLING)).toMatchObject({ family: null });
+      expect(loadBillingConfig({ ...BILLING, ...FAMILY })).toMatchObject({ family: { year: 'pri_family_year', month: 'pri_family_month' } });
+      expect(() => loadBillingConfig({ ...BILLING, SPINE_PADDLE_PRICE_FAMILY_YEAR: 'pri_family_year' })).toThrow(/both SPINE_PADDLE_PRICE_FAMILY_YEAR and SPINE_PADDLE_PRICE_FAMILY_MONTH/);
+    });
+
+    it('is offered on the pricing page and the account page only where it is sold', async () => {
+      on();
+      expect((await get('/api/pricing', {})).json()).toMatchObject({ family: false, prices: { family: { year: 79, month: 7.99 } } });
+      Object.assign(process.env, FAMILY);
+      expect((await get('/api/pricing', {})).json().family).toBe(true);
+      expect((await get('/api/billing')).json()).toMatchObject({ family: true, people: { limit: 6 } });
+    });
+
+    it('opens a checkout at the family price, with no founding price, and refuses it where it is not sold', async () => {
+      on();
+      const fetchMock = vi.fn(async () => new Response(JSON.stringify({ data: { checkout: { url: 'https://pay.spine.example/?_ptxn=txn_f' } } }), { status: 200 }));
+      vi.stubGlobal('fetch', fetchMock);
+      const user = await createTestUser('family-buyer@spine.test');
+      const who = await loginAs(app, user.email, user.password);
+      const ask = (plan: string, interval: string) => app.inject({ method: 'POST', url: '/api/billing/checkout', headers: { cookie: who }, payload: { plan, interval } });
+      const refused = await ask('family', 'year');
+      expect(refused.statusCode).toBe(400);
+      expect(refused.json().code).toBe('plan_not_offered');
+      Object.assign(process.env, FAMILY);
+      expect((await ask('family', 'year')).statusCode).toBe(200);
+      expect((await ask('family', 'month')).statusCode).toBe(200);
+      const prices = fetchMock.mock.calls.map(c => JSON.parse((c as unknown as [string, RequestInit])[1].body as string).items[0].price_id);
+      expect(prices).toEqual(['pri_family_year', 'pri_family_month']);
+    });
+
+    it('is the plan a subscription to its prices gives, with six people and others let in', async () => {
+      on();
+      Object.assign(process.env, FAMILY);
+      const user = await createTestUser('family-payer@spine.test', { createdAt: LONG_AGO });
+      expect((await hook(eventBody('subscription.created', subscription(user.id, { id: 'sub_family', items: [{ price: { id: 'pri_family_year' } }] })))).statusCode).toBe(200);
+      expect(await getAccountsStore().billing.get(user.id)).toMatchObject({ plan: 'family', founding: false });
+      expect(await accountEntitlements(user.id)).toMatchObject({ plan: 'family', profiles: 6, delegation: true });
+      const who = await loginAs(app, user.email, user.password);
+      expect((await get('/api/billing', { cookie: who })).json()).toMatchObject({ plan: 'family', people: { limit: 6 }, features: { delegation: true } });
+      // A message that lists no price keeps the plan it had.
+      await hook(eventBody('subscription.updated', subscription(null, { id: 'sub_family', items: [], status: 'past_due' })));
+      expect(await getAccountsStore().billing.get(user.id)).toMatchObject({ plan: 'family', status: 'past_due' });
+    });
+
+    it('is granted by the operator for a time', async () => {
+      const { runCli } = await import('../cli.js');
+      const out: string[] = [];
+      const user = await createTestUser('family-guest@spine.test');
+      expect(await runCli(['grant-plan', 'family-guest@spine.test', '--plan=family', '--days=10'], { out: l => out.push(l), err: l => out.push(l), readPassword: async () => '' })).toBe(0);
+      expect(await getAccountsStore().billing.get(user.id)).toMatchObject({ provider: 'operator', plan: 'family' });
+      expect(await runCli(['grant-plan', 'family-guest@spine.test', '--plan=big'], { out: l => out.push(l), err: l => out.push(l), readPassword: async () => '' })).toBe(2);
     });
   });
 

@@ -223,6 +223,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   customer_id TEXT,
   subscription_id TEXT,
   billing_interval TEXT, -- 'month' | 'year'
+  plan TEXT NOT NULL DEFAULT 'premium', -- 'premium' | 'family'
   status TEXT NOT NULL,
   founding INTEGER NOT NULL DEFAULT 0,
   current_period_end TEXT,

@@ -188,12 +188,14 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   customer_id TEXT,
   subscription_id TEXT,
   billing_interval TEXT, -- 'month' | 'year'
+  plan TEXT NOT NULL DEFAULT 'premium', -- 'premium' | 'family'
   status TEXT NOT NULL,
   founding INTEGER NOT NULL DEFAULT 0,
   current_period_end TEXT,
   cancel_scheduled INTEGER NOT NULL DEFAULT 0,
   updated_at TEXT NOT NULL
 );
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS plan TEXT NOT NULL DEFAULT 'premium';
 CREATE UNIQUE INDEX IF NOT EXISTS idx_subscriptions_subscription ON subscriptions(subscription_id) WHERE subscription_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_subscriptions_customer ON subscriptions(customer_id);
 

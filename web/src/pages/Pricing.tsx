@@ -45,6 +45,17 @@ export default function Pricing() {
                 <li>{t('Any number of share links, and approving visitors before they see one')}</li>
               </ul>
 
+              {pricing.family && (
+                <>
+                  <h2 className="text-base font-semibold text-gray-900 pt-2">{t('Family')} · {t('{year} a year or {month} a month', { year: money(prices.family.year), month: money(prices.family.month) })}</h2>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>{t('Everything in Premium, for up to six people')}</li>
+                    <li>{t('Records for children, kept by their guardians, with other guardians let in')}</li>
+                    <li>{t('A teenager from sixteen can have an account of their own, and at eighteen the records can become theirs')}</li>
+                  </ul>
+                </>
+              )}
+
               {pricing.founding_left ? (
                 <p className="rounded-lg bg-gray-50 border border-gray-200 p-3">
                   {t('The first 500 paying members pay {price} a year, kept for as long as they stay subscribed. {left} places are left.', { price: money(prices.founding.year), left: pricing.founding_left })}

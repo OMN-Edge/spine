@@ -1,7 +1,7 @@
 import type { Database } from './driver.js';
 import type { BillingRepository, MetricsRepository, SubscriptionRecord, WaitlistRepository } from '../types.js';
 
-const COLUMNS = 'user_id, provider, customer_id, subscription_id, billing_interval, status, founding, current_period_end, cancel_scheduled, updated_at';
+const COLUMNS = 'user_id, provider, customer_id, subscription_id, billing_interval, plan, status, founding, current_period_end, cancel_scheduled, updated_at';
 
 const asSubscription = (r: Record<string, unknown>): SubscriptionRecord => ({
   user_id: r.user_id as string,
@@ -9,6 +9,7 @@ const asSubscription = (r: Record<string, unknown>): SubscriptionRecord => ({
   customer_id: (r.customer_id as string | null) ?? null,
   subscription_id: (r.subscription_id as string | null) ?? null,
   interval: (r.billing_interval as SubscriptionRecord['interval']) ?? null,
+  plan: r.plan === 'family' ? 'family' : 'premium',
   status: r.status as string,
   founding: r.founding === 1,
   current_period_end: (r.current_period_end as string | null) ?? null,
@@ -21,9 +22,9 @@ export function billingRepository(db: Database): BillingRepository {
   const get = db.prepare(`SELECT ${COLUMNS} FROM subscriptions WHERE user_id = ?`);
   const bySubscription = db.prepare(`SELECT ${COLUMNS} FROM subscriptions WHERE subscription_id = ?`);
   const byCustomer = db.prepare(`SELECT ${COLUMNS} FROM subscriptions WHERE customer_id = ?`);
-  const put = db.prepare(`INSERT INTO subscriptions (${COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  const put = db.prepare(`INSERT INTO subscriptions (${COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT (user_id) DO UPDATE SET provider = excluded.provider, customer_id = excluded.customer_id, subscription_id = excluded.subscription_id,
-      billing_interval = excluded.billing_interval, status = excluded.status, founding = excluded.founding,
+      billing_interval = excluded.billing_interval, plan = excluded.plan, status = excluded.status, founding = excluded.founding,
       current_period_end = excluded.current_period_end, cancel_scheduled = excluded.cancel_scheduled, updated_at = excluded.updated_at`);
   // Held: the founding price of a subscription that has not ended.
   const founding = db.prepare(`SELECT COUNT(*) AS n FROM subscriptions WHERE founding = 1 AND (status IN ('active', 'trialing', 'past_due') OR current_period_end > ?)`);
@@ -40,7 +41,7 @@ export function billingRepository(db: Database): BillingRepository {
     async findBySubscription(id) { return row(bySubscription, id); },
     async findByCustomer(id) { return row(byCustomer, id); },
     async put(s) {
-      put.run(s.user_id, s.provider, s.customer_id, s.subscription_id, s.interval, s.status, s.founding ? 1 : 0, s.current_period_end, s.cancel_scheduled ? 1 : 0, s.updated_at);
+      put.run(s.user_id, s.provider, s.customer_id, s.subscription_id, s.interval, s.plan, s.status, s.founding ? 1 : 0, s.current_period_end, s.cancel_scheduled ? 1 : 0, s.updated_at);
     },
     async foundingHeld(now) { return (founding.get(now) as { n: number }).n; },
     async recordEvent(id, at) { return event.run(id, at).changes === 1; },

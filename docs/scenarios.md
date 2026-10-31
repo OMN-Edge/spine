@@ -842,6 +842,11 @@ On the account page, "Premium for €29 a year (founding price)" (while places a
 
 Status: auto (`billing`, `growth`); the checkout page and the portal: not yet checked against Paddle's sandbox.
 
+### 13.2b The family plan
+Where it is sold, the account page offers "Family for €79 a year" or "€7.99 a month" beside Premium, and the pricing page says what it adds: up to six people, children's records kept by their guardians, other accounts let in, a teenager's own account from sixteen, and the records becoming theirs at eighteen. The account then shows "Family" and "People: up to 6". Moving between Premium and the family plan is done in the payment provider's portal; the plan follows the prices of the subscription.
+
+Status: auto (`billing`, `plans`); the checkout and the portal against Paddle's sandbox: not yet.
+
 ### 13.3 Hear when it opens
 While accounts cannot be made, the front page can ask for an address and says what it is kept for. The operator reads the list with `waitlist` and writes once.
 

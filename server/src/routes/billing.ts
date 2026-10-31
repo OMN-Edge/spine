@@ -5,7 +5,7 @@ import { logger } from 'spine-core/logger.js';
 import { FOUNDING_LIMIT, PAGE, PRICES, entitlementsOf, subscriptionEntitles, trialEnd, usagePeriod } from 'spine-core/billing/plans.js';
 import type { SubscriptionRecord } from 'spine-core/store/types.js';
 import { loadBillingConfig } from '../billing/config.js';
-import { applySubscriptionEvent, createCheckout, parseEvent, portalUrl, userOf, verifySignature, type PaddleEvent } from '../billing/paddle.js';
+import { applySubscriptionEvent, createCheckout, parseEvent, planOfItems, portalUrl, userOf, verifySignature, type PaddleEvent } from '../billing/paddle.js';
 import { vaultBytesFor, liveSharesFor } from '../billing/entitlements.js';
 
 const day = (now = new Date()) => now.toISOString().slice(0, 10);
@@ -28,7 +28,7 @@ export async function billingRoutes(app: FastifyInstance) {
     const config = loadBillingConfig();
     if (!config.enabled) return reply.header('Cache-Control', 'no-store').send({ enabled: false });
     const held = await getAccountsStore().billing.foundingHeld(new Date().toISOString());
-    return reply.header('Cache-Control', 'public, max-age=60').send({ enabled: true, prices: PRICES, founding_left: Math.max(0, FOUNDING_LIMIT - held) });
+    return reply.header('Cache-Control', 'public, max-age=60').send({ enabled: true, prices: PRICES, family: !!config.family, founding_left: Math.max(0, FOUNDING_LIMIT - held) });
   });
 
   // The signed-in account's plan, what it has used and what it can change.
@@ -60,25 +60,29 @@ export async function billingRoutes(app: FastifyInstance) {
       ai: { used: Math.floor(aiUsed / PAGE), allowance: Math.floor(e.aiAllowance / PAGE), period: e.aiPeriod },
       vault: { used_bytes: vault.bytes, limit_bytes: vaultLimit },
       shares: { live: shares.bundles, limit: sharesLimit },
-      features: { translation: e.translation, chat: e.chat, linking: e.linking, related: e.related, approval_mode: e.approvalMode },
+      features: { translation: e.translation, chat: e.chat, linking: e.linking, related: e.related, approval_mode: e.approvalMode, delegation: e.delegation },
+      people: { limit: e.profiles },
       prices: PRICES,
+      family: !!config.family,
       founding_left: Math.max(0, FOUNDING_LIMIT - held),
     });
   });
 
   // Starts a purchase: a transaction at the provider for the price the account is offered, and where to send the person to pay it.
-  app.post<{ Body: { interval?: unknown } }>('/api/billing/checkout', { preHandler: requireAuth, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
+  app.post<{ Body: { interval?: unknown; plan?: unknown } }>('/api/billing/checkout', { preHandler: requireAuth, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
     const config = loadBillingConfig();
     if (!config.enabled) return reply.status(404).send({ error: 'this instance has no plans' });
     const interval = req.body?.interval;
     if (interval !== 'month' && interval !== 'year') return reply.status(400).send({ error: 'interval must be month or year' });
+    const plan = req.body?.plan === 'family' ? 'family' : 'premium';
+    if (plan === 'family' && !config.family) return reply.status(400).send({ error: 'the family plan is not sold here', code: 'plan_not_offered' });
     const store = getAccountsStore();
     const now = new Date();
     const sub = await store.billing.get(req.userId);
     if (subscriptionEntitles(sub, now)) return reply.status(409).send({ error: 'this account already has a plan; change it from the billing page', code: 'already_subscribed' });
     // The founding price goes to the first places on the yearly plan; it is locked for as long as the subscription runs.
-    const founding = interval === 'year' && (await store.billing.foundingHeld(now.toISOString())) < FOUNDING_LIMIT;
-    const price = founding ? config.prices.founding : interval === 'year' ? config.prices.year : config.prices.month;
+    const founding = plan === 'premium' && interval === 'year' && (await store.billing.foundingHeld(now.toISOString())) < FOUNDING_LIMIT;
+    const price = plan === 'family' ? config.family![interval] : founding ? config.prices.founding : interval === 'year' ? config.prices.year : config.prices.month;
     try {
       const url = await createCheckout(config, price, req.userId);
       await store.metrics.bump('checkout_started', day(now));
@@ -160,7 +164,7 @@ async function applyEvent(event: PaddleEvent, config: Extract<ReturnType<typeof 
   const next: SubscriptionRecord = previous && previous.subscription_id === subscriptionId
     ? { ...previous, customer_id: previous.customer_id ?? d.customer_id ?? null } // a renewal says nothing the subscription messages do not
     : {
-        user_id: userId, provider: 'paddle', customer_id: d.customer_id ?? null, subscription_id: subscriptionId, interval: previous?.interval ?? null,
+        user_id: userId, provider: 'paddle', customer_id: d.customer_id ?? null, subscription_id: subscriptionId, interval: previous?.interval ?? null, plan: planOfItems(d.items, config),
         status: 'active', founding: (d.items ?? []).some(i => i.price?.id === config.prices.founding), current_period_end: new Date(Date.parse(at) + PLACEHOLDER_MS).toISOString(),
         cancel_scheduled: false, updated_at: BEFORE_ANY_MESSAGE,
       };

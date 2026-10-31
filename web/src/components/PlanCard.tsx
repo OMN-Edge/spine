@@ -26,9 +26,9 @@ export default function PlanCard() {
     }
   };
 
-  const { plan, subscription, ai, vault, shares, prices, founding_left: foundingLeft } = billing;
+  const { plan, subscription, ai, vault, shares, prices, founding_left: foundingLeft, family } = billing;
   const sub = subscription;
-  const name = plan === 'premium' ? t('Premium') : plan === 'trial' ? t('Free trial') : t('Free');
+  const name = plan === 'family' ? t('Family') : plan === 'premium' ? t('Premium') : plan === 'trial' ? t('Free trial') : t('Free');
   const money = (n: number) => `€${n}`;
 
   return (
@@ -50,11 +50,19 @@ export default function PlanCard() {
       <ul className="text-sm text-gray-700 space-y-1 mb-4">
         {ai && <li>{t('AI reading: {used} of {allowance} pages', { used: ai.used, allowance: ai.allowance })} {ai.period === 'month' ? t('this month') : t('in the trial')}</li>}
         {vault && <li>{t('Storage: {used} of {limit}', { used: formatBytes(vault.used_bytes), limit: formatBytes(vault.limit_bytes) })}</li>}
+        {billing.people && <li>{t('People: up to {n}', { n: billing.people.limit })}</li>}
         {shares && <li>{t('Share links: {live} live of {limit}', { live: shares.live, limit: shares.limit })}</li>}
       </ul>
 
       {error && <Notice kind="error">{error}</Notice>}
-      {plan !== 'premium' && prices && (
+      {plan !== 'premium' && plan !== 'family' && family && prices && (
+        <div className="space-y-1 mb-3">
+          <p className="text-sm text-gray-700">{t('For a family, with up to six people, children and teenagers among them:')}</p>
+          <button disabled={busy} onClick={() => go(() => api.billing.checkout('year', 'family'))} className={buttonClass}>{t('Family for {price} a year', { price: money(prices.family.year) })}</button>
+          <button disabled={busy} onClick={() => go(() => api.billing.checkout('month', 'family'))} className="ml-3 text-sm text-brand-600 hover:underline">{t('or {price} a month', { price: money(prices.family.month) })}</button>
+        </div>
+      )}
+      {plan !== 'premium' && plan !== 'family' && prices && (
         <div className="space-y-2">
           <button disabled={busy} onClick={() => go(() => api.billing.checkout('year'))} className={buttonClass}>
             {foundingLeft ? t('Premium for {price} a year (founding price)', { price: money(prices.founding.year) }) : t('Premium for {price} a year', { price: money(prices.premium.year) })}

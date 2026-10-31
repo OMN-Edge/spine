@@ -96,7 +96,7 @@ describe('a plan the operator grants', () => {
     const user = await createTestUser('payer2@spine.test');
     expect((await cli('grant-plan', 'payer2@spine.test', '--days=0')).code).toBe(2);
     expect((await cli('grant-plan', 'nobody@spine.test')).code).toBe(1);
-    await getAccountsStore().billing.put({ user_id: user.id, provider: 'paddle', customer_id: 'ctm', subscription_id: 'sub_p2', interval: 'year', status: 'active', founding: false, current_period_end: null, cancel_scheduled: false, updated_at: new Date().toISOString() });
+    await getAccountsStore().billing.put({ user_id: user.id, provider: 'paddle', customer_id: 'ctm', subscription_id: 'sub_p2', interval: 'year', plan: 'premium', status: 'active', founding: false, current_period_end: null, cancel_scheduled: false, updated_at: new Date().toISOString() });
     expect((await cli('grant-plan', 'payer2@spine.test')).code).toBe(1);
   });
 });
@@ -106,7 +106,7 @@ describe('leaving with a subscription', () => {
     const app = await buildTestApp();
     const user = await createTestUser('leaving@spine.test');
     const cookie = await loginAs(app, user.email, user.password);
-    await getAccountsStore().billing.put({ user_id: user.id, provider: 'paddle', customer_id: 'ctm_l', subscription_id: 'sub_l', interval: 'month', status: 'active', founding: false, current_period_end: new Date(Date.now() + 20 * 86_400_000).toISOString(), cancel_scheduled: false, updated_at: new Date().toISOString() });
+    await getAccountsStore().billing.put({ user_id: user.id, provider: 'paddle', customer_id: 'ctm_l', subscription_id: 'sub_l', interval: 'month', plan: 'premium', status: 'active', founding: false, current_period_end: new Date(Date.now() + 20 * 86_400_000).toISOString(), cancel_scheduled: false, updated_at: new Date().toISOString() });
     const refused = await app.inject({ method: 'POST', url: '/api/account/delete', headers: { cookie }, payload: { confirm: user.email } });
     expect(refused.statusCode).toBe(409);
     expect(refused.json().code).toBe('subscription_active');
