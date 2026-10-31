@@ -10,9 +10,13 @@ A web app served by an operator could be swapped for a different one, and a diff
 - `hashes.txt` lists the SHA-256 of every file of the build, one `<hash>  <path>` line each, sorted, in the format `sha256sum -c` reads. The site serves it at `/hashes.txt`. It includes `index.html`, so the integrity attributes are part of what is compared.
 - The build fails if any built file names the folder it was built in, since the same commit would then build differently elsewhere. `./scripts/check.sh repro` (a CI job) builds twice and fails if the lists differ.
 
+## Which commit
+
+The app says which commit it was built from: the footer of the front page shows the first seven characters, and hovering shows all forty. The page `/trust` ("How to check this app", `web/src/pages/Trust.tsx`) shows all forty and explains the check, and what it cannot promise, in plain words and in the four languages. It is in the app and not in `docs/legal/` on purpose: its words are part of the build `hashes.txt` lists, so an operator cannot edit them without the comparison failing. Its links to the code, these docs and the security page are the `/source`, `/docs` and `/security` redirects, which exist only when `SPINE_REPO_URL` is set. `vite.config.ts` writes it in at build time, from `SPINE_COMMIT` or else `git rev-parse HEAD` (with `-dirty` added if the tree had uncommitted changes; a Docker build passes it with `--build-arg SPINE_COMMIT=$(git rev-parse HEAD)`, and a build that can do neither says `unknown`). It is inside the built files, so it is part of `hashes.txt`: a site cannot show one commit and serve another's files without the comparison below failing. The commit is not in the repository (a commit cannot contain its own hash); it is read from git by whoever builds.
+
 ## Check a site
 
-Get the commit the operator says they run (a tag, or the commit in their release notes), then:
+Take the commit the page shows (or a release's tag), then:
 
 ```bash
 git checkout <commit>
@@ -27,3 +31,16 @@ It fetches the site's `hashes.txt` and every file in it, compares each served fi
 - It gives you a second party's word for what the page is: if you, or anyone you trust, builds the commit and gets the same list, the operator is serving code that is in the repository, and the repository is open.
 - It does not run when you open the page. A swapped client would not check itself. The check is one you (or a monitor you run, or a person you trust) run from outside, and it only catches a swap that is served to the one who checks. A swap served only to you cannot be seen by anyone else's check, which is the limit of any web client. A native client installed from a store is the other answer, and is not part of the first release.
 - The build is reproducible given the lockfile (`npm ci`) and the same Node major. A different Node or operating system can change a file (a native binary is not in the output, but a compiler's output can change between versions); if your list differs from the site's, build in the Docker image (`docker build .`, whose base is pinned by digest) before suspecting the site.
+
+## Official releases
+
+A pushed tag `vX.Y.Z` runs `.github/workflows/release.yml`: every check, then a build of that commit on GitHub's runner, and a release holding `hashes.txt` and the build as a tarball, both with a signed attestation (GitHub's artifact attestations: Sigstore, tied to the workflow and the commit). Anyone can check what a release file is without building anything:
+
+```bash
+gh release download v1.0.0 --repo OMN-Edge/spine --pattern hashes.txt
+gh attestation verify hashes.txt --repo OMN-Edge/spine --signer-workflow OMN-Edge/spine/.github/workflows/release.yml
+```
+
+The operator deploys a release by checking out the tag, building (the same files, since the build is reproducible) and running `scripts/deploy-check.sh v1.0.0`, which verifies the attestation of the release's `hashes.txt` and compares it with the `web/dist/hashes.txt` it just built. A personal deploy needs none of this: build and restart, and the page shows `-dirty` if the tree was not clean.
+
+What the attestation adds is a second party's signature on "this commit builds to this list", so the list no longer comes only from the site. It does not change the limit above: a page swapped for one visitor is seen by no one else.

@@ -57,6 +57,10 @@ describe('screen text', () => {
   "A share link covers what you pick: everything, a tag, a few documents or a date range. It ends when you say, you can revoke it at any time, and the server never holds a key that opens it.",
   "The server",
   "On the server",
+  // The page that says how to check the app (web/src/pages/Trust.tsx): the records are sealed on the device before the server keeps them (M-34),
+  // and what the server can see is the privacy notice's section on hosting.
+  "Spine runs in your browser, and your records are encrypted there before the server keeps anything. So the question that matters is whether the app your browser received is the published, open-source one. This page explains how anyone can check.",
+  "What the server can and cannot see is in the {link}.",
   // Spine's own help (core/src/help.ts): the server holds sealed pieces only (M-34, M-36); the part of an address after # is not sent in a
   // request, which is where a share's key is (M-36); and what reaches a model goes through the relay, which stores and logs none of it (M-35).
   "Your records are locked on this device with a key made from your master password. The server keeps them only in that locked form and cannot open them.",

@@ -8,6 +8,7 @@ import { useAuth } from '../auth';
 import { LogoMark } from '../components/Logo';
 import { LanguageSwitcher, useI18n } from '../i18n';
 import { ThemeSwitcher } from '../components/ThemeSwitcher';
+import { BUILD_COMMIT } from '../build-info';
 
 /**
  * What a signed-out visitor sees at `/`: what Spine does, and who can see what, before they are asked for a password.
@@ -136,6 +137,8 @@ export default function Landing() {
             <Link to="/privacy" className="hover:text-ink hover:underline">{t('Privacy notice')}</Link>
             <Link to="/terms" className="hover:text-ink hover:underline">{t('Terms of use')}</Link>
             <Link to="/purpose" className="hover:text-ink hover:underline">{t('What Spine is for')}</Link>
+            <Link to="/trust" className="hover:text-ink hover:underline">{t('How to check this app')}</Link>
+            <span className="font-mono" title={BUILD_COMMIT}>{BUILD_COMMIT.slice(0, 7)}{BUILD_COMMIT.endsWith('-dirty') ? '-dirty' : ''}</span>
           </nav>
         </div>
       </footer>

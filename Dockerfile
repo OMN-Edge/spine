@@ -14,6 +14,9 @@ RUN npm ci
 COPY core core
 COPY server server
 COPY web web
+# The commit the web app says it is (docs/verify-build.md); an image has no .git to ask: docker build --build-arg SPINE_COMMIT=$(git rev-parse HEAD) .
+ARG SPINE_COMMIT
+ENV SPINE_COMMIT=$SPINE_COMMIT
 RUN npm run build
 # Every entry point is started once, as it will be, before the image is made. Test support is not built into core/dist or server/dist at all.
 RUN npm run smoke -w spine-server
