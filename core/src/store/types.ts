@@ -120,6 +120,7 @@ export interface RecordsStore {
   episodes: EpisodeRepository;
   conversations: ConversationRepository;
   regroupPlans: RegroupPlanRepository;
+  guide: GuideRepository;
   matchDecisions: MatchDecisionRepository;
   changes: ChangeLog;
   files: FileRegistryRepository;
@@ -1023,6 +1024,29 @@ export interface RegroupPlanRepository {
   remove(userId: string, sourceFileId: string): Promise<void>;
 }
 
+/** What the app has shown the owner to help them start, by a key of the app's (`welcome`, `tip.grouping`, ...). */
+export interface GuideMark {
+  key: string;
+  /** How many times it was shown: once per time the app is opened, not per page drawn. */
+  shown: number;
+  last_shown_at: string | null;
+  /** When they acted on it or put it away; it is not shown again. */
+  done_at: string | null;
+}
+
+export interface GuideRepository {
+  list(userId: string): Promise<GuideMark[]>;
+  /** Counts one more showing. */
+  shown(userId: string, key: string, at: string): Promise<void>;
+  /** Marks it done; a second call keeps the first time. */
+  done(userId: string, key: string, at: string): Promise<void>;
+}
+
+export type ConversationOrigin = 'upload' | 'regroup' | 'activity' | 'guide';
+
+/** `upload`/`regroup`: a notice the app wrote; `attachment`: files the owner attached; `help`: a question about Spine and its fixed answer (`data.topic`). */
+export type MessageKind = 'upload' | 'regroup' | 'attachment' | 'help';
+
 export interface ConversationSummary {
   id: string;
   title: string;
@@ -1031,8 +1055,11 @@ export interface ConversationSummary {
   message_count: number;
   /** The app started it and the owner has not opened it. */
   unread: boolean;
-  /** Null: the owner started it. `upload`: the app did, when an upload finished. */
-  origin: 'upload' | 'regroup' | null;
+  /**
+   * Null: the owner started it. `activity`: the app's reports on uploads, one conversation for all of them (`upload` and `regroup`: the
+   * conversation of one report each, as they were before). `guide`: the answers about how Spine works the owner asked for from the welcome.
+   */
+  origin: ConversationOrigin | null;
 }
 
 export interface StoredMessage {
@@ -1044,8 +1071,8 @@ export interface StoredMessage {
   /** Set on a reply with nothing to say (nothing matched). */
   note: 'none' | 'failed' | 'off' | null;
   created_at: string;
-  /** `upload`: a notice the app wrote; the page draws it from `data`, and `content` says the same in English for the model. */
-  kind: 'upload' | 'regroup' | 'attachment' | null;
+  /** Set for a message the page draws from `data` (`MessageKind`); `content` says the same in English for the model. */
+  kind: MessageKind | null;
   data: unknown | null;
 }
 
@@ -1056,7 +1083,7 @@ export interface NewMessage {
   sources: unknown[];
   note: StoredMessage['note'];
   createdAt: string;
-  kind?: 'upload' | 'regroup' | 'attachment' | null;
+  kind?: MessageKind | null;
   data?: unknown;
 }
 
@@ -1069,7 +1096,9 @@ export interface ConversationRepository {
   list(userId: string, limit: number): Promise<ConversationSummary[]>;
   find(userId: string, id: string): Promise<ConversationSummary | null>;
   /** Starts a conversation; the oldest beyond `MAX_CONVERSATIONS` are removed with their messages. */
-  create(userId: string, conversation: { id: string; title: string; createdAt: string }): Promise<void>;
+  create(userId: string, conversation: { id: string; title: string; createdAt: string; origin?: ConversationOrigin }): Promise<void>;
+  /** The most recent conversation of this origin that is not full, if there is one. */
+  findByOrigin(userId: string, origin: ConversationOrigin): Promise<ConversationSummary | null>;
   /** All of a conversation's messages in order, or only the last few. Empty if it is not the user's. */
   messages(userId: string, id: string, last?: number): Promise<StoredMessage[]>;
   /** Adds messages and marks the conversation as active now. False, and nothing written, if it is not the user's. */
@@ -1079,7 +1108,7 @@ export interface ConversationRepository {
   /** Every conversation of the user. How many. */
   removeAll(userId: string): Promise<number>;
   /** The app starts a conversation with one message from the assistant, unread. */
-  createNotice(userId: string, notice: { id: string; title: string; origin: 'upload' | 'regroup'; createdAt: string; message: { id: string; content: string; kind: 'upload' | 'regroup'; data: unknown } }): Promise<void>;
+  createNotice(userId: string, notice: { id: string; title: string; origin: ConversationOrigin; createdAt: string; message: { id: string; content: string; kind: 'upload' | 'regroup'; data: unknown } }): Promise<void>;
   /** The app reports on something in a conversation the owner is already having (a file they attached): added there, and unread until they look. False if it is not the user's. */
   appendNotice(userId: string, conversationId: string, message: { id: string; content: string; kind: 'upload' | 'regroup'; data: unknown; createdAt: string }): Promise<boolean>;
   /** How many conversations the app started that the owner has not opened. */

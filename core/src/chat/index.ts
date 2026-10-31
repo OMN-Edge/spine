@@ -3,7 +3,7 @@ import { getChatLlm } from '../llm/index.js';
 import { llmContextChars } from '../config.js';
 import { logger } from '../logger.js';
 import { describeError } from '../failure.js';
-import { askAgent, hasAnythingToRead } from './agent.js';
+import { askAgent } from './agent.js';
 import { cardOf } from '../similarity/card.js';
 import { documentsForQuestion } from './retrieval.js';
 import { DOCUMENT_SECTIONS, describeScreen, resolveScreen, sectionRecords, type DocumentSection, type ScreenContext } from './screen.js';
@@ -40,7 +40,7 @@ export const MAX_TURNS = 6;
 export const MAX_TURN = 1500;
 
 /** What the agent is doing, for the person waiting: a kind the page words in its own language, and what it concerns. */
-export interface ChatStep { kind: 'search' | 'open' | 'series' | 'tests' | 'connections' | 'fields' | 'shares' | 'doctors' | 'uploads' | 'pages' | 'plan' | 'library' | 'propose'; detail?: string }
+export interface ChatStep { kind: 'search' | 'open' | 'series' | 'tests' | 'connections' | 'fields' | 'shares' | 'doctors' | 'uploads' | 'pages' | 'plan' | 'library' | 'help' | 'propose'; detail?: string }
 
 /** Progress of one question, for a caller that streams it. All optional: a caller that waits for the whole reply passes none. */
 export interface ChatProgress {
@@ -68,6 +68,8 @@ export interface ChatReply {
   looked?: string[];
   /** Changes the agent prepared for the owner to confirm. It has changed nothing. Absent when there are none. */
   proposals?: Proposal[];
+  /** The agent could not be used (it failed), so this was answered without tools: it can read but cannot prepare a change. */
+  limited?: boolean;
 }
 
 /** The conversation as the model gets it: only the last turns, text only, each cut. */
@@ -90,8 +92,8 @@ export async function askQuestion(userId: string, question: string, history: Cha
   // The agent decides what to look up; the fixed pipeline below is the fallback for a model that cannot use tools, for
   // and for an agent that fails.
   const model = getChatLlm().agentModel?.() ?? null;
+  // It runs on an empty archive too: the question may be about Spine itself (explain_spine), which a new person asks first.
   if (model) {
-    if (!(await hasAnythingToRead(userId, screen))) return { answer: null, sources: [], documents: 0 };
     try {
       return await askAgent(model, userId, question, trimHistory(history), screen, progress);
     } catch (err) {
@@ -99,6 +101,8 @@ export async function askQuestion(userId: string, question: string, history: Cha
       if (progress.signal?.aborted) throw err;
       progress.reset?.();
       logger.warn('the chat agent failed; answering without tools', { error: describeError(err) });
+      const fallback = await askWithoutTools(userId, question, history, screen);
+      return fallback && { ...fallback, limited: true };
     }
   }
   return askWithoutTools(userId, question, history, screen);

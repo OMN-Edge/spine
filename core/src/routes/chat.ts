@@ -11,9 +11,12 @@ import { askQuestion, MAX_QUESTION, MAX_TURNS, type ChatProgress, type ChatReply
 import { checkScreen, type ScreenContext } from '../chat/screen.js';
 import type { ChatTurn } from '../llm/types.js';
 import { logger } from '../logger.js';
+import { helpTopic } from '../help.js';
 import { describeError } from '../failure.js';
 
 const MAX_TITLE = 60;
+/** The conversation the answers about Spine go into when the person is not in one. */
+export const GUIDE_TITLE = 'Getting started';
 const LIST_LIMIT = 200;
 
 /** An answer's citations are labels that belong to the request that made them; in a later one they would point at nothing. */
@@ -102,6 +105,37 @@ export async function chatRoutes(app: HttpApp) {
     if (startedHere && first) await store.conversations.rename(req.userId, conversationId, first.length > MAX_TITLE ? `${first.slice(0, MAX_TITLE - 1)}…` : first);
     const conversation = await store.conversations.find(req.userId, conversationId);
     return reply.header('Cache-Control', 'no-store').send({ conversation: { id: conversationId, title: conversation?.title ?? 'Attached files' }, files });
+  });
+
+  // A question about Spine itself, from the welcome or a tip ("How is my data kept private?"): the fixed answer in `help.ts`, written into
+  // the conversation the person is in, or into their Getting started conversation. No model is asked; both messages are stored as data the
+  // page draws in the person's language, and in English for the assistant to read if they ask more.
+  app.post<{ Body: { topic?: unknown; conversation_id?: unknown } }>('/api/chat/help', async (req, reply) => {
+    if (!chatEnabled()) return reply.status(409).send({ error: 'asking questions is switched off' });
+    const { topic: id, conversation_id: named } = req.body ?? {};
+    const topic = typeof id === 'string' ? helpTopic(id) : undefined;
+    if (!topic) return reply.status(400).send({ error: 'unknown topic' });
+    const store = getStore();
+    let conversation = null as Awaited<ReturnType<typeof store.conversations.find>>;
+    if (named !== undefined && named !== null) {
+      if (typeof named !== 'string' || named.length > 64) return reply.status(400).send({ error: 'conversation_id must be an id' });
+      conversation = await store.conversations.find(req.userId, named);
+      if (!conversation) return reply.status(404).send({ error: 'not found' });
+      if (conversation.message_count + 2 > MAX_MESSAGES) return reply.status(409).send({ error: 'this conversation is full; start a new one' });
+    } else {
+      conversation = await store.conversations.findByOrigin(req.userId, 'guide');
+      if (!conversation || conversation.message_count + 2 > MAX_MESSAGES) {
+        const made = uuidv4();
+        await store.conversations.create(req.userId, { id: made, title: GUIDE_TITLE, createdAt: new Date().toISOString(), origin: 'guide' });
+        conversation = await store.conversations.find(req.userId, made);
+      }
+    }
+    const now = new Date().toISOString();
+    await store.conversations.append(req.userId, conversation!.id, [
+      { id: uuidv4(), role: 'user', content: topic.question, sources: [], note: null, createdAt: now, kind: 'help', data: { topic: topic.id } },
+      { id: uuidv4(), role: 'assistant', content: topic.paragraphs.join('\n\n'), sources: [], note: null, createdAt: now, kind: 'help', data: { topic: topic.id } },
+    ]);
+    return reply.header('Cache-Control', 'no-store').send({ conversation: { id: conversation!.id, title: conversation!.title, origin: conversation!.origin } });
   });
 
   // Their conversations, most recent first.

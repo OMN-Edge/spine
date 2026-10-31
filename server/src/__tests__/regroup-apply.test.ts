@@ -154,7 +154,7 @@ describe('analysing a mixed upload', () => {
     },
   }) as unknown as ChatLlm;
 
-  it('finds the groups in the background, keeps the plan, and tells the owner in a conversation of its own', async () => {
+  it('finds the groups in the background, keeps the plan, and tells the owner in their Activity conversation', async () => {
     const { upload, ids, X, Y } = await mixedUpload();
     // Page numbers are the labels the model sees (P1..P7); this stand-in answers from the order the pages were seeded in.
     const calls: string[][] = [];
@@ -170,9 +170,10 @@ describe('analysing a mixed upload', () => {
     // The page text is not in the plan.
     expect(JSON.stringify(body.plan)).not.toMatch(/Laborator|Spital|Reteta/);
 
-    await vi.waitFor(async () => expect((await getStore().conversations.list(OWNER_ID, 5)).some(c => c.origin === 'regroup')).toBe(true));
+    await vi.waitFor(async () => expect((await getStore().conversations.list(OWNER_ID, 5)).some(c => c.origin === 'activity')).toBe(true));
     const [c] = (await getStore().conversations.list(OWNER_ID, 5));
-    expect(c).toMatchObject({ title: 'Regrouping suggestions', unread: true });
+    expect(c).toMatchObject({ title: 'Activity', unread: true });
+    expect((await getStore().conversations.messages(OWNER_ID, c.id)).at(-1)).toMatchObject({ kind: 'regroup' });
 
     // Applying it drops the plan: its page ids no longer mean the same.
     const groups = body.plan.groups.map((g: { page_ids: string[] }) => g.page_ids);

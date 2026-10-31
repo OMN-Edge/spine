@@ -9,6 +9,8 @@ import ProposalCard from './ProposalCard';
 import { draftText, stepText } from './chatSteps';
 import UploadNoticeMessage, { RegroupNoticeMessage } from './UploadNoticeMessage';
 import AttachmentMessage from './AttachmentMessage';
+import { ChatWelcome, HelpMessage } from './ChatWelcome';
+import { useGuide } from '../guide';
 import AnswerSources, { chipClass, numbered, sourceFor, useSourceName } from './AnswerSources';
 
 const hrefOf = (s: ChatSource) => `/documents/${s.id}${s.section ? `?section=${s.section}` : ''}`;
@@ -30,6 +32,7 @@ export default function ChatPanel() {
   const chat = useChat();
   const navigate = useNavigate();
   const { demo } = useAuth();
+  const guide = useGuide();
   const [text, setText] = useState('');
   // Files waiting to be sent with the next message: pasted, dropped or chosen.
   const [files, setFiles] = useState<File[]>([]);
@@ -58,7 +61,8 @@ export default function ChatPanel() {
     const frame = requestAnimationFrame(() => setEntered(true));
     return () => cancelAnimationFrame(frame);
   }, [open]);
-  useEffect(() => { if (open && view === 'chat') { end.current?.scrollIntoView({ block: 'end' }); } }, [open, view, chat?.turns, chat?.busy, chat?.draft]);
+  // To the latest message; an empty conversation (the welcome) is read from its top.
+  useEffect(() => { if (open && view === 'chat' && ((chat?.turns.length ?? 0) > 0 || chat?.busy)) { end.current?.scrollIntoView({ block: 'end' }); } }, [open, view, chat?.turns, chat?.busy, chat?.draft]);
   useEffect(() => { if (open && view === 'chat') input.current?.focus(); }, [open, view]);
   useEffect(() => { if (open) setView('chat'); }, [open]);
   useEffect(() => { if (view === 'history') { setConfirming(null); void chat?.loadConversations(); } }, [view]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -69,6 +73,16 @@ export default function ChatPanel() {
     return () => window.removeEventListener('keydown', onKey);
   }, [open, view, chat]);
 
+  // The first time ever, the chat opens by itself on the welcome (guide.tsx says when); once, and never over a conversation already open.
+  const welcomed = useRef(false);
+  useEffect(() => {
+    if (!chat?.enabled || guide?.welcome !== 'open' || welcomed.current) return;
+    welcomed.current = true;
+    if (chat.unread > 0) return;
+    chat.startNew();
+    chat.setOpen(true);
+  }, [chat?.enabled, guide?.welcome]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!chat || !chat.enabled) return null;
   const { turns, busy, conversations, draft } = chat;
   const stepLine = (step: ChatStep) => stepText(t, step);
@@ -78,6 +92,8 @@ export default function ChatPanel() {
   const send = async () => {
     const question = text.trim();
     if ((!question && files.length === 0) || busy) return;
+    // A question asked from the welcome is something done from it.
+    if (turns.length === 0) guide?.done('welcome');
     const attached = files;
     setText(''); setFiles([]);
     if (attached.length > 0) await chat.attach(attached, question);
@@ -96,8 +112,18 @@ export default function ChatPanel() {
   if (!open) {
     // The app started a conversation (an upload finished): a note beside the button says so, and opens it.
     const waiting = conversations?.find(c => c.unread) ?? null;
+    // Otherwise, for a person who has not started yet, the welcome is offered the next few times the app is opened, and can be put away.
+    const offerWelcome = !waiting && guide?.welcome === 'note';
     return (
       <>
+      {offerWelcome && (
+        <div className="fixed bottom-40 right-5 z-30 flex max-w-[16rem] items-start gap-1 sm:bottom-16 rounded-2xl rounded-br-md border border-brand-200 bg-white py-2 pl-3.5 pr-1.5 text-sm text-gray-800 shadow-md">
+          <button type="button" onClick={() => { chat.startNew(); chat.setOpen(true); }} className="text-left">
+            {t('Getting started')} <span className="text-brand-600">· {t('take a look')}</span>
+          </button>
+          <button type="button" onClick={() => guide?.done('welcome')} aria-label={t('Not now')} title={t('Not now')} className="shrink-0 rounded-full px-1.5 text-gray-400 hover:text-gray-700">×</button>
+        </div>
+      )}
       {chat.unread > 0 && waiting && (
         <button
           type="button" onClick={() => { chat.setOpen(true); void chat.openConversation(waiting.id); }}
@@ -136,7 +162,7 @@ export default function ChatPanel() {
       {dragging && <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl border-2 border-dashed border-brand-400 bg-brand-50/80 text-sm font-medium text-brand-700">{t('Drop files to attach them')}</div>}
       <div className="flex items-start justify-between gap-3 px-4 pb-2 pt-3.5">
         <div className="min-w-0">
-          <h2 className="truncate text-[0.95rem] font-medium text-gray-900">{view === 'history' ? t('Conversations') : (turns[0]?.notice || turns[0]?.regroupNotice ? t(chat.title ?? '') : (chat.title ?? t('Ask your records')))}</h2>
+          <h2 className="truncate text-[0.95rem] font-medium text-gray-900">{view === 'history' ? t('Conversations') : (chat.origin || turns[0]?.notice || turns[0]?.regroupNotice ? t(chat.title ?? '') : (chat.title ?? t('Ask your records')))}</h2>
           <p className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-gray-400">
             <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden="true" />
             {t('Looking at: {page}', { page: t(PAGE_NAMES[chat.page] ?? PAGE_NAMES.other) })}
@@ -201,21 +227,19 @@ export default function ChatPanel() {
         <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
           {turns.length === 0 && !busy && (
             <div className="space-y-4">
-              <div className="flex flex-wrap gap-2">
-                {suggestionsFor(chat.page, t).map(q => (
-                  <button key={q} type="button" onClick={() => void chat.send(q)} className="rounded-full border border-gray-200 px-3 py-1.5 text-left text-xs text-gray-600 transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700">{q}</button>
-                ))}
-              </div>
+              <ChatWelcome suggestions={suggestionsFor(chat.page, t)} busy={busy} onAsk={q => void chat.send(q)} onHelp={topic => void chat.help(topic)} onLeave={follow} />
               <p className="text-xs leading-relaxed text-gray-400">{t('Answers come only from your own documents, with links to where they came from. They are a reading of what the documents say, not medical advice: ask your doctor what they mean for you.')}</p>
               <p className="text-xs leading-relaxed text-gray-400">{t('Each question sends your words and the summaries and results of the matching documents (and the text of a few pages when you ask it to sort an upload) to the AI model this server uses. Your conversations are kept in your archive, in History, until you delete them.')}</p>
             </div>
           )}
-          {turns.map((turn, i) => turn.attachment ? (
+          {turns.map((turn, i) => turn.help ? (
+            <HelpMessage key={i} topic={turn.help.topic} role={turn.role} />
+          ) : turn.attachment ? (
             <AttachmentMessage key={i} files={turn.attachment.files} onSettled={() => void chat.reload()} />
           ) : turn.regroupNotice ? (
             <div key={i}><RegroupNoticeMessage notice={turn.regroupNotice} busy={busy} onAsk={q => void chat.send(q)} /></div>
           ) : turn.notice ? (
-            <div key={i}><UploadNoticeMessage notice={turn.notice} busy={busy} onAsk={q => void chat.send(q)} /></div>
+            <div key={i}><UploadNoticeMessage notice={turn.notice} busy={busy} onAsk={q => void chat.send(q)} onLeave={() => chat.setOpen(false)} /></div>
           ) : turn.role === 'user' ? (
             <div key={i} className="flex justify-end">
               <p className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-brand-50 px-3.5 py-2 text-sm text-gray-900">{turn.content}</p>
@@ -249,6 +273,7 @@ export default function ChatPanel() {
                       <div className="text-gray-900"><Markdown text={turn.content} cite={cite} /></div>
                       <AnswerSources sources={sources} hrefOf={hrefOf} onFollow={follow} owner />
                       {(turn.proposals ?? []).map(p => <ProposalCard key={p.id} proposal={p} />)}
+                      {turn.limited && <p className="mt-2 text-xs text-amber-700">{t('I could not use my tools just now, so I answered from your documents only and could not prepare any change. Try again in a moment.')}</p>}
                     </>
                   );
                 })()

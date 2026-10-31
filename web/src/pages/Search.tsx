@@ -54,7 +54,8 @@ export default function Search() {
 
   return (
     <div>
-      <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900 mb-6">{t('Search')}</h1>
+      <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900 mb-1">{t('Search')}</h1>
+      <p className="text-sm text-gray-500 mb-6">{t('Finds documents by the words in them: titles, summaries, your notes, the text of the pages, values and doctors.')}</p>
 
       <div className="flex gap-2 mb-4">
         <input

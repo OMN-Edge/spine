@@ -47,6 +47,25 @@ function messagesOf(input: BaseLanguageModelInput): BaseMessage[] {
 
 type AgentOptions = BaseChatModelCallOptions & { tools?: unknown[] };
 
+/**
+ * The pieces of a streamed body, read with its reader. Not `for await` over the body itself: Safari's streams cannot be iterated that way
+ * (Chrome's and Node's can), and on an iPhone every streamed call failed at once, which sent the owner's chat to its fallback and left a
+ * share's recipient with no answer.
+ */
+async function* chunksOf(body: ReadableStream<Uint8Array> | null): AsyncGenerator<Uint8Array> {
+  if (!body) return;
+  const reader = body.getReader();
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) return;
+      if (value) yield value;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 /** The chat model the agent graph binds tools to; each call is one request to the relay, and the model that answers is the relay's. */
 class RelayAgent extends BaseChatModel<AgentOptions> {
   constructor(private readonly where: { endpoint: string; model: string }) { super({}); }
@@ -69,7 +88,7 @@ class RelayAgent extends BaseChatModel<AgentOptions> {
     const res = await this.request(messages, options, true);
     const decoder = new TextDecoder();
     let pending = '';
-    for await (const part of res.body as unknown as AsyncIterable<Uint8Array>) {
+    for await (const part of chunksOf(res.body)) {
       pending += decoder.decode(part, { stream: true });
       let at: number;
       while ((at = pending.indexOf('\n')) >= 0) {

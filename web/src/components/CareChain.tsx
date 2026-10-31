@@ -5,6 +5,7 @@ import { useI18n } from '../i18n';
 import { Combobox } from './Combobox';
 import LinkWhyLine from './LinkWhy';
 import { documentTitle } from '../titles';
+import GuideTip from './GuideTip';
 
 /** How the document being added relates to this one. `from` is the earlier of the two in the stored link. */
 type Relation = 'this_requested' | 'requested_this' | 'this_follows' | 'followed_by_this' | 'same_episode';
@@ -22,7 +23,8 @@ const RELATIONS: Record<Relation, { thisIsFrom: boolean; kind: LinkKind }> = {
  * The consultations and tests around this document: what asked for it, what it asked for, what followed up. The app suggests
  * links and the owner confirms or dismisses them, or adds one by hand. Each link is shown under the later document, in words.
  */
-export default function CareChain({ documentId }: { documentId: string }) {
+/** `quiet`: another tip is showing on the page, so the one about a suggestion waits for the next visit. */
+export default function CareChain({ documentId, quiet = false }: { documentId: string; quiet?: boolean }) {
   const { t } = useI18n();
   const [chain, setChain] = useState<Chain | null>(null);
   const [adding, setAdding] = useState(false);
@@ -84,6 +86,11 @@ export default function CareChain({ documentId }: { documentId: string }) {
       </div>
 
       {failed && <p className="text-xs text-red-600 mb-2">{t('Something went wrong. Try again.')}</p>}
+      {!quiet && chain.edges.some(e => e.state === 'proposed') && (
+        <GuideTip tip="tip.connections" topic="connections">
+          {t('Spine thinks some of these documents belong together, such as a consultation and the tests it asked for. Beneath each suggestion is what the documents share. It stays a suggestion until you confirm it; “Not related” means it is not suggested again.')}
+        </GuideTip>
+      )}
 
       {hasChain ? (
         <ol className="border-l-2 border-gray-200 ml-1 space-y-3">

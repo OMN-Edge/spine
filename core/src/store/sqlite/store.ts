@@ -8,6 +8,7 @@ import { maintenanceRepository } from './maintenance.js';
 import { pageRepository } from './pages.js';
 import { shareLinkRepository } from './share-links.js';
 import { sourceFileRepository } from './source-files.js';
+import { guideRepository } from './guide.js';
 import { regroupPlanRepository } from './regroup-plans.js';
 import { sessionRepository } from './sessions.js';
 import { cookieSessionRepository } from './cookie-sessions.js';
@@ -105,6 +106,7 @@ function recordsOf(db: Database): Omit<RecordsStore, "slice"> {
     episodes: episodeRepository(db),
     conversations: conversationRepository(db),
     regroupPlans: regroupPlanRepository(db),
+    guide: guideRepository(db),
     matchDecisions: matchDecisionRepository(db),
     changes: changeLog(db),
     files: fileRegistryRepository(db),

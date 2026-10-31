@@ -309,7 +309,8 @@ try {
 
   // Revoking ends it at the server at once.
   await click('Revoke');
-  await wait(3000);
+  // A page already open on it asks again every half minute and closes its copy: nothing more is read, translated or asked from it.
+  check(await guestWait('no longer active', 45000), 'a page already open on the link closes its copy once it is revoked');
   await guest.reload({ waitUntil: 'load' });
   check(await guestWait('no longer active', 20000), 'after revoking, the link no longer opens');
 

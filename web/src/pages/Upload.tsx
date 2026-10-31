@@ -9,6 +9,7 @@ import DeleteUpload from '../components/DeleteUpload';
 import { msg, useI18n } from '../i18n';
 import type { I18n } from '../i18n';
 import { useAuth } from '../auth';
+import GuideTip from '../components/GuideTip';
 
 interface UploadResult {
   id?: string;
@@ -406,6 +407,13 @@ export default function Upload() {
         </div>
       )}
 
+      {jobs.some(job => job.status === 'done' && !job.reading && job.groupingConfirmed === false && (job.documents.length > 0 || !!job.hiddenDocuments)) && (
+        <div className="mt-8">
+          <GuideTip tip="tip.grouping" topic="grouping">
+            {t('One file often holds several documents. Spine has guessed where each one starts and ends: look at the grouping, fix what is wrong, and confirm it. Only then are the documents read and added to your timeline.')}
+          </GuideTip>
+        </div>
+      )}
       {jobs.length > 0 && (
         <div className="mt-8">
           <SpineLog

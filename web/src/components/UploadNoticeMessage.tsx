@@ -10,7 +10,7 @@ import { documentTitle } from '../titles';
  * What the app said when an upload had been read, drawn here in the person's language from the facts it stored. The buttons are
  * only questions they could type; whatever they lead to that changes something comes back as a proposal to confirm.
  */
-export default function UploadNoticeMessage({ notice, busy, onAsk }: { notice: UploadNotice; busy: boolean; onAsk: (question: string) => void }) {
+export default function UploadNoticeMessage({ notice, busy, onAsk, onLeave }: { notice: UploadNotice; busy: boolean; onAsk: (question: string) => void; onLeave: () => void }) {
   const { t, tn } = useI18n();
   const name = notice.file_name ?? t('The upload');
   const chip = 'rounded-full border border-gray-200 px-3 py-1.5 text-left text-xs text-gray-600 transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700 disabled:opacity-50';
@@ -19,7 +19,7 @@ export default function UploadNoticeMessage({ notice, busy, onAsk }: { notice: U
     return (
       <div className="text-sm text-gray-900">
         <p>{t('“{name}” could not be read. You can try it again from the Upload page.', { name })}</p>
-        <p className="mt-2"><Link to="/upload" className="text-brand-600 hover:underline">{t('Go to Upload')}</Link></p>
+        <p className="mt-2"><Link to="/upload" onClick={onLeave} className="text-brand-600 hover:underline">{t('Go to Upload')}</Link></p>
       </div>
     );
   }
@@ -33,7 +33,7 @@ export default function UploadNoticeMessage({ notice, busy, onAsk }: { notice: U
       {notice.documents.length > 0 && (
         <ul className="mt-2 space-y-0.5 text-xs text-gray-600">
           {notice.documents.map(d => (
-            <li key={d.id} className="truncate">· <Link to={`/documents/${d.id}`} className="hover:text-brand-700 hover:underline">{notice.reading_pending && d.page_start != null ? `${d.title ? `${d.title} · ` : ''}${t('pages {pages}', { pages: d.page_start === d.page_end ? String(d.page_start) : `${d.page_start}–${d.page_end}` })}` : documentTitle(d, t)}</Link>{d.doc_date ? ` (${d.doc_date})` : ''}</li>
+            <li key={d.id} className="truncate">· <Link to={`/documents/${d.id}`} onClick={() => { if (window.matchMedia('(max-width: 767px)').matches) onLeave(); }} className="hover:text-brand-700 hover:underline">{notice.reading_pending && d.page_start != null ? `${d.title ? `${d.title} · ` : ''}${t('pages {pages}', { pages: d.page_start === d.page_end ? String(d.page_start) : `${d.page_start}–${d.page_end}` })}` : documentTitle(d, t)}</Link>{d.doc_date ? ` (${d.doc_date})` : ''}</li>
           ))}
           {notice.more_documents > 0 && <li>· {tn(notice.more_documents, 'and {n} more', 'and {n} more')}</li>}
         </ul>
@@ -47,15 +47,38 @@ export default function UploadNoticeMessage({ notice, busy, onAsk }: { notice: U
       {(notice.matches_open ?? 0) > 0 && <MatchQuestions uploadId={notice.upload_id} />}
       {notice.tests_new.length > 0 && <p className="mt-1 text-xs text-gray-600">{t('New tests, in no other document:')} {notice.tests_new.slice(0, 8).join(', ')}{notice.tests_new.length > 8 ? '…' : ''}</p>}
       {notice.looks_mixed && <CheckPages uploadId={notice.upload_id} />}
-      {notice.grouping_pending && <p className="mt-2 text-xs text-gray-600">{t('The grouping is waiting for you to confirm it. Until then these documents are out of the timeline and search.')} <Link to={`/uploads/${notice.upload_id}`} className="text-brand-600 hover:underline">{t('Check the grouping')}</Link></p>}
+      {notice.grouping_pending && <ConfirmGrouping uploadId={notice.upload_id} onLeave={onLeave} />}
       {notice.unread_pages > 0 && <p className="mt-1 text-xs text-amber-700">{tn(notice.unread_pages, '{n} page has no text that could be read.', '{n} pages have no text that could be read.')}</p>}
       {notice.undated_documents > 0 && <p className="mt-1 text-xs text-amber-700">{tn(notice.undated_documents, '{n} document has no date.', '{n} documents have no date.')}</p>}
       <p className="mt-3 text-xs text-gray-500">{t('Ask me anything about it, or tell me what to fix.')}</p>
       <div className="mt-2 flex flex-wrap gap-2">
         <button type="button" disabled={busy} className={chip} onClick={() => onAsk(t('Summarize what was read from this upload and point out anything that looks wrong.'))}>{t('What was read from it?')}</button>
-        {notice.grouping_pending && <button type="button" disabled={busy} className={chip} onClick={() => onAsk(t('The grouping is right. Please confirm it.'))}>{t('The grouping looks right')}</button>}
         {notice.unread_pages > 0 && <button type="button" disabled={busy} className={chip} onClick={() => onAsk(t('Some pages have no text. Read them again with AI.'))}>{t('Read the empty pages again')}</button>}
       </div>
+    </div>
+  );
+}
+
+/**
+ * The grouping still waits: look at it on its own screen (the panel closes, since that screen needs the whole page), or say it is right
+ * here. The press is the confirmation, as on the grouping screen; the documents are then read and the report comes to this conversation.
+ */
+function ConfirmGrouping({ uploadId, onLeave }: { uploadId: string; onLeave: () => void }) {
+  const { t } = useI18n();
+  const [state, setState] = useState<'idle' | 'working' | 'done' | 'failed'>('idle');
+  const confirm = async () => {
+    setState('working');
+    try { await api.sourceFiles.confirmGrouping(uploadId); setState('done'); announceChange(); } catch { setState('failed'); }
+  };
+  if (state === 'done') return <p className="mt-2 text-xs text-gray-600" role="status">{t('Grouping confirmed. The documents are being read; I will tell you here when they are.')}</p>;
+  return (
+    <div className="mt-2 text-xs text-gray-600">
+      <p>{t('The grouping is waiting for you to confirm it. Until then these documents are out of the timeline and search.')}</p>
+      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+        <Link to={`/uploads/${uploadId}`} onClick={onLeave} className="rounded-full border border-gray-200 px-3 py-1.5 text-gray-700 hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700">{t('Check the grouping')}</Link>
+        <button type="button" disabled={state === 'working'} onClick={() => void confirm()} className="rounded-full bg-brand-600 px-3 py-1.5 font-medium text-white hover:bg-brand-700 disabled:opacity-50">{state === 'working' ? t('Confirming the grouping') : t('Grouping is right')}</button>
+      </div>
+      {state === 'failed' && <p className="mt-1 text-red-600" role="alert">{t('Could not confirm the grouping')}</p>}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { api, ApiError, type AttachmentData, type ChatSource, type ChatStep, type ConversationSummary, type Proposal, type RegroupNotice, type UploadNotice } from '../api';
+import { api, ApiError, type AttachmentData, type ChatSource, type ChatStep, type ConversationSummary, type HelpData, type Proposal, type RegroupNotice, type UploadNotice } from '../api';
 import { useOnDataChanged } from '../dataChanged';
 import { msg } from '../i18n';
 
@@ -34,8 +34,12 @@ export interface Turn {
   regroupNotice?: RegroupNotice;
   /** Files the person attached: what became of each. */
   attachment?: AttachmentData;
+  /** A question about Spine (the person's) or its fixed answer (the app's), drawn from core's help.ts. */
+  help?: HelpData;
   /** Changes the assistant prepared, waiting for the person. Not kept with the conversation: gone when it is reopened. */
   proposals?: Proposal[];
+  /** Answered without tools, because the assistant could not use them just now: it could not prepare a change. Not kept. */
+  limited?: boolean;
   /** A reply with nothing to say: nothing matched, it was switched off, or it failed. */
   note?: 'none' | 'failed' | 'off' | 'full' | 'stopped';
 }
@@ -63,7 +67,7 @@ export function screenFromPath(pathname: string): ScreenInfo {
 }
 
 /** Titles of the conversations the app starts, so their translations are found (the title is stored in English). */
-export const NOTICE_TITLES = [msg('Upload finished'), msg('Documents read'), msg('Upload failed'), msg('Regrouping suggestions'), msg('Nothing to regroup')];
+export const NOTICE_TITLES = [msg('Upload finished'), msg('Documents read'), msg('Upload failed'), msg('Regrouping suggestions'), msg('Nothing to regroup'), msg('Activity'), msg('Getting started')];
 
 /** Names of pages for the panel's "Looking at" line. */
 export const PAGE_NAMES: Record<string, string> = {
@@ -80,6 +84,8 @@ interface ChatApi {
   /** The conversation on show, and the person's conversations (null until loaded). */
   turns: Turn[];
   title: string | null;
+  /** Who started the conversation on show: null the person, else the app (its title is then translated). */
+  origin: ConversationSummary['origin'];
   currentId: string | null;
   conversations: ConversationSummary[] | null;
   busy: boolean;
@@ -88,6 +94,8 @@ interface ChatApi {
   send: (question: string, screenExtra?: ScreenInfo) => Promise<void>;
   /** Attach files (pasted, dropped or chosen), with a question if there is one. They are uploaded as usual and the conversation hears what becomes of them. */
   attach: (files: File[], question?: string) => Promise<void>;
+  /** A question about Spine itself, answered with the fixed text and no model, in this conversation or in Getting started. */
+  help: (topic: string, options?: { fresh?: boolean }) => Promise<void>;
   /** Read the conversation on show again from the server: the app added something to it. */
   reload: () => Promise<void>;
   /** Set when attaching failed, in words. */
@@ -115,8 +123,8 @@ const REMEMBER = 'spine.chat.current';
 const remembered = (): string | null => { try { return localStorage.getItem(REMEMBER); } catch { return null; } };
 const remember = (id: string | null) => { try { if (id) localStorage.setItem(REMEMBER, id); else localStorage.removeItem(REMEMBER); } catch { /* it works without */ } };
 
-const toTurn = (m: { role: 'user' | 'assistant'; content: string; sources: ChatSource[]; note: 'none' | 'failed' | 'off' | null; kind?: 'upload' | 'regroup' | 'attachment' | null; data?: UploadNotice | RegroupNotice | AttachmentData | null }): Turn =>
-  ({ role: m.role, content: m.content, sources: m.sources, ...(m.note ? { note: m.note } : {}), ...(m.kind === 'upload' && m.data ? { notice: m.data as UploadNotice } : {}), ...(m.kind === 'regroup' && m.data ? { regroupNotice: m.data as RegroupNotice } : {}), ...(m.kind === 'attachment' && m.data ? { attachment: m.data as AttachmentData } : {}) });
+const toTurn = (m: { role: 'user' | 'assistant'; content: string; sources: ChatSource[]; note: 'none' | 'failed' | 'off' | null; kind?: 'upload' | 'regroup' | 'attachment' | 'help' | null; data?: UploadNotice | RegroupNotice | AttachmentData | HelpData | null }): Turn =>
+  ({ role: m.role, content: m.content, sources: m.sources, ...(m.note ? { note: m.note } : {}), ...(m.kind === 'upload' && m.data ? { notice: m.data as UploadNotice } : {}), ...(m.kind === 'regroup' && m.data ? { regroupNotice: m.data as RegroupNotice } : {}), ...(m.kind === 'attachment' && m.data ? { attachment: m.data as AttachmentData } : {}), ...(m.kind === 'help' && m.data ? { help: m.data as HelpData } : {}) });
 
 export function ChatProvider({ authenticated, children }: { authenticated: boolean; children: React.ReactNode }) {
   const location = useLocation();
@@ -124,6 +132,7 @@ export function ChatProvider({ authenticated, children }: { authenticated: boole
   const [open, setOpen] = useState(false);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [title, setTitle] = useState<string | null>(null);
+  const [origin, setOrigin] = useState<ConversationSummary['origin']>(null);
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<ConversationSummary[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -145,17 +154,17 @@ export function ChatProvider({ authenticated, children }: { authenticated: boole
     drop();
     try {
       const c = await api.chat.conversation(id);
-      setTurns(c.messages.map(toTurn)); setTitle(c.title); setCurrentId(c.id); remember(c.id);
+      setTurns(c.messages.map(toTurn)); setTitle(c.title); setOrigin(c.origin); setCurrentId(c.id); remember(c.id);
       // Opening a conversation the app started is reading it.
       if (c.unread) { void api.chat.markRead(c.id).catch(() => undefined); setUnread(n => Math.max(0, n - 1)); }
     } catch {
       // Gone (deleted elsewhere): nothing to show, and not to try again.
-      remember(null); setTurns([]); setTitle(null); setCurrentId(null);
+      remember(null); setTurns([]); setTitle(null); setOrigin(null); setCurrentId(null);
     }
   }, [drop]);
 
   useEffect(() => {
-    if (!authenticated) { drop(); setEnabled(null); setTurns([]); setTitle(null); setCurrentId(null); setConversations(null); setOpen(false); return; }
+    if (!authenticated) { drop(); setEnabled(null); setTurns([]); setTitle(null); setOrigin(null); setCurrentId(null); setConversations(null); setOpen(false); return; }
     api.chat.status().then(s => {
       setEnabled(s.enabled);
       const id = remembered();
@@ -175,6 +184,20 @@ export function ChatProvider({ authenticated, children }: { authenticated: boole
     return () => { window.clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); };
   }, [authenticated, enabled, refreshUnread]);
   useOnDataChanged(refreshUnread);
+  // The conversation on show is read again when the app adds to it (an upload it is waiting for has been read, a grouping confirmed
+  // here has been read): the app marks it unread, which is looked for every few seconds while the panel is open. Not while a question is
+  // being answered, which reading it again would drop.
+  useEffect(() => {
+    if (!open || !currentId || busy) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      void api.chat.conversations().then(list => {
+        setConversations(list);
+        if (list.find(c => c.id === currentId)?.unread) void openConversation(currentId);
+      }).catch(() => undefined);
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [open, currentId, busy, openConversation]);
   // A new conversation shows in the history as soon as the badge says there is one.
   useEffect(() => { if (unread > 0) void loadConversations(); }, [unread, loadConversations]);
 
@@ -197,9 +220,10 @@ export function ChatProvider({ authenticated, children }: { authenticated: boole
         reset: () => setDraft(d => d && { ...d, text: '' }),
       }, controller.signal);
       setCurrentId(reply.conversation.id); setTitle(reply.conversation.title); remember(reply.conversation.id);
+      if (reply.conversation.id !== currentId) setOrigin(null);
       setTurns(prev => [...prev, reply.answer === null
         ? { role: 'assistant', content: '', note: 'none' }
-        : { role: 'assistant', content: reply.answer, sources: reply.sources, proposals: reply.proposals }]);
+        : { role: 'assistant', content: reply.answer, sources: reply.sources, proposals: reply.proposals, ...(reply.limited ? { limited: true } : {}) }]);
       void loadConversations();
     } catch (err) {
       // Dropped because the conversation was left (see `drop`): there is nothing to say in this one any more.
@@ -222,6 +246,7 @@ export function ChatProvider({ authenticated, children }: { authenticated: boole
     setBusy(true);
     try {
       const made = await api.chat.attach(files, currentId);
+      if (made.conversation.id !== currentId) setOrigin(null);
       setCurrentId(made.conversation.id); setTitle(made.conversation.title); remember(made.conversation.id);
       setTurns(prev => [...prev, { role: 'user', content: '', attachment: { files: made.files } }]);
       void loadConversations();
@@ -239,9 +264,24 @@ export function ChatProvider({ authenticated, children }: { authenticated: boole
   }, [currentId, loadConversations, send]);
   const reload = useCallback(async () => { if (currentId) await openConversation(currentId); }, [currentId, openConversation]);
 
+  // `fresh`: not in the conversation on show (a tip asked, from wherever the person was), so in Getting started.
+  const help = useCallback(async (topic: string, options?: { fresh?: boolean }) => {
+    if (busy) return;
+    const here = options?.fresh ? null : currentId;
+    try {
+      const made = await api.chat.help(topic, here);
+      // In the conversation on show it is two more messages; in Getting started, that conversation is opened with what it already held.
+      if (here && made.conversation.id === here) setTurns(prev => [...prev, { role: 'user', content: '', help: { topic } }, { role: 'assistant', content: '', help: { topic } }]);
+      else await openConversation(made.conversation.id);
+      void loadConversations();
+    } catch {
+      setTurns(prev => [...prev, { role: 'assistant', content: '', note: 'failed' }]);
+    }
+  }, [busy, currentId, loadConversations, openConversation]);
+
   const stop = useCallback(() => asking.current?.abort(), []);
 
-  const startNew = useCallback(() => { drop(); setTurns([]); setTitle(null); setCurrentId(null); remember(null); }, [drop]);
+  const startNew = useCallback(() => { drop(); setTurns([]); setTitle(null); setOrigin(null); setCurrentId(null); remember(null); }, [drop]);
 
   const removeConversation = useCallback(async (id: string) => {
     try { await api.chat.deleteConversation(id); } catch { /* listed again below */ }
@@ -256,9 +296,9 @@ export function ChatProvider({ authenticated, children }: { authenticated: boole
   }, [startNew, loadConversations]);
 
   const value = useMemo<ChatApi>(() => ({
-    enabled, open, setOpen, turns, title, currentId, conversations, busy, draft, send, attach, reload, attachError, stop, startNew, openConversation, loadConversations,
+    enabled, open, setOpen, turns, title, origin, currentId, conversations, busy, draft, send, attach, help, reload, attachError, stop, startNew, openConversation, loadConversations,
     removeConversation, removeAll, unread, page: screenFromPath(location.pathname).page ?? 'other', register,
-  }), [enabled, open, turns, title, currentId, conversations, busy, draft, unread, send, attach, reload, attachError, stop, startNew, openConversation, loadConversations, removeConversation, removeAll, location.pathname, register]);
+  }), [enabled, open, turns, title, origin, currentId, conversations, busy, draft, unread, send, attach, help, reload, attachError, stop, startNew, openConversation, loadConversations, removeConversation, removeAll, location.pathname, register]);
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
 }

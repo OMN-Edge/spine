@@ -159,6 +159,20 @@ Status: auto (`scan`, web algorithms; `photo-set`); screens and the camera itsel
 
 Status: auto (`demo`); screens: hand.
 
+### 2.0a Being shown where to start, and asking how Spine works
+- The first time the records are opened with nothing uploaded, the chat opens on a welcome: what Spine does, Add a document, Look around with sample records, and questions about how it works (adding, the grouping, the "check" marks, sharing, privacy, the master password, the assistant).
+- A question about Spine is answered at once in the person's language, from Spine's own help and not by the model, in their Getting started conversation (or the conversation they are in); the answer says where it came from.
+- The welcome does not open by itself again. The next three times a note beside Ask offers it and can be put away; after that nothing. Anything done from it, or a first upload, ends it, and a second device does not greet again.
+- The empty timeline has a Get started list (add a document, review what was read, share it) that ticks itself off from the person's own uploads, reviewed documents and links, not the sample records, and goes when done or hidden.
+- A tip appears once the first time an upload waits for its grouping, documents have been read, and a link has been made; Got it puts it away for good, Tell me more opens the answer about it in the chat.
+- A tip also appears the first time a document has results (they are on Trends too), names doctors (they are kept on Doctors, and a possible duplicate is asked about, never merged by itself) or has a suggested connection (it stays a suggestion until confirmed); a document page shows one at a time. The results and doctors tips are also on the Trends and Doctors pages, and Got it in either place puts both away.
+- Trends, Doctors, Library, Episodes, Review and Search each say in a line under the title what the page is for; the help also answers what results and trends, doctors, connected documents, episodes and the Library are, from a tip's Tell me more or a question to the assistant, though the welcome offers only the first steps.
+- Asked in the chat how the app works ("why does it ask for my password again?"), the assistant reads the same help and answers from it, even with an empty archive.
+- The app's reports on uploads collect in one Activity conversation, which is unread again with each report; a file attached in a conversation is reported there instead.
+- None of it is in the demo or in a share.
+
+Status: auto (`guide`, `chat-notices`, `chat-agent`, `i18n-coverage`); screens: hand.
+
 
 ### 2.1 Upload a PDF that holds several documents
 Status: live (`journey.it.ts`: a six-page export of four documents is read by the real text reader and model; titles, dates, providers, results and doctors come out as printed).
@@ -721,7 +735,7 @@ Status: auto (`chat-attachments`); live (`journey.it.ts`); screens (paste, drop,
 ### 12.2 The app tells me an upload is read
 When an upload's pages are read and grouped (or it fails), the conversation gets a message, written by the app and not by a model: the documents found by their page ranges, how many pages had no text, and whether the pages look cut from mixed pages. Nothing has been read from the documents yet. (An upload of one page, such as a photo, skips this: it is read at once and only the second message is written.) When the owner confirms the grouping the documents are read (once), and a second message says what came out: the documents, how many have no date, **which doctors it added and which it found already there, which tests no other document has**. If the panel is closed the Ask button shows a badge and a note beside it that opens the conversation.
 
-- Buttons offer the likely next steps: *What was read from it?*, *The grouping looks right*, *Read the empty pages again*, and, if the pages look mixed, **Check the pages with AI** (12.4), with what it sends beside it.
+- While the grouping waits, **Check the grouping** opens its screen (the panel closes) and **Grouping is right** confirms it there and then, without the assistant; the report of the documents read follows in the same conversation. Buttons offer the likely next steps: *What was read from it?*, *Read the empty pages again*, and, if the pages look mixed, **Check the pages with AI** (12.4), with what it sends beside it.
 - The grouping still waits for the owner: until they confirm it the documents are out of the timeline and search.
 - A failed upload says so, without copying the reason (it can quote the file).
 

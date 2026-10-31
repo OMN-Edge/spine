@@ -50,6 +50,7 @@ export async function seedSourceFile(
     filePath?: string;
     photoSet?: boolean;
     fromExport?: boolean;
+    sample?: boolean;
   } = {},
 ) {
   const store = getStore();
@@ -65,6 +66,7 @@ export async function seedSourceFile(
     checksum: overrides.checksum ?? uuidv4(),
     photoSet: overrides.photoSet,
     fromExport: overrides.fromExport,
+    sample: overrides.sample,
   });
 
   if (overrides.status && overrides.status !== 'pending') {

@@ -133,7 +133,7 @@ describe('pipeline — single page document', () => {
     expect(docs[0].reviewed).toBe(0);
   });
 
-  it('tells the owner, in a conversation of its own, when the upload has been read', async () => {
+  it('tells the owner, in their Activity conversation, when the upload has been read', async () => {
     const id = uuidv4();
     await insertSourceFile(id);
     mockRasterizePdf.mockResolvedValueOnce([makePageImage(1)]);
@@ -142,8 +142,8 @@ describe('pipeline — single page document', () => {
     startIngestionJob(id, OWNER_ID);
     await waitForJob(id);
     await vi.waitFor(async () => {
-      const notice = (await getStore().conversations.list(OWNER_ID, 50)).find(c => c.origin === 'upload');
-      expect(notice).toMatchObject({ unread: true, title: 'Documents read' });
+      const notice = (await getStore().conversations.list(OWNER_ID, 50)).find(c => c.origin === 'activity');
+      expect(notice).toMatchObject({ unread: true, title: 'Activity' });
     });
   });
 

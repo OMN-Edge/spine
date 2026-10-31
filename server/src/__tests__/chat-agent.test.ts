@@ -270,14 +270,17 @@ describe('fallbacks and switches', () => {
 
     const broken = new (class extends ScriptedModel { async _generate(): Promise<ChatResult> { throw new Error('provider down'); } })([]);
     resetChatLlm(llmWith(broken));
-    expect((await ask({ question: 'blood count' })).json().answer).toBe('from the fixed pipeline');
+    const reply = (await ask({ question: 'blood count' })).json();
+    expect(reply.answer).toBe('from the fixed pipeline');
+    // Said, so the page can tell the person no change could be prepared.
+    expect(reply.limited).toBe(true);
   });
 
-  it('does not call the model at all for an empty archive and no screen', async () => {
-    model = new ScriptedModel([{ say: 'x' }]);
+  it('asks the agent on an empty archive too, since the question may be about Spine itself', async () => {
+    model = new ScriptedModel([{ tools: [{ name: 'explain_spine', args: { topic: 'adding' } }] }, { say: 'Add a PDF on the Upload page.' }]);
     resetChatLlm(llmWith(model));
-    expect((await ask({ question: 'anything' })).json()).toMatchObject({ answer: null, sources: [], documents: 0 });
-    expect(model.seen).toHaveLength(0);
+    expect((await ask({ question: 'how do I start?' })).json()).toMatchObject({ answer: 'Add a PDF on the Upload page.', sources: [] });
+    expect(model.seen.length).toBeGreaterThan(0);
   });
 });
 

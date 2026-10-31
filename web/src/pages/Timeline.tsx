@@ -10,6 +10,8 @@ import { useScreen } from '../components/ChatProvider';
 import DocumentFilters from '../components/DocumentFilters';
 import { SampleBanner, SampleOffer, useSampleRecords } from '../components/SampleRecords';
 import { useAuth } from '../auth';
+import GuideTip, { GetStarted } from '../components/GuideTip';
+import { useGuide } from '../guide';
 
 export default function Timeline() {
   const { t, tn } = useI18n();
@@ -48,6 +50,7 @@ export default function Timeline() {
   // Zoom to one year (FR-TL-01); a year that is no longer in the list (another filter was chosen) shows everything.
   const [zoom, setZoom] = useState('');
   const samples = useSampleRecords();
+  const guide = useGuide();
   // The demo says what it is above every page, and has nowhere to upload to.
   const { demo } = useAuth();
   // '' is "All years" and also the key of the undated group, so it must not count as a year that was chosen: with any undated document
@@ -74,6 +77,13 @@ export default function Timeline() {
       </div>
 
       {!demo && samples.state?.loaded && <SampleBanner processing={samples.state.processing} onChange={samples.refresh} />}
+
+      <GetStarted />
+      {!loading && docs.length > 0 && (guide?.state?.progress.grouping_confirmed ?? 0) > 0 && (
+        <GuideTip tip="tip.read" topic="checking">
+          {t('Your documents are here, newest first. Open one to see what was read from it. A value marked “check” is one the AI was not sure of: compare it with the page, and correct it if it is wrong.')}
+        </GuideTip>
+      )}
 
       {waiting > 0 && (
         <div role="status" className="mb-6 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900 flex flex-wrap items-center justify-between gap-2">

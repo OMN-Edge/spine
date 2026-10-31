@@ -16,6 +16,7 @@ export function stepText(t: (s: string, v?: Record<string, string | number>) => 
     case 'pages': return t('Reading the text of pages {what}', { what });
     case 'plan': return t('Reading the regrouping plan');
     case 'library': return t('Looking at your tags and providers');
+    case 'help': return t('Reading how Spine works');
     case 'propose': return t('Preparing a change for you to confirm');
   }
 }

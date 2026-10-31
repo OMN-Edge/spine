@@ -99,5 +99,28 @@ export function useShareAccess(shareId: string | undefined): { state: ShareAcces
     void poll(shareId);
   }, [shareId, poll]);
 
+  // Once open, the link is asked about again every half minute and when the tab comes back to the front: revoked or expired, the copy is
+  // closed (the page's core stops, the key is forgotten) and the page says the link is no longer active. What was already on the screen was
+  // seen; nothing more is read, translated or asked from it after that.
+  useEffect(() => {
+    if (state !== 'open' || !shareId) return;
+    const id = shareId;
+    let stopped = false;
+    const check = async () => {
+      if (stopped || document.visibilityState !== 'visible') return;
+      const meta = await fetch(`/api/shared/${encodeURIComponent(id)}/meta`, { cache: 'no-store' }).catch(() => null);
+      if (stopped || !meta || (meta.status !== 404 && meta.status !== 410)) return;
+      stopped = true;
+      remember(keyName(id), null);
+      readingShare(null);
+      await reader.lock(true).catch(() => undefined);
+      if (live.current) setState('gone');
+    };
+    const timer = window.setInterval(() => void check(), 30_000);
+    const onVisible = () => void check();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { stopped = true; window.clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); };
+  }, [state, shareId]);
+
   return { state, ask, error };
 }

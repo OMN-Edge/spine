@@ -10,7 +10,8 @@ import { looksMixed } from '../regroup/analyze.js';
 import { openQuestions, testsIntroduced } from '../matching/index.js';
 
 /**
- * The app starts a conversation when something the owner is waiting for has finished: an upload has been read. The message is not
+ * The app writes to the owner (in their Activity conversation, or the one a file was attached in) when something they are waiting for
+ * has finished: an upload has been read. The message is not
  * written by a model: it is a fact about the upload, stored as data the page draws in the owner's language, with `content` saying the
  * same in English for the model to read when the owner replies (so "is this right?" has something to be about). It is unread until the
  * owner opens it. Nothing here leaves the host.
@@ -108,15 +109,23 @@ export async function announceUpload(userId: string, sourceFileId: string, stage
       data.looks_mixed ? 'By their text, some pages look as if they belong with pages of other documents, so the grouping may be worth checking.' : '',
     ].filter(Boolean).join(' ');
 
-  // In the conversation the file was attached in, if there is one: the person is waiting for it there.
+  // In the conversation the file was attached in, if there is one: the person is waiting for it there. Else in Activity.
   if (file.chat_conversation_id && await store.conversations.appendNotice(userId, file.chat_conversation_id, { id: uuidv4(), content, kind: 'upload', data, createdAt: new Date().toISOString() })) return;
-  await store.conversations.createNotice(userId, {
-    id: uuidv4(),
-    title: data.state === 'failed' ? 'Upload failed' : stage === 'read' ? 'Documents read' : 'Upload finished',
-    origin: 'upload',
-    createdAt: new Date().toISOString(),
-    message: { id: uuidv4(), content, kind: 'upload', data },
-  });
+  await toActivity(userId, content, 'upload', data);
+}
+
+/**
+ * The app's reports go into one conversation, Activity, rather than a conversation each, so the history stays the owner's questions. It is
+ * unread until opened; a full one is left as it is and a new one started.
+ */
+export const ACTIVITY_TITLE = 'Activity';
+
+async function toActivity(userId: string, content: string, kind: 'upload' | 'regroup', data: unknown): Promise<void> {
+  const store = getStore();
+  const createdAt = new Date().toISOString();
+  const activity = await store.conversations.findByOrigin(userId, 'activity');
+  if (activity && await store.conversations.appendNotice(userId, activity.id, { id: uuidv4(), content, kind, data, createdAt })) return;
+  await store.conversations.createNotice(userId, { id: uuidv4(), title: ACTIVITY_TITLE, origin: 'activity', createdAt, message: { id: uuidv4(), content, kind, data } });
 }
 
 /** Fire and forget from the pipeline: a notice that cannot be written never fails an upload. */
@@ -138,7 +147,7 @@ export interface RegroupNoticeData {
 
 /**
  * Tells the owner an analysis is ready: in the conversation they asked for it in (`conversationId`, which must be theirs), else the one the
- * upload came in with, else a conversation of its own.
+ * upload came in with, else in Activity.
  */
 export async function announceRegroup(userId: string, sourceFileId: string, conversationId: string | null = null): Promise<void> {
   if (!chatEnabled()) return;
@@ -163,13 +172,7 @@ export async function announceRegroup(userId: string, sourceFileId: string, conv
   for (const target of [conversationId, file.chat_conversation_id]) {
     if (target && await store.conversations.appendNotice(userId, target, { id: uuidv4(), content, kind: 'regroup', data, createdAt: new Date().toISOString() })) return;
   }
-  await store.conversations.createNotice(userId, {
-    id: uuidv4(),
-    title: plan.groups.length === 0 ? 'Nothing to regroup' : 'Regrouping suggestions',
-    origin: 'regroup',
-    createdAt: new Date().toISOString(),
-    message: { id: uuidv4(), content, kind: 'regroup', data },
-  });
+  await toActivity(userId, content, 'regroup', data);
 }
 
 export function announceRegroupLater(userId: string, sourceFileId: string, conversationId: string | null = null): void {

@@ -351,7 +351,7 @@ CREATE TABLE IF NOT EXISTS chat_conversations (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   unread INTEGER NOT NULL DEFAULT 0, -- 1: the assistant started it (an upload finished) and the owner has not opened it
-  origin TEXT -- null: the owner started it; 'upload': the app did, when an upload finished
+  origin TEXT -- null: the owner started it; 'activity' (once 'upload', 'regroup'): the app's reports on uploads; 'guide': answers about Spine itself
 );
 CREATE TABLE IF NOT EXISTS chat_messages (
   id TEXT PRIMARY KEY,
@@ -363,8 +363,18 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   sources TEXT,
   note TEXT,
   created_at TEXT NOT NULL,
-  kind TEXT, -- null: ordinary text; 'upload': a notice the app wrote, drawn by the page from \`data\`
+  kind TEXT, -- null: ordinary text; else what the page draws from \`data\` (MessageKind: a notice, an attachment, a help answer)
   data TEXT -- JSON for a notice
+);
+-- What the app has shown the owner to help them start (the chat's welcome, a tip, the checklist): how many times, when last, and
+-- when they were done with it. Kept with the records so a second device does not greet them again; never in a share, not exported.
+CREATE TABLE IF NOT EXISTS guide_marks (
+  user_id TEXT NOT NULL REFERENCES users(id),
+  key TEXT NOT NULL,
+  shown INTEGER NOT NULL DEFAULT 0,
+  last_shown_at TEXT,
+  done_at TEXT,
+  PRIMARY KEY (user_id, key)
 );
 CREATE INDEX IF NOT EXISTS idx_chat_conversations_user ON chat_conversations(user_id, updated_at);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation ON chat_messages(conversation_id, seq);

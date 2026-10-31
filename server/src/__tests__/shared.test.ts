@@ -186,14 +186,20 @@ describe('sealed shares on the server', () => {
     }
   });
 
-  it('gives a recipient a pass for model calls that lasts no longer than the share', async () => {
+  it('gives a recipient a short pass for model calls, never longer than the share, and none once it is revoked', async () => {
     const share = id();
     await publish(share, randomBytes(10), owner);
     expect((await post(`/api/shared/${share}/relay-token`)).statusCode).toBe(503);
     Object.assign(process.env, { SPINE_RELAY_URL: 'https://relay.example.run.app', SPINE_RELAY_SECRET: SECRET });
     const res = (await post(`/api/shared/${share}/relay-token`)).json<{ token: string; expires_at: number }>();
     expect(verifyToken(SECRET, res.token)).toEqual({ userId: `share:${share}` });
-    expect(res.expires_at - Date.now()).toBeLessThanOrEqual(10 * 60 * 1000);
+    // Short, because the relay cannot ask whether the link was revoked: a pass handed out works until it ends.
+    expect(res.expires_at - Date.now()).toBeLessThanOrEqual(2 * 60 * 1000);
+
+    // Revoked: the page that asks for its next pass is refused one.
+    expect((await app.inject({ method: 'DELETE', url: `/api/shared/${share}`, headers: { cookie: owner } })).statusCode).toBe(200);
+    expect((await post(`/api/shared/${share}/relay-token`)).statusCode).toBe(410);
+    expect((await app.inject({ method: 'GET', url: `/api/shared/${share}/meta` })).statusCode).toBe(410);
 
     const short = id();
     await publish(short, randomBytes(10), owner, { 'x-spine-expires': new Date(Date.now() + 90_000).toISOString() });

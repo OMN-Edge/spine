@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type DoctorEntry, type DoctorSummary } from '../api';
 import { useI18n } from '../i18n';
+import GuideTip from '../components/GuideTip';
 
 const DISMISSED = 'spine.doctors-not-the-same';
 const pairKey = (a: string, b: string) => [a, b].sort().join('|');
@@ -83,6 +84,9 @@ export default function Doctors() {
           <div className="text-center py-16 text-gray-400"><p className="text-lg mb-2">{t('No doctors yet')}</p><p className="text-sm">{t('They are added as documents are read.')}</p></div>
         ) : (
           <>
+            <GuideTip tip="tip.doctors" topic="doctors">
+              {t('Each doctor is listed with the documents that name them. The same person written two ways can be merged into one: Spine points out the likely ones, but never merges by itself.')}
+            </GuideTip>
             <Duplicates onMerged={reload} />
             <input
               type="search" aria-label={t('Filter doctors')} placeholder={t('Filter by name, specialty or clinic…')} value={query} onChange={e => setQuery(e.target.value)}

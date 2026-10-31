@@ -3,6 +3,7 @@ import { buildTestApp, loginSession } from './helpers/app.js';
 import { OWNER_ID, createTestUser, seedDocument, seedSourceFile, seedPage, TEST_PASSWORD } from './helpers/seed.js';
 import { ScriptedModel } from 'spine-core/testing/scripted-model.js';
 import { getStore } from 'spine-core/store/index.js';
+import { MAX_MESSAGES } from 'spine-core/store/types.js';
 import { announceUpload } from 'spine-core/chat/notices.js';
 import { resetChatLlm, type ChatLlm } from 'spine-core/llm/index.js';
 
@@ -53,7 +54,7 @@ describe('the app starts a conversation when an upload has been read', () => {
 
     expect(await unread()).toBe(1);
     const [c] = (await conversations()).json();
-    expect(c).toMatchObject({ title: 'Upload finished', unread: true, origin: 'upload', message_count: 1 });
+    expect(c).toMatchObject({ title: 'Activity', unread: true, origin: 'activity', message_count: 1 });
     const { messages } = (await app.inject({ method: 'GET', url: `/api/chat/conversations/${c.id}`, headers: { cookie } })).json();
     expect(messages[0]).toMatchObject({ role: 'assistant', kind: 'upload' });
     expect(messages[0].data).toMatchObject({ upload_id: upload, state: 'done', grouping_pending: true, undated_documents: 1 });
@@ -61,12 +62,38 @@ describe('the app starts a conversation when an upload has been read', () => {
     expect(messages[0].content).toMatch(/The grouping is waiting for the owner to confirm it/);
   });
 
+  it('keeps every report in one Activity conversation, unread again with each, so the history stays the owner’s questions', async () => {
+    const { upload } = await readUpload();
+    await announceUpload(OWNER_ID, upload);
+    const [first] = (await conversations()).json();
+    await app.inject({ method: 'POST', url: `/api/chat/conversations/${first.id}/read`, headers: { cookie } });
+    expect(await unread()).toBe(0);
+
+    await announceUpload(OWNER_ID, upload, 'read');
+    const list = (await conversations()).json();
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ id: first.id, title: 'Activity', origin: 'activity', unread: true, message_count: 2 });
+    expect(await unread()).toBe(1);
+  });
+
+  it('starts a new Activity conversation when the last one is full', async () => {
+    const { upload } = await readUpload();
+    await announceUpload(OWNER_ID, upload);
+    const [first] = (await conversations()).json();
+    const filler = Array.from({ length: MAX_MESSAGES - 1 }, (_, i) => ({ id: `filler-${i}`, role: 'assistant' as const, content: 'x', sources: [], note: null, createdAt: new Date().toISOString() }));
+    await getStore().conversations.append(OWNER_ID, first.id, filler);
+    await announceUpload(OWNER_ID, upload, 'read');
+    const list = (await conversations()).json() as Array<{ id: string; origin: string; message_count: number }>;
+    expect(list.filter(c => c.origin === 'activity')).toHaveLength(2);
+    expect(list.find(c => c.id === first.id)!.message_count).toBe(MAX_MESSAGES);
+  });
+
   it('says so when an upload could not be read', async () => {
     const upload = await seedSourceFile({ status: 'pending' });
     await getStore().sourceFiles.setStatus(OWNER_ID, upload, 'error', 'boom: text from the file');
     await announceUpload(OWNER_ID, upload);
     const [c] = (await conversations()).json();
-    expect(c.title).toBe('Upload failed');
+    expect(c).toMatchObject({ title: 'Activity', origin: 'activity' });
     const { messages } = (await app.inject({ method: 'GET', url: `/api/chat/conversations/${c.id}`, headers: { cookie } })).json();
     expect(messages[0].data.state).toBe('failed');
     // The reason the file failed can quote the file: it is not copied into the conversation.

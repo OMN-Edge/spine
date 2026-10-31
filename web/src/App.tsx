@@ -36,6 +36,7 @@ import ShareLinks from './pages/ShareLinks';
 import ChatPanel from './components/ChatPanel';
 import ReauthDialog from './components/ReauthDialog';
 import { ChatProvider, useChat } from './components/ChatProvider';
+import { GuideProvider } from './guide';
 import PublicShareView from './pages/PublicShareView';
 import ShareRequestPage from './pages/ShareRequest';
 import ShareLinkDetail from './pages/ShareLinkDetail';
@@ -271,6 +272,7 @@ export default function App() {
     <AuthContext.Provider value={{ authenticated, email, setAuthenticated, consentNeeded, consentGiven: () => setConsentNeeded(null), vaultNeeded, vaultMade: () => setVaultNeeded(false), deviceState, deviceOpened: () => setDeviceState('open'), demo, startDemo, leaveDemo, demoUploads, demoAgreed, agreeDemo: () => setDemoAgreed(true) }}>
       {/* Chat asks the device's core, which answers 423 until the vault is open: asked sooner, the panel is switched off for good. */}
       <ChatProvider authenticated={(authenticated && deviceState === 'open') || demo}>
+      <GuideProvider enabled={authenticated && deviceState === 'open' && !demo}>
       <ReauthDialog />
       <Routes>
         <Route path="/login" element={<NotInDemo><Login /></NotInDemo>} />
@@ -301,6 +303,7 @@ export default function App() {
         <Route path="/share-requests/:id" element={<PrivateRoute inDemo={false}><ShareRequestPage /></PrivateRoute>} />
         <Route path="/account" element={<PrivateRoute inDemo={false}><Account /></PrivateRoute>} />
       </Routes>
+      </GuideProvider>
       </ChatProvider>
     </AuthContext.Provider>
   );

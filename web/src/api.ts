@@ -43,6 +43,10 @@ export interface Document {
   doctors?: DoctorOnDocument[];
   /** On GET /api/documents/:id: whether the owner has confirmed how its upload's pages were grouped. */
   grouping_confirmed?: boolean;
+  /** Nothing has been read from its text yet (its grouping waits, or it is being read now). */
+  needs_reading?: boolean | number;
+  /** Its upload is being read at this moment; the details follow. */
+  reading?: boolean;
 }
 
 export type Flag = 'low' | 'high' | 'normal';
@@ -359,9 +363,9 @@ export type Proposal = { id: string } & (
   | { kind: 'update_share'; link: { id: string; label: string | null; expires_at: string }; label: { from: string | null; to: string | null } | null; expires: { from: string; to_days: number } | null; added: DocRef[]; removed: DocRef[]; total_after: number | null; calls: ProposedCall[] }
   | { kind: 'revoke_share'; link: { id: string; label: string | null; expires_at: string }; calls: ProposedCall[] }
 );
-export interface ChatReply { answer: string | null; sources: ChatSource[]; documents: number; looked?: string[]; proposals?: Proposal[]; conversation: { id: string; title: string } }
+export interface ChatReply { answer: string | null; sources: ChatSource[]; documents: number; looked?: string[]; proposals?: Proposal[]; limited?: boolean; conversation: { id: string; title: string } }
 /** What the agent is looking at while it works; the page words it. */
-export interface ChatStep { kind: 'search' | 'open' | 'series' | 'tests' | 'connections' | 'fields' | 'shares' | 'doctors' | 'uploads' | 'pages' | 'plan' | 'library' | 'propose'; detail?: string }
+export interface ChatStep { kind: 'search' | 'open' | 'series' | 'tests' | 'connections' | 'fields' | 'shares' | 'doctors' | 'uploads' | 'pages' | 'plan' | 'library' | 'help' | 'propose'; detail?: string }
 export interface ChatStreamHandlers {
   step: (step: ChatStep) => void;
   delta: (text: string) => void;
@@ -372,8 +376,11 @@ export interface ConversationSummary {
   id: string; title: string; created_at: string; updated_at: string; message_count: number;
   /** The app started it (an upload finished) and the person has not opened it. */
   unread: boolean;
-  origin: 'upload' | 'regroup' | null;
+  /** `activity`: the app's reports on uploads; `guide`: answers about Spine; `upload`/`regroup`: a report each, as they were before Activity. */
+  origin: 'upload' | 'regroup' | 'activity' | 'guide' | null;
 }
+/** A question about Spine and its fixed answer (`HELP_TOPICS` in core's help.ts), drawn in the person's language. */
+export interface HelpData { topic: string }
 /** What the app wrote when the analysis of a mixed upload finished. */
 export interface RegroupNotice {
   upload_id: string; file_name: string | null; pages_considered: number; groups_changed: number; groups_validated: number; unchanged_groups: number;
@@ -402,7 +409,16 @@ export interface MatchQuestion {
 /** A file attached in the chat, as it was accepted. */
 export interface AttachedFile { name: string | null; upload_id: string | null; state: 'reading' | 'already_held' | 'skipped'; reason: string | null }
 export interface AttachmentData { files: AttachedFile[] }
-export interface StoredMessage { id: string; role: 'user' | 'assistant'; content: string; sources: ChatSource[]; note: 'none' | 'failed' | 'off' | null; created_at: string; kind: 'upload' | 'regroup' | 'attachment' | null; data: UploadNotice | RegroupNotice | AttachmentData | null }
+export interface StoredMessage { id: string; role: 'user' | 'assistant'; content: string; sources: ChatSource[]; note: 'none' | 'failed' | 'off' | null; created_at: string; kind: 'upload' | 'regroup' | 'attachment' | 'help' | null; data: UploadNotice | RegroupNotice | AttachmentData | HelpData | null }
+
+export type GuideKey = 'welcome' | 'tip.grouping' | 'tip.read' | 'tip.share' | 'tip.results' | 'tip.doctors' | 'tip.connections' | 'checklist';
+export interface GuideMark { shown: number; last_shown_at: string | null; done_at: string | null }
+export interface GuideState {
+  marks: Partial<Record<GuideKey, GuideMark>>;
+  /** The person's own uploads (not the sample records), those whose grouping is confirmed or waiting, and the share links they made. */
+  progress: { uploads: number; grouping_confirmed: number; grouping_waiting: number; reviewed: number; shares: number };
+  topics: string[];
+}
 
 export interface ShareLink {
   id: string;
@@ -783,6 +799,9 @@ export const api = {
       return res.json();
     },
     markRead: (id: string) => post<{ ok: boolean }>(`/api/chat/conversations/${id}/read`, undefined),
+    /** A question about Spine itself, answered with the fixed text (no model), in the conversation named or in Getting started. */
+    help: (topic: string, conversationId: string | null) =>
+      post<{ conversation: { id: string; title: string; origin: ConversationSummary['origin'] } }>('/api/chat/help', { topic, conversation_id: conversationId }),
     deleteConversation: (id: string) => del<{ ok: boolean }>(`/api/chat/conversations/${id}`),
     deleteAllConversations: () => del<{ removed: number }>('/api/chat/conversations'),
     /**
@@ -972,6 +991,13 @@ export const api = {
     consent: (healthData: boolean, terms: boolean) => post<{ ok: boolean }>('/api/account/consent', { health_data: healthData, terms }),
     /** Delete the account and everything in it. Asks for the password again if it has not been typed lately. */
     remove: (confirm: string) => post<{ deleted: boolean }>('/api/account/delete', { confirm }),
+  },
+
+  /** What has been shown to help the person start, and how far they have got. */
+  guide: {
+    state: () => req<GuideState>('/api/guide'),
+    shown: (key: GuideKey) => post<{ ok: boolean }>(`/api/guide/${key}/shown`, undefined),
+    done: (key: GuideKey) => post<{ ok: boolean }>(`/api/guide/${key}/done`, undefined),
   },
 
   /** Sample records to explore before uploading anything real. */

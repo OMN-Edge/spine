@@ -319,6 +319,8 @@ export async function documentRoutes(app: HttpApp) {
     const episode = (await store.episodes.list(req.userId, ['proposed', 'confirmed'])).find(e => e.document_ids.includes(id));
     return reply.send({
       ...doc, fields, tags, pages, measurements, doctors, grouping_confirmed: upload?.grouping_confirmed ?? true,
+      // Its upload is being read now (after a confirm, or a one-page upload): the page waits for the details rather than showing none.
+      reading: isReadingPages(doc.source_file_id) || upload?.status === 'pending' || upload?.status === 'processing',
       episode: episode ? { id: episode.id, title: episode.title, state: episode.state, first_date: episode.first_date, last_date: episode.last_date, provider: episode.provider } : null,
     });
   });

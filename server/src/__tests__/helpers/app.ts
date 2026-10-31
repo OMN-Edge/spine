@@ -125,6 +125,7 @@ export async function buildTestApp(options: TestAppOptions = {}) {
   const { sharedRoutes } = await import('../../routes/shared.js');
   const { demoRelayRoutes } = await import('../../routes/demo-relay.js');
   const { chatRoutes } = await import('spine-core/routes/chat.js');
+  const { guideRoutes } = await import('spine-core/routes/guide.js');
   const { shareRoutes } = await import('spine-core/routes/share.js');
   const { publicShareRoutes } = await import('spine-core/routes/public-share.js');
   const { tagRoutes } = await import('spine-core/routes/tags.js');
@@ -164,6 +165,7 @@ export async function buildTestApp(options: TestAppOptions = {}) {
   await app.register(demoRelayRoutes, options.demoRelay ?? {});
   await app.register(sharedRoutes, { requestPerSource: { max: 1000, timeWindow: '1 minute' }, requestPerLink: { max: 1000, windowMs: 60 * 1000 }, readPerSource: { max: 100000, timeWindow: '1 minute' }, ...options.shared });
   if (records) await app.register(asPlugin(chatRoutes));
+  if (records) await app.register(asPlugin(guideRoutes));
   if (records) await app.register(asPlugin(shareRoutes));
   if (records) await app.register(asPlugin(publicShareRoutes));
   if (records) await app.register(asPlugin(tagRoutes));
