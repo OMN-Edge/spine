@@ -177,6 +177,11 @@ describe('P1 — deny by default', () => {
     'GET /api/share/:link/documents/:id/connections',
     // Public on purpose, and scoped by the link: share-chat.test.ts.
     'POST /api/share/:link/chat',
+    // Public on purpose (billing.test.ts, growth.test.ts): the prices and the founding places left, read before an account exists; the payment
+    // provider's signed messages, refused unless the signature is right; and asking to be told when Spine opens, an address and nothing else.
+    'GET /api/pricing',
+    'POST /api/billing/webhook',
+    'POST /api/waitlist',
   ]);
 
   it('refuses every other route without a session', async () => {

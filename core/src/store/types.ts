@@ -36,7 +36,7 @@ import type {
  * interface would weld it to `better-sqlite3`. The SQLite adapter returns
  * already-resolved values, which costs a microtask per call.
  *
- * Six exceptions to the user-scoping rule, each named here so that a fifth
+ * Nine exceptions to the user-scoping rule, each named here so that a tenth
  * has to be argued for:
  *
  *  1. `shareLinks.findLive`, `shareLinks.createRequest` and `documents.listForShare` — scoped by the *link's* owner, resolved from
@@ -54,6 +54,10 @@ import type {
  *     here.
  *  7. `cookieSessions.*` — the cookie session's state, found by the digest of the cookie's random id before there is an acting
  *     user (it is what says who that is), and holding no record.
+ *  8. `billing.findBySubscription`/`findByCustomer`/`recordEvent`/`pruneEvents`/`foundingHeld` — the payment provider's side (SECURITY.md **M-45**):
+ *     a webhook names the provider's own ids, which the server recorded when it first heard of them, and the count of founding prices is of
+ *     all accounts. Nothing here answers more than a plan.
+ *  9. `metrics.*` and `waitlist.*` — counts a day under a name, and addresses of people who are not accounts: neither belongs to a user.
  */
 /**
  * What the server keeps: accounts, sessions, the vault's sealed objects and the sealed copies of shares (SECURITY.md **M-37**). It is a
@@ -69,6 +73,9 @@ export interface AccountsStore {
   enrolments: EnrolmentRepository;
   cookieSessions: CookieSessionRepository;
   maintenance: MaintenanceRepository;
+  billing: BillingRepository;
+  metrics: MetricsRepository;
+  waitlist: WaitlistRepository;
 
   /**
    * Ingestion writes a document, its tags and its fields together; a partial
@@ -821,6 +828,55 @@ export interface FileRegistryRepository {
 }
 
 /** What the relay has let a user's device do today, so a restart or a second instance does not give the day again. */
+/** What an account pays for (`billing/plans.ts` says what that gives). One row per account; none means it has never subscribed. */
+export interface SubscriptionRecord {
+  user_id: string;
+  /** Who bills it: `paddle`, or `operator` for an account the operator granted (CLI `grant-plan`). */
+  provider: 'paddle' | 'operator';
+  customer_id: string | null;
+  subscription_id: string | null;
+  interval: 'month' | 'year' | null;
+  /** The provider's word: active, trialing, past_due, paused, canceled. */
+  status: string;
+  /** Pays the founding price, locked for as long as the subscription runs. */
+  founding: boolean;
+  /** The end of what is paid for. */
+  current_period_end: string | null;
+  /** The subscription will end at `current_period_end` rather than renew. */
+  cancel_scheduled: boolean;
+  updated_at: string;
+}
+
+export interface BillingRepository {
+  get(userId: string): Promise<SubscriptionRecord | null>;
+  /** The provider's side (a webhook) names a subscription or a customer, not a user: the fifth and sixth lookups with no acting user (SECURITY.md **M-45**). */
+  findBySubscription(subscriptionId: string): Promise<SubscriptionRecord | null>;
+  findByCustomer(customerId: string): Promise<SubscriptionRecord | null>;
+  /** Writes the account's row, replacing any. An account's subscription is one row. */
+  put(record: SubscriptionRecord): Promise<void>;
+  /** Accounts that hold the founding price now (not counting ended subscriptions). */
+  foundingHeld(now: string): Promise<number>;
+  /** Records a provider event's id; false if it was already seen, so a repeated delivery is applied once. */
+  recordEvent(eventId: string, at: string): Promise<boolean>;
+  /** Forgets event ids older than this. */
+  pruneEvents(before: string): Promise<number>;
+}
+
+/** Counts the sign-ups and share openings that tell whether the loops in the marketing plan work. A number a day under a name; never who. */
+export interface MetricsRepository {
+  bump(name: string, day: string): Promise<void>;
+  /** Totals by name since the day (YYYY-MM-DD). */
+  totals(sinceDay: string): Promise<Array<{ name: string; total: number }>>;
+}
+
+/** People who asked to be told when Spine opens. Not accounts: an address and a time. */
+export interface WaitlistRepository {
+  /** False if the address was already on it. */
+  add(email: string, at: string, source: string | null): Promise<boolean>;
+  list(): Promise<Array<{ email: string; created_at: string; source: string | null }>>;
+  remove(email: string): Promise<boolean>;
+}
+
 export interface UsageRepository {
   /**
    * Counts one model call for the user on `day` (YYYY-MM-DD) and answers how many are counted now, or answers null with nothing counted
@@ -828,6 +884,10 @@ export interface UsageRepository {
    * whole instance.
    */
   spend(userId: string, day: string, limit: number): Promise<number | null>;
+  /** AI processing the account has used in a period (`billing/plans.ts`: `usagePeriod`), in thousandths of a page. */
+  aiUsed(userId: string, period: string): Promise<number>;
+  /** Adds what a finished call cost; answers the new total. Old periods of the account are forgotten. */
+  aiAdd(userId: string, period: string, amount: number): Promise<number>;
 }
 
 export interface TagWithCount { id: number; name: string; document_count: number }

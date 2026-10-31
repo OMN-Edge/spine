@@ -3,7 +3,7 @@ import { changed, many, one, type Begin, type Query } from './query.js';
 
 /** The account tables a user owns, children before parents (foreign keys). */
 const OWNED_TABLES = [
-  'shared_requests', 'shared_opens', 'shared_bundles', 'user_sessions', 'cookie_sessions', 'model_usage', 'user_devices', 'user_tokens',
+  'shared_requests', 'shared_opens', 'shared_bundles', 'user_sessions', 'cookie_sessions', 'model_usage', 'ai_usage', 'subscriptions', 'user_devices', 'user_tokens',
   'user_passkeys', 'device_enrolments', 'vault_objects', 'vault_keys', 'user_recovery_codes', 'user_totp',
 ];
 

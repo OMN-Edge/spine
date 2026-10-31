@@ -48,6 +48,18 @@ export function usageRepository(q: Query): UsageRepository {
       await q('DELETE FROM model_usage WHERE user_id = $1 AND day < $2', [id, day]);
       return Number(row.calls);
     },
+
+    async aiUsed(userId, period) {
+      return Number((await one<{ amount: number }>(q, 'SELECT amount FROM ai_usage WHERE user_id = $1 AND period = $2', [owner(userId), period]))?.amount ?? 0);
+    },
+
+    async aiAdd(userId, period, amount) {
+      const id = owner(userId);
+      const row = await one<{ amount: number }>(q, `INSERT INTO ai_usage (user_id, period, amount) VALUES ($1, $2, $3)
+        ON CONFLICT (user_id, period) DO UPDATE SET amount = ai_usage.amount + excluded.amount RETURNING amount`, [id, period, Math.max(0, Math.round(amount))]);
+      if (period !== 'trial') await q(`DELETE FROM ai_usage WHERE user_id = $1 AND period <> $2 AND period <> 'trial'`, [id, period]);
+      return Number(row!.amount);
+    },
   };
 }
 

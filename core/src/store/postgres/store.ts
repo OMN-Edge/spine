@@ -2,6 +2,7 @@ import type { AccountsStore, StoreConfig } from '../types.js';
 import { accountsSchema } from './schema-accounts.js';
 import type { PgPool, PgQueryable } from './pool.js';
 import type { Begin, Query } from './query.js';
+import { billingRepository, metricsRepository, waitlistRepository } from './billing.js';
 import { maintenanceRepository } from './maintenance.js';
 import { sharedRepository } from './shared.js';
 import { cookieSessionRepository, enrolmentRepository, sessionRepository, usageRepository } from './small.js';
@@ -71,6 +72,9 @@ function accountsOver(q: Query, begin: Begin): Omit<AccountsStore, 'close'> {
     vault: vaultRepository(q, begin),
     shared: sharedRepository(q, begin),
     maintenance: maintenanceRepository(q),
+    billing: billingRepository(q),
+    metrics: metricsRepository(q),
+    waitlist: waitlistRepository(q),
     transaction: fn => begin((tq, nested) => fn({ ...accountsOver(tq, nested), async close() {} })),
   };
 }

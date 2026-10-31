@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { sharedLimits } from '../config.js';
+import { accountEntitlements, liveSharesFor } from '../billing/entitlements.js';
 import { SHARE_ID, readBlob, readBundle, removeBlobs, removeShare, writeBlob, writeBundle } from '../shared-files.js';
 import { requireAuth } from 'spine-core/routes/middleware.js';
 import { countryOf } from '../geo.js';
@@ -87,9 +88,16 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     const used = await store.shared.usage(req.userId, new Date().toISOString());
     const existing = await store.shared.get(id);
     const replacing = existing && existing.userId === req.userId && !existing.revokedAt;
-    if (!replacing && used.bundles >= limits.live) return reply.status(409).send({ error: 'too many shares are live; revoke one first', code: 'too_many' });
+    // A plan with a share of its own limits how many are live, and which can wait for approval (billing off: the instance's ceiling only).
+    const plan = await accountEntitlements(req.userId);
+    const requireApproval = req.headers['x-spine-approval'] === '1';
+    if (requireApproval && plan && !plan.approvalMode) return reply.status(402).send({ error: 'approving visitors is not part of the account’s plan', code: 'plan_required' });
+    if (!replacing && used.bundles >= (await liveSharesFor(req.userId))) {
+      const byPlan = plan?.liveShares != null && used.bundles >= plan.liveShares;
+      return reply.status(byPlan ? 402 : 409).send({ error: 'too many shares are live; revoke one first', code: byPlan ? 'plan_required' : 'too_many' });
+    }
     if (used.bytes - (replacing ? existing.size + existing.blobBytes : 0) + req.body.length > limits.totalBytes) return reply.status(413).send({ error: 'the shares hold too much; revoke one first', code: 'full' });
-    const put = await store.shared.put(req.userId, { id, expiresAt: expires, requireApproval: req.headers['x-spine-approval'] === '1', size: req.body.length, blobs: 0, blobBytes: 0 }, new Date().toISOString());
+    const put = await store.shared.put(req.userId, { id, expiresAt: expires, requireApproval, size: req.body.length, blobs: 0, blobBytes: 0 }, new Date().toISOString());
     if (put !== 'ok') return reply.status(put === 'taken' ? 404 : 409).send({ error: put === 'taken' ? 'not found' : 'this share was revoked' });
     removeBlobs(id);
     writeBundle(id, req.body);
@@ -114,6 +122,7 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     const { expires_at: expires, require_approval: approval } = req.body ?? {};
     if (expires !== undefined && (typeof expires !== 'string' || !ISO.test(expires) || Date.parse(expires) <= Date.now() || Date.parse(expires) - Date.now() > 31 * 24 * 60 * 60 * 1000)) return reply.status(400).send({ error: 'expires_at must be a time within the next 31 days' });
     if (approval !== undefined && typeof approval !== 'boolean') return reply.status(400).send({ error: 'require_approval must be true or false' });
+    if (approval === true && req.userId && (await accountEntitlements(req.userId))?.approvalMode === false) return reply.status(402).send({ error: 'approving visitors is not part of the account’s plan', code: 'plan_required' });
     if (!SHARE_ID.test(req.params.id) || !(await getAccountsStore().shared.update(req.userId, req.params.id, { expiresAt: expires as string | undefined, requireApproval: approval as boolean | undefined }))) return reply.status(404).send({ error: 'not found' });
     return reply.send({ ok: true });
   });
@@ -233,6 +242,7 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     const doc = req.body?.document_id;
     if (doc !== undefined && doc !== null && (typeof doc !== 'string' || !DOC_ID.test(doc))) return reply.status(400).send({ error: 'document_id must be an id' });
     await getAccountsStore().shared.logOpen(bundle.id, new Date().toISOString(), await countryOf(req.ip ?? null), (doc as string | null | undefined) ?? null, typeof doc === 'string');
+    if (typeof doc !== 'string') await getAccountsStore().metrics.bump('share_opened', new Date().toISOString().slice(0, 10)).catch(() => undefined);
     return reply.status(204).send();
   });
 

@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { vaultLimits } from '../config.js';
+import { vaultBytesFor } from '../billing/entitlements.js';
 import { hashPassword, normaliseEmail } from '../passwords.js';
 import { AUTH_VALUE, DEFAULT_KDF, parseKdfParams, parseVaultKeys, pretendSalt } from '../vault-keys.js';
 import { OBJECT_ID, readObject, removeObject, writeObject } from '../vault-files.js';
@@ -137,7 +138,7 @@ export async function vaultRoutes(app: FastifyInstance, opts: VaultRouteOptions 
         return reply.status(400).send({ error: 'an object needs an id, a kind, a profile, a wrapped key, the sequence you last saw and a body' });
       }
       const store = getAccountsStore();
-      const result = await store.vault.put(req.userId, { id, profileId: profile, kind, size: body.length, wrappedKey, baseSeq: Number(base) }, new Date().toISOString(), vaultLimits().accountBytes);
+      const result = await store.vault.put(req.userId, { id, profileId: profile, kind, size: body.length, wrappedKey, baseSeq: Number(base) }, new Date().toISOString(), await vaultBytesFor(req.userId));
       if (result === 'no_vault') return reply.status(404).send({ error: 'this account has no vault yet', code: 'no_vault' });
       if (result === 'conflict') return reply.status(409).send({ error: 'this object changed elsewhere; fetch it again', code: 'conflict' });
       if (result === 'quota') return reply.status(413).send({ error: 'the vault is full', code: 'quota' });

@@ -213,4 +213,50 @@ CREATE TABLE IF NOT EXISTS shared_opens (
 CREATE INDEX IF NOT EXISTS idx_shared_bundles_user ON shared_bundles(user_id);
 CREATE INDEX IF NOT EXISTS idx_shared_requests_user ON shared_requests(user_id, pulled);
 CREATE INDEX IF NOT EXISTS idx_shared_opens_user ON shared_opens(user_id);
+
+-- What an account pays for (docs/billing.md, SECURITY.md M-45). One row per account, written by the payment provider's webhooks and by the
+-- operator's CLI. No card number and no address is ever here: the provider keeps those; this keeps only which plan, until when.
+CREATE TABLE IF NOT EXISTS subscriptions (
+  user_id TEXT PRIMARY KEY REFERENCES users(id),
+  provider TEXT NOT NULL, -- 'paddle' | 'operator'
+  customer_id TEXT,
+  subscription_id TEXT,
+  billing_interval TEXT, -- 'month' | 'year'
+  status TEXT NOT NULL,
+  founding INTEGER NOT NULL DEFAULT 0,
+  current_period_end TEXT,
+  cancel_scheduled INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_subscriptions_subscription ON subscriptions(subscription_id) WHERE subscription_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_subscriptions_customer ON subscriptions(customer_id);
+
+-- The ids of the provider's events already applied, so a delivery repeated is applied once. Pruned after a few weeks.
+CREATE TABLE IF NOT EXISTS billing_events (
+  id TEXT PRIMARY KEY,
+  at TEXT NOT NULL
+);
+
+-- AI processing an account has used in a period ('trial', or 'YYYY-MM'), in thousandths of a page. Only a number, never what was read.
+CREATE TABLE IF NOT EXISTS ai_usage (
+  user_id TEXT NOT NULL,
+  period TEXT NOT NULL,
+  amount INTEGER NOT NULL,
+  PRIMARY KEY (user_id, period)
+);
+
+-- Whether the loops in the marketing plan work: a sign-up that came from a shared page, a share opened. A number a day under a name, never who.
+CREATE TABLE IF NOT EXISTS metrics (
+  name TEXT NOT NULL,
+  day TEXT NOT NULL,
+  n INTEGER NOT NULL,
+  PRIMARY KEY (name, day)
+);
+
+-- People who asked to be told when Spine opens: an address and a time, not accounts.
+CREATE TABLE IF NOT EXISTS waitlist (
+  email TEXT NOT NULL PRIMARY KEY COLLATE NOCASE,
+  created_at TEXT NOT NULL,
+  source TEXT
+);
 `;

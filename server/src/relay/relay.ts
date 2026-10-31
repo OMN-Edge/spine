@@ -6,6 +6,8 @@ import { LLM_TASKS, type LlmTask, type TaskClients } from 'spine-core/llm/tasks.
 import { LlmBlockedError } from 'spine-core/llm/types.js';
 import type { Embedder } from 'spine-core/embedding/types.js';
 import { EMBED_PATH, TASK_PATH, embedRequest, taskRequest, type StreamLine } from 'spine-core/relay/protocol.js';
+import type { RelayGate } from '../billing/gate.js';
+import type { RelayTask } from 'spine-core/billing/plans.js';
 import { verifyToken } from './token.js';
 
 /**
@@ -35,6 +37,8 @@ export interface RelayConfig {
   dailyDemoTotalCalls: number;
   /** Where the day's calls are counted: the `usage` repository of the store the relay is configured with (`getAccountsStore()`). */
   usage: UsageRepository;
+  /** Plans (`billing/gate.ts`): whether an account's plan includes a task and has allowance left, and what a call cost. Absent: no plans, only the daily counts. */
+  gate?: RelayGate;
   maxBodyBytes: number;
   /** The clients for a model id (the default when undefined), or null when that model is not offered. */
   clients: (model: string | undefined) => TaskClients | null;
@@ -80,24 +84,26 @@ export function createRelay(config: RelayConfig) {
   const failure = (err: unknown): { status: number; error: string; code?: string } =>
     err instanceof LlmBlockedError ? { status: 422, error: 'the model refused these words', code: 'blocked' } : { status: 502, error: 'the model provider could not answer' };
 
-  async function runTask(task: LlmTask, req: IncomingMessage, res: ServerResponse, payload: Buffer, started: number): Promise<void> {
+  /** Each runner answers whether the call succeeded, which is when it is charged to the plan. */
+  async function runTask(task: LlmTask, req: IncomingMessage, res: ServerResponse, payload: Buffer, started: number): Promise<boolean> {
     const parsed = taskRequest.safeParse(safeJson(payload));
-    if (!parsed.success) return reply(res, 400, 'not a request this service understands');
+    if (!parsed.success) { reply(res, 400, 'not a request this service understands'); return false; }
     const { model, messages, tools, stream } = parsed.data;
     const clients = config.clients(model);
-    if (!clients) return reply(res, 400, 'that model is not offered');
+    if (!clients) { reply(res, 400, 'that model is not offered'); return false; }
     const label = { task, model: model ?? 'default' };
     const abort = new AbortController();
     res.on('close', () => abort.abort());
     let history: BaseMessage[];
-    try { history = mapStoredMessagesToChatMessages(messages as never); } catch { return reply(res, 400, 'not a request this service understands'); }
+    try { history = mapStoredMessagesToChatMessages(messages as never); } catch { reply(res, 400, 'not a request this service understands'); return false; }
 
     try {
       if (task !== 'agent') {
         const result = await clients[task].invoke(history, { signal: abort.signal });
         res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
         res.end(JSON.stringify({ result }));
-        return log({ ...label, status: 200, bytes_in: payload.length, ms: now() - started });
+        log({ ...label, status: 200, bytes_in: payload.length, ms: now() - started });
+        return true;
       }
       const agent = clients.agent as unknown as BaseChatModel & { bindTools?: (t: unknown[]) => BaseChatModel };
       const bound = tools && tools.length > 0 && agent.bindTools ? agent.bindTools(tools) : agent;
@@ -105,7 +111,8 @@ export function createRelay(config: RelayConfig) {
         const message = (await bound.invoke(history, { signal: abort.signal })) as AIMessage;
         res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
         res.end(JSON.stringify({ message: mapChatMessagesToStoredMessages([message])[0] }));
-        return log({ ...label, status: 200, bytes_in: payload.length, ms: now() - started });
+        log({ ...label, status: 200, bytes_in: payload.length, ms: now() - started });
+        return true;
       }
       // Streamed: one JSON line a piece. Once the status is sent, a failure can only be said in a line.
       res.writeHead(200, { 'content-type': 'application/x-ndjson', 'cache-control': 'no-store' });
@@ -121,27 +128,31 @@ export function createRelay(config: RelayConfig) {
         if (!abort.signal.aborted) res.write(`${JSON.stringify({ error: f.error, code: f.code } satisfies StreamLine)}\n`);
       }
       res.end();
-      return log({ ...label, status, bytes_in: payload.length, ms: now() - started });
+      log({ ...label, status, bytes_in: payload.length, ms: now() - started });
+      return status === 200;
     } catch (err) {
       const f = failure(err);
       if (!res.headersSent) reply(res, f.status, f.error, f.code); else res.end();
       log({ ...label, status: f.status, bytes_in: payload.length, ms: now() - started });
+      return false;
     }
   }
 
-  async function runEmbed(res: ServerResponse, payload: Buffer, started: number): Promise<void> {
+  async function runEmbed(res: ServerResponse, payload: Buffer, started: number): Promise<boolean> {
     const parsed = embedRequest.safeParse(safeJson(payload));
-    if (!parsed.success) return reply(res, 400, 'not a request this service understands');
+    if (!parsed.success) { reply(res, 400, 'not a request this service understands'); return false; }
     try {
       const embedder = config.embedder();
-      if (!embedder.enabled) return reply(res, 404, 'embeddings are not set up here');
+      if (!embedder.enabled) { reply(res, 404, 'embeddings are not set up here'); return false; }
       const vectors = await embedder.embed(parsed.data.texts, parsed.data.kind);
       res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
       res.end(JSON.stringify({ vectors: vectors.map(v => Array.from(v)), id: embedder.id }));
       log({ task: 'embed', model: embedder.id, status: 200, bytes_in: payload.length, ms: now() - started });
+      return true;
     } catch {
       reply(res, 502, 'the model provider could not answer');
       log({ task: 'embed', model: 'embedder', status: 502, bytes_in: payload.length, ms: now() - started });
+      return false;
     }
   }
 
@@ -164,12 +175,15 @@ export function createRelay(config: RelayConfig) {
     const bearer = /^Bearer (.+)$/.exec(String(req.headers.authorization ?? ''))?.[1];
     const who = bearer ? verifyToken(config.secret, bearer, now()) : null;
     if (!who) return reply(res, 401, 'sign in again');
+    const relayTask: RelayTask = isEmbed ? 'embed' : (task as LlmTask);
     if (!(await spend(who.userId))) return reply(res, 429, 'the daily allowance of model calls is used up');
+    const refusal = await config.gate?.admit(who.userId, relayTask);
+    if (refusal) return reply(res, refusal.status, refusal.error, refusal.code);
 
     const payload = await body(req);
     if (!payload) return reply(res, 413, 'too large');
-    if (isEmbed) return runEmbed(res, payload, started);
-    return runTask(task as LlmTask, req, res, payload, started);
+    const ok = isEmbed ? await runEmbed(res, payload, started) : await runTask(task as LlmTask, req, res, payload, started);
+    if (ok) await config.gate?.settle(who.userId, relayTask, payload.length).catch(() => log({ task: relayTask, note: 'the call could not be charged to the plan' }));
   };
 }
 

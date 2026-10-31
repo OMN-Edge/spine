@@ -4,6 +4,7 @@ import { deleteAccount } from '../accounts.js';
 import { HEALTH_CONSENT_VERSION, LEGAL_DOCS, TERMS_VERSION, consentNeeded, legalText, type LegalDoc } from '../legal.js';
 import { requireAuth, requireRecentAuth } from 'spine-core/routes/middleware.js';
 import { logger } from 'spine-core/logger.js';
+import { subscriptionEntitles } from 'spine-core/billing/plans.js';
 
 export async function ownAccountRoutes(app: FastifyInstance) {
   // The texts a person agrees to. Public: they are read before an account exists.
@@ -35,6 +36,11 @@ export async function ownAccountRoutes(app: FastifyInstance) {
     if (!user) return reply.status(401).send({ error: 'not authenticated' });
     if (typeof req.body?.confirm !== 'string' || req.body.confirm.trim().toLowerCase() !== user.email.toLowerCase()) {
       return reply.status(400).send({ error: 'type your email address to confirm' });
+    }
+    // Leaving does not stop a subscription at the payment provider, and a person who left would go on being charged: cancel it first.
+    const sub = await getAccountsStore().billing.get(req.userId);
+    if (sub?.provider === 'paddle' && !sub.cancel_scheduled && subscriptionEntitles(sub, new Date())) {
+      return reply.status(409).send({ error: 'cancel the subscription first (billing, manage), then delete the account', code: 'subscription_active' });
     }
     const summary = await deleteAccount(req.userId);
     logger.info('an account was deleted by its owner', { objects: summary.objects });

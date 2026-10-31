@@ -22,6 +22,11 @@ import {
  *   npm run cli -- disable-2fa <email>
  *   npm run cli -- approve-user <email>
  *   npm run cli -- delete-user <email> [--yes]
+ *   npm run cli -- grant-plan <email> [--days=N]
+ *   npm run cli -- revoke-plan <email>
+ *   npm run cli -- waitlist
+ *   npm run cli -- waitlist-remove <email>
+ *   npm run cli -- metrics [--days=N]
  *   npm run cli -- list-users
  *   npm run cli -- check-embeddings
  *
@@ -42,6 +47,11 @@ const USAGE = `usage:
   reset-link <email> [--hours N]
   disable-2fa <email>
   approve-user <email>
+  grant-plan <email> [--days=N]
+  revoke-plan <email>
+  waitlist
+  waitlist-remove <email>
+  metrics [--days=N]
   delete-user <email> [--yes]
   list-users
   check-embeddings`;
@@ -196,6 +206,64 @@ export async function runCli(args: string[], io: CliIo): Promise<number> {
       if (!user) { io.err(`no account for ${email}`); return 1; }
       if (!(await store.users.approve(user.id, new Date().toISOString()))) { io.err(`${email} is not waiting for approval`); return 1; }
       io.out(`approved ${email}; they can sign in now`);
+      return 0;
+    }
+
+    // The paid plan without a payment: for a friend, a tester, a press account. It ends on its own, and shows as the operator's in the app.
+    case 'grant-plan': {
+      const email = normaliseEmail(positional[0] ?? '');
+      const user = await store.users.findByEmail(email);
+      if (!user) { io.err(`no account for ${email}`); return 1; }
+      const daysFlag = flags.find(flag => flag.startsWith('--days='));
+      const days = daysFlag ? Number(daysFlag.split('=')[1]) : 365;
+      if (!Number.isInteger(days) || days < 1 || days > 3650) { io.err('--days must be a whole number from 1 to 3650'); return 2; }
+      const existing = await store.billing.get(user.id);
+      if (existing?.provider === 'paddle' && existing.status !== 'canceled') { io.err(`${email} pays for a plan; change it in the payment provider's dashboard`); return 1; }
+      const now = new Date();
+      await store.billing.put({
+        user_id: user.id, provider: 'operator', customer_id: null, subscription_id: null, interval: null, status: 'active', founding: false,
+        current_period_end: new Date(now.getTime() + days * 86_400_000).toISOString(), cancel_scheduled: true, updated_at: now.toISOString(),
+      });
+      io.out(`${email} has the paid plan for ${days} day${days === 1 ? '' : 's'} (shown to them as granted); it takes effect only where SPINE_BILLING=on`);
+      return 0;
+    }
+
+    case 'revoke-plan': {
+      const email = normaliseEmail(positional[0] ?? '');
+      const user = await store.users.findByEmail(email);
+      if (!user) { io.err(`no account for ${email}`); return 1; }
+      const existing = await store.billing.get(user.id);
+      if (existing?.provider !== 'operator' || existing.status === 'canceled') { io.err(`${email} has no granted plan`); return 1; }
+      const now = new Date().toISOString();
+      await store.billing.put({ ...existing, status: 'canceled', current_period_end: now, updated_at: now });
+      io.out(`the granted plan of ${email} has ended`);
+      return 0;
+    }
+
+    // The people who asked to be told when Spine opens, one address a line with the day and where they asked, to paste into a mailing tool.
+    case 'waitlist': {
+      const list = await store.waitlist.list();
+      for (const entry of list) io.out(`${entry.email}\t${entry.created_at.slice(0, 10)}\t${entry.source ?? ''}`);
+      io.err(`${list.length} address${list.length === 1 ? '' : 'es'}`);
+      return 0;
+    }
+
+    case 'waitlist-remove': {
+      const email = normaliseEmail(positional[0] ?? '');
+      if (!(await store.waitlist.remove(email))) { io.err(`${email} is not on the list`); return 1; }
+      io.out(`removed ${email}`);
+      return 0;
+    }
+
+    // How the loops in the marketing plan are doing: counts by name over the last N days (default 30). Never who.
+    case 'metrics': {
+      const daysFlag = flags.find(flag => flag.startsWith('--days='));
+      const days = daysFlag ? Number(daysFlag.split('=')[1]) : 30;
+      if (!Number.isInteger(days) || days < 1 || days > 3650) { io.err('--days must be a whole number from 1 to 3650'); return 2; }
+      const since = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+      const totals = await store.metrics.totals(since);
+      for (const t of totals) io.out(`${t.name}\t${t.total}`);
+      if (totals.length === 0) io.out(`nothing counted since ${since}`);
       return 0;
     }
 

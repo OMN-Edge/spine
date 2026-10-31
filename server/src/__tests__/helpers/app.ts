@@ -59,6 +59,7 @@ export interface TestAppOptions {
   vault?: VaultRouteOptions;
   shared?: import('../../routes/shared.js').SharedRouteOptions;
   demoRelay?: import('../../routes/demo-relay.js').DemoRelayRouteOptions;
+  waitlist?: import('../../routes/waitlist.js').WaitlistRouteOptions;
 }
 
 export async function buildTestApp(options: TestAppOptions = {}) {
@@ -124,6 +125,8 @@ export async function buildTestApp(options: TestAppOptions = {}) {
   const { enrolmentRoutes } = await import('../../routes/enrolment.js');
   const { vaultRoutes } = await import('../../routes/vault.js');
   const { relayRoutes } = await import('../../routes/relay.js');
+  const { billingRoutes } = await import('../../routes/billing.js');
+  const { waitlistRoutes } = await import('../../routes/waitlist.js');
   const { sharedRoutes } = await import('../../routes/shared.js');
   const { demoRelayRoutes } = await import('../../routes/demo-relay.js');
   const { chatRoutes } = await import('spine-core/routes/chat.js');
@@ -165,6 +168,8 @@ export async function buildTestApp(options: TestAppOptions = {}) {
   await app.register(enrolmentRoutes, { requestsPerSource: 100_000, claimsPerSource: 100_000, instanceWide: 100_000, ...options.enrolment });
   await app.register(vaultRoutes, options.vault ?? {});
   await app.register(relayRoutes);
+  await app.register(billingRoutes);
+  await app.register(waitlistRoutes, { perSource: { max: 1000, timeWindow: '1 minute' }, ...options.waitlist });
   await app.register(demoRelayRoutes, options.demoRelay ?? {});
   await app.register(sharedRoutes, { requestPerSource: { max: 1000, timeWindow: '1 minute' }, requestPerLink: { max: 1000, windowMs: 60 * 1000 }, readPerSource: { max: 100000, timeWindow: '1 minute' }, ...options.shared });
   if (records) await app.register(asPlugin(chatRoutes));

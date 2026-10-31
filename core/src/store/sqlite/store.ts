@@ -14,6 +14,7 @@ import { sessionRepository } from './sessions.js';
 import { cookieSessionRepository } from './cookie-sessions.js';
 import { enrolmentRepository } from './enrolments.js';
 import { usageRepository } from './usage.js';
+import { billingRepository, metricsRepository, waitlistRepository } from './billing.js';
 import { changeLog } from './changes.js';
 import { fileRegistryRepository } from './file-registry.js';
 import { matchDecisionRepository } from './match-decisions.js';
@@ -83,6 +84,9 @@ function accountsOver(db: Database, depth: number): AccountsStore {
     vault: vaultRepository(db),
     shared: sharedRepository(db),
     maintenance: maintenanceRepository(db),
+    billing: billingRepository(db),
+    metrics: metricsRepository(db),
+    waitlist: waitlistRepository(db),
     transaction: fn => inTransaction(db, depth, () => accountsOver(db, depth + 1), fn),
     async close() {
       db.close();

@@ -3,6 +3,8 @@ import { loadLlmConfig } from 'spine-core/config.js';
 import { createTaskClients, type TaskClients } from 'spine-core/llm/index.js';
 import { getEmbedder } from 'spine-core/embedding/index.js';
 import { getAccountsStore } from 'spine-core/store/index.js';
+import { loadBillingConfig } from '../billing/config.js';
+import { createRelayGate } from '../billing/gate.js';
 import { createRelay } from './relay.js';
 import { MIN_SECRET_LENGTH } from './token.js';
 
@@ -57,6 +59,8 @@ export function serveRelay(): void {
     dailyDemoCalls: count(process.env.SPINE_RELAY_DEMO_DAILY_CALLS, 40),
     dailyDemoTotalCalls: count(process.env.SPINE_RELAY_DEMO_TOTAL_DAILY_CALLS, 400),
     usage,
+    // Plans, when the instance has them (SPINE_BILLING=on); the relay reads the same accounts store the server does.
+    gate: loadBillingConfig().enabled ? createRelayGate(getAccountsStore) : undefined,
     maxBodyBytes: 32 * 1024 * 1024,
     clients,
     embedder: getEmbedder,
