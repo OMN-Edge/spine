@@ -1177,6 +1177,8 @@ export interface EmergencyCardRow {
   card_key: string | null;
   published_at: string | null;
   updated_at: string;
+  /** When the owner last saved the card or said it is still right. */
+  reviewed_at: string | null;
 }
 
 export interface EmergencyScan { id: string; at: string; country: string | null }
@@ -1185,6 +1187,8 @@ export interface EmergencyRepository {
   get(userId: string): Promise<EmergencyCardRow | null>;
   /** Saves what is written on the card; the published id and key are kept. */
   save(userId: string, content: string, now: string): Promise<void>;
+  /** The owner looked at the card and it is still right. */
+  markReviewed(userId: string, now: string): Promise<void>;
   /** Records that the card is published under an id and key, or (null) that it is not. */
   setPublished(userId: string, published: { id: string; key: string } | null, now: string): Promise<void>;
   addScan(userId: string, scan: EmergencyScan): Promise<void>;
@@ -1478,6 +1482,9 @@ export interface SharedBundle {
   kind: 'share' | 'card';
 }
 
+/** A card the server will remind its owner about: the account and the card's id. Nothing of what is on it is known here. */
+export interface CardDue { id: string; userId: string }
+
 export interface SharedRequest {
   id: string;
   bundleId: string;
@@ -1504,6 +1511,11 @@ export interface SharedRepository {
   get(id: string): Promise<SharedBundle | null>;
   /** The owner's: makes the row, or replaces its metadata when the same owner publishes again; 'taken' if the id is someone else's. */
   put(userId: string, bundle: { id: string; expiresAt: string; requireApproval: boolean; size: number; blobs: number; blobBytes: number; kind?: 'share' | 'card' }, now: string): Promise<'ok' | 'taken' | 'revoked' | 'too_many_cards'>;
+  /** The owner says the card is still right (or sends it again): the year for the yearly reminder starts over. False if it is not theirs, not a card, or off. */
+  touchCard(userId: string, id: string, now: string): Promise<boolean>;
+  /** Live cards last reviewed before one date and not reminded since another: whom to remind. */
+  cardsToRemind(reviewedBefore: string, remindedBefore: string): Promise<CardDue[]>;
+  markReminded(id: string, now: string): Promise<void>;
   /** Counts a sealed file uploaded beside the database. */
   addBlob(userId: string, id: string, bytes: number): Promise<boolean>;
   /** A change of end date or approval, for the owner's own live bundle. */

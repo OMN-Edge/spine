@@ -91,6 +91,9 @@ function addColumnsInPlace(db: Database): void {
   // The emergency card is a sealed bundle of its own kind; every earlier bundle is a share.
   const bundles = columnsOf(db, 'shared_bundles');
   if (bundles.length > 0 && !bundles.includes('kind')) db.exec("ALTER TABLE shared_bundles ADD COLUMN kind TEXT NOT NULL DEFAULT 'share'");
+  // When a card was last reviewed and last reminded about (the yearly reminder). Null for every earlier bundle.
+  if (bundles.length > 0 && !bundles.includes('reviewed_at')) db.exec('ALTER TABLE shared_bundles ADD COLUMN reviewed_at TEXT');
+  if (bundles.length > 0 && !bundles.includes('reminded_at')) db.exec('ALTER TABLE shared_bundles ADD COLUMN reminded_at TEXT');
 
   // What a subscription is to (Premium, or the family plan). Every earlier one is Premium.
   const subscriptions = columnsOf(db, 'subscriptions');

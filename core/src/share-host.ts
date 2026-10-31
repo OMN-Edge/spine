@@ -31,6 +31,8 @@ export interface ShareHost {
    * no key a new pair is made; with them the same card is replaced, so the address already printed keeps working.
    */
   publishCard(input: { id: string | null; key: string | null; content: string }): Promise<{ id: string; key: string }>;
+  /** The owner says the card is still right: the server's year for the yearly reminder starts over. */
+  reviewCard(id: string): Promise<void>;
   /** Turns the card off at the server: its sealed bytes are deleted and its address stops opening. */
   revokeCard(id: string): Promise<void>;
   /** Whether the server tells the owner by mail when a browser asks to be let in. */

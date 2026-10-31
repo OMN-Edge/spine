@@ -897,6 +897,14 @@ try {
     check(await waitFor('Saved'), 'the card is saved');
     await click('Turn the card on');
     check(await waitFor('The card is on', 20000) && /\/share\/[A-Za-z0-9-]+#[A-Za-z0-9_-]{43}/.test(await text()), 'turning it on gives an address that holds its key');
+    const addressOf = async () => (/\/share\/[A-Za-z0-9-]+#[A-Za-z0-9_-]{43}/.exec(await text()) ?? [''])[0];
+    const firstAddress = await addressOf();
+    check(await waitFor('Last checked'), 'the card says when it was last checked');
+    await click('Make a new code');
+    await click('Yes, turn the old code off');
+    let changed = false;
+    for (let t = 0; t < 15000 && !changed; t += 250) { const now = await addressOf(); changed = !!now && now !== firstAddress; if (!changed) await wait(250); }
+    check(changed, 'a lost card is replaced with a new code, and the address is a different one');
     await p.emulateMediaType('print');
     await p.evaluate(() => document.body.classList.add('printing-card'));
     const faces = await p.evaluate(() => [...document.querySelectorAll('.print-card .card-face')].map(f => { const r = f.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; }));

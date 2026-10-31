@@ -27,6 +27,7 @@ export const testShareHost: ShareHost = {
   pull: async () => undefined,
   answer: async () => undefined,
   publishCard: async ({ id, key }) => ({ id: id ?? 'card-test-id-0000000000000', key: key ?? 'card-test-key' }),
+  reviewCard: async () => undefined,
   revokeCard: async () => undefined,
   mailsOwner: () => false,
   addressOf: (id, key) => `https://spine.test/share/${id}${key ? `#${key}` : ''}`,

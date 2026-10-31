@@ -384,7 +384,8 @@ CREATE TABLE IF NOT EXISTS emergency_cards (
   card_id TEXT,
   card_key TEXT,
   published_at TEXT,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  reviewed_at TEXT -- when the owner last saved the card or said it is still right; a year later the page asks them to look again
 );
 -- Each time the published card was opened: when, and from which country. The address is never kept.
 CREATE TABLE IF NOT EXISTS emergency_scans (

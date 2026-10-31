@@ -25,6 +25,7 @@ export default function Emergency() {
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
   const [offline, setOffline] = useState(false);
+  const [replacing, setReplacing] = useState(false);
 
   const show = (v: EmergencyView) => {
     setView(v);
@@ -54,6 +55,13 @@ export default function Emergency() {
       <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900 mb-1">{t('Emergency card')}</h1>
       <p className="text-sm text-gray-500 mb-6">{t('A short card for someone who has to help you quickly: what they must know first. You write it yourself, and only what you write is on it.')}</p>
 
+      {view.review_due && (
+        <div role="status" className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="font-medium">{t('It has been over a year since this card was checked.')}</p>
+          <p className="mt-1">{t('Medicines, allergies and phone numbers change. Look it over, change what is out of date, then say it is still right.')}</p>
+          <button disabled={busy} className="mt-2 underline" onClick={() => void run(() => api.emergency.reviewed(), t('Could not save this change'))}>{t('It is still right')}</button>
+        </div>
+      )}
       <section className="bg-white border border-gray-200 rounded-xl p-5 space-y-3">
         <label className="block text-sm text-gray-700">{t('Name')}<input className={inputClass} value={card.name} maxLength={120} onChange={e => set('name', e.target.value)} /></label>
         <div className="grid grid-cols-2 gap-3">
@@ -111,9 +119,17 @@ export default function Emergency() {
           <div className="space-y-3">
             <CardQr text={view.published.address} label={t('Code that opens the card')} />
             <p className="text-xs text-gray-500 break-all">{view.published.address}</p>
+            {view.reviewed_at && <p className="text-xs text-gray-500">{t('Last checked {when}', { when: new Date(view.reviewed_at).toLocaleDateString() })}</p>}
             <div className="flex gap-4 text-sm">
               <button className="text-brand-600 hover:underline" onClick={printCard}>{t('Print a card-sized copy')}</button>
               <button disabled={busy} className="text-red-600 hover:underline" onClick={() => void run(() => api.emergency.unpublish(), t('Could not turn the card off'))}>{t('Turn the card off')}</button>
+            </div>
+            <div className="border-t border-gray-100 pt-3 text-sm">
+              <p className="font-medium text-gray-800">{t('Lost the card?')}</p>
+              <p className="text-gray-500 mt-1">{t('Make a new code: the old one stops opening the card at once, and you print the new one. A code that holds the card itself (the one that works with no signal) cannot be replaced, so do not print that one if you might lose it.')}</p>
+              {replacing
+                ? <button disabled={busy} className="mt-2 text-red-600 hover:underline" onClick={() => void run(async () => { const v = await api.emergency.replace(); setReplacing(false); return v; }, t('Could not make a new code'))}>{t('Yes, turn the old code off and make a new one')}</button>
+                : <button className="mt-2 text-brand-600 hover:underline" onClick={() => setReplacing(true)}>{t('Make a new code')}</button>}
             </div>
           </div>
         ) : (

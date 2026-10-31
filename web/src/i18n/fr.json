@@ -1480,5 +1480,14 @@
  "Put it on the card": "Mettre sur la carte",
  "Add a detail": "Ajouter une information",
  "Print a card-sized copy": "Imprimer une copie au format carte",
- "Could not save this change": "Cette modification n’a pas pu être enregistrée"
+ "Could not save this change": "Cette modification n’a pas pu être enregistrée",
+ "It has been over a year since this card was checked.": "Cela fait plus d’un an que cette carte n’a pas été vérifiée.",
+ "Medicines, allergies and phone numbers change. Look it over, change what is out of date, then say it is still right.": "Les médicaments, les allergies et les numéros de téléphone changent. Relisez-la, changez ce qui n’est plus à jour, puis dites qu’elle est toujours juste.",
+ "It is still right": "Elle est toujours juste",
+ "Last checked {when}": "Dernière vérification : {when}",
+ "Lost the card?": "Carte perdue ?",
+ "Make a new code: the old one stops opening the card at once, and you print the new one. A code that holds the card itself (the one that works with no signal) cannot be replaced, so do not print that one if you might lose it.": "Faites un nouveau code : l’ancien n’ouvre plus la carte aussitôt, et vous imprimez le nouveau. Un code qui contient la carte elle-même (celui qui marche sans réseau) ne peut pas être remplacé ; ne l’imprimez donc pas si vous risquez de le perdre.",
+ "Could not make a new code": "Le nouveau code n’a pas pu être fait",
+ "Yes, turn the old code off and make a new one": "Oui, éteindre l’ancien code et en faire un nouveau",
+ "Make a new code": "Faire un nouveau code"
 }

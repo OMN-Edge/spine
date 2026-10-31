@@ -147,6 +147,8 @@ The cuts of 2026-10-23 are being undone in this order, each with its documents (
 | FR-EMG-06 | A person may keep official details (identification and health insurance numbers, a card number, organ donor, their own) with the card and choose one by one to put on it; none is on it unless chosen | Should | Launch | Built (**M-47**) |
 | FR-EMG-07 | The card can be printed at the size of a bank card, front and back, with the code on the back | Should | Launch | Built (**M-47**) |
 | FR-PRF-05 | The owner can correct a person's name and a child's birth date | Must | Launch | Built (**M-48**, **M-50**) |
+| FR-EMG-08 | A card that is on and has not been saved or checked for a year is flagged to its owner in the app, and the owner is mailed once a year (neutral wording, no mention of what is on it) until they look at it | Should | Launch | Built (**M-47**) |
+| FR-EMG-09 | The owner can replace a card's code if the printed one is lost: the old address stops opening at once and a new one is made; a code that holds the card itself cannot be replaced, and the page says so | Should | Launch | Built (**M-47**) |
 | FR-EMG-05 | The owner turns the card off and its address stops opening; the interface says a card already seen may have been copied | Must | Launch | Built |
 
 ## Technical requirements

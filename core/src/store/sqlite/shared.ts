@@ -34,7 +34,7 @@ const REQUEST = 'id, bundle_id, visitor_key, status, wrapped_key, note, country,
 
 export function sharedRepository(db: Database): SharedRepository {
   const get = db.prepare(`SELECT ${BUNDLE} FROM shared_bundles WHERE id = ?`);
-  const insert = db.prepare('INSERT INTO shared_bundles (id, user_id, created_at, expires_at, require_approval, size, blobs, blob_bytes, kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+  const insert = db.prepare('INSERT INTO shared_bundles (id, user_id, created_at, expires_at, require_approval, size, blobs, blob_bytes, kind, reviewed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
   const cards = db.prepare("SELECT COUNT(*) AS n FROM shared_bundles WHERE user_id = ? AND kind = 'card' AND revoked_at IS NULL");
   const replace = db.prepare('UPDATE shared_bundles SET expires_at = ?, require_approval = ?, size = ?, blobs = ?, blob_bytes = ? WHERE id = ? AND user_id = ?');
   const usage = db.prepare("SELECT COUNT(*) AS bundles, COALESCE(SUM(size + blob_bytes), 0) AS bytes FROM shared_bundles WHERE user_id = ? AND kind = 'share' AND revoked_at IS NULL AND expires_at > ?");
@@ -47,11 +47,13 @@ export function sharedRepository(db: Database): SharedRepository {
     if (!have) {
       // A card for each person the account keeps records for, and no more than a plan could have people.
       if (b.kind === 'card' && (cards.get(userId) as { n: number }).n >= MAX_CARDS) return 'too_many_cards' as const;
-      insert.run(b.id, userId, now, b.expiresAt, b.requireApproval ? 1 : 0, b.size, b.blobs, b.blobBytes, b.kind ?? 'share');
+      insert.run(b.id, userId, now, b.expiresAt, b.requireApproval ? 1 : 0, b.size, b.blobs, b.blobBytes, b.kind ?? 'share', b.kind === 'card' ? now : null);
       return 'ok' as const;
     }
     if (have.user_id !== userId) return 'taken' as const;
     if (have.revoked_at) return 'revoked' as const;
+    // Sending a card again is looking at it: the year for the reminder starts over.
+    if (have.kind === 'card') db.prepare('UPDATE shared_bundles SET reviewed_at = ?, reminded_at = NULL WHERE id = ?').run(now, b.id);
     replace.run(b.expiresAt, b.requireApproval ? 1 : 0, b.size, b.blobs, b.blobBytes, b.id, userId);
     return 'ok' as const;
   });
@@ -80,6 +82,15 @@ export function sharedRepository(db: Database): SharedRepository {
     },
     async put(userId, bundle, now) {
       return putTx(userId, bundle, now);
+    },
+    async touchCard(userId, id, now) {
+      return db.prepare("UPDATE shared_bundles SET reviewed_at = ?, reminded_at = NULL WHERE id = ? AND user_id = ? AND kind = 'card' AND revoked_at IS NULL").run(now, id, userId).changes === 1;
+    },
+    async cardsToRemind(reviewedBefore, remindedBefore) {
+      return (db.prepare("SELECT id, user_id FROM shared_bundles WHERE kind = 'card' AND revoked_at IS NULL AND COALESCE(reviewed_at, created_at) < ? AND (reminded_at IS NULL OR reminded_at < ?)").all(reviewedBefore, remindedBefore) as Array<{ id: string; user_id: string }>).map(r => ({ id: r.id, userId: r.user_id }));
+    },
+    async markReminded(id, now) {
+      db.prepare('UPDATE shared_bundles SET reminded_at = ? WHERE id = ?').run(now, id);
     },
     async addBlob(userId, id, bytes) {
       return db.prepare('UPDATE shared_bundles SET blobs = blobs + 1, blob_bytes = blob_bytes + ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL').run(bytes, id, userId).changes === 1;

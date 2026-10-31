@@ -5,7 +5,7 @@ import type { UserRecord } from './store/index.js';
  * a checkbox that is gone). Change the text in `docs/legal/` and raise the version, and everyone is asked again at their next
  * sign-in, because the consent they gave was to the old words.
  */
-export const HEALTH_CONSENT_VERSION = '2026-11-07';
+export const HEALTH_CONSENT_VERSION = '2026-11-08';
 export const TERMS_VERSION = '2026-11-06';
 
 export type ConsentNeed = { health: boolean; terms: boolean };

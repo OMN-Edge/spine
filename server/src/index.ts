@@ -24,7 +24,7 @@ import { vaultRoutes } from './routes/vault.js';
 import { relayRoutes } from './routes/relay.js';
 import { demoRelayRoutes } from './routes/demo-relay.js';
 import { trustAnchorRoutes } from './routes/trust-anchors.js';
-import { sharedRoutes, shareShellRoutes, sweepShares } from './routes/shared.js';
+import { remindCardReviews, sharedRoutes, shareShellRoutes, sweepShares } from './routes/shared.js';
 import { sweepSessions } from './sessions.js';
 import { decorateAuth } from 'spine-core/routes/middleware.js';
 import { getAccountsStore } from 'spine-core/store/index.js';
@@ -168,6 +168,10 @@ if (accounts.length === 0) {
 const sweep = () => sweepShares().catch(err => app.log.error({ err: err instanceof Error ? err.message : String(err) }, 'removing ended shares failed'));
 await sweep();
 setInterval(() => void sweep(), 60 * 60 * 1000).unref();
+// The yearly reminder about an emergency card nobody has looked at: at start, and hourly.
+const remind = () => remindCardReviews().catch(err => app.log.error({ err: err instanceof Error ? err.message : String(err) }, 'reminding about cards failed'));
+await remind();
+setInterval(() => void remind(), 60 * 60 * 1000).unref();
 // Ended sign-ins (browser and address) are deleted for every account the same way, so none outlives its 14 days because its owner never came back.
 const sweepSignIns = () => sweepSessions().catch(err => app.log.error({ err: err instanceof Error ? err.message : String(err) }, 'removing ended sign-ins failed'));
 await sweepSignIns();

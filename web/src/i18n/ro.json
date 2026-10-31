@@ -1480,5 +1480,14 @@
  "Put it on the card": "Pune pe card",
  "Add a detail": "Adaugă o dată",
  "Print a card-sized copy": "Tipărește o copie de mărimea unui card",
- "Could not save this change": "Modificarea nu a putut fi salvată"
+ "Could not save this change": "Modificarea nu a putut fi salvată",
+ "It has been over a year since this card was checked.": "A trecut mai mult de un an de când a fost verificat acest card.",
+ "Medicines, allergies and phone numbers change. Look it over, change what is out of date, then say it is still right.": "Medicamentele, alergiile și numerele de telefon se schimbă. Citește-l, schimbă ce nu mai e valabil, apoi spune că este în continuare corect.",
+ "It is still right": "Este în continuare corect",
+ "Last checked {when}": "Ultima verificare: {when}",
+ "Lost the card?": "Ai pierdut cardul?",
+ "Make a new code: the old one stops opening the card at once, and you print the new one. A code that holds the card itself (the one that works with no signal) cannot be replaced, so do not print that one if you might lose it.": "Fă un cod nou: cel vechi nu mai deschide cardul imediat, iar tu îl tipărești pe cel nou. Un cod care conține chiar cardul (cel care funcționează fără semnal) nu poate fi înlocuit, așa că nu-l tipări pe acela dacă l-ai putea pierde.",
+ "Could not make a new code": "Codul nou nu a putut fi făcut",
+ "Yes, turn the old code off and make a new one": "Da, oprește codul vechi și fă unul nou",
+ "Make a new code": "Fă un cod nou"
 }

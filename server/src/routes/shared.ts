@@ -7,7 +7,7 @@ import { accountEntitlements, liveSharesFor } from '../billing/entitlements.js';
 import { SHARE_ID, readBlob, readBundle, removeBlobs, removeShare, writeBlob, writeBundle } from '../shared-files.js';
 import { requireAuth } from 'spine-core/routes/middleware.js';
 import { countryOf } from '../geo.js';
-import { accessRequestMail, cardOpenedMail } from '../accounts.js';
+import { accessRequestMail, cardOpenedMail, cardReviewMail } from '../accounts.js';
 import { getMailer } from '../mail/index.js';
 import { publicUrl } from 'spine-core/config.js';
 import { issueToken } from '../relay/token.js';
@@ -50,11 +50,33 @@ const PASS_MS = 10 * 60 * 1000;
 /** A card has no end of its own; this is the time the store holds for it. Its owner turns it off. */
 const CARD_NO_END = '9999-12-31T00:00:00.000Z';
 const CARD_MAX_BYTES = 64 * 1024;
+const CARD_REVIEW_MS = 365 * 24 * 60 * 60 * 1000;
 /** An owner is told of a card being opened at most this often, however often it is. */
 const CARD_MAIL_EVERY_MS = 15 * 60 * 1000;
 const cardMailed = new Map<string, number>();
 
 export const SHARE_PASS_MS = 2 * 60 * 1000;
+
+/**
+ * The yearly reminder about an emergency card (FR-EMG-08): the owner of a card not sent or reviewed for a year is mailed once, neutrally, and
+ * again a year after that if still nothing. The server knows only the date; it cannot see what is on the card. With no mailer nothing is
+ * sent (the page asks the owner itself). Run at start and hourly.
+ */
+export async function remindCardReviews(now = new Date()): Promise<number> {
+  const mailer = getMailer();
+  if (!mailer.enabled) return 0;
+  const store = getAccountsStore();
+  const year = new Date(now.getTime() - CARD_REVIEW_MS).toISOString();
+  let sent = 0;
+  for (const due of await store.shared.cardsToRemind(year, year)) {
+    const owner = await store.users.findById(due.userId);
+    if (!owner) continue;
+    // Marked first: a mail that fails is not tried every hour, and the next year's reminder is the retry.
+    await store.shared.markReminded(due.id, now.toISOString());
+    await mailer.send(cardReviewMail(owner.email)).then(() => { sent++; }, () => undefined);
+  }
+  return sent;
+}
 
 /** Deletes the files of every share that has ended, and the rows long after. Run at start, hourly, and by a visit to an ended one. */
 export async function sweepShares(now = new Date()): Promise<number> {
@@ -118,6 +140,12 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     await removeBlobs(id);
     await writeBundle(id, req.body);
     return reply.status(201).send({ ok: true });
+  });
+
+  // The owner says their card is still right: the year for the reminder starts over. (Sending the card again does the same.)
+  app.post<{ Params: { id: string } }>('/api/shared/:id/review', { preHandler: requireAuth }, async (req, reply) => {
+    if (!SHARE_ID.test(req.params.id) || !(await getAccountsStore().shared.touchCard(req.userId, req.params.id, new Date().toISOString()))) return reply.status(404).send({ error: 'not found' });
+    return reply.send({ ok: true });
   });
 
   app.put<{ Params: { id: string; n: string }; Body: Buffer }>('/api/shared/:id/blob/:n', { preHandler: requireAuth }, async (req, reply) => {

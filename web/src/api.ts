@@ -623,6 +623,9 @@ export interface BillingView {
 export interface EmergencyView {
   card: import('spine-core/emergency').CardContent;
   updated_at: string | null;
+  /** When the card was last saved or said to be still right; a year later `review_due` is set. */
+  reviewed_at: string | null;
+  review_due: boolean;
   published: { id: string; address: string; since: string | null } | null;
   /** The card as the plain text an offline code holds, and how many items did not fit. */
   offline: { text: string; omitted: number };
@@ -635,6 +638,10 @@ export const api = {
     save: (card: import('spine-core/emergency').CardContent) => put<EmergencyView>('/api/emergency', card),
     publish: () => post<EmergencyView>('/api/emergency/publish', undefined),
     unpublish: () => del<EmergencyView>('/api/emergency/publish'),
+    /** The owner looked and it is still right. */
+    reviewed: () => post<EmergencyView>('/api/emergency/reviewed', undefined),
+    /** A new code for the card (the old one is turned off first), for when the printed one is lost. */
+    replace: () => post<EmergencyView>('/api/emergency/replace', undefined),
   },
   billing: {
     pricing: () => req<Pricing>('/api/pricing'),

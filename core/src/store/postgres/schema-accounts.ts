@@ -147,9 +147,13 @@ CREATE TABLE IF NOT EXISTS shared_bundles (
   blobs INTEGER NOT NULL DEFAULT 0,
   blob_bytes BIGINT NOT NULL DEFAULT 0,
   revoked_at TEXT,
-  kind TEXT NOT NULL DEFAULT 'share' -- 'share' | 'card' (the owner's emergency card: one, with no end)
+  kind TEXT NOT NULL DEFAULT 'share', -- 'share' | 'card' (an emergency card, with no end)
+  reviewed_at TEXT, -- a card: when its owner last sent it or said it is still right
+  reminded_at TEXT -- a card: when the yearly reminder was last sent
 );
 ALTER TABLE shared_bundles ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'share';
+ALTER TABLE shared_bundles ADD COLUMN IF NOT EXISTS reviewed_at TEXT;
+ALTER TABLE shared_bundles ADD COLUMN IF NOT EXISTS reminded_at TEXT;
 
 CREATE TABLE IF NOT EXISTS shared_requests (
   id TEXT PRIMARY KEY,

@@ -50,16 +50,27 @@ export function sharedRepository(q: Query, begin: Begin): SharedRepository {
             await run('SELECT 1 FROM users WHERE id = $1 FOR UPDATE', [userId]);
             if (Number((await one<{ n: number }>(run, "SELECT COUNT(*) AS n FROM shared_bundles WHERE user_id = $1 AND kind = 'card' AND revoked_at IS NULL", [userId]))!.n) >= MAX_CARDS) return 'too_many_cards' as const;
           }
-          await run('INSERT INTO shared_bundles (id, user_id, created_at, expires_at, require_approval, size, blobs, blob_bytes, kind) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)', [b.id, userId, now, b.expiresAt, b.requireApproval ? 1 : 0, b.size, b.blobs, b.blobBytes, b.kind ?? 'share']);
+          await run('INSERT INTO shared_bundles (id, user_id, created_at, expires_at, require_approval, size, blobs, blob_bytes, kind, reviewed_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)', [b.id, userId, now, b.expiresAt, b.requireApproval ? 1 : 0, b.size, b.blobs, b.blobBytes, b.kind ?? 'share', b.kind === 'card' ? now : null]);
           return 'ok' as const;
         }
         if (have.user_id !== userId) return 'taken' as const;
         if (have.revoked_at) return 'revoked' as const;
+        // Sending a card again is looking at it: the year for the reminder starts over.
+        if (have.kind === 'card') await run('UPDATE shared_bundles SET reviewed_at = $1, reminded_at = NULL WHERE id = $2', [now, b.id]);
         await run('UPDATE shared_bundles SET expires_at = $1, require_approval = $2, size = $3, blobs = $4, blob_bytes = $5 WHERE id = $6 AND user_id = $7', [b.expiresAt, b.requireApproval ? 1 : 0, b.size, b.blobs, b.blobBytes, b.id, userId]);
         return 'ok' as const;
       });
     },
 
+    async touchCard(userId, id, now) {
+      return (await changed(q, "UPDATE shared_bundles SET reviewed_at = $1, reminded_at = NULL WHERE id = $2 AND user_id = $3 AND kind = 'card' AND revoked_at IS NULL", [now, id, userId])) === 1;
+    },
+    async cardsToRemind(reviewedBefore, remindedBefore) {
+      return (await many<{ id: string; user_id: string }>(q, "SELECT id, user_id FROM shared_bundles WHERE kind = 'card' AND revoked_at IS NULL AND COALESCE(reviewed_at, created_at) < $1 AND (reminded_at IS NULL OR reminded_at < $2)", [reviewedBefore, remindedBefore])).map(r => ({ id: r.id, userId: r.user_id }));
+    },
+    async markReminded(id, now) {
+      await q('UPDATE shared_bundles SET reminded_at = $1 WHERE id = $2', [now, id]);
+    },
     async addBlob(userId, id, bytes) {
       return (await changed(q, 'UPDATE shared_bundles SET blobs = blobs + 1, blob_bytes = blob_bytes + $1 WHERE id = $2 AND user_id = $3 AND revoked_at IS NULL', [bytes, id, userId])) === 1;
     },

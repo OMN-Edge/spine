@@ -916,6 +916,13 @@ A person with a phone scans the code and sees the card in their language (the la
 
 Status: auto (`emergency`); the page and a real scan: not yet checked by hand or on a phone.
 
+### 14.2b A year on, and a lost card
+A card that is on and has not been saved or checked for a year shows a notice at the top of its page ("It has been over a year since this card was checked"), and the owner is mailed once, without a word about what is on it. Saving the card or "It is still right" starts the year over; the page says when it was last checked. Nothing is turned off by age.
+
+If the printed card is lost, "Make a new code" turns the old address off at once and makes a new one to print. The code that holds the card itself cannot be replaced, and the page says so where it is offered.
+
+Status: auto (`emergency`: the prompt, the yearly mail and its limits, the replacement and its failures); real browser: the new code (`check:app`); the year passing: tested with dates, not waited for.
+
 ### 14.3 The code with no signal
 An optional second code holds the card as plain text (the most urgent first). The page says anyone who sees it reads the card and that it cannot be turned off or counted, and says how many items did not fit.
 

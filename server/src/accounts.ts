@@ -101,6 +101,17 @@ export function cardOpenedMail(to: string, at: string, country: string | null): 
   };
 }
 
+/** Once a year, for a card not looked at: it names nothing that is on it, and the mail is the provider's to see (SECURITY.md P8). */
+export function cardReviewMail(to: string): MailMessage {
+  return {
+    to,
+    subject: 'A reminder about your Spine card',
+    text:
+      `It has been a year since you last looked at your Spine card.\n\n` +
+      `Sign in, open the card and check that it is still right. If you do nothing it stays as it is, and we will write once more next year.\n`,
+  };
+}
+
 export function accessRequestMail(to: string, link: string, requestedAt: string, ip: string | null): MailMessage {
   return {
     to,
