@@ -3,7 +3,7 @@ import { ModelBudgetError } from '../llm/budget.js';
 import { v4 as uuidv4 } from 'uuid';
 import { requireAuth } from './middleware.js';
 import { streamReply } from './ndjson.js';
-import { acceptParts, AttachRefused } from '../ingestion/accept-parts.js';
+import { acceptParts, acceptPhotoParts, AttachRefused } from '../ingestion/accept-parts.js';
 import { chatEnabled } from '../config.js';
 import { getStore } from '../store/index.js';
 import { MAX_MESSAGES } from '../store/types.js';
@@ -46,14 +46,16 @@ export async function chatRoutes(app: HttpApp) {
   // A file attached in the chat (pasted, dropped or chosen): the ordinary upload, tied to the conversation it was attached in, so what
   // happens to it (read, found, needs checking) is reported there (SECURITY.md M-25). A `conversation_id` field sent before the files
   // names the conversation; without one a new conversation is started. Nothing is read from the message: the file is the upload route's.
-  app.post('/api/chat/attachments', async (req, reply) => {
+  // `?photos=1`: the files are the pages of one scanned document (the Scan screen), accepted as a photo set, not as separate uploads.
+  app.post<{ Querystring: { photos?: string } }>('/api/chat/attachments', async (req, reply) => {
     if (!chatEnabled()) return reply.status(409).send({ error: 'asking questions is switched off' });
     const store = getStore();
     let conversationId: string | null = null;
     let startedHere = false;
     let results: Awaited<ReturnType<typeof acceptParts>>;
     try {
-      results = await acceptParts(req.userId, req.parts(), {
+      const accept = req.query.photos === '1' ? acceptPhotoParts : acceptParts;
+      results = await accept(req.userId, req.parts(), {
         conversationFor: async fields => {
           const named = fields.conversation_id;
           if (named !== undefined) {

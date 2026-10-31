@@ -4,6 +4,7 @@ import { tmpdir } from 'os';
 import path from 'path';
 import { RunnableLambda } from '@langchain/core/runnables';
 import { buildChatLlm } from '../llm/chat-llm.js';
+import { useNativeTools, type NativeTools } from '../native-tools.js';
 import type { ChatLlmConfig, LlmTask, TaskClients } from '../llm/index.js';
 
 /**
@@ -47,6 +48,22 @@ function llmReturning(answer: unknown) {
 }
 
 describe('readPage', () => {
+  it('sends a shrunk JPEG, not the stored PNG, so a photographed page is a request a phone can carry', async () => {
+    const asked: Array<{ maxSide: number; maxPixels: number }> = [];
+    useNativeTools({ uprightJpeg: async (_src: string, options: { maxSide: number; maxPixels: number }) => { asked.push(options); return { jpeg: Buffer.from('small-jpeg'), width: 10, height: 10, channels: 3 }; } } as unknown as NativeTools);
+    try {
+      const { llm, received } = llmReturning({ regions: [] });
+      await llm.readPage(page('a-very-large-png'));
+      const image = (received[0] as Array<{ content: Array<Record<string, any>> }>)[0].content[1];
+      expect(image.image_url.url).toBe(`data:image/jpeg;base64,${Buffer.from('small-jpeg').toString('base64')}`);
+      expect(asked[0].maxSide).toBeLessThanOrEqual(2000);
+      // The pixel count is the tool's guard against opening a picture, not the size sent: a page photographed at a few megapixels must pass it.
+      expect(asked[0].maxPixels).toBeGreaterThanOrEqual(50_000_000);
+    } finally {
+      useNativeTools(null);
+    }
+  });
+
   it('sends the page as a base64 image block next to the instructions', async () => {
     const { llm, received } = llmReturning({ regions: [] });
     await llm.readPage(page('fake-png-bytes'));

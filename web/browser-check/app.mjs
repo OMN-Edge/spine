@@ -550,7 +550,8 @@ try {
     const downloads = fs.mkdtempSync(path.join(os.tmpdir(), 'spine-app-check-downloads-'));
     const cdp = await p.createCDPSession();
     await cdp.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: downloads });
-    await click('Upload');
+    // Export is in Account (Your data), not on Upload.
+    await p.evaluate(() => { history.pushState(null, '', '/account'); dispatchEvent(new PopStateEvent('popstate')); });
     await waitFor('Export everything');
     await click('Export everything');
     await wait(1500);
@@ -608,7 +609,7 @@ try {
       const exportAgain = async label => {
       const cdp2 = await browser.target().createCDPSession(); // downloads are set per browser context, from the browser itself
       const takeZip = async () => {
-        await click2('Upload');
+        await q.evaluate(() => { history.pushState(null, '', '/account'); dispatchEvent(new PopStateEvent('popstate')); });
         await waitFor2('Export everything');
         const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'spine-app-check-downloads-'));
         await cdp2.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: folder, browserContextId: context2.id });

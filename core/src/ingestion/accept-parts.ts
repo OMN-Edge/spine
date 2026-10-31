@@ -83,14 +83,25 @@ export async function acceptParts(
  * Each is saved to a name of its own and checked by what is in it; if any is not a photo, is too large, or the operator has not
  * allowed images to be read by a model, nothing is made and the one result says why.
  */
-export async function acceptPhotoParts(userId: string, parts: AsyncIterable<Part>): Promise<Array<UploadOutcome | Record<string, unknown>>> {
+export async function acceptPhotoParts(
+  userId: string,
+  parts: AsyncIterable<Part>,
+  options: { conversationFor?: (fields: Record<string, string>) => Promise<string | null> } = {},
+): Promise<Array<UploadOutcome | Record<string, unknown>>> {
+  const fields: Record<string, string> = {};
+  let asked = false;
   const saved: Array<{ path: string; filename: string | null }> = [];
   // A scan session also sends each photo as it was taken, before straightening, in the same order, as `originals` (FR-ING-09).
   const raws: Array<{ path: string }> = [];
   let refusal: Record<string, unknown> | null = null;
   try {
     for await (const part of parts) {
-      if (part.type !== 'file') continue;
+      if (part.type !== 'file') {
+        if (typeof part.value === 'string') fields[part.fieldname] = part.value;
+        continue;
+      }
+      // As in `acceptParts`: asked once, when the first file arrives, so a chat can name its conversation and be refused before anything is saved.
+      if (!asked) { asked = true; await options.conversationFor?.(fields); }
       if (part.fieldname === 'originals') {
         if (raws.length >= MAX_PHOTOS_IN_SET) { void drain(part.file); continue; }
         const { filePath } = newUploadPath(userId, '.raw');

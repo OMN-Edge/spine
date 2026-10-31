@@ -768,12 +768,14 @@ export const api = {
     conversation: (id: string) => req<ConversationSummary & { messages: StoredMessage[] }>(`/api/chat/conversations/${id}`),
     unread: () => req<{ count: number }>('/api/chat/unread'),
     /** Attach files: the ordinary upload, tied to a conversation (a new one if none is named), which then hears what happens to them. */
-    attach: async (files: File[], conversationId: string | null): Promise<{ conversation: { id: string; title: string }; files: AttachedFile[] }> => {
+    attach: async (files: File[], conversationId: string | null, scan?: { originals: File[] }): Promise<{ conversation: { id: string; title: string }; files: AttachedFile[] }> => {
       const form = new FormData();
       // The conversation goes first: the server reads it before the first file arrives.
       if (conversationId) form.append('conversation_id', conversationId);
       for (const file of files) form.append('files', file, file.name);
-      const res = await appFetch('/api/chat/attachments', { method: 'POST', body: form });
+      // A scanned document: the files are its pages, and the photos as taken follow as `originals`.
+      for (const file of scan?.originals ?? []) form.append('originals', file, file.name);
+      const res = await appFetch(scan ? '/api/chat/attachments?photos=1' : '/api/chat/attachments', { method: 'POST', body: form });
       if (!res.ok) {
         const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string; code?: string };
         throw new ApiError(err.error ?? res.statusText, res.status, err.code);
@@ -888,7 +890,7 @@ export const api = {
     /** One upload's pages and how they are grouped into documents. */
     get: (id: string) => req<UploadLayout>(`/api/source-files/${id}`),
     status: (id: string) =>
-      req<{ status: string; progress: number; step: string; error?: string; grouping_confirmed?: boolean; documents: UploadDocument[] }>(`/api/source-files/${id}/status`),
+      req<{ status: string; progress: number; step: string; error?: string; grouping_confirmed?: boolean; reading?: boolean; documents: UploadDocument[] }>(`/api/source-files/${id}/status`),
     capabilities: () =>
       req<{
         aiReading: { enabled: boolean; provider: string; endpoint: string | null };
@@ -920,12 +922,6 @@ export const api = {
       for (const f of pages) form.append('files', f);
       for (const f of originals) form.append('originals', f);
       return appFetch('/api/source-files/upload-photos', { method: 'POST', body: form }).then(r => r.json() as Promise<Array<{ id?: string; reason?: string }>>);
-    },
-    /** Several photos of one document, in the order given: one upload whose pages they are. */
-    uploadPhotos: (files: File[]) => {
-      const form = new FormData();
-      for (const f of files) form.append('files', f);
-      return appFetch('/api/source-files/upload-photos', { method: 'POST', body: form }).then(r => r.json());
     },
   },
 

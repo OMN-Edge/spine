@@ -8,6 +8,7 @@ import { normalisePhoto } from './photo.js';
 import { readsByModel } from '../file-kind.js';
 import { logger } from '../logger.js';
 import { announceUploadLater } from '../chat/notices.js';
+import { startReadingUpload } from './read-upload.js';
 import { aiReadingAllowed, getModelParser, getParser } from '../parser/index.js';
 import { checkContinuation } from './continuation.js';
 import { llmConcurrency } from '../config.js';
@@ -178,7 +179,9 @@ async function runPipeline(
     job.status = 'done';
     job.progress = 100;
     job.step = 'complete';
-    announceUploadLater(userId, sourceFileId);
+    // One page is one document: there is no grouping to check, so it is read and shown at once (the report says so when that is over).
+    if (documentRanges.length === 1 && documentRanges[0].start === documentRanges[0].end) startReadingUpload(userId, sourceFileId, true);
+    else announceUploadLater(userId, sourceFileId);
   } catch (err) {
     const msg = describeError(err);
     logger.error('an upload failed', { sourceFileId, error: msg });

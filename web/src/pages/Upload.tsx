@@ -1,7 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api, type UploadDocument, type UploadSummary } from '../api';
 import SpineLog, { type VertebraState } from '../components/SpineLog';
+import { failureKind } from 'spine-core/failure-kind';
 import { documentTitle } from '../titles';
 import { whereTo } from '../components/aiTarget';
 import DeleteUpload from '../components/DeleteUpload';
@@ -51,6 +52,8 @@ interface JobState {
   hiddenDocuments?: number;
   /** False while the owner has not confirmed how the pages were grouped. */
   groupingConfirmed?: boolean;
+  /** Its documents are being read, after which the grouping is confirmed (a one-page upload is read without asking). */
+  reading?: boolean;
 }
 
 /** A row for an upload the server already knows about. */
@@ -91,6 +94,14 @@ function heading(job: JobState, i18n: I18n): string {
   if (job.status === 'done') return job.hiddenDocuments ? t('All documents hidden') : t('No documents found');
   return t('Reading document…');
 }
+
+/** What a person is told about a failed upload: what happened and what to do, never the technical message. */
+const FAILURE_TEXT = {
+  reading_off: msg('Photos cannot be read here, because reading them with AI is switched off. A PDF with text in it works.'),
+  limit: msg('The limit on reading for today has been reached. Try again tomorrow.'),
+  service: msg('The reading service could not be reached. Try again in a moment.'),
+  other: msg('This upload could not be read. Try again in a moment.'),
+} as const;
 
 const STATUS_NAME: Record<string, string> = { done: msg('done'), error: msg('error'), duplicate: msg('duplicate'), processing: msg('processing'), pending: msg('pending') };
 
@@ -141,14 +152,15 @@ function UploadRow({ job, onRetry, onDeleted }: { job: JobState; onRetry: () => 
           )}
         </ul>
       )}
-      {job.status === 'done' && job.groupingConfirmed === false && (job.documents.length > 0 || !!job.hiddenDocuments) && (
+      {job.status === 'done' && job.reading && <p className="mt-1 text-xs text-gray-400">{t('Reading document…')}</p>}
+      {job.status === 'done' && !job.reading && job.groupingConfirmed === false && (job.documents.length > 0 || !!job.hiddenDocuments) && (
         <div role="status" className="mt-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-900 flex flex-wrap items-center justify-between gap-2">
           <span>{t('Check how the pages were grouped. These documents stay out of your timeline, search and shares until you confirm it.')}</span>
           <Link to={`/uploads/${job.fileId}`} className="shrink-0 rounded-full bg-brand-600 px-3 py-1 font-medium text-white hover:bg-brand-700">{t('Check the grouping')}</Link>
         </div>
       )}
       {job.documents.length === 0 && <p className="text-xs text-gray-400 mt-0.5">{job.step}</p>}
-      {job.status === 'error' && <p className="text-xs text-red-500 mt-1">{t('This upload could not be read. Try again, and if it keeps failing the browser console says why.')}</p>}
+      {job.status === 'error' && <p className="text-xs text-red-500 mt-1">{t(FAILURE_TEXT[failureKind(job.error)])}</p>}
       {(job.documents.length > 0 || !!job.hiddenDocuments || job.status === 'done' || job.status === 'error') && (
         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
           {job.status === 'error' && (
@@ -201,6 +213,7 @@ function DemoUploadNotice({ limits, used, agreed, agree }: { limits: { uploads: 
 export default function Upload() {
   const i18n = useI18n();
   const { t } = i18n;
+  const navigate = useNavigate();
   const { demo, demoUploads, demoAgreed, agreeDemo } = useAuth();
   // The visitor's own files in the demo; the sample records are not among them.
   const [ownUploads, setOwnUploads] = useState(0);
@@ -229,8 +242,9 @@ export default function Upload() {
     const interval = setInterval(async () => {
       try {
         const s = await api.sourceFiles.status(fileId);
-        update(key, { status: s.status, progress: s.progress, step: s.step, error: s.error, documents: s.documents ?? [], groupingConfirmed: s.grouping_confirmed ?? true });
-        if (s.status === 'done' || s.status === 'error') clearInterval(interval);
+        update(key, { status: s.status, progress: s.progress, step: s.step, error: s.error, documents: s.documents ?? [], groupingConfirmed: s.grouping_confirmed ?? true, reading: !!s.reading });
+        // Followed until the documents have been read too, so a grouping confirmed by that is not left asking.
+        if ((s.status === 'done' && !s.reading) || s.status === 'error') clearInterval(interval);
       } catch {
         clearInterval(interval);
       }
@@ -258,15 +272,12 @@ export default function Upload() {
           return [...prev, ...history.filter(u => !known.has(u.id)).map(fromHistory)];
         });
         for (const upload of history) {
-          if (upload.status === 'pending' || upload.status === 'processing') pollStatus(upload.id, upload.id);
+          // One waiting for its grouping may be being read right now (a one-page upload), so it is followed until that ends.
+          if (upload.status === 'pending' || upload.status === 'processing' || (upload.status === 'done' && upload.grouping_confirmed === false)) pollStatus(upload.id, upload.id);
         }
       })
       .catch(() => {});
   }, [pollStatus]);
-
-  // Several photos chosen together: asked whether they are pages of one document before anything is sent.
-  const [pending, setPending] = useState<{ photos: File[]; others: File[]; previews: string[] } | null>(null);
-  useEffect(() => () => { pending?.previews.forEach(url => URL.revokeObjectURL(url)); }, [pending]);
 
   const handleResults = useCallback((results: UploadResult[], replace = true) => {
     const newJobs: JobState[] = [];
@@ -294,24 +305,15 @@ export default function Upload() {
     countOwn();
   }, [pollStatus, update, t, countOwn]);
 
+  // Photos are scanned first: the page found, its corners moved if need be, then saved as one document (pages/Scan.tsx). Whatever else was chosen goes as it always did. The demo has no scanning, so its photos go as they are.
   const handleFiles = useCallback(async (fileList: FileList) => {
     const files = Array.from(fileList);
-    const photoFiles = photos?.enabled ? files.filter(f => f.type === 'image/jpeg' || f.type === 'image/png') : []; // a HEIC photo has no preview in a browser, so it goes as its own upload
-    if (photoFiles.length < 2) { handleResults(await api.sourceFiles.upload(files)); return; }
-    setPending({ photos: photoFiles, others: files.filter(f => !photoFiles.includes(f)), previews: photoFiles.map(f => URL.createObjectURL(f)) });
-  }, [photos?.enabled, handleResults]);
-
-  // The photos are pages of one document, or each its own; whatever else was chosen goes as it always did.
-  const sendPending = useCallback(async (together: boolean) => {
-    if (!pending) return;
-    const { photos: chosen, others } = pending;
-    setPending(null);
-    const results: UploadResult[] = [];
-    if (others.length > 0) results.push(...(await api.sourceFiles.upload(others)));
-    if (together) results.push(...(await api.sourceFiles.uploadPhotos(chosen)));
-    else results.push(...(await api.sourceFiles.upload(chosen)));
-    handleResults(results);
-  }, [pending, handleResults]);
+    const isPhoto = (f: File) => f.type === 'image/jpeg' || f.type === 'image/png'; // a HEIC photo has no preview in a browser, so it goes as its own upload
+    const photoFiles = demo ? [] : files.filter(isPhoto);
+    const others = files.filter(f => !photoFiles.includes(f));
+    if (others.length > 0) handleResults(await api.sourceFiles.upload(others));
+    if (photoFiles.length > 0) navigate('/scan', { state: { files: photoFiles } });
+  }, [demo, handleResults, navigate]);
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -358,30 +360,7 @@ export default function Upload() {
         />
       </div>
 
-      {!demo && (
-        <Link to="/scan" className="mt-3 block rounded-xl border border-gray-200 bg-white px-4 py-3 text-center text-sm font-medium text-brand-600 hover:bg-gray-50">{t('Scan with the camera')}</Link>
-      )}
       </>)}
-
-      {pending && (
-        <div role="group" aria-label={t('Photos')} className="mt-4 bg-white border border-gray-200 rounded-xl p-4">
-          <p className="text-sm font-medium text-gray-900">{t('You chose {n} photos. Are they pages of one document?', { n: pending.photos.length })}</p>
-          <p className="text-xs text-gray-500 mt-0.5">{t('As one document, they become its pages in this order.')}</p>
-          <ol className="mt-3 flex gap-2 overflow-x-auto pb-1">
-            {pending.previews.map((url, i) => (
-              <li key={url} className="relative shrink-0">
-                <img src={url} alt={t('Photo {n}', { n: i + 1 })} className="h-20 w-16 rounded-lg border border-gray-200 object-cover" />
-                <span className="absolute left-1 top-1 rounded-full bg-gray-900/80 px-1.5 text-[10px] font-medium text-white">{i + 1}</span>
-              </li>
-            ))}
-          </ol>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <button type="button" onClick={() => { void sendPending(true); }} className="rounded-full bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700">{t('One document')}</button>
-            <button type="button" onClick={() => { void sendPending(false); }} className="rounded-full border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">{t('Separate documents')}</button>
-            <button type="button" onClick={() => setPending(null)} className="px-2 py-1.5 text-sm text-gray-500 hover:text-gray-700">{t('Cancel')}</button>
-          </div>
-        </div>
-      )}
 
       {zips.length > 0 && (
         <div role="status" className="mt-4 bg-brand-50 border border-brand-200 rounded-xl p-3 text-sm text-brand-900 space-y-1">

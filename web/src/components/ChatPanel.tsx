@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../auth';
 import { type ChatSource, type ChatStep } from '../api';
 import { useI18n } from '../i18n';
 import { PAGE_NAMES, useChat } from './ChatProvider';
@@ -27,6 +28,8 @@ export default function ChatPanel() {
   const { t, tn } = useI18n();
   const nameOf = useSourceName();
   const chat = useChat();
+  const navigate = useNavigate();
+  const { demo } = useAuth();
   const [text, setText] = useState('');
   // Files waiting to be sent with the next message: pasted, dropped or chosen.
   const [files, setFiles] = useState<File[]>([]);
@@ -81,9 +84,13 @@ export default function ChatPanel() {
     else await chat.send(question);
   };
   // Pasting a file (a screenshot or a document copied in Finder or Files), dropping one, or choosing one all add it to the message.
+  // A photo is scanned first (pages/Scan.tsx: the page found, its corners moved if need be), as on the Upload page, so it goes there and not into the message; a HEIC photo has no preview in a browser and stays attached.
   const addFiles = (list: FileList | File[] | null | undefined) => {
-    const added = Array.from(list ?? []).filter(f => f.size > 0);
+    const chosen = Array.from(list ?? []).filter(f => f.size > 0);
+    const photos = demo ? [] : chosen.filter(f => f.type === 'image/jpeg' || f.type === 'image/png');
+    const added = chosen.filter(f => !photos.includes(f));
     if (added.length > 0) setFiles(prev => [...prev, ...added].slice(0, 20));
+    if (photos.length > 0) { chat?.setOpen(false); navigate('/scan', { state: { files: photos, conversationId: chat?.currentId ?? null, fromChat: true } }); }
   };
 
   if (!open) {

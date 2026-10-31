@@ -43,10 +43,3 @@ export function defaultQuad(width: number, height: number, margin = 0.08): Quad 
   const mx = width * margin; const my = height * margin;
   return [{ x: mx, y: my }, { x: width - mx, y: my }, { x: width - mx, y: height - my }, { x: mx, y: height - my }];
 }
-
-/** Whether two sightings of a page are the same one, held still: every corner within `tolerance` of the frame's long side. */
-export function steady(a: Quad | null, b: Quad | null, frame: { width: number; height: number }, tolerance = 0.015): boolean {
-  if (!a || !b) return false;
-  const limit = tolerance * Math.max(frame.width, frame.height);
-  return a.every((p, i) => Math.hypot(p.x - b[i].x, p.y - b[i].y) <= limit);
-}

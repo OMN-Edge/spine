@@ -144,9 +144,10 @@ Status: auto (`enrolment`, `crypto/enrolment`); a third browser let in with a co
 Status: auto (`own-account`, `accounts`); screens: hand.
 
 ### 2.1 Scan paper with the camera
-- Scan has a button that opens the phone's own camera (or a chosen photo); after each picture the page is found and the corners can be moved before it is straightened.
+- There is no Scan button: a photo, taken with the phone's own camera or chosen, goes to Scan from the Upload page's picker, and the page is found and the corners can be moved before it is straightened.
 - The four corners can be moved by hand; the page is then straightened and, unless turned off for that page, cleaned up (shadows and fading flattened, handwriting kept). All of it happens on the device.
-- Pages are taken one after another, then reviewed: reordered, removed, their corners redone, and saved as one document. The photos as taken are kept beside it.
+- Everything is on the one screen: the pages stay in view as they are added, and each can be moved, have its corners redone (a sheet over the same screen), be filtered or be removed in place; "Add a page" is at the end of them, and the set is saved as one document, which the grouping screen can split afterwards. The photos as taken are kept beside it.
+- Photos chosen on the Upload page, or attached in the chat, go to Scan first (one photo: its corners are shown; several: each is added with the page found in it). A photo attached in the chat comes back to that conversation after Save, and the report of reading it is written there (`POST /api/chat/attachments?photos=1`).
 - Where neither image reading nor local OCR is switched on, Scan says so instead of filling the archive with pages nobody can search.
 
 Status: auto (`scan`, web algorithms; `photo-set`); screens and the camera itself: hand.
@@ -718,7 +719,7 @@ The owner pastes a file (a PDF, a photo, or a zip of them; on a Mac or an iPhone
 Status: auto (`chat-attachments`); live (`journey.it.ts`); screens (paste, drop, progress): not yet checked by hand, and not on a phone.
 
 ### 12.2 The app tells me an upload is read
-When an upload's pages are read and grouped (or it fails), the conversation gets a message, written by the app and not by a model: the documents found by their page ranges, how many pages had no text, and whether the pages look cut from mixed pages. Nothing has been read from the documents yet. When the owner confirms the grouping the documents are read (once), and a second message says what came out: the documents, how many have no date, **which doctors it added and which it found already there, which tests no other document has**. If the panel is closed the Ask button shows a badge and a note beside it that opens the conversation.
+When an upload's pages are read and grouped (or it fails), the conversation gets a message, written by the app and not by a model: the documents found by their page ranges, how many pages had no text, and whether the pages look cut from mixed pages. Nothing has been read from the documents yet. (An upload of one page, such as a photo, skips this: it is read at once and only the second message is written.) When the owner confirms the grouping the documents are read (once), and a second message says what came out: the documents, how many have no date, **which doctors it added and which it found already there, which tests no other document has**. If the panel is closed the Ask button shows a badge and a note beside it that opens the conversation.
 
 - Buttons offer the likely next steps: *What was read from it?*, *The grouping looks right*, *Read the empty pages again*, and, if the pages look mixed, **Check the pages with AI** (12.4), with what it sends beside it.
 - The grouping still waits for the owner: until they confirm it the documents are out of the timeline and search.
