@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import '@fontsource/ibm-plex-mono/400.css';
 import '@fontsource/ibm-plex-mono/500.css';
-import { api } from '../api';
+import { api, type AuthOptions } from '../api';
 import { useAuth } from '../auth';
 import { LogoMark } from '../components/Logo';
 import { LanguageSwitcher, useI18n } from '../i18n';
@@ -20,13 +20,15 @@ import { BUILD_COMMIT } from '../build-info';
  */
 export default function Landing() {
   const { t } = useI18n();
-  const [registration, setRegistration] = useState<'operator' | 'open'>('operator');
+  const [options, setOptions] = useState<Pick<AuthOptions, 'registration' | 'instance'>>({ registration: 'operator', instance: 'public' });
 
   useEffect(() => {
-    api.auth.options().then(o => setRegistration(o.registration)).catch(() => {});
+    api.auth.options().then(o => setOptions({ registration: o.registration, instance: o.instance })).catch(() => {});
   }, []);
 
-  const open = registration === 'open';
+  const open = options.registration !== 'operator';
+  const asks = options.registration === 'approval';
+  const priv = options.instance === 'private';
 
   return (
     <div className="min-h-screen bg-paper text-ink antialiased">
@@ -55,7 +57,8 @@ export default function Landing() {
               <p className="mt-6 max-w-xl text-lg leading-relaxed text-ink/70">
                 {t('Spine keeps your scans, results and letters, reads out the dates, values and doctors in them, and lets you show a doctor exactly what you choose, for as long as you choose.')}
               </p>
-              <Actions open={open} className="mt-9" />
+              <Actions open={open} asks={asks} className="mt-9" />
+              {priv && <p className="mt-4 text-sm text-ink/60">{t('This is a private Spine. Accounts are approved by its administrator.')}</p>}
               <p className="mt-5 text-sm">
                 <a href="#protection" className="text-accent underline decoration-accent/30 underline-offset-4 hover:decoration-accent">{t('How your records are protected')}</a>
               </p>
@@ -123,7 +126,7 @@ export default function Landing() {
         <section className="border-t border-ink/10">
           <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-8 px-4 py-20 sm:px-6 lg:flex-row lg:items-end">
             <h2 className="text-[clamp(2.2rem,4.4vw,3.6rem)] font-light leading-[1.05] tracking-[-0.025em]">{t('Start with your own records.')}</h2>
-            <Actions open={open} />
+            <Actions open={open} asks={asks} />
           </div>
         </section>
       </main>
@@ -153,7 +156,7 @@ const FAINT = 'rgb(var(--ink) / 0.14)';
 const ACCENT = 'rgb(var(--accent))';
 
 /** Signing up or in, and the demo: the app itself with invented records, in this browser only, with no account. */
-function Actions({ open, className = '' }: { open: boolean; className?: string }) {
+function Actions({ open, asks, className = '' }: { open: boolean; asks: boolean; className?: string }) {
   const { t, lang } = useI18n();
   const { startDemo } = useAuth();
   const navigate = useNavigate();
@@ -169,7 +172,7 @@ function Actions({ open, className = '' }: { open: boolean; className?: string }
   return (
     <div className={className}>
       <div className="flex flex-wrap gap-3">
-        {open && <Link to="/register" className={solid}>{t('Create an account')}</Link>}
+        {open && <Link to="/register" className={solid}>{asks ? t('Ask for an account') : t('Create an account')}</Link>}
         <Link to="/login" className={open ? outline : solid}>{t('Sign in')}</Link>
         <button type="button" onClick={() => void tryDemo()} disabled={starting} className={outline}>{starting ? t('Opening…') : t('Try the demo')}</button>
       </div>

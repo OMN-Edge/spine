@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { corePlugins, coreAssets, coreAliases, nodeModules } from './vite.core.shared.mjs';
@@ -20,6 +21,9 @@ function buildCommit(): string {
   }
 }
 
+/** The version in web/package.json, the one a release is tagged with (docs/releasing.md). */
+const version = (JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string }).version;
+
 export default defineConfig(({ command }) => ({
   // `nodeModules` is also here because its aliases are set when the config is read, which the worker's own plugin list does not do.
   plugins: [react(), coreAssets(), nodeModules()],
@@ -35,6 +39,7 @@ export default defineConfig(({ command }) => ({
     'process.env': 'globalThis.process.env',
     // Only a build says a commit; the dev server and the tests show `dev`.
     __SPINE_COMMIT__: JSON.stringify(command === 'build' ? buildCommit() : 'dev'),
+    __SPINE_VERSION__: JSON.stringify(version),
   },
   server: {
     proxy: {

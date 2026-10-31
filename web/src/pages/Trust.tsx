@@ -1,8 +1,9 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { api } from '../api';
 import { Wordmark } from '../components/Logo';
 import { useI18n } from '../i18n';
-import { BUILD_COMMIT } from '../build-info';
+import { BUILD_COMMIT, BUILD_VERSION } from '../build-info';
 
 const External = ({ href, children }: { href: string; children: ReactNode }) => (
   <a href={href} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline">{children}</a>
@@ -15,6 +16,8 @@ const External = ({ href, children }: { href: string; children: ReactNode }) => 
  */
 export default function Trust() {
   const { t, tx } = useI18n();
+  const [priv, setPriv] = useState(false);
+  useEffect(() => { api.auth.options().then(o => setPriv(o.instance === 'private')).catch(() => {}); }, []);
   const known = /^[0-9a-f]{40}(-dirty)?$/.test(BUILD_COMMIT);
   return (
     <div className="min-h-screen bg-gray-50">
@@ -24,10 +27,12 @@ export default function Trust() {
           <h1 className="text-xl font-semibold text-gray-900">{t('How to check this app')}</h1>
           <p>{t('Spine runs in your browser, and your records are encrypted there before the server keeps anything. So the question that matters is whether the app your browser received is the published, open-source one. This page explains how anyone can check.')}</p>
 
+          {priv && <p>{t('This is a private deployment: its administrator decides who gets an account. The check below is about the code it runs, which is the same published code.')}</p>}
+
           <h2 className="text-base font-semibold text-gray-900 pt-2">{t('What you are running')}</h2>
           {known ? (
             <>
-              <p>{tx('This copy of the app was built from the published code at commit {commit}.', { commit: <code className="break-all rounded bg-gray-100 px-1 py-0.5 text-xs">{BUILD_COMMIT}</code> })}</p>
+              <p>{tx('This copy of the app is version {version}, built from the published code at commit {commit}.', { version: <strong>{BUILD_VERSION}</strong>, commit: <code className="break-all rounded bg-gray-100 px-1 py-0.5 text-xs">{BUILD_COMMIT}</code> })}</p>
               {BUILD_COMMIT.endsWith('-dirty') && <p>{t('It also includes changes that are not published, so it is not a release.')}</p>}
             </>
           ) : (

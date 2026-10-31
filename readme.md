@@ -107,7 +107,7 @@ Installs and starts `spine-web` (port 3000) as a systemd service, plus a daily b
 
 ### 5. Your account
 
-By default there is no signup page; create accounts from the command line (or set `SPINE_REGISTRATION=open` with a mailer, see `.env.example`):
+By default there is no signup page; create accounts from the command line (or set `SPINE_REGISTRATION=open` with a mailer, or `approval` to let people ask and approve them yourself; see `.env.example`):
 
 ```bash
 cd server

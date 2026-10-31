@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { api, ApiError } from '../api';
+import { api, ApiError, type AuthOptions } from '../api';
 import { useAuth } from '../auth';
 import AuthCard, { buttonClass, inputClass, Notice } from '../components/AuthCard';
 import { useI18n } from '../i18n';
@@ -22,7 +22,7 @@ export default function Login() {
   const [needsCode, setNeedsCode] = useState(false);
   const [code, setCode] = useState('');
   const [resent, setResent] = useState('');
-  const [options, setOptions] = useState({ registration: 'operator', recovery: false });
+  const [options, setOptions] = useState<AuthOptions>({ registration: 'operator', recovery: false, instance: 'public' });
 
   useEffect(() => {
     api.auth.options().then(setOptions).catch(() => {});
@@ -49,7 +49,9 @@ export default function Login() {
       // notice, or that the address is not confirmed yet. It deliberately does
       // not say which half of a wrong login was wrong.
       setUnverified(err instanceof ApiError && err.code === 'email_not_verified');
-      setError(err instanceof Error ? err.message : t('Could not sign in'));
+      setError(err instanceof ApiError && err.code === 'awaiting_approval'
+        ? t('Your account is waiting for the administrator to approve it. You will be able to sign in once it has.')
+        : err instanceof Error ? err.message : t('Could not sign in'));
     }
   };
 
@@ -101,7 +103,7 @@ export default function Login() {
         <>
           {options.recovery && <p><Link to="/forgot" className="text-brand-600">{t('Forgot your password?')}</Link></p>}
           <p><Link to="/pair" className="text-brand-600">{t('Use a code from another device')}</Link></p>
-          {options.registration === 'open' && <p>{t('No account?')} <Link to="/register" className="text-brand-600">{t('Create one')}</Link></p>}
+          {options.registration !== 'operator' && <p>{t('No account?')} <Link to="/register" className="text-brand-600">{options.registration === 'approval' ? t('Ask for one') : t('Create one')}</Link></p>}
         </>
       }
     >

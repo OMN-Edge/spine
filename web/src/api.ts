@@ -520,6 +520,9 @@ export class ApiError extends Error {
   }
 }
 
+/** What the sign-in page needs before anyone is signed in. `approval`: people ask for an account and the administrator approves it. `private`: a private deployment. */
+export interface AuthOptions { registration: 'operator' | 'open' | 'approval'; recovery: boolean; instance: 'public' | 'private' }
+
 async function req<T>(url: string, options?: RequestInit, retried = false): Promise<T> {
   const res = await appFetch(url, {
     // Only a request that sends JSON says so. Fastify refuses an empty body that claims to
@@ -599,6 +602,12 @@ const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, 
 });
 
 export const api = {
+  /** The accounts waiting for approval (SPINE_REGISTRATION=approval); only an address in SPINE_ADMIN_EMAILS is let see them. */
+  admin: {
+    accounts: () => req<{ pending: Array<{ id: string; email: string; created_at: string; email_confirmed: boolean }> }>('/api/admin/accounts'),
+    approve: (id: string) => post<{ ok: boolean }>(`/api/admin/accounts/${encodeURIComponent(id)}/approve`, {}),
+    refuse: (id: string) => post<{ ok: boolean }>(`/api/admin/accounts/${encodeURIComponent(id)}/refuse`, {}),
+  },
   /** Letting a new device in from one that is signed in (SECURITY.md M-41). The code never goes to the server. */
   enrol: {
     /** The signed-in device: a new one-time code, with its sealed key left at the server. */
@@ -694,10 +703,10 @@ export const api = {
       return req('/api/auth/logout', { method: 'POST' });
     },
     me: () => req<{ authenticated: boolean; email: string; second_factor_enabled?: boolean; vault?: boolean; consent_needed?: { health: boolean; terms: boolean } }>('/api/auth/me'),
-    options: () => req<{ registration: 'operator' | 'open'; recovery: boolean }>('/api/auth/options'),
+    options: () => req<AuthOptions>('/api/auth/options'),
     /** The keys are made on the device; the server gets the derived credential and the sealed keys, never the password. */
     register: (email: string, account: { authValue: string; keys: VaultKeyPayload }, consent: { health_data: boolean; terms: boolean }) =>
-      post<{ ok: boolean; message: string }>('/api/auth/register', { email, auth_value: account.authValue, keys: account.keys, consent_health_data: consent.health_data, accept_terms: consent.terms }),
+      post<{ ok: boolean; message: string; pending?: boolean }>('/api/auth/register', { email, auth_value: account.authValue, keys: account.keys, consent_health_data: consent.health_data, accept_terms: consent.terms }),
     /** An account without a vault makes one: the new credential replaces the password the server knew. */
     createVault: (account: { authValue: string; keys: VaultKeyPayload }) => put<{ ok: boolean }>('/api/vault/keys', { auth_value: account.authValue, keys: account.keys }),
     rewrap: (change: { authValue?: string; keys: VaultKeyPayload }) => post<{ ok: boolean }>('/api/vault/keys/rewrap', { auth_value: change.authValue, keys: change.keys }),

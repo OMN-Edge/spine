@@ -5,6 +5,7 @@ import { buttonClass, inputClass, Notice } from '../components/AuthCard';
 import TwoFactor from '../components/TwoFactor';
 import Sessions from '../components/Sessions';
 import YourData from '../components/YourData';
+import AdminAccounts from '../components/AdminAccounts';
 import Passkeys from '../components/Passkeys';
 import AddDevice from '../components/AddDevice';
 import RecoveryKitSettings from '../components/RecoveryKitSettings';
@@ -62,6 +63,7 @@ export default function Account() {
       <TwoFactor />
 
       <Sessions />
+      <AdminAccounts />
 
       <YourData />
     </div>
