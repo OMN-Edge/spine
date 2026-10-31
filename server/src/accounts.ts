@@ -128,10 +128,10 @@ export async function deleteAccount(userId: string): Promise<DeletedAccount> {
   const store = getAccountsStore();
   const summary = await describeAccount(userId);
   // The sealed vault: the live copy and the backup's, so no ciphertext of the account is left.
-  removeAllObjects(userId);
+  await removeAllObjects(userId);
   fs.rmSync(path.join(resolveBackupDir(), 'vault', userId), { recursive: true, force: true });
   // The sealed shares too (their rows go with the account's, below).
-  for (const id of await store.shared.eraseFor(userId)) removeShare(id);
+  for (const id of await store.shared.eraseFor(userId)) await removeShare(id);
   await store.users.delete(userId);
   return summary;
 }

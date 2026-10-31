@@ -10,7 +10,7 @@ export default mergeConfig(base, defineConfig({
     setupFiles: ['../core/src/testing/use-postgres-store.ts'],
     include: [
       'accounts', 'auth', 'sessions', 'second-factor', 'totp', 'passkeys', 'vault', 'relay-routes', 'shared', 'share-shell', 'own-account',
-      'cli', 'config', 'mail', 'billing', 'growth',
+      'cli', 'config', 'mail', 'billing', 'growth', 'objects',
     ].map(name => `src/__tests__/${name}.test.ts`),
   },
 }));

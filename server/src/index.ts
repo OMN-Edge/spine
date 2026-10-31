@@ -1,3 +1,4 @@
+import { objects } from './objects/index.js';
 import { sessionRoutes } from './routes/sessions.js';
 import { trustedProxies } from './trust-proxy.js';
 import Fastify from 'fastify';
@@ -53,6 +54,8 @@ useAccountsStore();
 useSessionAuth();
 
 const config = loadConfigOrExit();
+// A bad SPINE_OBJECTS stops the process here and not at the first upload.
+try { objects(); } catch (err) { console.error(err instanceof Error ? err.message : String(err)); process.exit(1); }
 
 const app = Fastify({
   logger: true,

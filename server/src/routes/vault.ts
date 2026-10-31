@@ -108,7 +108,7 @@ export async function vaultRoutes(app: FastifyInstance, opts: VaultRouteOptions 
   app.get<{ Params: { id: string } }>('/api/vault/objects/:id', { preHandler: requireAuth }, async (req, reply) => {
     if (!OBJECT_ID.test(req.params.id)) return reply.status(404).send({ error: 'not found' });
     const meta = await getAccountsStore().vault.get(req.userId, req.params.id);
-    const bytes = meta && !meta.deleted ? readObject(req.userId, req.params.id) : null;
+    const bytes = meta && !meta.deleted ? await readObject(req.userId, req.params.id) : null;
     if (!meta || !bytes) return reply.status(404).send({ error: 'not found' });
     return reply
       .header('content-type', 'application/octet-stream')
@@ -142,7 +142,15 @@ export async function vaultRoutes(app: FastifyInstance, opts: VaultRouteOptions 
       if (result === 'no_vault') return reply.status(404).send({ error: 'this account has no vault yet', code: 'no_vault' });
       if (result === 'conflict') return reply.status(409).send({ error: 'this object changed elsewhere; fetch it again', code: 'conflict' });
       if (result === 'quota') return reply.status(413).send({ error: 'the vault is full', code: 'quota' });
-      writeObject(req.userId, id, body);
+      try {
+        await writeObject(req.userId, id, body);
+      } catch (err) {
+        // The row says the object exists and its bytes are not there: take the row back, so the device refetches the list and tries again
+        // instead of finding an object that cannot be read.
+        await store.vault.remove(req.userId, id, result.seq, new Date().toISOString()).catch(() => undefined);
+        req.log.error({ err }, 'a sealed object could not be stored');
+        return reply.status(503).send({ error: 'the object could not be stored; try again', code: 'storage' });
+      }
       return reply.send({ seq: result.seq });
     },
   );
@@ -155,7 +163,7 @@ export async function vaultRoutes(app: FastifyInstance, opts: VaultRouteOptions 
       if (!OBJECT_ID.test(req.params.id) || !SEQ.test(base)) return reply.status(400).send({ error: 'an id and the sequence you last saw are needed' });
       const done = await getAccountsStore().vault.remove(req.userId, req.params.id, Number(base), new Date().toISOString());
       if (!done) return reply.status(409).send({ error: 'no such object, or it changed elsewhere', code: 'conflict' });
-      removeObject(req.userId, req.params.id);
+      await removeObject(req.userId, req.params.id);
       return reply.send({ seq: done.seq });
     },
   );

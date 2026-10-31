@@ -53,7 +53,7 @@ export const SHARE_PASS_MS = 2 * 60 * 1000;
 export async function sweepShares(now = new Date()): Promise<number> {
   const store = getAccountsStore();
   const ended = await store.shared.endedWithFiles(now.toISOString());
-  for (const { id } of ended) removeShare(id);
+  for (const { id } of ended) await removeShare(id);
   await store.shared.forgetEnded(now.toISOString(), ENDED_GRACE_MS);
   return ended.length;
 }
@@ -99,8 +99,8 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     if (used.bytes - (replacing ? existing.size + existing.blobBytes : 0) + req.body.length > limits.totalBytes) return reply.status(413).send({ error: 'the shares hold too much; revoke one first', code: 'full' });
     const put = await store.shared.put(req.userId, { id, expiresAt: expires, requireApproval, size: req.body.length, blobs: 0, blobBytes: 0 }, new Date().toISOString());
     if (put !== 'ok') return reply.status(put === 'taken' ? 404 : 409).send({ error: put === 'taken' ? 'not found' : 'this share was revoked' });
-    removeBlobs(id);
-    writeBundle(id, req.body);
+    await removeBlobs(id);
+    await writeBundle(id, req.body);
     return reply.status(201).send({ ok: true });
   });
 
@@ -113,7 +113,7 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     if (!Number.isInteger(n) || n < 0 || n > 9999 || !Buffer.isBuffer(req.body) || req.body.length === 0) return reply.status(400).send({ error: 'a number and the sealed file are needed' });
     const used = await store.shared.usage(req.userId, new Date().toISOString());
     if (used.bytes + req.body.length > limits.totalBytes) return reply.status(413).send({ error: 'the shares hold too much; revoke one first', code: 'full' });
-    writeBlob(bundle.id, n, req.body);
+    await writeBlob(bundle.id, n, req.body);
     await store.shared.addBlob(req.userId, bundle.id, req.body.length);
     return reply.status(201).send({ ok: true });
   });
@@ -129,7 +129,7 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
 
   app.delete<{ Params: { id: string } }>('/api/shared/:id', { preHandler: requireAuth }, async (req, reply) => {
     if (!SHARE_ID.test(req.params.id) || !(await getAccountsStore().shared.revoke(req.userId, req.params.id, new Date().toISOString()))) return reply.status(404).send({ error: 'not found' });
-    removeShare(req.params.id);
+    await removeShare(req.params.id);
     return reply.send({ ok: true });
   });
 
@@ -175,7 +175,7 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     const bundle = await live(req.params.id);
     if (!bundle) return reply.status(404).send({ error: 'not found' });
     if (bundle === 'ended') return reply.status(410).send({ error: 'this link is no longer active', ended: true });
-    const bytes = readBundle(bundle.id);
+    const bytes = await readBundle(bundle.id);
     if (!bytes) return reply.status(404).send({ error: 'not found' });
     return reply.type('application/octet-stream').header('Cache-Control', 'no-store').header('X-Robots-Tag', 'noindex, nofollow').send(bytes);
   });
@@ -184,7 +184,7 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     const bundle = await live(req.params.id);
     const n = Number(req.params.n);
     if (!bundle || bundle === 'ended' || !Number.isInteger(n) || n < 0) return reply.status(bundle === 'ended' ? 410 : 404).send({ error: bundle === 'ended' ? 'this link is no longer active' : 'not found' });
-    const bytes = readBlob(bundle.id, n);
+    const bytes = await readBlob(bundle.id, n);
     if (!bytes) return reply.status(404).send({ error: 'not found' });
     return reply.type('application/octet-stream').header('Cache-Control', 'no-store').header('X-Robots-Tag', 'noindex, nofollow').send(bytes);
   });

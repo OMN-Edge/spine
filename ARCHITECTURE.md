@@ -572,8 +572,8 @@ The multimodal path gives no boxes: a model's own estimate of where text sits wa
 | What | Where | Backed up? |
 |---|---|---|
 | Accounts: users, sessions, tokens, second factor, passkeys, consent, the vault's wrapped keys and index, share metadata (no record) | server `data/spine.db` (WAL) | **yes, required** (`VACUUM INTO` snapshot) |
-| The sealed objects of every person's records and files | server `data/vault/<user>/` | **yes, required** (mirror) |
-| Sealed share copies | server `data/shares/` | no: a share is meant to end |
+| The sealed objects of every person's records and files | the object store, `vault/<user>/` (files under `data/` by default, or a bucket with `SPINE_OBJECTS=gcs`) | **yes, required** (mirror of the files; for a bucket, its versioning or soft delete) |
+| Sealed share copies | the object store, `shares/<id>/` | no: a share is meant to end |
 | The records themselves: documents, pages, fields, tags, shares' source rows, search index | the owner's device, in memory while the vault is open (SQLite in WebAssembly); saved as sealed objects to the vault | through the vault |
 | A copy of the sealed objects the device fetched or wrote (ciphertext only), so opening the records again fetches only what is new | the owner's browser, IndexedDB `spine-sealed`, up to about 300 MB; removed at sign-out (**M-43**) | no: it is a cache of what the vault holds |
 | Daily snapshots + vault mirror | `backups/` (`SPINE_BACKUP_DIR`) | it *is* the backup |

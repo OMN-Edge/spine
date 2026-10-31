@@ -274,7 +274,7 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
         const had = await store.vault.getKeys(userId);
         if (had && req.body?.erase === true) {
           await store.vault.erase(userId);
-          removeAllObjects(userId);
+          await removeAllObjects(userId);
           await store.vault.putKeys(userId, keys, now);
         } else if (had) {
           await store.vault.replaceKeys(userId, keys, now);
