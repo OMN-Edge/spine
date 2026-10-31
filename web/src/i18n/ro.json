@@ -1448,5 +1448,11 @@
  "This is a child I look after": "Acesta este un copil de care am grijă",
  "Born (year-month-day)": "Născut (an-lună-zi)",
  "child, {n} year old|child, {n} years old": "copil, {n} an|copil, {n} ani|copil, {n} de ani",
- "{name} is now 18, and these records should be theirs. Let them in as themselves, under Access.": "{name} are acum 18 ani, iar aceste documente ar trebui să fie ale persoanei. Lasă persoana să intre ca ea însăși, la Acces."
+ "{name} is now 18, and these records should be theirs. Let them in as themselves, under Access.": "{name} are acum 18 ani, iar aceste documente ar trebui să fie ale persoanei. Lasă persoana să intre ca ea însăși, la Acces.",
+ "Could not take over these records": "Aceste documente nu au putut fi preluate",
+ "Some of the latest changes are not saved yet.": "Unele dintre ultimele modificări nu sunt încă salvate.",
+ "You are 18: these records can be yours.": "Ai 18 ani: aceste documente pot fi ale tale.",
+ "Taking them over moves them into your own account, under a new key that only your account opens. The people who looked after you lose access until you let them back in, one by one. This cannot be undone.": "Preluarea lor le mută în contul tău, sub o cheie nouă pe care o deschide doar contul tău. Cei care au avut grijă de tine pierd accesul până îi lași înapoi, pe rând. Nu se poate anula.",
+ "Yes, take them over": "Da, le preiau",
+ "Take over my records": "Preia documentele mele"
 }

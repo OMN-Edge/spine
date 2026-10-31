@@ -12,6 +12,41 @@ const prefixed = (alias: string) => COLUMNS.split(', ').map(c => `${alias}.${c}`
 
 export function delegationRepository(q: Query, begin: Begin): DelegationRepository {
   return {
+    async promote(delegateId, grantId, update, now, before) {
+      return begin(async run => {
+        const id = owner(delegateId);
+        const g = await one(run, `SELECT ${COLUMNS} FROM delegations WHERE id = $1 FOR UPDATE`, [grantId]);
+        if (!g || g.delegate_user_id !== id || g.role !== 'self' || g.state !== 'active') return null;
+        const from = g.owner_user_id as string;
+        const profileId = g.profile_id as string;
+        // Both vaults are locked, in one order, so two promotions or a promotion and a write cannot interleave.
+        for (const user of [from, id].sort()) await run('SELECT 1 FROM vault_keys WHERE user_id = $1 FOR UPDATE', [user]);
+        if (!(await one(run, 'SELECT 1 FROM vault_keys WHERE user_id = $1', [id]))) return 'no_vault' as const;
+        const profile = await one(run, 'SELECT kind, deleted FROM vault_objects WHERE user_id = $1 AND id = $2', [from, profileId]);
+        if (!profile || profile.kind !== 'profile' || profile.deleted === 1) return null;
+        const live = (await many<{ id: string }>(run, "SELECT id FROM vault_objects WHERE user_id = $1 AND profile_id = $2 AND deleted = 0 AND kind <> 'profile'", [from, profileId])).map(r => r.id).sort();
+        const named = update.objects.map(o => o.id).sort();
+        if (live.length !== named.length || live.some((x, i) => x !== named[i])) return null;
+        const others = (await many<{ id: string }>(run, "SELECT id FROM delegations WHERE owner_user_id = $1 AND profile_id = $2 AND id <> $3 AND state IN ('active', 'paused')", [from, profileId, grantId])).map(r => r.id).sort();
+        const given = update.grants.map(x => x.id).sort();
+        if (others.length !== given.length || others.some((x, i) => x !== given[i])) return null;
+        // The sealed files are copied across inside the step: if that fails, the step is undone.
+        await before({ fromUserId: from, profileId, objectIds: live });
+        const bump = async (user: string) => Number((await one<{ seq: number }>(run, 'UPDATE vault_keys SET seq = seq + 1 WHERE user_id = $1 RETURNING seq', [user]))!.seq);
+        const copy = (seq: number, size: number | null, wrapped: string, objectId: string) => run(
+          'INSERT INTO vault_objects (user_id, id, profile_id, kind, seq, size, wrapped_key, deleted, created_at, updated_at) SELECT $1, id, profile_id, kind, $2, COALESCE($3, size), $4, 0, created_at, $5 FROM vault_objects WHERE user_id = $6 AND id = $7',
+          [id, seq, size, wrapped, now, from, objectId]);
+        const tombstone = async (objectId: string) => run('UPDATE vault_objects SET deleted = 1, size = 0, seq = $1, updated_at = $2 WHERE user_id = $3 AND id = $4', [await bump(from), now, from, objectId]);
+        for (const o of update.objects) { await copy(await bump(id), null, o.wrappedKey, o.id); await tombstone(o.id); }
+        const seq = await bump(id);
+        await copy(seq, update.profileSize, update.profileWrapped, profileId);
+        await tombstone(profileId);
+        for (const x of update.grants) await run("UPDATE delegations SET owner_user_id = $1, state = 'paused', wrapped_key = $2, updated_at = $3 WHERE id = $4 AND owner_user_id = $5", [id, x.wrappedKey, now, x.id, from]);
+        await run("UPDATE delegations SET state = 'revoked', wrapped_key = NULL, updated_at = $1 WHERE id = $2", [now, grantId]);
+        await run('DELETE FROM profile_invites WHERE owner_user_id = $1 AND profile_id = $2', [from, profileId]);
+        return { seq, fromUserId: from, objectIds: live };
+      });
+    },
     async invite(ownerId, i) {
       await q('INSERT INTO profile_invites (id, owner_user_id, profile_id, role, wrapped, proof_hash, created_at, expires_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)', [i.id, owner(ownerId), i.profileId, i.role, i.wrapped, i.proofHash, i.now, i.expiresAt]);
     },
@@ -43,8 +78,15 @@ export function delegationRepository(q: Query, begin: Begin): DelegationReposito
         .map(r => ({ ...asGrant(r), delegate_email: r.delegate_email as string, delegate_public_key: (r.delegate_public_key as string | null) ?? null }));
     },
     async madeTo(delegateId) {
-      return (await many(q, `SELECT ${prefixed('d')}, u.email AS owner_email FROM delegations d JOIN users u ON u.id = d.owner_user_id WHERE d.delegate_user_id = $1 AND d.state IN ('active', 'paused') ORDER BY d.created_at`, [owner(delegateId)]))
-        .map(r => ({ ...asGrant(r), owner_email: r.owner_email as string }));
+      const rows = await many(q, `SELECT ${prefixed('d')}, u.email AS owner_email FROM delegations d JOIN users u ON u.id = d.owner_user_id WHERE d.delegate_user_id = $1 AND d.state IN ('active', 'paused') ORDER BY d.created_at`, [owner(delegateId)]);
+      const out = [];
+      for (const r of rows) {
+        const g = asGrant(r);
+        const others = g.role !== 'self' ? [] : (await many(q, `SELECT d.id, d.role, d.state, u.email AS delegate_email, k.public_key AS delegate_public_key FROM delegations d JOIN users u ON u.id = d.delegate_user_id LEFT JOIN vault_keys k ON k.user_id = d.delegate_user_id WHERE d.owner_user_id = $1 AND d.profile_id = $2 AND d.id <> $3 AND d.state IN ('active', 'paused') ORDER BY d.created_at`, [g.owner_user_id, g.profile_id, g.id]))
+          .map(o => ({ id: o.id as string, role: o.role as DelegationRecord['role'], state: o.state as DelegationRecord['state'], delegate_email: o.delegate_email as string, delegate_public_key: (o.delegate_public_key as string | null) ?? null }));
+        out.push({ ...g, owner_email: r.owner_email as string, others });
+      }
+      return out;
     },
     async setState(ownerId, id, state, now) {
       return (await changed(q, "UPDATE delegations SET state = $1, updated_at = $2, wrapped_key = CASE WHEN $1 = 'revoked' THEN NULL ELSE wrapped_key END WHERE owner_user_id = $3 AND id = $4 AND state <> 'revoked'", [state, now, owner(ownerId), id])) === 1;

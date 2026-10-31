@@ -303,4 +303,64 @@ describe.skipIf(!haveServer)('the device and the server together', () => {
     await owner.close();
     await guest.close();
   });
+
+  it('hands a profile to the person it is of at eighteen: it moves to their vault under a new key, and the guardians wait to be let back in', async () => {
+    const signedIn = async (email: string, password: string) => {
+      const f = browser();
+      const prepared = await prepareSignIn(email, password, f);
+      expect((await post(f, '/api/auth/login', { email, password: prepared.credential })).status).toBe(200);
+      return { f, session: await VaultSession.open(prepared.masterKey!, f) };
+    };
+    const makeAccount = async (email: string, password: string) => {
+      const made = await createAccountKeys(password, FAST);
+      const f = browser();
+      expect((await post(f, '/api/auth/register', { email, auth_value: made.authValue, keys: made.keys, consent_health_data: true, accept_terms: true })).status).toBe(200);
+      await store.getStore().users.markVerified((await store.getStore().users.findByEmail(email))!.id, new Date().toISOString());
+    };
+    const PARENT = { email: 'parent@example.com', password: 'the parent’s master password' };
+    const TEEN = { email: 'teen@example.com', password: 'the teenager’s master password' };
+    const OTHER = { email: 'coparent@example.com', password: 'the other parent’s master password' };
+    for (const a of [PARENT, TEEN, OTHER]) await makeAccount(a.email, a.password);
+
+    const parent = (await signedIn(PARENT.email, PARENT.password)).session;
+    const child = await parent.createProfile('Alex', { kind: 'child', born: '2008-01-05' });
+    await parent.put(child, 'bundle', 'bundle-child-0001', new TextEncoder().encode('vaccinations, 2012 to 2020'));
+
+    // The teenager and the other parent are let in.
+    const teen = (await signedIn(TEEN.email, TEEN.password)).session;
+    const coparent = (await signedIn(OTHER.email, OTHER.password)).session;
+    await teen.accept((await parent.invite(child, 'self')).code);
+    await coparent.accept((await parent.invite(child, 'guardian')).code);
+
+    // The teenager takes the records over.
+    const [entry] = await teen.openReceived((await teen.delegations()).received);
+    expect(entry.grant.role).toBe('self');
+    expect(entry.grant.others.map(o => o.delegate_email)).toEqual(['coparent@example.com']);
+    const held = entry.profileKey.slice();
+    await teen.promote(entry);
+
+    // They are theirs now, in the teenager's own vault, under a key of the teenager's account.
+    expect(await teen.loadProfiles()).toContainEqual({ id: child, name: 'Alex', kind: 'child', born: '2008-01-05' });
+    expect(new TextDecoder().decode((await teen.get('bundle-child-0001', 'bundle')).plaintext)).toBe('vaccinations, 2012 to 2020');
+    expect((await teen.delegations()).received).toEqual([]);
+
+    // The old owner has nothing of them: the rows are gone and so is what an old key opened.
+    expect((await parent.list(0)).objects.filter(o => o.profile_id === child && !o.deleted)).toEqual([]);
+    await expect(parent.get('bundle-child-0001', 'bundle')).rejects.toMatchObject({ status: 404 });
+    const mine = (await teen.list(0)).objects.find(o => o.id === 'bundle-child-0001')!;
+    const sealedBody = new Uint8Array(await (await (await signedIn(TEEN.email, TEEN.password)).f('/api/vault/objects/bundle-child-0001')).arrayBuffer());
+    await expect(openObject(held, 'bundle', 'bundle-child-0001', sealedBody, mine.wrapped_key)).rejects.toBeInstanceOf(OpenError);
+
+    // The other parent waits: paused, and let back in only if the teenager chooses, with the new key sealed to them already.
+    const waiting = (await coparent.delegations()).received;
+    expect(waiting.map(g => g.state)).toEqual(['paused']);
+    expect(await coparent.openReceived(waiting)).toEqual([]); // paused opens nothing
+    const owned = (await teen.delegations()).owned;
+    expect(owned).toMatchObject([{ delegate_email: 'coparent@example.com', role: 'guardian', state: 'paused' }]);
+    await teen.setGrantState(owned[0].id, 'active');
+    const [back] = await coparent.openReceived((await coparent.delegations()).received);
+    const view = VaultSession.delegated(coparent, back.grant.id, child, back.profileKey);
+    expect(new TextDecoder().decode((await view.get('bundle-child-0001', 'bundle')).plaintext)).toBe('vaccinations, 2012 to 2020');
+    for (const s of [parent, teen, coparent]) await s.close();
+  });
 });

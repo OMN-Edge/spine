@@ -74,7 +74,7 @@ describe('letting another account into a profile', () => {
     expect((await call('PUT', `/api/delegations/${grantId}/key`, guest, { wrapped_key: 'short' })).statusCode).toBe(400);
     expect((await call('PUT', `/api/delegations/${grantId}/key`, guest, { wrapped_key: K('d') })).statusCode).toBe(200);
     const seen = (await call('GET', '/api/delegations', guest)).json();
-    expect(seen.received).toEqual([{ id: grantId, owner_email: 'owner@spine.test', profile_id: PROFILE, role: 'guardian', state: 'active', wrapped_key: K('d') }]);
+    expect(seen.received).toEqual([{ id: grantId, owner_email: 'owner@spine.test', profile_id: PROFILE, role: 'guardian', state: 'active', wrapped_key: K('d'), others: [] }]);
     expect((await call('GET', '/api/delegations', owner)).json().owned).toMatchObject([{ id: grantId, delegate_email: 'guest@spine.test', role: 'guardian', state: 'active' }]);
   });
 
@@ -140,6 +140,78 @@ describe('letting another account into a profile', () => {
     // The person can give the access up themselves.
     expect((await call('DELETE', `/api/delegations/${claimed.grant.id}`, cookie)).statusCode).toBe(200);
     expect((await call('GET', `/api/delegated/${claimed.grant.id}/objects`, cookie)).statusCode).toBe(404);
+  });
+
+  describe('promotion at eighteen', () => {
+    const promoteBody = (objects: string[], grants: Array<{ id: string }>) => ({ profile_wrapped: K('p'), profile_body: Buffer.from('the profile record, taken over').toString('base64url'), objects: objects.map(id => ({ id, wrapped_key: K('q') })), grants: grants.map(g => ({ id: g.id, wrapped_key: K('r') })) });
+    const makeVault = async (email: string) => {
+      const u = await createTestUser(email);
+      const cookie = await loginAs(app, u.email, u.password);
+      await app.inject({ method: 'PUT', url: '/api/vault/keys', headers: { cookie }, payload: { auth_value: fakeAuthValue(), keys: fakeVaultKeys() } });
+      return { ...u, cookie };
+    };
+
+    it('is the person’s own call, as themselves only, and needs every key named', async () => {
+      const child = 'profile-cccc-0003';
+      await put(owner, child, 'profile', child, 'a child’s record');
+      await put(owner, 'object-c-0001', 'bundle', child, 'a child’s note');
+      const guardian = await makeVault('promo-guardian@spine.test');
+      const teen = await makeVault('promo-teen@spine.test');
+      const invite2 = (role: string, id: string, proof: string) => call('POST', '/api/delegations/invites', owner, { id, profile_id: child, role, wrapped: WRAPPED, proof_hash: hex(proof) });
+      const accept = async (who: { cookie: string }, id: string, proof: string) => {
+        const g = (await call('POST', '/api/delegations/claim', who.cookie, { id, proof })).json().grant.id as string;
+        await call('PUT', `/api/delegations/${g}/key`, who.cookie, { wrapped_key: K('d') });
+        return g;
+      };
+      await invite2('guardian', 'a1'.repeat(21) + 'a', 'a'.repeat(43));
+      await invite2('self', 'b1'.repeat(21) + 'b', 'b'.repeat(43));
+      const asGuardian = await accept(guardian, 'a1'.repeat(21) + 'a', 'a'.repeat(43));
+      const asSelf = await accept(teen, 'b1'.repeat(21) + 'b', 'b'.repeat(43));
+
+      // A guardian cannot take the records, however they ask; and the call needs the whole of what moves.
+      expect((await call('POST', `/api/delegations/${asGuardian}/promote`, guardian.cookie, promoteBody(['object-c-0001'], []))).statusCode).toBe(409);
+      expect((await call('POST', `/api/delegations/${asSelf}/promote`, guardian.cookie, promoteBody(['object-c-0001'], [{ id: asGuardian }]))).statusCode).toBe(404);
+      expect((await call('POST', `/api/delegations/${asSelf}/promote`, teen.cookie, promoteBody([], [{ id: asGuardian }]))).statusCode).toBe(409); // an object left out
+      expect((await call('POST', `/api/delegations/${asSelf}/promote`, teen.cookie, promoteBody(['object-c-0001'], []))).statusCode).toBe(409); // a grant left out
+      expect((await call('GET', '/api/vault/objects/object-c-0001', owner)).statusCode).toBe(200); // nothing moved
+
+      const moved = await call('POST', `/api/delegations/${asSelf}/promote`, teen.cookie, promoteBody(['object-c-0001'], [{ id: asGuardian }]));
+      expect(moved.statusCode).toBe(200);
+      // It is the teenager's now, and the old owner's copies are gone.
+      expect((await call('GET', '/api/vault/objects/object-c-0001', teen.cookie)).rawPayload.toString()).toBe('a child’s note');
+      expect((await call('GET', '/api/vault/objects/object-c-0001', teen.cookie)).headers['x-spine-wrapped-key']).toBe(K('q'));
+      expect((await call('GET', `/api/vault/objects/${child}`, teen.cookie)).rawPayload.toString()).toBe('the profile record, taken over');
+      expect((await call('GET', '/api/vault/objects/object-c-0001', owner)).statusCode).toBe(404);
+      expect((await call('GET', `/api/vault/objects/${child}`, owner)).statusCode).toBe(404);
+      // The guardian's grant is the teenager's to resume, paused with the new key; theirs as a self grant is over.
+      expect((await call('GET', `/api/delegated/${asGuardian}/objects`, guardian.cookie)).statusCode).toBe(404);
+      const held = (await call('GET', '/api/delegations', teen.cookie)).json();
+      expect(held.owned).toMatchObject([{ id: asGuardian, delegate_email: 'promo-guardian@spine.test', state: 'paused' }]);
+      expect(held.received).toEqual([]);
+      expect((await call('GET', '/api/delegations', guardian.cookie)).json().received[0]).toMatchObject({ id: asGuardian, state: 'paused', wrapped_key: K('r') });
+      expect((await call('POST', `/api/delegations/${asGuardian}/state`, teen.cookie, { state: 'active' })).statusCode).toBe(200);
+      expect((await call('GET', `/api/delegated/${asGuardian}/objects/object-c-0001`, guardian.cookie)).rawPayload.toString()).toBe('a child’s note');
+      // The old owner cannot pause or end what is no longer theirs.
+      expect((await call('POST', `/api/delegations/${asGuardian}/state`, owner, { state: 'paused' })).statusCode).toBe(404);
+      // And it cannot be done twice.
+      expect((await call('POST', `/api/delegations/${asSelf}/promote`, teen.cookie, promoteBody(['object-c-0001'], [{ id: asGuardian }]))).statusCode).toBe(409);
+    });
+
+    it('is not refused for what a plan holds: a free account takes in a second person, and more than it could store', async () => {
+      Object.assign(process.env, { SPINE_BILLING: 'on', PADDLE_ENVIRONMENT: 'sandbox', PADDLE_API_KEY: 'k', PADDLE_WEBHOOK_SECRET: 's', SPINE_CHECKOUT_URL: 'https://pay.example/', SPINE_PADDLE_PRICE_YEAR: 'a', SPINE_PADDLE_PRICE_MONTH: 'b', SPINE_PADDLE_PRICE_FOUNDING: 'c' });
+      const family = await makeVault('promo-family@spine.test');
+      const free = await createTestUser('promo-free@spine.test', { createdAt: '2020-01-01T00:00:00.000Z' });
+      const freeCookie = await loginAs(app, free.email, free.password);
+      await app.inject({ method: 'PUT', url: '/api/vault/keys', headers: { cookie: freeCookie }, payload: { auth_value: fakeAuthValue(), keys: fakeVaultKeys() } });
+      await put(freeCookie, 'profile-own-0001', 'profile', 'profile-own-0001', 'my own'); // the one person a free plan keeps
+      const profile = 'profile-dddd-0004';
+      await put(family.cookie, profile, 'profile', profile, 'a teenager’s record');
+      await call('POST', '/api/delegations/invites', family.cookie, { id: 'c1'.repeat(21) + 'c', profile_id: profile, role: 'self', wrapped: WRAPPED, proof_hash: hex('c'.repeat(43)) }); // the trial may
+      const g = (await call('POST', '/api/delegations/claim', freeCookie, { id: 'c1'.repeat(21) + 'c', proof: 'c'.repeat(43) })).json().grant.id as string;
+      await call('PUT', `/api/delegations/${g}/key`, freeCookie, { wrapped_key: K('d') });
+      expect((await call('POST', `/api/delegations/${g}/promote`, freeCookie, promoteBody([], []))).statusCode).toBe(200);
+      expect((await call('GET', `/api/vault/objects/${profile}`, freeCookie)).statusCode).toBe(200);
+    });
   });
 
   it('ends with a new key for the profile, and the former delegate can reach nothing', async () => {

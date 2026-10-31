@@ -879,6 +879,14 @@ Status: auto (`delegation`, `vault.e2e`: the crypto, the server and the lock-out
 
 Status: auto (`family`, `delegation`); real browser: a child with a birth date, refused without a real one (`check:app`); the teenager's own screens: not yet checked by hand.
 
+### 15.4 Becoming eighteen
+A child's profile with a birth date shows a note to the guardian once the child is eighteen: the records should be theirs, and the way is to let them in as themselves. The young adult, who has joined with the code, sees "You are 18: these records can be yours", reads what taking them over does, and confirms; their password is asked again. The records are moved into their own account under a new key, they appear among their own people, and the people who looked after them are listed on the Access panel as paused: they can be resumed one by one or ended. The former owner's account no longer has the records and is mailed.
+
+- It cannot be undone, and only the young adult can do it, not a guardian. Nothing is refused for what a plan holds.
+
+Status: auto (`delegation`, `vault.e2e`: three accounts, the move, the new key, the paused guardian and its resuming); the screens: not yet checked by hand.
+
+
 ---
 
 ## 14. The emergency card

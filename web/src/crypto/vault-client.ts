@@ -1,4 +1,5 @@
 import { observeServerClock } from 'spine-core/store/sync';
+import { askForPassword } from '../reauth.js';
 import { sodium, toB64 } from './sodium.js';
 import type { SealedCache } from './sealed-cache.js';
 import {
@@ -37,7 +38,7 @@ function readRecord(plain: Uint8Array): Omit<ProfileSummary, 'id'> {
 export interface Delegations {
   owned: Array<{ id: string; profile_id: string; delegate_email: string; delegate_public_key: string | null; role: 'guardian' | 'viewer' | 'self'; state: 'pending' | 'active' | 'paused' | 'revoked'; created_at: string }>;
   invites: Array<{ id: string; profile_id: string; role: 'guardian' | 'viewer' | 'self'; expires_at: string }>;
-  received: Array<{ id: string; owner_email: string; profile_id: string; role: 'guardian' | 'viewer' | 'self'; state: 'pending' | 'active' | 'paused' | 'revoked'; wrapped_key: string | null }>;
+  received: Array<{ id: string; owner_email: string; profile_id: string; role: 'guardian' | 'viewer' | 'self'; state: 'pending' | 'active' | 'paused' | 'revoked'; wrapped_key: string | null; others: Array<{ id: string; role: 'guardian' | 'viewer' | 'self'; state: 'pending' | 'active' | 'paused' | 'revoked'; delegate_email: string; delegate_public_key: string | null }> }>;
 }
 
 export interface ObjectList {
@@ -315,9 +316,13 @@ export class VaultSession {
 
   // --- Letting another account into a profile (SECURITY.md M-49) ------------------------------------------------------------
 
-  private async json<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
+  private async json<T>(path: string, method = 'GET', body?: unknown, retried = false): Promise<T> {
     const res = await this.f(path, { method, headers: body === undefined ? undefined : { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
-    if (!res.ok) return fail(res);
+    if (!res.ok) {
+      // A sensitive step asks for the password again; once it is typed the same request is sent again (S-33).
+      if (res.status === 403 && !retried && ((await res.clone().json().catch(() => ({}))) as { code?: string }).code === 'reauth_required' && (await askForPassword())) return this.json<T>(path, method, body, true);
+      return fail(res);
+    }
     return (await res.json()) as T;
   }
 
@@ -359,6 +364,36 @@ export class VaultSession {
   async revoke(id: string): Promise<void> {
     const { profile_id: profileId } = await this.json<{ profile_id: string }>(`/api/delegations/${encodeURIComponent(id)}/revoke`, 'POST');
     await this.rotateProfile(profileId);
+  }
+
+  /**
+   * Promotion at eighteen (CR-FAM-02, SECURITY.md M-51): this account takes into its own vault a profile it was let into as the person it is
+   * of. A new profile key is made under this account's key, every data key and the profile record are sealed under it, and it is sealed to
+   * everyone else who had the profile, whose access then waits, paused, for the new owner's choice. One step at the server.
+   */
+  async promote(entry: { grant: Delegations['received'][number]; profileKey: Uint8Array }): Promise<void> {
+    for (let attempt = 1; ; attempt++) {
+      try { return await this.promoteOnce(entry); } catch (err) { if (!(err instanceof ConflictError) || attempt >= 4) throw err; }
+    }
+  }
+
+  private async promoteOnce({ grant, profileKey }: { grant: Delegations['received'][number]; profileKey: Uint8Array }): Promise<void> {
+    const profileId = grant.profile_id;
+    const view = VaultSession.delegated(this, grant.id, profileId, profileKey);
+    const mine = (await view.list(0)).objects.filter(o => o.profile_id === profileId && !o.deleted);
+    const plain = await openProfileRecord(profileKey, profileId, (await view.fetchObject(profileId)).body);
+    const next = await newProfileKey(this.unlocked, profileId);
+    const body = await sealProfileRecord(next.profileKey, profileId, plain);
+    const objects = await Promise.all(mine.filter(o => o.kind !== 'profile').map(async o => ({ id: o.id, wrapped_key: await rewrapObjectKey(profileKey, next.profileKey, o.id, o.wrapped_key) })));
+    const grants: Array<{ id: string; wrapped_key: string }> = [];
+    for (const other of grant.others) {
+      if (!other.delegate_public_key) throw new Error('someone let in has no key to seal the new one to');
+      grants.push({ id: other.id, wrapped_key: await sealProfileKeyTo(other.delegate_public_key, next.profileKey) });
+    }
+    const s = await sodium();
+    await this.json(`/api/delegations/${encodeURIComponent(grant.id)}/promote`, 'POST', { profile_wrapped: next.wrapped, profile_body: toB64(s, body), objects, grants });
+    s.memzero(profileKey);
+    this.profileKeys.set(profileId, next.profileKey);
   }
 
   /** Gives up an access I was given. */

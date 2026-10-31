@@ -57,7 +57,7 @@ You can ask us for a copy of your data, to correct it, to delete it, to limit or
 
 ## Children
 
-A child's records are kept by a parent or guardian, in a profile of their own account. The child's birth date, if given, is kept with the records, encrypted like them, so we cannot see it. A young person under 16 has no account of their own; from 16 they can, and making the invitation for it is the guardian's consent. At 18 the records become the young person's own (see above: they can take them over, and the guardians' access then waits for their choice). The guardian can let other people, such as the other parent, into a child's records, and end it at any time.
+A child's records are kept by a parent or guardian, in a profile of their own account. The child's birth date, if given, is kept with the records, encrypted like them, so we cannot see it. A young person under 16 has no account of their own; from 16 they can, and making the invitation for it is the guardian's consent. At 18 the records become the young person's own: they can move them into their own account in one step, under a new key, and the guardians' access then waits, paused, for their choice. The guardian can let other people, such as the other parent, into a child's records, and end it at any time.
 
 ## Changes
 

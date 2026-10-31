@@ -53,6 +53,29 @@ export default function Profiles() {
     } finally { setBusy(false); }
   };
 
+  // At eighteen the records are the person's own: they take them into their own vault under a new key, and the guardians' access waits for their choice.
+  const [taking, setTaking] = useState('');
+  const takeOver = async (personId: string) => {
+    setError(''); setBusy(true);
+    try {
+      const session = vaultState.session();
+      if (!session || !people) { setError(t('Open your records first.')); return; }
+      const grantId = personId.replace(/^grant:/, '');
+      const entry = (await session.openReceived((await session.delegations()).received)).find(e => e.grant.id === grantId);
+      if (!entry) { setError(t('Could not take over these records')); return; }
+      // The records open on this device are the ones being moved: leave them first, on one of this account's own.
+      const own = people.profiles.find(p => !p.shared);
+      if (people.current === personId && own) await openPerson(own.id);
+      await session.promote(entry);
+      await device.reloadKeys();
+      await openPerson(entry.grant.profile_id);
+      setTaking('');
+      navigate('/');
+    } catch (err) {
+      setError(err instanceof UnsavedChangesError ? t('Some of the latest changes are not saved yet.') : t('Could not take over these records'));
+    } finally { setBusy(false); }
+  };
+
   const leave = async (id: string) => {
     setError(''); setBusy(true);
     try { await vaultState.session()?.leave(id.replace(/^grant:/, '')); await device.reloadKeys(); await refresh(); } catch { setError(t('Could not leave')); } finally { setBusy(false); }
@@ -107,6 +130,15 @@ export default function Profiles() {
                   : <button className="text-gray-500 hover:underline" onClick={() => setOpenAccess(openAccess === p.id ? '' : p.id)}>{t('Access')}</button>}
               </span>
             </div>
+            {p.shared?.role === 'self' && isAdult(p.born) && (
+              <div className="mt-2 text-sm bg-brand-50 rounded-lg px-3 py-2 text-brand-900">
+                <p className="font-medium">{t('You are 18: these records can be yours.')}</p>
+                <p className="mt-1 text-xs">{t('Taking them over moves them into your own account, under a new key that only your account opens. The people who looked after you lose access until you let them back in, one by one. This cannot be undone.')}</p>
+                {taking === p.id
+                  ? <button disabled={busy} className="mt-2 rounded-full bg-brand-600 px-3 py-1 text-white" onClick={() => void takeOver(p.id)}>{t('Yes, take them over')}</button>
+                  : <button className="mt-2 underline" onClick={() => setTaking(p.id)}>{t('Take over my records')}</button>}
+              </div>
+            )}
             {!p.shared && p.kind === 'child' && isAdult(p.born) && <p className="mt-2 text-xs text-brand-800 bg-brand-50 rounded-lg px-3 py-2">{t('{name} is now 18, and these records should be theirs. Let them in as themselves, under Access.', { name: p.name })}</p>}
             {!p.shared && openAccess === p.id && <ProfileAccess person={p} />}
           </li>

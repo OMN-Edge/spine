@@ -304,6 +304,10 @@ An account keeps records for one or more people (`profile` objects in the vault,
 
 A child's profile is a profile with `kind: child` and a birth date in its sealed record (`core/src/family.ts` has the ages; the server never sees them). Co-guardians are `guardian` grants; the child's own account, offered from sixteen, is a `self` grant. See SECURITY.md **M-50**.
 
+### Promotion at eighteen
+
+The person a profile is of takes it into their own vault (`POST /api/delegations/:id/promote`, `DelegationRepository.promote`): new profile key under their account key, every data key and the profile record re-sealed, the objects moved between vaults in one transaction, the others' grants moved to them paused. See SECURITY.md **M-51**.
+
 ### Letting another account in
 
 A profile can be opened by another account (`routes/delegation.ts`, **M-49**): an invitation code, a grant holding the profile key sealed to the other account's key pair, and `/api/delegated/:grant/objects…`, which are the vault's own handlers with the profile fixed. The worker lists such profiles beside the account's own (`grant:<id>`), and opens one with a `VaultSession.delegated` on the grant. Ending access replaces the profile's key (`POST /api/vault/profiles/:id/rotate`).

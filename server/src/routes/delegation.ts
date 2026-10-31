@@ -9,7 +9,7 @@ import { windowLimiter } from '../rate-limit.js';
 import { mailAfter, securityChangeMail } from '../notify.js';
 import { endOtherSessions } from '../sessions.js';
 import { type SessionData } from '../session-auth.js';
-import { OBJECT_ID, writeObject } from '../vault-files.js';
+import { OBJECT_ID, readObject, removeObject, writeObject } from '../vault-files.js';
 import { sealed } from '../vault-keys.js';
 import { deleteObject, getObject, listObjects, putObject, type ObjectReq, type ObjectScope } from './vault.js';
 
@@ -32,6 +32,8 @@ const roleOf = (r: unknown): DelegationRole | null => (r === 'guardian' || r ===
 
 export interface DelegationRouteOptions {
   claimsPerSource?: number;
+  /** Promotions per source per ten minutes (an irreversible step, so few). */
+  promotionsPerSource?: number;
   instanceWide?: number;
 }
 
@@ -82,7 +84,7 @@ export async function delegationRoutes(app: FastifyInstance, opts: DelegationRou
     return reply.header('Cache-Control', 'no-store').send({
       owned: owned.map(g => ({ id: g.id, profile_id: g.profile_id, delegate_email: g.delegate_email, delegate_public_key: g.delegate_public_key, role: g.role, state: g.state, created_at: g.created_at })),
       invites,
-      received: received.map(g => ({ id: g.id, owner_email: g.owner_email, profile_id: g.profile_id, role: g.role, state: g.state, wrapped_key: g.wrapped_key })),
+      received: received.map(g => ({ id: g.id, owner_email: g.owner_email, profile_id: g.profile_id, role: g.role, state: g.state, wrapped_key: g.wrapped_key, others: g.others })),
     });
   });
 
@@ -167,6 +169,47 @@ export async function delegationRoutes(app: FastifyInstance, opts: DelegationRou
     if (!s) return reply.status(404).send({ error: 'not found' });
     return deleteObject(req as unknown as ObjectReq, reply, s.ownerId, s.scope);
   });
+
+  // --- Promotion at eighteen ----------------------------------------------------------------------------------------------
+
+  // The person a profile is of takes it into their own vault (CR-FAM-02, SECURITY.md **M-51**), as one step: a new profile key, every data key
+  // and the profile record sealed under it, and the new key sealed to everyone else who had the profile, whose access waits, paused, until
+  // the new owner chooses. It is irreversible and changes who owns the records, so the password is asked again. The owner it came from is mailed.
+  app.post<{ Params: { id: string }; Body: { profile_wrapped?: unknown; profile_body?: unknown; objects?: unknown; grants?: unknown } }>(
+    '/api/delegations/:id/promote',
+    { preHandler: [requireAuth, requireRecentAuth, app.rateLimit({ max: opts.promotionsPerSource ?? 5, timeWindow: '10 minutes' })] },
+    async (req, reply) => {
+      const { profile_wrapped: profileWrapped, profile_body: body, objects, grants } = req.body ?? {};
+      const asList = (v: unknown) => (Array.isArray(v) && v.length <= 100_000 ? (v as Array<{ id?: unknown; wrapped_key?: unknown }>) : null);
+      const objectList = asList(objects);
+      const grantList = asList(grants);
+      if (!sealed(profileWrapped, 90, 200) || typeof body !== 'string' || !/^[A-Za-z0-9_-]{16,}$/.test(body) || !objectList || !grantList
+        || ![...objectList, ...grantList].every(o => typeof o.id === 'string' && sealed(o.wrapped_key, 40, 400))) {
+        return reply.status(400).send({ error: 'the new keys are not in the expected form' });
+      }
+      const bytes = Buffer.from(body, 'base64url');
+      const store = getAccountsStore();
+      const grant = await repo().get(req.params.id);
+      if (!grant || grant.delegate_user_id !== req.userId) return reply.status(404).send({ error: 'not found' });
+      const done = await repo().promote(req.userId, grant.id, { profileWrapped, profileSize: bytes.length, objects: objectList.map(o => ({ id: o.id as string, wrappedKey: o.wrapped_key as string })), grants: grantList.map(g => ({ id: g.id as string, wrappedKey: g.wrapped_key as string })) }, new Date().toISOString(),
+        async move => {
+          // The sealed files go across first; a failure here changes nothing at all.
+          for (const id of move.objectIds) {
+            const file = await readObject(move.fromUserId, id);
+            if (!file) throw new Error('a sealed object is missing');
+            await writeObject(req.userId, id, file);
+          }
+          await writeObject(req.userId, move.profileId, bytes);
+        });
+      if (done === 'no_vault') return reply.status(409).send({ error: 'this account has no vault yet', code: 'no_vault' });
+      if (!done) return reply.status(409).send({ error: 'the records changed; try again', code: 'conflict' });
+      // Committed: the copies in the old owner's vault are gone (their rows are tombstones). A failure here leaves stray sealed bytes nothing refers to.
+      for (const id of [...done.objectIds, grant.profile_id]) await removeObject(done.fromUserId, id).catch(err => req.log.error({ err }, 'a sealed object could not be removed after a promotion'));
+      const former = await store.users.findById(done.fromUserId);
+      if (former) mailAfter(req, former.id, securityChangeMail(former.email, 'The records of a person you looked after were taken over by that person, and your access to them is paused', new Date().toISOString()), 'promotion');
+      return reply.send({ seq: done.seq, profile_id: grant.profile_id });
+    },
+  );
 
   // --- Replacing a profile's key ------------------------------------------------------------------------------------------
 

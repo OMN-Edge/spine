@@ -1448,5 +1448,11 @@
  "This is a child I look after": "Das ist ein Kind, um das ich mich kümmere",
  "Born (year-month-day)": "Geboren (Jahr-Monat-Tag)",
  "child, {n} year old|child, {n} years old": "Kind, {n} Jahr alt|Kind, {n} Jahre alt",
- "{name} is now 18, and these records should be theirs. Let them in as themselves, under Access.": "{name} ist jetzt 18, und diese Unterlagen sollten der Person selbst gehören. Lassen Sie die Person als sie selbst herein, unter Zugriff."
+ "{name} is now 18, and these records should be theirs. Let them in as themselves, under Access.": "{name} ist jetzt 18, und diese Unterlagen sollten der Person selbst gehören. Lassen Sie die Person als sie selbst herein, unter Zugriff.",
+ "Could not take over these records": "Diese Unterlagen konnten nicht übernommen werden",
+ "Some of the latest changes are not saved yet.": "Einige der letzten Änderungen sind noch nicht gespeichert.",
+ "You are 18: these records can be yours.": "Sie sind 18: Diese Unterlagen können Ihnen gehören.",
+ "Taking them over moves them into your own account, under a new key that only your account opens. The people who looked after you lose access until you let them back in, one by one. This cannot be undone.": "Wenn Sie sie übernehmen, ziehen sie in Ihr eigenes Konto um, unter einem neuen Schlüssel, den nur Ihr Konto öffnet. Die Personen, die sich um Sie gekümmert haben, verlieren den Zugriff, bis Sie sie nach und nach wieder hereinlassen. Das lässt sich nicht rückgängig machen.",
+ "Yes, take them over": "Ja, übernehmen",
+ "Take over my records": "Meine Unterlagen übernehmen"
 }
