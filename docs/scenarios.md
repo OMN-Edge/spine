@@ -821,6 +821,39 @@ Status: auto (`chat-agent`, `chat-actions`, `share-chat`); live (`chat-qa.it.ts`
 
 ---
 
+## 13. Plans and payment
+
+Only where the operator has set `SPINE_BILLING=on` (`docs/billing.md`). Everywhere else none of this exists and nothing limits an account but the instance's own ceilings.
+
+### 13.1 Try everything, then keep the free plan
+A new account has six months of everything, with 150 pages of AI reading in all. The account page says which plan it is on and what is used (reading, storage, share links).
+
+- When the trial ends the account is on the free plan: the records, timeline, search and export are unchanged, one share link can be live, and translation, questions, connections and approving visitors are refused with words that point to the account page. Reading continues up to about 30 pages a month. Nothing is deleted; storage over the free limit stays, and adding more waits until it is under.
+- When the 150 pages are used, reading and the other AI features stop with a message that says so, not a bare error.
+
+Status: auto (`billing`); screens (plan card, messages): not yet checked by hand.
+
+### 13.2 Upgrade
+On the account page, "Premium for €29 a year (founding price)" (while places are left; otherwise €39) or "€3.99 a month" opens Paddle's checkout on its own page. The price, that it renews until cancelled, that cancelling is one step and the fourteen days to be refunded are shown first.
+
+- Paying never reaches Spine except as Paddle's signed message saying which plan; the account becomes Premium within seconds of it. A message that arrives before the purchase it belongs to is asked for again.
+- Cancelling is in Paddle's portal ("Manage billing"); Premium stays to the end of what was paid for, and the page says when. A payment that fails leaves Premium for a few days while it is retried.
+- An account with a running subscription cannot be deleted until it is cancelled.
+
+Status: auto (`billing`, `growth`); the checkout page and the portal: not yet checked against Paddle's sandbox.
+
+### 13.3 Hear when it opens
+While accounts cannot be made, the front page can ask for an address and says what it is kept for. The operator reads the list with `waitlist` and writes once.
+
+Status: auto (`growth`).
+
+### 13.4 A doctor reads a shared page
+The footer of a shared page links to Spine's front page and to a page for doctors; a sign-up that follows is counted as coming from a shared page or a doctor, a number a day and never who.
+
+Status: auto (`growth`); the footer: not yet checked by hand.
+
+---
+
 ## Gaps found while writing this
 
 Found by checking each scenario against the code.

@@ -121,6 +121,11 @@ One constraint shapes the AI path: the client cannot hold Spine's model API key,
 | FR-ACC-03 | Sample records, explorable before uploading anything real | Must | Launch |
 | FR-EXP-01 | Full export: originals plus extracted data as JSON; the export can be imported again | Must | Launch |
 | FR-EXP-02 | Account deletion destroys keys, making stored ciphertext unrecoverable | Must | Launch |
+| FR-BIL-01 | Plans where the operator offers them: a six-month trial with everything and 150 pages of AI reading, a free plan, and Premium by subscription; nothing is deleted when a plan ends | Must | Launch |
+| FR-BIL-02 | Price, renewal and cancellation shown before a purchase, one-step cancellation, the card never seen by Spine, and an account with a running subscription not deleted until it is cancelled | Must | Launch |
+| FR-BIL-03 | The first 500 paying accounts keep the yearly founding price for as long as the subscription runs | Should | Launch |
+| FR-BIL-04 | A self-hosted or private instance has no plans and no limits but its own | Must | Launch |
+| FR-GRW-01 | The loops in the marketing plan can be counted without identifying anyone: sign-ups from a shared page or a doctor's page, shared pages opened, checkouts started; a waitlist holds an address and a day | Should | Launch |
 
 ### Not in the first release
 
@@ -267,7 +272,7 @@ What each feature, current and planned, must satisfy in law, with the source. GD
 | CR-DEL-01 | Delegating a profile to another account is a disclosure the owner chooses; the delegate's rights and the owner's right to revoke are stated, and each grant is logged | GDPR Art. 6, 9(2)(a), 26 if roles are joint | Delegation | Future |
 | CR-EMG-01 | The emergency card is data the owner chooses to expose without approval: consent for that exposure is explicit, a scan is logged and notified, and the offline QR (data in the code) warns that anyone who sees the code reads the card | GDPR Art. 9(2)(a), 25, 32 | Emergency card | Future |
 | CR-REM-01 | Reminders restate the document, hold no medical text on the lock screen and are the owner's to switch off | GDPR Art. 5(1)(c); MDCG 2019-11 | Reminders | Future |
-| CR-PAY-01 | A paid tier: price, renewal and cancellation shown before purchase, 14-day withdrawal right and digital-content rules, a processor agreement with the payment provider | Consumer Rights Directive 2011/83; Digital Content Directive (EU) 2019/770; GDPR Art. 28 | Subscription | Future |
+| CR-PAY-01 | A paid tier: price, renewal and cancellation shown before purchase, 14-day withdrawal right and digital-content rules, a processor agreement with the payment provider | Consumer Rights Directive 2011/83; Digital Content Directive (EU) 2019/770; GDPR Art. 28 | Subscription | Draft (pricing page, terms and privacy notice say it; the agreement with Paddle is the operator's to sign) |
 | CR-MOB-01 | Store listings and privacy forms match the privacy notice and the intended purpose | Store policies; GDPR Art. 13; MDR Art. 7 | Mobile apps | Future |
 | CR-ENC-01 | An attested confidential-computing relay (so the relay could be said not to see content) is a security measure to be described in the notice and the DPIA when it replaces the current relay | GDPR Art. 25, 32, 35 | Relay | Future |
 

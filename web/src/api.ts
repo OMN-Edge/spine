@@ -521,7 +521,7 @@ export class ApiError extends Error {
 }
 
 /** What the sign-in page needs before anyone is signed in. `approval`: people ask for an account and the administrator approves it. `private`: a private deployment. */
-export interface AuthOptions { registration: 'operator' | 'open' | 'approval'; recovery: boolean; instance: 'public' | 'private' }
+export interface AuthOptions { registration: 'operator' | 'open' | 'approval'; recovery: boolean; instance: 'public' | 'private'; billing: boolean; waitlist: boolean }
 
 async function req<T>(url: string, options?: RequestInit, retried = false): Promise<T> {
   const res = await appFetch(url, {
@@ -601,7 +601,33 @@ const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, 
   signal?.addEventListener('abort', () => { clearTimeout(timer); reject(new DOMException('stopped', 'AbortError')); }, { once: true });
 });
 
+export interface Prices { premium: { year: number; month: number }; founding: { year: number }; currency: string }
+export interface Pricing { enabled: boolean; prices?: Prices; founding_left?: number }
+/** What the account page shows of the plan (the server's `GET /api/billing`). */
+export interface BillingView {
+  enabled: boolean;
+  plan?: 'trial' | 'free' | 'premium';
+  trial_ends_at?: string | null;
+  subscription?: { status: string; interval: 'month' | 'year' | null; founding: boolean; ends_at: string | null; renews_at: string | null; provider: 'paddle' | 'operator' } | null;
+  can_manage?: boolean;
+  ai?: { used: number; allowance: number; period: 'trial' | 'month' };
+  vault?: { used_bytes: number; limit_bytes: number };
+  shares?: { live: number; limit: number };
+  features?: { translation: boolean; chat: boolean; linking: boolean; related: boolean; approval_mode: boolean };
+  prices?: Prices;
+  founding_left?: number;
+}
+
 export const api = {
+  billing: {
+    pricing: () => req<Pricing>('/api/pricing'),
+    get: () => req<BillingView>('/api/billing'),
+    /** Where to send the person to pay: the provider's checkout, on a page of its own. */
+    checkout: (interval: 'month' | 'year') => post<{ url: string }>('/api/billing/checkout', { interval }),
+    portal: () => post<{ url: string }>('/api/billing/portal', {}),
+  },
+  /** Asking to be told when Spine opens. The answer is the same whether or not the address was already there. */
+  waitlist: (email: string, source?: string) => post<{ ok: boolean }>('/api/waitlist', { email, source }),
   /** The accounts waiting for approval (SPINE_REGISTRATION=approval); only an address in SPINE_ADMIN_EMAILS is let see them. */
   admin: {
     accounts: () => req<{ pending: Array<{ id: string; email: string; created_at: string; email_confirmed: boolean }> }>('/api/admin/accounts'),
@@ -705,8 +731,8 @@ export const api = {
     me: () => req<{ authenticated: boolean; email: string; second_factor_enabled?: boolean; vault?: boolean; consent_needed?: { health: boolean; terms: boolean } }>('/api/auth/me'),
     options: () => req<AuthOptions>('/api/auth/options'),
     /** The keys are made on the device; the server gets the derived credential and the sealed keys, never the password. */
-    register: (email: string, account: { authValue: string; keys: VaultKeyPayload }, consent: { health_data: boolean; terms: boolean }) =>
-      post<{ ok: boolean; message: string; pending?: boolean }>('/api/auth/register', { email, auth_value: account.authValue, keys: account.keys, consent_health_data: consent.health_data, accept_terms: consent.terms }),
+    register: (email: string, account: { authValue: string; keys: VaultKeyPayload }, consent: { health_data: boolean; terms: boolean }, ref?: string) =>
+      post<{ ok: boolean; message: string; pending?: boolean }>('/api/auth/register', { email, auth_value: account.authValue, keys: account.keys, consent_health_data: consent.health_data, accept_terms: consent.terms, ref }),
     /** An account without a vault makes one: the new credential replaces the password the server knew. */
     createVault: (account: { authValue: string; keys: VaultKeyPayload }) => put<{ ok: boolean }>('/api/vault/keys', { auth_value: account.authValue, keys: account.keys }),
     rewrap: (change: { authValue?: string; keys: VaultKeyPayload }) => post<{ ok: boolean }>('/api/vault/keys/rewrap', { auth_value: change.authValue, keys: change.keys }),

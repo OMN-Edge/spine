@@ -20,10 +20,10 @@ import { BUILD_COMMIT } from '../build-info';
  */
 export default function Landing() {
   const { t } = useI18n();
-  const [options, setOptions] = useState<Pick<AuthOptions, 'registration' | 'instance'>>({ registration: 'operator', instance: 'public' });
+  const [options, setOptions] = useState<Pick<AuthOptions, 'registration' | 'instance' | 'billing' | 'waitlist'>>({ registration: 'operator', instance: 'public', billing: false, waitlist: false });
 
   useEffect(() => {
-    api.auth.options().then(o => setOptions({ registration: o.registration, instance: o.instance })).catch(() => {});
+    api.auth.options().then(o => setOptions({ registration: o.registration, instance: o.instance, billing: o.billing, waitlist: o.waitlist })).catch(() => {});
   }, []);
 
   const open = options.registration !== 'operator';
@@ -58,6 +58,7 @@ export default function Landing() {
                 {t('Spine keeps your scans, results and letters, reads out the dates, values and doctors in them, and lets you show a doctor exactly what you choose, for as long as you choose.')}
               </p>
               <Actions open={open} asks={asks} className="mt-9" />
+              {options.waitlist && !open && <Waitlist />}
               {priv && <p className="mt-4 text-sm text-ink/60">{t('This is a private Spine. Accounts are approved by its administrator.')}</p>}
               <p className="mt-5 text-sm">
                 <a href="#protection" className="text-accent underline decoration-accent/30 underline-offset-4 hover:decoration-accent">{t('How your records are protected')}</a>
@@ -139,6 +140,7 @@ export default function Landing() {
           <nav className="flex flex-wrap gap-x-5 gap-y-2">
             <Link to="/privacy" className="hover:text-ink hover:underline">{t('Privacy notice')}</Link>
             <Link to="/terms" className="hover:text-ink hover:underline">{t('Terms of use')}</Link>
+            {options.billing && <Link to="/pricing" className="hover:text-ink hover:underline">{t('Plans and prices')}</Link>}
             <Link to="/purpose" className="hover:text-ink hover:underline">{t('What Spine is for')}</Link>
             <Link to="/trust" className="hover:text-ink hover:underline">{t('How to check this app')}</Link>
             <span className="font-mono" title={BUILD_COMMIT}>{BUILD_COMMIT.slice(0, 7)}{BUILD_COMMIT.endsWith('-dirty') ? '-dirty' : ''}</span>
@@ -155,9 +157,36 @@ const INK = 'rgb(var(--ink))';
 const FAINT = 'rgb(var(--ink) / 0.14)';
 const ACCENT = 'rgb(var(--accent))';
 
+/** Asking to be told when Spine opens, while accounts cannot yet be made. An address and the day are kept, for that and nothing else. */
+function Waitlist() {
+  const { t } = useI18n();
+  const [email, setEmail] = useState('');
+  const [state, setState] = useState<'idle' | 'sending' | 'done' | 'failed'>('idle');
+  const send = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setState('sending');
+    try { await api.waitlist(email, new URLSearchParams(window.location.search).get('ref') ?? undefined); setState('done'); } catch { setState('failed'); }
+  };
+  if (state === 'done') return <p className="mt-6 text-sm text-ink/70">{t('Thank you. We will write once, when Spine opens.')}</p>;
+  return (
+    <form onSubmit={e => void send(e)} className="mt-6 max-w-md">
+      <label className="block text-sm font-medium" htmlFor="waitlist-email">{t('Tell me when Spine opens')}</label>
+      <div className="mt-2 flex gap-2">
+        <input id="waitlist-email" type="email" required autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} className="min-w-0 flex-1 rounded-full border border-ink/25 bg-transparent px-4 py-2" />
+        <button type="submit" disabled={state === 'sending'} className="rounded-full bg-ink px-5 py-2 font-medium text-paper hover:bg-ink/85 disabled:opacity-50">{t('Notify me')}</button>
+      </div>
+      <p className="mt-2 text-xs text-ink/60">{t('We keep your address only to write to you when Spine opens. Ask us and we remove it.')}</p>
+      {state === 'failed' && <p role="alert" className="mt-2 text-sm text-red-700">{t('That address could not be saved. Check it and try again.')}</p>}
+    </form>
+  );
+}
+
 /** Signing up or in, and the demo: the app itself with invented records, in this browser only, with no account. */
 function Actions({ open, asks, className = '' }: { open: boolean; asks: boolean; className?: string }) {
   const { t, lang } = useI18n();
+  // Which loop brought the visitor (a shared page, a doctor's recommendation) goes on to the sign-up, where it is counted.
+  const ref = new URLSearchParams(window.location.search).get('ref');
+  const signUp = ref && /^[a-z]{1,16}$/.test(ref) ? `/register?ref=${ref}` : '/register';
   const { startDemo } = useAuth();
   const navigate = useNavigate();
   const [starting, setStarting] = useState(false);
@@ -172,7 +201,7 @@ function Actions({ open, asks, className = '' }: { open: boolean; asks: boolean;
   return (
     <div className={className}>
       <div className="flex flex-wrap gap-3">
-        {open && <Link to="/register" className={solid}>{asks ? t('Ask for an account') : t('Create an account')}</Link>}
+        {open && <Link to={signUp} className={solid}>{asks ? t('Ask for an account') : t('Create an account')}</Link>}
         <Link to="/login" className={open ? outline : solid}>{t('Sign in')}</Link>
         <button type="button" onClick={() => void tryDemo()} disabled={starting} className={outline}>{starting ? t('Opening…') : t('Try the demo')}</button>
       </div>

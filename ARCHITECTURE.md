@@ -296,6 +296,10 @@ Metadata still leaks: a sender, subject or domain naming a service tells the pro
 
 Accounts come from the operator (`npm run cli -- create-user <email>`; also `set-password`, `reset-link`, `disable-2fa`, `delete-user`, `list-users`) or, if enabled, from open signup.
 
+### Plans and payment
+
+`SPINE_BILLING=on` gives accounts a plan (**M-45**, [docs/billing.md](docs/billing.md)): a six-month trial, a free plan and Premium, worked out from the account's age and its subscription (`entitlementsOf` in `core/src/billing/plans.ts`, never stored). The relay asks `billing/gate.ts` before and after each call; the vault and sealed-share routes ask `billing/entitlements.ts`; Paddle's signed messages (`routes/billing.ts`) write the subscription; the app only sends a person to Paddle's checkout (`checkout/`, an origin of its own) and to its customer portal. Off, none of it runs, which is the state of a self-hosted or private instance.
+
 ### Registration
 
 `SPINE_REGISTRATION` is `operator` (default; accounts come from the CLI), `open` or `approval`. `open` requires a mailer and refuses to start without one (**P3**). `approval` lets anyone ask for an account, which holds no session until the administrator approves it with `approve-user` or, for an address in `SPINE_ADMIN_EMAILS`, from the account page; it needs no mailer, because approval then stands for confirming the address (**M-44**). `SPINE_INSTANCE=private` labels the deployment as private and refuses `open`; this instance runs `open` with Brevo, and a fresh install defaults to `operator` so it boots with no mailer.

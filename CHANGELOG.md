@@ -4,6 +4,10 @@ Spine is versioned `0.x` until its first production release: anything may change
 
 ## Unreleased
 
+- The server's store can be Postgres (`SPINE_STORE=postgres`, `SPINE_DATABASE_URL`), so more than one instance, or a host with no disk, can share accounts, sign-ins, the vault's index and sealed shares and the relay's counts. `npm run test:postgres` runs the accounts' tests on it.
+- Plans and payment, off unless `SPINE_BILLING=on` (M-45, `docs/billing.md`): a six-month trial, a free plan and Premium, sold by Paddle; AI reading is measured at the relay, and translation, questions, connections, any number of share links and visitor approval are Premium's. The privacy notice and terms say so, and every account is asked to agree to them again.
+- A pricing page, a plan card on the account page, a waitlist, and a page for doctors reached from a shared page's footer; `grant-plan`, `waitlist` and `metrics` for the operator.
+
 ## 0.1.0
 
 The first tagged version: usable for self-hosting, not yet audited (SECURITY.md).

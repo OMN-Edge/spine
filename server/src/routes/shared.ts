@@ -94,7 +94,7 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     if (requireApproval && plan && !plan.approvalMode) return reply.status(402).send({ error: 'approving visitors is not part of the account’s plan', code: 'plan_required' });
     if (!replacing && used.bundles >= (await liveSharesFor(req.userId))) {
       const byPlan = plan?.liveShares != null && used.bundles >= plan.liveShares;
-      return reply.status(byPlan ? 402 : 409).send({ error: 'too many shares are live; revoke one first', code: byPlan ? 'plan_required' : 'too_many' });
+      return reply.status(byPlan ? 402 : 409).send({ error: byPlan ? 'another live share is not part of the account’s plan' : 'too many shares are live; revoke one first', code: byPlan ? 'plan_required' : 'too_many' });
     }
     if (used.bytes - (replacing ? existing.size + existing.blobBytes : 0) + req.body.length > limits.totalBytes) return reply.status(413).send({ error: 'the shares hold too much; revoke one first', code: 'full' });
     const put = await store.shared.put(req.userId, { id, expiresAt: expires, requireApproval, size: req.body.length, blobs: 0, blobBytes: 0 }, new Date().toISOString());

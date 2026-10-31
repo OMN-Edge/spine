@@ -6,6 +6,7 @@ import TwoFactor from '../components/TwoFactor';
 import Sessions from '../components/Sessions';
 import YourData from '../components/YourData';
 import AdminAccounts from '../components/AdminAccounts';
+import PlanCard from '../components/PlanCard';
 import Passkeys from '../components/Passkeys';
 import AddDevice from '../components/AddDevice';
 import RecoveryKitSettings from '../components/RecoveryKitSettings';
@@ -54,6 +55,8 @@ export default function Account() {
         {done && <Notice kind="ok">{t('Password changed. Your other sessions have been signed out.')}</Notice>}
         <button type="submit" className={buttonClass}>{t('Change password')}</button>
       </form>
+
+      <PlanCard />
 
       <RecoveryKitSettings />
 

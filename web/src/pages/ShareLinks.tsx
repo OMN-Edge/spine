@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
+import { planRefusal } from '../billing';
 import { api, type Document, type Episode, type ShareLink, type ShareRequest } from '../api';
 import { episodeName } from '../components/episode';
 import { useOnDataChanged } from '../dataChanged';
@@ -150,7 +151,8 @@ export default function ShareLinks() {
       // The server rejects a scope it cannot fully resolve (P2), so the reason
       // has to reach the owner — otherwise the form silently does nothing.
       setNewUrl('');
-      setError(err instanceof Error ? err.message : t('Could not create the link'));
+      const plan = planRefusal(err);
+      setError(plan ? t(plan) : err instanceof Error ? err.message : t('Could not create the link'));
     } finally {
       setCreating(false);
     }

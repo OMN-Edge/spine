@@ -38,6 +38,7 @@ spine/
 │       ├── chat/           # agent.ts (the LangGraph agent and its read-only tools), screen.ts (what is on screen, resolved), index.ts (askQuestion; the fixed-pipeline fallback), retrieval.ts (keywords, fused search)
 │       ├── episodes/       # index.ts: proposing episodes from the data (no model), scheduleEpisodes()
 │       ├── linking/        # index.ts: candidates (no model), the judge, links as proposals, the chain
+│       ├── billing/plans.ts # the plans, what each includes, entitlementsOf() and taskCost(): the one place a limit is written (the server enforces, the account page shows)
 │       ├── tags.ts         # STARTER_TAGS and cleanTag(): what a tag is and a new account starts with
 │       ├── share-scope.ts  # the only place a share-link scope is validated or resolved
 │       ├── llm/            # LLM interface: types.ts, prompts.ts, chat-llm.ts, budget.ts (daily call allowance), index.ts (registry), adapters/
@@ -56,6 +57,7 @@ spine/
 │       ├── accounts.ts, sessions.ts, user-tokens.ts, legal.ts, vault-files.ts, shared-files.ts  # accounts, sign-ins, one-time tokens, the legal texts, the vault's and sealed shares' files
 │       ├── mail/           # mailer interface: types.ts, index.ts (registry), adapters/{none,brevo}.ts
 │       ├── native/         # the Node versions of the tools the shared code asks for (poppler, Tesseract, sharp, pdfkit, yauzl, yazl, maxmind): for the tests that run the whole app on Node; none is used in production
+│       ├── billing/        # config.ts (SPINE_BILLING and Paddle's settings), paddle.ts (signature check, checkout, portal), entitlements.ts (an account's limits for the routes), gate.ts (what the relay asks before and after a call)
 │       ├── geo.ts          # the country a share was opened from (maxmind, reading data/geoip/country.mmdb or SPINE_GEOIP_DB; looked at again every minute): the one native library the production server uses
 │       ├── geoip-update.ts # downloads that file (ip-location-db "user-country", public domain) and checks it before it replaces the one in use; best effort, always ends well; run by install.sh -s and daily before the backup
 │       ├── providers.ts    # registers the model providers the relay service runs; llm/adapters/ (anthropic, vertex) and embedding/adapters/ (vertex) hold them
@@ -72,6 +74,7 @@ spine/
 │       ├── testing/        # stand-in.ts (a model for tests) and stand-in-relay.ts (the relay's entry point with it, for check:app): in no build
 │       └── __tests__/      # Vitest tests that drive the composed app, plus helpers/app.ts (buildTestApp) and helpers/seed.ts
 ├── web/                    # React + Vite + Tailwind
+├── checkout/               # Paddle's checkout page, served from an origin of its own so its script never runs beside the vault (docs/billing.md)
 ├── nginx/                  # Site config template (spine.conf), security.txt template, /source /docs /security redirects
 └── systemd/                # spine-web.service, spine-backup.{service,timer}
 ```
@@ -155,6 +158,7 @@ npm run test:coverage -w spine-server
 | `SPINE_REPO_URL` | Optional. Repository URL that nginx redirects `/source`, `/docs` and `/security` to (read by `install.sh -n`, not by the server); unset leaves the redirects out |
 | `DATA_DIR` | Where the server's database, the vault and the shares live (the server's default is `<repo>/data`, wherever the process starts; core has no default and fails if a host registers none) |
 | `SPINE_STORE`, `SPINE_DATABASE_URL`, `SPINE_DATABASE_POOL` | `sqlite` (default; a file at `SPINE_DB_PATH` or `DATA_DIR`) \| `postgres`: the address (`postgres://…`, with `sslmode=require` off this host) and connections per instance (10). The server's store only: records are on the device, so a device or a test of one refuses `postgres`. A Postgres database is backed up by its host, not by `backup.ts` |
+| `SPINE_BILLING`, `PADDLE_ENVIRONMENT`, `PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET`, `SPINE_PADDLE_PRICE_YEAR`, `SPINE_PADDLE_PRICE_MONTH`, `SPINE_PADDLE_PRICE_FOUNDING`, `SPINE_CHECKOUT_URL`, `SPINE_WAITLIST` | Plans and payment (`docs/billing.md`, SECURITY.md **M-45**): `on` gives accounts a six-month trial, a free plan and Premium, with Paddle as seller of record; every Paddle setting is then required, and `SPINE_INSTANCE=private` refuses it. Off (default) means no plans and only the instance's own ceilings. `SPINE_WAITLIST=on` shows "Tell me when Spine opens" on the front page |
 | `PORT` | Fastify listen port (default `3000`) |
 | `SPINE_PARSER` | `text` (default: the PDF's own text layer; nothing leaves the host; `sidecar` is the old name) \| `ocr` (text layer, then local Tesseract; nothing leaves) \| `multimodal` (a vision model reads every page) \| `hybrid` (text layer first, then local OCR unless `SPINE_OCR=off`, then a vision model for the pages still unread) |
 | `SPINE_MULTIMODAL_ENABLED` | `true` to allow page images to be sent to the LLM provider. **A second switch on purpose**: `multimodal`/`hybrid` without it refuse to start |

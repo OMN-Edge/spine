@@ -1,12 +1,12 @@
 {
   "versions": {
-    "HEALTH": "2026-10-31",
-    "TERMS": "2026-10-26"
+    "HEALTH": "2026-11-01",
+    "TERMS": "2026-11-01"
   },
   "texts": {
     "privacy": {
       "consent": "HEALTH",
-      "sha256": "840481376f748fb669aee2630a9e90f6df2b922671723f63f40872d335f40d00"
+      "sha256": "1d6c85f92ccb53490f2dc450cfcc6208f057fd2e5e2dec57085b2c91ab21573d"
     },
     "purpose": {
       "consent": "HEALTH",
@@ -14,7 +14,7 @@
     },
     "terms": {
       "consent": "TERMS",
-      "sha256": "d59d068e70a54ed27950d521346c8c94b6caf4cbf6d908e35e0e93a4b3bad78f"
+      "sha256": "6a4d43ef4ef90bd6d139a3e44f0afbdc858b510a3392ddd62824f33489eaf05e"
     }
   }
 }

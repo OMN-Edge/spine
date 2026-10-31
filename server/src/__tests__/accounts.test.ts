@@ -50,7 +50,7 @@ const CONSENT = { consent_health_data: true, accept_terms: true };
 describe('GET /api/auth/options', () => {
   it('tells the sign-in page what is available', async () => {
     expect((await app.inject({ method: 'GET', url: '/api/auth/options' })).json())
-      .toEqual({ registration: 'open', recovery: true, instance: 'public' });
+      .toEqual({ registration: 'open', recovery: true, instance: 'public', billing: false, waitlist: false });
 
     mailerEnabled = false;
     expect((await app.inject({ method: 'GET', url: '/api/auth/options' })).json())

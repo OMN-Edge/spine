@@ -19,6 +19,8 @@ import Search from './pages/Search';
 import Trends from './pages/Trends';
 import Episodes from './pages/Episodes';
 import Scan from './pages/Scan';
+import Pricing from './pages/Pricing';
+import ForDoctors from './pages/ForDoctors';
 import Trust from './pages/Trust';
 import LegalPage from './pages/LegalPage';
 import ConsentGate from './pages/ConsentGate';
@@ -283,6 +285,8 @@ export default function App() {
         <Route path="/terms" element={<LegalPage doc="terms" />} />
         <Route path="/purpose" element={<LegalPage doc="purpose" />} />
         <Route path="/trust" element={<Trust />} />
+        <Route path="/pricing" element={<Pricing />} />
+        <Route path="/for-doctors" element={<ForDoctors />} />
         <Route path="/pair" element={<NotInDemo><Pair /></NotInDemo>} />
         <Route path="/forgot" element={<Forgot />} />
         <Route path="/reset" element={<Reset />} />
