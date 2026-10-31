@@ -29,6 +29,7 @@ export default function Profiles() {
   const [joining, setJoining] = useState(pendingInvite() ?? '');
   const [joined, setJoined] = useState('');
   const [openAccess, setOpenAccess] = useState('');
+  const [editing, setEditing] = useState<{ id: string; name: string; born: string } | null>(null);
 
   // The page's own session needs the people's keys to make an invitation.
   useEffect(() => { void vaultState.session()?.loadProfiles().catch(() => undefined); }, []);
@@ -73,6 +74,27 @@ export default function Profiles() {
       navigate('/');
     } catch (err) {
       setError(err instanceof UnsavedChangesError ? t('Some of the latest changes are not saved yet.') : t('Could not take over these records'));
+    } finally { setBusy(false); }
+  };
+
+  // Who a person is can be corrected: the name, and a child's birth date. The record is sealed again; the list is read again.
+  const saveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editing) return;
+    const person = people?.profiles.find(p => p.id === editing.id);
+    if (!person || !editing.name.trim()) return;
+    if (person.kind === 'child' && !parseBorn(editing.born)) { setError(t('A child’s records need a birth date, written year-month-day.')); return; }
+    setError(''); setBusy(true);
+    try {
+      const session = vaultState.session();
+      if (!session) { setError(t('Open your records first.')); return; }
+      await session.loadProfiles();
+      await session.updateProfile(editing.id, { name: editing.name.trim().slice(0, 60), ...(person.kind === 'child' ? { born: editing.born.trim() } : {}) });
+      await device.reloadKeys();
+      await refresh();
+      setEditing(null);
+    } catch {
+      setError(t('Could not save this change'));
     } finally { setBusy(false); }
   };
 
@@ -127,7 +149,10 @@ export default function Profiles() {
               <span className="shrink-0 flex gap-3 text-sm">
                 {p.id !== people.current && <button disabled={busy} onClick={() => void open(p.id)} className="text-brand-600 hover:underline">{t('Open')}</button>}
                 {p.shared ? <button disabled={busy} onClick={() => void leave(p.id)} className="text-red-600 hover:underline">{t('Leave')}</button>
-                  : <button className="text-gray-500 hover:underline" onClick={() => setOpenAccess(openAccess === p.id ? '' : p.id)}>{t('Access')}</button>}
+                  : <>
+                    <button className="text-gray-500 hover:underline" onClick={() => setEditing(editing?.id === p.id ? null : { id: p.id, name: p.name, born: p.born ?? '' })}>{t('Edit')}</button>
+                    <button className="text-gray-500 hover:underline" onClick={() => setOpenAccess(openAccess === p.id ? '' : p.id)}>{t('Access')}</button>
+                  </>}
               </span>
             </div>
             {p.shared?.role === 'self' && isAdult(p.born) && (
@@ -140,6 +165,14 @@ export default function Profiles() {
               </div>
             )}
             {!p.shared && p.kind === 'child' && isAdult(p.born) && <p className="mt-2 text-xs text-brand-800 bg-brand-50 rounded-lg px-3 py-2">{t('{name} is now 18, and these records should be theirs. Let them in as themselves, under Access.', { name: p.name })}</p>}
+            {editing?.id === p.id && (
+              <form onSubmit={e => void saveEdit(e)} className="mt-2 space-y-2">
+                <input className={inputClass} value={editing.name} maxLength={60} onChange={e => setEditing({ ...editing, name: e.target.value })} aria-label={t('Name')} />
+                {p.kind === 'child' && <input className={inputClass} value={editing.born} onChange={e => setEditing({ ...editing, born: e.target.value })} aria-label={t('Born (year-month-day)')} placeholder={t('Born (year-month-day)')} inputMode="numeric" />}
+                <button type="submit" disabled={busy} className={buttonClass}>{t('Save')}</button>
+                <button type="button" className="ml-3 text-sm text-gray-500 hover:underline" onClick={() => setEditing(null)}>{t('Cancel')}</button>
+              </form>
+            )}
             {!p.shared && openAccess === p.id && <ProfileAccess person={p} />}
           </li>
         ))}

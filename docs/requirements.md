@@ -144,6 +144,9 @@ The cuts of 2026-10-23 are being undone in this order, each with its documents (
 | FR-PRF-02 | Another account can be let into one profile, as a guardian (reads and writes) or a viewer (reads), by an invitation code that works for someone with no account yet; the owner can pause, resume and end it, and ending it replaces the profile's key | Must | Launch | Built (**M-49**) |
 | FR-PRF-03 | The account's people are listed and chosen on a page of their own; opening one saves the first and starts the screens over on the other's records, with no second password; the choice is remembered on the device | Must | Launch | Built |
 | FR-PRF-04 | How many people an account can keep follows its plan (trial six, free one, Premium one; the family plan more); a record is never removed because a plan ended | Must | Launch | Built |
+| FR-EMG-06 | A person may keep official details (identification and health insurance numbers, a card number, organ donor, their own) with the card and choose one by one to put on it; none is on it unless chosen | Should | Launch | Built (**M-47**) |
+| FR-EMG-07 | The card can be printed at the size of a bank card, front and back, with the code on the back | Should | Launch | Built (**M-47**) |
+| FR-PRF-05 | The owner can correct a person's name and a child's birth date | Must | Launch | Built (**M-48**, **M-50**) |
 | FR-EMG-05 | The owner turns the card off and its address stops opening; the interface says a card already seen may have been copied | Must | Launch | Built |
 
 ## Technical requirements

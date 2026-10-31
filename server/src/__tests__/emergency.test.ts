@@ -89,6 +89,33 @@ describe.runIf(records)('the owner’s emergency card', () => {
     expect(sent.at(-1)).toMatchObject({ id: null, key: null });
   });
 
+  it('keeps official details with the person and sends only the ones turned on', async () => {
+    await call('PUT', '/api/emergency', { ...CARD_BODY, details: [{ kind: 'national_id', value: '1234567890123', on_card: true }, { kind: 'insurance_number', value: 'HI-998877' }] });
+    const mine = (await call('GET', '/api/emergency')).json();
+    expect(mine.card.details.map((d: { value: string }) => d.value)).toEqual(['1234567890123', 'HI-998877']); // the owner sees both
+    expect(mine.offline.text).toContain('1234567890123');
+    expect(mine.offline.text).not.toContain('HI-998877');
+    await call('POST', '/api/emergency/publish');
+    const sentNow = JSON.parse(sent.at(-1)!.content);
+    expect(sentNow.details).toEqual([{ kind: 'national_id', label: '', value: '1234567890123', on_card: true }]);
+    expect(sent.at(-1)!.content).not.toContain('HI-998877');
+    // Turning one on later is sent on the next save, and turning one off takes it from the card.
+    await call('PUT', '/api/emergency', { ...CARD_BODY, details: [{ kind: 'national_id', value: '1234567890123' }, { kind: 'insurance_number', value: 'HI-998877', on_card: true }] });
+    const edited = sent.at(-1)!.content;
+    expect(edited).toContain('HI-998877');
+    expect(edited).not.toContain('1234567890123');
+    await call('DELETE', '/api/emergency/publish');
+  });
+
+  it('is not turned on for a card with only details that are off', async () => {
+    const user = await createTestUser('details-off@spine.test');
+    const mine = await loginAs(app, user.email, user.password);
+    await call('PUT', '/api/emergency', { details: [{ kind: 'insurer', value: 'Acme Health' }] }, mine);
+    const refused = await call('POST', '/api/emergency/publish', undefined, mine);
+    expect(refused.statusCode).toBe(400);
+    expect(refused.json().code).toBe('empty');
+  });
+
   it('shows each opening, newest first, to its owner only', async () => {
     const store = getStore();
     await store.emergency.addScan(OWNER_ID, { id: 's1', at: '2026-01-01T10:00:00.000Z', country: 'IT' });

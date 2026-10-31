@@ -877,6 +877,11 @@ On a person's Access, "Let someone in" makes a code (in groups of four) and a li
 
 Status: auto (`delegation`, `vault.e2e`: the crypto, the server and the lock-out); real browser: the code and the cancelling (`check:app`); the joining and the second account's screens: not yet checked by hand.
 
+### 15.2b Correct a name or a birth date
+On a person's row, "Edit" changes the name and, for a child, the birth date (a real date, year-month-day). The ages the page shows, the offer of an account of their own from sixteen and the note at eighteen follow the corrected date. A guardian let in cannot edit.
+
+Status: auto (`vault.e2e`); real browser (`check:app`).
+
 ### 15.3 A child, a co-guardian, a teenager
 "This is a child I look after" asks for a birth date (year-month-day, a real day) and keeps it sealed with the child's records; the list shows "child, 9 years old". The other parent is let in as someone who can change the records. From sixteen the child can be let in as themselves, "with an account of their own": the child makes or uses an account, joins with the code, and sees their own records, which they can change; below sixteen that choice is not offered, and says why. Only one account can be the person themselves.
 
@@ -899,6 +904,8 @@ Status: auto (`delegation`, `vault.e2e`: three accounts, the move, the new key, 
 ### 14.1 Write the card and turn it on
 The owner opens Share links, then "Write an emergency card", writes what someone helping them must know (nothing is taken from the documents), saves, and turns it on. The page says, before it does, that anyone with the address or the code reads the card without asking, that they are told when it is opened, and that a card already seen may have been copied. A code and an address appear; printing is one click. An edit is sent again under the same address, so a printed code keeps working.
 
+- Official numbers (national identification, health insurance, a card number, organ donor, or one of their own) can be kept with the card and are **off it unless ticked**; the page says that anyone who reads the card reads what is ticked. A detail that is off is not in the sealed card, the offline code or the printed copy.
+- "Print a card-sized copy" prints the front and back at 85.6 × 54 mm side by side, to cut along the dotted line; the back holds the code.
 - It is on every plan, and does not count as a share link.
 - Turning it off deletes the sealed copy; the old address says the card is not available. Turning it on again gives a new address.
 

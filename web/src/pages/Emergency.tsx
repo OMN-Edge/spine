@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, ApiError, type EmergencyView } from '../api';
-import { EMPTY_CARD, type CardContent } from 'spine-core/emergency';
+import { DETAIL_LABELS } from '../detailLabels';
+import { DETAIL_KINDS, EMPTY_CARD, publicCard, type CardContent, type CardDetail } from 'spine-core/emergency';
+import PrintCard, { printCard } from '../components/PrintCard';
 import CardQr from '../components/CardQr';
 import { buttonClass, inputClass, Notice } from '../components/AuthCard';
 import { useI18n } from '../i18n';
@@ -41,6 +43,7 @@ export default function Emergency() {
   };
   const save = async () => { if (await run(() => api.emergency.save(current()), t('Could not save the card'))) setSaved(true); };
   const set = <K extends keyof CardContent>(key: K, value: CardContent[K]) => { setSaved(false); setCard(c => ({ ...c, [key]: value })); };
+  const setDetail = (n: number, change: Partial<CardDetail>) => set('details', card.details.map((d, i) => i === n ? { ...d, ...change } : d));
   const setContact = (n: number, key: 'name' | 'relation' | 'phone', value: string) => set('contacts', card.contacts.map((c, i) => i === n ? { ...c, [key]: value } : c));
 
   if (!view) return <p className="text-gray-500">{error || t('Loading…')}</p>;
@@ -73,6 +76,28 @@ export default function Emergency() {
           ))}
           {card.contacts.length < 5 && <button type="button" className="text-sm text-brand-600 hover:underline" onClick={() => set('contacts', [...card.contacts, { name: '', relation: '', phone: '' }])}>{t('Add a contact')}</button>}
         </fieldset>
+        <fieldset>
+          <legend className="text-sm text-gray-700 mb-1">{t('Official details')}</legend>
+          <p className="text-xs text-gray-500 mb-2">{t('Numbers that identify you, such as a national identification number or health insurance. They are kept here, sealed with everything else, and are on the card only where you tick the box. Anyone who reads the card reads what is ticked.')}</p>
+          {card.details.map((d, n) => (
+            <div key={n} className="mb-2 border border-gray-100 rounded-lg p-2 space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <select aria-label={t('What it is')} className={inputClass} value={d.kind} onChange={e => setDetail(n, { kind: e.target.value as CardDetail['kind'] })}>
+                  {DETAIL_KINDS.map(k => <option key={k} value={k}>{k === 'other' ? t('Something else') : t(DETAIL_LABELS[k])}</option>)}
+                </select>
+                {d.kind === 'other'
+                  ? <input aria-label={t('Label')} placeholder={t('Label')} className={inputClass} value={d.label} maxLength={40} onChange={e => setDetail(n, { label: e.target.value })} />
+                  : <span />}
+              </div>
+              <input aria-label={t('Number or value')} placeholder={t('Number or value')} className={inputClass} value={d.value} maxLength={60} onChange={e => setDetail(n, { value: e.target.value })} />
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={d.on_card} onChange={e => setDetail(n, { on_card: e.target.checked })} />{t('Put it on the card')}</label>
+                <button type="button" className="text-sm text-red-600 hover:underline" onClick={() => set('details', card.details.filter((_, i) => i !== n))}>{t('Remove')}</button>
+              </div>
+            </div>
+          ))}
+          {card.details.length < 8 && <button type="button" className="text-sm text-brand-600 hover:underline" onClick={() => set('details', [...card.details, { kind: 'national_id', label: '', value: '', on_card: false }])}>{t('Add a detail')}</button>}
+        </fieldset>
         <label className="block text-sm text-gray-700">{t('Notes')}<textarea className={`${inputClass} h-20`} maxLength={500} value={card.notes} onChange={e => set('notes', e.target.value)} /></label>
         {error && <Notice kind="error">{error}</Notice>}
         {saved && <Notice kind="ok">{t('Saved')}</Notice>}
@@ -87,7 +112,7 @@ export default function Emergency() {
             <CardQr text={view.published.address} label={t('Code that opens the card')} />
             <p className="text-xs text-gray-500 break-all">{view.published.address}</p>
             <div className="flex gap-4 text-sm">
-              <button className="text-brand-600 hover:underline" onClick={() => window.print()}>{t('Print')}</button>
+              <button className="text-brand-600 hover:underline" onClick={printCard}>{t('Print a card-sized copy')}</button>
               <button disabled={busy} className="text-red-600 hover:underline" onClick={() => void run(() => api.emergency.unpublish(), t('Could not turn the card off'))}>{t('Turn the card off')}</button>
             </div>
           </div>
@@ -104,6 +129,7 @@ export default function Emergency() {
             <CardQr text={view.offline.text} level="L" label={t('Code that holds the card')} />
             {view.offline.omitted > 0 && <Notice kind="error">{tn(view.offline.omitted, '{n} item did not fit in the code and was left out.', '{n} items did not fit in the code and were left out.')}</Notice>}
             <p className="text-xs text-gray-500">{t('It shows what was last saved.')}</p>
+            {!on && <button className="text-sm text-brand-600 hover:underline" onClick={printCard}>{t('Print a card-sized copy')}</button>}
           </div>
         )}
       </section>
@@ -116,6 +142,7 @@ export default function Emergency() {
           </ul>
         )}
       </section>
+      <PrintCard card={publicCard(view.card)} qr={view.published ? { text: view.published.address, online: true } : { text: view.offline.text, online: false }} />
       <p className="mt-6 text-sm"><Link to="/share" className="text-brand-600 hover:underline">{t('Share links')}</Link></p>
     </div>
   );

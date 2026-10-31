@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { LanguageSwitcher, useI18n } from '../i18n';
 import { ThemeSwitcher } from '../components/ThemeSwitcher';
 import { openPart } from '../core/share/keys';
+import { DETAIL_LABELS } from '../detailLabels';
 import { normaliseCard, cardIsEmpty, type CardContent } from 'spine-core/emergency';
 
 const keyName = (id: string) => `spine-card-key:${id}`;
@@ -88,6 +89,14 @@ export default function CardView({ id }: { id: string }) {
                     const href = dialable(c.phone);
                     return <li key={i} className="text-gray-900">{c.name}{c.relation && ` (${c.relation})`}{c.phone && <> · {href ? <a href={href} className="text-brand-600 underline">{c.phone}</a> : c.phone}</>}</li>;
                   })}
+                </ul>
+              </section>
+            )}
+            {card.details.length > 0 && (
+              <section>
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500">{t('Identification')}</h2>
+                <ul className="mt-1 space-y-0.5 text-gray-900">
+                  {card.details.map((d, i) => <li key={i}>{d.kind === 'other' ? d.label || t('Something else') : t(DETAIL_LABELS[d.kind])}: <span className="font-mono">{d.value}</span></li>)}
                 </ul>
               </section>
             )}

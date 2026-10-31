@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { CardError, EMPTY_CARD, OFFLINE_BYTES, cardIsEmpty, cardText, normaliseCard } from '../emergency.js';
+import { CardError, EMPTY_CARD, OFFLINE_BYTES, cardIsEmpty, cardText, detailLabel, normaliseCard, publicCard } from '../emergency.js';
 
 const card = (over: Record<string, unknown> = {}) => normaliseCard({ ...EMPTY_CARD, name: 'Jane Example', ...over });
 
@@ -43,3 +43,41 @@ describe('the text an offline code holds', () => {
     expect(new TextEncoder().encode(text).length).toBeLessThanOrEqual(120);
   });
 });
+
+describe('official details', () => {
+  const withDetails = () => card({
+    allergies: ['penicillin'],
+    details: [
+      { kind: 'national_id', value: ' 1234567890123 ', on_card: true },
+      { kind: 'insurance_number', value: 'HI-998877' },
+      { kind: 'other', label: 'Blood donor card', value: 'D-42', on_card: true },
+      { kind: 'passport', value: '   ' },
+    ],
+  });
+
+  it('are kept, cleaned and off the card unless turned on; one with no value is dropped', () => {
+    const c = withDetails();
+    expect(c.details.map(d => [d.kind, d.value, d.on_card])).toEqual([['national_id', '1234567890123', true], ['insurance_number', 'HI-998877', false], ['other', 'D-42', true]]);
+    expect(() => card({ details: Array.from({ length: 9 }, () => ({ kind: 'other', label: 'x', value: 'y' })) })).toThrow(CardError);
+    expect(() => card({ details: [{ kind: 'ssn', value: '1' }] })).toThrow(CardError);
+  });
+
+  it('leave the device only if turned on: the card others read has the chosen ones and nothing else', () => {
+    const shown = publicCard(withDetails());
+    expect(shown.details.map(d => d.value)).toEqual(['1234567890123', 'D-42']);
+    expect(JSON.stringify(shown)).not.toContain('HI-998877');
+    const { text } = cardText(shown);
+    expect(text).toContain('ID: National identification number 1234567890123; Blood donor card D-42');
+    expect(text).not.toContain('HI-998877');
+    // The text of a card that was not made public would leak what is off: that is why every path builds from publicCard.
+    expect(cardText(withDetails()).text).not.toContain('HI-998877');
+  });
+
+  it('count as something written, but a card whose details are all off is empty to others', () => {
+    const onlyOff = card({ name: '', details: [{ kind: 'insurer', value: 'Acme Health' }] });
+    expect(cardIsEmpty(onlyOff)).toBe(false);
+    expect(cardIsEmpty(publicCard(onlyOff))).toBe(true);
+    expect(detailLabel({ kind: 'donor', label: '', value: 'yes', on_card: true })).toBe('Organ donor');
+  });
+});
+

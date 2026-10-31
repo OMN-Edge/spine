@@ -174,6 +174,19 @@ export class VaultSession {
     return readRecord(await openProfileRecord(this.keyOf(profileId), profileId, got.body));
   }
 
+  /**
+   * Changes who a profile says it is: the name and, for a child, the birth date. The record is opened, changed and sealed again under the
+   * same key, and stored over the old one (`ConflictError` if another device changed it first). Only the account that owns the profile can: a
+   * person let in cannot write the record. Nothing else in the vault changes.
+   */
+  async updateProfile(profileId: string, change: { name?: string; born?: string }): Promise<void> {
+    const got = await this.fetchObject(profileId);
+    const key = this.keyOf(profileId);
+    const current = JSON.parse(new TextDecoder().decode(await openProfileRecord(key, profileId, got.body))) as Record<string, unknown>;
+    const next = { ...current, ...(change.name !== undefined ? { name: change.name } : {}), ...(change.born !== undefined ? { born: change.born } : {}) };
+    await this.send(profileId, 'profile', profileId, await sealProfileRecord(key, profileId, new TextEncoder().encode(JSON.stringify(next))), got.wrappedKey, got.seq);
+  }
+
   /** Right after sign-up, when the keys are already in memory. */
   static adopt(unlocked: UnlockedKeys, keys: VaultKeyPayload, f: Fetch = defaultFetch): VaultSession {
     return new VaultSession(unlocked, keys, f);

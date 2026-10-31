@@ -866,6 +866,50 @@ try {
     await click('Timeline');
     await waitFor('Chest X-ray');
 
+    // A person's name and a child's birth date can be corrected, and the list shows the correction.
+    await click('check@example.com');
+    await waitFor('See and add people');
+    await click('See and add people');
+    await waitFor('Add a person');
+    await (await p.evaluateHandle(() => [...document.querySelectorAll('li')].find(li => li.innerText.includes('Kid'))?.querySelectorAll('button')[1])).asElement().click();
+    await p.waitForSelector('li input[aria-label=Name]', { visible: true });
+    await p.focus('li input[aria-label=Name]');
+    for (let i = 0; i < 12; i++) await p.keyboard.press('Backspace');
+    await p.type('li input[aria-label=Name]', 'Kiddo');
+    await p.focus('li input[aria-label="Born (year-month-day)"]');
+    for (let i = 0; i < 12; i++) await p.keyboard.press('Backspace');
+    await p.type('li input[aria-label="Born (year-month-day)"]', '2010-01-01');
+    await (await p.evaluateHandle(() => [...document.querySelectorAll('li button[type=submit]')][0])).asElement().click();
+    check(await waitFor('Kiddo', 15000) && /Kiddo[\s\S]{0,40}child, 16 years old/.test(await text()), "a person's name and a child's birth date can be corrected");
+    await click('Timeline');
+    await waitFor('Chest X-ray');
+
+    // The emergency card: written with an official number kept off it until ticked, turned on, and printable at the size of a bank card.
+    await click('Share links');
+    await waitFor('Write an emergency card');
+    await click('Write an emergency card');
+    check(await waitFor('Official details'), 'the emergency card is written under Share links');
+    await type('input[maxlength="120"]', 'Jane Example');
+    await click('Add a detail');
+    await type('input[aria-label="Number or value"]', '1234567890123');
+    await (await p.evaluateHandle(() => [...document.querySelectorAll('label')].find(l => l.innerText.includes('Put it on the card'))?.querySelector('input'))).asElement().click();
+    await click('Save the card');
+    check(await waitFor('Saved'), 'the card is saved');
+    await click('Turn the card on');
+    check(await waitFor('The card is on', 20000) && /\/share\/[A-Za-z0-9-]+#[A-Za-z0-9_-]{43}/.test(await text()), 'turning it on gives an address that holds its key');
+    await p.emulateMediaType('print');
+    await p.evaluate(() => document.body.classList.add('printing-card'));
+    const faces = await p.evaluate(() => [...document.querySelectorAll('.print-card .card-face')].map(f => { const r = f.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; }));
+    const printed = await p.evaluate(() => document.querySelector('.print-card')?.innerText ?? '');
+    await p.evaluate(() => document.body.classList.remove('printing-card'));
+    await p.emulateMediaType('screen');
+    check(faces.length === 2 && faces.every(([w, h]) => Math.abs(w - 324) <= 3 && Math.abs(h - 204) <= 3), `the printed card is the size of a bank card, front and back (${JSON.stringify(faces)} px)`);
+    check(printed.includes('Jane Example') && printed.includes('1234567890123'), 'and carries the name and the number that was ticked');
+    await click('Turn the card off');
+    check(await waitFor('Turn the card on'), 'the card can be turned off');
+    await click('Timeline');
+    await waitFor('Chest X-ray');
+
     // Letting someone in: a code is made on the device, shown once, and an invitation that is not used can be cancelled.
     await click('check@example.com');
     await waitFor('See and add people');
