@@ -80,8 +80,7 @@ function mirrorVault(from: string, to: string): number {
       const s = statSync(source);
       if (existsSync(target)) {
         const t = statSync(target);
-        // utimes goes through a floating-point number of seconds, so a copy's time can come back a millisecond short on some filesystems and Node versions
-        if (t.size === s.size && t.mtimeMs >= s.mtimeMs - 1) continue;
+        if (t.size === s.size && Math.floor(t.mtimeMs) >= Math.floor(s.mtimeMs)) continue; // utimes keeps milliseconds only
       }
       copyFileSync(source, target);
       utimesSync(target, s.atime, s.mtime);
