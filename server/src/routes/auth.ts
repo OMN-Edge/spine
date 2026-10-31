@@ -6,7 +6,7 @@ import {
   verifyAgainstDummy,
   verifyPassword,
 } from '../passwords.js';
-import { authenticate, type SessionData } from '../session-auth.js';
+import { authenticate, maySignIn, type SessionData } from '../session-auth.js';
 import { windowLimiter } from '../rate-limit.js';
 import { startSession } from '../sessions.js';
 import { mailAfter, newSignInMail } from '../notify.js';
@@ -111,6 +111,11 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions = 
         return reply.status(403).send({ error: 'confirm your email address first', code: 'email_not_verified' });
       }
 
+      // Right password, but the administrator has not approved the account yet (SPINE_REGISTRATION=approval): no session either.
+      if (user.approved === 0) {
+        return reply.status(403).send({ error: 'your account is waiting for the administrator to approve it', code: 'awaiting_approval' });
+      }
+
       // A fresh session id on login, so one fixed before login is not carried over.
       await req.session.regenerate();
       const session = req.session as SessionData;
@@ -169,7 +174,7 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions = 
 
       // Re-read the user: a password change or deletion since the password step voids it.
       const user = await getAccountsStore().users.findById(pending.userId);
-      if (!user || !user.email_verified_at || user.auth_version !== pending.authVersion) {
+      if (!user || !maySignIn(user) || user.auth_version !== pending.authVersion) {
         delete session.pending;
         return reply.status(401).send(expired);
       }

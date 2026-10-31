@@ -48,6 +48,7 @@ export async function issueUserToken(
  */
 export const verificationLink = (token: string) => publicUrl(`/verify#${token}`);
 export const resetLink = (token: string) => publicUrl(`/reset#${token}`);
+export const signInLink = () => publicUrl('/login');
 
 /**
  * No medical content: nothing about records, documents or health. The subject and
@@ -61,6 +62,15 @@ export function verificationMail(to: string, link: string): MailMessage {
     text:
       `Confirm your email address to finish creating your account:\n\n${link}\n\n` +
       `The link works once and expires in 24 hours. If you did not ask for this, ignore this message.\n`,
+  };
+}
+
+/** Sent when the administrator approves an account (only when a mailer is set up). Neutral like the rest. */
+export function approvedMail(to: string, link: string): MailMessage {
+  return {
+    to,
+    subject: 'Your account is ready',
+    text: `Your account has been approved. You can sign in now:\n\n${link}\n`,
   };
 }
 

@@ -6,8 +6,8 @@ import { STARTER_TAGS } from '../../tags.js';
 
 export function userRepository(db: Database): UserRepository {
   const insert = db.prepare(`
-    INSERT INTO users (id, email, password_hash, created_at, email_verified_at, health_consent_at, health_consent_version, terms_accepted_at, terms_version)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO users (id, email, password_hash, created_at, email_verified_at, approved, health_consent_at, health_consent_version, terms_accepted_at, terms_version)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const listPasskeys = db.prepare('SELECT * FROM user_passkeys WHERE user_id = ? ORDER BY created_at, id');
   const findPasskey = db.prepare('SELECT * FROM user_passkeys WHERE id = ?');
@@ -34,8 +34,9 @@ export function userRepository(db: Database): UserRepository {
   );
   const authVersion = db.prepare('SELECT auth_version FROM users WHERE id = ?');
   const list = db.prepare(
-    'SELECT id, email, created_at, email_verified_at FROM users ORDER BY created_at',
+    'SELECT id, email, created_at, email_verified_at, approved FROM users ORDER BY created_at',
   );
+  const approve = db.prepare('UPDATE users SET approved = 1, email_verified_at = COALESCE(email_verified_at, ?) WHERE id = ? AND approved = 0');
   const markVerified = db.prepare(
     'UPDATE users SET email_verified_at = ? WHERE id = ? AND email_verified_at IS NULL',
   );
@@ -106,7 +107,7 @@ export function userRepository(db: Database): UserRepository {
   // async callbacks.
   const createWithTags = db.transaction((user: NewUser) => {
     const c = user.consent;
-    insert.run(user.id, user.email, user.passwordHash, user.createdAt, user.verifiedAt, c ? user.createdAt : null, c?.healthVersion ?? null, c ? user.createdAt : null, c?.termsVersion ?? null);
+    insert.run(user.id, user.email, user.passwordHash, user.createdAt, user.verifiedAt, user.approved === false ? 0 : 1, c ? user.createdAt : null, c?.healthVersion ?? null, c ? user.createdAt : null, c?.termsVersion ?? null);
     if (insertTag && user.starterTags !== false) for (const name of STARTER_TAGS) insertTag.run(starterTagId(user.id, name), user.id, name);
   });
 
@@ -217,12 +218,16 @@ export function userRepository(db: Database): UserRepository {
 
     async list() {
       return list.all() as Array<
-        Pick<UserRecord, 'id' | 'email' | 'created_at' | 'email_verified_at'>
+        Pick<UserRecord, 'id' | 'email' | 'created_at' | 'email_verified_at' | 'approved'>
       >;
     },
 
     async markVerified(id, at) {
       markVerified.run(at, id);
+    },
+
+    async approve(id, at) {
+      return approve.run(at, id).changes === 1;
     },
 
     async createToken(token) {

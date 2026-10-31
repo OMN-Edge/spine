@@ -50,6 +50,7 @@ export interface TestAppOptions {
   auth?: AuthRouteOptions;
   /** Signup, verification and recovery. Closed registration unless a test opens it. */
   accounts?: AccountRouteOptions;
+  admin?: import('../../routes/admin.js').AdminRouteOptions;
   /** Managing the second factor. */
   totp?: TotpRouteOptions;
   /** Passkey sign-in limits. */
@@ -118,6 +119,7 @@ export async function buildTestApp(options: TestAppOptions = {}) {
   const { episodeRoutes } = await import('spine-core/routes/episodes.js');
   const { demoRoutes } = await import('spine-core/routes/demo.js');
   const { ownAccountRoutes } = await import('../../routes/own-account.js');
+  const { adminRoutes } = await import('../../routes/admin.js');
   const { passkeyRoutes } = await import('../../routes/passkeys.js');
   const { enrolmentRoutes } = await import('../../routes/enrolment.js');
   const { vaultRoutes } = await import('../../routes/vault.js');
@@ -158,6 +160,7 @@ export async function buildTestApp(options: TestAppOptions = {}) {
   if (records) await app.register(asPlugin(episodeRoutes));
   if (records) await app.register(asPlugin(demoRoutes));
   await app.register(ownAccountRoutes);
+  await app.register(adminRoutes, options.admin ?? {});
   await app.register(passkeyRoutes, { perSource: 100_000, instanceWide: 100_000, ...options.passkeys });
   await app.register(enrolmentRoutes, { requestsPerSource: 100_000, claimsPerSource: 100_000, instanceWide: 100_000, ...options.enrolment });
   await app.register(vaultRoutes, options.vault ?? {});

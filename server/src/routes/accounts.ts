@@ -20,7 +20,7 @@ import {
 } from '../accounts.js';
 import { hashUserToken } from '../user-tokens.js';
 import { windowLimiter, type WindowLimit } from '../rate-limit.js';
-import { loadRegistrationMode, type RegistrationMode } from '../config.js';
+import { loadInstanceKind, loadRegistrationMode, type InstanceKind, type RegistrationMode } from '../config.js';
 import { AUTH_VALUE, parseVaultKeys } from '../vault-keys.js';
 import { removeAllObjects } from '../vault-files.js';
 
@@ -35,6 +35,7 @@ import { removeAllObjects } from '../vault-files.js';
  */
 export interface AccountRouteOptions {
   registration?: RegistrationMode;
+  instance?: InstanceKind;
   perSource?: { max: number; timeWindow: string | number };
   perAddress?: WindowLimit;
 }
@@ -48,10 +49,18 @@ const GENERIC = {
   message: 'If that address can receive mail, a link is on its way. Nothing after a few minutes? Request another.',
 };
 
+/** The answer to a sign-up under `approval`: the same whether or not the address already has an account. */
+const WAITING = {
+  ok: true,
+  pending: true,
+  message: 'Your account request is in. It can be used once the administrator has approved it.',
+};
+
 const INVALID_LINK = { error: 'this link is invalid or has expired' };
 
 export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOptions = {}) {
   const registration = opts.registration ?? loadRegistrationMode();
+  const instance = opts.instance ?? loadInstanceKind();
   const perSource = app.rateLimit({ ...DEFAULT_PER_SOURCE, ...opts.perSource });
   const perAddress = windowLimiter(
     { ...DEFAULT_PER_ADDRESS, ...opts.perAddress },
@@ -78,10 +87,10 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
 
   // What the sign-in page needs to know before anyone is signed in.
   app.get('/api/auth/options', async (_req, reply) => {
-    return reply.send({ registration, recovery: getMailer().enabled });
+    return reply.send({ registration, recovery: getMailer().enabled, instance });
   });
 
-  if (registration === 'open') {
+  if (registration === 'open' || registration === 'approval') {
     app.post<{ Body: { email?: string; password?: string; auth_value?: string; keys?: unknown; consent_health_data?: unknown; accept_terms?: unknown } }>(
       '/api/auth/register',
       { preHandler: [perSource, perAddress] },
@@ -107,6 +116,8 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
         if (problem) return reply.status(400).send({ error: problem });
 
         const store = getAccountsStore();
+        const waits = registration === 'approval';
+        const verifyByMail = !waits || getMailer().enabled;
         // Hashed whether or not the address is taken, so both cost the same.
         const passwordHash = await hashPassword((vault ? req.body?.auth_value : password) as string);
 
@@ -120,13 +131,18 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
                 email: address,
                 passwordHash,
                 createdAt,
-                verifiedAt: null, // holds nothing and gets no session until confirmed
+                // Holds nothing and gets no session until confirmed. Under `approval` with no mailer there is nothing to confirm by:
+                // the administrator's approval stands for it, so mail stays optional there.
+                verifiedAt: verifyByMail ? null : createdAt,
+                approved: !waits,
                 consent: { healthVersion: HEALTH_CONSENT_VERSION, termsVersion: TERMS_VERSION },
               });
               if (keys) await tx.vault.putKeys(id, keys, createdAt);
             });
-            const token = await issueUserToken(id, 'verify', VERIFY_TTL_MS);
-            sendLater(req, id, verificationMail(address, verificationLink(token)), 'verification');
+            if (verifyByMail) {
+              const token = await issueUserToken(id, 'verify', VERIFY_TTL_MS);
+              sendLater(req, id, verificationMail(address, verificationLink(token)), 'verification');
+            }
           } catch (err) {
             // Two requests for one new address can race to the unique index. The
             // loser is an existing address; either way the answer is the same.
@@ -134,7 +150,7 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
           }
         }
 
-        return reply.send(GENERIC);
+        return reply.send(waits ? WAITING : GENERIC);
       },
     );
   }

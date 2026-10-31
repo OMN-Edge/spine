@@ -8,7 +8,7 @@ import { startSession } from '../sessions.js';
 import { windowLimiter } from '../rate-limit.js';
 import { sealed } from '../vault-keys.js';
 import { requireAuth, requireRecentAuth } from 'spine-core/routes/middleware.js';
-import { type SessionData } from '../session-auth.js';
+import { maySignIn, type SessionData } from '../session-auth.js';
 import { PENDING_LOGIN_MS } from './auth.js';
 
 /**
@@ -149,7 +149,7 @@ export async function passkeyRoutes(app: FastifyInstance, opts: PasskeyRouteOpti
     const passkey = await store.users.findPasskey(response.id);
     if (!passkey) return refused();
     const user = await store.users.findById(passkey.user_id);
-    if (!user || !user.email_verified_at) return refused();
+    if (!user || !maySignIn(user)) return refused();
 
     const rp = relyingParty();
     let verified;

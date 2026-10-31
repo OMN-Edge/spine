@@ -29,6 +29,13 @@ export interface SessionData {
 }
 
 /**
+ * Whether an account may have a session at all: its address is confirmed and, under `SPINE_REGISTRATION=approval`, the administrator has approved
+ * it. Every place that would issue or keep a session asks this, so a sign-up that is waiting cannot get in by another door (passkey, second step,
+ * enrolment).
+ */
+export const maySignIn = (user: Pick<UserRecord, 'email_verified_at' | 'approved'>): boolean => !!user.email_verified_at && user.approved !== 0;
+
+/**
  * Resolve the session to a live user, or null.
  *
  * Checked against the database on every call, not trusted from the cookie: a
@@ -39,7 +46,7 @@ export async function authenticate(req: FastifyRequest): Promise<UserRecord | nu
   if (!session.userId) return null;
 
   const user = await getAccountsStore().users.findById(session.userId);
-  if (!user || !user.email_verified_at || user.auth_version !== session.authVersion) {
+  if (!user || !maySignIn(user) || user.auth_version !== session.authVersion) {
     await req.session.destroy();
     return null;
   }

@@ -85,6 +85,9 @@ function addColumnsInPlace(db: Database): void {
     if (accounts.length > 0 && !accounts.includes(column)) db.exec(`ALTER TABLE users ADD COLUMN ${column} TEXT`);
   }
 
+  // Whether the administrator has approved the account (SPINE_REGISTRATION=approval). Every account from before is.
+  if (accounts.length > 0 && !accounts.includes('approved')) db.exec('ALTER TABLE users ADD COLUMN approved INTEGER NOT NULL DEFAULT 1');
+
   const links = columnsOf(db, 'share_links');
   if (links.length > 0 && !links.includes('include_scans')) {
     db.exec('ALTER TABLE share_links ADD COLUMN include_scans INTEGER NOT NULL DEFAULT 0');

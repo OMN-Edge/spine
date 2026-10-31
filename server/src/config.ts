@@ -24,7 +24,8 @@ const PUBLISHED_PLACEHOLDERS = new Set([
 
 const MIN_SECRET_LENGTH = 32;
 
-export type RegistrationMode = 'operator' | 'open';
+export type RegistrationMode = 'operator' | 'open' | 'approval';
+export type InstanceKind = 'public' | 'private';
 
 export interface MailEnvConfig {
   adapter: string;
@@ -43,16 +44,18 @@ export interface Config {
   mail: MailEnvConfig;
   parser: ParserEnvConfig;
   embeddings: EmbeddingEnvConfig;
-  /** `operator`: accounts come from the CLI. `open`: anyone may register (needs a mailer). */
+  /** `operator`: accounts come from the CLI. `open`: anyone may register (needs a mailer). `approval`: anyone may ask for an account, which waits for the administrator. */
   registration: RegistrationMode;
+  /** `private` labels the instance as a private deployment and refuses open signup (`SPINE_INSTANCE`). */
+  instance: InstanceKind;
 }
 
-export const REGISTRATION_MODES: readonly RegistrationMode[] = ['operator', 'open'];
+export const REGISTRATION_MODES: readonly RegistrationMode[] = ['operator', 'open', 'approval'];
 
 function readMailConfig(
   env: NodeJS.ProcessEnv,
   problems: string[],
-): { mail: MailEnvConfig; registration: RegistrationMode } {
+): { mail: MailEnvConfig; registration: RegistrationMode; instance: InstanceKind } {
   const adapter = env.SPINE_MAILER ?? 'none';
   const mail: MailEnvConfig = {
     adapter,
@@ -64,7 +67,15 @@ function readMailConfig(
   if (!(REGISTRATION_MODES as readonly string[]).includes(rawRegistration)) {
     problems.push(`SPINE_REGISTRATION is "${rawRegistration}"; expected one of ${REGISTRATION_MODES.join(', ')}`);
   }
-  const registration = (rawRegistration === 'open' ? 'open' : 'operator') as RegistrationMode;
+  const registration = ((REGISTRATION_MODES as readonly string[]).includes(rawRegistration) ? rawRegistration : 'operator') as RegistrationMode;
+
+  const rawInstance = env.SPINE_INSTANCE ?? 'public';
+  if (rawInstance !== 'public' && rawInstance !== 'private') problems.push(`SPINE_INSTANCE is "${rawInstance}"; expected public or private`);
+  const instance: InstanceKind = rawInstance === 'private' ? 'private' : 'public';
+  // A private deployment is for the people its administrator lets in: it never accepts open signup, by mistake or otherwise.
+  if (instance === 'private' && registration === 'open') {
+    problems.push('SPINE_INSTANCE=private does not accept SPINE_REGISTRATION=open: use approval (people ask, the administrator approves) or operator (the administrator creates accounts)');
+  }
 
   // P3: open signup needs verifiable addresses, and verifying needs mail. Refuse
   // to start rather than accept accounts nobody can confirm.
@@ -76,7 +87,7 @@ function readMailConfig(
     if (!mail.sender) problems.push('SPINE_MAILER=brevo needs SPINE_MAIL_SENDER (pick a neutral name: it is visible in the recipient\'s inbox)');
     if (!env.SPINE_DOMAIN) problems.push('SPINE_MAILER=brevo needs SPINE_DOMAIN, which the links in mail point at');
   }
-  return { mail, registration };
+  return { mail, registration, instance };
 }
 
 /** The registration mode on its own, for the account routes. */
@@ -85,6 +96,19 @@ export function loadRegistrationMode(env: NodeJS.ProcessEnv = process.env): Regi
   const { registration } = readMailConfig(env, problems);
   if (problems.length > 0) throw new ConfigError(problems);
   return registration;
+}
+
+/** Whether this is a private deployment, for the pages that say so. */
+export function loadInstanceKind(env: NodeJS.ProcessEnv = process.env): InstanceKind {
+  const problems: string[] = [];
+  const { instance } = readMailConfig(env, problems);
+  if (problems.length > 0) throw new ConfigError(problems);
+  return instance;
+}
+
+/** The addresses that may approve accounts from the app (`SPINE_ADMIN_EMAILS`, comma separated, compared lower-cased). The CLI needs none. */
+export function adminEmails(env: NodeJS.ProcessEnv = process.env): Set<string> {
+  return new Set((env.SPINE_ADMIN_EMAILS ?? '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean));
 }
 
 /** The mail section on its own, so `getMailer()` does not depend on unrelated settings. */
@@ -117,7 +141,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 
   const store = readStoreConfig(env, problems);
   const llm = readLlmConfig(env, problems);
-  const { mail, registration } = readMailConfig(env, problems);
+  const { mail, registration, instance } = readMailConfig(env, problems);
   const parser = readParserConfig(env, problems);
   const embeddings = readEmbeddingConfig(env, problems);
 
@@ -136,6 +160,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     parser,
     embeddings,
     registration,
+    instance,
   };
 }
 
