@@ -1,3 +1,4 @@
+import { parseBorn } from 'spine-core/family';
 import type { UploadPart } from 'spine-core/http';
 import './shims/globals';
 import { Buffer } from 'buffer';
@@ -46,7 +47,7 @@ let knownProfiles: Person[] = [];
 /** The profiles other accounts let this one into, each read through its grant (id `grant:<grant>`; SECURITY.md M-49). */
 const grants = new Map<string, { session: VaultSession; profileId: string }>();
 
-interface Person { id: string; name: string; shared?: { owner: string; role: 'guardian' | 'viewer' } }
+interface Person { id: string; name: string; kind?: 'child'; born?: string; shared?: { owner: string; role: 'guardian' | 'viewer' | 'self' } }
 
 /** Opens the profiles other accounts have let this one into. A failure leaves them out and the account's own people are still there. */
 async function loadGrants(received: Awaited<ReturnType<VaultSession['delegations']>>['received']): Promise<Person[]> {
@@ -57,7 +58,7 @@ async function loadGrants(received: Awaited<ReturnType<VaultSession['delegations
     try {
       const view = VaultSession.delegated(session!, grant.id, grant.profile_id, profileKey);
       const id = `grant:${grant.id}`;
-      people.push({ id, name: await view.profileName(grant.profile_id), shared: { owner: grant.owner_email, role: grant.role } });
+      people.push({ id, ...(await view.profileRecord(grant.profile_id)), shared: { owner: grant.owner_email, role: grant.role } });
       grants.set(id, { session: view, profileId: grant.profile_id });
     } catch { /* paused or ended meanwhile, or the key no longer opens it: left out */ }
   }
@@ -165,8 +166,12 @@ self.onmessage = async (event: MessageEvent<ToWorker>) => {
     } else if (m.type === 'createProfile') {
       if (!session) throw Object.assign(new Error('the vault is locked'), { status: 423, code: 'locked' });
       const name = m.name.trim().slice(0, 60) || 'Someone';
-      const id = await session.createProfile(name);
-      knownProfiles = [...knownProfiles.filter(p => !p.shared), { id, name }, ...knownProfiles.filter(p => p.shared)];
+      // A child's profile carries a birth date, sealed in its record: only a real date is kept.
+      const born = m.kind === 'child' ? parseBorn(m.born ?? '') : null;
+      if (m.kind === 'child' && !born) throw Object.assign(new Error('a child’s profile needs a birth date'), { status: 400 });
+      const extra = m.kind === 'child' ? { kind: 'child' as const, born: born! } : {};
+      const id = await session.createProfile(name, extra);
+      knownProfiles = [...knownProfiles.filter(p => !p.shared), { id, name, ...extra }, ...knownProfiles.filter(p => p.shared)];
       reply({ id: m.id, ok: true, body: new TextEncoder().encode(JSON.stringify({ id })).buffer as ArrayBuffer });
     } else if (m.type === 'switchProfile') {
       if (!session || !core) throw Object.assign(new Error('the vault is locked'), { status: 423, code: 'locked' });

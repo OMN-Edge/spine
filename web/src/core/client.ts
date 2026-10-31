@@ -124,7 +124,7 @@ class CoreWorker {
   }
 
   /** The people this account keeps records for, and the one that is open. */
-  async profiles(): Promise<{ profiles: Array<{ id: string; name: string; shared?: { owner: string; role: 'guardian' | 'viewer' } }>; current: string }> {
+  async profiles(): Promise<{ profiles: Person[]; current: string }> {
     const m = await this.send({ type: 'profiles' });
     return JSON.parse(new TextDecoder().decode(m.body ?? new ArrayBuffer(0)));
   }
@@ -136,8 +136,8 @@ class CoreWorker {
   }
 
   /** Makes records for another person (a child, a parent), with a key of their own. Does not open them. */
-  async createProfile(name: string): Promise<string> {
-    const m = await this.send({ type: 'createProfile', name });
+  async createProfile(name: string, child?: { born: string }): Promise<string> {
+    const m = await this.send({ type: 'createProfile', name, ...(child ? { kind: 'child' as const, born: child.born } : {}) });
     return (JSON.parse(new TextDecoder().decode(m.body ?? new ArrayBuffer(0))) as { id: string }).id;
   }
 
@@ -219,6 +219,9 @@ export function rememberProfile(account: string, profileId: string): void {
 export class UnsavedChangesError extends Error {
   constructor() { super('some changes are not saved yet'); this.name = 'UnsavedChangesError'; }
 }
+
+/** A person whose records the account may open: its own, a child's, or one another account let it into. */
+export interface Person { id: string; name: string; kind?: 'child'; born?: string; shared?: { owner: string; role: 'guardian' | 'viewer' | 'self' } }
 
 /** The owner's core: their vault, opened with the master key. */
 export const device = new CoreWorker();

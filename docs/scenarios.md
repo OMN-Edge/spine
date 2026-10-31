@@ -872,6 +872,13 @@ On a person's Access, "Let someone in" makes a code (in groups of four) and a li
 
 Status: auto (`delegation`, `vault.e2e`: the crypto, the server and the lock-out); real browser: the code and the cancelling (`check:app`); the joining and the second account's screens: not yet checked by hand.
 
+### 15.3 A child, a co-guardian, a teenager
+"This is a child I look after" asks for a birth date (year-month-day, a real day) and keeps it sealed with the child's records; the list shows "child, 9 years old". The other parent is let in as someone who can change the records. From sixteen the child can be let in as themselves, "with an account of their own": the child makes or uses an account, joins with the code, and sees their own records, which they can change; below sixteen that choice is not offered, and says why. Only one account can be the person themselves.
+
+- Nothing is hidden from a guardian before eighteen (a question for the lawyer, CR-FAM-03); a teenager sees what the guardian sees.
+
+Status: auto (`family`, `delegation`); real browser: a child with a birth date, refused without a real one (`check:app`); the teenager's own screens: not yet checked by hand.
+
 ---
 
 ## 14. The emergency card

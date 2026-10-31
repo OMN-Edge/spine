@@ -133,6 +133,8 @@ The cuts of 2026-10-23 are being undone in this order, each with its documents (
 
 | ID | Requirement | Priority | Release | Status |
 | --- | --- | --- | --- | --- |
+| FR-FAM-01 | A child's profile is kept by a guardian under their account, with the child's birth date sealed in its record; other guardians can be let in | Must | Launch | Built (**M-50**) |
+| FR-FAM-02 | A child has an account of their own only from sixteen, when their guardian invites them; below sixteen the page does not offer it | Must | Launch | Built (**M-50**) |
 | FR-EMG-01 | A card the owner writes of what someone helping them must know at once (allergies, conditions, medications, contacts, blood type, notes); only what is written is on it | Must | Launch | Built (**M-47**) |
 | FR-EMG-02 | The card opens from a QR code with no account and no approval, in the reader's language for everything but the owner's own words, and says what Spine is | Must | Launch | Built |
 | FR-EMG-03 | Every opening is logged (time and country, never an address) and the owner is mailed, at most once in fifteen minutes | Must | Launch | Built |
@@ -277,7 +279,7 @@ What each feature, current and planned, must satisfy in law, with the source. GD
 
 | ID | Requirement | Basis | Applies to | Status |
 | --- | --- | --- | --- | --- |
-| CR-FAM-01 | A child's profile is managed by a guardian; no own account under 16 without guardian consent | GDPR Art. 8(1) (16 is the age unless a state lowers it; Romania has not, and Law 190/2018 has no such article); a 2025 bill on online services for under-16s passed the Senate and is not confirmed as law | Family profiles | Future |
+| CR-FAM-01 | A child's profile is managed by a guardian; no own account under 16 without guardian consent | GDPR Art. 8(1) (16 is the age unless a state lowers it; Romania has not, and Law 190/2018 has no such article); a 2025 bill on online services for under-16s passed the Senate and is not confirmed as law | Family profiles | Built (the guardian's invitation is the consent, **M-50**; the lawyer confirms) |
 | CR-FAM-02 | At 18, guardian access continues only with the new adult's consent; access is paused until they choose, and the profile key is rotated | GDPR Art. 6, 9; TR-CRY-07 | Promotion at 18 | Future |
 | CR-FAM-03 | Lawyer review of a minor's rights over their own medical data, including whether some records may be hidden from guardians before 18 | Law 46/2003 (patient rights: the legal representative's consent, and the patient's involvement as far as they can understand); Order 386/2004; Civil Code | Teen access | Future |
 | CR-DEL-01 | Delegating a profile to another account is a disclosure the owner chooses; the delegate's rights and the owner's right to revoke are stated, and each grant is logged | GDPR Art. 6, 9(2)(a), 26 if roles are joint | Delegation | Future |

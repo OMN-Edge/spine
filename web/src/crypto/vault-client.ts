@@ -25,11 +25,19 @@ export interface ObjectMeta {
   updated_at: string;
 }
 
+/** What a profile's record says of who it is: a name, and for a child a birth date (sealed with it, so only devices that hold the key know it). */
+export interface ProfileSummary { id: string; name: string; kind?: 'child'; born?: string }
+
+function readRecord(plain: Uint8Array): Omit<ProfileSummary, 'id'> {
+  const r = JSON.parse(new TextDecoder().decode(plain)) as { name?: unknown; kind?: unknown; born?: unknown };
+  return { name: typeof r.name === 'string' ? r.name : '', ...(r.kind === 'child' ? { kind: 'child' as const } : {}), ...(typeof r.born === 'string' ? { born: r.born } : {}) };
+}
+
 /** What `GET /api/delegations` answers (SECURITY.md M-49). */
 export interface Delegations {
-  owned: Array<{ id: string; profile_id: string; delegate_email: string; delegate_public_key: string | null; role: 'guardian' | 'viewer'; state: 'pending' | 'active' | 'paused' | 'revoked'; created_at: string }>;
-  invites: Array<{ id: string; profile_id: string; role: 'guardian' | 'viewer'; expires_at: string }>;
-  received: Array<{ id: string; owner_email: string; profile_id: string; role: 'guardian' | 'viewer'; state: 'pending' | 'active' | 'paused' | 'revoked'; wrapped_key: string | null }>;
+  owned: Array<{ id: string; profile_id: string; delegate_email: string; delegate_public_key: string | null; role: 'guardian' | 'viewer' | 'self'; state: 'pending' | 'active' | 'paused' | 'revoked'; created_at: string }>;
+  invites: Array<{ id: string; profile_id: string; role: 'guardian' | 'viewer' | 'self'; expires_at: string }>;
+  received: Array<{ id: string; owner_email: string; profile_id: string; role: 'guardian' | 'viewer' | 'self'; state: 'pending' | 'active' | 'paused' | 'revoked'; wrapped_key: string | null }>;
 }
 
 export interface ObjectList {
@@ -159,10 +167,10 @@ export class VaultSession {
     return session;
   }
 
-  /** The name in a profile's record, read with the key held for it (for a person let in: the owner's record of who it is). */
-  async profileName(profileId: string): Promise<string> {
+  /** A profile's record, read with the key held for it (for a person let in: the owner's record of who it is). */
+  async profileRecord(profileId: string): Promise<Omit<ProfileSummary, 'id'>> {
     const got = await this.fetchObject(profileId);
-    return (JSON.parse(new TextDecoder().decode(await openProfileRecord(this.keyOf(profileId), profileId, got.body))) as { name: string }).name;
+    return readRecord(await openProfileRecord(this.keyOf(profileId), profileId, got.body));
   }
 
   /** Right after sign-up, when the keys are already in memory. */
@@ -193,15 +201,14 @@ export class VaultSession {
   }
 
   /** The profiles this account has, opened. `listed` is a listing the caller already has, so it is not asked for twice. */
-  async loadProfiles(listed?: ObjectList): Promise<Array<{ id: string; name: string }>> {
+  async loadProfiles(listed?: ObjectList): Promise<ProfileSummary[]> {
     const profiles = (listed ?? (await this.list(0))).objects.filter(meta => meta.kind === 'profile' && !meta.deleted);
     // Together, not one after the other: each is a round trip.
     return Promise.all(profiles.map(async meta => {
       const got = await this.fetchObject(meta.id);
       const profileKey = await openProfileKey(this.unlocked, meta.id, got.wrappedKey);
       this.profileKeys.set(meta.id, profileKey);
-      const record = JSON.parse(new TextDecoder().decode(await openProfileRecord(profileKey, meta.id, got.body))) as { name: string };
-      return { id: meta.id, name: record.name };
+      return { id: meta.id, ...readRecord(await openProfileRecord(profileKey, meta.id, got.body)) };
     }));
   }
 
@@ -215,10 +222,10 @@ export class VaultSession {
     this.inflight.set(id, started);
   }
 
-  async createProfile(name: string): Promise<string> {
+  async createProfile(name: string, extra: { kind?: 'child'; born?: string } = {}): Promise<string> {
     const id = await newId();
     const { profileKey, wrapped } = await newProfileKey(this.unlocked, id);
-    const body = await sealProfileRecord(profileKey, id, new TextEncoder().encode(JSON.stringify({ name })));
+    const body = await sealProfileRecord(profileKey, id, new TextEncoder().encode(JSON.stringify({ name, ...extra })));
     await this.send(id, 'profile', id, body, wrapped, 0);
     this.profileKeys.set(id, profileKey);
     return id;
@@ -320,7 +327,7 @@ export class VaultSession {
   }
 
   /** Makes an invitation to one of my profiles. The code is for the person to tell the other; it is not kept. */
-  async invite(profileId: string, role: 'guardian' | 'viewer'): Promise<{ code: string; expiresAt: string }> {
+  async invite(profileId: string, role: 'guardian' | 'viewer' | 'self'): Promise<{ code: string; expiresAt: string }> {
     const made = await makeInvite(this.keyOf(profileId));
     const sent = await this.json<{ expires_at: string }>('/api/delegations/invites', 'POST', { id: made.id, profile_id: profileId, role, wrapped: made.wrapped, proof_hash: made.proofHash });
     return { code: made.code, expiresAt: sent.expires_at };
@@ -329,11 +336,11 @@ export class VaultSession {
   cancelInvite(id: string): Promise<unknown> { return this.json(`/api/delegations/invites/${encodeURIComponent(id)}`, 'DELETE'); }
 
   /** Takes up an invitation: opens the profile key with the code and seals it to this account's own key pair. Throws if the code is not valid. */
-  async accept(code: string): Promise<{ grantId: string; ownerEmail: string; role: 'guardian' | 'viewer' }> {
+  async accept(code: string): Promise<{ grantId: string; ownerEmail: string; role: 'guardian' | 'viewer' | 'self' }> {
     const invite = await fromInviteCode(code);
     const s = await sodium();
     try {
-      const claimed = await this.json<{ grant: { id: string; role: 'guardian' | 'viewer'; owner_email: string }; wrapped: string }>('/api/delegations/claim', 'POST', { id: invite.id, proof: invite.proof });
+      const claimed = await this.json<{ grant: { id: string; role: 'guardian' | 'viewer' | 'self'; owner_email: string }; wrapped: string }>('/api/delegations/claim', 'POST', { id: invite.id, proof: invite.proof });
       const profileKey = await openInvite(invite, claimed.wrapped);
       try {
         await this.json(`/api/delegations/${encodeURIComponent(claimed.grant.id)}/key`, 'PUT', { wrapped_key: await sealProfileKeyTo(toB64(s, this.unlocked.publicKey), profileKey) });

@@ -284,7 +284,7 @@ describe.skipIf(!haveServer)('the device and the server together', () => {
     const [{ grant, profileKey }] = await guest.openReceived(received);
     const held = profileKey.slice(); // what a former delegate would keep
     const view = VaultSession.delegated(guest, grant.id, grant.profile_id, profileKey);
-    expect(await view.profileName(profile)).toBe('Grandmother');
+    expect((await view.profileRecord(profile)).name).toBe('Grandmother');
     expect(new TextDecoder().decode((await view.get('bundle-shared-001', 'bundle')).plaintext)).toBe('her blood pressure, 120 over 80');
     await view.put(profile, 'bundle', 'bundle-by-guest-1', new TextEncoder().encode('a note by the guardian'));
     expect(new TextDecoder().decode((await owner.get('bundle-by-guest-1', 'bundle')).plaintext)).toBe('a note by the guardian');

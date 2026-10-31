@@ -869,7 +869,8 @@ export interface BillingRepository {
  * invitation holds the profile key sealed under a key only the code makes; a grant holds it sealed to the delegate's own key pair. The
  * server learns who may open which profile, never a key.
  */
-export type DelegationRole = 'guardian' | 'viewer';
+/** `guardian` reads and writes; `viewer` reads; `self` is the person the profile is of, with an account of their own (a teenager, from sixteen), who reads and writes. */
+export type DelegationRole = 'guardian' | 'viewer' | 'self';
 export type DelegationState = 'pending' | 'active' | 'paused' | 'revoked';
 
 export interface DelegationRecord {

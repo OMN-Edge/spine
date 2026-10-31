@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { PROFILE_CHANGED, device, rememberProfile } from './core/client';
+import { PROFILE_CHANGED, device, rememberProfile, type Person } from './core/client';
 import { vaultState } from './crypto/vault-state';
 
-export interface Person { id: string; name: string; shared?: { owner: string; role: 'guardian' | 'viewer' } }
+export type { Person };
 export interface People { profiles: Person[]; current: string }
 
 /**

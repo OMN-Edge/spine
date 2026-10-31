@@ -28,7 +28,7 @@ const HEX = /^[0-9a-f]{64}$/;
 const MAX_INVITES = 10;
 const MAX_GRANTS_PER_PROFILE = 6;
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
-const roleOf = (r: unknown): DelegationRole | null => (r === 'guardian' || r === 'viewer' ? r : null);
+const roleOf = (r: unknown): DelegationRole | null => (r === 'guardian' || r === 'viewer' || r === 'self' ? r : null);
 
 export interface DelegationRouteOptions {
   claimsPerSource?: number;
@@ -60,6 +60,10 @@ export async function delegationRoutes(app: FastifyInstance, opts: DelegationRou
       const now = new Date();
       if ((await repo().invites(req.userId, now.toISOString())).length >= MAX_INVITES) return reply.status(409).send({ error: 'too many invitations are waiting; cancel one first', code: 'too_many' });
       if ((await repo().ownedBy(req.userId)).filter(g => g.profile_id === profileId).length >= MAX_GRANTS_PER_PROFILE) return reply.status(409).send({ error: 'this person already has as many people let in as is allowed', code: 'too_many' });
+      // The person themselves: one, and only one account at a time (a second invitation would be for someone else).
+      if (role === 'self' && ((await repo().ownedBy(req.userId)).some(g => g.profile_id === profileId && g.role === 'self') || (await repo().invites(req.userId, now.toISOString())).some(i => i.profile_id === profileId && i.role === 'self'))) {
+        return reply.status(409).send({ error: 'this person already has an account of their own, or an invitation for one is waiting', code: 'self_exists' });
+      }
       await repo().invite(req.userId, { id, profileId, role, wrapped, proofHash, now: now.toISOString(), expiresAt: new Date(now.getTime() + INVITE_MS).toISOString() });
       return reply.status(201).header('Cache-Control', 'no-store').send({ ok: true, expires_at: new Date(now.getTime() + INVITE_MS).toISOString() });
     },
@@ -139,7 +143,7 @@ export async function delegationRoutes(app: FastifyInstance, opts: DelegationRou
   const scopeOf = async (req: FastifyRequest<{ Params: { grant: string } }>): Promise<{ ownerId: string; scope: ObjectScope; grant: DelegationRecord } | null> => {
     const grant = await repo().get(req.params.grant);
     if (!grant || grant.delegate_user_id !== req.userId || grant.state !== 'active') return null;
-    return { ownerId: grant.owner_user_id, scope: { profileId: grant.profile_id, write: grant.role === 'guardian' }, grant };
+    return { ownerId: grant.owner_user_id, scope: { profileId: grant.profile_id, write: grant.role !== 'viewer' }, grant };
   };
   const gate = [requireAuth, app.rateLimit({ max: 600, timeWindow: '1 minute' })];
 

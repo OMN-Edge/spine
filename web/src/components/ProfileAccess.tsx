@@ -4,6 +4,8 @@ import { showInviteCode } from '../crypto/delegation';
 import { vaultState } from '../crypto/vault-state';
 import { device } from '../core/client';
 import { planRefusal } from '../billing';
+import type { Person } from '../core/client';
+import { mayHaveOwnAccount } from 'spine-core/family';
 import { Notice } from './AuthCard';
 import { useI18n } from '../i18n';
 
@@ -11,10 +13,13 @@ import { useI18n } from '../i18n';
  * Who else may open one person's records (SECURITY.md **M-49**): invite someone with a code, see who is let in, pause or end it. Ending it
  * replaces the person's key, which takes a moment and signs the account out of its other devices. Nothing here sees a record.
  */
-export default function ProfileAccess({ profileId, name }: { profileId: string; name: string }) {
+export default function ProfileAccess({ person }: { person: Person }) {
   const { t } = useI18n();
+  const { id: profileId, name } = person;
+  // A child may have an account of their own from sixteen, with their guardian's consent: making the invitation is that consent.
+  const ownAccount = person.kind !== 'child' || mayHaveOwnAccount(person.born);
   const [data, setData] = useState<Delegations | null>(null);
-  const [role, setRole] = useState<'guardian' | 'viewer'>('guardian');
+  const [role, setRole] = useState<'guardian' | 'viewer' | 'self'>('guardian');
   const [code, setCode] = useState<{ code: string; expiresAt: string } | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -43,7 +48,7 @@ export default function ProfileAccess({ profileId, name }: { profileId: string; 
       <ul className="mt-1 divide-y divide-gray-100">
         {mine.map(g => (
           <li key={g.id} className="py-1.5 flex items-center justify-between gap-2">
-            <span className="text-gray-800 truncate">{g.delegate_email} · {g.role === 'guardian' ? t('can change them') : t('can only read them')}{g.state === 'paused' && ` · ${t('paused')}`}</span>
+            <span className="text-gray-800 truncate">{g.delegate_email} · {g.role === 'self' ? t('has an account of their own') : g.role === 'guardian' ? t('can change them') : t('can only read them')}{g.state === 'paused' && ` · ${t('paused')}`}</span>
             <span className="shrink-0 flex gap-3">
               <button disabled={busy} className="text-brand-600 hover:underline" onClick={() => void run(() => session.setGrantState(g.id, g.state === 'paused' ? 'active' : 'paused'), t('Could not change this'))}>{g.state === 'paused' ? t('Resume') : t('Pause')}</button>
               <button disabled={busy} className="text-red-600 hover:underline" onClick={() => void run(async () => { await session.revoke(g.id); await device.reloadKeys(); }, t('Could not end this'))}>{t('End')}</button>
@@ -67,13 +72,15 @@ export default function ProfileAccess({ profileId, name }: { profileId: string; 
         </div>
       ) : (
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <select aria-label={t('What they can do')} value={role} onChange={e => setRole(e.target.value as 'guardian' | 'viewer')} className="border border-gray-300 rounded-lg px-2 py-1">
+          <select aria-label={t('What they can do')} value={role} onChange={e => setRole(e.target.value as 'guardian' | 'viewer' | 'self')} className="border border-gray-300 rounded-lg px-2 py-1">
             <option value="guardian">{t('Can change the records')}</option>
             <option value="viewer">{t('Can only read the records')}</option>
+            {ownAccount && <option value="self">{t('Is this person, with an account of their own')}</option>}
           </select>
           <button disabled={busy} className="text-brand-600 hover:underline" onClick={() => void run(async () => { await session.loadProfiles(); setCode(await session.invite(profileId, role)); }, t('Could not make a code'))}>{t('Let someone in')}</button>
         </div>
       )}
+      {!ownAccount && <p className="mt-1 text-xs text-gray-500">{t('A child can have an account of their own from sixteen, with a guardian’s consent.')}</p>}
       <p className="mt-1 text-xs text-gray-500">{t('Ending access also gives the records a new key and signs this account out of its other devices. Anything the person already read cannot be taken back.')}</p>
     </div>
   );

@@ -125,6 +125,23 @@ describe('letting another account into a profile', () => {
     expect((await call('GET', `/api/delegated/${claimed.grant.id}/objects`, cookie)).statusCode).toBe(404);
   });
 
+  it('lets the person themselves in as one account, who writes as a guardian does, and no second one', async () => {
+    expect((await invite('self', 's'.repeat(43), 'o'.repeat(43))).statusCode).toBe(201);
+    const second = await invite('self', 't'.repeat(43), 'o'.repeat(43));
+    expect(second.statusCode).toBe(409);
+    expect(second.json().code).toBe('self_exists');
+    const teen = await createTestUser('teen@spine.test');
+    const cookie = await loginAs(app, teen.email, teen.password);
+    const claimed = (await call('POST', '/api/delegations/claim', cookie, { id: 's'.repeat(43), proof: 'o'.repeat(43) })).json();
+    expect(claimed.grant.role).toBe('self');
+    await call('PUT', `/api/delegations/${claimed.grant.id}/key`, cookie, { wrapped_key: K('s') });
+    expect((await put(cookie, 'object-t-0001', 'bundle', PROFILE, 'the person’s own note', 0, `/api/delegated/${claimed.grant.id}/objects`)).statusCode).toBe(200);
+    expect((await put(cookie, 'object-t-0002', 'profile', PROFILE, 'their own record', 0, `/api/delegated/${claimed.grant.id}/objects`)).statusCode).toBe(403);
+    // The person can give the access up themselves.
+    expect((await call('DELETE', `/api/delegations/${claimed.grant.id}`, cookie)).statusCode).toBe(200);
+    expect((await call('GET', `/api/delegated/${claimed.grant.id}/objects`, cookie)).statusCode).toBe(404);
+  });
+
   it('ends with a new key for the profile, and the former delegate can reach nothing', async () => {
     const live = (await call('GET', '/api/vault/objects', owner)).json().objects.filter((o: { profile_id: string; kind: string; deleted: boolean }) => o.profile_id === PROFILE && o.kind !== 'profile' && !o.deleted).map((o: { id: string }) => o.id);
     const rotateBody = (objects: string[], grants: string[]) => ({ profile_wrapped: K('n'), profile_body: Buffer.from('new profile record').toString('base64url'), objects: objects.map(id => ({ id, wrapped_key: K('m') })), grants: grants.map(id => ({ id, wrapped_key: K('g') })) });

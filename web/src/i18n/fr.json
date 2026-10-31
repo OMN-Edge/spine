@@ -1439,5 +1439,14 @@
  "Someone who looks after a person can give you a code that lets you open that person’s records, here.": "Quelqu’un qui s’occupe d’une personne peut vous donner un code qui vous permet d’ouvrir ici les documents de cette personne.",
  "The code": "Le code",
  "You can now open the records {owner} shared with you.": "Vous pouvez maintenant ouvrir les documents que {owner} a partagés avec vous.",
- "Join": "Rejoindre"
+ "Join": "Rejoindre",
+ "has an account of their own": "a un compte à lui ou à elle",
+ "Is this person, with an account of their own": "C’est cette personne, avec un compte à elle",
+ "A child can have an account of their own from sixteen, with a guardian’s consent.": "Un enfant peut avoir un compte à lui ou à elle à partir de seize ans, avec le consentement d’un tuteur.",
+ "child": "enfant",
+ "A child’s records need a birth date, written year-month-day.": "Les documents d’un enfant ont besoin d’une date de naissance, écrite année-mois-jour.",
+ "This is a child I look after": "C’est un enfant dont je m’occupe",
+ "Born (year-month-day)": "Né(e) le (année-mois-jour)",
+ "child, {n} year old|child, {n} years old": "enfant, {n} an|enfant, {n} ans",
+ "{name} is now 18, and these records should be theirs. Let them in as themselves, under Access.": "{name} a maintenant 18 ans, et ces documents devraient être les siens. Laissez cette personne entrer comme elle-même, sous Accès."
 }

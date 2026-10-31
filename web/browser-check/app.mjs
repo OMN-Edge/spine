@@ -848,6 +848,24 @@ try {
     await (await p.evaluateHandle(() => [...document.querySelectorAll('li')].find(li => !li.innerText.includes('Open now'))?.querySelector('button'))).asElement().click();
     check(await waitFor('Chest X-ray', 30000), "the first person's records are back, as they were");
 
+    // A child's records carry a birth date, kept sealed with them; without a real date they are refused.
+    await click('check@example.com');
+    await waitFor('See and add people');
+    await click('See and add people');
+    await waitFor('Add a person');
+    await type('input[aria-label=Name]', 'Kid');
+    await p.click('input[type=checkbox]');
+    await type('input[aria-label="Born (year-month-day)"]', '2015-02-30');
+    await click('Add');
+    check(await waitFor('written year-month-day'), "a child's records are refused without a real birth date");
+    await p.focus('input[aria-label="Born (year-month-day)"]');
+    for (let i = 0; i < 12; i++) await p.keyboard.press('Backspace');
+    await p.type('input[aria-label="Born (year-month-day)"]', '2015-04-01');
+    await click('Add');
+    check(await waitFor('child,', 15000), 'a child is added, and shown with their age');
+    await click('Timeline');
+    await waitFor('Chest X-ray');
+
     // Letting someone in: a code is made on the device, shown once, and an invitation that is not used can be cancelled.
     await click('check@example.com');
     await waitFor('See and add people');

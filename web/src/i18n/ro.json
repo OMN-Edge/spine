@@ -1439,5 +1439,14 @@
  "Someone who looks after a person can give you a code that lets you open that person’s records, here.": "Cine are grijă de o persoană îți poate da un cod care îți permite să îi deschizi aici documentele.",
  "The code": "Codul",
  "You can now open the records {owner} shared with you.": "Acum poți deschide documentele pe care ți le-a partajat {owner}.",
- "Join": "Alătură-te"
+ "Join": "Alătură-te",
+ "has an account of their own": "are un cont al său",
+ "Is this person, with an account of their own": "Este această persoană, cu un cont al ei",
+ "A child can have an account of their own from sixteen, with a guardian’s consent.": "Un copil poate avea un cont propriu de la șaisprezece ani, cu acordul unui tutore.",
+ "child": "copil",
+ "A child’s records need a birth date, written year-month-day.": "Documentele unui copil au nevoie de o dată a nașterii, scrisă an-lună-zi.",
+ "This is a child I look after": "Acesta este un copil de care am grijă",
+ "Born (year-month-day)": "Născut (an-lună-zi)",
+ "child, {n} year old|child, {n} years old": "copil, {n} an|copil, {n} ani|copil, {n} de ani",
+ "{name} is now 18, and these records should be theirs. Let them in as themselves, under Access.": "{name} are acum 18 ani, iar aceste documente ar trebui să fie ale persoanei. Lasă persoana să intre ca ea însăși, la Acces."
 }

@@ -8,6 +8,7 @@ import ProfileAccess from '../components/ProfileAccess';
 import { vaultState } from '../crypto/vault-state';
 import { readInviteCode } from '../crypto/delegation';
 import { pendingInvite, forgetInvite } from '../invite';
+import { ageOn, isAdult, parseBorn } from 'spine-core/family';
 import { useI18n } from '../i18n';
 
 /**
@@ -15,10 +16,13 @@ import { useI18n } from '../i18n';
  * card of their own, and a key of their own that only this account's keys open. One is open at a time; opening another saves the first.
  */
 export default function Profiles() {
-  const { t } = useI18n();
+  const { t, tn } = useI18n();
+  const ageLine = (born?: string) => { const age = ageOn(born); return age === null ? t('child') : tn(age, 'child, {n} year old', 'child, {n} years old'); };
   const navigate = useNavigate();
   const { people, refresh } = useProfiles(true);
   const [name, setName] = useState('');
+  const [child, setChild] = useState(false);
+  const [born, setBorn] = useState('');
   const [error, setError] = useState('');
   const [unsaved, setUnsaved] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -69,10 +73,11 @@ export default function Profiles() {
   const add = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
+    if (child && !parseBorn(born)) { setError(t('A child’s records need a birth date, written year-month-day.')); return; }
     setError(''); setBusy(true);
     try {
-      await device.createProfile(name);
-      setName('');
+      await device.createProfile(name, child ? { born } : undefined);
+      setName(''); setBorn(''); setChild(false);
       await refresh();
     } catch (err) {
       const plan = planRefusal(err);
@@ -92,7 +97,7 @@ export default function Profiles() {
           <li key={p.id} className="p-4">
             <div className="flex items-center justify-between gap-3">
               <span className="text-gray-900">
-                {p.name}
+                {p.name}{p.kind === 'child' && <span className="ml-2 text-xs text-gray-500">{ageLine(p.born)}</span>}
                 {p.id === people.current && <span className="ml-2 text-xs text-green-700">{t('Open now')}</span>}
                 {p.shared && <span className="block text-xs text-gray-500">{t('Shared by {owner}', { owner: p.shared.owner })} · {p.shared.role === 'guardian' ? t('you can change the records') : t('you can only read the records')}</span>}
               </span>
@@ -102,7 +107,8 @@ export default function Profiles() {
                   : <button className="text-gray-500 hover:underline" onClick={() => setOpenAccess(openAccess === p.id ? '' : p.id)}>{t('Access')}</button>}
               </span>
             </div>
-            {!p.shared && openAccess === p.id && <ProfileAccess profileId={p.id} name={p.name} />}
+            {!p.shared && p.kind === 'child' && isAdult(p.born) && <p className="mt-2 text-xs text-brand-800 bg-brand-50 rounded-lg px-3 py-2">{t('{name} is now 18, and these records should be theirs. Let them in as themselves, under Access.', { name: p.name })}</p>}
+            {!p.shared && openAccess === p.id && <ProfileAccess person={p} />}
           </li>
         ))}
       </ul>
@@ -125,6 +131,8 @@ export default function Profiles() {
         <h2 className="font-medium text-gray-900 mb-1">{t('Add a person')}</h2>
         <p className="text-sm text-gray-500 mb-3">{t('Their records start empty. The name is kept with them, sealed like everything else.')}</p>
         <input className={inputClass} value={name} maxLength={60} onChange={e => setName(e.target.value)} placeholder={t('Name')} aria-label={t('Name')} />
+        <label className="flex items-center gap-2 text-sm text-gray-700 mt-2"><input type="checkbox" checked={child} onChange={e => setChild(e.target.checked)} />{t('This is a child I look after')}</label>
+        {child && <input className={inputClass} value={born} onChange={e => setBorn(e.target.value)} placeholder={t('Born (year-month-day)')} aria-label={t('Born (year-month-day)')} inputMode="numeric" />}
         {error && <Notice kind="error">{error}</Notice>}
         <button type="submit" disabled={busy || !name.trim()} className={buttonClass}>{t('Add')}</button>
       </form>

@@ -11,7 +11,7 @@ export type ToWorker =
   /** The people (profiles) this account keeps records for, and the one open now. Answers with `{ profiles, current }` as the body. */
   | { id: number; type: 'profiles' }
   /** Makes another person's records, with a key of their own; answers with `{ id }`. The server refuses past what the plan allows. */
-  | { id: number; type: 'createProfile'; name: string }
+  | { id: number; type: 'createProfile'; name: string; kind?: 'child'; born?: string }
   /** Look again at the keys and the people the account may open (after a profile's key was replaced, or access was given or taken). */
   | { id: number; type: 'reloadKeys' }
   /** Saves what is open, then opens another person's records. Refused with code `unsaved` unless `force`. */

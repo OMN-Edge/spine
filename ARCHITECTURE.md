@@ -300,6 +300,10 @@ Accounts come from the operator (`npm run cli -- create-user <email>`; also `set
 
 An account keeps records for one or more people (`profile` objects in the vault, **M-48**). The device's worker holds one person's core at a time: `switchProfile` saves it, starts the core on the other person's sealed objects and the page starts over (`web/src/profiles.ts`, `pages/Profiles.tsx`). The list is read once at sign-in and added to when someone is made. The plan's `profiles` limit is enforced where a profile object is created (`routes/vault.ts`).
 
+### Children and teenagers
+
+A child's profile is a profile with `kind: child` and a birth date in its sealed record (`core/src/family.ts` has the ages; the server never sees them). Co-guardians are `guardian` grants; the child's own account, offered from sixteen, is a `self` grant. See SECURITY.md **M-50**.
+
 ### Letting another account in
 
 A profile can be opened by another account (`routes/delegation.ts`, **M-49**): an invitation code, a grant holding the profile key sealed to the other account's key pair, and `/api/delegated/:grant/objects…`, which are the vault's own handlers with the profile fixed. The worker lists such profiles beside the account's own (`grant:<id>`), and opens one with a `VaultSession.delegated` on the grant. Ending access replaces the profile's key (`POST /api/vault/profiles/:id/rotate`).
