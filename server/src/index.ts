@@ -3,7 +3,9 @@ import { trustedProxies } from './trust-proxy.js';
 import Fastify from 'fastify';
 import fastifyCookie from '@fastify/cookie';
 import fastifySession from '@fastify/session';
+import { sessionPersistence } from './session-store.js';
 import fastifyStatic from '@fastify/static';
+import { cacheControlFor } from './static-cache.js';
 import fastifyRateLimit from '@fastify/rate-limit';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -77,6 +79,8 @@ app.log.info(
 await app.register(fastifyCookie);
 await app.register(fastifySession, {
   secret: config.sessionSecret,
+  // In the accounts database, so a restart signs no one out (S-16).
+  ...sessionPersistence,
   cookie: {
     secure: config.isProduction,
     httpOnly: true,
@@ -117,6 +121,11 @@ await app.register(fastifyStatic, {
   prefix: '/',
   // Must stay true: the SPA fallback below calls reply.sendFile.
   decorateReply: true,
+  // Files whose names carry a hash of their content are kept by the browser; the rest are asked about each time (static-cache.ts).
+  setHeaders: (reply, filePath) => {
+    const kept = cacheControlFor(filePath);
+    if (kept) reply.header('cache-control', kept);
+  },
 });
 
 app.setNotFoundHandler(async (_req, reply) => {

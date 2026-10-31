@@ -19,6 +19,7 @@ import Search from './pages/Search';
 import Trends from './pages/Trends';
 import Episodes from './pages/Episodes';
 import Scan from './pages/Scan';
+import Trust from './pages/Trust';
 import LegalPage from './pages/LegalPage';
 import ConsentGate from './pages/ConsentGate';
 import VaultSetup from './pages/VaultSetup';
@@ -36,6 +37,7 @@ import ShareLinks from './pages/ShareLinks';
 import ChatPanel from './components/ChatPanel';
 import ReauthDialog from './components/ReauthDialog';
 import { ChatProvider, useChat } from './components/ChatProvider';
+import { GuideProvider } from './guide';
 import PublicShareView from './pages/PublicShareView';
 import ShareRequestPage from './pages/ShareRequest';
 import ShareLinkDetail from './pages/ShareLinkDetail';
@@ -271,6 +273,7 @@ export default function App() {
     <AuthContext.Provider value={{ authenticated, email, setAuthenticated, consentNeeded, consentGiven: () => setConsentNeeded(null), vaultNeeded, vaultMade: () => setVaultNeeded(false), deviceState, deviceOpened: () => setDeviceState('open'), demo, startDemo, leaveDemo, demoUploads, demoAgreed, agreeDemo: () => setDemoAgreed(true) }}>
       {/* Chat asks the device's core, which answers 423 until the vault is open: asked sooner, the panel is switched off for good. */}
       <ChatProvider authenticated={(authenticated && deviceState === 'open') || demo}>
+      <GuideProvider enabled={authenticated && deviceState === 'open' && !demo}>
       <ReauthDialog />
       <Routes>
         <Route path="/login" element={<NotInDemo><Login /></NotInDemo>} />
@@ -279,6 +282,7 @@ export default function App() {
         <Route path="/privacy" element={<LegalPage doc="privacy" />} />
         <Route path="/terms" element={<LegalPage doc="terms" />} />
         <Route path="/purpose" element={<LegalPage doc="purpose" />} />
+        <Route path="/trust" element={<Trust />} />
         <Route path="/pair" element={<NotInDemo><Pair /></NotInDemo>} />
         <Route path="/forgot" element={<Forgot />} />
         <Route path="/reset" element={<Reset />} />
@@ -301,6 +305,7 @@ export default function App() {
         <Route path="/share-requests/:id" element={<PrivateRoute inDemo={false}><ShareRequestPage /></PrivateRoute>} />
         <Route path="/account" element={<PrivateRoute inDemo={false}><Account /></PrivateRoute>} />
       </Routes>
+      </GuideProvider>
       </ChatProvider>
     </AuthContext.Provider>
   );

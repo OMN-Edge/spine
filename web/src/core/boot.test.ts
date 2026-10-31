@@ -9,6 +9,7 @@ import { seedDocument, seedPage, seedSourceFile } from '../../../server/src/__te
 function vault(profile = 'profile-aaaaaaaa') {
   const objects = new Map<string, { kind: string; data: Uint8Array; seq: number }>();
   let counter = 0;
+  const reads = { sync: 0 };
   const store: ObjectStore = {
     async put(kind, id, data, base) {
       if ((objects.get(id)?.seq ?? 0) !== base) throw new Error('conflict');
@@ -23,20 +24,21 @@ function vault(profile = 'profile-aaaaaaaa') {
     },
     getSync(id, kind) {
       const o = objects.get(id);
+      reads.sync++;
       if (!o || o.kind !== kind) throw new Error('not found');
       return Uint8Array.from(o.data);
     },
     async remove(id) { objects.delete(id); },
     async list(since) { return { objects: [...objects.entries()].filter(([, o]) => o.seq > since).map(([id, o]) => ({ id, profile_id: profile, kind: o.kind, seq: o.seq, deleted: false })) }; },
   };
-  return { objects, store };
+  return { objects, store, reads };
 }
 
 describe('the core, saving to and loading from the vault', () => {
   beforeEach(() => memory.clear());
 
   it('keeps what was written: records after a lock and a new start, and files once something asks for them', async () => {
-    const { objects, store } = vault();
+    const { objects, store, reads } = vault();
     const first = await startCore({ objects: store, profileId: 'profile-aaaaaaaa' });
 
     const upload = await seedSourceFile({ userId: 'device', status: 'done' });
@@ -61,6 +63,7 @@ describe('the core, saving to and loading from the vault', () => {
     const image = await second.inject({ method: 'GET', url: `/api/pages/${page}/image` });
     expect(image.statusCode).toBe(200);
     expect([...(image.bytes ?? [])]).toEqual([137, 80, 78, 71, 1, 2, 3]);
+    expect(reads.sync).toBe(0); // fetched ahead of the route that reads it, not by a read that stops the core
     second.lock();
   });
 

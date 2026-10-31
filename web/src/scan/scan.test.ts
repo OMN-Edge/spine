@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { cornersOf, defaultQuad, quadOf, steady } from './detect';
+import { cornersOf, defaultQuad, quadOf } from './detect';
 import { blackAndWhite, enhance, greyscale, otsuCutoff } from './enhance';
-import { newRaster, type Quad } from './image';
+import { newRaster } from './image';
 
 // Finding the page and straightening it are `scanic`'s (WebAssembly, needs a browser to run): they are tried on real photos by hand,
-// not here. What is ours and tested is the corner order, the starting corners, the steadiness check and the clean-up.
+// not here. What is ours and tested is the corner order, the starting corners and the clean-up.
 describe('the page, as the screen holds it', () => {
   it('keeps the corner order between the library and the screen', () => {
     const q = defaultQuad(100, 200);
@@ -17,10 +17,6 @@ describe('the page, as the screen holds it', () => {
     const q = defaultQuad(1000, 500, 0.1);
     expect(q[0]).toEqual({ x: 100, y: 50 });
     expect(q[2]).toEqual({ x: 900, y: 450 });
-    const frame = { width: 1000, height: 500 };
-    expect(steady(q, q.map(p => ({ x: p.x + 5, y: p.y })) as Quad, frame)).toBe(true);
-    expect(steady(q, q.map(p => ({ x: p.x + 40, y: p.y })) as Quad, frame)).toBe(false);
-    expect(steady(null, q, frame)).toBe(false);
   });
 });
 

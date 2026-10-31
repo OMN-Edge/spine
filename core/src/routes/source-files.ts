@@ -21,7 +21,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { applyRegroup, RegroupError } from '../ingestion/regroup.js';
 import { openQuestions } from '../matching/index.js';
 import { guessTitle } from '../ingestion/title-guess.js';
-import { getReadingJob, startReadingUpload } from '../ingestion/read-upload.js';
+import { getReadingJob, isReadingUpload, startReadingUpload } from '../ingestion/read-upload.js';
 import { getRegroupJob, isAnalysingPages, startRegroupAnalysis } from '../regroup/jobs.js';
 import type { Document } from '../types.js';
 
@@ -349,6 +349,8 @@ export async function sourceFileRoutes(app: HttpApp) {
       step: job?.step ?? row.status,
       error: row.error_message,
       grouping_confirmed: row.grouping_confirmed,
+      // The documents are being read (a one-page upload starts that itself), so the grouping is about to be confirmed: not a question.
+      reading: isReadingUpload(id),
       documents,
     });
   });

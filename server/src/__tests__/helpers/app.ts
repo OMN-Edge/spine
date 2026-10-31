@@ -10,6 +10,7 @@ import type { PasskeyRouteOptions } from '../../routes/passkeys.js';
 import type { VaultRouteOptions } from '../../routes/vault.js';
 import { holdsRecordsInThisRun } from 'spine-core/testing/store-kind.js';
 import { useSessionAuth } from '../../session-auth.js';
+import { sessionPersistence } from '../../session-store.js';
 import { asHttp, asPlugin } from '../../http-host.js';
 import { useShareHost, type ShareHost } from 'spine-core/share-host.js';
 import { TRUSTED_PROXIES } from '../../trust-proxy.js';
@@ -38,6 +39,8 @@ export interface RegisteredRoute {
 export const routesOf = new WeakMap<object, RegisteredRoute[]>();
 
 export interface TestAppOptions {
+  /** A second server over the same database, as after a restart: the store is not made again. */
+  keepStore?: boolean;
   /**
    * Overrides for the login limiters. The plugin is always registered, so every
    * test drives the real preHandler (P10); the default max is high enough that
@@ -73,7 +76,7 @@ export async function buildTestApp(options: TestAppOptions = {}) {
     useDriver(openNative);
     useStoreFactory(() => createStore(loadStoreConfig()));
   }
-  resetStore();
+  if (!options.keepStore) resetStore();
   // What the server's entry point registers, and the share host a device would bring.
   useSessionAuth();
   useShareHost(testShareHost);
@@ -92,6 +95,7 @@ export async function buildTestApp(options: TestAppOptions = {}) {
   await app.register(fastifyCookie);
   await app.register(fastifySession, {
     secret: process.env.SESSION_SECRET,
+    ...sessionPersistence,
     cookie: { secure: false },
   });
   await app.register(fastifyMultipart, { limits: { fileSize: 10 * 1024 * 1024 } });
@@ -121,6 +125,7 @@ export async function buildTestApp(options: TestAppOptions = {}) {
   const { sharedRoutes } = await import('../../routes/shared.js');
   const { demoRelayRoutes } = await import('../../routes/demo-relay.js');
   const { chatRoutes } = await import('spine-core/routes/chat.js');
+  const { guideRoutes } = await import('spine-core/routes/guide.js');
   const { shareRoutes } = await import('spine-core/routes/share.js');
   const { publicShareRoutes } = await import('spine-core/routes/public-share.js');
   const { tagRoutes } = await import('spine-core/routes/tags.js');
@@ -160,6 +165,7 @@ export async function buildTestApp(options: TestAppOptions = {}) {
   await app.register(demoRelayRoutes, options.demoRelay ?? {});
   await app.register(sharedRoutes, { requestPerSource: { max: 1000, timeWindow: '1 minute' }, requestPerLink: { max: 1000, windowMs: 60 * 1000 }, readPerSource: { max: 100000, timeWindow: '1 minute' }, ...options.shared });
   if (records) await app.register(asPlugin(chatRoutes));
+  if (records) await app.register(asPlugin(guideRoutes));
   if (records) await app.register(asPlugin(shareRoutes));
   if (records) await app.register(asPlugin(publicShareRoutes));
   if (records) await app.register(asPlugin(tagRoutes));
@@ -169,7 +175,7 @@ export async function buildTestApp(options: TestAppOptions = {}) {
   await app.ready();
 
   // Every test file starts with one account, so the common case needs no setup.
-  await createTestUser();
+  if (!options.keepStore) await createTestUser();
 
   return app;
 }

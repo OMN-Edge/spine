@@ -85,6 +85,18 @@ function sqliteRows(db: Database): Rows {
     }
   }
 
+  /**
+   * The triggers that keep the search index in step, set aside while a merge writes: each insert of a field or a result rebuilds its document's
+   * whole row of the index, so applying a vault's worth of changes through them took time that grew faster than the records (about 24 seconds
+   * for 600 documents) and the index was rebuilt in full at the end all the same. Dropped and made again inside the merge's transaction, so a
+   * failed merge puts them back with everything else.
+   */
+  function setAsideSearchTriggers(): string[] {
+    const found = db.prepare("SELECT name, sql FROM sqlite_master WHERE type = 'trigger' AND sql LIKE '%documents_fts%'").all() as Array<{ name: string; sql: string }>;
+    for (const trigger of found) db.exec(`DROP TRIGGER IF EXISTS ${quote(trigger.name)}`);
+    return found.map(trigger => trigger.sql);
+  }
+
   function rebuildSearch(): void {
     db.exec('DELETE FROM documents_fts');
     db.exec('INSERT INTO documents_fts (rowid, title, doc_type, provider, ai_summary, user_notes, body) SELECT id, title, doc_type, provider, ai_summary, user_notes, body FROM document_search_source');
@@ -200,10 +212,12 @@ function sqliteRows(db: Database): Rows {
       db.exec('BEGIN');
       try {
         const mark = (db.prepare('SELECT COALESCE(MAX(n), 0) AS n FROM _log').get() as { n: number }).n;
+        const triggers = setAsideSearchTriggers();
         const touched = fn();
         sweep();
         db.prepare('DELETE FROM _log WHERE n > ?').run(mark);
         if ([...touched].some(t => SEARCH.has(t))) rebuildSearch();
+        for (const sql of triggers) db.exec(sql);
         db.exec('COMMIT');
       } catch (err) {
         db.exec('ROLLBACK');

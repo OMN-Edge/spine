@@ -121,6 +121,8 @@ export const memory = {
     for (const p of paths?.removed ?? [...removed]) removed.delete(p);
   },
   known(p: string, size: number) { const a = abs(p); mkdirSync(path.dirname(a), { recursive: true }); if (!files.has(a)) files.set(a, { data: null, size, mtime: new Date(0) }); },
+  /** A file the vault holds, brought in without waiting for a read to ask: nothing happens if it is already here, was written meanwhile, or is not known. */
+  supply(p: string, data: Uint8Array) { const e = files.get(abs(p)); if (e && !e.data && !written.has(abs(p))) { e.data = data; e.size = data.length; } },
   /** Where files the vault holds are fetched from when read. */
   useLoader(next: ((path: string) => Uint8Array) | null) { loader = next; },
   evict(p: string) { const e = files.get(abs(p)); if (e && !written.has(abs(p))) e.data = null; },

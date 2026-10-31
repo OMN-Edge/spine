@@ -27,6 +27,7 @@ export default function LegalPage({ doc }: { doc: 'privacy' | 'terms' | 'purpose
           <Link to="/privacy" className="hover:underline">{t('Privacy notice')}</Link>
           <Link to="/terms" className="hover:underline">{t('Terms of use')}</Link>
           <Link to="/purpose" className="hover:underline">{t('What Spine is for')}</Link>
+          <Link to="/trust" className="hover:underline">{t('How to check this app')}</Link>
         </nav>
       </div>
     </div>

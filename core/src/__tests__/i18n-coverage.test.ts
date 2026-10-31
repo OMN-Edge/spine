@@ -39,6 +39,10 @@ function used(): { singles: Set<string>; plurals: Set<string> } {
   for (const block of titles.matchAll(/(?:FIELD_NAMES|DOC_TYPE_NAMES)[^=]*=\s*\{([\s\S]*?)\n\};/g)) {
     for (const m of block[1].matchAll(/:\s*'((?:[^'\\]|\\.)*)'/g)) singles.add(unescape(m[1]));
   }
+  // The answers about Spine (core's help.ts) are shown with t() of each question and paragraph, so those are strings too; ids are not.
+  const help = readFileSync(resolve(__dirname, '../help.ts'), 'utf8');
+  const topics = /HELP_TOPICS[^=]*=\s*\[([\s\S]*?)\n\];/.exec(help)?.[1] ?? '';
+  for (const m of topics.matchAll(/(\bid:\s*)?'((?:[^'\\]|\\.)*)'/g)) if (!m[1]) singles.add(unescape(m[2]));
   return { singles, plurals };
 }
 
@@ -50,6 +54,7 @@ describe('web interface translations', () => {
 
   it('finds the strings it is meant to check', () => {
     expect(singles.size).toBeGreaterThan(300);
+    expect(singles).toContain('How is my data kept private?');
     expect(plurals.size).toBeGreaterThan(10);
   });
 

@@ -1,8 +1,26 @@
+import { execFileSync } from 'node:child_process';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { corePlugins, coreAssets, coreAliases, nodeModules } from './vite.core.shared.mjs';
 
-export default defineConfig({
+/**
+ * The commit this build is of, written into the app (`src/build-info.ts`) so a site says which commit to build to check it (docs/verify-build.md).
+ * `SPINE_COMMIT` wins (a Docker build has no .git); otherwise git is asked, and uncommitted changes add `-dirty`. A build that can do neither says
+ * `unknown` (a self-hoster's `docker compose up` still works); the release workflow refuses to publish a build that says it.
+ */
+function buildCommit(): string {
+  const fromEnv = process.env.SPINE_COMMIT?.trim();
+  if (fromEnv) return fromEnv;
+  try {
+    const git = (...args: string[]) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    return git('rev-parse', 'HEAD') + (git('status', '--porcelain') ? '-dirty' : '');
+  } catch {
+    console.warn('Cannot tell which commit this is (no git checkout, no SPINE_COMMIT): the app will say "unknown".');
+    return 'unknown';
+  }
+}
+
+export default defineConfig(({ command }) => ({
   // `nodeModules` is also here because its aliases are set when the config is read, which the worker's own plugin list does not do.
   plugins: [react(), coreAssets(), nodeModules()],
   // The page uses a few pure files of the shared package (the rules for syncing, the vault client's clock reading), as source.
@@ -13,7 +31,11 @@ export default defineConfig({
   // Rollup split PDF.js and the polyfills into chunks that ran before the shim, so the core never started. A single file runs in import order.
   worker: { format: 'es', plugins: () => corePlugins(), rollupOptions: { output: { inlineDynamicImports: true } } },
   // Libraries the core bundles read `process.env`, which Vite would otherwise replace with an empty object (one src/core/shims/globals.ts could not set).
-  define: { 'process.env': 'globalThis.process.env' },
+  define: {
+    'process.env': 'globalThis.process.env',
+    // Only a build says a commit; the dev server and the tests show `dev`.
+    __SPINE_COMMIT__: JSON.stringify(command === 'build' ? buildCommit() : 'dev'),
+  },
   server: {
     proxy: {
       '/api': 'http://localhost:3000',
@@ -24,4 +46,4 @@ export default defineConfig({
     outDir: 'dist',
     target: 'es2022',
   },
-});
+}));

@@ -26,8 +26,10 @@ function Progress({ file, onSettled }: { file: AttachedFile; onSettled: () => vo
     let timer: number | undefined;
     const poll = () => api.sourceFiles.status(file.upload_id!).then(s => {
       if (!live) return;
-      setState({ status: s.status, progress: s.progress, step: s.step });
-      if (s.status === 'done' || s.status === 'error') {
+      // A one-page upload is read as soon as its pages are: "done" with `reading` is not finished yet, and its report comes after.
+      const finished = s.status === 'error' || (s.status === 'done' && !s.reading);
+      setState({ status: finished || s.status !== 'done' ? s.status : 'processing', progress: s.progress, step: s.step });
+      if (finished) {
         if (!settled.current) { settled.current = true; onSettled(); }
       } else timer = window.setTimeout(poll, 2000);
     }).catch(() => { if (live) timer = window.setTimeout(poll, 5000); });

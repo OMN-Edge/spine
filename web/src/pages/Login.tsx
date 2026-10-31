@@ -27,6 +27,8 @@ export default function Login() {
   useEffect(() => {
     api.auth.options().then(setOptions).catch(() => {});
   }, []);
+  // The core loads while the address and password are typed, and the key is derived in it, not in the page.
+  useEffect(() => { vaultState.prefetch(); }, []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();

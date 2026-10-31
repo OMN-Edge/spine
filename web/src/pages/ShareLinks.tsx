@@ -6,6 +6,7 @@ import { useOnDataChanged } from '../dataChanged';
 import ShareRequestCard from '../components/ShareRequestCard';
 import { LANGUAGES, useI18n } from '../i18n';
 import { Combobox } from '../components/Combobox';
+import GuideTip from '../components/GuideTip';
 import { languageName } from '../i18n/useTranslation';
 import { DOC_TYPE_LABELS } from '../components/DocumentCard';
 import { LIFETIMES } from '../lifetimes';
@@ -317,6 +318,12 @@ export default function ShareLinks() {
             <ShareRequestCard key={r.id} request={r} onDecided={d => { setRequests(prev => prev.map(x => x.id === d.id ? d : x)); api.share.list().then(setLinks).catch(() => {}); }} />
           ))}
         </div>
+      )}
+
+      {!loading && links.length > 0 && (
+        <GuideTip tip="tip.share" topic="sharing">
+          {t('Send the link to your doctor: it opens in a browser, with no account. Whoever has the link can open it, unless you chose to approve each browser, so send it the way you would send something private. You can end a link here at any time, and it ends by itself when it expires.')}
+        </GuideTip>
       )}
 
       {/* Existing links */}

@@ -24,9 +24,13 @@ export default function ReviewQueue() {
   return (
     <div>
       <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900 mb-2">{t('Review queue')}</h1>
-      <p className="text-sm text-gray-500 mb-6">
-        {tn(docs.length, '{n} document waiting for review', '{n} documents waiting for review')}
-      </p>
+      <p className={`text-sm text-gray-500 ${docs.length > 0 ? 'mb-1' : 'mb-6'}`}>{t('Documents you have not marked reviewed yet. Open one, compare what was read with its pages, correct what is wrong, and mark it reviewed.')}</p>
+      {/* With none waiting, "All caught up" below says it: no count of zero above it. */}
+      {docs.length > 0 && (
+        <p className="text-sm text-gray-500 mb-6">
+          {tn(docs.length, '{n} document waiting for review', '{n} documents waiting for review')}
+        </p>
+      )}
 
       {docs.length === 0 ? (
         <div className="text-center py-16 text-gray-400">

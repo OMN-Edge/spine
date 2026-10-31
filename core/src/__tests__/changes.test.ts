@@ -206,6 +206,49 @@ describe('devices that write and then exchange changes', () => {
     expect(hits.map(h => h.id)).toContain(doc.id);
   });
 
+  /** A field and a result on a seeded document, with words nothing else holds. */
+  async function withDetails(store: Store, doc: { id: string; pageId: string }, word: string) {
+    await store.fields.create(USER, { id: uuid(), documentId: doc.id, pageId: doc.pageId, label: 'diagnosis', value: `field-${word}`, sourceSnippet: null, bbox: null, confidence: 1 });
+    await store.measurements.create(USER, { id: uuid(), documentId: doc.id, pageId: doc.pageId, name: `result-${word}`, canonical: `canonical-${word}`, valueText: '1', valueNum: 1, unit: null, refLow: null, refHigh: null, flag: null, takenOn: '2026-01-15', sourceSnippet: null, bbox: null, confidence: 1 });
+  }
+  const finds = async (store: Store, q: string) => (await store.documents.listFor(USER, { q, limit: 10, offset: 0 } as never)).map(h => h.id);
+
+  it('search finds what was in a field, a result name and the page text of what arrived, and follows writes after it', async () => {
+    const one = await seedDocument(a);
+    await withDetails(a, one, 'amlodipine');
+    await exchange(a, b);
+    expect(await finds(b, 'field-amlodipine')).toContain(one.id);
+    expect(await finds(b, 'result-amlodipine')).toContain(one.id);
+    expect(await finds(b, 'text')).toContain(one.id); // the page's own text ("page text")
+
+    // The search triggers were set aside for the merge and are back: a write here is found at once.
+    await withDetails(b, one, 'warfarin');
+    expect(await finds(b, 'field-warfarin')).toContain(one.id);
+    expect(await finds(b, 'result-warfarin')).toContain(one.id);
+  });
+
+  it('a failed apply puts the search triggers back with everything else', async () => {
+    const one = await seedDocument(a);
+    await exchange(a, b);
+    const other = await seedDocument(a);
+    const changes = await a.changes.drain();
+    const broken = changes.map(c => (c.t === 'documents' && c.r ? { ...c, r: { ...c.r, source_file_id: null } } : c));
+    await expect(b.changes.apply(broken)).rejects.toThrow();
+    await withDetails(b, one, 'ibuprofen');
+    expect(await finds(b, 'field-ibuprofen')).toContain(one.id);
+    await b.changes.drain();
+    expect(await b.changes.apply(changes)).toBeGreaterThan(0);
+    expect(await finds(b, 'text')).toEqual(expect.arrayContaining([one.id, other.id]));
+  });
+
+  it('a large apply leaves the search as it would be if every row had been written one at a time', async () => {
+    const docs = [];
+    for (let i = 0; i < 12; i++) { const d = await seedDocument(a, { aiSummary: `summary ${i}` }); await withDetails(a, d, `word${i}`); docs.push(d); }
+    const written = await Promise.all(docs.map(async (d, i) => [i, await finds(a, `field-word${i}`)] as const));
+    await exchange(a, b);
+    for (const [i, hits] of written) expect(await finds(b, `field-word${i}`)).toEqual(hits);
+  });
+
   it('applying refuses while local changes wait to be drained', async () => {
     await seedDocument(a);
     await expect(a.changes.apply([])).resolves.toBe(0);

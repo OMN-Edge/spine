@@ -7,11 +7,11 @@ import type { SessionData } from './session-auth.js';
 /** Deletes the sign-in rows of every account that have ended, whether or not anyone signs in again (the privacy notice says at most 14 days). */
 export async function sweepSessions(now = new Date()): Promise<number> {
   const limits = sessionLimits();
-  return getAccountsStore().maintenance.pruneSessions(new Date(now.getTime() - limits.absoluteMs).toISOString(), new Date(now.getTime() - limits.idleMs).toISOString(), new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000).toISOString());
+  return getAccountsStore().maintenance.pruneSessions(new Date(now.getTime() - limits.absoluteMs).toISOString(), new Date(now.getTime() - limits.idleMs).toISOString(), new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000).toISOString(), now.toISOString());
 }
 
 /**
- * Sign-ins the owner can see and end (SECURITY.md S-33). The cookie session lives in memory; the row in
+ * Sign-ins the owner can see and end (SECURITY.md S-33). The cookie session's state is kept by `session-store.ts`; the row in
  * `user_sessions` is what makes it valid, so a sign-in can be listed, ended from another browser, expired by
  * inactivity and by age, and a stolen cookie is good for hours rather than weeks.
  */

@@ -1,5 +1,5 @@
 import { askForPassword } from './reauth';
-import { credentialFor, vaultState } from './crypto/vault-state';
+import { credentialFor, deriveKey, vaultState } from './crypto/vault-state';
 import { prepareSignIn, type PasskeyUnlock } from './crypto/vault-client';
 import { getWithPrf, prfSupported } from './crypto/passkey-prf';
 import { checkPasswordPolicy } from './crypto/password-policy';
@@ -7,6 +7,7 @@ import { rewrapForPassword, wrapForPasskey, type KdfParams, type VaultKeyPayload
 import { startAuthentication, startRegistration, type PublicKeyCredentialCreationOptionsJSON, type PublicKeyCredentialRequestOptionsJSON } from '@simplewebauthn/browser';
 import { appFetch } from './core/client';
 import { fromCode, makeOffer, readEnrolmentCode } from './crypto/enrolment';
+import { clearSealedCache } from './crypto/sealed-cache';
 export type DocType =
   | 'lab_result'
   | 'discharge_note'
@@ -43,6 +44,10 @@ export interface Document {
   doctors?: DoctorOnDocument[];
   /** On GET /api/documents/:id: whether the owner has confirmed how its upload's pages were grouped. */
   grouping_confirmed?: boolean;
+  /** Nothing has been read from its text yet (its grouping waits, or it is being read now). */
+  needs_reading?: boolean | number;
+  /** Its upload is being read at this moment; the details follow. */
+  reading?: boolean;
 }
 
 export type Flag = 'low' | 'high' | 'normal';
@@ -359,9 +364,9 @@ export type Proposal = { id: string } & (
   | { kind: 'update_share'; link: { id: string; label: string | null; expires_at: string }; label: { from: string | null; to: string | null } | null; expires: { from: string; to_days: number } | null; added: DocRef[]; removed: DocRef[]; total_after: number | null; calls: ProposedCall[] }
   | { kind: 'revoke_share'; link: { id: string; label: string | null; expires_at: string }; calls: ProposedCall[] }
 );
-export interface ChatReply { answer: string | null; sources: ChatSource[]; documents: number; looked?: string[]; proposals?: Proposal[]; conversation: { id: string; title: string } }
+export interface ChatReply { answer: string | null; sources: ChatSource[]; documents: number; looked?: string[]; proposals?: Proposal[]; limited?: boolean; conversation: { id: string; title: string } }
 /** What the agent is looking at while it works; the page words it. */
-export interface ChatStep { kind: 'search' | 'open' | 'series' | 'tests' | 'connections' | 'fields' | 'shares' | 'doctors' | 'uploads' | 'pages' | 'plan' | 'library' | 'propose'; detail?: string }
+export interface ChatStep { kind: 'search' | 'open' | 'series' | 'tests' | 'connections' | 'fields' | 'shares' | 'doctors' | 'uploads' | 'pages' | 'plan' | 'library' | 'help' | 'propose'; detail?: string }
 export interface ChatStreamHandlers {
   step: (step: ChatStep) => void;
   delta: (text: string) => void;
@@ -372,8 +377,11 @@ export interface ConversationSummary {
   id: string; title: string; created_at: string; updated_at: string; message_count: number;
   /** The app started it (an upload finished) and the person has not opened it. */
   unread: boolean;
-  origin: 'upload' | 'regroup' | null;
+  /** `activity`: the app's reports on uploads; `guide`: answers about Spine; `upload`/`regroup`: a report each, as they were before Activity. */
+  origin: 'upload' | 'regroup' | 'activity' | 'guide' | null;
 }
+/** A question about Spine and its fixed answer (`HELP_TOPICS` in core's help.ts), drawn in the person's language. */
+export interface HelpData { topic: string }
 /** What the app wrote when the analysis of a mixed upload finished. */
 export interface RegroupNotice {
   upload_id: string; file_name: string | null; pages_considered: number; groups_changed: number; groups_validated: number; unchanged_groups: number;
@@ -402,7 +410,16 @@ export interface MatchQuestion {
 /** A file attached in the chat, as it was accepted. */
 export interface AttachedFile { name: string | null; upload_id: string | null; state: 'reading' | 'already_held' | 'skipped'; reason: string | null }
 export interface AttachmentData { files: AttachedFile[] }
-export interface StoredMessage { id: string; role: 'user' | 'assistant'; content: string; sources: ChatSource[]; note: 'none' | 'failed' | 'off' | null; created_at: string; kind: 'upload' | 'regroup' | 'attachment' | null; data: UploadNotice | RegroupNotice | AttachmentData | null }
+export interface StoredMessage { id: string; role: 'user' | 'assistant'; content: string; sources: ChatSource[]; note: 'none' | 'failed' | 'off' | null; created_at: string; kind: 'upload' | 'regroup' | 'attachment' | 'help' | null; data: UploadNotice | RegroupNotice | AttachmentData | HelpData | null }
+
+export type GuideKey = 'welcome' | 'tip.grouping' | 'tip.read' | 'tip.share' | 'tip.results' | 'tip.doctors' | 'tip.connections' | 'checklist';
+export interface GuideMark { shown: number; last_shown_at: string | null; done_at: string | null }
+export interface GuideState {
+  marks: Partial<Record<GuideKey, GuideMark>>;
+  /** The person's own uploads (not the sample records), those whose grouping is confirmed or waiting, and the share links they made. */
+  progress: { uploads: number; grouping_confirmed: number; grouping_waiting: number; reviewed: number; shares: number };
+  topics: string[];
+}
 
 export interface ShareLink {
   id: string;
@@ -462,6 +479,8 @@ export interface TranslatedDocument {
   status: 'same' | 'cached' | 'translated' | 'off';
   /** `head`: the title, summary, notes and specialties, which come first; the fields and results follow in `full`. */
   part: 'head' | 'full';
+  /** Some of it could not be translated and shows in the original; the rest is asked for again later. */
+  incomplete?: boolean;
   title: string | null;
   ai_summary: string | null;
   user_notes: string | null;
@@ -651,7 +670,7 @@ export const api = {
     /** Either signed in, or the password was right and a second factor is still needed. */
     login: async (email: string, password: string) => {
       // The password never leaves the device: what is sent in its place is derived from it (docs/crypto-design.md).
-      const { credential, masterKey } = await prepareSignIn(email, password);
+      const { credential, masterKey } = await prepareSignIn(email, password, undefined, deriveKey);
       vaultState.setEmail(email);
       try {
         const result = await req<{ ok?: boolean; email?: string; second_factor_required?: boolean }>('/api/auth/login', {
@@ -670,6 +689,8 @@ export const api = {
     /** Throws `UnsavedChangesError` (and signs nothing out) while changes are not in the vault; `force` is the person's choice to lose them. */
     logout: async (force = false) => {
       await vaultState.lock(force);
+      // The copy of sealed objects kept for faster opening goes with the sign-in (SECURITY.md M-43).
+      await clearSealedCache();
       return req('/api/auth/logout', { method: 'POST' });
     },
     me: () => req<{ authenticated: boolean; email: string; second_factor_enabled?: boolean; vault?: boolean; consent_needed?: { health: boolean; terms: boolean } }>('/api/auth/me'),
@@ -768,12 +789,14 @@ export const api = {
     conversation: (id: string) => req<ConversationSummary & { messages: StoredMessage[] }>(`/api/chat/conversations/${id}`),
     unread: () => req<{ count: number }>('/api/chat/unread'),
     /** Attach files: the ordinary upload, tied to a conversation (a new one if none is named), which then hears what happens to them. */
-    attach: async (files: File[], conversationId: string | null): Promise<{ conversation: { id: string; title: string }; files: AttachedFile[] }> => {
+    attach: async (files: File[], conversationId: string | null, scan?: { originals: File[] }): Promise<{ conversation: { id: string; title: string }; files: AttachedFile[] }> => {
       const form = new FormData();
       // The conversation goes first: the server reads it before the first file arrives.
       if (conversationId) form.append('conversation_id', conversationId);
       for (const file of files) form.append('files', file, file.name);
-      const res = await appFetch('/api/chat/attachments', { method: 'POST', body: form });
+      // A scanned document: the files are its pages, and the photos as taken follow as `originals`.
+      for (const file of scan?.originals ?? []) form.append('originals', file, file.name);
+      const res = await appFetch(scan ? '/api/chat/attachments?photos=1' : '/api/chat/attachments', { method: 'POST', body: form });
       if (!res.ok) {
         const err = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string; code?: string };
         throw new ApiError(err.error ?? res.statusText, res.status, err.code);
@@ -781,6 +804,9 @@ export const api = {
       return res.json();
     },
     markRead: (id: string) => post<{ ok: boolean }>(`/api/chat/conversations/${id}/read`, undefined),
+    /** A question about Spine itself, answered with the fixed text (no model), in the conversation named or in Getting started. */
+    help: (topic: string, conversationId: string | null) =>
+      post<{ conversation: { id: string; title: string; origin: ConversationSummary['origin'] } }>('/api/chat/help', { topic, conversation_id: conversationId }),
     deleteConversation: (id: string) => del<{ ok: boolean }>(`/api/chat/conversations/${id}`),
     deleteAllConversations: () => del<{ removed: number }>('/api/chat/conversations'),
     /**
@@ -823,6 +849,13 @@ export const api = {
     hybrid: (q: string) => req<Array<Document & { via: Array<'words' | 'meaning'> }>>(`/api/search/hybrid?q=${encodeURIComponent(q)}`),
     /** The document in a language, translated on demand and kept. */
     translation: (id: string, lang: string, part: 'head' | 'full' = 'full') => req<TranslatedDocument>(`/api/documents/${id}/translation?lang=${lang}&part=${part}`),
+    /** The translation if one is kept, else null: never asks a model, so the page can look before it shows that it is waiting. */
+    translationKept: async (id: string, lang: string): Promise<TranslatedDocument | null> => {
+      const res = await appFetch(`/api/documents/${id}/translation?lang=${lang}&cached=1`);
+      if (res.status === 204) return null;
+      if (!res.ok) throw new ApiError(((await res.json().catch(() => ({}))) as { error?: string }).error ?? res.statusText, res.status);
+      return res.json() as Promise<TranslatedDocument>;
+    },
     list: (params?: Record<string, string>) => {
       const qs = params ? '?' + new URLSearchParams(params).toString() : '';
       return req<Document[]>(`/api/documents${qs}`);
@@ -888,7 +921,7 @@ export const api = {
     /** One upload's pages and how they are grouped into documents. */
     get: (id: string) => req<UploadLayout>(`/api/source-files/${id}`),
     status: (id: string) =>
-      req<{ status: string; progress: number; step: string; error?: string; grouping_confirmed?: boolean; documents: UploadDocument[] }>(`/api/source-files/${id}/status`),
+      req<{ status: string; progress: number; step: string; error?: string; grouping_confirmed?: boolean; reading?: boolean; documents: UploadDocument[] }>(`/api/source-files/${id}/status`),
     capabilities: () =>
       req<{
         aiReading: { enabled: boolean; provider: string; endpoint: string | null };
@@ -920,12 +953,6 @@ export const api = {
       for (const f of pages) form.append('files', f);
       for (const f of originals) form.append('originals', f);
       return appFetch('/api/source-files/upload-photos', { method: 'POST', body: form }).then(r => r.json() as Promise<Array<{ id?: string; reason?: string }>>);
-    },
-    /** Several photos of one document, in the order given: one upload whose pages they are. */
-    uploadPhotos: (files: File[]) => {
-      const form = new FormData();
-      for (const f of files) form.append('files', f);
-      return appFetch('/api/source-files/upload-photos', { method: 'POST', body: form }).then(r => r.json());
     },
   },
 
@@ -975,7 +1002,18 @@ export const api = {
     /** Agree to the use of health data and the terms, given apart. */
     consent: (healthData: boolean, terms: boolean) => post<{ ok: boolean }>('/api/account/consent', { health_data: healthData, terms }),
     /** Delete the account and everything in it. Asks for the password again if it has not been typed lately. */
-    remove: (confirm: string) => post<{ deleted: boolean }>('/api/account/delete', { confirm }),
+    remove: async (confirm: string) => {
+      const result = await post<{ deleted: boolean }>('/api/account/delete', { confirm });
+      await clearSealedCache();
+      return result;
+    },
+  },
+
+  /** What has been shown to help the person start, and how far they have got. */
+  guide: {
+    state: () => req<GuideState>('/api/guide'),
+    shown: (key: GuideKey) => post<{ ok: boolean }>(`/api/guide/${key}/shown`, undefined),
+    done: (key: GuideKey) => post<{ ok: boolean }>(`/api/guide/${key}/done`, undefined),
   },
 
   /** Sample records to explore before uploading anything real. */

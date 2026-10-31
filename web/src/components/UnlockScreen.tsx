@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useI18n } from '../i18n';
 import { vaultState, OpenError } from '../crypto/vault-state';
 import { api } from '../api';
@@ -13,6 +13,8 @@ export default function UnlockScreen({ opened, signOut }: { opened: () => void; 
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  // While the password is typed: the core loads, and the server is asked for what opening the records will need.
+  useEffect(() => { vaultState.prefetch(); }, []);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();

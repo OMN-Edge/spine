@@ -91,7 +91,18 @@ CREATE TABLE IF NOT EXISTS user_recovery_codes (
   PRIMARY KEY (user_id, code_hash)
 );
 
--- A sign-in the owner can see and end (SECURITY.md S-33). The cookie session itself is in memory; this row is what
+-- The cookie session's state (who is signed in, a login waiting for its second step, a passkey challenge), kept here so a
+-- restart of the server signs no one out (SECURITY.md S-16). Keyed by the sha256 of the cookie's session id, so a copy of
+-- this table opens no session; \`user_id\` is set once someone is signed in, so deleting the account removes it.
+CREATE TABLE IF NOT EXISTS cookie_sessions (
+  sid_hash TEXT PRIMARY KEY,
+  user_id TEXT,
+  data TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_cookie_sessions_user ON cookie_sessions(user_id);
+
+-- A sign-in the owner can see and end (SECURITY.md S-33). The cookie session's state is in \`cookie_sessions\`; this row is what
 -- makes it valid: a request whose session id has no row here, or whose row is past its idle or absolute limit, is
 -- signed out. \`user_agent\` and \`address\` are what the connection reported and prove nothing.
 CREATE TABLE IF NOT EXISTS user_sessions (

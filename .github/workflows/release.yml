@@ -1,0 +1,48 @@
+# The official release: a pushed tag `vX.Y.Z` runs every check, builds the web app from that exact commit, and publishes `hashes.txt` and the build with a
+# signed attestation (GitHub's artifact attestations, Sigstore) saying "these files were built from this commit by this workflow".
+# Personal deploys do not use this: `./install.sh -b` on the machine, which shows `-dirty` if the tree was not clean (docs/verify-build.md).
+name: release
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+  release:
+    needs: checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write       # the release
+      id-token: write       # the attestation is signed with this run's identity
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: The tag is on main
+        run: git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "::error::$GITHUB_REF_NAME is not a commit of main"; exit 1; }
+      - run: npm ci && npm run build:core
+      - name: Build the web app from this commit
+        run: SPINE_COMMIT="$GITHUB_SHA" npm run build -w spine-web
+      - name: The build carries this commit, and not as dirty
+        run: |
+          grep -rlq "$GITHUB_SHA" web/dist/assets || { echo "::error::the build does not carry $GITHUB_SHA"; exit 1; }
+          ! grep -rlq "${GITHUB_SHA}-dirty" web/dist/assets || { echo "::error::the build says dirty"; exit 1; }
+      - name: Pack
+        run: |
+          # sorted, owner and times fixed: the same tree packs to the same bytes
+          tar --sort=name --owner=0 --group=0 --numeric-owner --mtime=@0 -cf - -C web/dist . | gzip -n > "spine-web-$GITHUB_REF_NAME.tar.gz"
+          cp web/dist/hashes.txt hashes.txt
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            hashes.txt
+            spine-web-${{ github.ref_name }}.tar.gz
+      - name: Publish
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: gh release create "$GITHUB_REF_NAME" hashes.txt "spine-web-$GITHUB_REF_NAME.tar.gz" --title "$GITHUB_REF_NAME" --generate-notes --verify-tag

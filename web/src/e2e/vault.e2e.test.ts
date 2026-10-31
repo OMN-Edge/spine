@@ -4,7 +4,8 @@ import path from 'path';
 import type { AddressInfo } from 'net';
 import { createAccountKeys, resetWithRecovery, type KdfParams } from '../crypto/keys.js';
 import { readRecoveryKey, writeRecoveryKey } from '../crypto/recovery-kit.js';
-import { ConflictError, VaultSession, prepareSignIn } from '../crypto/vault-client.js';
+import { ConflictError, VaultSession, fetchKeys, prepareSignIn } from '../crypto/vault-client.js';
+import type { SealedCache, SealedObject } from '../crypto/sealed-cache.js';
 
 /**
  * The device's code against the real server code, over HTTP, in one process: nothing is faked on the server's side. It is what proves
@@ -130,6 +131,84 @@ describe.skipIf(!haveServer)('the device and the server together', () => {
     await expect(one.put(profile, 'bundle', 'bundle-00000001', new TextEncoder().encode('v3'), got.seq)).rejects.toBeInstanceOf(ConflictError);
     await one.close();
     await two.close();
+  });
+
+  it('keeps a copy of what it fetched on the device and reads from it; a copy that does not open is not trusted', async () => {
+    const f = browser();
+    const requests: string[] = [];
+    const counting = ((url: string, init?: RequestInit) => { requests.push(`${init?.method ?? 'GET'} ${String(url)}`); return f(url, init); }) as typeof fetch;
+    const { masterKey } = await signIn(f);
+    const session = await VaultSession.open(masterKey!, counting);
+    const [profile] = await session.loadProfiles();
+    await session.put(profile.id, 'bundle', 'bundle-00000099', new TextEncoder().encode('haemoglobin 13.2, written before a copy existed'));
+    const kept = new Map<string, SealedObject>();
+    const cache: SealedCache = {
+      async get(id) { return kept.get(id) ?? null; },
+      async put(id, object) { kept.set(id, object); },
+      async forget(id) { kept.delete(id); },
+      async keepOnly(ids) { for (const id of [...kept.keys()]) if (!ids.has(id)) kept.delete(id); },
+    };
+    session.useCache(cache);
+    const text = (b: Uint8Array) => new TextDecoder().decode(b);
+    const asked = (id: string) => requests.filter(u => u.startsWith(`GET /api/vault/objects/${id}`)).length;
+
+    expect(text((await session.get('bundle-00000099', 'bundle')).plaintext)).toContain('haemoglobin');
+    expect(asked('bundle-00000099')).toBe(1);
+    expect(kept.has('bundle-00000099')).toBe(true);
+    expect(text((await session.get('bundle-00000099', 'bundle')).plaintext)).toContain('haemoglobin');
+    expect(asked('bundle-00000099')).toBe(1); // from the copy: the server was not asked again
+
+    // What this device writes is kept too, and the index never is (it is the one object that changes).
+    await session.put(profile.id, 'log', 'log-00000001', new TextEncoder().encode('a segment'));
+    expect(kept.has('log-00000001')).toBe(true);
+    await session.put(profile.id, 'library', 'ix-test-00000001', new TextEncoder().encode('{}'));
+    expect(kept.has('ix-test-00000001')).toBe(false);
+    await session.get('ix-test-00000001', 'library');
+    await session.get('ix-test-00000001', 'library');
+    expect(asked('ix-test-00000001')).toBe(2); // read twice: each read goes to the server
+
+    // A copy that was damaged does not open: it is dropped, the server is asked, and the fresh one is kept.
+    kept.get('bundle-00000099')!.body[10] ^= 1;
+    expect(text((await session.get('bundle-00000099', 'bundle')).plaintext)).toContain('haemoglobin');
+    expect(asked('bundle-00000099')).toBe(2);
+    expect(text((await session.get('bundle-00000099', 'bundle')).plaintext)).toContain('haemoglobin');
+    expect(asked('bundle-00000099')).toBe(2);
+
+    // A listing of everything says what the vault holds, and the copy follows it; removing an object drops its copy.
+    kept.set('gone-00000001', { body: new Uint8Array([1]), wrappedKey: '', seq: 1, profileId: profile.id });
+    await session.list(0);
+    expect(kept.has('gone-00000001')).toBe(false);
+    expect(kept.has('bundle-00000099')).toBe(true);
+    const { seq } = await session.get('log-00000001', 'log');
+    await session.remove('log-00000001', seq);
+    expect(kept.has('log-00000001')).toBe(false);
+    await session.close();
+  });
+
+  it('opens with keys fetched ahead, asks for the listing once, and fetches what will be read as soon as it is named', async () => {
+    const f = browser();
+    const requests: string[] = [];
+    const counting = ((url: string, init?: RequestInit) => { requests.push(`${init?.method ?? 'GET'} ${String(url)}`); return f(url, init); }) as typeof fetch;
+    const { masterKey } = await signIn(f);
+    const keys = await fetchKeys(counting); // what the unlock screen does while the password is typed
+    const before = requests.length;
+    const session = await VaultSession.open(masterKey!, counting, keys);
+    expect(requests.slice(before)).toEqual([]); // opened without asking the server for the keys again
+
+    const listed = await session.list(0);
+    const named = listed.objects.find(o => o.kind === 'profile' && !o.deleted)!;
+    const marker = requests.length;
+    session.prefetch('bundle-00000099'); // started before the keys to open it are ready
+    expect(requests.slice(marker)).toEqual(['GET /api/vault/objects/bundle-00000099']);
+    const profiles = await session.loadProfiles(listed);
+    expect(profiles.map(p => p.id)).toEqual([named.id]);
+    expect(requests.filter(u => u.startsWith('GET /api/vault/objects?')).length).toBe(1); // the listing handed over was not asked for again
+    const read = await session.get('bundle-00000099', 'bundle');
+    expect(new TextDecoder().decode(read.plaintext)).toContain('haemoglobin');
+    expect(requests.filter(u => u === 'GET /api/vault/objects/bundle-00000099')).toHaveLength(1); // the read took what was started
+    await session.get('bundle-00000099', 'bundle');
+    expect(requests.filter(u => u === 'GET /api/vault/objects/bundle-00000099')).toHaveLength(2); // and only once: the next read is a read
+    await session.close();
   });
 
   it('resets a forgotten password with the recovery kit and keeps the records', async () => {

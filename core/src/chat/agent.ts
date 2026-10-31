@@ -12,6 +12,7 @@ import type { ChatTurn } from '../llm/types.js';
 import type { Document } from '../types.js';
 import { documentsForQuestion } from './retrieval.js';
 import { sharedTestNames } from './share-tests.js';
+import { HELP_TOPICS, helpText, helpTopic } from '../help.js';
 import { buildActionTools } from './actions.js';
 import type { DoctorEntry, Proposal } from './proposals.js';
 import { DOCUMENT_SECTIONS, describeScreen, resolveScreen, sectionRecords, type DocumentSection, type ScreenContext } from './screen.js';
@@ -63,6 +64,7 @@ export const TOOL_KINDS = {
   list_suggested_links: 'read',
   get_share_link: 'read',
   list_library: 'read',
+  explain_spine: 'read',
   // An action tool prepares a proposal and nothing else (actions.ts); a test holds that the store is not written to.
   propose_share_link: 'action',
   propose_note: 'action',
@@ -279,11 +281,25 @@ function buildTools(shared: boolean) {
     schema: z.object({ label: z.string().describe('a document label such as D3') }),
   });
 
+  // How the app works, for "why does it ask for my password again?": the fixed answers in help.ts, which the welcome shows too. Not
+  // the recipient's: they are not using Spine, they are reading what someone shared.
+  const explain = tool(async ({ topic }, runtime: ToolRuntime) => {
+    const { budget, looked, progress } = stateOf(runtime);
+    const found = helpTopic(topic);
+    looked.push(`read how Spine works (${topic})`);
+    progress?.step?.({ kind: 'help' });
+    return found ? budget.take(helpText(found)) : `No topic "${topic}". The topics are: ${HELP_TOPICS.map(t => t.id).join(', ')}.`;
+  }, {
+    name: 'explain_spine',
+    description: `How Spine itself works, as the app explains it: use it when the person asks about the app (how to add, group, check or share documents, privacy, the master password, what you can do, where results, doctors, connected documents, episodes and the library come from), not about their records. Answer from it in your own words, citing nothing. Topics: ${HELP_TOPICS.map(t => `${t.id} (${t.question})`).join('; ')}.`,
+    schema: z.object({ topic: z.enum(HELP_TOPICS.map(t => t.id) as [string, ...string[]]) }),
+  });
+
   // A recipient gets no care chain (links between documents are the owner's, and no share route returns one: M-16) and no tool
   // that proposes a change: they have nothing to change.
   if (shared) return [searchDocuments, getDocument, getTestSeries, listTests];
   const actions = buildActionTools(runtime => stateOf(runtime) as never);
-  return [searchDocuments, getDocument, getTestSeries, listTests, connected, ...actions.read, ...actions.action];
+  return [searchDocuments, getDocument, getTestSeries, listTests, connected, explain, ...actions.read, ...actions.action];
 }
 
 /** The text of a model reply, whether it came as a string or as parts. */
@@ -473,10 +489,3 @@ export async function askSharedAgent(
 
 const tnShared = (n: number) => (n === 1 ? 'The one document shared' : `The ${n} documents shared`);
 
-/** A cheap check for the caller: is there anything to look at? */
-export async function hasAnythingToRead(userId: string, screen: ScreenContext | null): Promise<boolean> {
-  const store = getStore();
-  if ((await store.documents.listFor(userId, { limit: 1, offset: 0 })).length > 0) return true;
-  const onScreen = await resolveScreen(userId, screen);
-  return !!onScreen && (!!onScreen.primary || onScreen.facts.length > 0);
-}

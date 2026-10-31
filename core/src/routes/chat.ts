@@ -3,7 +3,7 @@ import { ModelBudgetError } from '../llm/budget.js';
 import { v4 as uuidv4 } from 'uuid';
 import { requireAuth } from './middleware.js';
 import { streamReply } from './ndjson.js';
-import { acceptParts, AttachRefused } from '../ingestion/accept-parts.js';
+import { acceptParts, acceptPhotoParts, AttachRefused } from '../ingestion/accept-parts.js';
 import { chatEnabled } from '../config.js';
 import { getStore } from '../store/index.js';
 import { MAX_MESSAGES } from '../store/types.js';
@@ -11,9 +11,12 @@ import { askQuestion, MAX_QUESTION, MAX_TURNS, type ChatProgress, type ChatReply
 import { checkScreen, type ScreenContext } from '../chat/screen.js';
 import type { ChatTurn } from '../llm/types.js';
 import { logger } from '../logger.js';
+import { helpTopic } from '../help.js';
 import { describeError } from '../failure.js';
 
 const MAX_TITLE = 60;
+/** The conversation the answers about Spine go into when the person is not in one. */
+export const GUIDE_TITLE = 'Getting started';
 const LIST_LIMIT = 200;
 
 /** An answer's citations are labels that belong to the request that made them; in a later one they would point at nothing. */
@@ -46,14 +49,16 @@ export async function chatRoutes(app: HttpApp) {
   // A file attached in the chat (pasted, dropped or chosen): the ordinary upload, tied to the conversation it was attached in, so what
   // happens to it (read, found, needs checking) is reported there (SECURITY.md M-25). A `conversation_id` field sent before the files
   // names the conversation; without one a new conversation is started. Nothing is read from the message: the file is the upload route's.
-  app.post('/api/chat/attachments', async (req, reply) => {
+  // `?photos=1`: the files are the pages of one scanned document (the Scan screen), accepted as a photo set, not as separate uploads.
+  app.post<{ Querystring: { photos?: string } }>('/api/chat/attachments', async (req, reply) => {
     if (!chatEnabled()) return reply.status(409).send({ error: 'asking questions is switched off' });
     const store = getStore();
     let conversationId: string | null = null;
     let startedHere = false;
     let results: Awaited<ReturnType<typeof acceptParts>>;
     try {
-      results = await acceptParts(req.userId, req.parts(), {
+      const accept = req.query.photos === '1' ? acceptPhotoParts : acceptParts;
+      results = await accept(req.userId, req.parts(), {
         conversationFor: async fields => {
           const named = fields.conversation_id;
           if (named !== undefined) {
@@ -100,6 +105,37 @@ export async function chatRoutes(app: HttpApp) {
     if (startedHere && first) await store.conversations.rename(req.userId, conversationId, first.length > MAX_TITLE ? `${first.slice(0, MAX_TITLE - 1)}…` : first);
     const conversation = await store.conversations.find(req.userId, conversationId);
     return reply.header('Cache-Control', 'no-store').send({ conversation: { id: conversationId, title: conversation?.title ?? 'Attached files' }, files });
+  });
+
+  // A question about Spine itself, from the welcome or a tip ("How is my data kept private?"): the fixed answer in `help.ts`, written into
+  // the conversation the person is in, or into their Getting started conversation. No model is asked; both messages are stored as data the
+  // page draws in the person's language, and in English for the assistant to read if they ask more.
+  app.post<{ Body: { topic?: unknown; conversation_id?: unknown } }>('/api/chat/help', async (req, reply) => {
+    if (!chatEnabled()) return reply.status(409).send({ error: 'asking questions is switched off' });
+    const { topic: id, conversation_id: named } = req.body ?? {};
+    const topic = typeof id === 'string' ? helpTopic(id) : undefined;
+    if (!topic) return reply.status(400).send({ error: 'unknown topic' });
+    const store = getStore();
+    let conversation = null as Awaited<ReturnType<typeof store.conversations.find>>;
+    if (named !== undefined && named !== null) {
+      if (typeof named !== 'string' || named.length > 64) return reply.status(400).send({ error: 'conversation_id must be an id' });
+      conversation = await store.conversations.find(req.userId, named);
+      if (!conversation) return reply.status(404).send({ error: 'not found' });
+      if (conversation.message_count + 2 > MAX_MESSAGES) return reply.status(409).send({ error: 'this conversation is full; start a new one' });
+    } else {
+      conversation = await store.conversations.findByOrigin(req.userId, 'guide');
+      if (!conversation || conversation.message_count + 2 > MAX_MESSAGES) {
+        const made = uuidv4();
+        await store.conversations.create(req.userId, { id: made, title: GUIDE_TITLE, createdAt: new Date().toISOString(), origin: 'guide' });
+        conversation = await store.conversations.find(req.userId, made);
+      }
+    }
+    const now = new Date().toISOString();
+    await store.conversations.append(req.userId, conversation!.id, [
+      { id: uuidv4(), role: 'user', content: topic.question, sources: [], note: null, createdAt: now, kind: 'help', data: { topic: topic.id } },
+      { id: uuidv4(), role: 'assistant', content: topic.paragraphs.join('\n\n'), sources: [], note: null, createdAt: now, kind: 'help', data: { topic: topic.id } },
+    ]);
+    return reply.header('Cache-Control', 'no-store').send({ conversation: { id: conversation!.id, title: conversation!.title, origin: conversation!.origin } });
   });
 
   // Their conversations, most recent first.

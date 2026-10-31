@@ -144,9 +144,10 @@ Status: auto (`enrolment`, `crypto/enrolment`); a third browser let in with a co
 Status: auto (`own-account`, `accounts`); screens: hand.
 
 ### 2.1 Scan paper with the camera
-- Scan has a button that opens the phone's own camera (or a chosen photo); after each picture the page is found and the corners can be moved before it is straightened.
+- There is no Scan button: a photo, taken with the phone's own camera or chosen, goes to Scan from the Upload page's picker, and the page is found and the corners can be moved before it is straightened.
 - The four corners can be moved by hand; the page is then straightened and, unless turned off for that page, cleaned up (shadows and fading flattened, handwriting kept). All of it happens on the device.
-- Pages are taken one after another, then reviewed: reordered, removed, their corners redone, and saved as one document. The photos as taken are kept beside it.
+- Everything is on the one screen: the pages stay in view as they are added, and each can be moved, have its corners redone (a sheet over the same screen), be filtered or be removed in place; "Add a page" is at the end of them, and the set is saved as one document, which the grouping screen can split afterwards. The photos as taken are kept beside it.
+- Photos chosen on the Upload page, or attached in the chat, go to Scan first (one photo: its corners are shown; several: each is added with the page found in it). A photo attached in the chat comes back to that conversation after Save, and the report of reading it is written there (`POST /api/chat/attachments?photos=1`).
 - Where neither image reading nor local OCR is switched on, Scan says so instead of filling the archive with pages nobody can search.
 
 Status: auto (`scan`, web algorithms; `photo-set`); screens and the camera itself: hand.
@@ -157,6 +158,20 @@ Status: auto (`scan`, web algorithms; `photo-set`); screens and the camera itsel
 - They are that account's own records: they can be searched, charted, shared and edited like any other, and no other account sees them.
 
 Status: auto (`demo`); screens: hand.
+
+### 2.0a Being shown where to start, and asking how Spine works
+- The first time the records are opened with nothing uploaded, the chat opens on a welcome: what Spine does, Add a document, Look around with sample records, and questions about how it works (adding, the grouping, the "check" marks, sharing, privacy, the master password, the assistant).
+- A question about Spine is answered at once in the person's language, from Spine's own help and not by the model, in their Getting started conversation (or the conversation they are in); the answer says where it came from.
+- The welcome does not open by itself again. The next three times a note beside Ask offers it and can be put away; after that nothing. Anything done from it, or a first upload, ends it, and a second device does not greet again.
+- The empty timeline has a Get started list (add a document, review what was read, share it) that ticks itself off from the person's own uploads, reviewed documents and links, not the sample records, and goes when done or hidden.
+- A tip appears once the first time an upload waits for its grouping, documents have been read, and a link has been made; Got it puts it away for good, Tell me more opens the answer about it in the chat.
+- A tip also appears the first time a document has results (they are on Trends too), names doctors (they are kept on Doctors, and a possible duplicate is asked about, never merged by itself) or has a suggested connection (it stays a suggestion until confirmed); a document page shows one at a time. The results and doctors tips are also on the Trends and Doctors pages, and Got it in either place puts both away.
+- Trends, Doctors, Library, Episodes, Review and Search each say in a line under the title what the page is for; the help also answers what results and trends, doctors, connected documents, episodes and the Library are, from a tip's Tell me more or a question to the assistant, though the welcome offers only the first steps.
+- Asked in the chat how the app works ("why does it ask for my password again?"), the assistant reads the same help and answers from it, even with an empty archive.
+- The app's reports on uploads collect in one Activity conversation, which is unread again with each report; a file attached in a conversation is reported there instead.
+- None of it is in the demo or in a share.
+
+Status: auto (`guide`, `chat-notices`, `chat-agent`, `i18n-coverage`); screens: hand.
 
 
 ### 2.1 Upload a PDF that holds several documents
@@ -597,7 +612,10 @@ The owner signs in on a second device with the master password (or a passkey) an
 - Two devices that change different things at the same moment end with both changes. The newest change to a row wins; a deletion is a change.
 - A device that saved is told that another made changes, and offers a reload; pages do not refresh themselves.
 - A tag or doctor made on two devices with the same name becomes one. Starter tags are the same on every device.
-- After 40 segments a device writes a snapshot, so a device that was away catches up from it.
+- After 10 segments a device folds them into a small part (and after six such parts, writes a snapshot of everything), so a device that was away catches up from them.
+- After a reload the records come back from the copy kept on the device and the server is asked only for what is new; signing out removes the copy.
+- On the unlock screen the page does not freeze while the password is turned into a key, and what the server is asked for before the password is typed is not asked again afterwards.
+- The page's scripts are not asked about again at a reload: only the page itself is.
 - A vault of a kind this version does not know is refused with a message and left untouched.
 - Not covered: network failures mid-save, large vaults, a device whose clock is wrong (it can win edits it should not).
 
@@ -718,9 +736,9 @@ The owner pastes a file (a PDF, a photo, or a zip of them; on a Mac or an iPhone
 Status: auto (`chat-attachments`); live (`journey.it.ts`); screens (paste, drop, progress): not yet checked by hand, and not on a phone.
 
 ### 12.2 The app tells me an upload is read
-When an upload's pages are read and grouped (or it fails), the conversation gets a message, written by the app and not by a model: the documents found by their page ranges, how many pages had no text, and whether the pages look cut from mixed pages. Nothing has been read from the documents yet. When the owner confirms the grouping the documents are read (once), and a second message says what came out: the documents, how many have no date, **which doctors it added and which it found already there, which tests no other document has**. If the panel is closed the Ask button shows a badge and a note beside it that opens the conversation.
+When an upload's pages are read and grouped (or it fails), the conversation gets a message, written by the app and not by a model: the documents found by their page ranges, how many pages had no text, and whether the pages look cut from mixed pages. Nothing has been read from the documents yet. (An upload of one page, such as a photo, skips this: it is read at once and only the second message is written.) When the owner confirms the grouping the documents are read (once), and a second message says what came out: the documents, how many have no date, **which doctors it added and which it found already there, which tests no other document has**. If the panel is closed the Ask button shows a badge and a note beside it that opens the conversation.
 
-- Buttons offer the likely next steps: *What was read from it?*, *The grouping looks right*, *Read the empty pages again*, and, if the pages look mixed, **Check the pages with AI** (12.4), with what it sends beside it.
+- While the grouping waits, **Check the grouping** opens its screen (the panel closes) and **Grouping is right** confirms it there and then, without the assistant; the report of the documents read follows in the same conversation. Buttons offer the likely next steps: *What was read from it?*, *Read the empty pages again*, and, if the pages look mixed, **Check the pages with AI** (12.4), with what it sends beside it.
 - The grouping still waits for the owner: until they confirm it the documents are out of the timeline and search.
 - A failed upload says so, without copying the reason (it can quote the file).
 

@@ -32,7 +32,7 @@ vi.mock('spine-core/archive/pdf-pages.js', () => ({
 }));
 
 import { startIngestionJob, getJobStatus } from 'spine-core/ingestion/pipeline.js';
-import { readUpload } from 'spine-core/ingestion/read-upload.js';
+import { getReadingJob, isReadingUpload, readUpload } from 'spine-core/ingestion/read-upload.js';
 import { getStore } from 'spine-core/store/index.js';
 import { resetParser } from 'spine-core/parser/index.js';
 import { seedSourceFile, createTestUser, OWNER_ID } from './helpers/seed.js';
@@ -87,7 +87,11 @@ async function waitForJob(id: string, timeoutMs = 5000) {
     const job = getJobStatus(id);
     if (job?.status === 'done' || job?.status === 'error') {
       // The pipeline stops at the grouping; the documents are read when the owner confirms it (M-29), which is what these tests look at.
-      if (job.status === 'done') await readUpload(OWNER_ID, id, false);
+      // A one-page upload has nothing to group, so the pipeline starts reading it itself and these only wait for that.
+      if (job.status === 'done') {
+        if (getReadingJob(id)) { while (isReadingUpload(id)) await new Promise(r => setTimeout(r, 20)); }
+        else await readUpload(OWNER_ID, id, false);
+      }
       return job;
     }
     await new Promise(r => setTimeout(r, 20));
@@ -114,9 +118,9 @@ describe('pipeline — single page document', () => {
     const job = await waitForJob(id);
 
     expect(job.status).toBe('done');
-    // Its documents wait, out of the timeline, until the owner confirms the grouping.
-    expect((await getStore().sourceFiles.findFor(OWNER_ID, id))!.grouping_confirmed).toBe(false);
-    expect(await getStore().documents.listFor(OWNER_ID, { sourceFileId: id, limit: 10, offset: 0 })).toEqual([]);
+    // One page has no grouping to check: it was read at once and its document is shown.
+    expect((await getStore().sourceFiles.findFor(OWNER_ID, id))!.grouping_confirmed).toBe(true);
+    expect(await getStore().documents.listFor(OWNER_ID, { sourceFileId: id, limit: 10, offset: 0 })).toHaveLength(1);
 
     const docs = await documentsFor(id);
     expect(docs).toHaveLength(1);
@@ -129,7 +133,7 @@ describe('pipeline — single page document', () => {
     expect(docs[0].reviewed).toBe(0);
   });
 
-  it('tells the owner, in a conversation of its own, when the upload has been read', async () => {
+  it('tells the owner, in their Activity conversation, when the upload has been read', async () => {
     const id = uuidv4();
     await insertSourceFile(id);
     mockRasterizePdf.mockResolvedValueOnce([makePageImage(1)]);
@@ -138,8 +142,8 @@ describe('pipeline — single page document', () => {
     startIngestionJob(id, OWNER_ID);
     await waitForJob(id);
     await vi.waitFor(async () => {
-      const notice = (await getStore().conversations.list(OWNER_ID, 50)).find(c => c.origin === 'upload');
-      expect(notice).toMatchObject({ unread: true, title: 'Upload finished' });
+      const notice = (await getStore().conversations.list(OWNER_ID, 50)).find(c => c.origin === 'activity');
+      expect(notice).toMatchObject({ unread: true, title: 'Activity' });
     });
   });
 

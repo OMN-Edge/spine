@@ -1,4 +1,5 @@
 import { fileSystem } from '../files.js';
+import { nativeTools } from '../native-tools.js';
 import { spendModelCall } from './budget.js';
 import { logger } from '../logger.js';
 import { HumanMessage } from '@langchain/core/messages';
@@ -68,6 +69,29 @@ async function invokeValidated<T>(
     issues: parsed.error.issues.map(i => `${i.path.join('.') || '(root)'}: ${i.message}`),
   });
   return null;
+}
+
+/**
+ * The longest side of the picture a model is sent: legible print, and a request a phone's connection can carry. The pixel count is not a
+ * target but the tool's guard against a picture too large to open at all (`uprightJpeg` refuses one past it, which would send the stored
+ * page after all), so it is generous: the pages here are our own.
+ */
+const MODEL_PAGE_SIDE = 2000;
+const MODEL_PAGE_GUARD_PIXELS = 120_000_000;
+
+/**
+ * The page as it goes to the model: a JPEG shrunk to a size the print is still plain at, not the stored 200 DPI PNG. A PNG of a photographed
+ * page is mostly noise and ran to some 7 MB (9.6 MB as base64), which took minutes to send and came back as a gateway error; a page of
+ * clean black and white was never the problem. If the picture cannot be shrunk the stored page goes as it is.
+ */
+async function pageForModel(imagePath: string): Promise<{ mime: string; data: string }> {
+  try {
+    const { jpeg } = await nativeTools().uprightJpeg(imagePath, { maxSide: MODEL_PAGE_SIDE, maxPixels: MODEL_PAGE_GUARD_PIXELS });
+    return { mime: 'image/jpeg', data: jpeg.toString('base64') };
+  } catch (err) {
+    logger.warn('a page could not be shrunk for the model; sending it as stored', { error: err instanceof Error ? err.message : String(err) });
+    return { mime: 'image/png', data: (await fileSystem().readFile(imagePath)).toString('base64') };
+  }
 }
 
 export function buildChatLlm(clients: TaskClients, config: ChatLlmConfig): ChatLlm {
@@ -188,11 +212,11 @@ export function buildChatLlm(clients: TaskClients, config: ChatLlmConfig): ChatL
     async readPage(imagePath, options): Promise<PageReading | null> {
       // The page goes as a data URL in a standard image block, which LangChain turns
       // into a base64 `image` block for Anthropic and `inlineData` for Gemini.
-      const image = (await fileSystem().readFile(imagePath)).toString('base64');
+      const { mime, data } = await pageForModel(imagePath);
       const message = new HumanMessage({
         content: [
           { type: 'text', text: buildPageReadingPrompt() },
-          { type: 'image_url', image_url: { url: `data:image/png;base64,${image}` } },
+          { type: 'image_url', image_url: { url: `data:${mime};base64,${data}` } },
         ],
       });
 

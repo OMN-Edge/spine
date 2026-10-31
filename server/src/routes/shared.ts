@@ -42,6 +42,11 @@ const WRAPPED = /^[A-Za-z0-9_-]{60,400}$/;
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
 const DOC_ID = /^[A-Za-z0-9-]{1,64}$/;
 const PASS_MS = 10 * 60 * 1000;
+/**
+ * A share's pass is short: the relay cannot ask whether the link was revoked, so a pass already handed out works until it ends. The page asks
+ * again as it goes (a pass is renewed with a minute left), and once the link is revoked or expired it is refused one.
+ */
+export const SHARE_PASS_MS = 2 * 60 * 1000;
 
 /** Deletes the files of every share that has ended, and the rows long after. Run at start, hourly, and by a visit to an ended one. */
 export async function sweepShares(now = new Date()): Promise<number> {
@@ -250,7 +255,7 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     const settings = relaySettings();
     if (!settings) return reply.status(503).send({ error: 'this instance has no relay for model calls', code: 'no_relay' });
     const left = Date.parse(bundle.expiresAt) - Date.now();
-    const { token, expiresAt } = issueToken(settings.secret, `share:${bundle.id}`, Math.min(PASS_MS, left));
+    const { token, expiresAt } = issueToken(settings.secret, `share:${bundle.id}`, Math.min(SHARE_PASS_MS, left));
     return reply.header('Cache-Control', 'no-store').send({ token, expires_at: expiresAt });
   });
 }

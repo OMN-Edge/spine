@@ -1,5 +1,6 @@
-import { deriveFromPassword } from './keys.js';
-import { VaultSession, fetchKdf, type PasskeyUnlock } from './vault-client.js';
+import { deriveFromPassword, type KdfParams } from './keys.js';
+import { VaultSession, fetchKdf, fetchKeys, type KeysResponse, type PasskeyUnlock } from './vault-client.js';
+import { sodium } from './sodium.js';
 import { OpenError } from './seal.js';
 import { device, forgetDeviceObjectUrls } from '../core/client';
 
@@ -10,6 +11,23 @@ import { device, forgetDeviceObjectUrls } from '../core/client';
 let email = '';
 let pendingMaster: Uint8Array | null = null;
 let session: VaultSession | null = null;
+
+/**
+ * What the unlock screen asks the server for before the password is typed (the key derivation's parameters and the sealed keys), so that
+ * after it only the derivation and the opening of the records are left. A failure here is not an error: the unlock asks again.
+ */
+let prefetched: { email: string; kdf: Promise<Awaited<ReturnType<typeof fetchKdf>> | null>; keys: Promise<KeysResponse | null> } | null = null;
+
+/** The master key for a password, made in the core's worker where there is one (so the screen keeps moving), else here. */
+export async function deriveKey(password: string, salt: string, params: KdfParams): Promise<{ masterKey: Uint8Array; authValue: string }> {
+  try {
+    return await device.derive(password, salt, params);
+  } catch {
+    // No worker (a test, a browser that refuses one): in the page, after a moment so what is on screen has been drawn.
+    await new Promise(resolve => setTimeout(resolve, 0));
+    return deriveFromPassword(password, salt, params);
+  }
+}
 
 export const vaultState = {
   setEmail(address: string) {
@@ -46,17 +64,49 @@ export const vaultState = {
     }
   },
 
+  /**
+   * Called when the unlock screen appears: starts what does not need the password. The core's worker loads (it is 7 MB), the cryptography
+   * library starts, and the server is asked for the derivation's parameters and the sealed keys, all while the person types.
+   */
+  prefetch() {
+    device.warm();
+    void sodium().catch(() => undefined);
+    if (!email || prefetched?.email === email) return;
+    prefetched = {
+      email,
+      kdf: fetchKdf(email).catch(() => null),
+      keys: fetchKeys().catch(() => null),
+    };
+  },
+
   /** Opens it with a password typed now (a reload, or a change of password). Throws `OpenError` if the password is wrong. */
   async unlock(password: string): Promise<VaultSession> {
-    const kdf = await fetchKdf(email);
+    const t0 = performance.now();
+    const ahead = prefetched?.email === email ? prefetched : null;
+    prefetched = null; // used once: a second unlock asks the server again
+    const kdf = (await ahead?.kdf) ?? (await fetchKdf(email));
     if (!kdf.vault) throw new Error('this account has no vault yet');
-    const { masterKey } = await deriveFromPassword(password, kdf.salt, kdf.params);
+    const t1 = performance.now();
+    const { masterKey } = await deriveKey(password, kdf.salt, kdf.params);
+    const t2 = performance.now();
     // Always opened from the key just made: that is what proves the password, even when a session is already held.
     const forDevice = masterKey.slice();
-    const opened = await VaultSession.open(masterKey);
+    let keys = (await ahead?.keys) ?? (await fetchKeys());
+    let opened: VaultSession;
+    try {
+      opened = await VaultSession.open(masterKey.slice(), undefined, keys);
+    } catch (err) {
+      if (!(err instanceof OpenError) || !ahead) throw err;
+      // The keys fetched ahead were changed since (a password changed on another device): the fresh ones decide.
+      keys = await fetchKeys();
+      opened = await VaultSession.open(masterKey, undefined, keys);
+    }
+    const t3 = performance.now();
     await session?.close();
     session = opened;
-    if (!device.isOpen()) await device.unlock(forDevice);
+    if (!device.isOpen()) await device.unlock(forDevice, keys);
+    // Where the time went, for whoever is finding out why opening is slow: milliseconds, never a key or a record.
+    console.debug('[unlock]', { prefetched: !!ahead, kdfMs: Math.round(t1 - t0), deriveMs: Math.round(t2 - t1), keysMs: Math.round(t3 - t2), openMs: Math.round(performance.now() - t3), totalMs: Math.round(performance.now() - t0) });
     return session;
   },
 
@@ -91,7 +141,7 @@ export const vaultState = {
 export async function credentialFor(password: string): Promise<string> {
   const kdf = await fetchKdf(email);
   if (!kdf.vault) return password;
-  return (await deriveFromPassword(password, kdf.salt, kdf.params)).authValue;
+  return (await deriveKey(password, kdf.salt, kdf.params)).authValue;
 }
 
 export { OpenError };

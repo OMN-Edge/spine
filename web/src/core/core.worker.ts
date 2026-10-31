@@ -6,7 +6,10 @@ import { startShareCore, type ShareCore } from './boot-share';
 import { applyRelayConfig, relayFetch, relayToken, useTokenUrl } from './native/relay-auth';
 import { useRelayHooks } from 'spine-core/llm/adapters/relay';
 import { deviceSettings } from './native/settings';
-import { VaultSession } from '../crypto/vault-client';
+import { VaultSession, type KeysResponse } from '../crypto/vault-client';
+import { deriveFromPassword } from '../crypto/keys';
+import { indexIdFor } from './persist';
+import { openSealedCache } from '../crypto/sealed-cache';
 import type { FromWorker, Part, ToWorker } from './protocol';
 
 /**
@@ -37,16 +40,26 @@ const partOf = (p: Part): UploadPart =>
 
 const trace = (step: string) => (self as unknown as Worker).postMessage({ id: 0, trace: step } satisfies FromWorker);
 
-async function start(opening: Uint8Array | { prf: Uint8Array; credentialId: string; wrapped: string }): Promise<void> {
+async function start(opening: Uint8Array | { prf: Uint8Array; credentialId: string; wrapped: string }, keys?: KeysResponse): Promise<void> {
   trace('opening the vault');
-  session = opening instanceof Uint8Array ? await VaultSession.open(opening) : await VaultSession.openWithPasskey(opening);
+  session = opening instanceof Uint8Array ? await VaultSession.open(opening, undefined, keys) : await VaultSession.openWithPasskey(opening);
   trace('loading profiles');
-  const profiles = await session.loadProfiles();
+  // Each of these is a round trip to the server, so what does not depend on another is asked together: the model settings, the listing,
+  // and, as soon as the listing names the profile, its index; the keys to open them are ready by the time they arrive.
+  const relay = applyRelayConfig().catch(() => false);
+  const listed = await session.list(0);
+  const named = listed.objects.find(o => o.kind === 'profile' && !o.deleted);
+  if (named) session.prefetch(indexIdFor(named.id));
+  const profiles = await session.loadProfiles(listed);
   const profileId = profiles[0]?.id ?? (await session.createProfile('Me'));
+  // What was fetched before is read from this device, so a reload brings in only what changed (SECURITY.md M-43). None where the browser has no storage.
+  session.useCache(await openSealedCache(profileId), listed);
   // The model calls go through the relay: take the server's settings for them (nothing breaks if there is none).
-  trace((await applyRelayConfig().catch(() => false)) ? 'relay configured' : 'no relay');
+  trace((await relay) ? 'relay configured' : 'no relay');
   trace('starting the core');
   const s = session;
+  // The listing just made is the first the core asks for: a second one a moment later would say the same.
+  let first: typeof listed | null = listed;
   core = await startCore({
     profileId,
     objects: {
@@ -54,7 +67,7 @@ async function start(opening: Uint8Array | { prf: Uint8Array; credentialId: stri
       get: (id, kind) => s.get(id, kind),
       getSync: (id, kind) => s.getSync(id, kind),
       remove: (id, seq) => s.remove(id, seq),
-      list: since => s.list(since),
+      list: async since => { if (since === 0 && first) { const had = first; first = null; return had; } return s.list(since); },
     },
   }, {
     onChanged: () => (self as unknown as Worker).postMessage({ id: 0, changed: true } satisfies FromWorker),
@@ -94,8 +107,12 @@ self.onmessage = async (event: MessageEvent<ToWorker>) => {
   const reply = (r: FromWorker, transfer: Transferable[] = []) => (self as unknown as Worker).postMessage(r, transfer);
   try {
     if (m.type === 'start') {
-      await start(m.masterKey);
+      await start(m.masterKey, m.keys);
       reply({ id: m.id, ok: true });
+    } else if (m.type === 'derive') {
+      const { masterKey, authValue } = await deriveFromPassword(m.password, m.salt, m.params);
+      const body = masterKey.buffer.slice(masterKey.byteOffset, masterKey.byteOffset + masterKey.byteLength) as ArrayBuffer;
+      reply({ id: m.id, ok: true, headers: { authValue }, body }, [body]);
     } else if (m.type === 'startWithPasskey') {
       await start(m.passkey);
       reply({ id: m.id, ok: true });

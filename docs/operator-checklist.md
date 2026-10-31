@@ -34,7 +34,7 @@ None of these can be seen from the code. Each needs you to look at the provider'
 
 ## Check that it did what you meant
 
-- [ ] **Say which commit you run, and check it.** Put the tag or commit where your users can read it, build it yourself and run `node scripts/verify-build.mjs https://<your domain> web/dist` ([verify-build.md](verify-build.md)): it must say `ok`. Do it after each update; a user who runs it against you gets the same answer.
+- [ ] **Say which commit you run, and check it.** The page's footer shows the commit and `/trust` explains the check to your users in plain words (set `SPINE_REPO_URL` so its links to the code, docs and security page work). For an official release, tag it (`git tag vX.Y.Z && git push origin vX.Y.Z`), wait for the release workflow, deploy the tag and run `./scripts/deploy-check.sh vX.Y.Z`. Then build it yourself and run `node scripts/verify-build.mjs https://<your domain> web/dist` ([verify-build.md](verify-build.md)): it must say `ok`. Do it after each update; a user who runs it against you gets the same answer.
 
 - [ ] **The startup lines.** The server logs `model settings given to devices` with the provider, model, endpoint, parser and whether page images may leave; the relay logs `relay ready` with the provider, model, endpoint and region it will call. Read them against what you intended.
 - [ ] **Residency, from the provider's side.** After the first real model call, read the provider's request log and confirm the EU host served it. That is the only check that works for any provider (SECURITY.md **M-8**).

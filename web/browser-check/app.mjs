@@ -90,9 +90,11 @@ const password = made.match(/password \(shown once\): (\S+)/)[1];
 const CSP = fs.readFileSync(path.join(root, 'Caddyfile'), 'utf8').match(/Content-Security-Policy "([^"]+)"/)[1].replace('{$SPINE_RELAY_URL:}', relay.url);
 const puts = []; // when the owner's device sent a sealed copy
 const asked = []; // every address the browsers asked the server for: a key in the part after the # would never be among them
+const vaultGets = []; // the single sealed objects that were read from the server (not listings, not writes)
 let failVaultWrites = false; // when set, the vault refuses writes, as a server that is down or a vault that is full would
 const proxy = http.createServer((req, res) => {
   asked.push(req.url);
+  if (req.method === 'GET' && /^\/api\/vault\/objects\/[^?]+$/.test(req.url)) vaultGets.push(req.url);
   if (failVaultWrites && req.method !== 'GET' && req.method !== 'HEAD' && req.url.startsWith('/api/vault/objects')) {
     res.writeHead(503, { 'content-type': 'application/json' });
     return res.end(JSON.stringify({ error: 'test: the vault is not taking writes' }));
@@ -109,8 +111,18 @@ const serverLog = fs.openSync(serverLogPath, 'w');
 const server = spawn('node', ['dist/index.js'], { cwd: path.join(root, 'server'), env, stdio: ['ignore', serverLog, serverLog] });
 await new Promise(r => setTimeout(r, 3000));
 
+let staticFailed = false;
+// What the browser may keep: the files with a hash in their name for good (a reload then asks about the page and nothing else), the page itself never.
+{
+  const page = await (await fetch(`http://localhost:${front}/`)).text();
+  const asset = page.match(/\/assets\/[^"']+\.js/)?.[0];
+  const kept = asset ? (await fetch(`http://localhost:${front}${asset}`)).headers.get('cache-control') : null;
+  const shell = (await fetch(`http://localhost:${front}/`)).headers.get('cache-control');
+  console.log(`${kept?.includes('immutable') && shell?.includes('max-age=0') ? 'ok  ' : 'FAIL'} built files named by their hash are kept (${kept}), the page is asked about each time (${shell})`);
+  staticFailed = !kept?.includes('immutable') || !shell?.includes('max-age=0');
+}
 const browser = await puppeteer.launch({ executablePath: process.env.CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true, args: (process.env.CHROME_FLAGS ?? '').split(/\s+/).filter(Boolean), defaultViewport: { width: 1280, height: 900 } });
-let failed = false;
+let failed = staticFailed;
 let seen = () => '';
 // What the page and the core's worker said that was wrong, and the server's own log: a failed step is explained by these, so the first
 // failure prints them (a worker's error is not a page error, and a step that waits for text would otherwise only say it never came).
@@ -253,10 +265,17 @@ try {
   const sizes = await p.evaluate(() => [...document.querySelectorAll('img')].map(i => i.naturalWidth));
   check(sizes.some(w => w > 1000), 'its page image comes from the device');
   await wait(3000); // the save
+  const sealedBefore = vaultGets.length;
   await p.goto(`http://localhost:${front}/`, { waitUntil: 'networkidle0' });
   check(await waitFor('Open your records'), 'after a reload the key is gone and is asked for again');
   await type('input[type=password]', MASTER); await click('Open');
   check(await waitFor('Chest X-ray'), 'unlocking brings the records back from the vault');
+  // What this device fetched or wrote is kept, sealed, in the browser (SECURITY.md M-43): the reload asks the server for the index and the
+  // profile and nothing else, where it used to fetch every segment and part again.
+  await wait(1500);
+  const refetched = vaultGets.slice(sealedBefore).filter(u => !u.includes('/ix-'));
+  check(refetched.length <= 1, `a reload reads no segment, part or file from the server again, only the profile (${refetched.length} single objects read)`);
+  check((await p.evaluate(async () => (await indexedDB.databases()).map(d => d.name))).includes('spine-sealed'), 'the sealed objects are kept in the browser');
   // Search runs on the device too: the words index and the vectors are in the database it holds.
   await click('Search');
   await type('input[placeholder^="Search documents"]', 'cholecalciferol');
@@ -309,7 +328,8 @@ try {
 
   // Revoking ends it at the server at once.
   await click('Revoke');
-  await wait(3000);
+  // A page already open on it asks again every half minute and closes its copy: nothing more is read, translated or asked from it.
+  check(await guestWait('no longer active', 45000), 'a page already open on the link closes its copy once it is revoked');
   await guest.reload({ waitUntil: 'load' });
   check(await guestWait('no longer active', 20000), 'after revoking, the link no longer opens');
 
@@ -550,7 +570,8 @@ try {
     const downloads = fs.mkdtempSync(path.join(os.tmpdir(), 'spine-app-check-downloads-'));
     const cdp = await p.createCDPSession();
     await cdp.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: downloads });
-    await click('Upload');
+    // Export is in Account (Your data), not on Upload.
+    await p.evaluate(() => { history.pushState(null, '', '/account'); dispatchEvent(new PopStateEvent('popstate')); });
     await waitFor('Export everything');
     await click('Export everything');
     await wait(1500);
@@ -608,7 +629,7 @@ try {
       const exportAgain = async label => {
       const cdp2 = await browser.target().createCDPSession(); // downloads are set per browser context, from the browser itself
       const takeZip = async () => {
-        await click2('Upload');
+        await q.evaluate(() => { history.pushState(null, '', '/account'); dispatchEvent(new PopStateEvent('popstate')); });
         await waitFor2('Export everything');
         const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'spine-app-check-downloads-'));
         await cdp2.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: folder, browserContextId: context2.id });
@@ -827,6 +848,7 @@ try {
     // The server holds the sealed key and not the PRF output: a sign-in is verified without it.
     await click('Sign out');
     check(await waitFor('Sign in with a passkey'), 'signed out');
+    check(!(await p.evaluate(async () => (await indexedDB.databases()).map(d => d.name))).includes('spine-sealed'), 'and signing out removes the sealed objects kept in the browser');
     await click('Sign in with a passkey');
     check(await waitFor('Chest X-ray', 30000), 'signing in with the passkey opens the records, with no master password typed');
     check(!(await text()).includes('Open your records'), 'and the master password is not asked for');

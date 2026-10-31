@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, readdirSync, existsSync, rmSync, readFileSync, utimesSync } from 'fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readdirSync, existsSync, rmSync, readFileSync, statSync, utimesSync } from 'fs';
 import { tmpdir } from 'os';
 import path from 'path';
 import Database from 'better-sqlite3';
@@ -61,6 +61,20 @@ describe('runBackup — vault mirror', () => {
 
     expect((await runBackup({ dataDir, backupDir, keep: 7 })).vaultCopied).toBe(2);
     expect(readFileSync(mirrored('u1', 'obj-aaaaaaaa'), 'utf8')).toBe('sealed-1');
+    expect((await runBackup({ dataDir, backupDir, keep: 7 })).vaultCopied).toBe(0);
+  });
+
+  it('keeps an object\'s modification time to the finest the file system holds, so the next run finds it current', async () => {
+    // A time with a fraction of a millisecond, as a real write has. A copy that went through a whole-millisecond Date came back up to a
+    // millisecond older than its source, and on Linux with Node 22 that made about half of the objects look changed on every run.
+    const seconds = 1793452416.9714485;
+    seedVault('u1', 'obj-aaaaaaaa', 'sealed-1');
+    utimesSync(path.join(dataDir, 'vault', 'u1', 'obj-aaaaaaaa'), seconds, seconds);
+
+    await runBackup({ dataDir, backupDir, keep: 7 });
+    const source = statSync(path.join(dataDir, 'vault', 'u1', 'obj-aaaaaaaa')).mtimeMs;
+    // A double holds a time this large to about a microsecond, so that is the most a copy can differ by.
+    expect(Math.abs(statSync(mirrored('u1', 'obj-aaaaaaaa')).mtimeMs - source)).toBeLessThan(0.01);
     expect((await runBackup({ dataDir, backupDir, keep: 7 })).vaultCopied).toBe(0);
   });
 

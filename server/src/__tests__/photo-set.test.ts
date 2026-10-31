@@ -172,3 +172,37 @@ describe('a scan session when only local OCR can read it', () => {
     }
   });
 });
+
+describe.skipIf(!hasPoppler)('a scanned document attached in the chat', () => {
+  const attachScan = async (fields: Array<[string, string]>, files: Array<{ name: string; data: Buffer; field?: string }>) => {
+    const boundary = 'ChatScanBoundary7';
+    const lead = fields.map(([k, v]) => Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${k}"\r\n\r\n${v}\r\n`));
+    const parts = files.flatMap(f => [Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${f.field ?? 'files'}"; filename="${f.name}"\r\nContent-Type: application/octet-stream\r\n\r\n`), f.data, Buffer.from('\r\n')]);
+    return app.inject({ method: 'POST', url: '/api/chat/attachments?photos=1', headers: { cookie, 'content-type': `multipart/form-data; boundary=${boundary}` }, payload: Buffer.concat([...lead, ...parts, Buffer.from(`--${boundary}--`)]) });
+  };
+
+  it('is one upload tied to the conversation named, so the report of reading it comes back there', async () => {
+    const conversation = 'c0ffee00-0000-4000-8000-000000000001';
+    await getStore().conversations.create(OWNER_ID, { id: conversation, title: 'Asking', createdAt: new Date().toISOString() });
+    const a = bytesOf(await photo('chat-a.jpg', { shade: 31 }));
+    const b = bytesOf(await photo('chat-b.jpg', { shade: 37 }));
+    const res = await attachScan([['conversation_id', conversation]], [{ name: 'p1.jpg', data: a }, { name: 'p2.jpg', data: b }, { name: 'o1.jpg', data: a, field: 'originals' }, { name: 'o2.jpg', data: b, field: 'originals' }]);
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.conversation.id).toBe(conversation);
+    expect(body.files).toHaveLength(1);
+    expect(body.files[0]).toMatchObject({ state: 'reading', upload_id: expect.any(String) });
+    const upload = (await getStore().sourceFiles.findFor(OWNER_ID, body.files[0].upload_id))!;
+    expect(upload.chat_conversation_id).toBe(conversation);
+    expect(upload.raw_count).toBe(2);
+    const messages = await getStore().conversations.messages(OWNER_ID, conversation);
+    expect(messages[messages.length - 1]).toMatchObject({ role: 'user', kind: 'attachment' });
+  });
+
+  it('refuses a conversation that is not theirs before saving anything', async () => {
+    const before = (await getStore().sourceFiles.listFor(OWNER_ID)).length;
+    const res = await attachScan([['conversation_id', 'nobody']], [{ name: 'p1.jpg', data: bytesOf(await photo('chat-c.jpg', { shade: 41 })) }]);
+    expect(res.statusCode).toBe(404);
+    expect((await getStore().sourceFiles.listFor(OWNER_ID)).length).toBe(before);
+  });
+});

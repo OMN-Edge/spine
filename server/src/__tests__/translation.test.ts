@@ -169,7 +169,44 @@ describe('translating a document', () => {
     expect(result.fields[d.known]).toEqual({ label: null, value: 'EN[Anemie]' });
     expect(result.fields[d.custom].value).toBe('Repaus'); // the original, since it was refused alone
     expect(result.measurements[d.measurementId]).toBe('EN[Hemoglobina]');
-    expect(await translateDocument(OWNER_ID, d.id, 'en', { cachedOnly: true })).toBeNull(); // a half answer is not kept
+    // What was usable is kept, and says that it is not whole.
+    expect(await translateDocument(OWNER_ID, d.id, 'en', { cachedOnly: true })).toMatchObject({ status: 'cached', incomplete: true });
+  });
+
+  it('asks again, for the missing part alone, once the pause has passed, and then the copy is whole', async () => {
+    const d = await romanian();
+    const get = (url: string) => app.inject({ method: 'GET', url, headers: { cookie } });
+    let refuse = true;
+    answer = bundle => {
+      if (refuse && bundle.fields.some(f => f.value === 'Repaus')) throw new LlmBlockedError('Finish reason: RECITATION');
+      return mark(bundle);
+    };
+    expect(await translateDocument(OWNER_ID, d.id, 'en')).toMatchObject({ status: 'translated', incomplete: true });
+    expect((await get(`/api/documents/${d.id}/translation?lang=en&cached=1`)).statusCode).toBe(204); // not whole: the page goes on and asks
+    const before = calls.length;
+
+    // Within the pause nothing is asked, and what is kept is served.
+    expect(await translateDocument(OWNER_ID, d.id, 'en')).toMatchObject({ status: 'cached', incomplete: true });
+    expect(calls).toHaveLength(before);
+
+    refuse = false;
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(Date.now() + 11 * 60_000);
+      const whole = await translateDocument(OWNER_ID, d.id, 'en');
+      if (whole === null || whole === 'not_found') throw new Error('expected a translation');
+      expect(whole.incomplete).toBeUndefined();
+      expect(whole.fields[d.custom].value).toBe('EN[Repaus]');
+      expect(whole.fields[d.known].value).toBe('EN[Anemie]'); // kept from before
+    } finally { vi.useRealTimers(); }
+    const sent = calls.slice(before);
+    expect(sent.flatMap(c => c.bundle.fields.map(f => f.value))).toEqual(['Repaus']); // only what was missing
+    expect(sent.every(c => c.bundle.title === null && c.bundle.measurements.length === 0)).toBe(true);
+
+    const kept = await translateDocument(OWNER_ID, d.id, 'en', { cachedOnly: true });
+    expect(kept).toMatchObject({ status: 'cached' });
+    expect((kept as { incomplete?: boolean }).incomplete).toBeUndefined();
+    expect((await get(`/api/documents/${d.id}/translation?lang=en&cached=1`)).statusCode).toBe(200);
   });
 
   it('falls back to the original for anything the model left out', async () => {
@@ -182,8 +219,9 @@ describe('translating a document', () => {
     expect(result.fields[d.custom].value).toBe('Repaus');
     expect(result.fields[d.known].value).toBe('EN[Anemie]');
     expect(calls).toHaveLength(4); // head and body, and each asked again for what was missing
-    // A half translation is not kept: it would be served as whole until the document changed.
-    expect(await getStore().translations.get(OWNER_ID, d.id, 'en')).toBeNull();
+    // What was usable is kept, and the copy says that it is not whole, so it is not served as whole.
+    expect(result.incomplete).toBe(true);
+    expect(await getStore().translations.get(OWNER_ID, d.id, 'en')).not.toBeNull();
   });
 
   it('asks again for a value that rambles, and uses the original if it still does', async () => {
@@ -328,6 +366,20 @@ describe('the routes', () => {
     for (let i = 0; i < 100; i++) { if (await check()) return; await new Promise(r => setTimeout(r, 10)); }
     throw new Error('did not settle');
   };
+
+  it('GET /api/documents/:id/translation?cached=1 looks only at what is kept: 204 and no model call when nothing is, the kept copy once there is one', async () => {
+    const d = await romanian();
+    const miss = await get(`/api/documents/${d.id}/translation?lang=en&cached=1`);
+    expect(miss.statusCode).toBe(204);
+    expect(calls).toHaveLength(0);
+    await get(`/api/documents/${d.id}/translation?lang=en`);
+    const calledFor = calls.length;
+    const hit = await get(`/api/documents/${d.id}/translation?lang=en&cached=1`);
+    expect(hit.statusCode).toBe(200);
+    expect(hit.json()).toMatchObject({ status: 'cached', title: 'EN[Buletin de analize]' });
+    expect(calls).toHaveLength(calledFor);
+    expect((await get(`/api/documents/${d.id}/translation?lang=en&cached=1`, null)).statusCode).toBe(401);
+  });
 
   it('GET /api/documents/:id/translation: the owner reads a document in a language; bad language 400, not theirs 404, no session 401', async () => {
     const d = await romanian();

@@ -3,7 +3,7 @@ import { LocalApp, type InjectRequest, type InjectResponse } from './local-app';
 import { openDeviceStore } from './device-store';
 import { browserTools } from './native';
 import { useNativeTools } from 'spine-core/native-tools';
-import { Persistence, type ObjectStore } from './persist';
+import { Persistence, indexIdFor, type ObjectStore } from './persist';
 import type { SaveState } from './protocol';
 export type { SaveState };
 import { memory, browserFiles } from './shims/fs';
@@ -34,6 +34,7 @@ import { similarityRoutes } from 'spine-core/routes/similarity';
 import { linkRoutes } from 'spine-core/routes/links';
 import { demoRoutes } from 'spine-core/routes/demo';
 import { chatRoutes } from 'spine-core/routes/chat';
+import { guideRoutes } from 'spine-core/routes/guide';
 import { shareRoutes } from 'spine-core/routes/share';
 
 /**
@@ -84,7 +85,7 @@ export async function startCore(vault?: { objects: ObjectStore; profileId: strin
     });
   }
 
-  const persistence = vault && new Persistence(vault.objects, vault.profileId, `ix-${vault.profileId}`, newId, { changes: store.changes, files: store.files, userId: DEVICE_USER });
+  const persistence = vault && new Persistence(vault.objects, vault.profileId, indexIdFor(vault.profileId), newId, { changes: store.changes, files: store.files, userId: DEVICE_USER });
   if (persistence) {
     persistence.onChanged = () => { hooks.onChanged?.(); followRecords(); };
     const { empty } = await persistence.load();
@@ -99,7 +100,7 @@ export async function startCore(vault?: { objects: ObjectStore; profileId: strin
   // One person, and the password was just typed to open the vault: nothing here asks for it again.
   useRequestAuth({ user: () => store.users.findById(DEVICE_USER), recent: () => true });
   // Each file as a plugin, so its hooks are its own, as on Fastify.
-  for (const routes of [tagRoutes, doctorRoutes, trendRoutes, episodeRoutes, documentRoutes, sourceFileRoutes, exportRoutes, similarityRoutes, linkRoutes, demoRoutes, chatRoutes, shareRoutes]) {
+  for (const routes of [tagRoutes, doctorRoutes, trendRoutes, episodeRoutes, documentRoutes, sourceFileRoutes, exportRoutes, similarityRoutes, linkRoutes, demoRoutes, chatRoutes, guideRoutes, shareRoutes]) {
     await local.register(routes);
   }
 
@@ -153,9 +154,16 @@ export async function startCore(vault?: { objects: ObjectStore; profileId: strin
       if (!locked) void inject({ method: 'POST', url: '/api/share-links/refresh' }).catch(() => undefined);
     }, FOLLOW_AFTER_MS);
   };
-  const inject = (request: InjectRequest) => local.inject({
-    ...request,
-  });
+  // A page image is fetched before the route reads it, so several can arrive at once and nothing else waits for them (`Persistence.ensure`).
+  const imageOf = /^\/api\/pages\/([^/?#]+)\/image(?:[?#]|$)/;
+  const inject = async (request: InjectRequest) => {
+    const page = persistence && request.method === 'GET' ? imageOf.exec(request.url)?.[1] : undefined;
+    if (persistence && page) {
+      const path = await store.pages.findImagePathFor(DEVICE_USER, page).catch(() => null);
+      if (path) await persistence.ensure(path);
+    }
+    return local.inject({ ...request });
+  };
   // Saves what changed, and now and then looks for what other devices wrote.
   // A failed save is retried here every time round (the records stay marked as changed), and the page is told once, in `announce`.
   const timer: ReturnType<typeof setInterval> | null = persistence ? setInterval(() => { void (async () => { void announce(); if ((await hasUnsent()) || ++ticks % 4 === 0) await flush().catch(err => console.warn('a save did not reach the vault:', (err as Error)?.message)); })(); }, SAVE_EVERY_MS) : null;

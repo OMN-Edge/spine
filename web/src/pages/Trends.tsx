@@ -5,6 +5,7 @@ import { SeriesBody, TestList } from '../components/TrendViews';
 import { useI18n } from '../i18n';
 import { Combobox } from '../components/Combobox';
 import { useScreen } from '../components/ChatProvider';
+import GuideTip from '../components/GuideTip';
 
 /** For a test written two ways by two labs: count this one as another, and remember it for later documents. */
 function MergeTest({ canonical, others }: { canonical: string; others: TrendName[] }) {
@@ -86,7 +87,14 @@ export default function Trends() {
                 <p className="text-lg mb-2">{t('No measurements yet')}</p>
                 <p className="text-sm">{t('They appear when a lab result or a note with vitals is read.')}</p>
               </div>
-            ) : <TestList names={names} hrefFor={canonical => `/trends?name=${encodeURIComponent(canonical)}`} />}
+            ) : (
+              <>
+                <GuideTip tip="tip.results" topic="results">
+                  {t('Each test here is drawn from every document that has it. Labs sometimes name the same test differently: open it and choose the name it should be counted with.')}
+                </GuideTip>
+                <TestList names={names} hrefFor={canonical => `/trends?name=${encodeURIComponent(canonical)}`} />
+              </>
+            )}
         </>
       )}
     </div>

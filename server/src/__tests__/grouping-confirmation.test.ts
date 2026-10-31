@@ -72,6 +72,17 @@ describe('before the grouping is confirmed', () => {
   });
 });
 
+describe('a document opened before it is read', () => {
+  it('says whether it waits for the grouping or is being read now, so the page can wait for its details', async () => {
+    const d = await waitingUpload('Blood count');
+    expect((await get(`/api/documents/${d.id}`)).json()).toMatchObject({ grouping_confirmed: false, reading: false });
+    await getStore().sourceFiles.setStatus(OWNER_ID, d.sourceFileId, 'processing');
+    expect((await get(`/api/documents/${d.id}`)).json().reading).toBe(true);
+    await getStore().sourceFiles.setStatus(OWNER_ID, d.sourceFileId, 'done');
+    expect((await get(`/api/documents/${d.id}`)).json().reading).toBe(false);
+  });
+});
+
 describe('confirming', () => {
   it('shows the documents, makes them reviewable and looks for their links', async () => {
     const lab = await waitingUpload('Blood count');

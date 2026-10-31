@@ -8,8 +8,10 @@ import { maintenanceRepository } from './maintenance.js';
 import { pageRepository } from './pages.js';
 import { shareLinkRepository } from './share-links.js';
 import { sourceFileRepository } from './source-files.js';
+import { guideRepository } from './guide.js';
 import { regroupPlanRepository } from './regroup-plans.js';
 import { sessionRepository } from './sessions.js';
+import { cookieSessionRepository } from './cookie-sessions.js';
 import { enrolmentRepository } from './enrolments.js';
 import { usageRepository } from './usage.js';
 import { changeLog } from './changes.js';
@@ -75,6 +77,7 @@ function accountsOver(db: Database, depth: number): AccountsStore {
   return {
     users: userRepository(db),
     sessions: sessionRepository(db),
+    cookieSessions: cookieSessionRepository(db),
     enrolments: enrolmentRepository(db),
     usage: usageRepository(db),
     vault: vaultRepository(db),
@@ -103,6 +106,7 @@ function recordsOf(db: Database): Omit<RecordsStore, "slice"> {
     episodes: episodeRepository(db),
     conversations: conversationRepository(db),
     regroupPlans: regroupPlanRepository(db),
+    guide: guideRepository(db),
     matchDecisions: matchDecisionRepository(db),
     changes: changeLog(db),
     files: fileRegistryRepository(db),

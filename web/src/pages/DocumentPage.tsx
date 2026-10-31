@@ -14,6 +14,8 @@ import { SOURCE_CHIP } from '../components/pageSource';
 import PageTextPanel from '../components/PageTextPanel';
 import RelatedDocuments from '../components/RelatedDocuments';
 import CareChain from '../components/CareChain';
+import GuideTip from '../components/GuideTip';
+import { useGuide } from '../guide';
 import { useScreen } from '../components/ChatProvider';
 import { DOC_TYPE_NAMES, documentByline, documentTitle, fieldName, isSection, labelFromName, valueLines } from '../titles';
 import { LANGUAGES, useI18n } from '../i18n';
@@ -130,6 +132,7 @@ export default function DocumentPage() {
   const [doc, setDoc] = useState<Document | null>(null);
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState<Draft | null>(null); // non-null exactly while editing
+  const guide = useGuide();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -165,6 +168,15 @@ export default function DocumentPage() {
     // Only the first load decides the starting mode.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  // Opened while it is still being read (from an upload's list or the chat's report): its details come when the reading ends, so it is
+  // read again every few seconds until then, rather than showing empty sections.
+  const beingRead = !!doc?.reading || (!!doc?.needs_reading && doc.grouping_confirmed !== false);
+  useEffect(() => {
+    if (!beingRead || draft !== null) return;
+    const timer = window.setInterval(() => { if (document.visibilityState === 'visible') void load(); }, 3000);
+    return () => window.clearInterval(timer);
+  }, [beingRead, draft, load]);
 
   // A change made from the chat (a note, a correction): read the document again, unless the person is editing it.
   useOnDataChanged(() => { if (draft === null) void load(); });
@@ -217,6 +229,7 @@ export default function DocumentPage() {
   const tr = useTranslation(
     needsTranslation && doc ? `${doc.id}|${doc.title}|${doc.ai_summary}|${doc.user_notes}|${(doc.fields ?? []).map(f => f.id + f.value).join()}` : null,
     (l, part) => api.documents.translation(doc!.id, l, part),
+    l => api.documents.translationKept(doc!.id, l),
   );
 
   if (loading) return <p className="text-gray-400 text-sm">{t('Loading…')}</p>;
@@ -239,6 +252,11 @@ export default function DocumentPage() {
     ? [...new Set(guides.filter(g => g.type === draft.doc_type).flatMap(g => [...g.fields, ...g.grouped]))].map(l => ({ value: fieldName(l, t), label: fieldName(l, t) }))
     : [];
   const reviewed = !!doc.reviewed;
+  // One tip at a time on a document, the first that applies: its results, then its doctors, then (in CareChain) a suggested connection.
+  const tip = editing || beingRead || !guide?.state ? null
+    : (doc.measurements ?? []).length > 0 && !guide.isDone('tip.results') ? 'results'
+    : (doc.doctors ?? []).length > 0 && !guide.isDone('tip.doctors') ? 'doctors'
+    : null;
 
   const set = (patch: Partial<Draft>) => setDraft(d => (d ? { ...d, ...patch } : d));
   const setField = (key: string, patch: Partial<DraftField>) =>
@@ -443,6 +461,12 @@ export default function DocumentPage() {
                 </div>
               )}
               {notice && <p className="text-sm text-green-700 mt-4" role="status">{notice}</p>}
+              {beingRead && <p className="mt-4 rounded-lg bg-brand-50 px-3 py-2 text-sm text-brand-800" role="status">{t('This document is being read. Its details appear here when it is done.')}</p>}
+              {!beingRead && !!doc.needs_reading && doc.grouping_confirmed === false && (
+                <p className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900" role="status">
+                  {t('Its details are read once you confirm how the pages of its upload were grouped.')} <Link to={`/uploads/${doc.source_file_id}`} className="font-medium text-brand-600 hover:underline">{t('Check the grouping')}</Link>
+                </p>
+              )}
               {currentPage && SOURCE_CHIP[currentPage.extraction_source ?? ''] && (
                 <p className="mt-4 text-xs text-gray-500">
                   {t('Extraction:')}
@@ -473,11 +497,12 @@ export default function DocumentPage() {
                 <input id="d-title" className={input} value={draft.title} onChange={e => set({ title: e.target.value })} />
               </div>
               <div className="grid grid-cols-2 gap-3 mb-3">
-                <div>
+                <div className="min-w-0">
                   <label htmlFor="d-date" className={label}>{t('Date')}</label>
-                  <input id="d-date" type="date" className={input} value={draft.doc_date} onChange={e => set({ doc_date: e.target.value })} />
+                  {/* A phone's date box has a width of its own that overflows its half of the row; it is held to the column, its text to the left. */}
+                  <input id="d-date" type="date" className={`${input} block h-[2.125rem] min-w-0 appearance-none text-left [&::-webkit-date-and-time-value]:text-left`} value={draft.doc_date} onChange={e => set({ doc_date: e.target.value })} />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label htmlFor="d-type" className={label}>{t('Type')}</label>
                   <Combobox id="d-type" options={Object.entries(DOC_TYPE_NAMES).map(([value, name]) => ({ value, label: t(name) }))} value={draft.doc_type} onChange={v => set({ doc_type: v })} />
                 </div>
@@ -515,6 +540,13 @@ export default function DocumentPage() {
           )}
         </div>
 
+        {tip === 'doctors' && (
+          <GuideTip tip="tip.doctors" topic="doctors" className="">
+            {t('The doctors this document names are kept on the Doctors page, each with every document that names them. When a new name might be someone already there, written another way, Spine asks you before merging them.')}{' '}
+            <Link to="/doctors" className="font-medium underline">{t('Open Doctors')}</Link>
+          </GuideTip>
+        )}
+
         {/* Who the document names */}
         {(editing || (doc.doctors ?? []).length > 0) && (
           <div id="section-doctors" className="bg-white border border-gray-200 rounded-xl p-4 transition-shadow">
@@ -526,6 +558,13 @@ export default function DocumentPage() {
               />
             )}
           </div>
+        )}
+
+        {tip === 'results' && (
+          <GuideTip tip="tip.results" topic="results" className="">
+            {t('These results are also on the Trends page, where each test is drawn over time from all your documents. A value marked “check” is one the AI was not sure of: compare it with the page.')}{' '}
+            <Link to="/trends" className="font-medium underline">{t('Open Trends')}</Link>
+          </GuideTip>
         )}
 
         {/* Lab values and vitals: these are what the trends are drawn from */}
@@ -546,7 +585,7 @@ export default function DocumentPage() {
           </>
         )}
 
-        {!editing && <div id="section-chain" className="rounded-xl transition-shadow"><CareChain documentId={doc.id} /></div>}
+        {!editing && <div id="section-chain" className="rounded-xl transition-shadow"><CareChain documentId={doc.id} quiet={tip !== null} /></div>}
         {!editing && <RelatedDocuments documentId={doc.id} />}
 
         {/* Extracted fields */}

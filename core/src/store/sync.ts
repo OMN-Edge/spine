@@ -14,7 +14,7 @@ import type { Cell, Change, ChangeLog } from './types.js';
 export const REPLICATED = [
   'source_files', 'regroup_plans', 'pages', 'documents', 'measurements', 'removed_readings', 'measurement_aliases', 'doctors', 'document_doctors',
   'match_decisions', 'extracted_fields', 'tags', 'document_tags', 'share_links', 'share_link_keys', 'vault_files', 'share_access_requests', 'share_link_events', 'share_link_access_log',
-  'document_translations', 'document_embeddings', 'episodes', 'episode_documents', 'document_links', 'chat_conversations', 'chat_messages',
+  'document_translations', 'document_embeddings', 'episodes', 'episode_documents', 'document_links', 'chat_conversations', 'chat_messages', 'guide_marks',
 ] as const;
 
 /** Rows that name another by a key two devices may have made differently for one thing: [column, the table whose key it is]. */

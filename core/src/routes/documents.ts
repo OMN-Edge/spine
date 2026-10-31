@@ -18,6 +18,7 @@ import { isReadingPages } from '../ingestion/ai-reading.js';
 import { DOC_TYPES, DOCTOR_ROLES } from '../llm/types.js';
 import { canonicalName, flagFor, parseNumber, validWhen } from '../ingestion/measurements.js';
 import type { DoctorRole } from '../types.js';
+import { logger } from '../logger.js';
 
 /** The columns a new reading would fill in, and that the owner can take over by setting them. */
 const HEADLINE_COLUMNS = ['title', 'doc_date', 'provider', 'doc_type', 'ai_summary'] as const;
@@ -319,6 +320,8 @@ export async function documentRoutes(app: HttpApp) {
     const episode = (await store.episodes.list(req.userId, ['proposed', 'confirmed'])).find(e => e.document_ids.includes(id));
     return reply.send({
       ...doc, fields, tags, pages, measurements, doctors, grouping_confirmed: upload?.grouping_confirmed ?? true,
+      // Its upload is being read now (after a confirm, or a one-page upload): the page waits for the details rather than showing none.
+      reading: isReadingPages(doc.source_file_id) || upload?.status === 'pending' || upload?.status === 'processing',
       episode: episode ? { id: episode.id, title: episode.title, state: episode.state, first_date: episode.first_date, last_date: episode.last_date, provider: episode.provider } : null,
     });
   });
@@ -572,11 +575,19 @@ export async function documentRoutes(app: HttpApp) {
   // the next reader of this document in that language gets them at once. `status` says whether this was served
   // from what was kept (cached), translated just now (translated), needed nothing (same, the document is already
   // in that language) or is switched off on this server (off).
-  app.get<{ Params: { id: string }; Querystring: { lang?: string; part?: string } }>('/api/documents/:id/translation', async (req, reply) => {
+  app.get<{ Params: { id: string }; Querystring: { lang?: string; part?: string; cached?: string } }>('/api/documents/:id/translation', async (req, reply) => {
     const language = req.query.lang;
     if (!isSupportedLanguage(language)) return reply.status(400).send({ error: `lang must be one of ${SUPPORTED_LANGUAGES.join(', ')}` });
-    const result = await translateDocument(req.userId, req.params.id, language, { part: req.query.part === 'head' ? 'head' : 'full' });
+    // `cached=1` only looks at what is kept: the page asks first, so it shows a wait only for a translation that is really being made.
+    const cachedOnly = req.query.cached === '1';
+    const part = req.query.part === 'head' ? 'head' : 'full';
+    const started = Date.now();
+    const result = await translateDocument(req.userId, req.params.id, language, { part, cachedOnly });
+    // Whether a reader waited on the model or on the kept copy, for whoever is finding out why a page flashes: no text, no id.
+    logger.info('translation read', { part, language, status: result === null ? (cachedOnly ? 'not kept' : 'failed') : result === 'not_found' ? 'not_found' : result.status, ms: Date.now() - started });
     if (result === 'not_found') return reply.status(404).send({ error: 'not found' });
+    // A copy with parts missing is not whole: the page goes on to ask for it, which completes it.
+    if (cachedOnly && (result === null || result.incomplete)) return reply.status(204).send();
     if (result === null) return reply.status(502).send({ error: 'the document could not be translated right now' });
     return reply.header('Cache-Control', 'no-store').send(result);
   });

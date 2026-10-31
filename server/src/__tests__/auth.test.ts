@@ -53,7 +53,8 @@ describe('POST /api/auth/login', () => {
   });
 
   it('gives a new session id on login, so one fixed beforehand is not kept', async () => {
-    const before = await me();
+    // A session that exists before signing in: an anonymous visit stores none, so one that holds something (a passkey challenge).
+    const before = await app.inject({ method: 'POST', url: '/api/auth/passkey/options' });
     const fixed = before.cookies.find(c => c.name === 'sessionId')!.value;
 
     const res = await app.inject({
