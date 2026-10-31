@@ -26,6 +26,9 @@ const requestOf = (r: Record<string, unknown>): SharedRequest => ({
   decidedAt: (r.decided_at as string | null) ?? null,
 });
 
+/** Live emergency cards an account may have: one for each person it keeps records for. */
+const MAX_CARDS = 10;
+
 const BUNDLE = 'id, user_id, created_at, expires_at, require_approval, size, blobs, blob_bytes, revoked_at, kind';
 const REQUEST = 'id, bundle_id, visitor_key, status, wrapped_key, note, country, requested_at, decided_at';
 
@@ -42,8 +45,11 @@ export function sharedRepository(q: Query, begin: Begin): SharedRepository {
       return begin(async run => {
         const have = await bundle(run, b.id, true);
         if (!have) {
-          // One emergency card at a time: a new one is made after the old one is revoked.
-          if (b.kind === 'card' && (await one(run, `SELECT 1 FROM shared_bundles WHERE user_id = $1 AND kind = 'card' AND revoked_at IS NULL FOR UPDATE`, [userId]))) return 'one_card' as const;
+          // A card for each person the account keeps records for, and no more than a plan could have people. The account's rows are locked so two cards cannot both take the last place.
+          if (b.kind === 'card') {
+            await run('SELECT 1 FROM users WHERE id = $1 FOR UPDATE', [userId]);
+            if (Number((await one<{ n: number }>(run, "SELECT COUNT(*) AS n FROM shared_bundles WHERE user_id = $1 AND kind = 'card' AND revoked_at IS NULL", [userId]))!.n) >= MAX_CARDS) return 'too_many_cards' as const;
+          }
           await run('INSERT INTO shared_bundles (id, user_id, created_at, expires_at, require_approval, size, blobs, blob_bytes, kind) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)', [b.id, userId, now, b.expiresAt, b.requireApproval ? 1 : 0, b.size, b.blobs, b.blobBytes, b.kind ?? 'share']);
           return 'ok' as const;
         }
@@ -52,11 +58,6 @@ export function sharedRepository(q: Query, begin: Begin): SharedRepository {
         await run('UPDATE shared_bundles SET expires_at = $1, require_approval = $2, size = $3, blobs = $4, blob_bytes = $5 WHERE id = $6 AND user_id = $7', [b.expiresAt, b.requireApproval ? 1 : 0, b.size, b.blobs, b.blobBytes, b.id, userId]);
         return 'ok' as const;
       });
-    },
-
-    async cardOf(userId) {
-      const r = await one(q, `SELECT ${BUNDLE} FROM shared_bundles WHERE user_id = $1 AND kind = 'card' AND revoked_at IS NULL`, [userId]);
-      return r ? bundleOf(r) : null;
     },
 
     async addBlob(userId, id, bytes) {

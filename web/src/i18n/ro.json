@@ -1389,5 +1389,18 @@
  "It has not been opened yet.": "Nu a fost deschis încă.",
  "Write an emergency card": "Scrie un card de urgență",
  "for someone who has to help you quickly, opened from a code.": "pentru cineva care trebuie să te ajute repede, deschis dintr-un cod.",
- "{n} item did not fit in the code and was left out.|{n} items did not fit in the code and were left out.": "{n} element nu a încăput în cod și a fost omis.|{n} elemente nu au încăput în cod și au fost omise.|{n} de elemente nu au încăput în cod și au fost omise."
+ "{n} item did not fit in the code and was left out.|{n} items did not fit in the code and were left out.": "{n} element nu a încăput în cod și a fost omis.|{n} elemente nu au încăput în cod și au fost omise.|{n} de elemente nu au încăput în cod și au fost omise.",
+ "Whose records are open": "Ale cui documente sunt deschise",
+ "Your plan keeps the records of one person. A plan for the family adds more; see your account page.": "Planul tău păstrează documentele unei singure persoane. Un plan pentru familie adaugă mai multe; vezi pagina contului.",
+ "People": "Persoane",
+ "Keep the records of someone you look after, such as a child or a parent, apart from your own.": "Păstrează separat de ale tale documentele unei persoane de care ai grijă, de exemplu un copil sau un părinte.",
+ "See and add people": "Vezi și adaugă persoane",
+ "Could not open these records": "Aceste documente nu au putut fi deschise",
+ "Could not add this person": "Persoana nu a putut fi adăugată",
+ "Keep the records of someone you look after, such as a child or a parent, apart from your own. Each person has records, search, share links and an emergency card of their own, and a key of their own.": "Păstrează separat de ale tale documentele unei persoane de care ai grijă, de exemplu un copil sau un părinte. Fiecare persoană are documente, căutare, linkuri de partajare și un card de urgență ale ei, și o cheie a ei.",
+ "Open now": "Deschis acum",
+ "Some of the latest changes are not saved yet. If you open someone else’s records now, they will be lost.": "Unele dintre ultimele modificări nu sunt încă salvate. Dacă deschizi acum documentele altcuiva, vor fi pierdute.",
+ "Open anyway": "Deschide oricum",
+ "Add a person": "Adaugă o persoană",
+ "Their records start empty. The name is kept with them, sealed like everything else.": "Documentele încep goale. Numele este păstrat împreună cu ele, criptat ca tot restul."
 }

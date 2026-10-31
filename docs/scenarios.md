@@ -854,6 +854,18 @@ Status: auto (`growth`); the footer: not yet checked by hand.
 
 ---
 
+## 15. More than one person
+
+### 15.1 Keep a child's or a parent's records apart
+On the account page, "See and add people" opens a page that lists the people the account keeps records for. Adding one starts empty records with a key of their own; opening one saves the current person and shows the other's records, with no master password asked again. The name of the person open is in the top bar once there is more than one. Each has their own documents, search, share links and emergency card; nothing of one person shows in another's screens.
+
+- A plan with room for one person says so and points to the account page; the trial has room for six. A person already made stays when a plan ends.
+- If something could not be saved, opening another person asks first.
+
+Status: auto (`billing`, `crypto`); real browser (`check:app`: add a person, their records start empty, back to the first); not on a phone.
+
+---
+
 ## 14. The emergency card
 
 ### 14.1 Write the card and turn it on
@@ -862,7 +874,7 @@ The owner opens Share links, then "Write an emergency card", writes what someone
 - It is on every plan, and does not count as a share link.
 - Turning it off deletes the sealed copy; the old address says the card is not available. Turning it on again gives a new address.
 
-Status: auto (`emergency`, `plans`, `keys`); screens: not yet checked by hand.
+Status: auto (`emergency`, `plans`, `keys`); screens: not yet checked by hand. (One card for each person the account keeps records for, at most ten.)
 
 ### 14.2 Someone scans it
 A person with a phone scans the code and sees the card in their language (the labels; the owner's words stay as written), with the owner's phone numbers as links, a line that the owner wrote it and it should be checked, and a short note on what Spine is with a link to it. No account, no question. The owner is mailed the first time in fifteen minutes and sees the time and country in the card's list.

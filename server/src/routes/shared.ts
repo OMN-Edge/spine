@@ -90,7 +90,7 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     if (req.headers['x-spine-kind'] === 'card') {
       if (!SHARE_ID.test(id) || !Buffer.isBuffer(req.body) || req.body.length === 0 || req.body.length > CARD_MAX_BYTES) return reply.status(400).send({ error: 'an id and a sealed card of at most 64 KB are needed' });
       const put = await getAccountsStore().shared.put(req.userId, { id, expiresAt: CARD_NO_END, requireApproval: false, size: req.body.length, blobs: 0, blobBytes: 0, kind: 'card' }, new Date().toISOString());
-      if (put === 'one_card') return reply.status(409).send({ error: 'there is a card already; turn it off first', code: 'one_card' });
+      if (put === 'too_many_cards') return reply.status(409).send({ error: 'too many cards are on; turn one off first', code: 'too_many_cards' });
       if (put !== 'ok') return reply.status(put === 'taken' ? 404 : 409).send({ error: put === 'taken' ? 'not found' : 'this card was turned off' });
       await writeBundle(id, req.body);
       return reply.status(201).send({ ok: true });

@@ -68,10 +68,10 @@ describe.runIf(records)('the owner’s emergency card', () => {
 
   it('says so when it could not be sent, and keeps what was written', async () => {
     await call('PUT', '/api/emergency', CARD_BODY);
-    failNext = Object.assign(new Error('down'), { code: 'one_card' });
+    failNext = Object.assign(new Error('down'), { code: 'too_many_cards' });
     const refused = await call('POST', '/api/emergency/publish');
     expect(refused.statusCode).toBe(409);
-    expect(refused.json().code).toBe('one_card');
+    expect(refused.json().code).toBe('too_many_cards');
     failNext = new Error('down');
     const unsent = await call('PUT', '/api/emergency', { ...CARD_BODY, notes: 'edited' });
     expect(unsent.statusCode).toBe(502);
@@ -126,12 +126,16 @@ describe('the sealed card at the server', () => {
     expect(bundle.rawPayload.toString()).toBe('sealed card');
   });
 
-  it('is replaced under its own id, and only one is live at a time', async () => {
+  it('is replaced under its own id, one is allowed for each person and no more than ten', async () => {
     expect((await putCard(ID_A, cookie, Buffer.from('second'))).statusCode).toBe(201);
     expect((await app.inject({ method: 'GET', url: `/api/shared/${ID_A}/bundle` })).rawPayload.toString()).toBe('second');
-    const two = await putCard(ID_B);
-    expect(two.statusCode).toBe(409);
-    expect(two.json().code).toBe('one_card');
+    expect((await putCard(ID_B)).statusCode).toBe(201); // another person's card
+    for (let n = 2; n < 10; n++) expect((await putCard(`card-${String(n).padStart(24, 'c')}`)).statusCode).toBe(201);
+    const eleven = await putCard('card-zzzzzzzzzzzzzzzzzzzzzzzz');
+    expect(eleven.statusCode).toBe(409);
+    expect(eleven.json().code).toBe('too_many_cards');
+    expect((await app.inject({ method: 'DELETE', url: '/api/shared/card-zzzzzzzzzzzzzzzzzzzzzzzz', headers: { cookie } })).statusCode).toBe(404);
+    for (const id of [ID_B, ...Array.from({ length: 8 }, (_, k) => `card-${String(k + 2).padStart(24, 'c')}`)]) expect((await app.inject({ method: 'DELETE', url: `/api/shared/${id}`, headers: { cookie } })).statusCode).toBe(200);
   });
 
   it('is refused when it is empty, too big or someone else’s', async () => {
@@ -156,6 +160,7 @@ describe('the sealed card at the server', () => {
   it('stops opening when it is turned off', async () => {
     expect((await app.inject({ method: 'DELETE', url: `/api/shared/${ID_A}`, headers: { cookie } })).statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: `/api/shared/${ID_A}/bundle` })).statusCode).toBe(410);
-    expect((await putCard(ID_B)).statusCode).toBe(201); // and a new one can be made
+    expect((await putCard('card-dddddddddddddddddddddddd')).statusCode).toBe(201); // and a new one can be made in its place
+    expect((await putCard(ID_B)).statusCode).toBe(409); // but a turned-off id is not brought back
   });
 });

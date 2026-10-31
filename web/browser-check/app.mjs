@@ -828,6 +828,27 @@ try {
     await click('Timeline');
   }
 
+  // Records for more than one person: a second person starts empty, is opened and saved apart, and the first person's records are back on
+  // opening them again, without the master password being asked for again.
+  {
+    await click('check@example.com');
+    check(await waitFor('See and add people'), 'the account page offers people');
+    await click('See and add people');
+    check(await waitFor('Add a person'), 'the page of people opens');
+    await type('input[aria-label=Name]', 'Child');
+    await click('Add');
+    check(await waitFor('Child', 15000) && (await text()).includes('Open now'), 'another person is added next to the first');
+    await (await p.evaluateHandle(() => [...document.querySelectorAll('li')].find(li => li.innerText.includes('Child'))?.querySelector('button'))).asElement().click();
+    check(await waitFor('Explore with sample records', 30000), "the other person's records start empty, apart from the first person's");
+    check(!(await text()).includes('Chest X-ray'), "and none of the first person's documents are in them");
+    check((await text()).includes('Child'), "the page says whose records are open");
+    check(!(await text()).includes('Open your records'), 'opening them did not ask for the master password');
+    await click('Child');
+    check(await waitFor('Add a person'), 'the page of people opens again from the name');
+    await (await p.evaluateHandle(() => [...document.querySelectorAll('li')].find(li => !li.innerText.includes('Open now'))?.querySelector('button'))).asElement().click();
+    check(await waitFor('Chest X-ray', 30000), "the first person's records are back, as they were");
+  }
+
   // A passkey that opens the vault (the WebAuthn PRF extension), with Chrome's virtual authenticator standing in for the person's device.
   {
     const cdp = await p.createCDPSession();

@@ -111,6 +111,19 @@ describe('the key hierarchy', () => {
     await expect(unlockWithRecovery(await newRecoveryKey(), account.keys)).rejects.toBeInstanceOf(OpenError);
   });
 
+  it('gives each person in an account a key of their own, so one person’s records do not open with another’s', async () => {
+    const account = await createAccountKeys(PASSWORD, FAST);
+    const mine = await newProfileKey(account.unlocked, 'profile-mine');
+    const child = await newProfileKey(account.unlocked, 'profile-child');
+    expect(mine.profileKey).not.toEqual(child.profileKey);
+    const sealed = await sealObject(child.profileKey, 'bundle', 'object-child-1', bytes('a child’s record'));
+    // The account key opens both profile keys, and each opens only its own person's objects.
+    expect(text(await openObject(await openProfileKey(account.unlocked, 'profile-child', child.wrapped), 'bundle', 'object-child-1', sealed.body, sealed.wrappedKey))).toBe('a child’s record');
+    await expect(openObject(mine.profileKey, 'bundle', 'object-child-1', sealed.body, sealed.wrappedKey)).rejects.toBeInstanceOf(OpenError);
+    // A wrapped key is bound to its profile's id: it does not open as another's.
+    await expect(openProfileKey(account.unlocked, 'profile-mine', child.wrapped)).rejects.toBeInstanceOf(OpenError);
+  });
+
   it('keeps the data readable across a password change, and the old password stops opening it', async () => {
     const account = await createAccountKeys(PASSWORD, FAST);
     const profile = await newProfileKey(account.unlocked, 'profile-0001');

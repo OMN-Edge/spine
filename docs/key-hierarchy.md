@@ -27,9 +27,9 @@ Primitives come from an audited library (libsodium or equivalent); nothing is in
 
 1. **Master key.** Derived on the device from the master password with Argon2id. The server never receives the password: sign-in uses a separately derived value.
 2. **Account key.** Random, wrapped by the master key. Also wrapped by the **recovery key**, which exists only in the printable recovery kit made at sign-up.
-3. **Profile key**, one per profile (a child, a parent), wrapped by the account key.
+3. **Profile key**, one per profile (a child, a parent), wrapped by the account key. Each profile is a person whose records stand apart: their own database on the device, objects, search, share links and emergency card.
 4. **Data key**, one per sealed object (a segment of changes, a part of a snapshot, a file), wrapped by the profile key. Content is encrypted with XChaCha20-Poly1305, the object's id and kind bound in as associated data. (Not one per document: the unit of storage is the object.)
-5. **Account key pair** (X25519), made at sign-up. **Not built:** delegating a profile to another account, which is what it is for. Each account has one profile today.
+5. **Account key pair** (X25519), made at sign-up. **Not built:** delegating a profile to another account, which is what it is for. An account can keep several profiles (SECURITY.md **M-48**); they are opened one at a time, and the account's own devices open them all.
 
 Everything about a document is encrypted, not only its pages: titles, dates, tags, doctors, episodes, extracted fields, summaries and embeddings. In plaintext on the server stay only opaque identifiers, sizes, timestamps and a coarse kind of object.
 

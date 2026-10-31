@@ -115,7 +115,7 @@ One constraint shapes the AI path: the client cannot hold Spine's model API key,
 
 | ID | Requirement | Priority | Release |
 | --- | --- | --- | --- |
-| FR-PRF-01 | Several profiles per account (children, elderly parents), each with its own keys | Must | Soon |
+| FR-PRF-01 | Several profiles per account (children, elderly parents), each with its own keys | Must | Launch |
 | FR-ACC-01 | Sign-up with email and master password; recovery kit generated at sign-up | Must | Launch |
 | FR-ACC-02 | The same vault on several devices; passkeys and 2FA supported | Must | Launch |
 | FR-ACC-03 | Sample records, explorable before uploading anything real | Must | Launch |
@@ -129,7 +129,7 @@ One constraint shapes the AI path: the client cannot hold Spine's model API key,
 
 ### Reintroduced after the first scope was cut
 
-The cuts of 2026-10-23 are being undone in this order, each with its documents (the marketing plan needs them): the emergency card, several profiles per account, delegating a profile, child profiles and guardians, promotion at 18, and the Family plan. Installable mobile apps (TR-MOB) stay out.
+The cuts of 2026-10-23 are being undone in this order, each with its documents (the marketing plan needs them): the emergency card, several profiles per account, delegating a profile, child profiles and guardians, promotion at 18, and the Family plan. FR-PRF-01 (several profiles per account) is built (**M-48**); delegation, child profiles and guardians, promotion at 18 and the Family plan follow. Installable mobile apps (TR-MOB) stay out.
 
 | ID | Requirement | Priority | Release | Status |
 | --- | --- | --- | --- | --- |
@@ -137,6 +137,8 @@ The cuts of 2026-10-23 are being undone in this order, each with its documents (
 | FR-EMG-02 | The card opens from a QR code with no account and no approval, in the reader's language for everything but the owner's own words, and says what Spine is | Must | Launch | Built |
 | FR-EMG-03 | Every opening is logged (time and country, never an address) and the owner is mailed, at most once in fifteen minutes | Must | Launch | Built |
 | FR-EMG-04 | An optional code that holds the card as plain text, readable with no signal, said plainly to be readable by anyone who sees it and to hold only what fits | Should | Launch | Built |
+| FR-PRF-03 | The account's people are listed and chosen on a page of their own; opening one saves the first and starts the screens over on the other's records, with no second password; the choice is remembered on the device | Must | Launch | Built |
+| FR-PRF-04 | How many people an account can keep follows its plan (trial six, free one, Premium one; the family plan more); a record is never removed because a plan ended | Must | Launch | Built |
 | FR-EMG-05 | The owner turns the card off and its address stops opening; the interface says a card already seen may have been copied | Must | Launch | Built |
 
 ## Technical requirements
@@ -188,7 +190,7 @@ The hard parts are the key hierarchy, the approval-mode share handshake and the 
 
 - **TR-CRY-02:** the data key is one per sealed object (a segment of changes, a part of a snapshot, a file), not one per document, and there is one profile per account ([key-hierarchy.md](key-hierarchy.md)).
 - **TR-CRY-05:** built (SECURITY.md **M-41**): a new device signs in with the master password, a passkey set up to open the vault, or a one-time code from a device that is signed in. The new device holds the keys in memory only, as after any sign-in, so a reload asks again; there is no list of enrolled devices apart from the sign-ins the account page shows, and a device cannot be revoked in the cryptographic sense (the account key does not change), only signed out.
-- **TR-CRY-06 and TR-CRY-07:** the key pair is made at sign-up, but delegation and key rotation on revocation are not built.
+- **TR-CRY-06 and TR-CRY-07:** the key pair is made at sign-up, but delegation and key rotation on revocation are not built (the profiles they would apply to are: **M-48**).
 - **TR-AI-04:** masking identifiers such as a national ID number before a call is not built; the extraction prompt tells the model not to extract them.
 - **TR-AI-11:** reading an upload resumes (confirming again reads what is still marked), and an upload the page was closed on is read again when the core next starts (`resumeStalledJobs`). A restore interrupted that way, and an upload whose file had not reached the vault, is marked failed. The queue is the app's own two-at-a-time limit and is not a persisted list: what resumes is what the rows say is unfinished.
 - **TR-INF-03:** account mail carries a link and, for a sign-in, a changed setting or a waiting request, the time of the event (SECURITY.md **P8**); it never carries medical content.

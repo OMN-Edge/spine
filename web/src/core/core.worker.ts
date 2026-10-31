@@ -40,7 +40,12 @@ const partOf = (p: Part): UploadPart =>
 
 const trace = (step: string) => (self as unknown as Worker).postMessage({ id: 0, trace: step } satisfies FromWorker);
 
-async function start(opening: Uint8Array | { prf: Uint8Array; credentialId: string; wrapped: string }, keys?: KeysResponse): Promise<void> {
+let currentProfile = '';
+/** The people of this account, opened once at start (a profile is read from the server only then) and added to when one is made. */
+let knownProfiles: Array<{ id: string; name: string }> = [];
+let cachedList: Awaited<ReturnType<VaultSession['list']>> | null = null;
+
+async function start(opening: Uint8Array | { prf: Uint8Array; credentialId: string; wrapped: string }, keys?: KeysResponse, preferred?: string): Promise<void> {
   trace('opening the vault');
   session = opening instanceof Uint8Array ? await VaultSession.open(opening, undefined, keys) : await VaultSession.openWithPasskey(opening);
   trace('loading profiles');
@@ -51,13 +56,21 @@ async function start(opening: Uint8Array | { prf: Uint8Array; credentialId: stri
   const named = listed.objects.find(o => o.kind === 'profile' && !o.deleted);
   if (named) session.prefetch(indexIdFor(named.id));
   const profiles = await session.loadProfiles(listed);
-  const profileId = profiles[0]?.id ?? (await session.createProfile('Me'));
-  // What was fetched before is read from this device, so a reload brings in only what changed (SECURITY.md M-43). None where the browser has no storage.
-  session.useCache(await openSealedCache(profileId), listed);
-  // The model calls go through the relay: take the server's settings for them (nothing breaks if there is none).
+  knownProfiles = profiles;
+  // The person's own choice on this device, if it is still one of theirs; else the first.
+  const profileId = (preferred && profiles.find(p => p.id === preferred)?.id) ?? profiles[0]?.id ?? (await session.createProfile('Me'));
   trace((await relay) ? 'relay configured' : 'no relay');
+  await openProfile(profileId, listed);
+  trace('ready');
+}
+
+/** Opens one person's records: their cached sealed objects, then the core over them. Used at start and when another person is chosen. */
+async function openProfile(profileId: string, listed: NonNullable<typeof cachedList>): Promise<void> {
+  const s = session!;
+  currentProfile = profileId;
+  // What was fetched before is read from this device, so a reload brings in only what changed (SECURITY.md M-43). None where the browser has no storage.
+  s.useCache(await openSealedCache(profileId), listed);
   trace('starting the core');
-  const s = session;
   // The listing just made is the first the core asks for: a second one a moment later would say the same.
   let first: typeof listed | null = listed;
   core = await startCore({
@@ -73,7 +86,6 @@ async function start(opening: Uint8Array | { prf: Uint8Array; credentialId: stri
     onChanged: () => (self as unknown as Worker).postMessage({ id: 0, changed: true } satisfies FromWorker),
     onSaveState: state => (self as unknown as Worker).postMessage({ id: 0, save: state } satisfies FromWorker),
   });
-  trace('ready');
 }
 
 /**
@@ -107,14 +119,32 @@ self.onmessage = async (event: MessageEvent<ToWorker>) => {
   const reply = (r: FromWorker, transfer: Transferable[] = []) => (self as unknown as Worker).postMessage(r, transfer);
   try {
     if (m.type === 'start') {
-      await start(m.masterKey, m.keys);
+      await start(m.masterKey, m.keys, m.profileId);
       reply({ id: m.id, ok: true });
     } else if (m.type === 'derive') {
       const { masterKey, authValue } = await deriveFromPassword(m.password, m.salt, m.params);
       const body = masterKey.buffer.slice(masterKey.byteOffset, masterKey.byteOffset + masterKey.byteLength) as ArrayBuffer;
       reply({ id: m.id, ok: true, headers: { authValue }, body }, [body]);
     } else if (m.type === 'startWithPasskey') {
-      await start(m.passkey);
+      await start(m.passkey, undefined, m.profileId);
+      reply({ id: m.id, ok: true });
+    } else if (m.type === 'profiles') {
+      if (!session) throw Object.assign(new Error('the vault is locked'), { status: 423, code: 'locked' });
+      reply({ id: m.id, ok: true, body: new TextEncoder().encode(JSON.stringify({ profiles: knownProfiles, current: currentProfile })).buffer as ArrayBuffer });
+    } else if (m.type === 'createProfile') {
+      if (!session) throw Object.assign(new Error('the vault is locked'), { status: 423, code: 'locked' });
+      const name = m.name.trim().slice(0, 60) || 'Someone';
+      const id = await session.createProfile(name);
+      knownProfiles = [...knownProfiles, { id, name }];
+      reply({ id: m.id, ok: true, body: new TextEncoder().encode(JSON.stringify({ id })).buffer as ArrayBuffer });
+    } else if (m.type === 'switchProfile') {
+      if (!session || !core) throw Object.assign(new Error('the vault is locked'), { status: 423, code: 'locked' });
+      if (m.profileId !== currentProfile) {
+        // Saves first, and refuses (code `unsaved`) rather than drop what could not be saved; then the other person's records open in its place.
+        await core.close(m.force);
+        core = null;
+        await openProfile(m.profileId, await session.list(0));
+      }
       reply({ id: m.id, ok: true });
     } else if (m.type === 'startDemo') {
       const limits = await startDemo();
@@ -127,7 +157,7 @@ self.onmessage = async (event: MessageEvent<ToWorker>) => {
       // Refuses (code `unsaved`) rather than dropping what could not be saved; the page asks the person, and may say `force`.
       await core?.close(m.force);
       await session?.close();
-      core = null; session = null;
+      core = null; session = null; currentProfile = ''; knownProfiles = [];
       reply({ id: m.id, ok: true });
     } else if (m.type === 'save') {
       if (core && 'flush' in core) await core.flush();

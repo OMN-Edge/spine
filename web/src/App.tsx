@@ -21,6 +21,8 @@ import Episodes from './pages/Episodes';
 import Scan from './pages/Scan';
 import Pricing from './pages/Pricing';
 import Emergency from './pages/Emergency';
+import Profiles from './pages/Profiles';
+import { useProfiles } from './profiles';
 import ForDoctors from './pages/ForDoctors';
 import Trust from './pages/Trust';
 import LegalPage from './pages/LegalPage';
@@ -32,7 +34,7 @@ import SyncNotice from './components/SyncNotice';
 import SaveStatus from './components/SaveStatus';
 import DemoBanner from './components/DemoBanner';
 import DemoCarryOver from './components/DemoCarryOver';
-import { UnsavedChangesError, device } from './core/client';
+import { PROFILE_CHANGED, UnsavedChangesError, device } from './core/client';
 import Doctors from './pages/Doctors';
 import Library from './pages/Library';
 import DoctorPage from './pages/DoctorPage';
@@ -76,6 +78,9 @@ function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const chat = useChat();
+  // Who is open, when this account keeps records for more than one person: the name is a link to the page where another is chosen.
+  const { people } = useProfiles(!demo);
+  const whose = people && people.profiles.length > 1 ? people.profiles.find(p => p.id === people.current)?.name : undefined;
 
   // A link was followed: the menu has done its job.
   useEffect(() => setMenuOpen(false), [location.pathname]);
@@ -124,7 +129,8 @@ function Layout({ children }: { children: React.ReactNode }) {
             {links.map(link => (
               <NavLink key={link.to} to={link.to} end={link.to === '/'} className={linkClass}>{t(link.label)}</NavLink>
             ))}
-            <LanguageSwitcher className="ml-auto" />
+            {whose && <Link to="/profiles" className="ml-auto text-sm text-brand-700 hover:underline truncate max-w-[10rem]" title={t('Whose records are open')}>{whose}</Link>}
+            <LanguageSwitcher className={whose ? '' : 'ml-auto'} />
             <ThemeSwitcher />
             {demo ? (
               <button onClick={() => void leave()} className="text-sm text-gray-500 hover:text-gray-900">{t('Leave the demo')}</button>
@@ -223,6 +229,13 @@ export default function App() {
   const [vaultNeeded, setVaultNeeded] = useState(false);
   // Whether the records are open on this device: 'starting' while the key is handed to the core, 'locked' when it must be asked for.
   const [deviceState, setDeviceState] = useState<'starting' | 'locked' | 'open'>('starting');
+  // Another person's records were opened: everything that holds records (the chat, the guide, each screen) starts over on the new ones.
+  const [people, setPeople] = useState(0);
+  useEffect(() => {
+    const changed = () => setPeople(n => n + 1);
+    window.addEventListener(PROFILE_CHANGED, changed);
+    return () => window.removeEventListener(PROFILE_CHANGED, changed);
+  }, []);
   // The demo: the device's core, started with no vault, holding the sample records until the page is left.
   const [demo, setDemo] = useState(false);
   const [demoUploads, setDemoUploads] = useState<{ uploads: number; pages: number } | null>(null);
@@ -275,7 +288,7 @@ export default function App() {
   return (
     <AuthContext.Provider value={{ authenticated, email, setAuthenticated, consentNeeded, consentGiven: () => setConsentNeeded(null), vaultNeeded, vaultMade: () => setVaultNeeded(false), deviceState, deviceOpened: () => setDeviceState('open'), demo, startDemo, leaveDemo, demoUploads, demoAgreed, agreeDemo: () => setDemoAgreed(true) }}>
       {/* Chat asks the device's core, which answers 423 until the vault is open: asked sooner, the panel is switched off for good. */}
-      <ChatProvider authenticated={(authenticated && deviceState === 'open') || demo}>
+      <ChatProvider key={people} authenticated={(authenticated && deviceState === 'open') || demo}>
       <GuideProvider enabled={authenticated && deviceState === 'open' && !demo}>
       <ReauthDialog />
       <Routes>
@@ -305,6 +318,7 @@ export default function App() {
         <Route path="/library" element={<PrivateRoute><Library /></PrivateRoute>} />
         <Route path="/doctors/:id" element={<PrivateRoute><DoctorPage /></PrivateRoute>} />
         <Route path="/search" element={<PrivateRoute><Search /></PrivateRoute>} />
+        <Route path="/profiles" element={<PrivateRoute inDemo={false}><Profiles /></PrivateRoute>} />
         <Route path="/emergency" element={<PrivateRoute inDemo={false}><Emergency /></PrivateRoute>} />
         <Route path="/share" element={<PrivateRoute inDemo={false}><ShareLinks /></PrivateRoute>} />
         <Route path="/share-links/:id" element={<PrivateRoute inDemo={false}><ShareLinkDetail /></PrivateRoute>} />

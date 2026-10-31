@@ -43,15 +43,17 @@ export interface Entitlements {
   related: boolean;
   /** A share link that waits for the owner to approve a visitor. */
   approvalMode: boolean;
+  /** People (profiles) whose records the account keeps apart: one's own, a child's, a parent's. */
+  profiles: number;
 }
 
 const GB = 1024 ** 3;
 
 export const PLANS: Record<PlanId, Omit<Entitlements, 'plan'>> = {
-  trial: { aiAllowance: 150 * PAGE, aiPeriod: 'trial', vaultBytes: null, liveShares: null, translation: true, chat: true, linking: true, related: true, approvalMode: true },
-  free: { aiAllowance: 30 * PAGE, aiPeriod: 'month', vaultBytes: GB, liveShares: 1, translation: false, chat: false, linking: false, related: false, approvalMode: false },
+  trial: { aiAllowance: 150 * PAGE, aiPeriod: 'trial', vaultBytes: null, liveShares: null, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 6 },
+  free: { aiAllowance: 30 * PAGE, aiPeriod: 'month', vaultBytes: GB, liveShares: 1, translation: false, chat: false, linking: false, related: false, approvalMode: false, profiles: 1 },
   // "Unlimited (fair use)": a ceiling no ordinary use meets and a stuck loop does.
-  premium: { aiAllowance: 4000 * PAGE, aiPeriod: 'month', vaultBytes: null, liveShares: null, translation: true, chat: true, linking: true, related: true, approvalMode: true },
+  premium: { aiAllowance: 4000 * PAGE, aiPeriod: 'month', vaultBytes: null, liveShares: null, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 1 },
 };
 
 const addMonths = (iso: string, months: number): Date => {

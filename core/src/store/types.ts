@@ -1399,7 +1399,7 @@ export interface SharedBundle {
   blobs: number;
   blobBytes: number;
   revokedAt: string | null;
-  /** `share`: a copy of chosen records with an end time. `card`: the owner's emergency card, one at a time, with no end (its own switch is the owner's). */
+  /** `share`: a copy of chosen records with an end time. `card`: an emergency card (one for each person the account keeps records for), with no end (its own switch is the owner's). */
   kind: 'share' | 'card';
 }
 
@@ -1428,9 +1428,7 @@ export interface SharedRepository {
   /** Public: by the id in the link. Revoked and expired ones are returned as they are; the caller decides. */
   get(id: string): Promise<SharedBundle | null>;
   /** The owner's: makes the row, or replaces its metadata when the same owner publishes again; 'taken' if the id is someone else's. */
-  put(userId: string, bundle: { id: string; expiresAt: string; requireApproval: boolean; size: number; blobs: number; blobBytes: number; kind?: 'share' | 'card' }, now: string): Promise<'ok' | 'taken' | 'revoked' | 'one_card'>;
-  /** The owner's live emergency card bundle, if there is one. */
-  cardOf(userId: string): Promise<SharedBundle | null>;
+  put(userId: string, bundle: { id: string; expiresAt: string; requireApproval: boolean; size: number; blobs: number; blobBytes: number; kind?: 'share' | 'card' }, now: string): Promise<'ok' | 'taken' | 'revoked' | 'too_many_cards'>;
   /** Counts a sealed file uploaded beside the database. */
   addBlob(userId: string, id: string, bytes: number): Promise<boolean>;
   /** A change of end date or approval, for the owner's own live bundle. */

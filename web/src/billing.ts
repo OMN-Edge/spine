@@ -23,6 +23,7 @@ export function planRefusal(err: unknown): string | null {
   if (/plan.s AI processing is used up/i.test(text)) return PLAN_TEXT.allowance;
   if (/another live share is not part of the account.s plan/i.test(text)) return PLAN_TEXT.shares;
   if (/approving visitors is not part of the account.s plan/i.test(text)) return PLAN_TEXT.approval;
+  if (/another person is not part of the account.s plan/i.test(text)) return PLAN_TEXT.people;
   if (/not part of the account.s plan|answered 402/i.test(text)) return PLAN_TEXT.feature;
   return null;
 }
@@ -31,6 +32,7 @@ const PLAN_TEXT = {
   allowance: msg('The AI reading in your plan is used up for now. It starts again next month, or you can upgrade on your account page.'),
   shares: msg('Your plan has one share link at a time. Revoke it, or upgrade on your account page for more.'),
   approval: msg('Approving visitors before they see a link is part of the paid plan. See your account page.'),
+  people: msg('Your plan keeps the records of one person. A plan for the family adds more; see your account page.'),
   feature: msg('This is not part of your plan. See the plans on your account page.'),
 } as const;
 

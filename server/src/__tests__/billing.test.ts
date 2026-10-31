@@ -9,6 +9,7 @@ import { createRelayGate } from '../billing/gate.js';
 import { accountEntitlements, liveSharesFor, vaultBytesFor } from '../billing/entitlements.js';
 import { verifySignature } from '../billing/paddle.js';
 import { loadConfig } from '../config.js';
+import { fakeAuthValue, fakeVaultKeys } from 'spine-core/testing/vault.js';
 
 const SECRET = 'whsec_test_secret_for_the_webhook';
 const BILLING = {
@@ -283,6 +284,34 @@ describe('plans and payment', () => {
       expect(second.json().code).toBe('plan_required');
       // …and the trial has them.
       expect((await put('dddddddddddddddddddddddd', { 'x-spine-approval': '1' })).statusCode).toBe(201);
+    });
+  });
+
+  describe('people', () => {
+    const profileHeaders = { 'content-type': 'application/octet-stream', 'x-spine-kind': 'profile', 'x-spine-profile': 'profile-0001', 'x-spine-wrapped-key': 'k'.repeat(100), 'x-spine-base-seq': '0' };
+    const addPerson = (who: string, id: string) => app.inject({ method: 'PUT', url: `/api/vault/objects/${id}`, headers: { cookie: who, ...profileHeaders }, payload: Buffer.from('sealed profile') });
+
+    it('keeps one person to the free plan and six to the trial, and a replaced profile is not a new person', async () => {
+      on();
+      const free = await createTestUser('people-free@spine.test', { createdAt: LONG_AGO });
+      const who = await loginAs(app, free.email, free.password);
+      await app.inject({ method: 'PUT', url: '/api/vault/keys', headers: { cookie: who }, payload: { auth_value: fakeAuthValue(), keys: fakeVaultKeys() } });
+      const cookieFree = who; // setting the keys keeps this sign-in and ends the others
+      expect((await addPerson(cookieFree, 'profile-aaaa-0001')).statusCode).toBe(200);
+      const second = await addPerson(cookieFree, 'profile-bbbb-0002');
+      expect(second.statusCode).toBe(402);
+      expect(second.json().code).toBe('plan_required');
+      expect(second.json().error).toMatch(/another person is not part of the account.s plan/);
+
+      expect((await accountEntitlements(OWNER_ID))?.profiles).toBe(6);
+      expect((await accountEntitlements(free.id))?.profiles).toBe(1);
+    });
+
+    it('is not asked of an instance with no plans', async () => {
+      const who = await createTestUser('people-off@spine.test');
+      const cookiePeople = await loginAs(app, who.email, who.password);
+      await app.inject({ method: 'PUT', url: '/api/vault/keys', headers: { cookie: cookiePeople }, payload: { auth_value: fakeAuthValue(), keys: fakeVaultKeys() } });
+      for (const n of ['profile-cccc-0001', 'profile-dddd-0002', 'profile-eeee-0003']) expect((await addPerson(cookiePeople, n)).statusCode).toBe(200);
     });
   });
 

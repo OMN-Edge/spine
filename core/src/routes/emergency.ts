@@ -61,7 +61,7 @@ export async function emergencyRoutes(app: HttpApp) {
       await store.emergency.setPublished(req.userId, made, new Date().toISOString());
     } catch (err) {
       const code = (err as { code?: string }).code;
-      return reply.status(code === 'one_card' ? 409 : 502).send({ error: code === 'one_card' ? 'there is a card already; turn it off first' : 'the card could not be sent; try again', code: code ?? 'not_sent' });
+      return reply.status(code === 'too_many_cards' ? 409 : 502).send({ error: code === 'too_many_cards' ? 'too many cards are on; turn one off first' : 'the card could not be sent; try again', code: code ?? 'not_sent' });
     }
     return reply.send(await view(req.userId));
   });

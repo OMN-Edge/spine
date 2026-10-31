@@ -76,14 +76,14 @@ class CoreWorker {
   }
 
   /** Opens the vault with this master key and loads the records. The key is handed over, not copied: this page no longer has it. `keys` are the sealed keys the page already fetched. */
-  async unlock(masterKey: Uint8Array, keys?: KeysResponse): Promise<void> {
-    await this.send({ type: 'start', masterKey, keys }, [masterKey.buffer]);
+  async unlock(masterKey: Uint8Array, keys?: KeysResponse, profileId?: string): Promise<void> {
+    await this.send({ type: 'start', masterKey, keys, profileId }, [masterKey.buffer]);
     this.ready = true;
   }
 
   /** The same with a passkey's PRF output: the worker opens the account key with it. Handed over, not copied. */
-  async unlockWithPasskey(passkey: { prf: Uint8Array; credentialId: string; wrapped: string }): Promise<void> {
-    await this.send({ type: 'startWithPasskey', passkey }, [passkey.prf.buffer]);
+  async unlockWithPasskey(passkey: { prf: Uint8Array; credentialId: string; wrapped: string }, profileId?: string): Promise<void> {
+    await this.send({ type: 'startWithPasskey', passkey, profileId }, [passkey.prf.buffer]);
     this.ready = true;
   }
 
@@ -121,6 +121,29 @@ class CoreWorker {
     this.ready = false;
     this.saveState = { unsaved: false, error: null };
     window.dispatchEvent(new Event(SAVE_STATE_CHANGED));
+  }
+
+  /** The people this account keeps records for, and the one that is open. */
+  async profiles(): Promise<{ profiles: Array<{ id: string; name: string }>; current: string }> {
+    const m = await this.send({ type: 'profiles' });
+    return JSON.parse(new TextDecoder().decode(m.body ?? new ArrayBuffer(0)));
+  }
+
+  /** Makes records for another person (a child, a parent), with a key of their own. Does not open them. */
+  async createProfile(name: string): Promise<string> {
+    const m = await this.send({ type: 'createProfile', name });
+    return (JSON.parse(new TextDecoder().decode(m.body ?? new ArrayBuffer(0))) as { id: string }).id;
+  }
+
+  /** Saves what is open and opens another person's records. Throws `UnsavedChangesError` if something could not be saved, unless `force`. */
+  async switchProfile(profileId: string, force = false): Promise<void> {
+    try {
+      await this.send({ type: 'switchProfile', profileId, force });
+    } catch (err) {
+      if ((err as { code?: string }).code === 'unsaved') throw new UnsavedChangesError();
+      throw err;
+    }
+    window.dispatchEvent(new Event(PROFILE_CHANGED));
   }
 
   /** Tries to save now; throws if the vault did not take it. */
@@ -174,6 +197,17 @@ type WithoutId<T> = T extends unknown ? Omit<T, 'id'> : never;
 export const RECORDS_CHANGED = 'spine:records-changed';
 /** Said on the window when `device.saveState` changed. */
 export const SAVE_STATE_CHANGED = 'spine:save-state';
+/** Announced on the window after another person's records were opened, so the screens that hold records look again. */
+export const PROFILE_CHANGED = 'spine:profile-changed';
+
+/** Which person's records this browser opened last, per account (an opaque id, not a secret). Best effort: the first person is opened where there is none. */
+const rememberedKey = (account: string) => `spine.profile:${account}`;
+export function rememberedProfile(account: string): string | undefined {
+  try { return localStorage.getItem(rememberedKey(account)) ?? undefined; } catch { return undefined; }
+}
+export function rememberProfile(account: string, profileId: string): void {
+  try { localStorage.setItem(rememberedKey(account), profileId); } catch { /* the next sign-in opens the first person */ }
+}
 
 /** Locking would lose changes the vault does not have yet. */
 export class UnsavedChangesError extends Error {

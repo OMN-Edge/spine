@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../auth';
 import { buttonClass, inputClass, Notice } from '../components/AuthCard';
@@ -57,6 +58,12 @@ export default function Account() {
       </form>
 
       <PlanCard />
+
+      <section className="bg-white border border-gray-200 rounded-xl p-5 mt-6">
+        <h2 className="font-medium text-gray-900 mb-1">{t('People')}</h2>
+        <p className="text-sm text-gray-500 mb-3">{t('Keep the records of someone you look after, such as a child or a parent, apart from your own.')}</p>
+        <Link to="/profiles" className="text-sm text-brand-600 hover:underline">{t('See and add people')}</Link>
+      </section>
 
       <RecoveryKitSettings />
 

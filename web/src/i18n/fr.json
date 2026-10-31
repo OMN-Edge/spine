@@ -1389,5 +1389,18 @@
  "It has not been opened yet.": "Elle n’a pas encore été ouverte.",
  "Write an emergency card": "Écrire une carte d’urgence",
  "for someone who has to help you quickly, opened from a code.": "pour quelqu’un qui doit vous aider vite, ouverte depuis un code.",
- "{n} item did not fit in the code and was left out.|{n} items did not fit in the code and were left out.": "{n} élément n’a pas tenu dans le code et a été laissé de côté.|{n} éléments n’ont pas tenu dans le code et ont été laissés de côté."
+ "{n} item did not fit in the code and was left out.|{n} items did not fit in the code and were left out.": "{n} élément n’a pas tenu dans le code et a été laissé de côté.|{n} éléments n’ont pas tenu dans le code et ont été laissés de côté.",
+ "Whose records are open": "Dont les documents sont ouverts",
+ "Your plan keeps the records of one person. A plan for the family adds more; see your account page.": "Votre offre garde les documents d’une seule personne. Une offre pour la famille en ajoute ; voir la page de votre compte.",
+ "People": "Personnes",
+ "Keep the records of someone you look after, such as a child or a parent, apart from your own.": "Gardez à part des vôtres les documents d’une personne dont vous vous occupez, par exemple un enfant ou un parent.",
+ "See and add people": "Voir et ajouter des personnes",
+ "Could not open these records": "Ces documents n’ont pas pu être ouverts",
+ "Could not add this person": "Cette personne n’a pas pu être ajoutée",
+ "Keep the records of someone you look after, such as a child or a parent, apart from your own. Each person has records, search, share links and an emergency card of their own, and a key of their own.": "Gardez à part des vôtres les documents d’une personne dont vous vous occupez, par exemple un enfant ou un parent. Chaque personne a ses documents, sa recherche, ses liens de partage et sa carte d’urgence, et une clé à elle.",
+ "Open now": "Ouvert maintenant",
+ "Some of the latest changes are not saved yet. If you open someone else’s records now, they will be lost.": "Certaines des dernières modifications ne sont pas encore enregistrées. Si vous ouvrez maintenant les documents de quelqu’un d’autre, elles seront perdues.",
+ "Open anyway": "Ouvrir quand même",
+ "Add a person": "Ajouter une personne",
+ "Their records start empty. The name is kept with them, sealed like everything else.": "Ses documents commencent vides. Le nom est gardé avec eux, chiffré comme le reste."
 }
