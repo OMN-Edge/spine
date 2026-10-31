@@ -1337,7 +1337,7 @@
  "Any number of share links, and approving visitors before they see one": "Oricâte linkuri de partajare și aprobarea vizitatorilor înainte să vadă unul",
  "The first 500 paying members pay {price} a year, kept for as long as they stay subscribed. {left} places are left.": "Primii 500 de membri plătitori plătesc {price} pe an, preț păstrat cât timp rămân abonați. Mai sunt {left} locuri.",
  "How paying works": "Cum funcționează plata",
- "A subscription renews every month or every year until you cancel. You cancel in one step, from your account, and keep Premium until the end of what you paid for.": "Un abonament se reînnoiește în fiecare lună sau în fiecare an până îl anulezi. Îl anulezi dintr-un singur pas, din cont, și păstrezi Premium până la sfârșitul perioadei plătite.",
+ "A subscription renews every month or every year until you cancel. You cancel from your account, on the payment provider’s page, and keep Premium until the end of what you paid for.": "Un abonament se reînnoiește în fiecare lună sau în fiecare an până îl anulezi. Îl anulezi din cont, pe pagina furnizorului de plăți, și păstrezi Premium până la sfârșitul perioadei plătite.",
  "In the first 14 days you can have your money back.": "În primele 14 zile îți poți recupera banii.",
  "Paddle sells Premium to you: it takes the payment, sends the invoice and adds any tax, which you see before you pay. Spine never sees your card, only which plan you have.": "Paddle îți vinde Premium: încasează plata, trimite factura și adaugă taxele aplicabile, pe care le vezi înainte să plătești. Spine nu îți vede niciodată cardul, ci doar ce plan ai.",
  "Spine is open-source software. Running your own copy is free, and has no plans.": "Spine este software open-source. Poți rula propria copie gratuit, iar ea nu are planuri.",
@@ -1489,5 +1489,6 @@
  "Make a new code: the old one stops opening the card at once, and you print the new one. A code that holds the card itself (the one that works with no signal) cannot be replaced, so do not print that one if you might lose it.": "Fă un cod nou: cel vechi nu mai deschide cardul imediat, iar tu îl tipărești pe cel nou. Un cod care conține chiar cardul (cel care funcționează fără semnal) nu poate fi înlocuit, așa că nu-l tipări pe acela dacă l-ai putea pierde.",
  "Could not make a new code": "Codul nou nu a putut fi făcut",
  "Yes, turn the old code off and make a new one": "Da, oprește codul vechi și fă unul nou",
- "Make a new code": "Fă un cod nou"
+ "Make a new code": "Fă un cod nou",
+ "The old code is turned off, but the new one could not be made. Turn the card on again.": "Codul vechi este oprit, dar cel nou nu a putut fi făcut. Pornește din nou cardul."
 }

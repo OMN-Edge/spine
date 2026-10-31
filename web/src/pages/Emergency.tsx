@@ -38,7 +38,9 @@ export default function Emergency() {
   const run = async (what: () => Promise<EmergencyView>, failed: string) => {
     setError(''); setSaved(false); setBusy(true);
     try { show(await what()); return true; } catch (err) {
-      setError(err instanceof ApiError && err.code === 'empty' ? t('Write something on the card first.') : failed);
+      setError(err instanceof ApiError && err.code === 'empty' ? t('Write something on the card first.') : err instanceof ApiError && err.code === 'old_off' ? t('The old code is turned off, but the new one could not be made. Turn the card on again.') : failed);
+      // What the server did before it failed (the old code turned off) is what the page should show.
+      void api.emergency.get().then(show).catch(() => undefined);
       return false;
     } finally { setBusy(false); }
   };

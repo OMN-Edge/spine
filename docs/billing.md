@@ -40,7 +40,18 @@ Paddle is the merchant of record: it charges, issues invoices and accounts for V
 | `SPINE_CHECKOUT_URL` | The address of the checkout page above |
 | `SPINE_WAITLIST` | `on` shows "Tell me when Spine opens" on the front page while accounts cannot be made |
 
-The relay reads the same variables (it needs only `SPINE_BILLING` and the store) and shares the server's database, so with several instances use Postgres (`SPINE_STORE=postgres`).
+The relay applies the plans and needs only `SPINE_BILLING=on` and the store (it never calls the payment provider, so it does not need its settings), and it shares the server's database, so with several instances use Postgres (`SPINE_STORE=postgres`).
+
+## The routes
+
+| Route | Who | What |
+| --- | --- | --- |
+| `GET /api/pricing` | anyone | The prices, whether the family plan is sold, and the founding places left; `{ enabled: false }` where there are no plans |
+| `GET /api/billing` | signed in | The account's plan, what it has used (AI reading, storage, share links), what it includes, and whether it can manage billing |
+| `POST /api/billing/checkout` | signed in | Starts a purchase for `{ interval, plan }` at the provider and answers where to send the person; refused for an account that already has a plan |
+| `POST /api/billing/portal` | signed in, with a Paddle subscription | Opens the provider's page for the card, invoices, switching and cancelling |
+| `POST /api/billing/webhook` | the provider only | Its signed messages; anything not signed correctly is refused |
+| `POST /api/waitlist` | anyone | An address to be told when Spine opens; the same answer whether or not it was there; five a minute per source |
 
 ## Checking it
 
@@ -50,5 +61,5 @@ The relay reads the same variables (it needs only `SPINE_BILLING` and the store)
 
 - `npm run cli -- grant-plan you@example.com --days=90 [--plan=family]` gives the paid plan without a payment (a friend, a reviewer); `revoke-plan` ends it.
 - `npm run cli -- waitlist` lists the addresses that asked to be told when Spine opens, `waitlist-remove` removes one.
-- `npm run cli -- metrics --days=30` shows the counts the marketing plan measures: `signup`, `signup_from_share`, `signup_from_doctors`, `share_opened`, `checkout_started`, `paid_event`. They are numbers a day under a name, never who.
+- `npm run cli -- metrics --days=30` shows the counts the marketing plan measures: `signup`, `signup_from_share`, `signup_from_doctors`, `signup_from_card`, `signup_from_invite`, `share_opened`, `card_opened`, `checkout_started`, `paid_event`. They are numbers a day under a name, never who.
 - An account with a running subscription cannot be deleted until the subscription is cancelled, so a person who leaves is not charged afterwards.

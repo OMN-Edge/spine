@@ -64,7 +64,7 @@ export default function Pricing() {
 
               <h2 className="text-base font-semibold text-gray-900 pt-2">{t('How paying works')}</h2>
               <ul className="list-disc pl-5 space-y-1">
-                <li>{t('A subscription renews every month or every year until you cancel. You cancel in one step, from your account, and keep Premium until the end of what you paid for.')}</li>
+                <li>{t('A subscription renews every month or every year until you cancel. You cancel from your account, on the payment provider’s page, and keep Premium until the end of what you paid for.')}</li>
                 <li>{t('In the first 14 days you can have your money back.')}</li>
                 <li>{t('Paddle sells Premium to you: it takes the payment, sends the invoice and adds any tax, which you see before you pay. Spine never sees your card, only which plan you have.')}</li>
                 <li>{t('Spine is open-source software. Running your own copy is free, and has no plans.')}</li>

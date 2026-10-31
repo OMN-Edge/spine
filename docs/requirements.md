@@ -122,7 +122,7 @@ One constraint shapes the AI path: the client cannot hold Spine's model API key,
 | FR-EXP-01 | Full export: originals plus extracted data as JSON; the export can be imported again | Must | Launch |
 | FR-EXP-02 | Account deletion destroys keys, making stored ciphertext unrecoverable | Must | Launch |
 | FR-BIL-01 | Plans where the operator offers them: a six-month trial with everything and 150 pages of AI reading, a free plan, and Premium by subscription; nothing is deleted when a plan ends | Must | Launch |
-| FR-BIL-02 | Price, renewal and cancellation shown before a purchase, one-step cancellation, the card never seen by Spine, and an account with a running subscription not deleted until it is cancelled | Must | Launch |
+| FR-BIL-02 | Price, renewal and cancellation shown before a purchase, cancellation from the account, the card never seen by Spine, and an account with a running subscription not deleted until it is cancelled | Must | Launch |
 | FR-BIL-03 | The first 500 paying accounts keep the yearly founding price for as long as the subscription runs | Should | Launch |
 | FR-BIL-04 | A self-hosted or private instance has no plans and no limits but its own | Must | Launch |
 | FR-BIL-05 | A family plan for up to six people, sold only where the operator has named its prices; Premium and the family plan are told apart by the prices of the subscription | Should | Launch |

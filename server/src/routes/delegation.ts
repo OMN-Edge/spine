@@ -238,8 +238,17 @@ export async function delegationRoutes(app: FastifyInstance, opts: DelegationRou
       const held = (await store.delegations.ownedBy(req.userId)).filter(g => g.profile_id === req.params.profile && (g.state === 'active' || g.state === 'paused')).map(g => g.id).sort();
       const given = grantList.map(g => g.id as string).sort();
       if (held.length !== given.length || held.some((id, i) => id !== given[i])) return reply.status(409).send({ error: 'the grants changed; try again', code: 'grants_changed' });
-      const done = await store.vault.rotateProfile(req.userId, req.params.profile, { profileWrapped, profileSize: bytes.length, objects: objectList.map(o => ({ id: o.id as string, wrappedKey: o.wrapped_key as string })) }, now,
-        () => writeObject(req.userId, req.params.profile, bytes));
+      // The new profile record is stored inside the step; if the database step then fails, the old record is put back, so the profile is never
+      // left sealed under a key the database does not hold.
+      const before = await readObject(req.userId, req.params.profile);
+      let done: Awaited<ReturnType<typeof store.vault.rotateProfile>>;
+      try {
+        done = await store.vault.rotateProfile(req.userId, req.params.profile, { profileWrapped, profileSize: bytes.length, objects: objectList.map(o => ({ id: o.id as string, wrappedKey: o.wrapped_key as string })) }, now,
+          () => writeObject(req.userId, req.params.profile, bytes));
+      } catch (err) {
+        if (before) await writeObject(req.userId, req.params.profile, before).catch(e => req.log.error({ err: e }, 'the old profile record could not be put back'));
+        throw err;
+      }
       if (!done) return reply.status(409).send({ error: 'the vault changed; try again', code: 'conflict' });
       await store.delegations.rewrap(req.userId, req.params.profile, grantList.map(g => ({ id: g.id as string, wrappedKey: g.wrapped_key as string })), now);
       await endOtherSessions(req.userId, sessionOf(req));

@@ -54,6 +54,9 @@ export function readBillingConfig(env: NodeJS.ProcessEnv, instance: 'public' | '
   };
 }
 
+/** Whether plans are on, and nothing else: for a process (the relay) that applies them but does not talk to the payment provider. */
+export const billingOn = (env: NodeJS.ProcessEnv = process.env): boolean => (env.SPINE_BILLING ?? 'off').toLowerCase() === 'on';
+
 /** The billing settings on their own, for the routes and the relay (read each time: they are cheap, and a test changes the environment). */
 export function loadBillingConfig(env: NodeJS.ProcessEnv = process.env): BillingConfig {
   const problems: string[] = [];

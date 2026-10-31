@@ -4,7 +4,7 @@ import { getAccountsStore } from 'spine-core/store/index.js';
 import { PAGE, TRIAL_MONTHS } from 'spine-core/billing/plans.js';
 import { buildTestApp, loginAs, loginSession } from './helpers/app.js';
 import { createTestUser, OWNER_ID, TEST_PASSWORD } from './helpers/seed.js';
-import { loadBillingConfig } from '../billing/config.js';
+import { billingOn, loadBillingConfig } from '../billing/config.js';
 import { createRelayGate } from '../billing/gate.js';
 import { accountEntitlements, liveSharesFor, vaultBytesFor } from '../billing/entitlements.js';
 import { verifySignature } from '../billing/paddle.js';
@@ -42,6 +42,13 @@ describe('plans and payment', () => {
   const hook = (body: string, signature = sign(body)) => app.inject({ method: 'POST', url: '/api/billing/webhook', headers: { 'content-type': 'application/json', 'paddle-signature': signature }, payload: body });
 
   describe('settings', () => {
+    it('are not all needed by the relay, which applies the plans and never talks to the payment provider', () => {
+      expect(billingOn({})).toBe(false);
+      expect(billingOn({ SPINE_BILLING: 'on' })).toBe(true);
+      expect(billingOn({ SPINE_BILLING: 'ON' })).toBe(true);
+      expect(billingOn({ SPINE_BILLING: 'yes' })).toBe(false);
+    });
+
     it('are off unless said, and then say what is missing', () => {
       expect(loadBillingConfig({})).toEqual({ enabled: false });
       expect(() => loadBillingConfig({ SPINE_BILLING: 'on' })).toThrow(/PADDLE_API_KEY/);

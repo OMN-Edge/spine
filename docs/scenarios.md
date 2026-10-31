@@ -829,7 +829,7 @@ Only where the operator has set `SPINE_BILLING=on` (`docs/billing.md`). Everywhe
 A new account has six months of everything, with 150 pages of AI reading in all. The account page says which plan it is on and what is used (reading, storage, share links).
 
 - When the trial ends the account is on the free plan: the records, timeline, search and export are unchanged, one share link can be live, and translation, questions, connections and approving visitors are refused with words that point to the account page. Reading continues up to about 30 pages a month. Nothing is deleted; storage over the free limit stays, and adding more waits until it is under.
-- When the 150 pages are used, reading and the other AI features stop with a message that says so, not a bare error.
+- When the 150 pages are used, an upload's reading says so in words (the plan's AI reading is used up); the other features, such as the assistant, stop and may show their ordinary failure message, which does not yet say why.
 
 Status: auto (`billing`); screens (plan card, messages): not yet checked by hand.
 
@@ -862,7 +862,7 @@ Status: auto (`growth`); the footer: not yet checked by hand.
 ## 15. More than one person
 
 ### 15.1 Keep a child's or a parent's records apart
-On the account page, "See and add people" opens a page that lists the people the account keeps records for. Adding one starts empty records with a key of their own; opening one saves the current person and shows the other's records, with no master password asked again. The name of the person open is in the top bar once there is more than one. Each has their own documents, search, share links and emergency card; nothing of one person shows in another's screens.
+On the account page, "See and add people" opens a page that lists the people the account keeps records for. Adding one starts empty records with a key of their own; opening one saves the current person and shows the other's records, with no master password asked again. The name of the person open is in the top bar once there is more than one (on a wide screen; on a narrow one the page of people says). Each has their own documents, search, share links and emergency card; nothing of one person shows in another's screens.
 
 - A plan with room for one person says so and points to the account page; the trial has room for six. A person already made stays when a plan ends.
 - If something could not be saved, opening another person asks first.
@@ -890,7 +890,7 @@ Status: auto (`vault.e2e`); real browser (`check:app`).
 Status: auto (`family`, `delegation`); real browser: a child with a birth date, refused without a real one (`check:app`); the teenager's own screens: not yet checked by hand.
 
 ### 15.4 Becoming eighteen
-A child's profile with a birth date shows a note to the guardian once the child is eighteen: the records should be theirs, and the way is to let them in as themselves. The young adult, who has joined with the code, sees "You are 18: these records can be yours", reads what taking them over does, and confirms; their password is asked again. The records are moved into their own account under a new key, they appear among their own people, and the people who looked after them are listed on the Access panel as paused: they can be resumed one by one or ended. The former owner's account no longer has the records and is mailed.
+A child's profile with a birth date shows a note to the guardian once the child is eighteen: the records should be theirs, and the way is to let them in as themselves. The young adult, who has joined with the code, sees "You are 18: these records can be yours", reads what taking them over does, and confirms; their password is asked again. The records are moved into their own account under a new key, they appear among their own people, and the people who looked after them are listed on the Access panel as paused: they can be resumed one by one or ended. The former owner's account no longer has the records and is mailed. A share link the former owner made stays theirs, and **an emergency card published before the promotion stays open under their account**: the new owner can replace its code but cannot turn the old one off.
 
 - It cannot be undone, and only the young adult can do it, not a guardian. Nothing is refused for what a plan holds.
 

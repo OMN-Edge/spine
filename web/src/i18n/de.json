@@ -1337,7 +1337,7 @@
  "Any number of share links, and approving visitors before they see one": "Beliebig viele Freigabelinks und die Genehmigung von Besuchern, bevor sie einen sehen",
  "The first 500 paying members pay {price} a year, kept for as long as they stay subscribed. {left} places are left.": "Die ersten 500 zahlenden Mitglieder zahlen {price} im Jahr, solange sie abonniert bleiben. Es sind noch {left} Plätze frei.",
  "How paying works": "Wie das Bezahlen funktioniert",
- "A subscription renews every month or every year until you cancel. You cancel in one step, from your account, and keep Premium until the end of what you paid for.": "Ein Abonnement verlängert sich jeden Monat oder jedes Jahr, bis Sie kündigen. Sie kündigen in einem Schritt in Ihrem Konto und behalten Premium bis zum Ende des bezahlten Zeitraums.",
+ "A subscription renews every month or every year until you cancel. You cancel from your account, on the payment provider’s page, and keep Premium until the end of what you paid for.": "Ein Abonnement verlängert sich jeden Monat oder jedes Jahr, bis Sie kündigen. Sie kündigen von Ihrem Konto aus, auf der Seite des Zahlungsanbieters, und behalten Premium bis zum Ende des bezahlten Zeitraums.",
  "In the first 14 days you can have your money back.": "In den ersten 14 Tagen können Sie Ihr Geld zurückbekommen.",
  "Paddle sells Premium to you: it takes the payment, sends the invoice and adds any tax, which you see before you pay. Spine never sees your card, only which plan you have.": "Paddle verkauft Ihnen Premium: Es zieht die Zahlung ein, schickt die Rechnung und fügt gegebenenfalls Steuern hinzu, die Sie vor dem Bezahlen sehen. Spine sieht Ihre Karte nie, nur welchen Tarif Sie haben.",
  "Spine is open-source software. Running your own copy is free, and has no plans.": "Spine ist Open-Source-Software. Eine eigene Kopie zu betreiben ist kostenlos und hat keine Tarife.",
@@ -1489,5 +1489,6 @@
  "Make a new code: the old one stops opening the card at once, and you print the new one. A code that holds the card itself (the one that works with no signal) cannot be replaced, so do not print that one if you might lose it.": "Machen Sie einen neuen Code: Der alte öffnet die Karte sofort nicht mehr, und Sie drucken den neuen. Ein Code, der die Karte selbst enthält (der ohne Netz funktioniert), lässt sich nicht ersetzen; drucken Sie ihn also nicht, wenn Sie ihn verlieren könnten.",
  "Could not make a new code": "Der neue Code konnte nicht erstellt werden",
  "Yes, turn the old code off and make a new one": "Ja, alten Code abschalten und einen neuen machen",
- "Make a new code": "Neuen Code machen"
+ "Make a new code": "Neuen Code machen",
+ "The old code is turned off, but the new one could not be made. Turn the card on again.": "Der alte Code ist abgeschaltet, aber der neue konnte nicht erstellt werden. Schalten Sie die Karte wieder ein."
 }
