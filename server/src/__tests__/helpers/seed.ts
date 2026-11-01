@@ -15,7 +15,7 @@ export const TEST_PASSWORD = 'a-long-test-password';
 /** Creates an account. The default owner is created by `buildTestApp`. */
 export async function createTestUser(
   email = OWNER_EMAIL,
-  options: { id?: string; password?: string; verified?: boolean; consent?: boolean; approved?: boolean } = {},
+  options: { id?: string; password?: string; verified?: boolean; consent?: boolean; approved?: boolean; createdAt?: string } = {},
 ): Promise<{ id: string; email: string; password: string }> {
   const id = options.id ?? (email === OWNER_EMAIL ? OWNER_ID : uuidv4());
   const password = options.password ?? TEST_PASSWORD;
@@ -23,7 +23,7 @@ export async function createTestUser(
     id,
     email,
     passwordHash: await hashPassword(password),
-    createdAt: new Date().toISOString(),
+    createdAt: options.createdAt ?? new Date().toISOString(),
     verifiedAt: options.verified === false ? null : new Date().toISOString(),
     approved: options.approved,
     // Most tests are not about consent: their accounts have given it, as a person who signed up would have.

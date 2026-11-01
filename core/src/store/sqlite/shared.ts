@@ -11,6 +11,7 @@ const bundleOf = (r: Record<string, unknown>): SharedBundle => ({
   blobs: r.blobs as number,
   blobBytes: r.blob_bytes as number,
   revokedAt: (r.revoked_at as string | null) ?? null,
+  kind: r.kind === 'card' ? 'card' : 'share',
 });
 
 const requestOf = (r: Record<string, unknown>): SharedRequest => ({
@@ -25,23 +26,34 @@ const requestOf = (r: Record<string, unknown>): SharedRequest => ({
   decidedAt: (r.decided_at as string | null) ?? null,
 });
 
-const BUNDLE = 'id, user_id, created_at, expires_at, require_approval, size, blobs, blob_bytes, revoked_at';
+/** Live emergency cards an account may have: one for each person it keeps records for. */
+export const MAX_CARDS = 10;
+
+const BUNDLE = 'id, user_id, created_at, expires_at, require_approval, size, blobs, blob_bytes, revoked_at, kind';
 const REQUEST = 'id, bundle_id, visitor_key, status, wrapped_key, note, country, requested_at, decided_at';
 
 export function sharedRepository(db: Database): SharedRepository {
   const get = db.prepare(`SELECT ${BUNDLE} FROM shared_bundles WHERE id = ?`);
-  const insert = db.prepare('INSERT INTO shared_bundles (id, user_id, created_at, expires_at, require_approval, size, blobs, blob_bytes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+  const insert = db.prepare('INSERT INTO shared_bundles (id, user_id, created_at, expires_at, require_approval, size, blobs, blob_bytes, kind, reviewed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+  const cards = db.prepare("SELECT COUNT(*) AS n FROM shared_bundles WHERE user_id = ? AND kind = 'card' AND revoked_at IS NULL");
   const replace = db.prepare('UPDATE shared_bundles SET expires_at = ?, require_approval = ?, size = ?, blobs = ?, blob_bytes = ? WHERE id = ? AND user_id = ?');
-  const usage = db.prepare('SELECT COUNT(*) AS bundles, COALESCE(SUM(size + blob_bytes), 0) AS bytes FROM shared_bundles WHERE user_id = ? AND revoked_at IS NULL AND expires_at > ?');
+  const usage = db.prepare("SELECT COUNT(*) AS bundles, COALESCE(SUM(size + blob_bytes), 0) AS bytes FROM shared_bundles WHERE user_id = ? AND kind = 'share' AND revoked_at IS NULL AND expires_at > ?");
   const dropKeys = db.prepare("UPDATE shared_requests SET wrapped_key = NULL WHERE bundle_id = ?");
   const waiting = db.prepare("SELECT COUNT(*) AS n FROM shared_requests WHERE bundle_id = ? AND status = 'pending'");
   const byVisitor = db.prepare(`SELECT ${REQUEST} FROM shared_requests WHERE bundle_id = ? AND visitor_key = ?`);
 
   const putTx = db.transaction((userId: string, b: Parameters<SharedRepository['put']>[1], now: string) => {
     const have = get.get(b.id) as Record<string, unknown> | undefined;
-    if (!have) { insert.run(b.id, userId, now, b.expiresAt, b.requireApproval ? 1 : 0, b.size, b.blobs, b.blobBytes); return 'ok' as const; }
+    if (!have) {
+      // A card for each person the account keeps records for, and no more than a plan could have people.
+      if (b.kind === 'card' && (cards.get(userId) as { n: number }).n >= MAX_CARDS) return 'too_many_cards' as const;
+      insert.run(b.id, userId, now, b.expiresAt, b.requireApproval ? 1 : 0, b.size, b.blobs, b.blobBytes, b.kind ?? 'share', b.kind === 'card' ? now : null);
+      return 'ok' as const;
+    }
     if (have.user_id !== userId) return 'taken' as const;
     if (have.revoked_at) return 'revoked' as const;
+    // Sending a card again is looking at it: the year for the reminder starts over.
+    if (have.kind === 'card') db.prepare('UPDATE shared_bundles SET reviewed_at = ?, reminded_at = NULL WHERE id = ?').run(now, b.id);
     replace.run(b.expiresAt, b.requireApproval ? 1 : 0, b.size, b.blobs, b.blobBytes, b.id, userId);
     return 'ok' as const;
   });
@@ -70,6 +82,27 @@ export function sharedRepository(db: Database): SharedRepository {
     },
     async put(userId, bundle, now) {
       return putTx(userId, bundle, now);
+    },
+    async touchCard(userId, id, now) {
+      return db.prepare("UPDATE shared_bundles SET reviewed_at = ?, reminded_at = NULL WHERE id = ? AND user_id = ? AND kind = 'card' AND revoked_at IS NULL").run(now, id, userId).changes === 1;
+    },
+    async cardsToRemind(reviewedBefore, remindedBefore) {
+      return (db.prepare("SELECT id, user_id FROM shared_bundles WHERE kind = 'card' AND revoked_at IS NULL AND COALESCE(reviewed_at, created_at) < ? AND (reminded_at IS NULL OR reminded_at < ?)").all(reviewedBefore, remindedBefore) as Array<{ id: string; user_id: string }>).map(r => ({ id: r.id, userId: r.user_id }));
+    },
+    async take(callerId, id, now) {
+      const b = db.prepare("SELECT user_id FROM shared_bundles WHERE id = ? AND kind = 'card' AND revoked_at IS NULL").get(id) as { user_id: string } | undefined;
+      if (!b) return 'not_found';
+      if (b.user_id === callerId) return 'ok';
+      if (!db.prepare("SELECT 1 FROM delegations WHERE owner_user_id = ? AND delegate_user_id = ? AND state = 'promoted' AND role = 'self'").get(b.user_id, callerId)) return 'not_found';
+      if ((cards.get(callerId) as { n: number }).n >= MAX_CARDS) return 'too_many';
+      db.transaction(() => {
+        for (const table of ['shared_bundles', 'shared_requests', 'shared_opens']) db.prepare(`UPDATE ${table} SET user_id = ? WHERE ${table === 'shared_bundles' ? 'id' : 'bundle_id'} = ? AND user_id = ?`).run(callerId, id, b.user_id);
+        db.prepare('UPDATE shared_bundles SET reviewed_at = ?, reminded_at = NULL WHERE id = ?').run(now, id);
+      })();
+      return 'ok';
+    },
+    async markReminded(id, now) {
+      db.prepare('UPDATE shared_bundles SET reminded_at = ? WHERE id = ?').run(now, id);
     },
     async addBlob(userId, id, bytes) {
       return db.prepare('UPDATE shared_bundles SET blobs = blobs + 1, blob_bytes = blob_bytes + ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL').run(bytes, id, userId).changes === 1;

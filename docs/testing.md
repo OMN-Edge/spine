@@ -27,13 +27,55 @@ The structural rules (layering, what the shared code may import, what ships in a
 | `npm test -w spine-core`, `npm test -w spine-server` | Does the code do what it says? Core holds the unit tests (the store contract, sync rules, the share allow-list, the parser and the model interface); the server holds the tests that drive the whole composed app, with a login. Includes `requirements.test.ts`: every `FR-`, `TR-` and `CR-` ID cited anywhere in the repository is defined once in [requirements.md](requirements.md) | nothing |
 | `npm run test:accounts -w spine-server` (and `-w spine-core`) | Does it still hold on the accounts-only database the server runs (SECURITY.md **M-37**)? | nothing |
 | `npm run test:shim -w spine-server` (and `-w spine-core`) | Does the same suite hold on the WebAssembly SQLite the browser runs? | nothing |
+| `npm run test:postgres -w spine-server` | Do the accounts' routes work on the Postgres adapter (Postgres in WebAssembly, so nothing to install)? The same list as `test:accounts` without the backup, plus the adapter's own tests in `core/src/__tests__/postgres-store.test.ts` |
 | `npm test -w spine-web` | The device: keys and vault, the core's saving and syncing (`persist`, `boot`), shares, scanning algorithms, the relay client | nothing |
-| `npm run test:coverage -w spine-core` (or `-w spine-server`) | What is not run by any test (above 90% for statements and branches; the entry points and the provider calls are listed as intentionally uncovered in CLAUDE.md) | nothing |
+| `npm run test:coverage -w spine-server` | What is not run by any test, over the server's code (it fails below the thresholds in `server/vitest.config.ts`; the core's code is reached through the server's tests, and `-w spine-core` measures only its own unit tests); the entry points and the provider calls are listed as intentionally uncovered under "What isn't covered" above | nothing |
 | `npm run check:browser -w spine-web` | Does each native piece of the core work in real Chrome (text, rendering, OCR, photos, zip, stamps, signature chain)? | Chrome, a build |
 | `cd web && npm run check:app` | The whole app in real browsers, against a real server and relay: sign-up, vault, upload, search, two devices on one account, shares that follow the records, signatures, passkeys, export and import | Chrome, a build |
 | `npm run test:integration -w spine-server` | Does a real model do the right thing with the prompts? | a model in `.env` |
 
 `./scripts/check.sh all` runs what CI runs: the build and typecheck, the core and server tests with `test:accounts`, the web tests, the smoke test, the dependency audit and the secret and code scans (`./scripts/check.sh browser` adds the two browser checks, which CI runs too). It does not run `test:shim` or the coverage report, and no pipeline does: run those yourself. A change that touches the store, the change log or the vault is not done until `test:accounts`, `test:shim` and `check:app` have run: each has caught a bug the others could not.
+
+## Where the unit tests are
+
+The code is three npm workspaces: `core/` (what the browser's core runs, and the server's tests), `server/` and `web/`. Install once at the root. The files below are in `server/src/__tests__/`, which drive the whole composed app, except the parser, OCR, read-page, continuation, grounding, legacy-database, i18n and llm ones, which are in `core/src/__tests__/`. The figures change with every commit, so they are not copied here; `npm run test:coverage -w spine-server` measures them and fails below the floor set in `server/vitest.config.ts`.
+
+| Area | Files | Notes |
+|---|---|---|
+| Isolation | `isolation.test.ts` | A second user against the first user's data, across the routes of its test app and the upload, document, field, tag, page, share link and result repositories; every route of that app refuses an unauthenticated request |
+| Response shape | `response-shape.test.ts` | Whole responses scanned for `user_id`, server paths, checksums, tokens |
+| Auth | `auth.test.ts` | Email login, no account enumeration, session fixation, password change, rate limits |
+| Two-factor | `totp.test.ts`, `second-factor.test.ts` | RFC 4226/6238 vectors, drift and replay, encryption at rest, the two-step login, recovery codes, guess throttling, no bypass via reset |
+| Accounts | `accounts.test.ts`, `cli.test.ts` | Signup, verification, recovery links, rate limits; the CLI commands, including deletion |
+| Mail | `mail.test.ts` | Brevo adapter, no attachment field, config refusals, neutral wording |
+| Config | `config.test.ts`, `llm.test.ts` | Startup refuses bad secrets, providers and endpoints |
+| Documents | `documents.test.ts` | CRUD, tag updates, split/merge boundaries, column whitelist |
+| Upload | `upload.test.ts`, `source-files.test.ts` | Multipart upload, per-user storage, duplicate detection, status polling |
+| Share links | `share.test.ts`, `public-share-scoped.test.ts`, `public-share-detail.test.ts` | Scope validation, fail-closed reads, the sealed copy, the recipient's page |
+| Store | `legacy-database.test.ts` | An old-shape database is refused |
+| Backup | `backup.test.ts` | Snapshot is a readable database; vault mirror; retention |
+| Parser | `parser.test.ts`, `ocr.test.ts`, `read-page.test.ts`, `capabilities.test.ts` | Box scaling, one entry per page, the text-layer → OCR → model cascade and its thresholds, fallback, the two-switch rule, the image message, "Read with AI" |
+| Ingestion pipeline | `pipeline.test.ts`, `resume-stalled.test.ts` | Splitting, grounding, error paths, restart recovery (an interrupted upload is read again), a blank page not shifting images, model-read pages |
+| AI | `continuation.test.ts`, `grounding.test.ts` | Validation and fallbacks, tested through fake task clients |
+| Page images | `page-image.test.ts` | Auth required, streams PNG, 404 on missing row or file |
+| Translation | `translation.test.ts`, `i18n-coverage.test.ts` | Digest-validated cache, two stages, retry of missing or rambling values, language detection, the public routes; every interface string present in all dictionaries |
+| Export and import | `archive.test.ts` | Trimmed document export, whole archive, restore without a model, duplicates by checksum and by text, plain zips, Office files, damaged and tampered manifests (needs poppler) |
+| Similarity | `similarity.test.ts` | The Vertex embedder against a fake service, stale vectors, model changes, related documents, search by words and meaning, other users and set-aside documents excluded |
+| Chat history | `chat-history.test.ts` | Starting, titling, continuing (history read from the store, citations removed, never from the browser), listing, renaming, deleting one or all, other users' conversations a 404 everywhere, no owner id in responses, deletion with the account, caps |
+| Chat agent | `chat-agent.test.ts` | A scripted model drives the real tools and graph: search (by keywords, by dates, type, tag or provider alone, the filters applied before ranking, each hit with its confirmed links), open, test series, connections (a chain reaches only shown documents, never past a set-aside one); what the prompt is told (the date, the rounds); scope (other users', set-aside and unconfirmed documents, ids that are not labels); the screen (listed documents, upload, selected field); round and size limits; fallbacks and switches; no tool writes |
+| Chat actions | `chat-actions.test.ts` | Every proposal is a card and writes nothing; what the person must set is not the model's; a document not read yet cannot be corrected; each proposal's requests are accepted by the real routes |
+| Chat | `chat.test.ts` | What is sent (card, notes, results, trend, connections) and what never is (pages, ids, other users', set-aside or unconfirmed documents), keywords and ranking for a sentence, labels tied back to documents, history trimmed, validation, the switch, no call without a match |
+| Grouping confirmation | `grouping-confirmation.test.ts` | Documents of an unconfirmed upload are out of the timeline, search, review queue and shares but on the upload; cannot be reviewed; no links; confirming shows them and starts linking; old uploads count as confirmed |
+| Owner edits | `owner-edits.test.ts` | Headline, fields and results the owner set, added, changed or removed survive a new reading; clearing a value hands it back; an unchanged save marks nothing |
+| Care chains | `linking.test.ts` | Candidates without a model, what the model is shown, the relation-to-link mapping and the date check, proposals replaced while confirmed and dismissed links stay, dismissed pairs not offered again, other users and set-aside documents excluded, cascade deletes, the routes' 404s |
+| Library | `management.test.ts` | Tags, providers and tests: counts, rename, merge, remove, share links following a tag, another user's entries |
+
+Tests use in-memory SQLite (`SPINE_DB_PATH=:memory:`) with a `resetStore()` call between files so no state leaks across test files. Fixtures are built through the store interface, not raw SQL.
+
+### What isn't covered
+
+- `rasterize.ts`: the Node PDF rasterizer; it needs actual PDF files (the device's is checked in real Chrome by `check:browser`)
+- the `invoke` paths in `llm/adapters/*`: they need live provider credentials. The Vertex path has been run through the relay on invented records (`SPINE_CHECK_REAL=1`)
 
 ## What belongs to every store, and what to SQLite
 
@@ -58,8 +100,8 @@ npm run test:integration -w spine-server -- src/__integration__/journey.it.ts   
 
 It needs:
 
-- **A model.** It loads the repository's `.env` (`SPINE_LLM_PROVIDER`, `SPINE_LLM_MODEL`, and the provider's endpoint, region, project and credentials). If the configuration is unusable, every flow is skipped and the run says why. Embeddings are used if `.env` turns them on.
-- **poppler** for the flows that read a PDF (the text layer is read in-process by PDF.js). Without it, the PDF flows are skipped, and the run says so.
+- **A model.** It loads the repository's `.env` (`SPINE_LLM_PROVIDER`, `SPINE_LLM_MODEL`, and the provider's endpoint, region, project and credentials). If the configuration is unusable, every flow fails with the reason: a run was asked for, and a skipped test is reported as a pass. Embeddings are used if `.env` turns them on.
+- **poppler** for the flows that read a PDF (the text layer is read in-process by PDF.js). Without it, the PDF flows fail and say so, for the same reason.
 
 It does **not** need the web server running. Each file builds the same Fastify app the server runs (`__tests__/helpers/app.ts`) and drives it with `app.inject`, through the HTTP routes and a signed-in session, as the browser does. There is no browser, so the screens are not exercised here; what they send and show is.
 
@@ -80,7 +122,7 @@ Fixtures are invented (`support/fixtures.ts`, `support/archive.ts`): no real per
 ### Adding a flow
 
 1. Put the text it needs in `support/fixtures.ts` (a PDF page is a list of lines; `makeTextPdf` makes the file) or seed records with `support/archive.ts`.
-2. Use `describeLive` (needs a model) or `describePipeline` (also needs poppler) from `support/live.js`, so it skips cleanly where it cannot run.
+2. Use `describeLive` (needs a model) or `describePipeline` (also needs poppler) from `support/live.js`, so that where it cannot run it fails and says why, rather than passing unseen.
 3. Drive the app with `startWorld`, `ask`, `attach`, `proposalOf`, `confirm`, `until`.
 4. Assert the invariants above. Run it a few times; if it is flaky, make the assertion say what actually must hold.
 5. Add it to the list below and to the scenario it checks in [scenarios.md](scenarios.md) (status `live`).
@@ -94,6 +136,8 @@ Fixtures are invented (`support/fixtures.ts`, `support/archive.ts`): no real per
 | `chat-actions.it.ts` | model | Sharing (finds the visit and the tests it asked for; reasons about dates to pick both visits and only the March tests; scans and questions are not the model's to set; the recipient then sees exactly those), a note, a correction of one result, tags, changing and revoking an existing link, asking which link when two fit, and a document that tries to give the assistant instructions |
 | `tidy.it.ts` | model | The same doctor written three ways becomes one final form (name, code, specialty), a neurologist with the same surname and another code is left alone; a test named two ways; a clinic and a tag written two ways; nothing merged before Confirm |
 | `recipient-chat.it.ts` | model | A doctor with a link asks about what was shared: answered from it and cited, in the third person, the owner's purpose as context; nothing from the rest of the archive however it is asked; it cannot change anything; the stream ends in the answer |
+| `guide.it.ts` | model | A person who has just arrived, on an empty archive, asks how to send records to a doctor (answered from the app's own help text: a link, no account, seven days), who can read them (the relay is said not to store or log, and never said to be unable to see), and for what Spine does not do (an appointment, a diagnosis): nothing invented, no proposal, nothing written |
+| `photo.it.ts` | model, poppler | A page with no text layer, drawn from a fixture and rendered to a PNG, is attached as a photo: the model reads it (the page is `multimodal`), the values come out as printed, and, since a model gives the words and not where they sit, the page's text blocks carry no box and no value carries one |
 | `model-seams.it.ts` | model | The calls the pipeline makes, one at a time: page continuation, extraction of a laboratory report, a consultation and a discharge note (type, date, provider, doctors with codes, each result with unit and range, canonical names reused), the link between a consultation and the tests it asked for (right direction, a proposal), and a translation that keeps the numbers |
 
 ## The app in a real browser
@@ -103,8 +147,10 @@ The integration suite drives the server's routes with `app.inject`. Since the re
 ```bash
 npm run build                 # at the root: core, server and web. The checks run the built server and web, not the sources
 npm run check:browser       # each native piece of the core: text, rendering, OCR, trimming, photos, zip, stamps
-npm run check:app           # the demo (with files of one's own, kept into an account), sign-up, vault, sample records, reload and unlock, search, upload, shares, export and import
+npm run check:app           # the demo (with files of one's own, kept into an account), sign-up, vault, sample records, reload and unlock, search, upload, shares, export and import, a second device, people and children, a second account joining as a reader, the emergency card, and the three QR codes read back
 ```
+
+**The QR codes are read back, not trusted.** The page draws three (the code that pairs a device, the card's address with its key, the card as text for use with no signal); `check:app` paints each on a canvas in a blank page and decodes it with jsQR (a dev dependency of the web app, Apache-2.0, never in the build), and compares what it holds with what the page shows. `web/src/emergency-qr.test.ts` holds the fullest card the schema allows, in Romanian and with emoji, to its byte limit and checks it still fits a code at the lowest error correction.
 
 `check:app` uses a stand-in for the model behind the real relay code. Two switches change that, and nothing else:
 
@@ -125,3 +171,12 @@ Every run also exports everything from the first account and imports it into a s
    - the link judge's correct answer was thrown away because the model wrote the label as `[1]` (with the brackets the prompt showed it in) and the app compared it with `1`;
    - the assistant ran out of tool rounds on a request that needed several steps (find both visits, follow them to their tests, propose), so the cap went from 5 to 8 for the owner's assistant.
 5. A leak check must look for details the model could not have guessed, not for words: an assistant that says "I searched for pneumonia and found nothing" has leaked nothing. `recipient-chat.it.ts` checks for the dates, durations, clinic names and titles that only the unshared documents hold.
+6. A failure with a 410 or a 404 on a share link at the first request is the flow, not the model: a link is reached by its `id` (a share has no token), and the recipient's page answers from the sealed copy. The recipient flows of this suite went stale on exactly that when shares became sealed copies, and nothing said so until they were run again. Run the whole suite after a change to sharing, reading or the relay, and put the date and the commit below.
+
+## Last full run
+
+2026-11-01, against `gemini-3.5-flash` on Vertex (eu), with retries off (`--retry=0`): 33 of 33 passed, with every unit suite and a test required to assert something (`expect.requireAssertions`). `check:app` (173 steps) passed on 2026-11-01 and `check:browser` on 2026-10-31.
+
+**A fixture is a story set on fixed dates** (`support/archive.ts`: visits in October 2025 and March 2026), and the assistant is told today's date. So a request in the flows names its months ("the March follow-up"), never "now", "recently" or "a year ago": those are counted from the real day and stop matching the story as it ages. That is a choice, not a gap: the flows test that the assistant turns named periods into the right documents, and the unit tests check that it is given the date. The date-reasoning flow failed 3 of 17 first attempts while its request said "the tests … asked for now", which in November it read as the last few weeks.
+
+**Measuring a change to the assistant.** Run the same request ten times before and after, with retries off, and compare whether it is right, how many tools it called and how long it took; the flows themselves only say right or wrong. For the change that gave search the store's filters and the documents' links, and gave the prompt the date and the budget (the date-reasoning request, ten runs each): before, 10 of 10 right in 3.9 tool calls on average; after, 10 of 10 in 2.3, most of them one search with dates and then the proposal. An intermediate version with the filters but without the date was worse (8 of 10, 8.3 calls): a model with a date filter and no date searched the wrong years.

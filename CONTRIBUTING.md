@@ -4,7 +4,8 @@ The canonical repository is on GitHub; issues and pull requests go there. Public
 
 - **Security problems** are not issues: see [Reporting a vulnerability](SECURITY.md#reporting-a-vulnerability).
 - **Licence.** The project is AGPL-3.0-only ([LICENSE](LICENSE)). By sending a pull request you license your contribution under the same terms.
-- **Read first.** [ARCHITECTURE.md](ARCHITECTURE.md) and [SECURITY.md](SECURITY.md) are the design contract: a change is judged against a numbered principle and the checklist at the end of SECURITY.md. Touching routing, auth, share links, storage, providers or static serving means reading both.
+- **Start here.** [docs/developing.md](docs/developing.md) goes from a clone to a change that passes the checks.
+- **Read first.** [ARCHITECTURE.md](ARCHITECTURE.md) (with its [detail pages](docs/architecture/README.md)) and [SECURITY.md](SECURITY.md) are the design contract: a change is judged against a numbered principle and the checklist at the end of SECURITY.md. Touching routing, auth, share links, storage, providers or static serving means reading both.
 - **Structure.** [docs/structure-rules.md](docs/structure-rules.md) defines what a clean change is (direction of imports, what the shared code may use, nothing wired by default, every process started by a test) and `core/src/__tests__/architecture.test.ts` enforces it. An exception is added to the test and that page together.
 - **Checks.** `./scripts/check.sh all` runs what CI runs: tests, typecheck, dependency audit, gitleaks, semgrep. A change that adds behaviour comes with a test that fails without it.
 - **No real data.** Samples, fixtures and screenshots use invented names, codes, values and dates. Never commit a real record.
@@ -12,7 +13,7 @@ The canonical repository is on GitHub; issues and pull requests go there. Public
 
 ## Keeping what we say true
 
-The reviews of 2026-10-26 found the same kind of fault again and again: a sentence, a screen or a legal text that described where the code used to run. These are the habits that stop it.
+Reviews kept finding the same kind of fault: a sentence, a screen or a legal text that described where the code used to run. These are the habits that stop it.
 
 - **Words are claims.** The privacy notice, terms, purpose text, screen strings, SECURITY.md, ARCHITECTURE.md and comments all say what the product does. Change the behaviour, change the sentence in the same commit. `core/src/__tests__/docs.test.ts` fails when a document names a file, variable, function or link that does not exist (rule S12), and `hygiene.test.ts` (rule S13) fails on a changed legal text with no new version, a line-number citation, an unreviewed screen string about "the server", an export only tests use, and an unused runtime dependency. Neither can judge a sentence, so a person does.
 - **When code moves between hosts** (server, device, relay), search the documents and the screen strings for the old place ("the server", "this server", "on the server", the old route and file names) before calling it done. Screen text lives in `web/src/` and in `web/src/i18n/{ro,fr,de}.json`; a changed English string needs its three translations changed with it.
@@ -24,3 +25,5 @@ The reviews of 2026-10-26 found the same kind of fault again and again: a senten
 - **Remove what nothing calls.** A route, an option, a registered plugin or a dependency with no caller is a claim that something works. Search for callers before keeping it, and remove it with its tests and its documents.
 - **Say what was not checked.** In a commit message or a review, list what was not run (the real model, a real browser, the Docker images) and what depends on the operator (hosting region, provider retention, log retention).
 - **The procedure is written down** as a skill, `.claude/skills/fact-check-docs/`: list the claims of a document, check each against the code, fix, verify, report. It includes a script that makes the list (`extract_claims.py`), a table of where to look for each kind of claim and the stale patterns that kept coming back. Use it for any audit of the documents, the legal texts or the screen text, and after code moves between the server, the device and the relay.
+- **Where a fact lives.** Each fact has one home and the other documents link to it: install steps in [docs/setup.md](docs/setup.md), environment variables in [docs/configuration.md](docs/configuration.md), the decisions the code depends on in [docs/design-decisions.md](docs/design-decisions.md), what each check answers in [docs/testing.md](docs/testing.md). The README is a map, not a copy. Fix the home first, then anything that repeated it.
+- **Improving the documents is a contribution.** If a step did not work for you, or a document was wrong, fix it in the same pull request; a reviewer may ask for a document change with a code change.

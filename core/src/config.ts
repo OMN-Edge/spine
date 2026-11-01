@@ -317,11 +317,20 @@ export function loadStoreConfig(env: Settings = settings()): StoreEnvConfig {
 }
 
 export function readStoreConfig(env: Settings, problems: string[]): StoreEnvConfig {
+  const adapter = env.SPINE_STORE ?? 'sqlite';
+
+  // A networked store is named by an address, which carries the password: it is read here and logged nowhere.
+  if (adapter === 'postgres') {
+    const url = (env.SPINE_DATABASE_URL ?? '').trim();
+    if (!/^postgres(ql)?:\/\/\S+$/.test(url)) problems.push('SPINE_STORE=postgres needs SPINE_DATABASE_URL, a postgres:// address (with sslmode=require unless the database is on this host)');
+    return { adapter, location: url };
+  }
+
   const location = env.SPINE_DB_PATH ?? path.join(resolveDataDir(env), 'spine.db');
 
   if (location.trim().length === 0) problems.push('SPINE_DB_PATH is empty');
 
-  return { adapter: env.SPINE_STORE ?? 'sqlite', location };
+  return { adapter, location };
 }
 
 /**

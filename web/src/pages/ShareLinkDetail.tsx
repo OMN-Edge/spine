@@ -1,6 +1,7 @@
 import { LIFETIMES } from '../lifetimes';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { planRefusal } from '../billing';
 import { api, type Document, type ShareLinkChange, type ShareLinkDetail as Detail, type ShareLinkEvent } from '../api';
 import { useChat } from '../components/ChatProvider';
 import ShareRequestCard from '../components/ShareRequestCard';
@@ -64,7 +65,8 @@ export default function ShareLinkDetail() {
       await load();
       announceChange();
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('Could not save'));
+      const plan = planRefusal(err);
+      setError(plan ? t(plan) : err instanceof Error ? err.message : t('Could not save'));
     } finally {
       setBusy(false);
     }

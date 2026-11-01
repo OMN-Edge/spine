@@ -19,6 +19,17 @@ import Search from './pages/Search';
 import Trends from './pages/Trends';
 import Episodes from './pages/Episodes';
 import Scan from './pages/Scan';
+import Pricing from './pages/Pricing';
+import Emergency from './pages/Emergency';
+import Profiles from './pages/Profiles';
+import Invite from './pages/Invite';
+import { pendingInvite } from './invite';
+import { useProfiles } from './profiles';
+import ForDoctors from './pages/ForDoctors';
+import HowItWorks from './pages/HowItWorks';
+import Protection from './pages/Protection';
+import Families from './pages/Families';
+import Encryption from './pages/Encryption';
 import Trust from './pages/Trust';
 import LegalPage from './pages/LegalPage';
 import ConsentGate from './pages/ConsentGate';
@@ -29,7 +40,7 @@ import SyncNotice from './components/SyncNotice';
 import SaveStatus from './components/SaveStatus';
 import DemoBanner from './components/DemoBanner';
 import DemoCarryOver from './components/DemoCarryOver';
-import { UnsavedChangesError, device } from './core/client';
+import { PROFILE_CHANGED, UnsavedChangesError, device } from './core/client';
 import Doctors from './pages/Doctors';
 import Library from './pages/Library';
 import DoctorPage from './pages/DoctorPage';
@@ -38,7 +49,7 @@ import ChatPanel from './components/ChatPanel';
 import ReauthDialog from './components/ReauthDialog';
 import { ChatProvider, useChat } from './components/ChatProvider';
 import { GuideProvider } from './guide';
-import PublicShareView from './pages/PublicShareView';
+import ShareRouter from './pages/ShareRouter';
 import ShareRequestPage from './pages/ShareRequest';
 import ShareLinkDetail from './pages/ShareLinkDetail';
 import { Wordmark } from './components/Logo';
@@ -73,6 +84,9 @@ function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const chat = useChat();
+  // Who is open, when this account keeps records for more than one person: the name is a link to the page where another is chosen.
+  const { people } = useProfiles(!demo);
+  const whose = people && people.profiles.length > 1 ? people.profiles.find(p => p.id === people.current)?.name : undefined;
 
   // A link was followed: the menu has done its job.
   useEffect(() => setMenuOpen(false), [location.pathname]);
@@ -121,7 +135,8 @@ function Layout({ children }: { children: React.ReactNode }) {
             {links.map(link => (
               <NavLink key={link.to} to={link.to} end={link.to === '/'} className={linkClass}>{t(link.label)}</NavLink>
             ))}
-            <LanguageSwitcher className="ml-auto" />
+            {whose && <Link to="/profiles" className="ml-auto text-sm text-brand-700 hover:underline truncate max-w-[10rem]" title={t('Whose records are open')}>{whose}</Link>}
+            <LanguageSwitcher className={whose ? '' : 'ml-auto'} />
             <ThemeSwitcher />
             {demo ? (
               <button onClick={() => void leave()} className="text-sm text-gray-500 hover:text-gray-900">{t('Leave the demo')}</button>
@@ -170,6 +185,11 @@ function Layout({ children }: { children: React.ReactNode }) {
           </div>
         )}
       </nav>
+      {!demo && pendingInvite() && location.pathname !== '/profiles' && (
+        <div className="bg-brand-50 border-b border-brand-100 px-4 sm:px-6 py-2 text-sm text-brand-800">
+          {t('You have an invitation waiting.')} <Link to="/profiles" className="underline">{t('Open it')}</Link>
+        </div>
+      )}
       {demo && <DemoBanner />}
       {/* With the chat open beside it, the page gives it room instead of sitting under it. */}
       <main className={`max-w-6xl mx-auto px-4 sm:px-6 py-6 pb-24 sm:py-8 transition-[margin] duration-200 ${chat?.enabled && chat.open ? 'sm:mr-[26.5rem] sm:max-w-none' : ''}`}>{children}</main>
@@ -220,6 +240,13 @@ export default function App() {
   const [vaultNeeded, setVaultNeeded] = useState(false);
   // Whether the records are open on this device: 'starting' while the key is handed to the core, 'locked' when it must be asked for.
   const [deviceState, setDeviceState] = useState<'starting' | 'locked' | 'open'>('starting');
+  // Another person's records were opened: everything that holds records (the chat, the guide, each screen) starts over on the new ones.
+  const [people, setPeople] = useState(0);
+  useEffect(() => {
+    const changed = () => setPeople(n => n + 1);
+    window.addEventListener(PROFILE_CHANGED, changed);
+    return () => window.removeEventListener(PROFILE_CHANGED, changed);
+  }, []);
   // The demo: the device's core, started with no vault, holding the sample records until the page is left.
   const [demo, setDemo] = useState(false);
   const [demoUploads, setDemoUploads] = useState<{ uploads: number; pages: number } | null>(null);
@@ -272,7 +299,7 @@ export default function App() {
   return (
     <AuthContext.Provider value={{ authenticated, email, setAuthenticated, consentNeeded, consentGiven: () => setConsentNeeded(null), vaultNeeded, vaultMade: () => setVaultNeeded(false), deviceState, deviceOpened: () => setDeviceState('open'), demo, startDemo, leaveDemo, demoUploads, demoAgreed, agreeDemo: () => setDemoAgreed(true) }}>
       {/* Chat asks the device's core, which answers 423 until the vault is open: asked sooner, the panel is switched off for good. */}
-      <ChatProvider authenticated={(authenticated && deviceState === 'open') || demo}>
+      <ChatProvider key={people} authenticated={(authenticated && deviceState === 'open') || demo}>
       <GuideProvider enabled={authenticated && deviceState === 'open' && !demo}>
       <ReauthDialog />
       <Routes>
@@ -283,10 +310,16 @@ export default function App() {
         <Route path="/terms" element={<LegalPage doc="terms" />} />
         <Route path="/purpose" element={<LegalPage doc="purpose" />} />
         <Route path="/trust" element={<Trust />} />
+        <Route path="/pricing" element={<Pricing />} />
+        <Route path="/for-doctors" element={<ForDoctors />} />
+        <Route path="/how-it-works" element={<HowItWorks />} />
+        <Route path="/protection" element={<Protection />} />
+        <Route path="/families" element={<Families />} />
+        <Route path="/encryption" element={<Encryption />} />
         <Route path="/pair" element={<NotInDemo><Pair /></NotInDemo>} />
         <Route path="/forgot" element={<Forgot />} />
         <Route path="/reset" element={<Reset />} />
-        <Route path="/share/:id" element={<PublicShareView />} />
+        <Route path="/share/:id" element={<ShareRouter />} />
         <Route path="/" element={authenticated || demo ? <PrivateRoute><Timeline /></PrivateRoute> : <Landing />} />
         <Route path="/upload" element={<PrivateRoute inDemo={!!demoUploads}><Upload /></PrivateRoute>} />
         <Route path="/uploads/:id" element={<PrivateRoute><UploadPages /></PrivateRoute>} />
@@ -300,6 +333,9 @@ export default function App() {
         <Route path="/library" element={<PrivateRoute><Library /></PrivateRoute>} />
         <Route path="/doctors/:id" element={<PrivateRoute><DoctorPage /></PrivateRoute>} />
         <Route path="/search" element={<PrivateRoute><Search /></PrivateRoute>} />
+        <Route path="/invite" element={<Invite />} />
+        <Route path="/profiles" element={<PrivateRoute inDemo={false}><Profiles /></PrivateRoute>} />
+        <Route path="/emergency" element={<PrivateRoute inDemo={false}><Emergency /></PrivateRoute>} />
         <Route path="/share" element={<PrivateRoute inDemo={false}><ShareLinks /></PrivateRoute>} />
         <Route path="/share-links/:id" element={<PrivateRoute inDemo={false}><ShareLinkDetail /></PrivateRoute>} />
         <Route path="/share-requests/:id" element={<PrivateRoute inDemo={false}><ShareRequestPage /></PrivateRoute>} />

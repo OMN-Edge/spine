@@ -115,16 +115,41 @@ One constraint shapes the AI path: the client cannot hold Spine's model API key,
 
 | ID | Requirement | Priority | Release |
 | --- | --- | --- | --- |
-| FR-PRF-01 | Several profiles per account (children, elderly parents), each with its own keys | Must | Soon |
+| FR-PRF-01 | Several profiles per account (children, elderly parents), each with its own keys | Must | Launch |
 | FR-ACC-01 | Sign-up with email and master password; recovery kit generated at sign-up | Must | Launch |
 | FR-ACC-02 | The same vault on several devices; passkeys and 2FA supported | Must | Launch |
 | FR-ACC-03 | Sample records, explorable before uploading anything real | Must | Launch |
 | FR-EXP-01 | Full export: originals plus extracted data as JSON; the export can be imported again | Must | Launch |
 | FR-EXP-02 | Account deletion destroys keys, making stored ciphertext unrecoverable | Must | Launch |
+| FR-BIL-01 | Plans where the operator offers them: a six-month trial with everything and 150 pages of AI reading, a free plan, and Premium by subscription; nothing is deleted when a plan ends | Must | Launch |
+| FR-BIL-02 | Price, renewal and cancellation shown before a purchase, cancellation from the account, the card never seen by Spine, and an account with a running subscription not deleted until it is cancelled | Must | Launch |
+| FR-BIL-03 | The first 500 paying accounts keep the yearly founding price for as long as the subscription runs | Should | Launch |
+| FR-BIL-04 | A self-hosted or private instance has no plans and no limits but its own | Must | Launch |
+| FR-BIL-05 | A family plan for up to six people, sold only where the operator has named its prices; Premium and the family plan are told apart by the prices of the subscription | Should | Launch |
+| FR-GRW-01 | The loops in the marketing plan can be counted without identifying anyone: sign-ups from a shared page or a doctor's page, shared pages opened, checkouts started; a waitlist holds an address and a day | Should | Launch |
 
-### Not in the first release
+### Reintroduced after the first scope was cut
 
-These stay as requirements but are not built or scheduled for the first release: the emergency card (FR-EMG: a card curated by the user with allergies, conditions, medications and contacts, opened from a QR code without approval, every scan logged and notified, readable offline), delegating a profile to another account (FR-PRF-02), family and guardian accounts (FR-FAM: teen access, promotion at 18, guardian access paused until the new adult chooses), installable mobile apps (TR-MOB), and the paid tier.
+The cuts of 2026-10-23 are being undone in this order, each with its documents (the marketing plan needs them): the emergency card, several profiles per account, delegating a profile, child profiles and guardians, promotion at 18 (all built), and the Family plan (built, sold where its prices are named). FR-PRF-01 (several profiles per account) is built (**M-48**); delegation, child profiles and guardians, promotion at 18 and the Family plan follow. Installable mobile apps (TR-MOB) stay out.
+
+| ID | Requirement | Priority | Release | Status |
+| --- | --- | --- | --- | --- |
+| FR-FAM-01 | A child's profile is kept by a guardian under their account, with the child's birth date sealed in its record; other guardians can be let in | Must | Launch | Built (**M-50**) |
+| FR-FAM-02 | A child has an account of their own only from sixteen, when their guardian invites them; below sixteen the page does not offer it | Must | Launch | Built (**M-50**) |
+| FR-FAM-03 | At eighteen the person can take the profile into their own account in one step, under a new key; the guardians' access is paused, not ended, until the person chooses | Must | Launch | Built (**M-51**) |
+| FR-EMG-01 | A card the owner writes of what someone helping them must know at once (allergies, conditions, medications, contacts, blood type, notes); only what is written is on it | Must | Launch | Built (**M-47**) |
+| FR-EMG-02 | The card opens from a QR code with no account and no approval, in the reader's language for everything but the owner's own words, and says what Spine is | Must | Launch | Built |
+| FR-EMG-03 | Every opening is logged (time and country, never an address) and the owner is mailed, at most once in fifteen minutes | Must | Launch | Built |
+| FR-EMG-04 | An optional code that holds the card as plain text, readable with no signal, said plainly to be readable by anyone who sees it and to hold only what fits | Should | Launch | Built |
+| FR-PRF-02 | Another account can be let into one profile, as a guardian (reads and writes) or a viewer (reads), by an invitation code that works for someone with no account yet; the owner can pause, resume and end it, and ending it replaces the profile's key | Must | Launch | Built (**M-49**) |
+| FR-PRF-03 | The account's people are listed and chosen on a page of their own; opening one saves the first and starts the screens over on the other's records, with no second password; the choice is remembered on the device | Must | Launch | Built |
+| FR-PRF-04 | How many people an account can keep follows its plan (trial six, free one, Premium one; the family plan more); a record is never removed because a plan ended | Must | Launch | Built |
+| FR-EMG-06 | A person may keep official details (identification and health insurance numbers, a card number, organ donor, their own) with the card and choose one by one to put on it; none is on it unless chosen | Should | Launch | Built (**M-47**) |
+| FR-EMG-07 | The card can be printed at the size of a bank card, front and back, with the code on the back | Should | Launch | Built (**M-47**) |
+| FR-PRF-05 | The owner can correct a person's name and a child's birth date | Must | Launch | Built (**M-48**, **M-50**) |
+| FR-EMG-08 | A card that is on and has not been saved or checked for a year is flagged to its owner in the app, and the owner is mailed once a year (neutral wording, no mention of what is on it) until they look at it | Should | Launch | Built (**M-47**) |
+| FR-EMG-09 | The owner can replace a card's code if the printed one is lost: the old address stops opening at once and a new one is made; a code that holds the card itself cannot be replaced, and the page says so | Should | Launch | Built (**M-47**) |
+| FR-EMG-05 | The owner turns the card off and its address stops opening; the interface says a card already seen may have been copied | Must | Launch | Built |
 
 ## Technical requirements
 
@@ -175,7 +200,7 @@ The hard parts are the key hierarchy, the approval-mode share handshake and the 
 
 - **TR-CRY-02:** the data key is one per sealed object (a segment of changes, a part of a snapshot, a file), not one per document, and there is one profile per account ([key-hierarchy.md](key-hierarchy.md)).
 - **TR-CRY-05:** built (SECURITY.md **M-41**): a new device signs in with the master password, a passkey set up to open the vault, or a one-time code from a device that is signed in. The new device holds the keys in memory only, as after any sign-in, so a reload asks again; there is no list of enrolled devices apart from the sign-ins the account page shows, and a device cannot be revoked in the cryptographic sense (the account key does not change), only signed out.
-- **TR-CRY-06 and TR-CRY-07:** the key pair is made at sign-up, but delegation and key rotation on revocation are not built.
+- **TR-CRY-06 and TR-CRY-07:** built (SECURITY.md **M-49**): the key pair seals a profile key to another account, and ending access replaces the profile key, re-sealing every data key, the profile record and each remaining grant in one step.
 - **TR-AI-04:** masking identifiers such as a national ID number before a call is not built; the extraction prompt tells the model not to extract them.
 - **TR-AI-11:** reading an upload resumes (confirming again reads what is still marked), and an upload the page was closed on is read again when the core next starts (`resumeStalledJobs`). A restore interrupted that way, and an upload whose file had not reached the vault, is marked failed. The queue is the app's own two-at-a-time limit and is not a persisted list: what resumes is what the rows say is unfinished.
 - **TR-INF-03:** account mail carries a link and, for a sign-in, a changed setting or a waiting request, the time of the event (SECURITY.md **P8**); it never carries medical content.
@@ -261,13 +286,13 @@ What each feature, current and planned, must satisfy in law, with the source. GD
 
 | ID | Requirement | Basis | Applies to | Status |
 | --- | --- | --- | --- | --- |
-| CR-FAM-01 | A child's profile is managed by a guardian; no own account under 16 without guardian consent | GDPR Art. 8(1) (16 is the age unless a state lowers it; Romania has not, and Law 190/2018 has no such article); a 2025 bill on online services for under-16s passed the Senate and is not confirmed as law | Family profiles | Future |
-| CR-FAM-02 | At 18, guardian access continues only with the new adult's consent; access is paused until they choose, and the profile key is rotated | GDPR Art. 6, 9; TR-CRY-07 | Promotion at 18 | Future |
+| CR-FAM-01 | A child's profile is managed by a guardian; no own account under 16 without guardian consent | GDPR Art. 8(1) (16 is the age unless a state lowers it; Romania has not, and Law 190/2018 has no such article); a 2025 bill on online services for under-16s passed the Senate and is not confirmed as law | Family profiles | Built (the guardian's invitation is the consent, **M-50**; the lawyer confirms) |
+| CR-FAM-02 | At 18, guardian access continues only with the new adult's consent; access is paused until they choose, and the profile key is rotated | GDPR Art. 6, 9; TR-CRY-07 | Promotion at 18 | Built (**M-51**; the person takes the step themselves) |
 | CR-FAM-03 | Lawyer review of a minor's rights over their own medical data, including whether some records may be hidden from guardians before 18 | Law 46/2003 (patient rights: the legal representative's consent, and the patient's involvement as far as they can understand); Order 386/2004; Civil Code | Teen access | Future |
 | CR-DEL-01 | Delegating a profile to another account is a disclosure the owner chooses; the delegate's rights and the owner's right to revoke are stated, and each grant is logged | GDPR Art. 6, 9(2)(a), 26 if roles are joint | Delegation | Future |
-| CR-EMG-01 | The emergency card is data the owner chooses to expose without approval: consent for that exposure is explicit, a scan is logged and notified, and the offline QR (data in the code) warns that anyone who sees the code reads the card | GDPR Art. 9(2)(a), 25, 32 | Emergency card | Future |
+| CR-EMG-01 | The emergency card is data the owner chooses to expose without approval: consent for that exposure is explicit, a scan is logged and notified, and the offline QR (data in the code) warns that anyone who sees the code reads the card | GDPR Art. 9(2)(a), 25, 32 | Emergency card | Built (the owner turns it on after being told who can read it; the lawyer confirms the consent wording) |
 | CR-REM-01 | Reminders restate the document, hold no medical text on the lock screen and are the owner's to switch off | GDPR Art. 5(1)(c); MDCG 2019-11 | Reminders | Future |
-| CR-PAY-01 | A paid tier: price, renewal and cancellation shown before purchase, 14-day withdrawal right and digital-content rules, a processor agreement with the payment provider | Consumer Rights Directive 2011/83; Digital Content Directive (EU) 2019/770; GDPR Art. 28 | Subscription | Future |
+| CR-PAY-01 | A paid tier: price, renewal and cancellation shown before purchase, 14-day withdrawal right and digital-content rules, a processor agreement with the payment provider | Consumer Rights Directive 2011/83; Digital Content Directive (EU) 2019/770; GDPR Art. 28 | Subscription | Draft (pricing page, terms and privacy notice say it; the agreement with Paddle is the operator's to sign) |
 | CR-MOB-01 | Store listings and privacy forms match the privacy notice and the intended purpose | Store policies; GDPR Art. 13; MDR Art. 7 | Mobile apps | Future |
 | CR-ENC-01 | An attested confidential-computing relay (so the relay could be said not to see content) is a security measure to be described in the notice and the DPIA when it replaces the current relay | GDPR Art. 25, 32, 35 | Relay | Future |
 

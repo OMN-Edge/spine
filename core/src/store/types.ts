@@ -36,7 +36,7 @@ import type {
  * interface would weld it to `better-sqlite3`. The SQLite adapter returns
  * already-resolved values, which costs a microtask per call.
  *
- * Six exceptions to the user-scoping rule, each named here so that a fifth
+ * Nine exceptions to the user-scoping rule, each named here so that a tenth
  * has to be argued for:
  *
  *  1. `shareLinks.findLive`, `shareLinks.createRequest` and `documents.listForShare` — scoped by the *link's* owner, resolved from
@@ -54,6 +54,10 @@ import type {
  *     here.
  *  7. `cookieSessions.*` — the cookie session's state, found by the digest of the cookie's random id before there is an acting
  *     user (it is what says who that is), and holding no record.
+ *  8. `billing.findBySubscription`/`findByCustomer`/`recordEvent`/`pruneEvents`/`foundingHeld` — the payment provider's side (SECURITY.md **M-45**):
+ *     a webhook names the provider's own ids, which the server recorded when it first heard of them, and the count of founding prices is of
+ *     all accounts. Nothing here answers more than a plan.
+ *  9. `metrics.*` and `waitlist.*` — counts a day under a name, and addresses of people who are not accounts: neither belongs to a user.
  */
 /**
  * What the server keeps: accounts, sessions, the vault's sealed objects and the sealed copies of shares (SECURITY.md **M-37**). It is a
@@ -69,6 +73,10 @@ export interface AccountsStore {
   enrolments: EnrolmentRepository;
   cookieSessions: CookieSessionRepository;
   maintenance: MaintenanceRepository;
+  billing: BillingRepository;
+  metrics: MetricsRepository;
+  waitlist: WaitlistRepository;
+  delegations: DelegationRepository;
 
   /**
    * Ingestion writes a document, its tags and its fields together; a partial
@@ -121,6 +129,7 @@ export interface RecordsStore {
   conversations: ConversationRepository;
   regroupPlans: RegroupPlanRepository;
   guide: GuideRepository;
+  emergency: EmergencyRepository;
   matchDecisions: MatchDecisionRepository;
   changes: ChangeLog;
   files: FileRegistryRepository;
@@ -821,6 +830,123 @@ export interface FileRegistryRepository {
 }
 
 /** What the relay has let a user's device do today, so a restart or a second instance does not give the day again. */
+/** What an account pays for (`billing/plans.ts` says what that gives). One row per account; none means it has never subscribed. */
+export interface SubscriptionRecord {
+  user_id: string;
+  /** Who bills it: `paddle`, or `operator` for an account the operator granted (CLI `grant-plan`). */
+  provider: 'paddle' | 'operator';
+  customer_id: string | null;
+  subscription_id: string | null;
+  interval: 'month' | 'year' | null;
+  /** What it is a subscription to. */
+  plan: 'premium' | 'family';
+  /** The provider's word: active, trialing, past_due, paused, canceled. */
+  status: string;
+  /** Pays the founding price, locked for as long as the subscription runs. */
+  founding: boolean;
+  /** The end of what is paid for. */
+  current_period_end: string | null;
+  /** The subscription will end at `current_period_end` rather than renew. */
+  cancel_scheduled: boolean;
+  updated_at: string;
+}
+
+export interface BillingRepository {
+  get(userId: string): Promise<SubscriptionRecord | null>;
+  /** The provider's side (a webhook) names a subscription or a customer, not a user: the fifth and sixth lookups with no acting user (SECURITY.md **M-45**). */
+  findBySubscription(subscriptionId: string): Promise<SubscriptionRecord | null>;
+  findByCustomer(customerId: string): Promise<SubscriptionRecord | null>;
+  /** Writes the account's row, replacing any. An account's subscription is one row. */
+  put(record: SubscriptionRecord): Promise<void>;
+  /** Accounts that hold the founding price now (not counting ended subscriptions). */
+  foundingHeld(now: string): Promise<number>;
+  /** Records a provider event's id; false if it was already seen, so a repeated delivery is applied once. */
+  recordEvent(eventId: string, at: string): Promise<boolean>;
+  /** Forgets event ids older than this. */
+  pruneEvents(before: string): Promise<number>;
+}
+
+/**
+ * Letting another account see (and, for a guardian, write to) one profile of the owner's vault (FR-PRF-02, SECURITY.md **M-49**). The
+ * invitation holds the profile key sealed under a key only the code makes; a grant holds it sealed to the delegate's own key pair. The
+ * server learns who may open which profile, never a key.
+ */
+/** `guardian` reads and writes; `viewer` reads; `self` is the person the profile is of, with an account of their own (a teenager, from sixteen), who reads and writes. */
+export type DelegationRole = 'guardian' | 'viewer' | 'self';
+/** `promoted`: the person's own grant, ended because they took the profile into their own vault (**M-51**); it is theirs alone to see and does nothing but allow them to take over the cards published for it. */
+export type DelegationState = 'pending' | 'active' | 'paused' | 'revoked' | 'promoted';
+
+export interface DelegationRecord {
+  id: string;
+  owner_user_id: string;
+  profile_id: string;
+  delegate_user_id: string;
+  role: DelegationRole;
+  /** The profile key sealed to the delegate's public key; null until the delegate has completed the grant. */
+  wrapped_key: string | null;
+  state: DelegationState;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DelegationInvite { id: string; profile_id: string; role: DelegationRole; expires_at: string }
+
+export interface DelegationRepository {
+  /** The owner's: leaves an invitation for a profile. `proofHash` is what the claimant must show the hash of. */
+  invite(ownerId: string, invite: { id: string; profileId: string; role: DelegationRole; wrapped: string; proofHash: string; now: string; expiresAt: string }): Promise<void>;
+  invites(ownerId: string, now: string): Promise<DelegationInvite[]>;
+  cancelInvite(ownerId: string, id: string): Promise<boolean>;
+  /**
+   * The delegate's: spends an invitation (once, before it ends, to the one who shows the proof) and makes a pending grant to the acting
+   * account. Null if the code is wrong, used, ended, or is the owner's own. Answers the sealed profile key the code opens.
+   */
+  claim(delegateId: string, id: string, proofHash: string, now: string, grantId: string): Promise<{ grant: DelegationRecord; wrapped: string } | null>;
+  /** The delegate completes a pending grant with the profile key sealed to their own key; false if it is not theirs or not pending. */
+  complete(delegateId: string, id: string, wrappedKey: string, now: string): Promise<boolean>;
+  /** One grant, by its id; the caller checks whose it is (the owner's, or the delegate's, with `delegateId`). */
+  get(id: string): Promise<DelegationRecord | null>;
+  /** Grants of the owner's profiles, with the delegate's address and public key (to seal a replaced profile key to them). */
+  ownedBy(ownerId: string): Promise<Array<DelegationRecord & { delegate_email: string; delegate_public_key: string | null }>>;
+  /** Grants made to this account that are active or paused, with the owner's address; for the person themselves (`self`), also who else is let in, whose keys a promotion seals the new one to. */
+  madeTo(delegateId: string): Promise<Array<DelegationRecord & { owner_email: string; others: Array<{ id: string; role: DelegationRole; state: DelegationState; delegate_email: string; delegate_public_key: string | null }> }>>;
+  /** The owner's: pauses, resumes or ends a grant (one already ended, or promoted, is not theirs to change). False if it is not theirs. */
+  setState(ownerId: string, id: string, state: DelegationState, now: string): Promise<boolean>;
+  /** The delegate's: gives the grant up. */
+  leave(delegateId: string, id: string, now: string): Promise<boolean>;
+  /**
+   * Promotion at eighteen (CR-FAM-02, SECURITY.md **M-51**): the person the profile is of (the `self` grant's delegate) takes it into a vault of
+   * their own, in one step. Every live object moves from the owner's vault to theirs with its data key sealed under the new profile key (the
+   * new profile record likewise); the owner's rows become tombstones; every other grant of the profile moves to the new owner, paused, with
+   * the new key sealed to its holder; the old `self` grant ends; invitations for the profile are cancelled. `before` receives what is to move
+   * and runs once the step is known to be possible and before anything changes (it copies the sealed files across), so its failure changes
+   * nothing. Not subject to the plan's limits on people or size: nothing is refused because of what a plan holds. Null if it is not possible
+   * (the grant is not the caller's, active and `self`; the objects named are not exactly the profile's live ones; the grants are not exactly the
+   * others held); `no_vault` if the new owner has none.
+   */
+  promote(
+    delegateId: string, grantId: string,
+    update: { profileWrapped: string; profileSize: number; objects: Array<{ id: string; wrappedKey: string }>; grants: Array<{ id: string; wrappedKey: string }> },
+    now: string, before: (move: { fromUserId: string; profileId: string; objectIds: string[] }) => Promise<void>,
+  ): Promise<{ seq: number; fromUserId: string; objectIds: string[] } | null | 'no_vault'>;
+  /** The owner's, after a profile key rotates: the new sealed key for each remaining grant of the profile. */
+  rewrap(ownerId: string, profileId: string, keys: Array<{ id: string; wrappedKey: string }>, now: string): Promise<number>;
+}
+
+/** Counts the sign-ups and share openings that tell whether the loops in the marketing plan work. A number a day under a name; never who. */
+export interface MetricsRepository {
+  bump(name: string, day: string): Promise<void>;
+  /** Totals by name since the day (YYYY-MM-DD). */
+  totals(sinceDay: string): Promise<Array<{ name: string; total: number }>>;
+}
+
+/** People who asked to be told when Spine opens. Not accounts: an address and a time. */
+export interface WaitlistRepository {
+  /** False if the address was already on it. */
+  add(email: string, at: string, source: string | null): Promise<boolean>;
+  list(): Promise<Array<{ email: string; created_at: string; source: string | null }>>;
+  remove(email: string): Promise<boolean>;
+}
+
 export interface UsageRepository {
   /**
    * Counts one model call for the user on `day` (YYYY-MM-DD) and answers how many are counted now, or answers null with nothing counted
@@ -828,6 +954,10 @@ export interface UsageRepository {
    * whole instance.
    */
   spend(userId: string, day: string, limit: number): Promise<number | null>;
+  /** AI processing the account has used in a period (`billing/plans.ts`: `usagePeriod`), in thousandths of a page. */
+  aiUsed(userId: string, period: string): Promise<number>;
+  /** Adds what a finished call cost; answers the new total. Old periods of the account are forgotten. */
+  aiAdd(userId: string, period: string, amount: number): Promise<number>;
 }
 
 export interface TagWithCount { id: number; name: string; document_count: number }
@@ -1038,6 +1168,32 @@ export interface GuideMark {
   last_shown_at: string | null;
   /** When they acted on it or put it away; it is not shown again. */
   done_at: string | null;
+}
+
+/** The owner's emergency card and the record of its being opened (src/emergency.ts). Owner only. */
+export interface EmergencyCardRow {
+  /** The card's JSON (`CardContent`), as normalised when it was saved. */
+  content: string;
+  card_id: string | null;
+  card_key: string | null;
+  published_at: string | null;
+  updated_at: string;
+  /** When the owner last saved the card or said it is still right. */
+  reviewed_at: string | null;
+}
+
+export interface EmergencyScan { id: string; at: string; country: string | null }
+
+export interface EmergencyRepository {
+  get(userId: string): Promise<EmergencyCardRow | null>;
+  /** Saves what is written on the card; the published id and key are kept. */
+  save(userId: string, content: string, now: string): Promise<void>;
+  /** The owner looked at the card and it is still right. */
+  markReviewed(userId: string, now: string): Promise<void>;
+  /** Records that the card is published under an id and key, or (null) that it is not. */
+  setPublished(userId: string, published: { id: string; key: string } | null, now: string): Promise<void>;
+  addScan(userId: string, scan: EmergencyScan): Promise<void>;
+  scans(userId: string, limit: number): Promise<EmergencyScan[]>;
 }
 
 export interface GuideRepository {
@@ -1301,6 +1457,13 @@ export interface VaultRepository {
   /** A tombstone, so another device learns of the deletion; false if there is no such live object or `baseSeq` is stale. */
   remove(userId: string, id: string, baseSeq: number, now: string): Promise<{ seq: number } | false>;
   usage(userId: string): Promise<{ objects: number; bytes: number }>;
+  /**
+   * The owner's: a profile's key was replaced. Every live object of the profile gets its data key sealed under the new profile key, and the
+   * profile object its new wrapped key and size, in one step; the sequence advances for each, so other devices see them. `before` runs once the
+   * objects named are known to be exactly the profile's live ones and before anything is changed (the new profile record is stored there), so a
+   * failure of it changes nothing. Null if an object is missing, not the profile's, or left out.
+   */
+  rotateProfile(userId: string, profileId: string, update: { profileWrapped: string; profileSize: number; objects: Array<{ id: string; wrappedKey: string }> }, now: string, before: () => Promise<void>): Promise<{ seq: number } | null>;
   /** Removes the vault and every object row; the ids, so the caller can delete the files. */
   erase(userId: string): Promise<string[]>;
 }
@@ -1316,7 +1479,12 @@ export interface SharedBundle {
   blobs: number;
   blobBytes: number;
   revokedAt: string | null;
+  /** `share`: a copy of chosen records with an end time. `card`: an emergency card (one for each person the account keeps records for), with no end (its own switch is the owner's). */
+  kind: 'share' | 'card';
 }
+
+/** A card the server will remind its owner about: the account and the card's id. Nothing of what is on it is known here. */
+export interface CardDue { id: string; userId: string }
 
 export interface SharedRequest {
   id: string;
@@ -1343,14 +1511,26 @@ export interface SharedRepository {
   /** Public: by the id in the link. Revoked and expired ones are returned as they are; the caller decides. */
   get(id: string): Promise<SharedBundle | null>;
   /** The owner's: makes the row, or replaces its metadata when the same owner publishes again; 'taken' if the id is someone else's. */
-  put(userId: string, bundle: { id: string; expiresAt: string; requireApproval: boolean; size: number; blobs: number; blobBytes: number }, now: string): Promise<'ok' | 'taken' | 'revoked'>;
+  put(userId: string, bundle: { id: string; expiresAt: string; requireApproval: boolean; size: number; blobs: number; blobBytes: number; kind?: 'share' | 'card' }, now: string): Promise<'ok' | 'taken' | 'revoked' | 'too_many_cards'>;
+  /** The owner says the card is still right (or sends it again): the year for the yearly reminder starts over. False if it is not theirs, not a card, or off. */
+  touchCard(userId: string, id: string, now: string): Promise<boolean>;
+  /** Live cards last reviewed before one date and not reminded since another: whom to remind. */
+  cardsToRemind(reviewedBefore: string, remindedBefore: string): Promise<CardDue[]>;
+  markReminded(id: string, now: string): Promise<void>;
+  /**
+   * After a promotion (**M-51**): the new owner takes over an emergency card bundle published, for the profile they took, by the old owner's
+   * account, so the printed code keeps working and is theirs to turn off or replace. Allowed only to an account that holds a `promoted`
+   * grant from the bundle's owner, and who names the bundle's id, which is unguessable and known to them only from the records they took.
+   * `ok` also when the bundle is already theirs.
+   */
+  take(callerId: string, id: string, now: string): Promise<'ok' | 'not_found' | 'too_many'>;
   /** Counts a sealed file uploaded beside the database. */
   addBlob(userId: string, id: string, bytes: number): Promise<boolean>;
   /** A change of end date or approval, for the owner's own live bundle. */
   update(userId: string, id: string, patch: { expiresAt?: string; requireApproval?: boolean }): Promise<boolean>;
   /** Ends it now and forgets every wrapped key; false if it is not this owner's or already revoked. */
   revoke(userId: string, id: string, now: string): Promise<boolean>;
-  /** Live bundles and the bytes they hold, for the owner's limits. */
+  /** Live shares (not the emergency card) and the bytes they hold, for the owner's limits. */
   usage(userId: string, now: string): Promise<{ bundles: number; bytes: number }>;
   /** Bundles that have ended (past their end, or revoked) and still have files: their wrapped keys are forgotten and their sizes zeroed, and the ids come back so the caller deletes the files. */
   endedWithFiles(now: string): Promise<Array<{ id: string; userId: string }>>;

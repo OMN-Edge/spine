@@ -76,14 +76,14 @@ class CoreWorker {
   }
 
   /** Opens the vault with this master key and loads the records. The key is handed over, not copied: this page no longer has it. `keys` are the sealed keys the page already fetched. */
-  async unlock(masterKey: Uint8Array, keys?: KeysResponse): Promise<void> {
-    await this.send({ type: 'start', masterKey, keys }, [masterKey.buffer]);
+  async unlock(masterKey: Uint8Array, keys?: KeysResponse, profileId?: string): Promise<void> {
+    await this.send({ type: 'start', masterKey, keys, profileId }, [masterKey.buffer]);
     this.ready = true;
   }
 
   /** The same with a passkey's PRF output: the worker opens the account key with it. Handed over, not copied. */
-  async unlockWithPasskey(passkey: { prf: Uint8Array; credentialId: string; wrapped: string }): Promise<void> {
-    await this.send({ type: 'startWithPasskey', passkey }, [passkey.prf.buffer]);
+  async unlockWithPasskey(passkey: { prf: Uint8Array; credentialId: string; wrapped: string }, profileId?: string): Promise<void> {
+    await this.send({ type: 'startWithPasskey', passkey, profileId }, [passkey.prf.buffer]);
     this.ready = true;
   }
 
@@ -121,6 +121,35 @@ class CoreWorker {
     this.ready = false;
     this.saveState = { unsaved: false, error: null };
     window.dispatchEvent(new Event(SAVE_STATE_CHANGED));
+  }
+
+  /** The people this account keeps records for, and the one that is open. */
+  async profiles(): Promise<{ profiles: Person[]; current: string }> {
+    const m = await this.send({ type: 'profiles' });
+    return JSON.parse(new TextDecoder().decode(m.body ?? new ArrayBuffer(0)));
+  }
+
+  /** Takes the keys and the people as they now are, after a key was replaced or access changed. Stays on the same person. */
+  async reloadKeys(): Promise<void> {
+    await this.send({ type: 'reloadKeys' });
+    window.dispatchEvent(new Event(PROFILE_CHANGED));
+  }
+
+  /** Makes records for another person (a child, a parent), with a key of their own. Does not open them. */
+  async createProfile(name: string, child?: { born: string }): Promise<string> {
+    const m = await this.send({ type: 'createProfile', name, ...(child ? { kind: 'child' as const, born: child.born } : {}) });
+    return (JSON.parse(new TextDecoder().decode(m.body ?? new ArrayBuffer(0))) as { id: string }).id;
+  }
+
+  /** Saves what is open and opens another person's records. Throws `UnsavedChangesError` if something could not be saved, unless `force`. */
+  async switchProfile(profileId: string, force = false): Promise<void> {
+    try {
+      await this.send({ type: 'switchProfile', profileId, force });
+    } catch (err) {
+      if ((err as { code?: string }).code === 'unsaved') throw new UnsavedChangesError();
+      throw err;
+    }
+    window.dispatchEvent(new Event(PROFILE_CHANGED));
   }
 
   /** Tries to save now; throws if the vault did not take it. */
@@ -174,11 +203,25 @@ type WithoutId<T> = T extends unknown ? Omit<T, 'id'> : never;
 export const RECORDS_CHANGED = 'spine:records-changed';
 /** Said on the window when `device.saveState` changed. */
 export const SAVE_STATE_CHANGED = 'spine:save-state';
+/** Announced on the window after another person's records were opened, so the screens that hold records look again. */
+export const PROFILE_CHANGED = 'spine:profile-changed';
+
+/** Which person's records this browser opened last, per account (an opaque id, not a secret). Best effort: the first person is opened where there is none. */
+const rememberedKey = (account: string) => `spine.profile:${account}`;
+export function rememberedProfile(account: string): string | undefined {
+  try { return localStorage.getItem(rememberedKey(account)) ?? undefined; } catch { return undefined; }
+}
+export function rememberProfile(account: string, profileId: string): void {
+  try { localStorage.setItem(rememberedKey(account), profileId); } catch { /* the next sign-in opens the first person */ }
+}
 
 /** Locking would lose changes the vault does not have yet. */
 export class UnsavedChangesError extends Error {
   constructor() { super('some changes are not saved yet'); this.name = 'UnsavedChangesError'; }
 }
+
+/** A person whose records the account may open: its own, a child's, or one another account let it into. */
+export interface Person { id: string; name: string; kind?: 'child'; born?: string; shared?: { owner: string; role: 'guardian' | 'viewer' | 'self' } }
 
 /** The owner's core: their vault, opened with the master key. */
 export const device = new CoreWorker();
@@ -187,11 +230,15 @@ export const reader = new CoreWorker();
 export const deviceFetch = (url: string, init?: RequestInit) => device.fetch(url, init);
 
 /**
- * Requests the server answers: the account (and the administrator's list of waiting accounts), the vault's objects, and a share's sealed copy and handshake (`/api/shared/`, which is
+ * Requests the server answers: the account (and the administrator's list of waiting accounts), the vault's objects, the plan and payment
+ * (`/api/billing`, `/api/pricing`) and the waitlist, the grants that let another account in, and a share's sealed copy and handshake (`/api/shared/`, which is
  * ciphertext and metadata). What a recipient reads of a share (`/api/share/<id>/...`) is answered by the reader's core; every other
  * `/api` call is the owner's core.
  */
-const SERVER_SIDE = /^\/(api\/(auth|account|admin|legal|vault|shared|enrol)\/|share\/)/;
+const SERVER_SIDE = /^\/(api\/(auth|account|admin|legal|vault|shared|enrol|delegations|delegated|relay|demo-relay)\/|api\/(billing|pricing|waitlist|delegations|trust-anchors)(\/|\?|$)|share\/)/;
+
+/** Whether a request goes to the server rather than to one of the cores. Every route the server registers must (`routing.test.ts`). */
+export const goesToServer = (url: string): boolean => SERVER_SIDE.test(url) || !url.startsWith('/api/');
 const READER = /^\/api\/share\//;
 
 /** The share the reader's core has open, so that what the recipient opens can be noted at the server. */
@@ -211,7 +258,7 @@ export async function appFetch(url: string, init?: RequestInit): Promise<Respons
     }
     return res;
   }
-  return SERVER_SIDE.test(url) || !url.startsWith('/api/') ? fetch(url, init) : deviceFetch(url, init);
+  return goesToServer(url) ? fetch(url, init) : deviceFetch(url, init);
 }
 
 /** A picture the core holds, as an address the page can show; the same address is reused, and the oldest are let go. */

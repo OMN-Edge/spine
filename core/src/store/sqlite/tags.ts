@@ -2,7 +2,7 @@ import { randomRowId, starterTagId } from '../ids.js';
 import { STARTER_TAGS } from '../../tags.js';
 import type { Database } from './driver.js';
 import type { TagRepository } from '../types.js';
-import { owner } from './owner.js';
+import { owner } from '../owner.js';
 import { cleanTag } from '../../tags.js';
 
 /**

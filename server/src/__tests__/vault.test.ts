@@ -6,7 +6,10 @@ import { OWNER_EMAIL, OWNER_ID, createTestUser } from './helpers/seed.js';
 import { fakeAuthValue, fakeVaultKeys } from 'spine-core/testing/vault.js';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { issueUserToken } from '../accounts.js';
-import { vaultDirOf } from '../vault-files.js';
+import { resolveDataDir } from 'spine-core/config.js';
+
+/** Where the object store, being files here, puts an account's objects. */
+const vaultDirOf = (userId: string) => `${resolveDataDir()}/vault/${userId}`;
 import { deleteAccount } from '../accounts.js';
 import { resetMailer, type Mailer } from '../mail/index.js';
 import { resolveBackupDir } from 'spine-core/config.js';

@@ -31,3 +31,25 @@ img, svg, video { max-width: 100%; }
 .draw { stroke-dasharray: 1; animation: spine-draw 0.9s ease-out both; }
 @keyframes spine-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
 @media (prefers-reduced-motion: reduce) { .draw { animation: none; } }
+
+/* The emergency card on paper: bank-card sized, shown only when a card is printed (PrintCard.tsx). */
+.print-card { display: none; }
+@media print {
+  body.printing-card > * { visibility: hidden; }
+  body.printing-card .print-card, body.printing-card .print-card * { visibility: visible; }
+  body.printing-card .print-card { display: flex; gap: 6mm; position: absolute; left: 0; top: 0; }
+  .print-card .card-face { width: 85.6mm; height: 54mm; box-sizing: border-box; border: 0.3mm dashed #666; border-radius: 3mm; padding: 3mm; overflow: hidden; background: #fff; color: #000; font: 7pt/1.25 system-ui, sans-serif; }
+  .print-card .card-face p { margin: 0 0 0.6mm; }
+  .print-card .card-head { color: #b91c1c; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; font-size: 6.5pt; }
+  .print-card .card-name { font-size: 10pt; font-weight: 700; }
+  .print-card .card-more, .print-card .card-small { color: #444; font-size: 6pt; }
+  .print-card .card-back { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+  .print-card .card-qr { width: 34mm; height: 34mm; }
+  @page { margin: 10mm; }
+}
+
+/* The front page's family of spines: each vertebra settles into place once, from the bottom up, when the page opens. */
+@keyframes spine-settle { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.settle { animation: spine-settle 0.5s ease-out both; transform-box: fill-box; }
+@media (prefers-reduced-motion: reduce) { .settle { animation: none; } }
+

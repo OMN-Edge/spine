@@ -355,6 +355,8 @@ export function buildActionTools(stateOf: (runtime: ToolRuntime) => ActionState)
     const { docs, unknown } = await resolve(s, [document]);
     if (unknown.length > 0 || docs.length === 0) return UNKNOWN(document);
     const doc = docs[0];
+    // Its details do not exist yet: they are read when the person confirms the grouping, and that reading would replace a correction.
+    if (doc.needs_reading) return `${s.registry.label(doc)} is NOT READ YET: its title, date and details are read when the person confirms the grouping, so there is nothing to correct before then. Nothing was proposed.`;
 
     const patch: Record<string, unknown> = {};
     const changes: DetailChange[] = [];

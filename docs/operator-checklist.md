@@ -23,6 +23,19 @@ None of these can be seen from the code. Each needs you to look at the provider'
 - [ ] **Signature authorities.** If you want a doctor's digital signature shown as verified, put the certificates you trust in `SPINE_TRUST_ANCHORS_DIR` (for Romania, the qualified trust service providers on the EU trusted list). With none, a signature is a label (SECURITY.md **S-23**).
 - [ ] **Whether other duties apply to you:** accessibility, NIS2, the Cyber Resilience Act's reporting duty, a data protection officer (requirements `CR-ACC-01`, `CR-NIS-01`, `CR-CRA-01`, `CR-GDPR-13`).
 
+## Plans, the card and families (only if you use them)
+
+None of these can be seen from the code either.
+
+- [ ] **Payment provider.** Make a Paddle account and test everything in its sandbox before `PADDLE_ENVIRONMENT=production` ([billing.md](billing.md)): set the default payment link in the dashboard to the page in `checkout/` (Paddle may need the domain approved first), make a notification destination for `/api/billing/webhook` with the events listed there, and **buy once with a test card** and watch the account become Premium, then cancel from the portal. Read its terms as the seller of record: who refunds, the fourteen days offered on the pricing page, and how tax is shown before payment. Sign its data processing agreement (`CR-PAY-01`, `CR-GDPR-05`). Nothing in this repository has been run against Paddle's sandbox end to end.
+- [ ] **The sandbox key.** If a Paddle key was ever pasted into a chat, a ticket or a log, revoke it in the dashboard and make a new one.
+- [ ] **The wording of cancellation and refund.** The terms and the pricing page say you cancel from your account on the provider's page and can have your money back in the first 14 days. Confirm both with the provider's actual flow and with a lawyer; the software only links to the portal.
+- [ ] **A lawyer on the family features** (`CR-FAM-01` to `CR-FAM-03`): sixteen as the age for an account of their own and the guardian's invitation as the consent (Romania has not lowered the age in GDPR Art. 8; check it still holds when you launch), and whether a young person may hide records from their guardians before eighteen, which the software does not do.
+- [ ] **A lawyer on the emergency card** (`CR-EMG-01`): that turning it on, after the page says anyone with the code reads it, is a valid explicit consent for what you let people put on it, including identification numbers, and for a card kept for a child.
+- [ ] **Object storage, if you use a bucket** ([deployment-gcp.md](deployment-gcp.md)): an EU location, uniform access, public access prevented, versioning or soft delete on, a lifecycle rule that expires old versions (so an erased account's ciphertext does not outlive the retention you state), and `roles/storage.objectAdmin` for the server's account only. The software checks none of these.
+- [ ] **Postgres, if you use it:** an EU region, TLS (`sslmode=require`), the host's automated backups and point-in-time recovery switched on and a restore tried; `backup.ts` makes no snapshot of it.
+- [ ] **A mailer**, if you want the yearly card reminders and the notices of an invitation accepted or a card opened to be sent: without one the app still shows its own prompts, and nothing is mailed.
+
 ## Deploying
 
 - [ ] **Secrets.** `SESSION_SECRET` of at least 32 random characters; `SPINE_RELAY_SECRET` the same on the server and the relay. Rotating `SESSION_SECRET` later ends every session and makes every enrolled authenticator unreadable (SECURITY.md **S-21**, "Operational response").
@@ -52,4 +65,4 @@ None of these can be seen from the code. Each needs you to look at the provider'
 
 ## What is not covered by anything yet
 
-So you do not assume otherwise: nothing has been audited or tested by an outside party; Anthropic behind the relay has never been run live (Vertex has, on invented records); a real Brevo send and the CI browser jobs on a real runner have not been run; the OCR and page-reading thresholds are first guesses to tune on your own documents (ARCHITECTURE.md, "Not done yet").
+So you do not assume otherwise: nothing has been audited or tested by an outside party; the OCR and page-reading thresholds are first guesses to tune on your own documents.

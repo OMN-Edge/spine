@@ -1,4 +1,4 @@
-/** The SQL of this schema (see ARCHITECTURE.md, the schema files): idempotent \`CREATE TABLE IF NOT EXISTS\`, applied whenever a database is opened. */
+/** The SQL of this schema (see docs/architecture/data.md, Schema): idempotent \`CREATE TABLE IF NOT EXISTS\`, applied whenever a database is opened. */
 export const recordsSchema = `-- The tables of the records themselves. The device's core builds them beside schema-accounts.sql (\`schema.ts\`); the server's own
 -- database is made from the accounts file alone (SECURITY.md M-37), so none of these exist there.
 
@@ -376,6 +376,25 @@ CREATE TABLE IF NOT EXISTS guide_marks (
   done_at TEXT,
   PRIMARY KEY (user_id, key)
 );
+-- The owner's emergency card (src/emergency.ts): what is written on it, and, once it is published, the id and key of its sealed bundle at the
+-- server. Kept with the records so a second device shows the same card; never in a share, not exported. \`card_key\` is a secret of the owner's.
+CREATE TABLE IF NOT EXISTS emergency_cards (
+  user_id TEXT PRIMARY KEY REFERENCES users(id),
+  content TEXT NOT NULL,
+  card_id TEXT,
+  card_key TEXT,
+  published_at TEXT,
+  updated_at TEXT NOT NULL,
+  reviewed_at TEXT -- when the owner last saved the card or said it is still right; a year later the page asks them to look again
+);
+-- Each time the published card was opened: when, and from which country. The address is never kept.
+CREATE TABLE IF NOT EXISTS emergency_scans (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  at TEXT NOT NULL,
+  country TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_emergency_scans_user ON emergency_scans(user_id, at);
 CREATE INDEX IF NOT EXISTS idx_chat_conversations_user ON chat_conversations(user_id, updated_at);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation ON chat_messages(conversation_id, seq);
 

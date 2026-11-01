@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { normaliseCard, EMPTY_CARD } from 'spine-core/emergency';
 import { newShareKey, newVisitorKeys, openPart, sealPart, unwrapShareKey, wrapShareKey } from './keys';
 
 describe('the keys of a share', () => {
@@ -21,5 +22,15 @@ describe('the keys of a share', () => {
     expect(wrapped).not.toContain(shareKey);
     expect(await unwrapShareKey(wrapped, visitor)).toBe(shareKey);
     expect(await unwrapShareKey(wrapped, await newVisitorKeys())).toBeNull();
+  });
+
+  it('seals an emergency card so that the key in the address opens it, here and nowhere else', async () => {
+    const key = await newShareKey();
+    const card = normaliseCard({ ...EMPTY_CARD, name: 'Jane Example', allergies: ['penicillin'] });
+    const sealed = await sealPart(key, 'card-aaaa', 'card', new TextEncoder().encode(JSON.stringify(card)));
+    expect(new TextDecoder().decode(sealed)).not.toContain('penicillin');
+    expect(normaliseCard(JSON.parse(new TextDecoder().decode(await openPart(key, 'card-aaaa', 'card', sealed)))).allergies).toEqual(['penicillin']);
+    await expect(openPart(key, 'card-bbbb', 'card', sealed)).rejects.toThrow();
+    await expect(openPart(key, 'card-aaaa', 'db', sealed)).rejects.toThrow();
   });
 });

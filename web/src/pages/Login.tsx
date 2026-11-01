@@ -22,7 +22,7 @@ export default function Login() {
   const [needsCode, setNeedsCode] = useState(false);
   const [code, setCode] = useState('');
   const [resent, setResent] = useState('');
-  const [options, setOptions] = useState<AuthOptions>({ registration: 'operator', recovery: false, instance: 'public' });
+  const [options, setOptions] = useState<AuthOptions>({ registration: 'operator', recovery: false, instance: 'public', billing: false, waitlist: false });
 
   useEffect(() => {
     api.auth.options().then(setOptions).catch(() => {});

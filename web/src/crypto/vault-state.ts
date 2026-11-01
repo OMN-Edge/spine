@@ -2,7 +2,7 @@ import { deriveFromPassword, type KdfParams } from './keys.js';
 import { VaultSession, fetchKdf, fetchKeys, type KeysResponse, type PasskeyUnlock } from './vault-client.js';
 import { sodium } from './sodium.js';
 import { OpenError } from './seal.js';
-import { device, forgetDeviceObjectUrls } from '../core/client';
+import { device, forgetDeviceObjectUrls, rememberedProfile } from '../core/client';
 
 /**
  * What the page holds about the vault between steps: the address signed in with, the master key from the sign-in until the vault has
@@ -46,7 +46,7 @@ export const vaultState = {
   async startDevice(): Promise<'open' | 'locked'> {
     if (device.isOpen()) return 'open';
     if (!pendingMaster) return 'locked';
-    await device.unlock(pendingMaster.slice());
+    await device.unlock(pendingMaster.slice(), undefined, rememberedProfile(email));
     return 'open';
   },
 
@@ -104,7 +104,7 @@ export const vaultState = {
     const t3 = performance.now();
     await session?.close();
     session = opened;
-    if (!device.isOpen()) await device.unlock(forDevice, keys);
+    if (!device.isOpen()) await device.unlock(forDevice, keys, rememberedProfile(email));
     // Where the time went, for whoever is finding out why opening is slow: milliseconds, never a key or a record.
     console.debug('[unlock]', { prefetched: !!ahead, kdfMs: Math.round(t1 - t0), deriveMs: Math.round(t2 - t1), keysMs: Math.round(t3 - t2), openMs: Math.round(performance.now() - t3), totalMs: Math.round(performance.now() - t0) });
     return session;
@@ -115,7 +115,7 @@ export const vaultState = {
     const opened = await VaultSession.openWithPasskey({ ...unlock, prf: unlock.prf.slice() });
     await session?.close();
     session = opened;
-    if (!device.isOpen()) await device.unlockWithPasskey({ credentialId: unlock.credentialId, wrapped: unlock.wrapped, prf: unlock.prf.slice() });
+    if (!device.isOpen()) await device.unlockWithPasskey({ credentialId: unlock.credentialId, wrapped: unlock.wrapped, prf: unlock.prf.slice() }, rememberedProfile(email));
     return session;
   },
 

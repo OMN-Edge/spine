@@ -521,7 +521,7 @@ export class ApiError extends Error {
 }
 
 /** What the sign-in page needs before anyone is signed in. `approval`: people ask for an account and the administrator approves it. `private`: a private deployment. */
-export interface AuthOptions { registration: 'operator' | 'open' | 'approval'; recovery: boolean; instance: 'public' | 'private' }
+export interface AuthOptions { registration: 'operator' | 'open' | 'approval'; recovery: boolean; instance: 'public' | 'private'; billing: boolean; waitlist: boolean }
 
 async function req<T>(url: string, options?: RequestInit, retried = false): Promise<T> {
   const res = await appFetch(url, {
@@ -601,7 +601,59 @@ const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, 
   signal?.addEventListener('abort', () => { clearTimeout(timer); reject(new DOMException('stopped', 'AbortError')); }, { once: true });
 });
 
+export interface Prices { premium: { year: number; month: number }; founding: { year: number }; family: { year: number; month: number }; currency: string }
+export interface Pricing { enabled: boolean; prices?: Prices; founding_left?: number; /** The family plan is sold here. */ family?: boolean }
+/** What the account page shows of the plan (the server's `GET /api/billing`). */
+export interface BillingView {
+  enabled: boolean;
+  plan?: 'trial' | 'free' | 'premium' | 'family';
+  trial_ends_at?: string | null;
+  subscription?: { status: string; interval: 'month' | 'year' | null; founding: boolean; ends_at: string | null; renews_at: string | null; provider: 'paddle' | 'operator' } | null;
+  can_manage?: boolean;
+  ai?: { used: number; allowance: number; period: 'trial' | 'month' };
+  vault?: { used_bytes: number; limit_bytes: number };
+  shares?: { live: number; limit: number };
+  features?: { translation: boolean; chat: boolean; linking: boolean; related: boolean; approval_mode: boolean; delegation: boolean };
+  people?: { limit: number };
+  family?: boolean;
+  prices?: Prices;
+  founding_left?: number;
+}
+
+export interface EmergencyView {
+  card: import('spine-core/emergency').CardContent;
+  updated_at: string | null;
+  /** When the card was last saved or said to be still right; a year later `review_due` is set. */
+  reviewed_at: string | null;
+  review_due: boolean;
+  published: { id: string; address: string; since: string | null } | null;
+  /** The card as the plain text an offline code holds, and how many items did not fit. */
+  offline: { text: string; omitted: number };
+  scans: Array<{ id: string; at: string; country: string | null }>;
+}
+
 export const api = {
+  emergency: {
+    get: () => req<EmergencyView>('/api/emergency'),
+    save: (card: import('spine-core/emergency').CardContent) => put<EmergencyView>('/api/emergency', card),
+    publish: () => post<EmergencyView>('/api/emergency/publish', undefined),
+    unpublish: () => del<EmergencyView>('/api/emergency/publish'),
+    /** The owner looked and it is still right. */
+    reviewed: () => post<EmergencyView>('/api/emergency/reviewed', undefined),
+    /** After taking a profile at eighteen: the card published for it becomes this account's. */
+    takeOver: () => post<EmergencyView>('/api/emergency/take-over', undefined),
+    /** A new code for the card (the old one is turned off first), for when the printed one is lost. */
+    replace: () => post<EmergencyView>('/api/emergency/replace', undefined),
+  },
+  billing: {
+    pricing: () => req<Pricing>('/api/pricing'),
+    get: () => req<BillingView>('/api/billing'),
+    /** Where to send the person to pay: the provider's checkout, on a page of its own. */
+    checkout: (interval: 'month' | 'year', plan: 'premium' | 'family' = 'premium') => post<{ url: string }>('/api/billing/checkout', { interval, plan }),
+    portal: () => post<{ url: string }>('/api/billing/portal', {}),
+  },
+  /** Asking to be told when Spine opens. The answer is the same whether or not the address was already there. */
+  waitlist: (email: string, source?: string) => post<{ ok: boolean }>('/api/waitlist', { email, source }),
   /** The accounts waiting for approval (SPINE_REGISTRATION=approval); only an address in SPINE_ADMIN_EMAILS is let see them. */
   admin: {
     accounts: () => req<{ pending: Array<{ id: string; email: string; created_at: string; email_confirmed: boolean }> }>('/api/admin/accounts'),
@@ -705,8 +757,8 @@ export const api = {
     me: () => req<{ authenticated: boolean; email: string; second_factor_enabled?: boolean; vault?: boolean; consent_needed?: { health: boolean; terms: boolean } }>('/api/auth/me'),
     options: () => req<AuthOptions>('/api/auth/options'),
     /** The keys are made on the device; the server gets the derived credential and the sealed keys, never the password. */
-    register: (email: string, account: { authValue: string; keys: VaultKeyPayload }, consent: { health_data: boolean; terms: boolean }) =>
-      post<{ ok: boolean; message: string; pending?: boolean }>('/api/auth/register', { email, auth_value: account.authValue, keys: account.keys, consent_health_data: consent.health_data, accept_terms: consent.terms }),
+    register: (email: string, account: { authValue: string; keys: VaultKeyPayload }, consent: { health_data: boolean; terms: boolean }, ref?: string) =>
+      post<{ ok: boolean; message: string; pending?: boolean }>('/api/auth/register', { email, auth_value: account.authValue, keys: account.keys, consent_health_data: consent.health_data, accept_terms: consent.terms, ref }),
     /** An account without a vault makes one: the new credential replaces the password the server knew. */
     createVault: (account: { authValue: string; keys: VaultKeyPayload }) => put<{ ok: boolean }>('/api/vault/keys', { auth_value: account.authValue, keys: account.keys }),
     rewrap: (change: { authValue?: string; keys: VaultKeyPayload }) => post<{ ok: boolean }>('/api/vault/keys/rewrap', { auth_value: change.authValue, keys: change.keys }),

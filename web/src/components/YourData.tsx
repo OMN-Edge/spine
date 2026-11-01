@@ -64,6 +64,7 @@ export default function YourData() {
 
       <h3 className="text-sm font-medium text-gray-900 mb-1">{t('Delete the account')}</h3>
       <p className="text-xs text-gray-600 mb-2">{t('This deletes the account {email}, its records and its files, at once, with the copy of them in the backups. Database backups made earlier keep the account’s row, its wrapped keys and a list of its sealed objects, for a few days. Type your address to confirm.', { email })}</p>
+      <p className="text-xs text-gray-600 mb-2">{t('If you have let other people into the records of someone you look after, they lose access to them when this account is deleted.')}</p>
       <input value={confirm} onChange={e => setConfirm(e.target.value)} placeholder={email} aria-label={t('Email')} className={inputClass} />
       {error && <Notice kind="error">{error}</Notice>}
       <button type="button" onClick={remove} disabled={confirm.trim().toLowerCase() !== email.toLowerCase()} className={`${buttonClass} bg-red-700 hover:bg-red-800 disabled:opacity-50`}>{t('Delete my account')}</button>

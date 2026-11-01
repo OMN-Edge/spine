@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { defineConfig } from 'vite';
@@ -47,8 +48,12 @@ export default defineConfig(({ command }) => ({
       '/share': 'http://localhost:3000',
     },
   },
+  // A test that asserts nothing passes whatever the code does; this makes it fail instead.
+  test: { expect: { requireAssertions: true } },
   build: {
     outDir: 'dist',
+    // A font is never inlined as a data: address: the content security policy allows fonts from this origin only (font-src 'self').
+    assetsInlineLimit: (file: string) => (/\.(woff2?|ttf|otf)$/.test(file) ? false : undefined),
     target: 'es2022',
   },
 }));

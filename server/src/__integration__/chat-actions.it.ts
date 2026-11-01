@@ -33,12 +33,13 @@ describeLive('asking the assistant to share, note, correct and tidy', () => {
     } });
     expect(made.statusCode).toBe(201);
     // The recipient sees those two documents and nothing else.
-    const seen = (await w.app.inject({ method: 'GET', url: `/api/share/${made.json().token}/documents` })).json() as Array<{ id: string }>;
-    expect(seen.map(d => d.id).sort()).toEqual(ids);
+    const opened = await w.app.inject({ method: 'GET', url: `/api/share/${made.json().id}/documents` });
+    expect(opened.statusCode).toBe(200);
+    expect((opened.json() as Array<{ id: string }>).map(d => d.id).sort()).toEqual(ids);
   });
 
   it('reasons about dates: both cardiology visits and only the March tests, not the October ones or the hospital stay', async () => {
-    const reply = await ask(w, 'A year ago I went to cardiology (the October visit), but I only did the tests the March visit asked for now. Prepare a link for my new cardiologist with both visits and the March tests, and nothing else.');
+    const reply = await ask(w, 'A year ago I went to cardiology (the October visit). I did not do the tests that visit asked for, only the ones the March follow-up asked for. Prepare a link for my new cardiologist with both visits and the March tests, and nothing else.');
     const share = proposalOf(reply, 'share_link');
     const ids = new Set(share.documents.map(d => d.id));
     expect(ids.has(year.visitOld.id)).toBe(true);

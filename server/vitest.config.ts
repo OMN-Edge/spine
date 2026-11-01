@@ -16,6 +16,8 @@ export default defineConfig({
   },
   test: {
     globals: true,
+    // A test that asserts nothing passes whatever the code does; this makes it fail instead.
+    expect: { requireAssertions: true },
     environment: 'node',
     // The tests run the routes the device runs: the first store a test opens holds records. `test:accounts` runs the server's own instead.
     setupFiles: ['../core/src/testing/use-records-store.ts', './src/__tests__/helpers/use-providers.ts'],
@@ -35,7 +37,11 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
-      exclude: ['src/index.ts'],
+      // What ships: not the entry point (the smoke test starts it), not the tests, their helpers or the integration flows.
+      exclude: ['src/index.ts', 'src/__tests__/**', 'src/__integration__/**', 'src/testing/**'],
+      // The floor, measured 2026-10-31 at 89.2% statements, 80.9% branches and 93.1% lines: `npm run test:coverage` fails below it, so a change that
+      // leaves new code untested shows. Raise it when the figures rise; the core's code is measured here through the server's tests that drive it.
+      thresholds: { statements: 88, branches: 80, lines: 92 },
     },
   },
 });

@@ -83,7 +83,13 @@ export function createShareHost(deps: { store: () => Store; mail: () => boolean 
         if (!(await store.shareLinks.findFor(userId, r.bundleId))) continue;
         await store.shareLinks.createRequest(r.bundleId, { id: r.id, visitorHash: r.visitorKey, note: r.note, ipAddress: r.country, userAgent: null, requestedAt: r.requestedAt }, 50);
       }
+      const card = await store.emergency.get(userId);
       for (const o of events.opens) {
+        // The emergency card is opened without a link of the owner's: each opening of it is a scan, kept with the card.
+        if (card?.card_id === o.bundleId) {
+          if (!o.countView) await store.emergency.addScan(userId, { id: `scan-${o.id}-${o.bundleId.slice(0, 8)}`, at: o.at, country: o.country });
+          continue;
+        }
         if (!(await store.shareLinks.findFor(userId, o.bundleId))) continue;
         await store.shareLinks.logAccess(o.bundleId, o.at, null, o.countView, { country: o.country, documentId: o.documentId });
       }
@@ -98,6 +104,27 @@ export function createShareHost(deps: { store: () => Store; mail: () => boolean 
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(approved ? { decision: 'approved', wrapped_key: await wrapShareKey(shareKey!, request.visitorKey) } : { decision: 'denied' }),
       });
+    },
+
+    async publishCard({ id, key, content }) {
+      const cardId = id ?? crypto.randomUUID();
+      const cardKey = key ?? (await newShareKey());
+      // Sealed under a key of its own that only the owner's device and the address it hands out hold; the server stores bytes it cannot open.
+      const sealed = await sealPart(cardKey, cardId, 'card', new TextEncoder().encode(content));
+      await call('PUT', `/api/shared/${encodeURIComponent(cardId)}`, { headers: { 'content-type': 'application/octet-stream', 'x-spine-kind': 'card' }, body: sealed as BodyInit });
+      return { id: cardId, key: cardKey };
+    },
+
+    async takeCard(id) {
+      await call('POST', `/api/shared/${encodeURIComponent(id)}/take`, { ok404: true });
+    },
+
+    async reviewCard(id) {
+      await call('POST', `/api/shared/${encodeURIComponent(id)}/review`, { ok404: true });
+    },
+
+    async revokeCard(id) {
+      await call('DELETE', `/api/shared/${encodeURIComponent(id)}`, { ok404: true });
     },
 
     mailsOwner: deps.mail,

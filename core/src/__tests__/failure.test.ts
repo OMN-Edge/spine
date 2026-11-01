@@ -34,6 +34,8 @@ describe('failureKind', () => {
     expect(failureKind('a photo can only be read by the model, and image reading is switched off on this server')).toBe('reading_off');
     expect(failureKind('the daily limit of 40 model calls is reached; it starts again at midnight UTC')).toBe('limit');
     expect(failureKind('the model service answered 429')).toBe('limit');
+    expect(failureKind('the model service answered 402: the plan’s AI processing is used up')).toBe('allowance');
+    expect(failureKind('the model service answered 402: this is not part of the account’s plan')).toBe('plan');
     expect(failureKind('the model service answered 503: unavailable')).toBe('service');
     expect(failureKind('this device has no pass for the model service')).toBe('service');
   });

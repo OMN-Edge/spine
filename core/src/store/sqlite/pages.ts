@@ -7,7 +7,7 @@ import type {
   PageSummary,
   PageWithoutPath,
 } from '../types.js';
-import { expectInserted, owner } from './owner.js';
+import { expectInserted, owner } from '../owner.js';
 import { rotateBox, type Turn } from '../../geometry.js';
 
 /** Every statement filters by `user_id` (SECURITY.md P12). */

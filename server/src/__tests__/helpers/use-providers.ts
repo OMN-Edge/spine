@@ -1,5 +1,6 @@
 import { useNodeTools } from '../../native/index.js';
 import { useModelProviders } from '../../providers.js';
+import { createObjects, useObjects } from '../../objects/index.js';
 
 /**
  * Setup file of the server's test runs: the providers the relay service runs (anthropic, vertex) are known, as they are to the relay, and the
@@ -7,3 +8,4 @@ import { useModelProviders } from '../../providers.js';
  */
 useModelProviders();
 useNodeTools();
+useObjects(() => createObjects());

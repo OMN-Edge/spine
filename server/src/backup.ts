@@ -1,8 +1,9 @@
 import { existsSync, mkdirSync, readdirSync, statSync, copyFileSync, rmSync, utimesSync } from 'fs';
 import path from 'path';
 import { getAccountsStore } from 'spine-core/store/index.js';
-import { resolveBackupDir, resolveDataDir } from 'spine-core/config.js';
+import { loadStoreConfig, resolveBackupDir, resolveDataDir } from 'spine-core/config.js';
 import { useAccountsStore } from './store.js';
+import { objects } from './objects/index.js';
 
 /**
  * SECURITY.md P11: `data/spine.db` and `data/vault/` must be restorable.
@@ -36,10 +37,15 @@ export interface BackupOptions {
   /** Database snapshots to retain, newest first. */
   keep: number;
   now?: Date;
+  /** False when the database is not a file this process can snapshot (Postgres: managed backups, or `pg_dump`). Default true. */
+  database?: boolean;
+  /** False when the sealed objects are not files on this machine (a bucket): the bucket's own versioning or soft delete is their backup. Default true. */
+  files?: boolean;
 }
 
 export interface BackupResult {
-  snapshot: string;
+  /** The database snapshot, or null where the database is backed up by its host (Postgres). */
+  snapshot: string | null;
   /** Sealed vault objects newly copied or replaced by this run. */
   vaultCopied: number;
   /** Older snapshots removed by retention. */
@@ -114,19 +120,21 @@ export async function runBackup({
   backupDir,
   keep,
   now = new Date(),
+  database = true,
+  files = true,
 }: BackupOptions): Promise<BackupResult> {
   mkdirSync(backupDir, { recursive: true });
 
-  const snapshot = path.join(backupDir, `${SNAPSHOT_PREFIX}${timestamp(now)}${SNAPSHOT_SUFFIX}`);
-  if (existsSync(snapshot)) rmSync(snapshot); // VACUUM INTO refuses an existing file
+  const snapshot = database ? path.join(backupDir, `${SNAPSHOT_PREFIX}${timestamp(now)}${SNAPSHOT_SUFFIX}`) : null;
+  if (snapshot && existsSync(snapshot)) rmSync(snapshot); // VACUUM INTO refuses an existing file
 
   // How the snapshot is taken is the adapter's business (VACUUM INTO for
   // SQLite); this file only decides where it goes and what to keep.
-  await getAccountsStore().maintenance.snapshotTo(snapshot);
+  if (snapshot) await getAccountsStore().maintenance.snapshotTo(snapshot);
 
   // After the snapshot, never before: an object's file is written before its row, so files
   // copied now are at least as new as the rows just snapshotted.
-  const vaultCopied = mirrorVault(path.join(dataDir, 'vault'), path.join(backupDir, 'vault'));
+  const vaultCopied = files ? mirrorVault(path.join(dataDir, 'vault'), path.join(backupDir, 'vault')) : 0;
 
   return { snapshot, vaultCopied, snapshotsPruned: pruneSnapshots(backupDir, keep) };
 }
@@ -143,9 +151,9 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const result = await runBackup({ dataDir, backupDir, keep });
+  const result = await runBackup({ dataDir, backupDir, keep, database: loadStoreConfig().adapter === 'sqlite', files: objects().kind === 'filesystem' });
   console.log(
-    `backup: ${result.snapshot}, ` +
+    `backup: ${result.snapshot ?? 'database left to its host'}, ` +
       `${result.vaultCopied} vault object(s) mirrored, ` +
       `${result.snapshotsPruned.length} old snapshot(s) pruned`,
   );

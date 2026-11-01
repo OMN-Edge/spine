@@ -1,6 +1,7 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { vaultLimits } from '../config.js';
+import { accountEntitlements, vaultBytesFor } from '../billing/entitlements.js';
 import { hashPassword, normaliseEmail } from '../passwords.js';
 import { AUTH_VALUE, DEFAULT_KDF, parseKdfParams, parseVaultKeys, pretendSalt } from '../vault-keys.js';
 import { OBJECT_ID, readObject, removeObject, writeObject } from '../vault-files.js';
@@ -96,68 +97,116 @@ export async function vaultRoutes(app: FastifyInstance, opts: VaultRouteOptions 
     },
   );
 
-  app.get<{ Querystring: { since?: string } }>('/api/vault/objects', { preHandler: requireAuth }, async (req, reply) => {
-    const since = req.query.since ?? '0';
-    if (!SEQ.test(since)) return reply.status(400).send({ error: 'since must be a number' });
-    const store = getAccountsStore();
-    const [objects, usage, keys] = await Promise.all([store.vault.list(req.userId, Number(since)), store.vault.usage(req.userId), store.vault.getKeys(req.userId)]);
-    return reply.send({ seq: keys?.seq ?? 0, usage, objects });
-  });
+  app.get<{ Querystring: { since?: string } }>('/api/vault/objects', { preHandler: requireAuth }, (req, reply) => listObjects(req, reply, req.userId));
 
-  app.get<{ Params: { id: string } }>('/api/vault/objects/:id', { preHandler: requireAuth }, async (req, reply) => {
-    if (!OBJECT_ID.test(req.params.id)) return reply.status(404).send({ error: 'not found' });
-    const meta = await getAccountsStore().vault.get(req.userId, req.params.id);
-    const bytes = meta && !meta.deleted ? readObject(req.userId, req.params.id) : null;
-    if (!meta || !bytes) return reply.status(404).send({ error: 'not found' });
-    return reply
-      .header('content-type', 'application/octet-stream')
-      .header('cache-control', 'no-store')
-      .header('x-spine-seq', String(meta.seq))
-      .header('x-spine-kind', meta.kind)
-      .header('x-spine-profile', meta.profile_id)
-      .header('x-spine-wrapped-key', meta.wrapped_key)
-      .send(bytes);
-  });
+  app.get<{ Params: { id: string } }>('/api/vault/objects/:id', { preHandler: requireAuth }, (req, reply) => getObject(req as unknown as ObjectReq, reply, req.userId));
 
   app.put<{ Params: { id: string }; Body: Buffer }>(
     '/api/vault/objects/:id',
     { preHandler: [requireAuth, app.rateLimit({ max: 600, timeWindow: '1 minute' })] },
-    async (req, reply) => {
-      const { id } = req.params;
-      const header = (name: string) => {
-        const v = req.headers[name];
-        return typeof v === 'string' ? v : '';
-      };
-      const kind = header('x-spine-kind');
-      const profile = header('x-spine-profile');
-      const wrappedKey = header('x-spine-wrapped-key');
-      const base = header('x-spine-base-seq') || '0';
-      const body = req.body;
-      if (!OBJECT_ID.test(id) || !KINDS.has(kind) || !OBJECT_ID.test(profile) || !/^[A-Za-z0-9_-]{90,200}$/.test(wrappedKey) || !SEQ.test(base) || !Buffer.isBuffer(body) || body.length === 0) {
-        return reply.status(400).send({ error: 'an object needs an id, a kind, a profile, a wrapped key, the sequence you last saw and a body' });
-      }
-      const store = getAccountsStore();
-      const result = await store.vault.put(req.userId, { id, profileId: profile, kind, size: body.length, wrappedKey, baseSeq: Number(base) }, new Date().toISOString(), vaultLimits().accountBytes);
-      if (result === 'no_vault') return reply.status(404).send({ error: 'this account has no vault yet', code: 'no_vault' });
-      if (result === 'conflict') return reply.status(409).send({ error: 'this object changed elsewhere; fetch it again', code: 'conflict' });
-      if (result === 'quota') return reply.status(413).send({ error: 'the vault is full', code: 'quota' });
-      writeObject(req.userId, id, body);
-      return reply.send({ seq: result.seq });
-    },
+    (req, reply) => putObject(req as unknown as ObjectReq, reply, req.userId),
   );
 
   app.delete<{ Params: { id: string }; Querystring: { base?: string } }>(
     '/api/vault/objects/:id',
     { preHandler: [requireAuth, app.rateLimit({ max: 600, timeWindow: '1 minute' })] },
-    async (req, reply) => {
-      const base = req.query.base ?? '';
-      if (!OBJECT_ID.test(req.params.id) || !SEQ.test(base)) return reply.status(400).send({ error: 'an id and the sequence you last saw are needed' });
-      const done = await getAccountsStore().vault.remove(req.userId, req.params.id, Number(base), new Date().toISOString());
-      if (!done) return reply.status(409).send({ error: 'no such object, or it changed elsewhere', code: 'conflict' });
-      removeObject(req.userId, req.params.id);
-      return reply.send({ seq: done.seq });
-    },
+    (req, reply) => deleteObject(req as unknown as ObjectReq, reply, req.userId),
   );
+}
+
+/**
+ * What the object routes do, for the vault of `ownerId` and, when `only` is given, for one profile of it: the owner's own routes pass nothing,
+ * and a delegate's pass the profile they were let into (`routes/delegation.ts`). One body for both, so a check cannot be in one and missing
+ * from the other.
+ */
+export interface ObjectScope { profileId: string; write: boolean }
+/** The request the object handlers read: Fastify's generics differ by route, so the routes hand them over as this. */
+export type ObjectReq = FastifyRequest<{ Params: { id: string }; Querystring: { since?: string; base?: string }; Body: Buffer }>;
+
+export async function listObjects(req: FastifyRequest<{ Querystring: { since?: string } }>, reply: FastifyReply, ownerId: string, only?: ObjectScope) {
+  const since = req.query.since ?? '0';
+  if (!SEQ.test(since)) return reply.status(400).send({ error: 'since must be a number' });
+  const store = getAccountsStore();
+  const [objects, usage, keys] = await Promise.all([store.vault.list(ownerId, Number(since)), store.vault.usage(ownerId), store.vault.getKeys(ownerId)]);
+  // A delegate sees the objects of their profile and not the size of the owner's vault.
+  return reply.send({ seq: keys?.seq ?? 0, usage: only ? { objects: 0, bytes: 0 } : usage, objects: only ? objects.filter(o => o.profile_id === only.profileId) : objects });
+}
+
+export async function getObject(req: ObjectReq, reply: FastifyReply, ownerId: string, only?: ObjectScope) {
+  if (!OBJECT_ID.test(req.params.id)) return reply.status(404).send({ error: 'not found' });
+  const meta = await getAccountsStore().vault.get(ownerId, req.params.id);
+  if (meta && only && meta.profile_id !== only.profileId) return reply.status(404).send({ error: 'not found' });
+  const bytes = meta && !meta.deleted ? await readObject(ownerId, req.params.id) : null;
+  if (!meta || !bytes) return reply.status(404).send({ error: 'not found' });
+  return reply
+    .header('content-type', 'application/octet-stream')
+    .header('cache-control', 'no-store')
+    .header('x-spine-seq', String(meta.seq))
+    .header('x-spine-kind', meta.kind)
+    .header('x-spine-profile', meta.profile_id)
+    .header('x-spine-wrapped-key', meta.wrapped_key)
+    .send(bytes);
+}
+
+export async function putObject(req: ObjectReq, reply: FastifyReply, ownerId: string, only?: ObjectScope) {
+  const { id } = req.params;
+  const header = (name: string) => {
+    const v = req.headers[name];
+    return typeof v === 'string' ? v : '';
+  };
+  const kind = header('x-spine-kind');
+  const profile = header('x-spine-profile');
+  const wrappedKey = header('x-spine-wrapped-key');
+  const base = header('x-spine-base-seq') || '0';
+  const body = req.body;
+  if (!OBJECT_ID.test(id) || !KINDS.has(kind) || !OBJECT_ID.test(profile) || !/^[A-Za-z0-9_-]{90,200}$/.test(wrappedKey) || !SEQ.test(base) || !Buffer.isBuffer(body) || body.length === 0) {
+    return reply.status(400).send({ error: 'an object needs an id, a kind, a profile, a wrapped key, the sequence you last saw and a body' });
+  }
+  const store = getAccountsStore();
+  if (only) {
+    // A delegate writes into the one profile they were let into, never the profile record, and only as a guardian.
+    if (!only.write) return reply.status(403).send({ error: 'this access is read-only', code: 'read_only' });
+    if (profile !== only.profileId || kind === 'profile') return reply.status(403).send({ error: 'not part of this access', code: 'forbidden' });
+    const existing = await store.vault.get(ownerId, id);
+    if (existing && existing.profile_id !== only.profileId) return reply.status(404).send({ error: 'not found' });
+  }
+  // Another person's records (a profile) is part of the plan: a new one is refused past what it allows (billing off: no limit but the instance's).
+  if (kind === 'profile' && base === '0') {
+    const plan = await accountEntitlements(ownerId);
+    if (plan) {
+      const have = (await store.vault.list(ownerId, 0)).filter(o => o.kind === 'profile' && !o.deleted && o.id !== id).length;
+      if (have >= plan.profiles) return reply.status(402).send({ error: 'another person is not part of the account’s plan', code: 'plan_required' });
+    }
+  }
+  const result = await store.vault.put(ownerId, { id, profileId: profile, kind, size: body.length, wrappedKey, baseSeq: Number(base) }, new Date().toISOString(), await vaultBytesFor(ownerId));
+  if (result === 'no_vault') return reply.status(404).send({ error: 'this account has no vault yet', code: 'no_vault' });
+  if (result === 'conflict') return reply.status(409).send({ error: 'this object changed elsewhere; fetch it again', code: 'conflict' });
+  if (result === 'quota') return reply.status(413).send({ error: 'the vault is full', code: 'quota' });
+  try {
+    await writeObject(ownerId, id, body);
+  } catch (err) {
+    // The row says the object exists and its bytes are not there: take the row back, so the device refetches the list and tries again
+    // instead of finding an object that cannot be read.
+    await store.vault.remove(ownerId, id, result.seq, new Date().toISOString()).catch(() => undefined);
+    req.log.error({ err }, 'a sealed object could not be stored');
+    return reply.status(503).send({ error: 'the object could not be stored; try again', code: 'storage' });
+  }
+  return reply.send({ seq: result.seq });
+}
+
+export async function deleteObject(req: ObjectReq, reply: FastifyReply, ownerId: string, only?: ObjectScope) {
+  const base = req.query.base ?? '';
+  if (!OBJECT_ID.test(req.params.id) || !SEQ.test(base)) return reply.status(400).send({ error: 'an id and the sequence you last saw are needed' });
+  const store = getAccountsStore();
+  if (only) {
+    if (!only.write) return reply.status(403).send({ error: 'this access is read-only', code: 'read_only' });
+    const meta = await store.vault.get(ownerId, req.params.id);
+    if (!meta || meta.profile_id !== only.profileId || meta.kind === 'profile') return reply.status(404).send({ error: 'not found' });
+  }
+  const done = await store.vault.remove(ownerId, req.params.id, Number(base), new Date().toISOString());
+  if (!done) return reply.status(409).send({ error: 'no such object, or it changed elsewhere', code: 'conflict' });
+  await removeObject(ownerId, req.params.id);
+  return reply.send({ seq: done.seq });
 }
 
 /**

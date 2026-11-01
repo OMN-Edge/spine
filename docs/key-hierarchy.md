@@ -27,9 +27,9 @@ Primitives come from an audited library (libsodium or equivalent); nothing is in
 
 1. **Master key.** Derived on the device from the master password with Argon2id. The server never receives the password: sign-in uses a separately derived value.
 2. **Account key.** Random, wrapped by the master key. Also wrapped by the **recovery key**, which exists only in the printable recovery kit made at sign-up.
-3. **Profile key**, one per profile (a child, a parent), wrapped by the account key.
+3. **Profile key**, one per profile (a child, a parent), wrapped by the account key. Each profile is a person whose records stand apart: their own database on the device, objects, search, share links and emergency card.
 4. **Data key**, one per sealed object (a segment of changes, a part of a snapshot, a file), wrapped by the profile key. Content is encrypted with XChaCha20-Poly1305, the object's id and kind bound in as associated data. (Not one per document: the unit of storage is the object.)
-5. **Account key pair** (X25519), made at sign-up. **Not built:** delegating a profile to another account, which is what it is for. Each account has one profile today.
+5. **Account key pair** (X25519), made at sign-up. It is used to let another account into one profile: the owner's device seals the profile key to the other account's public key (SECURITY.md **M-49**). An account can keep several profiles (**M-48**); they are opened one at a time, and the account's own devices open them all.
 
 Everything about a document is encrypted, not only its pages: titles, dates, tags, doctors, episodes, extracted fields, summaries and embeddings. In plaintext on the server stay only opaque identifiers, sizes, timestamps and a coarse kind of object.
 
@@ -37,7 +37,7 @@ Everything about a document is encrypted, not only its pages: titles, dates, tag
 
 **New devices** sign in with the master password, or with a passkey that was set up to open the vault (WebAuthn PRF). Or **from a device that is already signed in**: that device shows a one-time code (80 bits, never sent to the server), seals the account key under a key the code makes and leaves it at the server for ten minutes; the new device asks, the person approves it on the first device after seeing what asked, and it collects the sealed key and a sign-in (SECURITY.md **M-41**). The server holds an id the code makes and ciphertext, neither of which opens anything without the code.
 
-**Rotation. Not built**, because delegation is not. The design: promoting a child's profile to an adult account at 18, and revoking any delegate, rotate the profile key, and the data keys are re-wrapped under a new key the removed party never held. Content someone already viewed cannot be recalled.
+**Rotation** (SECURITY.md **M-49**): ending a delegate's access replaces the profile's key. A new key is made on the owner's device; every data key of the profile is sealed again under it (the data keys and the bodies are unchanged); the profile record is sealed again; the new key is sealed to each remaining delegate's public key; and the server takes all of it in one step. A key a former delegate holds opens nothing stored from then on. Content someone already viewed cannot be recalled. Promoting a child's profile to the young adult's own account at 18 uses the same re-sealing, with the new key under the young adult's account key and the profile moved into their vault (SECURITY.md **M-51**); the guardians' grants are paused with the new key sealed to them.
 
 **Deleting an account** removes its vault keys, its sealed objects and shares, and the backup's copy of its vault (`deleteAccount`). Database snapshots already taken still hold its rows until retention prunes them; they hold the account's wrapped keys, which open only with its master password or recovery kit, and no record.
 
@@ -51,7 +51,7 @@ A share is a **sealed copy**: the owner's device builds a copy that holds only w
 - **Approval mode.** The doctor's browser makes an ephemeral key pair and sends the public key with its request. The patient's app approves and wraps the share key to that public key. A leaked link alone then opens nothing.
 - **Expiry and revocation** delete the sealed copy on the server. Content already viewed may have been copied; the interface says so.
 - **A share is a snapshot** that the owner's device builds again after the records change (15 seconds later, while it is open) and sends if it would differ, under the same key. A closed device cannot refresh it.
-- **Emergency card: cut** from the first release, not built.
+- **Emergency card** (SECURITY.md **M-47**): a card the owner writes, sealed on the device under a key of its own and kept at the server as a bundle that opens with no approval and has no end. The key is in the address and the QR code after the `#`, so anyone who has the whole address reads the card, and the server never has the key. The owner turns it off and the sealed bytes are deleted. A second, optional code holds the card itself as plain text, so it needs no network and no server at all; it cannot be turned off or counted, and the page says so. Stays visible to the operator: that a card exists, its size, and when and from which country it was opened.
 
 Stays visible to the operator: that a share exists, its expiry, when and from which country it was opened. Not which documents it holds: it sees only the id, meaningless to it, of a document a recipient says they opened.
 

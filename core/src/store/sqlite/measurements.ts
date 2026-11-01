@@ -8,7 +8,7 @@ import type {
   MeasurementRepository,
   NewMeasurement,
 } from '../types.js';
-import { expectInserted, owner } from './owner.js';
+import { expectInserted, owner } from '../owner.js';
 import { measurementKey } from '../reading-keys.js';
 import { VISIBLE } from './visibility.js';
 

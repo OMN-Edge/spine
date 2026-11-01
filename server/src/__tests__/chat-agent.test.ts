@@ -305,3 +305,115 @@ describe('what is held to, in code', () => {
     expect((await ask({ question: 'x', screen: { page: 'nowhere' } })).statusCode).toBe(400);
   });
 });
+
+describe('searching by what the store knows, before anything is ranked', () => {
+  const search = async (args: Record<string, unknown>) => {
+    model = new ScriptedModel([{ tools: [{ name: 'search_documents', args }] }, { say: 'ok' }]);
+    resetChatLlm(llmWith(model));
+    expect((await ask({ question: 'find it' })).statusCode).toBe(200);
+    return toolOutputs(model).join('\n');
+  };
+
+  it('lists by dates alone, with no keywords, and nothing outside them', async () => {
+    await doc('Autumn visit', 'a visit', OWNER_ID, '2025-10-14', 'consultation_note');
+    await doc('Spring visit', 'a visit', OWNER_ID, '2026-03-02', 'consultation_note');
+    const out = await search({ date_from: '2025-10-01', date_to: '2025-10-31' });
+    expect(out).toMatch(/Autumn visit/);
+    expect(out).not.toMatch(/Spring visit/);
+    expect(await search({})).toMatch(/Give keywords, or narrow/);
+  });
+
+  it('applies dates before ranking, so an old match is not lost behind many newer ones', async () => {
+    for (let i = 0; i < 30; i++) await doc(`Cardiology note ${i}`, 'cardiology', OWNER_ID, '2026-02-01', 'consultation_note');
+    await doc('Old cardiology letter', 'cardiology', OWNER_ID, '2024-05-05', 'consultation_note');
+    const out = await search({ query: 'cardiology', date_from: '2024-01-01', date_to: '2024-12-31' });
+    expect(out).toMatch(/Old cardiology letter/);
+    expect(out).not.toMatch(/Cardiology note/);
+  });
+
+  it('narrows by type, tag and provider, as the timeline does', async () => {
+    const a = await seedDocument({ docType: 'lab_result', docDate: '2026-01-05', provider: 'Laborator Exemplu', aiSummary: 'lipids', tags: ['lab'] });
+    await getStore().documents.update(OWNER_ID, a.id, { title: 'Lipids' });
+    const b = await seedDocument({ docType: 'consultation_note', docDate: '2026-01-06', provider: 'Clinica Exemplu', aiSummary: 'visit', tags: ['cardiology'] });
+    await getStore().documents.update(OWNER_ID, b.id, { title: 'Visit' });
+    expect(await search({ tag: 'Cardiology' })).toMatch(/Visit/);
+    expect(await search({ tag: 'cardiology' })).not.toMatch(/Lipids/);
+    expect(await search({ provider: 'laborator' })).toMatch(/Lipids/);
+    expect(await search({ doc_type: 'lab_result' })).not.toMatch(/Visit/);
+  });
+
+  it('gives each document its confirmed links with labels to use, and nothing the owner has not confirmed or cannot see', async () => {
+    const visit = await doc('Follow-up visit', 'cardiology follow-up', OWNER_ID, '2026-03-02', 'consultation_note');
+    const tests = await doc('Blood tests', 'lipids', OWNER_ID, '2026-03-12');
+    const earlier = await doc('First visit', 'cardiology', OWNER_ID, '2025-10-14', 'consultation_note');
+    const guessed = await doc('Unrelated scan', 'imaging', OWNER_ID, '2026-03-20');
+    const hidden = await doc('Set aside note', 'cardiology', OWNER_ID, '2026-03-05', 'consultation_note');
+    await getStore().pages.setHiddenForDocument(OWNER_ID, hidden.id, true);
+    const at = '2026-03-13T00:00:00Z';
+    await getStore().links.add(OWNER_ID, { from_document_id: visit.id, to_document_id: tests.id, kind: 'requests', source: 'owner', state: 'confirmed', reason: null }, at);
+    await getStore().links.add(OWNER_ID, { from_document_id: earlier.id, to_document_id: visit.id, kind: 'follow_up', source: 'owner', state: 'confirmed', reason: null }, at);
+    await getStore().links.add(OWNER_ID, { from_document_id: visit.id, to_document_id: guessed.id, kind: 'requests', source: 'auto', state: 'proposed', reason: null }, at);
+    await getStore().links.add(OWNER_ID, { from_document_id: visit.id, to_document_id: hidden.id, kind: 'requests', source: 'owner', state: 'confirmed', reason: null }, at);
+
+    model = new ScriptedModel([
+      { tools: [{ name: 'search_documents', args: { query: 'follow-up' } }] },
+      // The labels the links gave are usable at once, without searching for the documents themselves.
+      { tools: [{ name: 'propose_share_link', args: { documents: ['D1', 'D2', 'D3'] } }] },
+      { say: 'Proposed.' },
+    ]);
+    resetChatLlm(llmWith(model));
+    const res = await ask({ question: 'share the follow-up and what goes with it' });
+    const out = toolOutputs(model)[0];
+    expect(out).toMatch(/D1: Follow-up visit[^\n]*Linked: [^\n]*asked for D\d \(Blood tests/);
+    expect(out).toMatch(/follows up D\d \(First visit/);
+    expect(out).not.toMatch(/Unrelated scan|Set aside note/);
+    const shared = res.json().proposals[0].documents.map((d: { id: string }) => d.id).sort();
+    expect(shared).toEqual([visit.id, tests.id, earlier.id].sort());
+  });
+});
+
+describe('the budget the model is told', () => {
+  it('says how many rounds of tools it has, that calls made together are one round, and what day it is', async () => {
+    model = new ScriptedModel([{ say: 'ok' }]);
+    resetChatLlm(llmWith(model));
+    await ask({ question: 'hello' });
+    const system = String(model.seen[0][0].content);
+    expect(system).toMatch(/at most 8 rounds of tool calls/);
+    expect(system).toMatch(/together in one turn are one round/);
+    // Without the date, "a year ago" is a guess, and a wrong guess of the period sends it searching.
+    expect(system).toContain(`Today is ${new Date().toISOString().slice(0, 10)}.`);
+  });
+});
+
+describe('a chain of connected documents reaches only documents that are shown', () => {
+  it('does not step onto a set-aside document, past it, or onto one of an upload whose grouping is not confirmed', async () => {
+    const a = await doc('Start visit', 'cardiology start', OWNER_ID, '2026-01-01', 'consultation_note');
+    const b = await doc('Set aside middle', 'middle', OWNER_ID, '2026-01-10');
+    const c = await doc('Beyond the middle', 'beyond', OWNER_ID, '2026-01-20');
+    const u = await doc('Unconfirmed upload doc', 'unconfirmed', OWNER_ID, '2026-01-15');
+    const shownOne = await doc('Shown neighbour', 'neighbour', OWNER_ID, '2026-01-05');
+    await getStore().pages.setHiddenForDocument(OWNER_ID, b.id, true);
+    await getStore().sourceFiles.setGroupingConfirmed(OWNER_ID, u.sourceFileId, false);
+    const at = '2026-02-01T00:00:00Z';
+    const link = (from: string, to: string) => getStore().links.add(OWNER_ID, { from_document_id: from, to_document_id: to, kind: 'requests', source: 'owner', state: 'confirmed', reason: null }, at);
+    await link(a.id, b.id); await link(b.id, c.id); await link(a.id, u.id); await link(a.id, shownOne.id);
+
+    // The document page's chain.
+    const res = await app.inject({ method: 'GET', url: `/api/documents/${a.id}/chain`, headers: { cookie } });
+    expect(res.statusCode).toBe(200);
+    const ids = (res.json() as { nodes: Array<{ id: string }> }).nodes.map(n => n.id).sort();
+    expect(ids).toEqual([a.id, shownOne.id].sort());
+
+    // The assistant's tool.
+    model = new ScriptedModel([
+      { tools: [{ name: 'search_documents', args: { query: 'cardiology start' } }] },
+      { tools: [{ name: 'get_connected_documents', args: { label: 'D1' } }] },
+      { say: 'ok' },
+    ]);
+    resetChatLlm(llmWith(model));
+    expect((await ask({ question: 'what is connected to the start visit?' })).statusCode).toBe(200);
+    const out = toolOutputs(model).join('\n');
+    expect(out).toMatch(/Shown neighbour/);
+    expect(out).not.toMatch(/Set aside middle|Beyond the middle|Unconfirmed upload doc/);
+  });
+});

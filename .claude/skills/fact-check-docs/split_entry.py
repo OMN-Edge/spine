@@ -3,7 +3,7 @@
 
     python3 -I .claude/skills/fact-check-docs/split_entry.py SECURITY.md M-21
     python3 -I .claude/skills/fact-check-docs/split_entry.py docs/scenarios.md "### 7.2"
-    python3 -I .claude/skills/fact-check-docs/split_entry.py ARCHITECTURE.md "### Share links"
+    python3 -I .claude/skills/fact-check-docs/split_entry.py docs/architecture/data.md "## Share links"
 
 The entry starts at the first line that begins with `**<name> ` or with the given heading, and ends at the next line that begins the same
 way (or the next heading of the same or a higher level). Sentences are split at . ! ? : ; followed by a capital letter, a backtick, a

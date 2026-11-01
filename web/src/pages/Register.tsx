@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import AuthCard, { buttonClass, inputClass, Notice } from '../components/AuthCard';
 import { useI18n } from '../i18n';
@@ -10,6 +10,8 @@ import type { NewAccount } from '../crypto/keys';
 
 export default function Register() {
   const { t } = useI18n();
+  // Which of the loops brought the person here (a shared page, a card, an invitation): a count a day on the server, never who.
+  const [params] = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [again, setAgain] = useState('');
@@ -47,7 +49,7 @@ export default function Register() {
     setError('');
     setBusy(true);
     try {
-      const result = await api.auth.register(email, account, { health_data: health, terms });
+      const result = await api.auth.register(email, account, { health_data: health, terms }, params.get('ref') ?? undefined);
       setDone(result.pending ? t('Your account request is in. It can be used once the administrator has approved it.') : result.message);
       setAccount(null);
     } catch (err) {

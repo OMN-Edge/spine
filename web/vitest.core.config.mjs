@@ -6,5 +6,5 @@ export default defineConfig({
   // Node's own modules are resolved before plugins see them, so here the swaps are plain aliases.
   plugins: corePlugins({ inNode: true }).slice(1),
   resolve: { alias: coreAliases },
-  test: { include: ['src/core/**/*.test.ts'], exclude: ['src/core/llm.test.ts', '**/node_modules/**'], server: { deps: { inline: [/sqlite-wasm/] } } },
+  test: { expect: { requireAssertions: true }, include: ['src/core/**/*.test.ts'], exclude: ['src/core/llm.test.ts', '**/node_modules/**'], server: { deps: { inline: [/sqlite-wasm/] } } },
 });

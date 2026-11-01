@@ -4,10 +4,18 @@ import type { KdfParams } from '../crypto/keys';
 export type Part = { fieldname: string; filename?: string; mimetype?: string; data?: ArrayBuffer; value?: string };
 export type ToWorker =
   /** `keys`: what the page already fetched from `/api/vault/keys`, so the worker does not ask again. */
-  | { id: number; type: 'start'; masterKey: Uint8Array; keys?: KeysResponse }
+  | { id: number; type: 'start'; masterKey: Uint8Array; keys?: KeysResponse; profileId?: string }
   /** The master key from a password, here and not in the page: it takes a second or more and 64 MiB, and the page must keep moving meanwhile. Answers with the key as the body and the sign-in value in `headers.authValue`. */
   | { id: number; type: 'derive'; password: string; salt: string; params: KdfParams }
-  | { id: number; type: 'startWithPasskey'; passkey: { prf: Uint8Array; credentialId: string; wrapped: string } }
+  | { id: number; type: 'startWithPasskey'; passkey: { prf: Uint8Array; credentialId: string; wrapped: string }; profileId?: string }
+  /** The people (profiles) this account keeps records for, and the one open now. Answers with `{ profiles, current }` as the body. */
+  | { id: number; type: 'profiles' }
+  /** Makes another person's records, with a key of their own; answers with `{ id }`. The server refuses past what the plan allows. */
+  | { id: number; type: 'createProfile'; name: string; kind?: 'child'; born?: string }
+  /** Look again at the keys and the people the account may open (after a profile's key was replaced, or access was given or taken). */
+  | { id: number; type: 'reloadKeys' }
+  /** Saves what is open, then opens another person's records. Refused with code `unsaved` unless `force`. */
+  | { id: number; type: 'switchProfile'; profileId: string; force?: boolean }
   | { id: number; type: 'request'; method: string; url: string; headers: Record<string, string>; body?: string; parts?: Part[] }
   | { id: number; type: 'startShare'; shareId: string; key: string }
   /** The demo: no vault and no account, an archive in memory that is gone when the page is, and nothing that needs a model or the server. */

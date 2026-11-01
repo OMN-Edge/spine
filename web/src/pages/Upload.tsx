@@ -100,6 +100,8 @@ function heading(job: JobState, i18n: I18n): string {
 const FAILURE_TEXT = {
   reading_off: msg('Photos cannot be read here, because reading them with AI is switched off. A PDF with text in it works.'),
   limit: msg('The limit on reading for today has been reached. Try again tomorrow.'),
+  plan: msg('This is not part of your plan. See the plans on your account page.'),
+  allowance: msg('The AI reading in your plan is used up for now. It starts again next month, or you can upgrade on your account page.'),
   service: msg('The reading service could not be reached. Try again in a moment.'),
   other: msg('This upload could not be read. Try again in a moment.'),
 } as const;

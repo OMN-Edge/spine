@@ -1,3 +1,4 @@
+import { loadBillingConfig } from '../billing/config.js';
 import { HEALTH_CONSENT_VERSION, TERMS_VERSION } from '../legal.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
@@ -58,6 +59,18 @@ const WAITING = {
 
 const INVALID_LINK = { error: 'this link is invalid or has expired' };
 
+/** Where sign-ups come from that the loops in the marketing plan are meant to bring: a shared page, a card, an invitation. A count a day, never a person. */
+const SIGNUP_REFS = new Set(['share', 'card', 'invite', 'doctors']);
+async function countSignup(ref: unknown): Promise<void> {
+  try {
+    const day = new Date().toISOString().slice(0, 10);
+    await getAccountsStore().metrics.bump('signup', day);
+    if (typeof ref === 'string' && SIGNUP_REFS.has(ref)) await getAccountsStore().metrics.bump(`signup_from_${ref}`, day);
+  } catch {
+    // a count is never worth a failed sign-up
+  }
+}
+
 export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOptions = {}) {
   const registration = opts.registration ?? loadRegistrationMode();
   const instance = opts.instance ?? loadInstanceKind();
@@ -87,11 +100,11 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
 
   // What the sign-in page needs to know before anyone is signed in.
   app.get('/api/auth/options', async (_req, reply) => {
-    return reply.send({ registration, recovery: getMailer().enabled, instance });
+    return reply.send({ registration, recovery: getMailer().enabled, instance, billing: loadBillingConfig().enabled, waitlist: (process.env.SPINE_WAITLIST ?? 'off') === 'on' });
   });
 
   if (registration === 'open' || registration === 'approval') {
-    app.post<{ Body: { email?: string; password?: string; auth_value?: string; keys?: unknown; consent_health_data?: unknown; accept_terms?: unknown } }>(
+    app.post<{ Body: { email?: string; password?: string; auth_value?: string; keys?: unknown; consent_health_data?: unknown; accept_terms?: unknown; ref?: unknown } }>(
       '/api/auth/register',
       { preHandler: [perSource, perAddress] },
       async (req, reply) => {
@@ -139,6 +152,7 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
               });
               if (keys) await tx.vault.putKeys(id, keys, createdAt);
             });
+            await countSignup(req.body?.ref);
             if (verifyByMail) {
               const token = await issueUserToken(id, 'verify', VERIFY_TTL_MS);
               sendLater(req, id, verificationMail(address, verificationLink(token)), 'verification');
@@ -260,7 +274,7 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
         const had = await store.vault.getKeys(userId);
         if (had && req.body?.erase === true) {
           await store.vault.erase(userId);
-          removeAllObjects(userId);
+          await removeAllObjects(userId);
           await store.vault.putKeys(userId, keys, now);
         } else if (had) {
           await store.vault.replaceKeys(userId, keys, now);

@@ -1,6 +1,6 @@
 import { orderedRowId } from '../ids.js';
 import type { Database } from './driver.js';
-import { owner } from './owner.js';
+import { owner } from '../owner.js';
 import type {
   AccessLogEntry,
   NewShareLink,

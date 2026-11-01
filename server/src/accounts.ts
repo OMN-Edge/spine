@@ -90,6 +90,28 @@ export function resetMail(to: string, link: string): MailMessage {
  * note, nothing about what is shared (the label is the owner's own words and may name a doctor or a condition, the
  * note is a stranger's). The link opens a page that asks them to sign in, so it grants nothing by itself.
  */
+/** Said when someone opens the owner's card; the wording names no record, because the mail is the provider's to see (SECURITY.md P8). */
+export function cardOpenedMail(to: string, at: string, country: string | null): MailMessage {
+  return {
+    to,
+    subject: 'Your Spine card was opened',
+    text:
+      `Your Spine card was opened at ${at} (UTC)${country ? `, from ${country}` : ''}.\n\n` +
+      `If you, or someone you showed it to, opened it, there is nothing to do. If not, sign in, open the card and turn it off.\n`,
+  };
+}
+
+/** Once a year, for a card not looked at: it names nothing that is on it, and the mail is the provider's to see (SECURITY.md P8). */
+export function cardReviewMail(to: string): MailMessage {
+  return {
+    to,
+    subject: 'A reminder about your Spine card',
+    text:
+      `It has been a year since you last looked at your Spine card.\n\n` +
+      `Sign in, open the card and check that it is still right. If you do nothing it stays as it is, and we will write once more next year.\n`,
+  };
+}
+
 export function accessRequestMail(to: string, link: string, requestedAt: string, ip: string | null): MailMessage {
   return {
     to,
@@ -128,10 +150,10 @@ export async function deleteAccount(userId: string): Promise<DeletedAccount> {
   const store = getAccountsStore();
   const summary = await describeAccount(userId);
   // The sealed vault: the live copy and the backup's, so no ciphertext of the account is left.
-  removeAllObjects(userId);
+  await removeAllObjects(userId);
   fs.rmSync(path.join(resolveBackupDir(), 'vault', userId), { recursive: true, force: true });
   // The sealed shares too (their rows go with the account's, below).
-  for (const id of await store.shared.eraseFor(userId)) removeShare(id);
+  for (const id of await store.shared.eraseFor(userId)) await removeShare(id);
   await store.users.delete(userId);
   return summary;
 }

@@ -35,6 +35,7 @@ import { linkRoutes } from 'spine-core/routes/links';
 import { demoRoutes } from 'spine-core/routes/demo';
 import { chatRoutes } from 'spine-core/routes/chat';
 import { guideRoutes } from 'spine-core/routes/guide';
+import { emergencyRoutes } from 'spine-core/routes/emergency';
 import { shareRoutes } from 'spine-core/routes/share';
 
 /**
@@ -100,7 +101,7 @@ export async function startCore(vault?: { objects: ObjectStore; profileId: strin
   // One person, and the password was just typed to open the vault: nothing here asks for it again.
   useRequestAuth({ user: () => store.users.findById(DEVICE_USER), recent: () => true });
   // Each file as a plugin, so its hooks are its own, as on Fastify.
-  for (const routes of [tagRoutes, doctorRoutes, trendRoutes, episodeRoutes, documentRoutes, sourceFileRoutes, exportRoutes, similarityRoutes, linkRoutes, demoRoutes, chatRoutes, guideRoutes, shareRoutes]) {
+  for (const routes of [tagRoutes, doctorRoutes, trendRoutes, episodeRoutes, documentRoutes, sourceFileRoutes, exportRoutes, similarityRoutes, linkRoutes, demoRoutes, chatRoutes, guideRoutes, emergencyRoutes, shareRoutes]) {
     await local.register(routes);
   }
 

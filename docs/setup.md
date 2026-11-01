@@ -1,8 +1,6 @@
 # Setup guide
 
-From a fresh machine to a running instance. Allow an hour, most of it waiting for DNS and the certificate. The short version is in the [readme](../readme.md); this adds what you need to decide, and what to do when something refuses to start.
-
-Steps marked **untested** were written from the scripts and provider documentation and have not been run end to end. Everything else was run, though not on a fresh machine.
+From a fresh machine to a running instance. Allow an hour, most of it waiting for DNS and the certificate. The short version is in the [readme](../README.md); this adds what you need to decide, and what to do when something refuses to start.
 
 ## 0. Decide first
 
@@ -28,7 +26,7 @@ git clone <your repository URL> spine && cd spine
 sudo SPINE_DOMAIN=spine.yourdomain.com ./install.sh -a
 ```
 
-`-a` runs every step below in order: `-d` (dependencies), `-e` (writes `.env` with generated secrets, and `relay.env` if you give it an Anthropic API key; it asks for the key and the domain when they are not in the environment, and never overwrites either file), `-b` (build, as you, not as root), `-s` (services), `-r` (the relay on this machine, when `relay.env` exists) and `-n` (nginx and the certificates, with the distribution's nginx and certbot when `../packages/nginx` is not there; `SPINE_CERT_EMAIL` gives Let's Encrypt an address for expiry notices). Point the domain, and `relay.<domain>` when the relay runs here, at the machine first, or the certificates cannot be issued. Then create your account (step 5). **Untested** on a fresh machine: `-a`, `-r` and the certbot path of `-n` were written from the steps below and checked only on a Mac (`-e`, and the same relay in Docker Compose). Each step can still be run on its own, as the rest of this guide does; run `-a` again after fixing whatever stopped it. Vertex, reading scans and open signup are edits to `.env` or `relay.env` afterwards (step 3), then `sudo ./install.sh -s -r`.
+`-a` runs every step below in order: `-d` (dependencies), `-e` (writes `.env` with generated secrets, and `relay.env` if you give it an Anthropic API key; it asks for the key and the domain when they are not in the environment, and never overwrites either file), `-b` (build, as you, not as root), `-s` (services), `-r` (the relay on this machine, when `relay.env` exists) and `-n` (nginx and the certificates, with the distribution's nginx and certbot when `../packages/nginx` is not there; `SPINE_CERT_EMAIL` gives Let's Encrypt an address for expiry notices). Point the domain, and `relay.<domain>` when the relay runs here, at the machine first, or the certificates cannot be issued. Then create your account (step 5). Each step can still be run on its own, as the rest of this guide does; run `-a` again after fixing whatever stopped it. Vertex, reading scans and open signup are edits to `.env` or `relay.env` afterwards (step 3), then `sudo ./install.sh -s -r`.
 
 ## 2. Install
 
@@ -86,7 +84,7 @@ SPINE_LLM_PROJECT=your-gcp-project
 GOOGLE_APPLICATION_CREDENTIALS=/etc/spine/vertex-sa.json   # service-account key file
 ```
 
-There are no defaults on purpose. The relay **refuses to start if `GOOGLE_API_KEY`, `GEMINI_API_KEY` or `GOOGLE_GENAI_API_KEY` is set anywhere in its environment**, because that silently sends requests to a global endpoint. After the first real call, check the provider's request logs to confirm the EU host was used. **Untested** against a live project.
+There are no defaults on purpose. The relay **refuses to start if `GOOGLE_API_KEY`, `GEMINI_API_KEY` or `GOOGLE_GENAI_API_KEY` is set anywhere in its environment**, because that silently sends requests to a global endpoint. After the first real call, check the provider's request logs to confirm the EU host was used.
 
 ### Letting scans and handwriting be read (optional)
 
@@ -99,6 +97,7 @@ Both lines are required (in the server's `.env`, which passes them to each devic
 
 - **Local OCR is optional.** By default `hybrid` tries Tesseract before the model. It runs in the browser (Tesseract.js) with the English and Romanian packs that ship with the web app; nothing is installed on the server. `SPINE_OCR=off` skips it and sends a page with no text layer straight to the model. `SPINE_PARSER=ocr` is OCR with no model at all: it needs neither switch, but it reads handwriting poorly.
 - **The same switch allows two other things.** Signature stamps in a PDF are read as small cropped pictures (the doctor's name, specialty and professional code), never the whole page. Photos (JPEG or PNG) are accepted at upload and read by the model; without the switch a photo is refused.
+- **Pages a model read carry an "AI" chip.** Its hint says the model gives the text and not where on the page it is, so nothing is highlighted on them.
 - **The thresholds are first guesses.** After a few uploads, look at the `page routed` lines in the browser's console and adjust (see `.env.example`).
 
 ### Backups (recommended)
@@ -137,7 +136,18 @@ npm run cli -- create-user you@example.com   # prints a password once; change it
 
 Add `--password-stdin` to choose the password (12 characters or more).
 
-**Or let people sign up.** This needs a mail provider; the server refuses `open` registration without one. With [Brevo](https://www.brevo.com) (**untested** against a live account):
+The other operator commands, all run from `server/`:
+
+```bash
+npm run cli -- list-users
+npm run cli -- set-password you@example.com  # an account with no vault only; signs that user out everywhere
+npm run cli -- reset-link you@example.com    # a one-time link to choose a new password
+npm run cli -- approve-user you@example.com  # an account waiting under SPINE_REGISTRATION=approval
+npm run cli -- disable-2fa you@example.com   # lost phone and recovery codes
+npm run cli -- delete-user you@example.com   # says what it would remove; add --yes to do it
+```
+
+**Or let people sign up.** This needs a mail provider; the server refuses `open` registration without one. With [Brevo](https://www.brevo.com):
 
 1. Create an account. The free plan allows 300 emails a day.
 2. Under *Settings → Senders, Domains, IPs → Domains*, add your domain and publish the DNS records Brevo gives you. DKIM is the one that matters; without it mail may be sent from Brevo's own domain or land in spam.
@@ -179,7 +189,7 @@ sudo ./install.sh -n
 
 The nginx version is the stable one the package's readme names; check it for a newer one.
 
-**Without it** (**untested** on a fresh machine), `sudo ./install.sh -n` installs the distribution's nginx and certbot if they are missing, adds the `main` log format the site config names (a file of its own in `/etc/nginx/conf.d/`), gets each certificate with `certbot certonly --standalone` (nginx stopped for the minute it takes; `SPINE_CERT_EMAIL` for expiry notices) unless it exists, and writes the site config, filling in the relay's address for the page's content security policy, the optional repository redirects and `security.txt`, which a plain copy of `nginx/spine.conf` would leave as placeholders.
+**Without it**, `sudo ./install.sh -n` installs the distribution's nginx and certbot if they are missing, adds the `main` log format the site config names (a file of its own in `/etc/nginx/conf.d/`), gets each certificate with `certbot certonly --standalone` (nginx stopped for the minute it takes; `SPINE_CERT_EMAIL` for expiry notices) unless it exists, and writes the site config, filling in the relay's address for the page's content security policy, the optional repository redirects and `security.txt`, which a plain copy of `nginx/spine.conf` would leave as placeholders.
 
 With the relay on this machine (`SPINE_RELAY_DOMAIN` in `.env`), `-n` does the same for its name and writes `nginx/spine-relay.conf` as its site.
 
@@ -215,6 +225,16 @@ sudo systemctl start spine-backup                             # a backup now, in
 - **Test a restore once**, before you need one: [SECURITY.md, Operational response](../SECURITY.md#operational-response).
 - **Do not load real documents and then update across a schema change** other than a new column with a default, which is added when the database is opened. There is no migration runner yet, and an older-shaped database is refused at startup (it tells you how many records it holds). Look at the history of `core/src/store/sqlite/schema-accounts.ts` and `schema-records.ts` for changes before updating, and take a backup first. (The records schema is built by each device when it opens its vault; the server's database holds accounts only.)
 - `sudo systemctl status` for any unit, and `npm run cli -- list-users` to see accounts.
+
+## What the server keeps
+
+The server keeps only what it cannot read. `DATA_DIR` moves it; the default is `<repo>/data`.
+
+- `data/spine.db`: the SQLite database of accounts, sign-ins, the vault's index and share metadata. No record is in it.
+- `data/vault/<user>/`: the sealed objects (a person's records and files, encrypted on their device).
+- `data/shares/`: sealed share copies, removed when a link ends or is revoked.
+
+The records themselves are in each owner's browser while it is open, and in the vault as ciphertext. A daily timer copies the database and the vault to `backups/` beside `data/`, keeping the last 7 snapshots (`SPINE_BACKUP_KEEP`); shares are not backed up on purpose. That protects against corruption and mistakes, not against losing the disk: point `SPINE_BACKUP_DIR` at removable or network storage for that (see Backups, step 3).
 
 ## When it will not start
 

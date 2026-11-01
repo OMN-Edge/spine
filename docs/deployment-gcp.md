@@ -115,11 +115,20 @@ Relevant only if Spine adopts Google as an identity provider or Drive as an uplo
 - **APIs to enable:** Drive API; Picker API only if using the Picker.
 - **Unresolved:** whether a folder chosen via the Google Picker exposes its contents under `drive.file`. Reports conflict — test with a real account before designing around it.
 
+## Where the sealed bytes go (Cloud Run and other hosts with no disk)
+
+The server keeps two kinds of thing: rows (accounts, the vault's index, sealed shares' metadata) in the database, and the sealed bytes themselves (the vault's objects and a share's copies) as objects. With `SPINE_STORE=postgres` the rows are in Postgres; with `SPINE_OBJECTS=gcs` the bytes are in a bucket. Both are ciphertext the server cannot open (SECURITY.md **M-34**, **M-36**, **M-46**).
+
+- Make the bucket in an **EU location** (residency is the bucket's location, as for the model endpoint: set when it is made, and checked in the console), with uniform bucket-level access, public access prevented, and **versioning or soft delete on**: that is the backup of the sealed bytes, since `backup.ts` mirrors only files. Add a lifecycle rule that deletes non-current versions after a few weeks, so a deleted account's ciphertext does not outlive the retention the privacy notice states.
+- Give the server's service account `roles/storage.objectAdmin` on that bucket only. No key file: the server asks Google for the identity it runs as.
+- Set `SPINE_OBJECTS=gcs` and `SPINE_GCS_BUCKET`; a bad setting stops the process at start. Several instances may share a bucket with `SPINE_GCS_PREFIX`.
+
 ## Setup checklist
 
 Ordered to avoid the known blockers: Claude cannot be called until an admin enables it, and the OAuth screen needs scopes in place before publishing.
 
 - [ ] Dedicated Google Cloud project with billing
+- [ ] Bucket for the sealed bytes: EU location, versioning or soft delete, lifecycle rule for old versions, `roles/storage.objectAdmin` for the server's account only
 - [ ] Enable Vertex AI API (and Drive API if used)
 - [ ] Create app service account, grant `roles/aiplatform.user`
 - [ ] As an admin, enable Claude Sonnet 5 in Model Garden (`roles/consumerprocurement.entitlementManager`)

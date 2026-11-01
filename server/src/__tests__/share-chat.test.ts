@@ -225,3 +225,19 @@ describe('a recipient asking about a shared link', () => {
     expect(model.seen).toEqual([]);
   });
 });
+
+describe('what a recipient’s search shows', () => {
+  it('never the owner’s links between documents, even between two that are shared', async () => {
+    const a = await doc('Ankle visit', 'Ankle visit, x-ray requested');
+    const b = await doc('Ankle x-ray', 'Ankle x-ray, no fracture');
+    await getStore().links.add(OWNER_ID, { from_document_id: a.id, to_document_id: b.id, kind: 'requests', source: 'owner', state: 'confirmed', reason: null }, '2026-02-02T00:00:00Z');
+    model = new ScriptedModel([{ tools: [{ name: 'search_documents', args: { query: 'ankle' } }] }, { say: 'Two documents [D1][D2].' }]);
+    resetChatLlm(llmWith(model));
+    const { id: shareId } = await link([a.id, b.id]);
+    expect((await ask(shareId, { question: 'What is shared about the ankle?' })).statusCode).toBe(200);
+    const out = toolOutputs(model);
+    expect(out).toMatch(/Ankle visit/);
+    expect(out).toMatch(/Ankle x-ray/);
+    expect(out).not.toMatch(/Linked:|asked for/);
+  });
+});

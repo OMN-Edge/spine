@@ -175,11 +175,11 @@ describe('S5 — one door per engine and vendor', () => {
     expect(offenders).toEqual([]);
   });
 
-  it('imports a model vendor only in the relay service’s adapters', () => {
+  it('imports a model or cloud vendor only in the adapters of the relay service and of the object store', () => {
     const offenders: string[] = [];
     for (const area of ['core', 'server', 'web']) {
       for (const file of production(area)) {
-        if (/^server\/src\/(llm|embedding)\/adapters\//.test(rel(file))) continue;
+        if (/^server\/src\/(llm|embedding)\/adapters\//.test(rel(file)) || /^server\/src\/objects\/gcs\.ts$/.test(rel(file))) continue;
         for (const spec of specifiers(file)) if (/^(@langchain\/(anthropic|google-vertexai|google-common)|google-auth-library|@anthropic-ai)/.test(spec)) offenders.push(`${rel(file)} -> ${spec}`);
       }
     }

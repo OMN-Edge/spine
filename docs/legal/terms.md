@@ -32,7 +32,7 @@ We work to keep the service running and your records safe, and we recommend you 
 
 ## Paid plans
 
-If a paid plan is offered, its price and what it includes are shown before you buy. For a digital service you have fourteen days to withdraw from the purchase, unless you ask for the service to start earlier and then lose that right as the law allows, as the order page says.
+Where the service has paid plans there is a free plan and a paid one, Premium, and sometimes a family plan, which is Premium for up to six people, and a new account begins with a trial of six months in which everything is included. What each plan includes and costs is shown before you buy. Premium is a subscription that renews, monthly or yearly, until you cancel; you cancel from your account, on the payment provider's page, and keep Premium until the end of what you paid for. Paddle sells Premium to you as the seller of record: it takes the payment, issues the invoice and accounts for tax, and its own terms apply to the purchase. If a payment fails, Premium continues for a few days while it is tried again. When a subscription or the trial ends, nothing is deleted: your records stay, you can export them, and the free plan's limits apply to what you add and to the features you use. For a digital service you have fourteen days to withdraw from the purchase, unless you ask for the service to start earlier and then lose that right as the law allows, as the order page says.
 
 ## Ending
 

@@ -2,8 +2,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadStoreConfig, useDefaultDataDir, useSettings } from 'spine-core/config.js';
 import { createAccountsStore, useStoreFactory } from 'spine-core/store/index.js';
+import { usePool } from 'spine-core/store/postgres/pool.js';
 import { useDriver } from 'spine-core/store/sqlite/index.js';
 import { openNative } from './driver-native.js';
+import { openPg } from './driver-pg.js';
+import { createObjects, useObjects } from './objects/index.js';
 
 /**
  * What this server process keeps: accounts, sessions, the vault and the sealed copies of shares, in a database with no table for a record
@@ -18,5 +21,8 @@ export function useAccountsStore(): void {
   useSettings(process.env);
   useDefaultDataDir(path.join(REPO_ROOT, 'data'));
   useDriver(openNative);
+  usePool(openPg);
+  // The sealed bytes go where SPINE_OBJECTS says (files on this machine, or a bucket); made on first use, checked at start by `index.ts`.
+  useObjects(() => createObjects());
   useStoreFactory(() => createAccountsStore(loadStoreConfig()));
 }

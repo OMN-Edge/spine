@@ -4,7 +4,7 @@
  * again, which on a phone's connection is the difference between one round trip and dozens at every reload (the device's core alone is
  * 7 MB). Everything else (the page itself, the manifest, the icons, the OCR packs) keeps `max-age=0`: it is asked about each time and
  * answered with a few bytes if unchanged. The page is what names the hashed files, so an update reaches everyone at their next visit
- * and nothing can serve an old core (there is deliberately no service worker, CLAUDE.md "Home screen").
+ * and nothing can serve an old core (there is deliberately no service worker, docs/design-decisions.md "Home screen").
  */
 const HASHED = /[\\/]assets[\\/][^\\/]+-[A-Za-z0-9_-]{8}\.[A-Za-z0-9]+$/;
 

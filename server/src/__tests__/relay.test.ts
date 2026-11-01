@@ -189,7 +189,8 @@ describe('the relay', () => {
   it('stores nothing but a count: no files, no repository but `usage` (a number a day), no log of bodies', () => {
     const source = readFileSync(new URL('../relay/relay.ts', import.meta.url), 'utf8');
     const imports = [...source.matchAll(/from '([^']+)'/g)].map(m => m[1]);
-    expect(imports.sort()).toEqual(['./token.js', '@langchain/core/language_models/chat_models', '@langchain/core/messages', 'node:http', 'spine-core/embedding/types.js', 'spine-core/llm/tasks.js', 'spine-core/llm/types.js', 'spine-core/relay/protocol.js', 'spine-core/store/types.js']);
+    expect(imports.sort()).toEqual(['../billing/gate.js', './token.js', '@langchain/core/language_models/chat_models', '@langchain/core/messages', 'node:http', 'spine-core/billing/plans.js', 'spine-core/embedding/types.js', 'spine-core/llm/tasks.js', 'spine-core/llm/types.js', 'spine-core/relay/protocol.js', 'spine-core/store/types.js']);
     expect(source).toContain("import type { UsageRepository } from 'spine-core/store/types.js'"); // a type only: the relay is given the repository, it opens no store
+    for (const given of ["import type { RelayGate } from '../billing/gate.js'", "import type { RelayTask } from 'spine-core/billing/plans.js'"]) expect(source).toContain(given); // the plan gate is given too, never opened here
   });
 });

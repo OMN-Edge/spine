@@ -74,6 +74,7 @@ const upload = path.join(sandbox, 'invented.pdf');
 }
 const shownInTimeline = (f, d) => !f.pages.slice(d.page_start - 1, d.page_end).every(pg => pg.hidden); // a document whose every page is set aside is kept, not drawn
 const MASTER = 'violet-tractor-9Qx-pelican-ledger-42';
+const GUEST_MASTER = 'copper-lantern-7Zk-harbour-quill-31';
 
 // Invented files for the demo: one longer than the demo reads, and two of one page.
 const demoFiles = [];
@@ -87,6 +88,8 @@ for (const [name, count] of [['demo-long.pdf', 7], ['demo-two.pdf', 1], ['demo-t
 const made = execFileSync('node', ['dist/cli.js', 'create-user', 'check@example.com'], { cwd: path.join(root, 'server'), env, encoding: 'utf8' });
 const keeperPassword = execFileSync('node', ['dist/cli.js', 'create-user', 'keeper@example.com'], { cwd: path.join(root, 'server'), env, encoding: 'utf8' }).match(/password \(shown once\): (\S+)/)[1];
 const password = made.match(/password \(shown once\): (\S+)/)[1];
+const guestPassword = execFileSync('node', ['dist/cli.js', 'create-user', 'guest@example.com'], { cwd: path.join(root, 'server'), env, encoding: 'utf8' }).match(/password \(shown once\): (\S+)/)[1];
+const JSQR = fs.readFileSync(path.join(root, 'node_modules/jsqr/dist/jsQR.js'), 'utf8');
 const CSP = fs.readFileSync(path.join(root, 'Caddyfile'), 'utf8').match(/Content-Security-Policy "([^"]+)"/)[1].replace('{$SPINE_RELAY_URL:}', relay.url);
 const puts = []; // when the owner's device sent a sealed copy
 const asked = []; // every address the browsers asked the server for: a key in the part after the # would never be among them
@@ -130,6 +133,29 @@ const diagnostics = [];
 const explain = () => {
   for (const d of diagnostics.slice(-15)) console.log(`     browser: ${d}`);
   try { for (const l of fs.readFileSync(serverLogPath, 'utf8').trim().split('\n').slice(-12)) if (l) console.log(`     server: ${l.slice(0, 240)}`); } catch { /* no log */ }
+};
+/**
+ * Reads back a QR code the page drew, the way a phone would: the SVG is painted on a canvas in a blank page (which has no content security
+ * policy to get in the way) and jsQR decodes what is there. Returns the text the code holds, or '' if nothing could be read.
+ */
+const decodeQr = async (page, selector) => {
+  const svg = await page.evaluate(sel => document.querySelector(`${sel} svg`)?.outerHTML ?? '', selector);
+  if (!svg) return '';
+  const blank = await browser.newPage();
+  try {
+    await blank.evaluate(JSQR);
+    return await blank.evaluate(async markup => {
+      // Whatever size the page gave it, it is drawn at 480 px: a QR code is read at the size it is shown, not at its own.
+      const sized = markup.replace(/<svg([^>]*)>/, (_, attrs) => `<svg${attrs.replace(/\s(width|height)="[^"]*"/g, '')} width="480" height="480">`);
+      const img = new Image();
+      img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(sized)}`;
+      await img.decode();
+      const canvas = document.createElement('canvas'); canvas.width = canvas.height = 480;
+      const c = canvas.getContext('2d'); c.fillStyle = '#fff'; c.fillRect(0, 0, 480, 480); c.drawImage(img, 0, 0, 480, 480);
+      const data = c.getImageData(0, 0, 480, 480);
+      return window.jsQR(data.data, 480, 480)?.data ?? '';
+    }, svg);
+  } finally { await blank.close(); }
 };
 const check = (ok, what) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${what}`); if (!ok) { if (!failed) explain(); failed = true; console.log(`     page says: ${seen().replace(/\s+/g, ' ').slice(0, 300)}`); } };
 try {
@@ -314,7 +340,7 @@ try {
   check(await guestWait('Chest X-ray'), 'someone with no account opens the link and reads the shared records');
   check(await guestWait('Shared securely via Spine', 2000), 'the shared page carries its footer');
   const footerLeads = async () => { for (let w = 0; w < 5000; w += 250) { const h = await guest.evaluate(() => [...document.querySelectorAll('a')].find(a => a.innerText.includes('Shared securely via Spine'))?.getAttribute('href') ?? null); if (h) return h; await wait(250); } return null; };
-  check(await footerLeads() === '/', "and the footer leads to this instance's own front page");
+  check(await footerLeads() === '/?ref=share', "and the footer leads to this instance's own front page, saying it came from a shared page");
   await (await guest.evaluateHandle(() => [...document.querySelectorAll('a')].find(a => a.innerText.includes('Chest X-ray')))).asElement().click();
   check(await guestWait('Findings', 20000), 'a shared document opens with its details');
   check(!asked.some(u => u.includes(key)), 'the key never went to the server');
@@ -779,6 +805,8 @@ try {
     check(await waitFor('Waiting for the other device', 15000), 'the first device shows a one-time code');
     const code = await p.evaluate(() => document.querySelector('[aria-label="Your code"]')?.textContent ?? '');
     check(/^([0-9A-Z]{4}-){4}[0-9A-Z]{2}$/.test(code), 'the code is eighteen characters in groups');
+    const pairingQr = await decodeQr(p, '[data-qr=pairing]');
+    check(pairingQr === `http://localhost:${front}/pair#${code}` || pairingQr === `http://localhost:${front}/pair#${code.replace(/-/g, '')}`, `the code beside it, read back from the QR code, opens the pairing page with that code (${pairingQr || 'unreadable'})`);
 
     await e.goto(`http://localhost:${front}/pair`, { waitUntil: 'networkidle0' });
     await e.type('input[placeholder="Code"]', code);
@@ -828,6 +856,183 @@ try {
     await click('Timeline');
   }
 
+  // Records for more than one person: a second person starts empty, is opened and saved apart, and the first person's records are back on
+  // opening them again, without the master password being asked for again.
+  {
+    await click('check@example.com');
+    check(await waitFor('See and add people'), 'the account page offers people');
+    await click('See and add people');
+    check(await waitFor('Add a person'), 'the page of people opens');
+    await type('input[aria-label=Name]', 'Child');
+    await click('Add');
+    check(await waitFor('Child', 15000) && (await text()).includes('Open now'), 'another person is added next to the first');
+    await (await p.evaluateHandle(() => [...document.querySelectorAll('li')].find(li => li.innerText.includes('Child'))?.querySelector('button'))).asElement().click();
+    check(await waitFor('Explore with sample records', 30000), "the other person's records start empty, apart from the first person's");
+    check(!(await text()).includes('Chest X-ray'), "and none of the first person's documents are in them");
+    check((await text()).includes('Child'), "the page says whose records are open");
+    check(!(await text()).includes('Open your records'), 'opening them did not ask for the master password');
+    await click('Child');
+    check(await waitFor('Add a person'), 'the page of people opens again from the name');
+    await (await p.evaluateHandle(() => [...document.querySelectorAll('li')].find(li => !li.innerText.includes('Open now'))?.querySelector('button'))).asElement().click();
+    check(await waitFor('Chest X-ray', 30000), "the first person's records are back, as they were");
+
+    // A child's records carry a birth date, kept sealed with them; without a real date they are refused.
+    await click('check@example.com');
+    await waitFor('See and add people');
+    await click('See and add people');
+    await waitFor('Add a person');
+    await type('input[aria-label=Name]', 'Kid');
+    await p.click('input[type=checkbox]');
+    await type('input[aria-label="Born (year-month-day)"]', '2015-02-30');
+    await click('Add');
+    check(await waitFor('written year-month-day'), "a child's records are refused without a real birth date");
+    await p.focus('input[aria-label="Born (year-month-day)"]');
+    for (let i = 0; i < 12; i++) await p.keyboard.press('Backspace');
+    await p.type('input[aria-label="Born (year-month-day)"]', '2015-04-01');
+    await click('Add');
+    check(await waitFor('child,', 15000), 'a child is added, and shown with their age');
+    await click('Timeline');
+    await waitFor('Chest X-ray');
+
+    // A person's name and a child's birth date can be corrected, and the list shows the correction.
+    await click('check@example.com');
+    await waitFor('See and add people');
+    await click('See and add people');
+    await waitFor('Add a person');
+    await (await p.evaluateHandle(() => [...document.querySelectorAll('li')].find(li => li.innerText.includes('Kid'))?.querySelectorAll('button')[1])).asElement().click();
+    await p.waitForSelector('li input[aria-label=Name]', { visible: true });
+    await p.focus('li input[aria-label=Name]');
+    for (let i = 0; i < 12; i++) await p.keyboard.press('Backspace');
+    await p.type('li input[aria-label=Name]', 'Kiddo');
+    await p.focus('li input[aria-label="Born (year-month-day)"]');
+    for (let i = 0; i < 12; i++) await p.keyboard.press('Backspace');
+    await p.type('li input[aria-label="Born (year-month-day)"]', '2010-01-01');
+    await (await p.evaluateHandle(() => [...document.querySelectorAll('li button[type=submit]')][0])).asElement().click();
+    check(await waitFor('Kiddo', 15000) && /Kiddo[\s\S]{0,40}child, 16 years old/.test(await text()), "a person's name and a child's birth date can be corrected");
+    await click('Timeline');
+    await waitFor('Chest X-ray');
+
+    // The emergency card: written with an official number kept off it until ticked, turned on, and printable at the size of a bank card.
+    await click('Share links');
+    await waitFor('Write an emergency card');
+    await click('Write an emergency card');
+    check(await waitFor('Official details'), 'the emergency card is written under Share links');
+    await type('input[maxlength="120"]', 'Jane Example');
+    await click('Add a detail');
+    await type('input[aria-label="Number or value"]', '1234567890123');
+    await (await p.evaluateHandle(() => [...document.querySelectorAll('label')].find(l => l.innerText.includes('Put it on the card'))?.querySelector('input'))).asElement().click();
+    await click('Save the card');
+    check(await waitFor('Saved'), 'the card is saved');
+    await click('Turn the card on');
+    check(await waitFor('The card is on', 20000) && /\/share\/[A-Za-z0-9-]+#[A-Za-z0-9_-]{43}/.test(await text()), 'turning it on gives an address that holds its key');
+    const addressOf = async () => (/\/share\/[A-Za-z0-9-]+#[A-Za-z0-9_-]{43}/.exec(await text()) ?? [''])[0];
+    const firstAddress = await addressOf();
+    check((await decodeQr(p, '[aria-label="Code that opens the card"]')) === firstAddress.replace(/^/, `http://localhost:${front}`), 'the QR code on the card reads back as the address shown, with its key');
+    await click('Show the code');
+    const offlineQr = await decodeQr(p, '[aria-label="Code that holds the card"]');
+    check(offlineQr.startsWith('EMERGENCY CARD\nName: Jane Example') && offlineQr.includes('1234567890123'), 'the code that works with no signal reads back as the card as text, with the name and the number that was ticked');
+    check(await waitFor('Last checked'), 'the card says when it was last checked');
+    await click('Make a new code');
+    await click('Yes, turn the old code off');
+    let changed = false;
+    for (let t = 0; t < 15000 && !changed; t += 250) { const now = await addressOf(); changed = !!now && now !== firstAddress; if (!changed) await wait(250); }
+    check(changed, 'a lost card is replaced with a new code, and the address is a different one');
+    await p.emulateMediaType('print');
+    await p.evaluate(() => document.body.classList.add('printing-card'));
+    const faces = await p.evaluate(() => [...document.querySelectorAll('.print-card .card-face')].map(f => { const r = f.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; }));
+    const printed = await p.evaluate(() => document.querySelector('.print-card')?.innerText ?? '');
+    await p.evaluate(() => document.body.classList.remove('printing-card'));
+    await p.emulateMediaType('screen');
+    check(faces.length === 2 && faces.every(([w, h]) => Math.abs(w - 324) <= 3 && Math.abs(h - 204) <= 3), `the printed card is the size of a bank card, front and back (${JSON.stringify(faces)} px)`);
+    check(printed.includes('Jane Example') && printed.includes('1234567890123'), 'and carries the name and the number that was ticked');
+    await click('Turn the card off');
+    check(await waitFor('Turn the card on'), 'the card can be turned off');
+    await click('Timeline');
+    await waitFor('Chest X-ray');
+
+    // Letting someone in: a code is made on the device, shown once, and an invitation that is not used can be cancelled.
+    await click('check@example.com');
+    await waitFor('See and add people');
+    await click('See and add people');
+    await waitFor('Add a person');
+    await click('Access');
+    check(await waitFor('Let someone in'), "a person's access can be opened");
+    await click('Let someone in');
+    check(await waitFor('Tell this code to the person', 20000), 'a code is made for the invitation');
+    check(/\b[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{2}\b/.test(await text()), 'in groups of four that can be read out');
+    await click('Done');
+    check(await waitFor('An invitation is waiting'), 'the invitation is listed until it is used');
+    await click('Cancel');
+    for (let t = 0; t < 8000 && (await text()).includes('An invitation is waiting'); t += 250) await wait(250);
+    check(!(await text()).includes('An invitation is waiting'), 'and cancelled');
+
+    // The other side. A read-only invitation is made; a second account follows its link, signs in, joins, reads the person's records, and the
+    // device does not let it change them.
+    await p.select('select[aria-label="What they can do"]', 'viewer');
+    await click('Let someone in');
+    check(await waitFor('Tell this code to the person', 20000), 'a read-only invitation is made');
+    const inviteText = await text();
+    const inviteCode = inviteText.match(/\b([0-9A-Z]{4}-){4}[0-9A-Z]{2}\b/)?.[0] ?? '';
+    const inviteLink = inviteText.match(/https?:\/\/\S+\/invite#\S+/)?.[0] ?? '';
+    check(inviteCode !== '' && inviteLink.includes(inviteCode.replace(/-/g, '')), 'its code and its link say the same code');
+    await click('Done');
+    {
+      const gctx = await browser.createBrowserContext();
+      const q = await gctx.newPage();
+      const qErrors = [];
+      q.on('pageerror', e => qErrors.push(e.message));
+      const qText = () => q.evaluate(() => document.body.innerText);
+      const qWait = async (what, ms = 30000) => { for (let t = 0; t < ms; t += 250) { if ((await qText()).includes(what)) return true; await wait(250); } return false; };
+      const qClick = async label => { const h = await q.evaluateHandle(l => [...document.querySelectorAll('button,a')].find(e => e.offsetParent && e.innerText.trim().toLowerCase().startsWith(l.toLowerCase())), label); await h.asElement().click(); };
+      // The link, followed by someone with no session, leads to signing in; the account is new, so the vault is made on the way.
+      await q.goto(inviteLink.replace(/^https?:\/\/[^/]+/, `http://localhost:${front}`), { waitUntil: 'networkidle0' });
+      check(await qWait('You have been invited', 15000), 'the link says the person has been invited, before any sign-in');
+      await qClick('Sign in');
+      await q.waitForSelector('input[type=email]', { visible: true });
+      await q.type('input[type=email]', 'guest@example.com'); await q.type('input[type=password]', guestPassword); await qClick('Sign in');
+      check(await qWait('Before you start', 20000), 'the second account is asked to agree first');
+      for (const c of await q.$$('input[type=checkbox]')) await c.click();
+      await qClick('Agree and continue');
+      check(await qWait('Protect your records', 20000), 'and to choose a master password of its own');
+      const qpw = await q.$$('input[type=password]'); await qpw[0].type(GUEST_MASTER); await qpw[1].type(GUEST_MASTER); await qClick('Continue');
+      check(await qWait('recovery kit', 20000), 'and keeps its own recovery kit');
+      await (await q.$('input[type=checkbox]')).click(); await qClick('Continue');
+      check(await qWait('Open your records', 20000), 'its records open with its own password');
+      await q.type('input[type=password]', GUEST_MASTER); await qClick('Open');
+      check(await qWait('You have an invitation waiting', 40000), 'once in, the invitation that came with the link is offered');
+      await qClick('Open it');
+      check(await qWait('Join with a code', 20000), 'and leads to the page where the code is used');
+      const waiting = await q.evaluate(() => document.querySelector('input[aria-label="The code"]')?.value ?? '');
+      check(waiting !== '' && waiting.replace(/-/g, '').toUpperCase() === inviteCode.replace(/-/g, ''), 'the code from the link is already in the box');
+      await qClick('Join');
+      // Joining reloads the keys and the page of people is drawn again; the message that it worked has to survive that, so it is looked for often.
+      let sawNotice = false; let listed = false;
+      for (let t = 0; t < 40000 && !listed; t += 40) { const now = await qText(); sawNotice ||= now.includes('You can now open the records'); listed = now.includes('Shared by check@example.com'); await wait(40); }
+      check(listed, 'joining with the code works');
+      check(sawNotice, 'and the page says so, though it is drawn again when the keys are reloaded');
+      check((await qText()).includes('Shared by check@example.com') && /only read/.test(await qText()), 'the person is listed as shared by the owner, as someone the guest can only read');
+      // Spent: the same code does not work a second time, from the same account.
+      await q.type('input[aria-label="The code"]', inviteCode); await qClick('Join');
+      check(await qWait('not valid', 15000) || await qWait('Could not', 15000), 'the code does not work twice');
+      // Open the shared person: the owner's sample records are there.
+      await q.evaluate(() => [...document.querySelectorAll('li')].find(li => li.innerText.includes('Shared by'))?.querySelector('button')?.click());
+      check(await qWait('Chest X-ray', 60000), "opening the shared person shows the owner's records");
+      // A change made by someone who can only read is refused by the vault, and the page says it was not saved.
+      await q.evaluate(() => [...document.querySelectorAll('a')].find(a => a.getAttribute('href') === '/library')?.click());
+      await qWait('Remove tag', 20000);
+      const removed = await q.evaluate(() => { const b = [...document.querySelectorAll('button')].find(x => x.innerText.trim() === 'Remove tag'); b?.click(); return !!b; });
+      if (removed) { await wait(400); await q.evaluate(() => [...document.querySelectorAll('[role=alertdialog] button')].find(b => b.innerText.trim() === 'Remove tag')?.click()); }
+      check(removed && await qWait('Your latest changes are not saved yet', 30000), 'a change by someone who can only read is not kept, and the page says so');
+      check(qErrors.length === 0, `no errors on the guest's page${qErrors.length ? `: ${qErrors[0]}` : ''}`);
+      await gctx.close();
+    }
+    // What the guest changed was refused: the owner still has all of it.
+    await click('Timeline');
+    check(await waitFor('Chest X-ray', 20000), "the owner's records are as they were");
+    await click('Timeline');
+    await waitFor('Chest X-ray');
+  }
+
   // A passkey that opens the vault (the WebAuthn PRF extension), with Chrome's virtual authenticator standing in for the person's device.
   {
     const cdp = await p.createCDPSession();
@@ -836,6 +1041,7 @@ try {
     const reauth = async () => { for (let t = 0; t < 4000; t += 250) { if (await p.$('[role=dialog] input[type=password]')) { await p.type('[role=dialog] input[type=password]', password); await p.keyboard.press('Enter'); return; } await wait(250); } };
     await click('check@example.com');
     check(await waitFor('Add a passkey on this device'), 'the account page offers passkeys');
+    check((await text()).includes('they lose access to them when this account is deleted'), 'deleting the account says that the people let into its records lose them');
     await click('Add a passkey on this device');
     await reauth();
     check(await waitFor('added 20', 15000), 'a passkey is added');

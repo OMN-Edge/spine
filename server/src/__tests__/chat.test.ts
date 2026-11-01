@@ -227,9 +227,9 @@ describe('who can ask, and what is accepted', () => {
 describe('what the assistant will not do (FR-CHAT-02, FR-ORG-08)', () => {
   it('declines to interpret results, for the owner, for a recipient and in the fixed pipeline, and the summary prompt asks for none', async () => {
     const { buildAgentSystemPrompt, buildSharedAgentSystemPrompt, buildExtractionPrompt } = await import('spine-core/llm/prompts.js');
-    expect(buildAgentSystemPrompt()).toContain('You do not interpret results');
-    expect(buildAgentSystemPrompt()).toContain('this is a question for their doctor');
-    expect(buildSharedAgentSystemPrompt(null)).toContain('You do not interpret results either');
+    expect(buildAgentSystemPrompt(8, '2026-03-01')).toContain('You do not interpret results');
+    expect(buildAgentSystemPrompt(8, '2026-03-01')).toContain('this is a question for their doctor');
+    expect(buildSharedAgentSystemPrompt(null, 5, '2026-03-01')).toContain('You do not interpret results either');
     expect(buildChatPrompt('q', [], [])).toContain('You do not interpret results');
     expect(buildExtractionPrompt('text')).not.toMatch(/clinical significance/);
     expect(buildExtractionPrompt('text')).toMatch(/no interpretation/);

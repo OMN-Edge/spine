@@ -22,6 +22,17 @@ import { documentByline, documentTitle, fieldName, isCriticalField, isSection, v
  * server where the browser stands, offers to ask the owner, waits while they decide, and only then loads the documents.
  * Nothing is requested from the documents' routes before that: they would answer 403.
  */
+/** The front page, with a note of where the visit came from, so the sign-ups a shared page brings can be counted (a count a day, never who). */
+function fromShare(url: string): string {
+  try {
+    const u = new URL(url, window.location.origin);
+    u.searchParams.set('ref', 'share');
+    return u.origin === window.location.origin ? `${u.pathname}${u.search}${u.hash}` : u.toString();
+  } catch {
+    return url;
+  }
+}
+
 export default function PublicShareView() {
   const { id: shareId } = useParams<{ id: string }>();
   const { t } = useI18n();
@@ -216,8 +227,9 @@ function SharedContent({ shareId }: { shareId: string }) {
         </p>
         <p className="text-xs text-gray-400 text-center mt-2">
           {landingUrl
-            ? <a href={landingUrl} target="_blank" rel="noopener noreferrer" className="hover:underline">{t('Shared securely via Spine')}</a>
+            ? <a href={fromShare(landingUrl)} target="_blank" rel="noopener noreferrer" className="hover:underline">{t('Shared securely via Spine')}</a>
             : t('Shared securely via Spine')}
+          {landingUrl && <> · <a href="/for-doctors?ref=share" target="_blank" rel="noopener noreferrer" className="hover:underline">{t('Recommend Spine to your patients')}</a></>}
         </p>
       </div>
     </div>

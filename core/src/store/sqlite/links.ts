@@ -1,6 +1,6 @@
 import type { Database } from './driver.js';
 import type { DocumentLink, LinkRepository } from '../types.js';
-import { owner } from './owner.js';
+import { owner } from '../owner.js';
 import { VISIBLE } from './visibility.js';
 
 const COLUMNS = 'l.from_document_id, l.to_document_id, l.kind, l.source, l.state, l.reason, l.confidence';

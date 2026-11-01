@@ -53,14 +53,18 @@ colors.snow = '#ffffff';
 light['--c-white'] = '255 255 255';
 dark['--c-white'] = '30 32 37';
 
-// The landing page's names for the same colours, as channels so an opacity applies. `band` is its dark section, dark in both themes.
+// The public pages' own colours (the front page, how it works, protection, families), as channels so an opacity applies: a mist paper and a
+// deep teal ink rather than the app's greys, the app's teal as the accent, `surface` for what is drawn as a page, and `honey`, the one warm
+// note, used only where a value is marked as on paper with a highlighter. `band` is a section dark in both themes.
 colors.paper = 'rgb(var(--paper) / <alpha-value>)';
 colors.ink = 'rgb(var(--ink) / <alpha-value>)';
 colors.accent = { DEFAULT: 'rgb(var(--accent) / <alpha-value>)', light: 'rgb(var(--accent-light) / <alpha-value>)' };
 colors.band = 'rgb(var(--band) / <alpha-value>)';
+colors.surface = 'rgb(var(--surface) / <alpha-value>)';
+colors.honey = 'rgb(var(--honey) / <alpha-value>)';
 colors['band-fg'] = 'rgb(var(--band-fg) / <alpha-value>)';
-Object.assign(light, { '--paper': '250 248 244', '--ink': '22 24 29', '--accent': '15 118 110', '--accent-light': '94 234 212', '--band': '22 24 29', '--band-fg': '250 248 244' });
-Object.assign(dark, { '--paper': '22 24 29', '--ink': '250 248 244', '--accent': '94 234 212', '--accent-light': '94 234 212', '--band': '12 13 16', '--band-fg': '250 248 244' });
+Object.assign(light, { '--paper': '245 247 246', '--surface': '255 255 255', '--ink': '23 41 42', '--accent': '15 118 110', '--accent-light': '94 234 212', '--honey': '242 193 78', '--band': '23 41 42', '--band-fg': '245 247 246' });
+Object.assign(dark, { '--paper': '16 24 25', '--surface': '24 35 36', '--ink': '234 241 240', '--accent': '111 211 196', '--accent-light': '111 211 196', '--honey': '227 179 65', '--band': '10 16 17', '--band-fg': '234 241 240' });
 
 /** @type {import('tailwindcss').Config} */
 export default {
@@ -70,7 +74,7 @@ export default {
       colors,
       fontFamily: {
         sans: ['"Inter Variable"', 'ui-sans-serif', 'system-ui', 'sans-serif', '"Apple Color Emoji"', '"Segoe UI Emoji"'],
-        label: ['"IBM Plex Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+        display: ['Literata', 'Georgia', 'serif'],
       },
     },
   },

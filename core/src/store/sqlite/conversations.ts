@@ -1,6 +1,6 @@
 import type { Database } from './driver.js';
 import { MAX_CONVERSATIONS, MAX_MESSAGES, type ConversationOrigin, type ConversationRepository, type ConversationSummary, type MessageKind, type StoredMessage } from '../types.js';
-import { owner } from './owner.js';
+import { owner } from '../owner.js';
 
 /** Every statement filters by `user_id` (SECURITY.md P12). A conversation is medical text, as private as the documents it quotes. */
 export function conversationRepository(db: Database): ConversationRepository {

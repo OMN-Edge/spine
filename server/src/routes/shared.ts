@@ -3,10 +3,11 @@ import type { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { sharedLimits } from '../config.js';
+import { accountEntitlements, liveSharesFor } from '../billing/entitlements.js';
 import { SHARE_ID, readBlob, readBundle, removeBlobs, removeShare, writeBlob, writeBundle } from '../shared-files.js';
 import { requireAuth } from 'spine-core/routes/middleware.js';
 import { countryOf } from '../geo.js';
-import { accessRequestMail } from '../accounts.js';
+import { accessRequestMail, cardOpenedMail, cardReviewMail } from '../accounts.js';
 import { getMailer } from '../mail/index.js';
 import { publicUrl } from 'spine-core/config.js';
 import { issueToken } from '../relay/token.js';
@@ -46,13 +47,42 @@ const PASS_MS = 10 * 60 * 1000;
  * A share's pass is short: the relay cannot ask whether the link was revoked, so a pass already handed out works until it ends. The page asks
  * again as it goes (a pass is renewed with a minute left), and once the link is revoked or expired it is refused one.
  */
+/** A card has no end of its own; this is the time the store holds for it. Its owner turns it off. */
+const CARD_NO_END = '9999-12-31T00:00:00.000Z';
+const CARD_MAX_BYTES = 64 * 1024;
+const CARD_REVIEW_MS = 365 * 24 * 60 * 60 * 1000;
+/** An owner is told of a card being opened at most this often, however often it is. */
+const CARD_MAIL_EVERY_MS = 15 * 60 * 1000;
+const cardMailed = new Map<string, number>();
+
 export const SHARE_PASS_MS = 2 * 60 * 1000;
+
+/**
+ * The yearly reminder about an emergency card (FR-EMG-08): the owner of a card not sent or reviewed for a year is mailed once, neutrally, and
+ * again a year after that if still nothing. The server knows only the date; it cannot see what is on the card. With no mailer nothing is
+ * sent (the page asks the owner itself). Run at start and hourly.
+ */
+export async function remindCardReviews(now = new Date()): Promise<number> {
+  const mailer = getMailer();
+  if (!mailer.enabled) return 0;
+  const store = getAccountsStore();
+  const year = new Date(now.getTime() - CARD_REVIEW_MS).toISOString();
+  let sent = 0;
+  for (const due of await store.shared.cardsToRemind(year, year)) {
+    const owner = await store.users.findById(due.userId);
+    if (!owner) continue;
+    // Marked first: a mail that fails is not tried every hour, and the next year's reminder is the retry.
+    await store.shared.markReminded(due.id, now.toISOString());
+    await mailer.send(cardReviewMail(owner.email)).then(() => { sent++; }, () => undefined);
+  }
+  return sent;
+}
 
 /** Deletes the files of every share that has ended, and the rows long after. Run at start, hourly, and by a visit to an ended one. */
 export async function sweepShares(now = new Date()): Promise<number> {
   const store = getAccountsStore();
   const ended = await store.shared.endedWithFiles(now.toISOString());
-  for (const { id } of ended) removeShare(id);
+  for (const { id } of ended) await removeShare(id);
   await store.shared.forgetEnded(now.toISOString(), ENDED_GRACE_MS);
   return ended.length;
 }
@@ -78,6 +108,15 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
   app.put<{ Params: { id: string }; Body: Buffer }>('/api/shared/:id', { preHandler: requireAuth }, async (req, reply) => {
     const limits = sharedLimits();
     const { id } = req.params;
+    // The emergency card: one sealed bundle with no end of its own, outside the plan's share limits (it is on every plan), small, and never waiting for approval.
+    if (req.headers['x-spine-kind'] === 'card') {
+      if (!SHARE_ID.test(id) || !Buffer.isBuffer(req.body) || req.body.length === 0 || req.body.length > CARD_MAX_BYTES) return reply.status(400).send({ error: 'an id and a sealed card of at most 64 KB are needed' });
+      const put = await getAccountsStore().shared.put(req.userId, { id, expiresAt: CARD_NO_END, requireApproval: false, size: req.body.length, blobs: 0, blobBytes: 0, kind: 'card' }, new Date().toISOString());
+      if (put === 'too_many_cards') return reply.status(409).send({ error: 'too many cards are on; turn one off first', code: 'too_many_cards' });
+      if (put !== 'ok') return reply.status(put === 'taken' ? 404 : 409).send({ error: put === 'taken' ? 'not found' : 'this card was turned off' });
+      await writeBundle(id, req.body);
+      return reply.status(201).send({ ok: true });
+    }
     const expires = String(req.headers['x-spine-expires'] ?? '');
     if (!SHARE_ID.test(id) || !ISO.test(expires) || Date.parse(expires) <= Date.now() || !Buffer.isBuffer(req.body) || req.body.length === 0) {
       return reply.status(400).send({ error: 'an id, an end time in the future and the sealed copy are needed' });
@@ -87,13 +126,36 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     const used = await store.shared.usage(req.userId, new Date().toISOString());
     const existing = await store.shared.get(id);
     const replacing = existing && existing.userId === req.userId && !existing.revokedAt;
-    if (!replacing && used.bundles >= limits.live) return reply.status(409).send({ error: 'too many shares are live; revoke one first', code: 'too_many' });
+    // A plan with a share of its own limits how many are live, and which can wait for approval (billing off: the instance's ceiling only).
+    const plan = await accountEntitlements(req.userId);
+    const requireApproval = req.headers['x-spine-approval'] === '1';
+    if (requireApproval && plan && !plan.approvalMode) return reply.status(402).send({ error: 'approving visitors is not part of the account’s plan', code: 'plan_required' });
+    if (!replacing && used.bundles >= (await liveSharesFor(req.userId))) {
+      const byPlan = plan?.liveShares != null && used.bundles >= plan.liveShares;
+      return reply.status(byPlan ? 402 : 409).send({ error: byPlan ? 'another live share is not part of the account’s plan' : 'too many shares are live; revoke one first', code: byPlan ? 'plan_required' : 'too_many' });
+    }
     if (used.bytes - (replacing ? existing.size + existing.blobBytes : 0) + req.body.length > limits.totalBytes) return reply.status(413).send({ error: 'the shares hold too much; revoke one first', code: 'full' });
-    const put = await store.shared.put(req.userId, { id, expiresAt: expires, requireApproval: req.headers['x-spine-approval'] === '1', size: req.body.length, blobs: 0, blobBytes: 0 }, new Date().toISOString());
+    const put = await store.shared.put(req.userId, { id, expiresAt: expires, requireApproval, size: req.body.length, blobs: 0, blobBytes: 0 }, new Date().toISOString());
     if (put !== 'ok') return reply.status(put === 'taken' ? 404 : 409).send({ error: put === 'taken' ? 'not found' : 'this share was revoked' });
-    removeBlobs(id);
-    writeBundle(id, req.body);
+    await removeBlobs(id);
+    await writeBundle(id, req.body);
     return reply.status(201).send({ ok: true });
+  });
+
+  // After a promotion (SECURITY.md **M-51**): the person who took a profile takes over the card the old owner's account published for it, so the
+  // printed code goes on working and is theirs to replace or turn off. Only an account holding a promoted grant from the card's owner, naming its id.
+  app.post<{ Params: { id: string } }>('/api/shared/:id/take', { preHandler: [requireAuth, app.rateLimit({ max: 20, timeWindow: '10 minutes' })] }, async (req, reply) => {
+    if (!SHARE_ID.test(req.params.id)) return reply.status(404).send({ error: 'not found' });
+    const done = await getAccountsStore().shared.take(req.userId, req.params.id, new Date().toISOString());
+    if (done === 'not_found') return reply.status(404).send({ error: 'not found' });
+    if (done === 'too_many') return reply.status(409).send({ error: 'too many cards are on; turn one off first', code: 'too_many_cards' });
+    return reply.send({ ok: true });
+  });
+
+  // The owner says their card is still right: the year for the reminder starts over. (Sending the card again does the same.)
+  app.post<{ Params: { id: string } }>('/api/shared/:id/review', { preHandler: requireAuth }, async (req, reply) => {
+    if (!SHARE_ID.test(req.params.id) || !(await getAccountsStore().shared.touchCard(req.userId, req.params.id, new Date().toISOString()))) return reply.status(404).send({ error: 'not found' });
+    return reply.send({ ok: true });
   });
 
   app.put<{ Params: { id: string; n: string }; Body: Buffer }>('/api/shared/:id/blob/:n', { preHandler: requireAuth }, async (req, reply) => {
@@ -105,7 +167,7 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     if (!Number.isInteger(n) || n < 0 || n > 9999 || !Buffer.isBuffer(req.body) || req.body.length === 0) return reply.status(400).send({ error: 'a number and the sealed file are needed' });
     const used = await store.shared.usage(req.userId, new Date().toISOString());
     if (used.bytes + req.body.length > limits.totalBytes) return reply.status(413).send({ error: 'the shares hold too much; revoke one first', code: 'full' });
-    writeBlob(bundle.id, n, req.body);
+    await writeBlob(bundle.id, n, req.body);
     await store.shared.addBlob(req.userId, bundle.id, req.body.length);
     return reply.status(201).send({ ok: true });
   });
@@ -114,13 +176,14 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     const { expires_at: expires, require_approval: approval } = req.body ?? {};
     if (expires !== undefined && (typeof expires !== 'string' || !ISO.test(expires) || Date.parse(expires) <= Date.now() || Date.parse(expires) - Date.now() > 31 * 24 * 60 * 60 * 1000)) return reply.status(400).send({ error: 'expires_at must be a time within the next 31 days' });
     if (approval !== undefined && typeof approval !== 'boolean') return reply.status(400).send({ error: 'require_approval must be true or false' });
+    if (approval === true && req.userId && (await accountEntitlements(req.userId))?.approvalMode === false) return reply.status(402).send({ error: 'approving visitors is not part of the account’s plan', code: 'plan_required' });
     if (!SHARE_ID.test(req.params.id) || !(await getAccountsStore().shared.update(req.userId, req.params.id, { expiresAt: expires as string | undefined, requireApproval: approval as boolean | undefined }))) return reply.status(404).send({ error: 'not found' });
     return reply.send({ ok: true });
   });
 
   app.delete<{ Params: { id: string } }>('/api/shared/:id', { preHandler: requireAuth }, async (req, reply) => {
     if (!SHARE_ID.test(req.params.id) || !(await getAccountsStore().shared.revoke(req.userId, req.params.id, new Date().toISOString()))) return reply.status(404).send({ error: 'not found' });
-    removeShare(req.params.id);
+    await removeShare(req.params.id);
     return reply.send({ ok: true });
   });
 
@@ -159,14 +222,14 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     const bundle = await live(req.params.id);
     if (!bundle) return reply.status(404).send({ error: 'not found' });
     if (bundle === 'ended') return reply.status(410).send({ error: 'this link is no longer active', ended: true });
-    return reply.header('Cache-Control', 'no-store').send({ expires_at: bundle.expiresAt, approval: bundle.requireApproval, size: bundle.size, blobs: bundle.blobs, relay: relaySettings() !== null });
+    return reply.header('Cache-Control', 'no-store').send({ kind: bundle.kind, expires_at: bundle.kind === 'card' ? null : bundle.expiresAt, approval: bundle.requireApproval, size: bundle.size, blobs: bundle.blobs, relay: relaySettings() !== null });
   });
 
   app.get<{ Params: { id: string } }>('/api/shared/:id/bundle', read, async (req, reply) => {
     const bundle = await live(req.params.id);
     if (!bundle) return reply.status(404).send({ error: 'not found' });
     if (bundle === 'ended') return reply.status(410).send({ error: 'this link is no longer active', ended: true });
-    const bytes = readBundle(bundle.id);
+    const bytes = await readBundle(bundle.id);
     if (!bytes) return reply.status(404).send({ error: 'not found' });
     return reply.type('application/octet-stream').header('Cache-Control', 'no-store').header('X-Robots-Tag', 'noindex, nofollow').send(bytes);
   });
@@ -175,7 +238,7 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     const bundle = await live(req.params.id);
     const n = Number(req.params.n);
     if (!bundle || bundle === 'ended' || !Number.isInteger(n) || n < 0) return reply.status(bundle === 'ended' ? 410 : 404).send({ error: bundle === 'ended' ? 'this link is no longer active' : 'not found' });
-    const bytes = readBlob(bundle.id, n);
+    const bytes = await readBlob(bundle.id, n);
     if (!bytes) return reply.status(404).send({ error: 'not found' });
     return reply.type('application/octet-stream').header('Cache-Control', 'no-store').header('X-Robots-Tag', 'noindex, nofollow').send(bytes);
   });
@@ -233,6 +296,17 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     const doc = req.body?.document_id;
     if (doc !== undefined && doc !== null && (typeof doc !== 'string' || !DOC_ID.test(doc))) return reply.status(400).send({ error: 'document_id must be an id' });
     await getAccountsStore().shared.logOpen(bundle.id, new Date().toISOString(), await countryOf(req.ip ?? null), (doc as string | null | undefined) ?? null, typeof doc === 'string');
+    if (typeof doc !== 'string') await getAccountsStore().metrics.bump(bundle.kind === 'card' ? 'card_opened' : 'share_opened', new Date().toISOString().slice(0, 10)).catch(() => undefined);
+    if (bundle.kind === 'card' && typeof doc !== 'string') {
+      // Every opening is logged (above); the owner is mailed the first in a while, so a card shown ten times at a desk is one mail.
+      const last = cardMailed.get(bundle.id) ?? 0;
+      const mailer = getMailer();
+      if (mailer.enabled && Date.now() - last > CARD_MAIL_EVERY_MS) {
+        cardMailed.set(bundle.id, Date.now());
+        const owner = await getAccountsStore().users.findById(bundle.userId);
+        if (owner) void mailer.send(cardOpenedMail(owner.email, new Date().toISOString(), await countryOf(req.ip ?? null))).catch(later('mailing the owner about a card being opened'));
+      }
+    }
     return reply.status(204).send();
   });
 

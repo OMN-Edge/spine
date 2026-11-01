@@ -1,5 +1,5 @@
 import type { Database } from './driver.js';
-import { owner } from './owner.js';
+import { owner } from '../owner.js';
 import type { MatchDecisionRepository } from '../types.js';
 
 /** Every statement filters by `user_id` (SECURITY.md P12). */

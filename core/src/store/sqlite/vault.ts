@@ -61,6 +61,24 @@ export function vaultRepository(db: Database): VaultRepository {
     return { seq };
   });
 
+  // Every live object of the profile must be named, and only those: a key left out would stay sealed under the old profile key.
+  const rotatable = (userId: string, profileId: string, objects: Array<{ id: string }>): boolean => {
+    const profile = get.get(userId, profileId) as Record<string, unknown> | undefined;
+    if (!profile || profile.kind !== 'profile' || profile.deleted === 1) return false;
+    const live = (db.prepare("SELECT id FROM vault_objects WHERE user_id = ? AND profile_id = ? AND deleted = 0 AND kind <> 'profile'").all(userId, profileId) as Array<{ id: string }>).map(r => r.id).sort();
+    const named = objects.map(o => o.id).sort();
+    return live.length === named.length && live.every((id, i) => id === named[i]);
+  };
+  const rotateTx = db.transaction((userId: string, profileId: string, u: Parameters<VaultRepository['rotateProfile']>[2], now: string) => {
+    if (!rotatable(userId, profileId, u.objects)) return null;
+    const set = db.prepare('UPDATE vault_objects SET wrapped_key = ?, seq = ?, updated_at = ? WHERE user_id = ? AND id = ?');
+    let seq = 0;
+    for (const o of u.objects) { seq = (bumpSeq.get(userId) as { seq: number }).seq; set.run(o.wrappedKey, seq, now, userId, o.id); }
+    seq = (bumpSeq.get(userId) as { seq: number }).seq;
+    db.prepare('UPDATE vault_objects SET wrapped_key = ?, seq = ?, size = ?, updated_at = ? WHERE user_id = ? AND id = ?').run(u.profileWrapped, seq, u.profileSize, now, userId, profileId);
+    return { seq };
+  });
+
   const eraseTx = db.transaction((userId: string) => {
     const gone = (ids.all(userId) as Array<{ id: string }>).map(r => r.id);
     deleteObjects.run(userId);
@@ -100,6 +118,15 @@ export function vaultRepository(db: Database): VaultRepository {
 
     async usage(userId) {
       return usage.get(userId) as { objects: number; bytes: number };
+    },
+
+    async rotateProfile(userId, profileId, update, now, before) {
+      if (!rotatable(userId, profileId, update.objects)) return null;
+      // The new profile record is stored now, once the check has passed and before anything is changed.
+      await before();
+      const done = rotateTx(userId, profileId, update, now);
+      if (!done) throw new Error('the vault changed during the rotation');
+      return done;
     },
 
     async erase(userId) {

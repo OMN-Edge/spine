@@ -30,11 +30,11 @@ describe('runBackup — database snapshot', () => {
   it('writes a snapshot that is a readable database with the real rows', async () => {
     const result = await runBackup({ dataDir, backupDir, keep: 7 });
 
-    expect(existsSync(result.snapshot)).toBe(true);
+    expect(existsSync(result.snapshot!)).toBe(true);
 
     // Open the snapshot as its own database — a file that cannot be read back
     // is not a backup.
-    const restored = new Database(result.snapshot, { readonly: true });
+    const restored = new Database(result.snapshot!, { readonly: true });
     try {
       const row = restored.prepare('SELECT id FROM users WHERE id = ?').get(OWNER_ID) as
         { id: string } | undefined;
@@ -150,7 +150,13 @@ describe('runBackup — retention', () => {
     const first = await runBackup({ dataDir, backupDir, keep: 7, now });
     const second = await runBackup({ dataDir, backupDir, keep: 7, now });
     expect(second.snapshot).toBe(first.snapshot);
-    expect(existsSync(second.snapshot)).toBe(true);
+    expect(existsSync(second.snapshot!)).toBe(true);
+  });
+
+  it('takes no snapshot where the database is backed up by its host, and still mirrors the vault', async () => {
+    const result = await runBackup({ dataDir, backupDir, keep: 7, database: false });
+    expect(result.snapshot).toBeNull();
+    expect(snapshots()).toEqual([]);
   });
 });
 

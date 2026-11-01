@@ -92,7 +92,7 @@ export default function AddDevice() {
               <p className="text-xs text-gray-500 mb-2">{t('On the other device, open {address}/pair, or choose “Use a code from another device” on the sign-in page, and enter this code. Or scan it with its camera.', { address: window.location.host })}</p>
               <div className="flex flex-wrap items-center gap-4 mb-3">
                 <p className="font-mono text-xl tracking-wider text-gray-900 select-all" aria-label={t('Your code')}>{showCode(code)}</p>
-                {qr && <div className="w-32 h-32 bg-white p-1 rounded" aria-hidden="true" dangerouslySetInnerHTML={{ __html: qr }} />}
+                {qr && <div className="w-32 h-32 bg-white p-1 rounded" aria-hidden="true" data-qr="pairing" dangerouslySetInnerHTML={{ __html: qr }} />}
               </div>
               <p className="text-xs text-gray-500 mb-3">{t('Waiting for the other device. The code works once, for ten minutes.')}</p>
             </>

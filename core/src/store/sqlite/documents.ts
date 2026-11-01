@@ -8,7 +8,7 @@ import type {
   NewDocument,
   ResolvedShareLink,
 } from '../types.js';
-import { expectInserted, owner } from './owner.js';
+import { expectInserted, owner } from '../owner.js';
 import { ftsQuery } from '../../search-query.js';
 import { NOT_SET_ASIDE, VISIBLE } from './visibility.js';
 

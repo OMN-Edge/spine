@@ -1,4 +1,5 @@
 import { loadStoreConfig } from '../config.js';
+import { createPostgresAccountsStore, createPostgresStore } from './postgres/index.js';
 import { createSqliteAccountsStore, createSqliteStore } from './sqlite/index.js';
 import { StoreConfigError, type AccountsStore, type Store, type StoreAdapter, type StoreConfig } from './types.js';
 
@@ -8,6 +9,7 @@ import { StoreConfigError, type AccountsStore, type Store, type StoreAdapter, ty
  */
 const ADAPTERS = {
   sqlite: { records: createSqliteStore, accounts: createSqliteAccountsStore },
+  postgres: { records: createPostgresStore, accounts: createPostgresAccountsStore },
 } satisfies Record<string, StoreAdapter>;
 
 export const STORE_ADAPTERS = Object.keys(ADAPTERS);

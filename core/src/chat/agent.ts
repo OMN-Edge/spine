@@ -8,7 +8,8 @@ import { ToolNode } from '@langchain/langgraph/prebuilt';
 import { getStore } from '../store/index.js';
 import { chainOf } from '../linking/index.js';
 import { buildAgentSystemPrompt, buildSharedAgentSystemPrompt } from '../llm/prompts.js';
-import type { ChatTurn } from '../llm/types.js';
+import { DOC_TYPES, type ChatTurn } from '../llm/types.js';
+import { cleanTag } from '../tags.js';
 import type { Document } from '../types.js';
 import { documentsForQuestion } from './retrieval.js';
 import { sharedTestNames } from './share-tests.js';
@@ -139,6 +140,28 @@ class Budget {
 }
 
 const head = (doc: Document) => [doc.title, doc.doc_type?.replace(/_/g, ' '), doc.provider, doc.doc_date].filter(Boolean).join(' · ') || 'document';
+
+/** How many documents a filter may hand the ranking: the most recent ones first, as the store lists them. */
+const FILTER_POOL = 500;
+
+/** A document's confirmed links, as a clause for a search line: the other documents get labels the model can use straight away. */
+async function confirmedLinks(userId: string, doc: Document, registry: Registry): Promise<string> {
+  const links = (await getStore().links.forDocument(userId, doc.id)).filter(l => l.state === 'confirmed');
+  if (links.length === 0) return '';
+  const otherOf = (l: { from_document_id: string; to_document_id: string }) => (l.from_document_id === doc.id ? l.to_document_id : l.from_document_id);
+  // Only documents that are shown: a set-aside one, or one of an upload whose grouping is not confirmed, is not named.
+  const shown = new Map((await getStore().documents.listShownByIds(userId, [...new Set(links.map(otherOf))])).map(o => [o.id, o]));
+  const parts = links.flatMap(l => {
+    const other = shown.get(otherOf(l));
+    if (!other) return [];
+    const it = `${registry.label(other)} (${clip(head(other), 70)})`;
+    const outward = l.from_document_id === doc.id;
+    if (l.kind === 'requests') return [outward ? `asked for ${it}` : `was asked for by ${it}`];
+    if (l.kind === 'follow_up') return [outward ? `was followed up by ${it}` : `follows up ${it}`];
+    return [`same episode as ${it}`];
+  });
+  return parts.length ? `. Linked: ${parts.join('; ')}` : '';
+}
 const clip = (text: string, n: number) => (text.length > n ? `${text.slice(0, n)}…` : text);
 
 /**
@@ -171,24 +194,49 @@ const UNKNOWN = (label: string) => `There is no document ${label} in this conver
 /** The tools, defined once. Each reads who is asking, and what this question has seen, from the state of the graph. */
 function buildTools(shared: boolean) {
 
-  const searchDocuments = tool(async ({ query, doc_type, date_from, date_to, limit }, runtime: ToolRuntime) => {
+  const searchDocuments = tool(async ({ query, doc_type, date_from, date_to, tag, provider, limit }, runtime: ToolRuntime) => {
     const { userId, registry, budget, looked, progress, scope } = stateOf(runtime);
     const step = (x: ChatStep) => progress?.step?.(x);
-    looked.push(`searched “${clip(query, 60)}”`);
-    step({ kind: 'search', detail: clip(query, 60) });
-    const found = (await documentsForQuestion(userId, query, 40, scope?.ids))
-      .filter(d => (!doc_type || d.doc_type === doc_type) && (!date_from || (d.doc_date ?? '') >= date_from) && (!date_to || (d.doc_date ?? '9999') <= date_to))
-      .slice(0, limit ?? SEARCH_LIMIT);
+    const words = query?.trim() ?? '';
+    const wantedTag = tag ? cleanTag(tag) : null;
+    const narrowed = Boolean(doc_type || date_from || date_to || wantedTag || provider?.trim());
+    if (!words && !narrowed) return 'Give keywords, or narrow by type, dates, tag or provider.';
+    const filters = [doc_type?.replace(/_/g, ' '), wantedTag && `tagged ${wantedTag}`, provider?.trim(),
+      (date_from || date_to) && `${date_from ?? '…'} to ${date_to ?? '…'}`].filter(Boolean).join(', ');
+    looked.push(`searched ${[words && `“${clip(words, 60)}”`, filters].filter(Boolean).join(', ')}`);
+    step({ kind: 'search', detail: clip([words, filters].filter(Boolean).join(', '), 60) });
+
+    // The filters are the store's, applied before anything is ranked: a document of the right months is not lost behind forty better
+    // keyword matches, and dates alone are a search.
+    let allowed = scope?.ids;
+    let within: Document[] = [];
+    if (narrowed) {
+      within = (await getStore().documents.listFor(userId, {
+        docType: doc_type, dateFrom: date_from, dateTo: date_to, tag: wantedTag ?? undefined, provider: provider?.trim() || undefined, limit: FILTER_POOL, offset: 0,
+      })).filter(d => !scope || scope.ids.has(d.id));
+      allowed = new Set(within.map(d => d.id));
+    }
+    const found = words ? await documentsForQuestion(userId, words, limit ?? SEARCH_LIMIT, allowed) : within.slice(0, limit ?? SEARCH_LIMIT);
     if (found.length === 0) return 'No documents match.';
-    return budget.take(found.map(d => `${registry.label(d)}: ${head(d)}${d.ai_summary ? ` — ${clip(d.ai_summary.replace(/\s+/g, ' '), 160)}` : ''}`).join('\n'));
+    const lines: string[] = [];
+    for (const d of found) {
+      // The owner's confirmed links come with each document, so "the visit and the tests it asked for" is one call. A recipient gets no
+      // care chain (M-28), so none here either.
+      const label = registry.label(d); // before its links, so what was found is numbered first
+      const links = scope ? '' : await confirmedLinks(userId, d, registry);
+      lines.push(`${label}: ${head(d)}${d.ai_summary ? ` — ${clip(d.ai_summary.replace(/\s+/g, ' '), 160)}` : ''}${links}`);
+    }
+    return budget.take(lines.join('\n'));
   }, {
     name: 'search_documents',
-    description: 'Find the person’s documents by keywords (a test, a diagnosis, a doctor, a clinic, a drug) and, where available, by meaning. Returns labelled one-line descriptions. Use words that would appear in the documents, not a whole sentence. Optionally narrow by type and dates.',
+    description: 'Find the person’s documents by keywords (a test, a diagnosis, a doctor, a clinic, a drug) and, where available, by meaning. Each result is one labelled line with the document’s title, type, provider and date, and the documents it is confirmed to be linked to (what it asked for, what followed it up), with labels you can use at once. Keywords are words that would appear in the documents, not a sentence. When the person names a period, a tag or a clinic, give it as a filter (dates, not words such as a month or a year); filters alone, with no keywords, list what matches them.',
     schema: z.object({
-      query: z.string().min(2).max(200).describe('keywords'),
-      doc_type: z.enum(['lab_result', 'discharge_note', 'vaccination', 'imaging', 'prescription', 'consultation_note', 'other']).optional(),
-      date_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('YYYY-MM-DD'),
-      date_to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('YYYY-MM-DD'),
+      query: z.string().min(2).max(200).optional().describe('keywords; leave out to list by the filters alone'),
+      doc_type: z.enum(DOC_TYPES).optional(),
+      date_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('YYYY-MM-DD, the document’s own date'),
+      date_to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('YYYY-MM-DD, inclusive'),
+      tag: z.string().max(40).optional().describe('one of the person’s tags'),
+      provider: z.string().max(120).optional().describe('the clinic, hospital or laboratory, or a part of its name'),
       limit: z.number().int().min(1).max(SEARCH_LIMIT).optional(),
     }),
   });
@@ -408,7 +456,7 @@ export async function askAgent(model: BaseChatModel, userId: string, question: s
   }
 
   const messages: BaseMessage[] = [
-    new SystemMessage(buildAgentSystemPrompt()),
+    new SystemMessage(buildAgentSystemPrompt(MAX_ROUNDS, new Date().toISOString().slice(0, 10))),
     ...history.map(t => (t.role === 'user' ? new HumanMessage(t.content) : new AIMessage(t.content))),
     ...(preload.length > 0 ? [new HumanMessage(`What the person has on screen right now:\n\n${preload.join('\n\n')}`)] : []),
     new HumanMessage(`Question: ${question}`),
@@ -479,7 +527,7 @@ export async function askSharedAgent(
   preload.push(`[S1] ${tnShared(docs.length)}:\n${listed.map(d => `${registry.label(d)}: ${head(d)}`).join('\n')}${docs.length > listed.length ? `\n… and ${docs.length - listed.length} more (search for them)` : ''}`);
 
   const messages: BaseMessage[] = [
-    new SystemMessage(buildSharedAgentSystemPrompt(promptLabel(linkLabel))),
+    new SystemMessage(buildSharedAgentSystemPrompt(promptLabel(linkLabel), MAX_ROUNDS_SHARED, new Date().toISOString().slice(0, 10))),
     ...history.map(t => (t.role === 'user' ? new HumanMessage(t.content) : new AIMessage(t.content))),
     new HumanMessage(`What is shared with the recipient:\n\n${preload.join('\n\n')}`),
     new HumanMessage(`Question: ${question}`),

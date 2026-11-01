@@ -88,6 +88,17 @@ function addColumnsInPlace(db: Database): void {
   // Whether the administrator has approved the account (SPINE_REGISTRATION=approval). Every account from before is.
   if (accounts.length > 0 && !accounts.includes('approved')) db.exec('ALTER TABLE users ADD COLUMN approved INTEGER NOT NULL DEFAULT 1');
 
+  // The emergency card is a sealed bundle of its own kind; every earlier bundle is a share.
+  const bundles = columnsOf(db, 'shared_bundles');
+  if (bundles.length > 0 && !bundles.includes('kind')) db.exec("ALTER TABLE shared_bundles ADD COLUMN kind TEXT NOT NULL DEFAULT 'share'");
+  // When a card was last reviewed and last reminded about (the yearly reminder). Null for every earlier bundle.
+  if (bundles.length > 0 && !bundles.includes('reviewed_at')) db.exec('ALTER TABLE shared_bundles ADD COLUMN reviewed_at TEXT');
+  if (bundles.length > 0 && !bundles.includes('reminded_at')) db.exec('ALTER TABLE shared_bundles ADD COLUMN reminded_at TEXT');
+
+  // What a subscription is to (Premium, or the family plan). Every earlier one is Premium.
+  const subscriptions = columnsOf(db, 'subscriptions');
+  if (subscriptions.length > 0 && !subscriptions.includes('plan')) db.exec("ALTER TABLE subscriptions ADD COLUMN plan TEXT NOT NULL DEFAULT 'premium'");
+
   const links = columnsOf(db, 'share_links');
   if (links.length > 0 && !links.includes('include_scans')) {
     db.exec('ALTER TABLE share_links ADD COLUMN include_scans INTEGER NOT NULL DEFAULT 0');

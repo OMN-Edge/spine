@@ -81,7 +81,7 @@ export const SLICE_BUILT = ['share_links'] as const;
 /** Tables of records that never leave: the owner's working state, other people's visits, the model's conversations, the secrets. */
 export const SLICE_NEVER = [
   'regroup_plans', 'removed_readings', 'measurement_aliases', 'match_decisions', 'share_access_requests', 'share_link_events', 'share_link_access_log',
-  'document_translations', 'episodes', 'episode_documents', 'chat_conversations', 'chat_messages', 'guide_marks', 'vault_files', 'share_link_keys',
+  'document_translations', 'episodes', 'episode_documents', 'chat_conversations', 'chat_messages', 'guide_marks', 'vault_files', 'share_link_keys', 'emergency_cards', 'emergency_scans',
 ] as const;
 
 export type SliceName = keyof typeof SLICE;
