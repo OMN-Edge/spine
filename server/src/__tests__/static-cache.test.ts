@@ -13,9 +13,10 @@ describe('which built files a browser may keep', () => {
     }
   });
 
-  it('holds for every file the build writes to assets/, and for nothing the page changes without a new name', () => {
-    const dist = path.resolve(__dirname, '../../../web/dist');
-    if (!fs.existsSync(path.join(dist, 'assets'))) return; // the web app is not built here
+  // It reads the web build, so it runs where the web app is built and is reported as skipped where it is not (the server's CI job builds
+  // only core): a test that returned early passed there having checked nothing.
+  const dist = path.resolve(__dirname, '../../../web/dist');
+  it.skipIf(!fs.existsSync(path.join(dist, 'assets')))('holds for every file the build writes to assets/, and for nothing the page changes without a new name', () => {
     for (const name of fs.readdirSync(path.join(dist, 'assets'))) expect(cacheControlFor(path.join(dist, 'assets', name)), name).not.toBeNull();
     expect(cacheControlFor(path.join(dist, 'index.html'))).toBeNull();
   });

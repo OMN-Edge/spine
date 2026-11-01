@@ -122,7 +122,7 @@ Fixtures are invented (`support/fixtures.ts`, `support/archive.ts`): no real per
 ### Adding a flow
 
 1. Put the text it needs in `support/fixtures.ts` (a PDF page is a list of lines; `makeTextPdf` makes the file) or seed records with `support/archive.ts`.
-2. Use `describeLive` (needs a model) or `describePipeline` (also needs poppler) from `support/live.js`, so it skips cleanly where it cannot run.
+2. Use `describeLive` (needs a model) or `describePipeline` (also needs poppler) from `support/live.js`, so that where it cannot run it fails and says why, rather than passing unseen.
 3. Drive the app with `startWorld`, `ask`, `attach`, `proposalOf`, `confirm`, `until`.
 4. Assert the invariants above. Run it a few times; if it is flaky, make the assertion say what actually must hold.
 5. Add it to the list below and to the scenario it checks in [scenarios.md](scenarios.md) (status `live`).
