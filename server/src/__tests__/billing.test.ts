@@ -7,9 +7,10 @@ import { createTestUser, OWNER_ID, TEST_PASSWORD } from './helpers/seed.js';
 import { billingOn, loadBillingConfig } from '../billing/config.js';
 import { createRelayGate } from '../billing/gate.js';
 import { accountEntitlements, liveSharesFor, vaultBytesFor } from '../billing/entitlements.js';
-import { verifySignature } from '../billing/paddle.js';
+import { createCheckout, verifySignature } from '../billing/paddle.js';
 import { loadConfig } from '../config.js';
 import { fakeAuthValue, fakeVaultKeys } from 'spine-core/testing/vault.js';
+import { logger } from 'spine-core/logger.js';
 
 const SECRET = 'whsec_test_secret_for_the_webhook';
 const BILLING = {
@@ -184,8 +185,36 @@ describe('plans and payment', () => {
       expect(res.json()).toEqual({ url: 'https://pay.spine.example/?_ptxn=txn_1' });
       const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
       expect(url).toBe('https://sandbox-api.paddle.com/transactions');
-      expect(JSON.parse(init.body as string)).toEqual({ items: [{ price_id: 'pri_founding', quantity: 1 }], custom_data: { user_id: user.id }, checkout: { url: 'https://pay.spine.example/' } });
+      // No checkout address of its own: Paddle refuses one whose domain it has not approved, and its default payment link is the checkout page.
+      expect(JSON.parse(init.body as string)).toEqual({ items: [{ price_id: 'pri_founding', quantity: 1 }], custom_data: { user_id: user.id } });
       expect((init.headers as Record<string, string>).authorization).toBe('Bearer pdl_test_key');
+    });
+
+    it('says what the provider refused, by its code and not its words (the route logs this and answers 502)', async () => {
+      on();
+      stubProvider({ error: { type: 'request_error', code: 'transaction_default_checkout_url_not_set', detail: 'Cannot create a transaction for buyer@example.com' } }, 400);
+      const config = loadBillingConfig();
+      if (!config.enabled) throw new Error('billing is not on');
+      const refused = await createCheckout(config, 'pri_month', 'someone').then(() => '', (err: Error) => err.message);
+      expect(refused).toBe('the payment provider answered 400 (transaction_default_checkout_url_not_set)');
+      // A code that is not one is left out, rather than logged as it came.
+      stubProvider({ error: { code: 'Not a code: buyer@example.com' } }, 400);
+      expect(await createCheckout(config, 'pri_month', 'someone').then(() => '', (err: Error) => err.message)).toBe('the payment provider answered 400');
+    });
+
+    it('logs a default payment link that is not the checkout page, and still sends the person to it', async () => {
+      on();
+      stubProvider({ data: { checkout: { url: 'https://elsewhere.example/?_ptxn=txn_3' } } });
+      const config = loadBillingConfig();
+      if (!config.enabled) throw new Error('billing is not on');
+      const warn = vi.spyOn(logger, 'warn');
+      expect(await createCheckout(config, 'pri_month', 'someone')).toBe('https://elsewhere.example/?_ptxn=txn_3');
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('default payment link'), { default_origin: 'https://elsewhere.example', expected_origin: 'https://pay.spine.example' });
+      warn.mockClear();
+      stubProvider({ data: { checkout: { url: 'https://pay.spine.example/?_ptxn=txn_4' } } });
+      await createCheckout(config, 'pri_month', 'someone');
+      expect(warn).not.toHaveBeenCalled();
+      warn.mockRestore();
     });
 
     it('charges the monthly price as it is, and refuses a nonsense interval', async () => {

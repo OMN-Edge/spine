@@ -841,7 +841,7 @@ On the account page, "Premium for €29 a year (founding price)" (while places a
 - Cancelling is in Paddle's portal ("Manage billing"); Premium stays to the end of what was paid for, and the page says when. A payment that fails leaves Premium for a few days while it is retried.
 - An account with a running subscription cannot be deleted until it is cancelled.
 
-Status: auto (`billing`, `growth`).
+Status: auto (`billing`, `growth`, `routing`); by hand in Paddle's sandbox as `docs/billing.md` describes: a purchase with the test card, its events delivered signed, the plan card, the portal and a cancellation kept to the end of the year.
 
 ### 13.2b The family plan
 Where it is sold, the account page offers "Family for €79 a year" or "€7.99 a month" beside Premium, and the pricing page says what it adds: up to six people, children's records kept by their guardians, other accounts let in, a teenager's own account from sixteen, and the records becoming theirs at eighteen. The account then shows "Family" and "People: up to 6". Moving between Premium and the family plan is done in the payment provider's portal; the plan follows the prices of the subscription.

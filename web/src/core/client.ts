@@ -230,11 +230,15 @@ export const reader = new CoreWorker();
 export const deviceFetch = (url: string, init?: RequestInit) => device.fetch(url, init);
 
 /**
- * Requests the server answers: the account (and the administrator's list of waiting accounts), the vault's objects, and a share's sealed copy and handshake (`/api/shared/`, which is
+ * Requests the server answers: the account (and the administrator's list of waiting accounts), the vault's objects, the plan and payment
+ * (`/api/billing`, `/api/pricing`) and the waitlist, the grants that let another account in, and a share's sealed copy and handshake (`/api/shared/`, which is
  * ciphertext and metadata). What a recipient reads of a share (`/api/share/<id>/...`) is answered by the reader's core; every other
  * `/api` call is the owner's core.
  */
-const SERVER_SIDE = /^\/(api\/(auth|account|admin|legal|vault|shared|enrol)\/|share\/)/;
+const SERVER_SIDE = /^\/(api\/(auth|account|admin|legal|vault|shared|enrol|delegations|delegated|relay|demo-relay)\/|api\/(billing|pricing|waitlist|delegations|trust-anchors)(\/|\?|$)|share\/)/;
+
+/** Whether a request goes to the server rather than to one of the cores. Every route the server registers must (`routing.test.ts`). */
+export const goesToServer = (url: string): boolean => SERVER_SIDE.test(url) || !url.startsWith('/api/');
 const READER = /^\/api\/share\//;
 
 /** The share the reader's core has open, so that what the recipient opens can be noted at the server. */
@@ -254,7 +258,7 @@ export async function appFetch(url: string, init?: RequestInit): Promise<Respons
     }
     return res;
   }
-  return SERVER_SIDE.test(url) || !url.startsWith('/api/') ? fetch(url, init) : deviceFetch(url, init);
+  return goesToServer(url) ? fetch(url, init) : deviceFetch(url, init);
 }
 
 /** A picture the core holds, as an address the page can show; the same address is reused, and the oldest are let go. */

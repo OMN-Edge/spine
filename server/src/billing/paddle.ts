@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { SubscriptionRecord } from 'spine-core/store/types.js';
+import { logger } from 'spine-core/logger.js';
 import type { BillingConfig } from './config.js';
 
 type Enabled = Extract<BillingConfig, { enabled: true }>;
@@ -101,19 +102,30 @@ async function call(config: Enabled, method: string, path: string, body?: unknow
     body: body === undefined ? undefined : JSON.stringify(body),
     signal: AbortSignal.timeout(10_000),
   });
-  if (!res.ok) throw new Error(`the payment provider answered ${res.status}`);
+  if (!res.ok) {
+    // Paddle names what went wrong with a fixed code (`transaction_default_checkout_url_not_set`, `not_found`, …): kept for the log, since
+    // an operator cannot act on a bare status. Its free-text detail is not, as it can quote what was sent.
+    const code = await res.json().then(b => (b as { error?: { code?: unknown } } | null)?.error?.code, () => undefined);
+    throw new Error(`the payment provider answered ${res.status}${typeof code === 'string' && /^[a-z0-9_]{1,80}$/.test(code) ? ` (${code})` : ''}`);
+  }
   return (await res.json()) as Record<string, unknown>;
 }
 
-/** A transaction for one price whose checkout is the page at `SPINE_CHECKOUT_URL`; the answer is where to send the person. */
+/**
+ * A transaction for one price; the answer is where to send the person. Its checkout is Paddle's default payment link, which is the page at
+ * `SPINE_CHECKOUT_URL`: naming that page in the request instead would need its domain approved at Paddle, in the sandbox too, while the
+ * default needs no approval there. A default that is some other page is logged, since the person would be sent there.
+ */
 export async function createCheckout(config: Enabled, priceId: string, userId: string): Promise<string> {
   const out = await call(config, 'POST', '/transactions', {
     items: [{ price_id: priceId, quantity: 1 }],
     custom_data: { user_id: userId },
-    checkout: { url: config.checkoutUrl },
   });
   const url = ((out.data as { checkout?: { url?: string } } | undefined)?.checkout?.url) ?? '';
   if (!/^https?:\/\//.test(url)) throw new Error('the payment provider gave no checkout address');
+  if (new URL(url).origin !== new URL(config.checkoutUrl).origin) {
+    logger.warn('the payment provider\'s default payment link is not SPINE_CHECKOUT_URL', { default_origin: new URL(url).origin, expected_origin: new URL(config.checkoutUrl).origin });
+  }
   return url;
 }
 
