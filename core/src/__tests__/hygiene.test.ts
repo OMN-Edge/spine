@@ -51,12 +51,15 @@ describe('screen text', () => {
   "Pages with no text and photos are not sent anywhere: they are not read, because sending images is switched off on this server.",
   "Pages from a camera have no text, so they can only be read here if image reading or local OCR is switched on for this server. A scanning app that saves a PDF works without either.",
   "The certificates in the file lead to an authority this server trusts",
-  // The front page (web/src/pages/Landing.tsx): what the server holds of a record, which is sealed pieces it cannot open (README.md, SECURITY.md
-  // P7 and the share row under "Principles", M-34, M-36). The headings name the server as the place a sealed piece sits, with no verb.
+  // The front page and the page on protection (web/src/pages/Landing.tsx, Protection.tsx): what the server holds of a record, which is sealed
+  // pieces it cannot open (README.md, SECURITY.md P7 and the share row under "Principles", M-34, M-36).
   "Your records are read, searched and kept in your browser. The keys that open them are made there, from your password. The server stores them only as sealed pieces it cannot open.",
   "A share link covers what you pick: everything, a tag, a few documents or a date range. It ends when you say, you can revoke it at any time, and the server never holds a key that opens it.",
   "The server",
   "On the server",
+  // The page on protection (web/src/pages/Protection.tsx): the master password stays on the device and the server is given only a value derived
+  // from it to sign in, which opens nothing (SECURITY.md M-34; ARCHITECTURE.md, "sign-in on a value the browser derives from the master password").
+  "Your master password never leaves your device. The key is made from it there, and to sign you in the server is given only something worked out from it, which does not open your records.",
   // The page that says how to check the app (web/src/pages/Trust.tsx): the records are sealed on the device before the server keeps them (M-34),
   // and what the server can see is the privacy notice's section on hosting.
   "Spine runs in your browser, and your records are encrypted there before the server keeps anything. So the question that matters is whether the app your browser received is the published, open-source one. This page explains how anyone can check.",

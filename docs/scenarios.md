@@ -16,14 +16,16 @@ How Spine is meant to be used, with the checks that say a scenario works. Not a 
 ## 1. Getting in
 
 ### 1.0 Find out what Spine is, before signing in
-Someone with no session opens the site's address and reads what Spine does, how the records are protected and who can see what, before deciding to sign in.
+Someone with no session opens the site's address and reads what Spine does, for whom, how the records are protected and who can see what, before deciding to try it.
 
 - `/` with no session shows the front page (`pages/Landing.tsx`), not the sign-in form; with a session it shows the Timeline. `/login` is unchanged, and the logo on the sign-in card leads back to the front page.
-- It offers Sign in always, and Create an account only when the instance's registration is `open` (`GET /api/auth/options`).
+- The front page leads to three pages of detail in the same header and footer (`components/PublicPage.tsx`): how Spine works (`/how-it-works`), how records are protected (`/protection`, with the algorithms, the levels of keys and what "sealed" means on `/encryption`) and Spine for families (`/families`), beside For doctors and, where there are plans, Plans and prices. How it works shows the help the assistant gives (`core/src/help.ts`) word for word where that already says a thing.
+- It shows how records are sealed before it asks for anything: a drawing of a record on the device, sealed, and kept sealed on the server, the four ways records are protected, and who can see what, with a link to the page that explains it in full.
+- The first step it offers is the demo. Sign in is always in the header, and Create an account (or Ask for an account) appears only when the instance's registration allows it (`GET /api/auth/options`).
 - It makes no claim the code does not hold: the relay is described as not storing or logging, not as unable to see; it says nothing of an audit either way, and what Spine is not for is the purpose text, linked in the footer; there are no invented figures, logos or testimonials.
-- It loads nothing from another host (the fonts ship with the app), reads in English, Romanian, French and German, and does not scroll sideways on a phone.
+- It loads nothing from another host (the fonts ship with the app), reads in English, Romanian, French and German, in a light and a dark theme, and does not scroll sideways on a phone.
 
-Status: hand (headless Chrome at 1280 and 390 px, English and Romanian, with no API server: the account options request fails and Create an account stays hidden).
+Status: auto (`web/src/pages/public-pages.test.tsx`: each page's title, the shared header and footer, the demo first, no sign-up or prices before the instance says so, the help text word for word); hand (2026-11-01, the built app in headless Chrome at 1280 and 390 px, light and dark: the four pages, none scrolled sideways).
 
 ### 1.0a Try the app without an account
 Someone with no account wants to see what the app looks like with records in it, and perhaps with a document of their own, before signing up.

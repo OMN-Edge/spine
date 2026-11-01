@@ -4,6 +4,7 @@ Spine is versioned `0.x` until its first production release: anything may change
 
 ## Unreleased
 
+- The pages a visitor reads before an account are new: a front page that shows how a document's values are read and how records are sealed before the server keeps them, and pages of detail (how it works, how records are protected, the encryption in detail, Spine for families), in English, Romanian, French and German, light and dark.
 - The assistant knows today's date, so "a year ago" or "the latest" mean what you mean; it can find documents by a period, a tag or a clinic without keywords, and sees the documents each one is linked to, so a request such as "the visit and the tests it asked for" takes fewer steps.
 - The server's store can be Postgres (`SPINE_STORE=postgres`, `SPINE_DATABASE_URL`), so more than one instance, or a host with no disk, can share accounts, sign-ins, the vault's index and sealed shares and the relay's counts. `npm run test:postgres` runs the accounts' tests on it.
 - The family plan (€79 a year or €7.99 a month): Premium for up to six people, with children's records, other accounts let in, teenagers' own accounts and promotion at eighteen.

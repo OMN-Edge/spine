@@ -52,6 +52,8 @@ export default defineConfig(({ command }) => ({
   test: { expect: { requireAssertions: true } },
   build: {
     outDir: 'dist',
+    // A font is never inlined as a data: address: the content security policy allows fonts from this origin only (font-src 'self').
+    assetsInlineLimit: (file: string) => (/\.(woff2?|ttf|otf)$/.test(file) ? false : undefined),
     target: 'es2022',
   },
 }));

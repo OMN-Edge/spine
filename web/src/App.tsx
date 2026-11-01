@@ -26,6 +26,10 @@ import Invite from './pages/Invite';
 import { pendingInvite } from './invite';
 import { useProfiles } from './profiles';
 import ForDoctors from './pages/ForDoctors';
+import HowItWorks from './pages/HowItWorks';
+import Protection from './pages/Protection';
+import Families from './pages/Families';
+import Encryption from './pages/Encryption';
 import Trust from './pages/Trust';
 import LegalPage from './pages/LegalPage';
 import ConsentGate from './pages/ConsentGate';
@@ -308,6 +312,10 @@ export default function App() {
         <Route path="/trust" element={<Trust />} />
         <Route path="/pricing" element={<Pricing />} />
         <Route path="/for-doctors" element={<ForDoctors />} />
+        <Route path="/how-it-works" element={<HowItWorks />} />
+        <Route path="/protection" element={<Protection />} />
+        <Route path="/families" element={<Families />} />
+        <Route path="/encryption" element={<Encryption />} />
         <Route path="/pair" element={<NotInDemo><Pair /></NotInDemo>} />
         <Route path="/forgot" element={<Forgot />} />
         <Route path="/reset" element={<Reset />} />
