@@ -1,4 +1,4 @@
-/** The SQL of this schema (see ARCHITECTURE.md, the schema files): idempotent \`CREATE TABLE IF NOT EXISTS\`, applied whenever a database is opened. */
+/** The SQL of this schema (see docs/architecture/data.md, Schema): idempotent \`CREATE TABLE IF NOT EXISTS\`, applied whenever a database is opened. */
 export const accountsSchema = `-- Idempotent: re-applied every boot. \`CREATE TABLE IF NOT EXISTS\` cannot alter an
 -- existing table, so a change to a table that already exists means recreating the
 -- database, which is only safe while it holds nothing (SECURITY.md M-10).

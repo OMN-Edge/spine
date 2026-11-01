@@ -1,6 +1,6 @@
 # Changelog
 
-Spine is versioned `0.x` until its first production release: anything may change between minor versions, and a schema change still needs an empty database (CLAUDE.md, "Schema changes"). Releases are tags `vX.Y.Z` that match `web/package.json` ([docs/releasing.md](docs/releasing.md)). One line per change a person running or using Spine would notice; the commits say the rest.
+Spine is versioned `0.x` until its first production release: anything may change between minor versions, and a schema change still needs an empty database ([docs/design-decisions.md](docs/design-decisions.md#records-and-the-store), "Schema changes"). Releases are tags `vX.Y.Z` that match `web/package.json` ([docs/releasing.md](docs/releasing.md)). One line per change a person running or using Spine would notice; the commits say the rest.
 
 ## Unreleased
 

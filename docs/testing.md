@@ -29,12 +29,52 @@ The structural rules (layering, what the shared code may import, what ships in a
 | `npm run test:shim -w spine-server` (and `-w spine-core`) | Does the same suite hold on the WebAssembly SQLite the browser runs? | nothing |
 | `npm run test:postgres -w spine-server` | Do the accounts' routes work on the Postgres adapter (Postgres in WebAssembly, so nothing to install)? The same list as `test:accounts` without the backup, plus the adapter's own tests in `core/src/__tests__/postgres-store.test.ts` |
 | `npm test -w spine-web` | The device: keys and vault, the core's saving and syncing (`persist`, `boot`), shares, scanning algorithms, the relay client | nothing |
-| `npm run test:coverage -w spine-core` (or `-w spine-server`) | What is not run by any test (above 90% for statements and branches; the entry points and the provider calls are listed as intentionally uncovered in CLAUDE.md) | nothing |
+| `npm run test:coverage -w spine-core` (or `-w spine-server`) | What is not run by any test (above 90% for statements and branches; the entry points and the provider calls are listed as intentionally uncovered under "What isn't covered" above) | nothing |
 | `npm run check:browser -w spine-web` | Does each native piece of the core work in real Chrome (text, rendering, OCR, photos, zip, stamps, signature chain)? | Chrome, a build |
 | `cd web && npm run check:app` | The whole app in real browsers, against a real server and relay: sign-up, vault, upload, search, two devices on one account, shares that follow the records, signatures, passkeys, export and import | Chrome, a build |
 | `npm run test:integration -w spine-server` | Does a real model do the right thing with the prompts? | a model in `.env` |
 
 `./scripts/check.sh all` runs what CI runs: the build and typecheck, the core and server tests with `test:accounts`, the web tests, the smoke test, the dependency audit and the secret and code scans (`./scripts/check.sh browser` adds the two browser checks, which CI runs too). It does not run `test:shim` or the coverage report, and no pipeline does: run those yourself. A change that touches the store, the change log or the vault is not done until `test:accounts`, `test:shim` and `check:app` have run: each has caught a bug the others could not.
+
+## Where the unit tests are
+
+The code is three npm workspaces: `core/` (what the browser's core runs, and the server's tests), `server/` and `web/`. Install once at the root. The files below are in `server/src/__tests__/`, which drive the whole composed app, except the parser, OCR, read-page, continuation, grounding, legacy-database, i18n and llm ones, which are in `core/src/__tests__/`. Statement and branch coverage are both above 90%; the figures change with every commit, so they are not copied here (`npm run test:coverage -w spine-server`).
+
+| Area | Files | Notes |
+|---|---|---|
+| Isolation | `isolation.test.ts` | A second user against the first user's data, across the routes of its test app and the upload, document, field, tag, page, share link and result repositories; every route of that app refuses an unauthenticated request |
+| Response shape | `response-shape.test.ts` | Whole responses scanned for `user_id`, server paths, checksums, tokens |
+| Auth | `auth.test.ts` | Email login, no account enumeration, session fixation, password change, rate limits |
+| Two-factor | `totp.test.ts`, `second-factor.test.ts` | RFC 4226/6238 vectors, drift and replay, encryption at rest, the two-step login, recovery codes, guess throttling, no bypass via reset |
+| Accounts | `accounts.test.ts`, `cli.test.ts` | Signup, verification, recovery links, rate limits; the CLI commands, including deletion |
+| Mail | `mail.test.ts` | Brevo adapter, no attachment field, config refusals, neutral wording |
+| Config | `config.test.ts`, `llm.test.ts` | Startup refuses bad secrets, providers and endpoints |
+| Documents | `documents.test.ts` | CRUD, tag updates, split/merge boundaries, column whitelist |
+| Upload | `upload.test.ts`, `source-files.test.ts` | Multipart upload, per-user storage, duplicate detection, status polling |
+| Share links | `share.test.ts`, `public-share-scoped.test.ts`, `public-share-detail.test.ts` | Scope validation, fail-closed reads, the sealed copy, the recipient's page |
+| Store | `legacy-database.test.ts` | An old-shape database is refused |
+| Backup | `backup.test.ts` | Snapshot is a readable database; vault mirror; retention |
+| Parser | `parser.test.ts`, `ocr.test.ts`, `read-page.test.ts`, `capabilities.test.ts` | Box scaling, one entry per page, the text-layer → OCR → model cascade and its thresholds, fallback, the two-switch rule, the image message, "Read with AI" |
+| Ingestion pipeline | `pipeline.test.ts`, `resume-stalled.test.ts` | Splitting, grounding, error paths, restart recovery (an interrupted upload is read again), a blank page not shifting images, model-read pages |
+| AI | `continuation.test.ts`, `grounding.test.ts` | Validation and fallbacks, tested through fake task clients |
+| Page images | `page-image.test.ts` | Auth required, streams PNG, 404 on missing row or file |
+| Translation | `translation.test.ts`, `i18n-coverage.test.ts` | Digest-validated cache, two stages, retry of missing or rambling values, language detection, the public routes; every interface string present in all dictionaries |
+| Export and import | `archive.test.ts` | Trimmed document export, whole archive, restore without a model, duplicates by checksum and by text, plain zips, Office files, damaged and tampered manifests (needs poppler) |
+| Similarity | `similarity.test.ts` | The Vertex embedder against a fake service, stale vectors, model changes, related documents, search by words and meaning, other users and set-aside documents excluded |
+| Chat history | `chat-history.test.ts` | Starting, titling, continuing (history read from the store, citations removed, never from the browser), listing, renaming, deleting one or all, other users' conversations a 404 everywhere, no owner id in responses, deletion with the account, caps |
+| Chat agent | `chat-agent.test.ts` | A scripted model drives the real tools and graph: search, open, test series, connections; scope (other users', set-aside and unconfirmed documents, ids that are not labels); the screen (listed documents, upload, selected field); round and size limits; fallbacks and switches; no tool writes |
+| Chat | `chat.test.ts` | What is sent (card, notes, results, trend, connections) and what never is (pages, ids, other users', set-aside or unconfirmed documents), keywords and ranking for a sentence, labels tied back to documents, history trimmed, validation, the switch, no call without a match |
+| Grouping confirmation | `grouping-confirmation.test.ts` | Documents of an unconfirmed upload are out of the timeline, search, review queue and shares but on the upload; cannot be reviewed; no links; confirming shows them and starts linking; old uploads count as confirmed |
+| Owner edits | `owner-edits.test.ts` | Headline, fields and results the owner set, added, changed or removed survive a new reading; clearing a value hands it back; an unchanged save marks nothing |
+| Care chains | `linking.test.ts` | Candidates without a model, what the model is shown, the relation-to-link mapping and the date check, proposals replaced while confirmed and dismissed links stay, dismissed pairs not offered again, other users and set-aside documents excluded, cascade deletes, the routes' 404s |
+| Library | `management.test.ts` | Tags, providers and tests: counts, rename, merge, remove, share links following a tag, another user's entries |
+
+Tests use in-memory SQLite (`SPINE_DB_PATH=:memory:`) with a `resetStore()` call between files so no state leaks across test files. Fixtures are built through the store interface, not raw SQL.
+
+### What isn't covered
+
+- `rasterize.ts`: the Node PDF rasterizer; it needs actual PDF files (the device's is checked in real Chrome by `check:browser`)
+- the `invoke` paths in `llm/adapters/*`: they need live provider credentials. The Vertex path has been run through the relay on invented records (`SPINE_CHECK_REAL=1`); Anthropic behind the relay never has
 
 ## What belongs to every store, and what to SQLite
 

@@ -1,4 +1,4 @@
-/** The SQL of this schema (see ARCHITECTURE.md, the schema files): idempotent \`CREATE TABLE IF NOT EXISTS\`, applied whenever a database is opened. */
+/** The SQL of this schema (see docs/architecture/data.md, Schema): idempotent \`CREATE TABLE IF NOT EXISTS\`, applied whenever a database is opened. */
 export const recordsSchema = `-- The tables of the records themselves. The device's core builds them beside schema-accounts.sql (\`schema.ts\`); the server's own
 -- database is made from the accounts file alone (SECURITY.md M-37), so none of these exist there.
 

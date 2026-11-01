@@ -3,7 +3,7 @@
  * vendor package, and an adapter is one entry in the registry in `index.ts` and one file.
  *
  * A vector is only meaningful beside vectors from the same model, at the same size. `id` names that space and is stored
- * with every vector; vectors with different ids are never compared (see ARCHITECTURE.md, Similarity).
+ * with every vector; vectors with different ids are never compared (see docs/architecture/ingestion.md, Similarity).
  */
 export type EmbedKind = 'document' | 'query';
 

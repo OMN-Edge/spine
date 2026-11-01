@@ -51,7 +51,7 @@ describe('screen text', () => {
   "Pages with no text and photos are not sent anywhere: they are not read, because sending images is switched off on this server.",
   "Pages from a camera have no text, so they can only be read here if image reading or local OCR is switched on for this server. A scanning app that saves a PDF works without either.",
   "The certificates in the file lead to an authority this server trusts",
-  // The front page (web/src/pages/Landing.tsx): what the server holds of a record, which is sealed pieces it cannot open (readme.md, SECURITY.md
+  // The front page (web/src/pages/Landing.tsx): what the server holds of a record, which is sealed pieces it cannot open (README.md, SECURITY.md
   // P7 and the share row under "Principles", M-34, M-36). The headings name the server as the place a sealed piece sits, with no verb.
   "Your records are read, searched and kept in your browser. The keys that open them are made there, from your password. The server stores them only as sealed pieces it cannot open.",
   "A share link covers what you pick: everything, a tag, a few documents or a date range. It ends when you say, you can revoke it at any time, and the server never holds a key that opens it.",

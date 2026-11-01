@@ -12,7 +12,7 @@ import type { ChatLlmConfig, LlmTask, TaskClients } from '../llm/index.js';
  * These cover what is sent and what is done with the answer. Whether a given
  * provider accepts the image is not testable here without credentials — the message
  * shape is verified against both providers' request builders instead (see the
- * parser notes in ARCHITECTURE.md).
+ * parser notes in docs/architecture/interfaces.md).
  */
 
 const config: ChatLlmConfig = {

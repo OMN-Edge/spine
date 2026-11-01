@@ -5,7 +5,7 @@ import type { TaskClients, TaskSpecs } from './tasks.js';
 
 /**
  * The LLM interface. Stateless, single-turn calls — no chaining, no agent loop,
- * no tool use, no multi-turn state (ARCHITECTURE.md) — with one exception: `agentModel()` hands the
+ * no tool use, no multi-turn state (docs/architecture/interfaces.md) — with one exception: `agentModel()` hands the
  * chat agent (`chat/agent.ts`) the model itself, to bind its read-only tools to. What looks like a chain
  * is a data pipeline: continuation results decide how pages are grouped, and
  * the grouping decides what text each extraction call receives.
