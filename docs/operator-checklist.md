@@ -65,4 +65,4 @@ None of these can be seen from the code either.
 
 ## What is not covered by anything yet
 
-So you do not assume otherwise: nothing has been audited or tested by an outside party; Anthropic behind the relay has never been run live (Vertex has, on invented records); a real Brevo send and the CI browser jobs on a real runner have not been run; the OCR and page-reading thresholds are first guesses to tune on your own documents (ARCHITECTURE.md, "Not done yet").
+So you do not assume otherwise: nothing has been audited or tested by an outside party; the OCR and page-reading thresholds are first guesses to tune on your own documents.

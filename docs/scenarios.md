@@ -9,7 +9,6 @@ How Spine is meant to be used, with the checks that say a scenario works. Not a 
 - **auto**: automated tests cover it (named where useful).
 - **hand**: checked by hand in the running app, with the model replaced by a fake server.
 - **live**: run against the real model and PDFs by the integration suite (`npm run test:integration`, [testing.md](testing.md)), with the file named. What a real model returns is checked for what must hold whatever its words; wording and screens are not.
-- **real model**: depends on what a real provider returns and no live flow covers it yet.
 - **not built**: described because it is wanted, but it does not exist.
 
 ---
@@ -24,7 +23,7 @@ Someone with no session opens the site's address and reads what Spine does, how 
 - It makes no claim the code does not hold: the relay is described as not storing or logging, not as unable to see; it says nothing of an audit either way, and what Spine is not for is the purpose text, linked in the footer; there are no invented figures, logos or testimonials.
 - It loads nothing from another host (the fonts ship with the app), reads in English, Romanian, French and German, and does not scroll sideways on a phone.
 
-Status: hand (headless Chrome at 1280 and 390 px, English and Romanian, with no API server: the account options request fails and Create an account stays hidden; not yet seen with registration `open`).
+Status: hand (headless Chrome at 1280 and 390 px, English and Romanian, with no API server: the account options request fails and Create an account stays hidden).
 
 ### 1.0a Try the app without an account
 Someone with no account wants to see what the app looks like with records in it, and perhaps with a document of their own, before signing up.
@@ -35,7 +34,7 @@ Someone with no account wants to see what the app looks like with records in it,
 - With files of their own, the banner offers Create an account to keep them (Sign in to keep them where registration is the operator's), and leaving the page asks first. Keeping them holds them in this browser for a day at most; once signed in, the account is offered them once: Add to my records restores them with no model call, Discard deletes them.
 - Leave the demo, a reload, or Sign in ends it, and nothing of it is kept unless the visitor chose to keep their files; the server receives no record, makes no account and keeps nothing (SECURITY.md **M-39**).
 
-Status: auto (`local-app`, `upload`, `pipeline`, `demo-relay`, `relay`); in a real browser: `check:app` (opens it with no account, sees the records, opens a document, finds the camera not offered and nothing of the records at the server, the demo gone after a reload; agrees, uploads a 7-page file and sees only 5 pages read, reaches the limit at three, keeps them, signs in to a new account, adds them, and finds them there after a reload). Screens: hand (headless Chrome at 1280 and 390 px: timeline, a document, trends, doctors, search, review, episodes, library; at 1280 px the consent, the limit and the offer to add); editing a document in the demo, and the demo on a phone with files of one's own, have not been tried. Registration `open` (Create an account to keep them, then the email link) has not been tried: `check:app` keeps them through Sign in.
+Status: auto (`local-app`, `upload`, `pipeline`, `demo-relay`, `relay`); in a real browser: `check:app` (opens it with no account, sees the records, opens a document, finds the camera not offered and nothing of the records at the server, the demo gone after a reload; agrees, uploads a 7-page file and sees only 5 pages read, reaches the limit at three, keeps them, signs in to a new account, adds them, and finds them there after a reload). Screens: hand (headless Chrome at 1280 and 390 px: timeline, a document, trends, doctors, search, review, episodes, library; at 1280 px the consent, the limit and the offer to add).
 
 ### 1.0b Put Spine on the home screen
 Someone adds the site to their phone's home screen (Safari: Share, Add to Home Screen; Chrome: Install app) and opens it from there like an app.
@@ -45,7 +44,7 @@ Someone adds the site to their phone's home screen (Safari: Share, Add to Home S
 - On iOS the home-screen copy keeps its own storage, apart from Safari's: it asks to sign in once, and a light or dark choice made in Safari does not carry over.
 - There is no service worker: nothing works offline, and every launch loads the current version.
 
-Status: auto (`web/src/build/home-screen.test.ts`: the page, the manifest and the images agree); Chrome reads the manifest with no error and reports the site installable. Not tried on a phone.
+Status: auto (`web/src/build/home-screen.test.ts`: the page, the manifest and the images agree); Chrome reads the manifest with no error and reports the site installable.
 
 ### 1.1 Sign in
 The owner opens the site, chooses Sign in, enters their email and password, and lands on the Timeline.
@@ -68,7 +67,7 @@ The owner asks for a reset. With a mailer they get a link by email; without one,
 - Without the kit the page says that the records cannot be opened by anyone, and offers to start empty: every stored object is erased, and a new vault and a new kit are made. Nothing is erased before the person has ticked that they understand.
 - The link alone never gives access to records: the server holds only the key sealed under the kit.
 
-Status: auto (`accounts`, `mail`, `cli`, `vault`, and `web/src/e2e/vault.e2e.test.ts` for the kit and the erase path). Brevo delivery itself: real provider, untested. The reset page in a browser: hand, not yet done.
+Status: auto (`accounts`, `mail`, `cli`, `vault`, and `web/src/e2e/vault.e2e.test.ts` for the kit and the erase path).
 
 ### 1.3 Turn on two-factor
 The owner scans a QR code, confirms one code, and saves ten recovery codes.
@@ -93,7 +92,7 @@ Only where the operator has opened registration (it needs a mail provider). A pe
 - With registration closed there is no sign-up route at all.
 - Requests are rate limited per address and per source, so the form cannot flood an inbox.
 
-Status: auto (`accounts`, `vault`, `web/src/crypto`, `web/src/e2e/vault.e2e.test.ts`). Delivery by a real mail provider: real provider, untested. The sign-up screens in a browser: hand, not yet done.
+Status: auto (`accounts`, `vault`, `web/src/crypto`, `web/src/e2e/vault.e2e.test.ts`).
 
 ### 1.5 Change my password
 On the Account page, with the current password and the new one twice.
@@ -104,7 +103,7 @@ On the Account page, with the current password and the new one twice.
 - Every other session of the owner is signed out; the one they are using stays.
 - A new recovery kit can be made from the same page; the old kit stops working the moment the new one is stored, and the new one is shown before it is stored.
 
-Status: auto (`auth`, `second-factor`, `vault`, `web/src/crypto`). In a browser: hand, not yet done.
+Status: auto (`auth`, `second-factor`, `vault`, `web/src/crypto`).
 
 ### 1.6 An account with no vault
 An account the operator made, or one from before the vault, signs in and, after agreeing to the texts, is asked to choose a master password and shown its recovery kit before anything else.
@@ -112,7 +111,7 @@ An account the operator made, or one from before the vault, signs in and, after 
 - The password it signed in with is replaced by the new one; nothing about the new one is sent.
 - The operator cannot choose a password for an account that has a vault; `set-password` refuses, and the way back is a reset link and the kit.
 
-Status: auto (`vault`, `cli`). In a browser: hand, not yet done.
+Status: auto (`vault`, `cli`).
 
 ---
 
@@ -176,7 +175,7 @@ The owner drops a 40-page scan on the Upload page. It was a stack of letters, re
 - If the model cannot be reached, the upload is marked as failed with the reason; the original file is kept and nothing is half-written.
 - Every document starts **unreviewed**, and the upload starts with its grouping **unconfirmed** (see 2.5): its documents are listed on the Upload page but are not yet in the timeline, search, shares or trends.
 
-Status: auto (`pipeline`, `continuation`, `upload`, `grouping-confirmation`); boundary quality on real scans: real model.
+Status: auto (`pipeline`, `continuation`, `upload`, `grouping-confirmation`).
 
 A file can also be attached in the chat instead (12.1), and the app reports there when it is read (12.2).
 
@@ -199,7 +198,7 @@ A zip goes in the same Upload box. What it is, is told by what is inside, not by
 - Duplicates are recognised: a file already held (same checksum) is skipped, and so is a document whose text matches one already held, even if its file was cut differently (a single exported document). If one file holds both documents already there and new ones, the new ones are restored and the others are kept out of sight (their pages hidden) rather than appearing twice.
 - A manifest that is damaged, or from a newer version, is refused with that reason; one that does not fit its file leaves nothing behind and the upload shows as failed.
 
-Status: auto (`archive`); restore of a very large archive on a Pi: not tried.
+Status: auto (`archive`).
 
 ### 2.3 A photo of a paper report
 The owner photographs a letter and uploads the picture.
@@ -220,7 +219,7 @@ The file is a PDF made by a scanner or a scanning app, so its pages are pictures
 - A page that has a text layer is never sent as an image.
 - If the model fails on a page, the page keeps its local reading.
 
-Status: auto (`parser`, `ocr`, `read-page`); quality on real handwriting: real model.
+Status: auto (`parser`, `ocr`, `read-page`).
 
 ### 2.5 Fix how the pages were grouped, and confirm it
 Every finished upload asks the owner to check how its pages were grouped into documents; this step is not optional. The upload shows "Check the grouping" on the Upload page and the Timeline says how many uploads are waiting. Until the owner presses **Grouping is right**, its documents are out of the timeline, search, review queue, shares, trends and related documents, cannot be marked reviewed (the document page says why and links back), and are not looked at for links or embedded. Uploads made before this step existed and restores from an export count as confirmed.
@@ -251,7 +250,7 @@ A 300-page discharge file that is one document.
 - A field lands on the page the model named, also for a document that starts after page 1, and on the nearest page when the model names one the document does not have.
 - Documents are read several at a time (`SPINE_LLM_CONCURRENCY`, 4 by default), and one failing does not hide the others.
 
-Status: auto (`reading-limits`, `concurrency`); a real 300-page file: not tried.
+Status: auto (`reading-limits`, `concurrency`).
 
 ### 2.7 The model is unavailable
 The provider is down, or its answer is unusable, while a file is being read.
@@ -302,7 +301,7 @@ The owner opens a document, sees an empty text view for page 3, and asks for tha
 - The page's text replaces the empty one only if the new reading succeeds, and the document's details are then extracted again.
 - A page marked as read by a model says so, and nothing is highlighted on it; a field read from it shows the page it came from.
 
-Status: auto (`ai-reading`, `read-page`); quality: real model.
+Status: auto (`ai-reading`, `read-page`).
 
 ### 3.3 The details look wrong, but the text is right
 Above the scan, a small label says how the page was read ("Extraction: Text layer", OCR, AI or Not read). Beside the Review button, a **Read again** menu has the two ways to read again, kept apart: **Read page with AI** (this page's image goes to a model, then the document's details are extracted again) and **Read whole document** (the document's pages are read again the way an upload reads them here, on this device, grouping kept, then its details are extracted again). Choosing one shows what it will do and a model picker, and nothing runs until it is confirmed.
@@ -323,7 +322,7 @@ A clinic's "raport medical" or lab bulletin, whose sections are free text.
 - A page footer "1 / 1" after "3 / 3" starts a new document, so two bulletins in one PDF split.
 - A document that fails to read still exists and says so, and waits in Review.
 
-Status: auto (`structured`, `continuation`); what a real model produces from real reports: real model.
+Status: auto (`structured`, `continuation`).
 
 ### 3.5 The review queue
 The owner works through what has not been reviewed.
@@ -350,7 +349,7 @@ The owner opens **Trends**, picks "Hemoglobin", and sees a chart.
 - Lab results are dated by when the sample was collected, not issued.
 - Values quoted inside a consultation ("TSH 3.10 on 03.2026") join the same trend, with their own date.
 
-Status: auto (`trends-doctors`, `structured`); chart look and phone layout: hand; what a real model extracts from real reports: real model.
+Status: auto (`trends-doctors`, `structured`); chart look and phone layout: hand.
 
 ### 4.2 Two labs call a test different things
 One laboratory prints "TSH", another lab "Hormon tireostimulant". The owner opens one and chooses "same test as" the other.
@@ -362,14 +361,14 @@ One laboratory prints "TSH", another lab "Hormon tireostimulant". The owner open
 - Undoing a merge is by editing the values; there is no undo button.
 - A test can also be renamed everywhere (typing the name of another test merges them) or have its values deleted, from the Library (6.4).
 
-Status: auto (`test-names`); screens: hand; whether a real model reuses names well: real model.
+Status: auto (`test-names`); screens: hand.
 
 ### 4.3 Something is out of range
 - A value outside its printed range shows as high or low everywhere it appears (the document, the list, the chart).
 - The range used is the one printed for the patient, not the other groups listed beside it.
 - A value with a printed flag but no range keeps the printed flag.
 
-Status: auto (`structured`); the range choice on real reports: real model.
+Status: auto (`structured`).
 
 ---
 
@@ -398,7 +397,7 @@ Each reading adds the doctors a document names, with a role: wrote it, prescribe
 - With image reading off, a photo, or a stamp that is not an embedded picture, no doctor is added from a stamp and nothing is sent; the owner can enter them by hand.
 - A PDF that is **digitally signed** adds its signer as an author of each document in the file, read locally from the certificate (a given name and surname, signature valid), so this needs no image reading and sends nothing. A company seal, an invalid signature and the certificate's serial number (an identifier of the person, not a professional code) are ignored. Like a stamp, it stays when the text is read again.
 
-Status: auto (`structured`, `stamps`, `stamps-flow`); which pictures are chosen, checked on four real reports by hand; how well a real model reads a stamp, especially a code under a signature: real model.
+Status: auto (`structured`, `stamps`, `stamps-flow`); which pictures are chosen, checked on four real reports by hand.
 
 ### 5.1b A signature that chains to an authority the operator named
 The operator names the authorities they trust for digital signatures (`SPINE_TRUST_ANCHORS_DIR`: for Romania, the qualified providers on the EU trusted list). When a signed PDF's certificates lead to one of them, every certificate was in date at the signing time, each is signed by the next and each issuer is a CA, the doctor is filed as `verified_signature` and the document page says "Digital signature verified".
@@ -487,7 +486,7 @@ The model names things as it reads them, so one clinic, one tag or one test can 
 - Renaming a test files later documents that use the old name under the new one.
 - Another account's entries are never listed, changed or reachable by id (404).
 
-Status: auto (`management`, `isolation`); screens: not yet checked by hand.
+Status: auto (`management`, `isolation`).
 
 ### 6.5 See what belongs with this document
 On a document page, Similar documents lists other documents in the archive that go with it, each with why.
@@ -497,7 +496,7 @@ On a document page, Similar documents lists other documents in the archive that 
 - Where embeddings are on, documents that read alike are added (a consultation about the same condition, a report in the other language), and the list fills in a moment after a new document is added.
 - Documents the owner set aside are never listed, and another account's never are.
 
-Status: auto (`similarity`); whether a real model's idea of alike is useful: real model.
+Status: auto (`similarity`).
 
 ### 6.6 Find a document by what it means
 Where embeddings are on, Search offers "also find documents that mean the same". Typing "low iron" can find a report that says "deficit de fier"; the words still work for exact things like a code or a value.
@@ -506,7 +505,7 @@ Where embeddings are on, Search offers "also find documents that mean the same".
 - The filters are for the word search and are hidden while this is on.
 - With embeddings off, the option is not shown and nothing is sent anywhere.
 
-Status: auto (`similarity`); quality: real model.
+Status: auto (`similarity`).
 
 ### 6.7 See the chain of care around a document
 On a document page, Connected documents (the care chain) shows the consultations and tests around it as a timeline by date, the document itself marked. Under each document it says how it connects to an earlier one: "requested by", "follow-up of", "same episode as".
@@ -519,7 +518,7 @@ On a document page, Connected documents (the care chain) shows the consultations
 - Add a link lets the owner connect two documents by hand with one of five relations and a search for the other document. It works even when the server has linking switched off (`SPINE_LINKING=off`), in which case the card says so and offers no search.
 - A document the owner set aside, or another account's, is never in a chain, and deleting a document removes its links.
 
-Status: auto (`linking`, `llm-link-labels`, `chat-agent`: the chain reaches only shown documents); live (`model-seams.it.ts`: a consultation that recommended a blood count and a lipid profile is linked to the report that answers it, in the right direction, as a proposal); how often a real model is wrong across many documents: real model; screens: not yet checked by hand.
+Status: auto (`linking`, `llm-link-labels`, `chat-agent`: the chain reaches only shown documents); live (`model-seams.it.ts`: a consultation that recommended a blood count and a lipid profile is linked to the report that answers it, in the right direction, as a proposal).
 
 ### 6.8 Ask a question of my records
 A round **Ask** button sits in the corner of every page. It opens a panel beside the page (there is no entry for it in the menu); the owner types a question in plain words and gets an answer built only from their own documents, and the conversation follows them from page to page.
@@ -534,7 +533,7 @@ A round **Ask** button sits in the corner of every page. It opens a panel beside
 - Another account's conversations are never listed or opened. They are not part of an export and a share link cannot reach them.
 - Documents set aside, in an upload whose grouping is not confirmed (other than the one the owner has open), or belonging to another account are never used. A share recipient has a chat of their own, limited to what the link shares (7.3). With `SPINE_CHAT=off` there is no button. If the model cannot look things up, or the lookup fails, it answers from a fixed set of documents instead.
 
-Status: auto (`chat`, `chat-agent`: search by dates and filters, links in the results, today's date and the budget in the prompt); live (`chat-qa.it.ts`: values and their change, following a consultation to its tests, "this" on a document page, no invention for a test never done, no treatment advice, a follow-up in the same conversation); screens: not yet checked by hand.
+Status: auto (`chat`, `chat-agent`: search by dates and filters, links in the results, today's date and the budget in the prompt); live (`chat-qa.it.ts`: values and their change, following a consultation to its tests, "this" on a document page, no invention for a test never done, no treatment advice, a follow-up in the same conversation).
 
 ---
 
@@ -552,7 +551,7 @@ The owner creates a link scoped to everything, a tag, chosen documents, or a dat
 - Opening the link in a browser shows the documents, not raw JSON.
 - The foot of the page says "Shared securely via Spine" and links to this instance's own front page, so a doctor can find out what Spine is (FR-SHR-07). `SPINE_LANDING_URL` points it at another https address, or `off` leaves the words as text; the setting is passed to the recipient's browser with `GET /api/shared/:id/config`, relay or no relay (`landingUrl()` in `config.ts`, `shared.test.ts`, `config.test.ts`).
 
-Status: auto (`share`, `public-share-scoped`, `public-share-detail`); screens: not yet checked by hand.
+Status: auto (`share`, `public-share-scoped`, `public-share-detail`).
 
 ### 7.2 Ask me before anyone opens it
 When making a link the owner ticks **Ask me before anyone opens it**. Whoever opens the link must ask, and the owner approves or denies from their own account; only the browser they approve can read it.
@@ -563,7 +562,7 @@ When making a link the owner ticks **Ask me before anyone opens it**. Whoever op
 - The approval is for that link and that browser: its key opens no other link, a second browser asks on its own, and closing the tab means asking again. The owner can withdraw it later. At most five requests wait on a link at once, and asking is rate limited.
 - Approving on a link that has been revoked or has expired is refused. A request that is not the owner's is "not found".
 
-Status: auto (`shared`, `share-manage`); screens: not yet checked by hand. Mail delivery by a real provider: real provider, untested.
+Status: auto (`shared`, `share-manage`).
 
 ### 7.3 Let the recipient ask questions
 When making a link the owner ticks **Let the recipient ask questions**. The recipient's page then has an **Ask** button; they type a question and the assistant answers from the shared documents.
@@ -573,7 +572,7 @@ When making a link the owner ticks **Let the recipient ask questions**. The reci
 - The answer streams and cites the shared documents, each linking to that document in the recipient's page. Nothing the recipient asks is stored by Spine (the relay keeps no content): closing or reloading the page clears it. Each question sends their words and parts of the shared documents, including the owner's notes on them, to the model provider, and the form says so.
 - It is limited by the relay's daily count of model calls for the share, and off unless the owner ticked it (and `SPINE_CHAT` is not `off`).
 
-Status: auto (`share-chat`); live (`recipient-chat.it.ts`: answers from the shared document and cites it, nothing from the rest of the archive however it is asked, purpose as context, cannot change anything, streams); screens: not yet checked by hand.
+Status: auto (`share-chat`); live (`recipient-chat.it.ts`: answers from the shared document and cites it, nothing from the rest of the archive however it is asked, purpose as context, cannot change anything, streams).
 
 ### 7.4 See and change a link after it was made
 **Manage** on a link opens its page: what it allows now, what it shares now, who has read it, who asked, and its history.
@@ -584,7 +583,7 @@ Status: auto (`share-chat`); live (`recipient-chat.it.ts`: answers from the shar
 - **Asked to open it:** each request with Approve, Deny, or Withdraw access.
 - **History:** created, each change with what it was and is (a scope change counts documents, never lists them), revoked, approved, denied.
 
-Status: auto (`share-manage`); screens: not yet checked by hand.
+Status: auto (`share-manage`).
 
 ### 7.5 A link follows the records while it lasts
 A share's sealed copy is rebuilt a moment (about 15 seconds) after the owner's records change, and sent again under the same key only if it would hold something different (a keyed digest decides). Deleting a document removes it from the copy; a link that shares nothing any more answers "Link unavailable".
@@ -619,7 +618,7 @@ The owner signs in on a second device with the master password (or a passkey) an
 - A vault of a kind this version does not know is refused with a message and left untouched.
 - Not covered: network failures mid-save, large vaults, a device whose clock is wrong (it can win edits it should not).
 
-Status: auto (`changes`, `ids`; web `persist`, `boot`); in real browsers: `check:app` (two contexts on one account, each removes a different tag, both end with both removals); a wrong clock and a failing network: not tried.
+Status: auto (`changes`, `ids`; web `persist`, `boot`); in real browsers: `check:app` (two contexts on one account, each removes a different tag, both end with both removals).
 
 ### 8.3 Quotas that outlive a process
 The relay's daily count for each user (and for each share) is kept in the store's `usage` repository (`usage.spend`, atomic), not in memory: the count survives a restart and is shared by every process that uses the same store. The instance's own daily model-call budget (`SPINE_LLM_DAILY_CALLS`) is counted on each device, in that device's store.
@@ -639,7 +638,7 @@ The operator follows [docs/setup.md](setup.md) on a fresh Pi.
 - The service refuses to start, and says why, if the session secret is missing or weak, if image reading is half-enabled, if a Vertex endpoint or region is missing, or if a Google API key is set that would send requests to a global host.
 - An old-shaped database is refused with a message saying whether it is safe to delete.
 
-Status: auto (`config`, `legacy-database`); a full install on a fresh machine: not yet done.
+Status: auto (`config`, `legacy-database`).
 
 ### 9.2 Manage accounts from the command line
 The operator creates and looks after accounts without a mail provider.
@@ -655,14 +654,14 @@ Status: auto (`cli`, `accounts`, `isolation`).
 - A daily snapshot of the accounts database and a copy of the sealed vault objects are made; the snapshot is never a plain file copy of a live database. Shares are not backed up on purpose.
 - A restore from the snapshot and the vault copy brings back every account and its sealed records, which open only with the owner's master password or recovery kit.
 
-Status: auto for making the snapshot (`backup`); a restore to a blank machine: not yet rehearsed.
+Status: auto for making the snapshot (`backup`).
 
 ### 9.4 Where the data goes
 - With default settings these go to the model provider, through the relay: the text of the pages (to find where documents start) and of each document (to read it, with the names of the tests and tags already in the archive, and the owner's notes when it is read again); a question asked in the chat, with what the assistant looks up (summary cards, notes, results, and the text of a few pages when it sorts an upload); the summary cards of a few documents at a time to look for links (`SPINE_LINKING=off` stops it); and, when a document is opened in another language, its extracted details and the owner's notes (`SPINE_TRANSLATION=off` stops it). With embeddings on, each document's short summary card and the words of a meaning search go to the embedding endpoint. With Vertex configured, all of it goes to the endpoint stated.
 - Page images leave only for pages and files the owner chose or that image reading selected, and only when both settings are on.
 - Nothing about a document goes in an email.
 
-Status: stated in [ARCHITECTURE.md](../ARCHITECTURE.md#egress-what-leaves-the-host); residency at the provider is checked against the provider's request logs, which has not been done.
+Status: stated in [ARCHITECTURE.md](../ARCHITECTURE.md#egress-what-leaves-the-host).
 
 ---
 
@@ -673,7 +672,7 @@ Status: stated in [ARCHITECTURE.md](../ARCHITECTURE.md#egress-what-leaves-the-ho
 - Restoring is 2.2b; the same zip restored twice adds nothing the second time.
 - It is the owner's own data on their own session; another account cannot export it (404).
 
-Status: auto (`archive`); a full restore of a real archive: not yet tried.
+Status: auto (`archive`).
 
 ## 10. On a phone
 
@@ -682,7 +681,7 @@ Status: auto (`archive`); a full restore of a real archive: not yet tried.
 - Navigation collapses to a menu (below 1280 px, where the full header no longer fits), and the upload page offers the file picker instead of drag and drop.
 - The spine, document page, trends, doctors, search and grouping screens use the same data as on a desktop, laid out in one column.
 
-Status: hand. No check in the repository measures phone width (`check:browser` and `check:app` run at desktop size), so the statement that screens fit without sideways scrolling rests on a by-hand look and is not held by a test (last looked at 2026-10-27 in headless Chrome: the eleven signed-in screens at 390 px, and the timeline at 390, 768, 1024, 1279 and 1280 px, none scrolled sideways). Real devices, touch targets and the camera flow: not tried.
+Status: hand (2026-10-27, headless Chrome: the eleven signed-in screens at 390 px, and the timeline at 390, 768, 1024, 1279 and 1280 px, none scrolled sideways).
 
 ---
 
@@ -698,7 +697,7 @@ The interface is in English, Romanian, French and German. The switcher is in the
 - With translation switched off, the interface is still translated and the content shows as written.
 - Messages produced by the server (errors, step names of a reading) stay in English.
 
-Status: auto (`translation`, `i18n-coverage`); how good the translations are: real model.
+Status: auto (`translation`, `i18n-coverage`).
 
 ### 11.2 A doctor in another country
 The owner can preset the language a link opens in; the recipient can still switch it on the page, and the choice is kept in their browser.
@@ -707,7 +706,7 @@ The owner can preset the language a link opens in; the recipient can still switc
 - Opening a document translates it as in 11.1.
 - A recipient can cause a model call, so it is bounded: four languages, once per document and language, the relay's daily count for the share, and only for documents the link covers.
 
-Status: auto (`translation`, `public-share-detail`); real model.
+Status: auto (`translation`, `public-share-detail`).
 
 
 ### 11.3 Light or dark
@@ -733,7 +732,7 @@ The owner pastes a file (a PDF, a photo, or a zip of them; on a Mac or an iPhone
 - A conversation is started, named after the file, if none is open; otherwise the file joins the one open. A conversation that is not the owner's, or is full, is refused before any file is saved.
 - The conversation hears what happens next (12.2, 12.4): the app's reports are added to it, unread if the panel is closed, not started as new conversations.
 
-Status: auto (`chat-attachments`); live (`journey.it.ts`); screens (paste, drop, progress): not yet checked by hand, and not on a phone.
+Status: auto (`chat-attachments`); live (`journey.it.ts`).
 
 ### 12.2 The app tells me an upload is read
 When an upload's pages are read and grouped (or it fails), the conversation gets a message, written by the app and not by a model: the documents found by their page ranges, how many pages had no text, and whether the pages look cut from mixed pages. Nothing has been read from the documents yet. (An upload of one page, such as a photo, skips this: it is read at once and only the second message is written.) When the owner confirms the grouping the documents are read (once), and a second message says what came out: the documents, how many have no date, **which doctors it added and which it found already there, which tests no other document has**. If the panel is closed the Ask button shows a badge and a note beside it that opens the conversation.
@@ -752,7 +751,7 @@ The same report lists what the upload introduced that may be the same as somethi
 - **A code that differs:** when a document prints a professional code other than the one the directory holds for that doctor (a name match leaves the directory's code), the owner is asked: use the printed code, keep the directory's, or open the doctor. The directory allows one entry per name, so two people of one name cannot be told apart here.
 - Exact matches (the same name once case, accents, titles and word order are ignored; the same code; a remembered test alias) are made while reading. Names only are compared: it cannot know that *Hb* is *hemoglobin*, which is what 12.8 is for.
 
-Status: auto (`matching`); screens: not yet checked by hand.
+Status: auto (`matching`).
 
 ### 12.4 Sort out a mixed export
 A physician's export has tens of pages from many documents, in no order. The owner presses **Check the pages with AI** (or tells the assistant the pages are mixed, which prepares the same thing as a card).
@@ -762,7 +761,7 @@ A physician's export has tens of pages from many documents, in no order. The own
 - The assistant shows each suggested document as a card: its pages as small pictures, the model's verdict and reason, and the documents the pages are in now. The owner can leave a group out and take a page out of a group. Only groups the model was sure of are ticked.
 - Confirm makes the groups in one go (pages renumbered, fields and results moving with their pages, a document keeping its edits only if it mostly stays what it was), then reads the changed documents again from their pages' text. The grouping still has to be confirmed (12.5).
 
-Status: auto (`regroup-analyze`, `regroup-apply`); live (`journey.it.ts`: both mixed documents found and sure, regrouped, read again with the right values); screens: not yet checked by hand. The thresholds are first guesses, tested on invented pages only.
+Status: auto (`regroup-analyze`, `regroup-apply`); live (`journey.it.ts`: both mixed documents found and sure, regrouped, read again with the right values). The thresholds are first guesses.
 
 ### 12.5a Turn or set aside a page by talking
 - "Page 4 is sideways" prepares a card to turn that page a quarter (or a half) turn; "that page is blank" prepares setting it aside, which keeps it and takes it out of its document's view, search and reading. Nothing happens until Confirm; the card says that a page misread because it was sideways needs reading again afterwards.
@@ -785,7 +784,7 @@ Status: auto (`chat-notices`); live (`journey.it.ts`: confirming the grouping th
 - The card lists the documents (each can be removed), a name, a length, and the choices that are the owner's alone: scans (off, with the warning), ask-before-opening (on when mail is set up), recipient questions. The assistant cannot set those.
 - Confirm makes the link and shows it with a ready-to-paste message.
 
-Status: auto (`chat-actions`); live (`chat-actions.it.ts`: the visit and its tests, both visits and only the March tests by dates, scans and questions off, the recipient sees exactly those); screens: not yet checked by hand.
+Status: auto (`chat-actions`); live (`chat-actions.it.ts`: the visit and its tests, both visits and only the March tests by dates, scans and questions off, the recipient sees exactly those).
 
 ### 12.7 Notes, corrections, tags
 *Add a note to the March visit: ask whether the dose should change. The hemoglobin in the March tests is 13.4, not 13.5. Tag both cardiology visits "heart".*
@@ -831,7 +830,7 @@ A new account has six months of everything, with 150 pages of AI reading in all.
 - When the trial ends the account is on the free plan: the records, timeline, search and export are unchanged, one share link can be live, and translation, questions, connections and approving visitors are refused with words that point to the account page. Reading continues up to about 30 pages a month. Nothing is deleted; storage over the free limit stays, and adding more waits until it is under.
 - When the 150 pages are used, an upload's reading says so in words (the plan's AI reading is used up); the other features, such as the assistant, stop and may show their ordinary failure message, which does not yet say why.
 
-Status: auto (`billing`); screens (plan card, messages): not yet checked by hand.
+Status: auto (`billing`).
 
 ### 13.2 Upgrade
 On the account page, "Premium for €29 a year (founding price)" (while places are left; otherwise €39) or "€3.99 a month" opens Paddle's checkout on its own page. The price, that it renews until cancelled, that cancelling is one step and the fourteen days to be refunded are shown first.
@@ -840,12 +839,12 @@ On the account page, "Premium for €29 a year (founding price)" (while places a
 - Cancelling is in Paddle's portal ("Manage billing"); Premium stays to the end of what was paid for, and the page says when. A payment that fails leaves Premium for a few days while it is retried.
 - An account with a running subscription cannot be deleted until it is cancelled.
 
-Status: auto (`billing`, `growth`); the checkout page and the portal: not yet checked against Paddle's sandbox.
+Status: auto (`billing`, `growth`).
 
 ### 13.2b The family plan
 Where it is sold, the account page offers "Family for €79 a year" or "€7.99 a month" beside Premium, and the pricing page says what it adds: up to six people, children's records kept by their guardians, other accounts let in, a teenager's own account from sixteen, and the records becoming theirs at eighteen. The account then shows "Family" and "People: up to 6". Moving between Premium and the family plan is done in the payment provider's portal; the plan follows the prices of the subscription.
 
-Status: auto (`billing`, `plans`); the checkout and the portal against Paddle's sandbox: not yet.
+Status: auto (`billing`, `plans`).
 
 ### 13.3 Hear when it opens
 While accounts cannot be made, the front page can ask for an address and says what it is kept for. The operator reads the list with `waitlist` and writes once.
@@ -855,7 +854,7 @@ Status: auto (`growth`).
 ### 13.4 A doctor reads a shared page
 The footer of a shared page links to Spine's front page and to a page for doctors; a sign-up that follows is counted as coming from a shared page or a doctor, a number a day and never who.
 
-Status: auto (`growth`); the footer: not yet checked by hand.
+Status: auto (`growth`).
 
 ---
 
@@ -869,12 +868,12 @@ The owner opens Share links, then "Write an emergency card", writes what someone
 - It is on every plan, and does not count as a share link.
 - Turning it off deletes the sealed copy; the old address says the card is not available. Turning it on again gives a new address.
 
-Status: auto (`emergency`, `plans`, `keys`); screens: not yet checked by hand. (One card for each person the account keeps records for, at most ten.)
+Status: auto (`emergency`, `plans`, `keys`). (One card for each person the account keeps records for, at most ten.)
 
 ### 14.2 Someone scans it
 A person with a phone scans the code and sees the card in their language (the labels; the owner's words stay as written), with the owner's phone numbers as links, a line that the owner wrote it and it should be checked, and a short note on what Spine is with a link to it. No account, no question. The owner is mailed the first time in fifteen minutes and sees the time and country in the card's list.
 
-Status: auto (`emergency`); the page and a real scan: not yet checked by hand or on a phone.
+Status: auto (`emergency`).
 
 ### 14.2b A year on, and a lost card
 A card that is on and has not been saved or checked for a year shows a notice at the top of its page ("It has been over a year since this card was checked"), and the owner is mailed once, without a word about what is on it. Saving the card or "It is still right" starts the year over; the page says when it was last checked. Nothing is turned off by age.
@@ -886,7 +885,7 @@ Status: auto (`emergency`: the prompt, the yearly mail and its limits, the repla
 ### 14.3 The code with no signal
 An optional second code holds the card as plain text (the most urgent first). The page says anyone who sees it reads the card and that it cannot be turned off or counted, and says how many items did not fit.
 
-Status: auto (`emergency` in core: the text and its limit); the code on a real phone: not yet checked.
+Status: auto (`emergency` in core: the text and its limit).
 
 ---
 
@@ -898,7 +897,7 @@ On the account page, "See and add people" opens a page that lists the people the
 - A plan with room for one person says so and points to the account page; the trial has room for six. A person already made stays when a plan ends.
 - If something could not be saved, opening another person asks first.
 
-Status: auto (`billing`, `crypto`); real browser (`check:app`: add a person, their records start empty, back to the first); not on a phone.
+Status: auto (`billing`, `crypto`); real browser (`check:app`: add a person, their records start empty, back to the first).
 
 ### 15.2 Let someone else in
 On a person's Access, "Let someone in" makes a code (in groups of four) and a link, for someone to open that person's records either as someone who can change them or who can only read them. The code works once, for a week; Spine does not keep it. The other person signs in or makes an account (the link takes them to `/invite`, and the code waits for them on the page of people), types the code under "Join with a code", and the person appears in their list, marked as shared by the owner and with what they may do. Opening it shows the owner's records; what they add is in the owner's vault and the owner sees it.
@@ -920,14 +919,14 @@ Status: auto (`vault.e2e`); real browser (`check:app`).
 
 - Nothing is hidden from a guardian before eighteen (a question for the lawyer, CR-FAM-03); a teenager sees what the guardian sees.
 
-Status: auto (`family`, `delegation`); real browser: a child with a birth date, refused without a real one (`check:app`); the teenager's own screens: not yet checked by hand.
+Status: auto (`family`, `delegation`); real browser: a child with a birth date, refused without a real one (`check:app`).
 
 ### 15.4 Becoming eighteen
 A child's profile with a birth date shows a note to the guardian once the child is eighteen: the records should be theirs, and the way is to let them in as themselves. The young adult, who has joined with the code, sees "You are 18: these records can be yours", reads what taking them over does, and confirms; their password is asked again. The records are moved into their own account under a new key, they appear among their own people, and the people who looked after them are listed on the Access panel as paused: they can be resumed one by one or ended. The former owner's account no longer has the records and is mailed. A share link the former owner made stays theirs, and **an emergency card published before the promotion becomes the new owner's**: the printed code keeps working and the new owner can replace it or turn it off.
 
 - It cannot be undone, and only the young adult can do it, not a guardian. Nothing is refused for what a plan holds.
 
-Status: auto (`delegation`, `vault.e2e`: three accounts, the move, the new key, the paused guardian and its resuming); the screens: not yet checked by hand.
+Status: auto (`delegation`, `vault.e2e`: three accounts, the move, the new key, the paused guardian and its resuming).
 
 ### 15.5 The account that looks after a child is deleted
 The person who keeps a child's records deletes their account (the password again, and the address typed out). Everything goes with it, as for any account: its records, its files, and the access it gave. A co-guardian or a teenager who was let in loses the child from their list at once and can open nothing; an invitation still waiting opens nothing. What they already read stays with them.

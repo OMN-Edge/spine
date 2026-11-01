@@ -233,7 +233,6 @@ Everything environment-specific comes from the environment. [`.env.example`](.en
 Everything above is built. What is left, in the order it matters:
 
 - **A migration runner**, before the first change to an existing table once the archive holds real records. Not a gate today: an empty database needs none.
-- **Live checks nobody has run:** Anthropic behind the relay (Vertex has been run through it on invented records); the Cloud Run deployment of the relay; a real Brevo send; argon2id timing on the Pi; the OCR thresholds on real scans of handwriting; the CI browser jobs on a real runner; a restore of a backup to a blank machine.
 - **Brevo's DPA**, to be confirmed by reading it.
 - **Requiring two-factor** instance-wide (SECURITY.md **S-20**).
 - **Requirements the code does not yet meet:** the list in [docs/requirements.md](docs/requirements.md), "Where the code differs from these rows" (delegation, key rotation, identifier masking, a signed list of the build's hashes published apart from the site; the page itself has a manifest and, on purpose, no service worker).

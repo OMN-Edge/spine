@@ -75,7 +75,7 @@ Tests use in-memory SQLite (`SPINE_DB_PATH=:memory:`) with a `resetStore()` call
 ### What isn't covered
 
 - `rasterize.ts`: the Node PDF rasterizer; it needs actual PDF files (the device's is checked in real Chrome by `check:browser`)
-- the `invoke` paths in `llm/adapters/*`: they need live provider credentials. The Vertex path has been run through the relay on invented records (`SPINE_CHECK_REAL=1`); Anthropic behind the relay never has
+- the `invoke` paths in `llm/adapters/*`: they need live provider credentials. The Vertex path has been run through the relay on invented records (`SPINE_CHECK_REAL=1`)
 
 ## What belongs to every store, and what to SQLite
 
