@@ -1,5 +1,6 @@
 import { sha256Hex } from '../digest.js';
 import { z } from 'zod';
+import { DOC_TYPES } from '../llm/types.js';
 
 /**
  * The manifest in an export (`manifest.json` at the top of the zip). It names the files in the zip and
@@ -93,7 +94,7 @@ const document = z.object({
   title: text(1000).nullable(),
   doc_date: when,
   provider: text(500).nullable(),
-  doc_type: z.enum(['lab_result', 'discharge_note', 'vaccination', 'imaging', 'prescription', 'consultation_note', 'other']).nullable(),
+  doc_type: z.enum(DOC_TYPES).nullable(),
   ai_summary: text(100_000).nullable(),
   user_notes: text(100_000).nullable(),
   language: text(8).nullable(),

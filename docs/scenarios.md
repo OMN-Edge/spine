@@ -519,7 +519,7 @@ On a document page, Connected documents (the care chain) shows the consultations
 - Add a link lets the owner connect two documents by hand with one of five relations and a search for the other document. It works even when the server has linking switched off (`SPINE_LINKING=off`), in which case the card says so and offers no search.
 - A document the owner set aside, or another account's, is never in a chain, and deleting a document removes its links.
 
-Status: auto (`linking`, `llm-link-labels`); live (`model-seams.it.ts`: a consultation that recommended a blood count and a lipid profile is linked to the report that answers it, in the right direction, as a proposal); how often a real model is wrong across many documents: real model; screens: not yet checked by hand.
+Status: auto (`linking`, `llm-link-labels`, `chat-agent`: the chain reaches only shown documents); live (`model-seams.it.ts`: a consultation that recommended a blood count and a lipid profile is linked to the report that answers it, in the right direction, as a proposal); how often a real model is wrong across many documents: real model; screens: not yet checked by hand.
 
 ### 6.8 Ask a question of my records
 A round **Ask** button sits in the corner of every page. It opens a panel beside the page (there is no entry for it in the menu); the owner types a question in plain words and gets an answer built only from their own documents, and the conversation follows them from page to page.
@@ -534,7 +534,7 @@ A round **Ask** button sits in the corner of every page. It opens a panel beside
 - Another account's conversations are never listed or opened. They are not part of an export and a share link cannot reach them.
 - Documents set aside, in an upload whose grouping is not confirmed (other than the one the owner has open), or belonging to another account are never used. A share recipient has a chat of their own, limited to what the link shares (7.3). With `SPINE_CHAT=off` there is no button. If the model cannot look things up, or the lookup fails, it answers from a fixed set of documents instead.
 
-Status: auto (`chat`, `chat-agent`); live (`chat-qa.it.ts`: values and their change, following a consultation to its tests, "this" on a document page, no invention for a test never done, no treatment advice, a follow-up in the same conversation); screens: not yet checked by hand.
+Status: auto (`chat`, `chat-agent`: search by dates and filters, links in the results, today's date and the budget in the prompt); live (`chat-qa.it.ts`: values and their change, following a consultation to its tests, "this" on a document page, no invention for a test never done, no treatment advice, a follow-up in the same conversation); screens: not yet checked by hand.
 
 ---
 

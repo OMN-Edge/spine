@@ -153,6 +153,18 @@ describe('proposing a change to a document', () => {
     expect(toolText()).toMatch(/There is no field F7/);
   });
 
+  it('will not correct a document that is not read yet, whose details the reading would replace', async () => {
+    const d = await doc('Unread report', 'Unread report');
+    await getStore().documents.update(OWNER_ID, d.id, { needs_reading: true });
+    const reply = await run([
+      { tools: [{ name: 'search_documents', args: { query: 'unread' } }] },
+      { tools: [{ name: 'propose_edit_document', args: { document: 'D1', title: 'Something else' } }] },
+      { say: 'could not' },
+    ]);
+    expect(reply.proposals).toBeUndefined();
+    expect(toolText()).toMatch(/D1 is NOT READ YET[^]*Nothing was proposed/);
+  });
+
   it('proposes tags and reviewed for several documents, and the routes accept them', async () => {
     const a = await doc('Visit A', 'Cardiology A'); const b = await doc('Visit B', 'Cardiology B');
     const reply = await run([
