@@ -6,6 +6,8 @@ import path from 'node:path';
 export default defineConfig({
   test: {
     globals: true,
+    // A test that asserts nothing passes whatever the code does; this makes it fail instead.
+    expect: { requireAssertions: true },
     environment: 'node',
     // The tests are of what the device runs: the first store a test opens holds records. `test:accounts` runs the server's own instead.
     setupFiles: ['./src/testing/use-records-store.ts'],

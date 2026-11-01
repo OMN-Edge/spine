@@ -68,6 +68,22 @@ describe('letting another account into a profile', () => {
     expect(mails.some(m => m.to === 'owner@spine.test' && /accepted your invitation/.test(m.text))).toBe(true);
   });
 
+  it('can be cancelled by the owner while it waits, and then opens nothing', async () => {
+    const id = 'x'.repeat(43);
+    expect((await invite('guardian', id)).statusCode).toBe(201);
+    const waiting = () => call('GET', '/api/delegations', owner).then(r => r.json().invites.map((i: { id: string }) => i.id));
+    expect(await waiting()).toContain(id);
+    expect((await call('DELETE', `/api/delegations/invites/${id}`, guest)).statusCode).toBe(404); // not theirs to cancel
+    expect(await waiting()).toContain(id);
+    expect((await call('DELETE', '/api/delegations/invites/short', owner)).statusCode).toBe(404);
+    expect((await call('DELETE', `/api/delegations/invites/${id}`, owner)).statusCode).toBe(200);
+    expect(await waiting()).not.toContain(id);
+    expect((await call('POST', '/api/delegations/claim', guest, { id, proof: PROOF })).statusCode).toBe(404); // the right proof, too late
+    expect((await call('DELETE', `/api/delegations/invites/${id}`, owner)).statusCode).toBe(404); // once
+    // A grant that was already made is not an invitation: this route does not end it.
+    expect((await call('DELETE', `/api/delegations/invites/${INVITE_ID}`, owner)).statusCode).toBe(404);
+  });
+
   it('opens nothing until the one let in has sealed the key to their own', async () => {
     expect((await call('GET', `/api/delegated/${grantId}/objects`, guest)).statusCode).toBe(404);
     expect((await call('PUT', `/api/delegations/${grantId}/key`, owner, { wrapped_key: K('d') })).statusCode).toBe(404); // not the owner's to complete

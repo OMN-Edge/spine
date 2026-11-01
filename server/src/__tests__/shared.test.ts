@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
 import { existsSync, mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import path from 'path';
@@ -216,6 +216,5 @@ describe('sealed shares on the server', () => {
     delete process.env.SPINE_SHARE_MAX_LIVE;
   });
 
-  afterEach(() => undefined);
-  it('cleans up', () => { rmSync(dir, { recursive: true, force: true }); });
+  afterAll(() => { rmSync(dir, { recursive: true, force: true }); });
 });

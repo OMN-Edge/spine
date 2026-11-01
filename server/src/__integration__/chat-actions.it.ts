@@ -33,8 +33,9 @@ describeLive('asking the assistant to share, note, correct and tidy', () => {
     } });
     expect(made.statusCode).toBe(201);
     // The recipient sees those two documents and nothing else.
-    const seen = (await w.app.inject({ method: 'GET', url: `/api/share/${made.json().token}/documents` })).json() as Array<{ id: string }>;
-    expect(seen.map(d => d.id).sort()).toEqual(ids);
+    const opened = await w.app.inject({ method: 'GET', url: `/api/share/${made.json().id}/documents` });
+    expect(opened.statusCode).toBe(200);
+    expect((opened.json() as Array<{ id: string }>).map(d => d.id).sort()).toEqual(ids);
   });
 
   it('reasons about dates: both cardiology visits and only the March tests, not the October ones or the hospital stay', async () => {

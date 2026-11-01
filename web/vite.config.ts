@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { defineConfig } from 'vite';
@@ -47,6 +48,8 @@ export default defineConfig(({ command }) => ({
       '/share': 'http://localhost:3000',
     },
   },
+  // A test that asserts nothing passes whatever the code does; this makes it fail instead.
+  test: { expect: { requireAssertions: true } },
   build: {
     outDir: 'dist',
     target: 'es2022',

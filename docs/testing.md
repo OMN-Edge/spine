@@ -29,7 +29,7 @@ The structural rules (layering, what the shared code may import, what ships in a
 | `npm run test:shim -w spine-server` (and `-w spine-core`) | Does the same suite hold on the WebAssembly SQLite the browser runs? | nothing |
 | `npm run test:postgres -w spine-server` | Do the accounts' routes work on the Postgres adapter (Postgres in WebAssembly, so nothing to install)? The same list as `test:accounts` without the backup, plus the adapter's own tests in `core/src/__tests__/postgres-store.test.ts` |
 | `npm test -w spine-web` | The device: keys and vault, the core's saving and syncing (`persist`, `boot`), shares, scanning algorithms, the relay client | nothing |
-| `npm run test:coverage -w spine-core` (or `-w spine-server`) | What is not run by any test (above 90% for statements and branches; the entry points and the provider calls are listed as intentionally uncovered under "What isn't covered" above) | nothing |
+| `npm run test:coverage -w spine-server` | What is not run by any test, over the server's code (it fails below the thresholds in `server/vitest.config.ts`; the core's code is reached through the server's tests, and `-w spine-core` measures only its own unit tests); the entry points and the provider calls are listed as intentionally uncovered under "What isn't covered" above | nothing |
 | `npm run check:browser -w spine-web` | Does each native piece of the core work in real Chrome (text, rendering, OCR, photos, zip, stamps, signature chain)? | Chrome, a build |
 | `cd web && npm run check:app` | The whole app in real browsers, against a real server and relay: sign-up, vault, upload, search, two devices on one account, shares that follow the records, signatures, passkeys, export and import | Chrome, a build |
 | `npm run test:integration -w spine-server` | Does a real model do the right thing with the prompts? | a model in `.env` |
@@ -38,7 +38,7 @@ The structural rules (layering, what the shared code may import, what ships in a
 
 ## Where the unit tests are
 
-The code is three npm workspaces: `core/` (what the browser's core runs, and the server's tests), `server/` and `web/`. Install once at the root. The files below are in `server/src/__tests__/`, which drive the whole composed app, except the parser, OCR, read-page, continuation, grounding, legacy-database, i18n and llm ones, which are in `core/src/__tests__/`. Statement and branch coverage are both above 90%; the figures change with every commit, so they are not copied here (`npm run test:coverage -w spine-server`).
+The code is three npm workspaces: `core/` (what the browser's core runs, and the server's tests), `server/` and `web/`. Install once at the root. The files below are in `server/src/__tests__/`, which drive the whole composed app, except the parser, OCR, read-page, continuation, grounding, legacy-database, i18n and llm ones, which are in `core/src/__tests__/`. The figures change with every commit, so they are not copied here; `npm run test:coverage -w spine-server` measures them and fails below the floor set in `server/vitest.config.ts`.
 
 | Area | Files | Notes |
 |---|---|---|
@@ -99,8 +99,8 @@ npm run test:integration -w spine-server -- src/__integration__/journey.it.ts   
 
 It needs:
 
-- **A model.** It loads the repository's `.env` (`SPINE_LLM_PROVIDER`, `SPINE_LLM_MODEL`, and the provider's endpoint, region, project and credentials). If the configuration is unusable, every flow is skipped and the run says why. Embeddings are used if `.env` turns them on.
-- **poppler** for the flows that read a PDF (the text layer is read in-process by PDF.js). Without it, the PDF flows are skipped, and the run says so.
+- **A model.** It loads the repository's `.env` (`SPINE_LLM_PROVIDER`, `SPINE_LLM_MODEL`, and the provider's endpoint, region, project and credentials). If the configuration is unusable, every flow fails with the reason: a run was asked for, and a skipped test is reported as a pass. Embeddings are used if `.env` turns them on.
+- **poppler** for the flows that read a PDF (the text layer is read in-process by PDF.js). Without it, the PDF flows fail and say so, for the same reason.
 
 It does **not** need the web server running. Each file builds the same Fastify app the server runs (`__tests__/helpers/app.ts`) and drives it with `app.inject`, through the HTTP routes and a signed-in session, as the browser does. There is no browser, so the screens are not exercised here; what they send and show is.
 
@@ -135,6 +135,8 @@ Fixtures are invented (`support/fixtures.ts`, `support/archive.ts`): no real per
 | `chat-actions.it.ts` | model | Sharing (finds the visit and the tests it asked for; reasons about dates to pick both visits and only the March tests; scans and questions are not the model's to set; the recipient then sees exactly those), a note, a correction of one result, tags, changing and revoking an existing link, asking which link when two fit, and a document that tries to give the assistant instructions |
 | `tidy.it.ts` | model | The same doctor written three ways becomes one final form (name, code, specialty), a neurologist with the same surname and another code is left alone; a test named two ways; a clinic and a tag written two ways; nothing merged before Confirm |
 | `recipient-chat.it.ts` | model | A doctor with a link asks about what was shared: answered from it and cited, in the third person, the owner's purpose as context; nothing from the rest of the archive however it is asked; it cannot change anything; the stream ends in the answer |
+| `guide.it.ts` | model | A person who has just arrived, on an empty archive, asks how to send records to a doctor (answered from the app's own help text: a link, no account, seven days), who can read them (the relay is said not to store or log, and never said to be unable to see), and for what Spine does not do (an appointment, a diagnosis): nothing invented, no proposal, nothing written |
+| `photo.it.ts` | model, poppler | A page with no text layer, drawn from a fixture and rendered to a PNG, is attached as a photo: the model reads it (the page is `multimodal`), the values come out as printed, and, since a model gives the words and not where they sit, the page's text blocks carry no box and no value carries one |
 | `model-seams.it.ts` | model | The calls the pipeline makes, one at a time: page continuation, extraction of a laboratory report, a consultation and a discharge note (type, date, provider, doctors with codes, each result with unit and range, canonical names reused), the link between a consultation and the tests it asked for (right direction, a proposal), and a translation that keeps the numbers |
 
 ## The app in a real browser
@@ -166,3 +168,10 @@ Every run also exports everything from the first account and imports it into a s
    - the link judge's correct answer was thrown away because the model wrote the label as `[1]` (with the brackets the prompt showed it in) and the app compared it with `1`;
    - the assistant ran out of tool rounds on a request that needed several steps (find both visits, follow them to their tests, propose), so the cap went from 5 to 8 for the owner's assistant.
 5. A leak check must look for details the model could not have guessed, not for words: an assistant that says "I searched for pneumonia and found nothing" has leaked nothing. `recipient-chat.it.ts` checks for the dates, durations, clinic names and titles that only the unshared documents hold.
+6. A failure with a 410 or a 404 on a share link at the first request is the flow, not the model: a link is reached by its `id` (a share has no token), and the recipient's page answers from the sealed copy. The recipient flows of this suite went stale on exactly that when shares became sealed copies, and nothing said so until they were run again. Run the whole suite after a change to sharing, reading or the relay, and put the date and the commit below.
+
+## Last full run
+
+2026-10-31, against `gemini-3.5-flash` on Vertex (eu), with retries off (`--retry=0`): 32 of 33 passed. `check:browser` and `check:app` (153 steps) passed on the same day, and every unit suite with a test required to assert something (`expect.requireAssertions`).
+
+The one failure is a known flake, not a regression: `chat-actions.it.ts`, "reasons about dates", fails its first attempt about two runs in three. The request needs the assistant to look up both cardiology visits and the March tests, and it sometimes spends all eight rounds of tools (`MAX_ROUNDS` in `core/src/chat/agent.ts`) before it proposes, then is told the tools are gone and answers that it cannot prepare the card. It passes on the configured retry. A flow that needs its retry is a flow to tighten, not to trust: either the cap or the prompt's guidance to the model wants another look.

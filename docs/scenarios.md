@@ -116,16 +116,14 @@ Status: auto (`vault`, `cli`). In a browser: hand, not yet done.
 
 ---
 
-## 2. Getting documents in
-
-### 1.y Passkeys
+### 1.7 Passkeys
 - On the account page, Add a passkey on this device asks the device for a fingerprint, face or PIN and saves a key for this site; the sign-in page then offers Sign in with a passkey, which needs no password and no code.
 - Adding and removing ask for the password again and are mailed. Each device's passkey is its own entry: removing one leaves the others.
 - A passkey made for one address does not work at another, and cancelling the device's sheet is not an error.
 
 Status: auto (`passkeys`); the device's own sheet: hand.
 
-### 1.z Letting in a new device from one that is signed in
+### 1.8 Letting in a new device from one that is signed in
 - On the account page, Add a device (needs the password again if it was typed long ago) shows a one-time code of eighteen characters in groups, and a QR code that opens the pairing page with the code after the `#`. It works once and for ten minutes; showing another replaces it.
 - On the other device, the sign-in page's Use a code from another device takes the code (case, dashes and spaces do not matter, and a mistyped character is caught at once). It then waits.
 - The first device is told that a browser is asking, and shows which browser and which country; only Approve lets it in, and approving needs the password lately typed. Refuse sends nothing, and the code is spent.
@@ -135,7 +133,7 @@ Status: auto (`passkeys`); the device's own sheet: hand.
 
 Status: auto (`enrolment`, `crypto/enrolment`); a third browser let in with a code, and its QR: `check:app`; the QR scanned by a phone camera: hand.
 
-### 1.x Agreeing, and leaving
+### 1.9 Agreeing, and leaving
 - Signing up asks for two separate ticks: consent to the use of health data (with the privacy notice), and acceptance of the terms. Neither is implied by the other and the account is not made on one.
 - An account the operator made, or any account after a text changed, sees a screen asking for what is missing before anything else, and can leave from it by deleting the account.
 - The privacy notice, the terms and what Spine is for are public pages, linked from every sign-in page.
@@ -143,14 +141,7 @@ Status: auto (`enrolment`, `crypto/enrolment`); a third browser let in with a co
 
 Status: auto (`own-account`, `accounts`); screens: hand.
 
-### 2.1 Scan paper with the camera
-- There is no Scan button: a photo, taken with the phone's own camera or chosen, goes to Scan from the Upload page's picker, and the page is found and the corners can be moved before it is straightened.
-- The four corners can be moved by hand; the page is then straightened and, unless turned off for that page, cleaned up (shadows and fading flattened, handwriting kept). All of it happens on the device.
-- Everything is on the one screen: the pages stay in view as they are added, and each can be moved, have its corners redone (a sheet over the same screen), be filtered or be removed in place; "Add a page" is at the end of them, and the set is saved as one document, which the grouping screen can split afterwards. The photos as taken are kept beside it.
-- Photos chosen on the Upload page, or attached in the chat, go to Scan first (one photo: its corners are shown; several: each is added with the page found in it). A photo attached in the chat comes back to that conversation after Save, and the report of reading it is written there (`POST /api/chat/attachments?photos=1`).
-- Where neither image reading nor local OCR is switched on, Scan says so instead of filling the archive with pages nobody can search.
-
-Status: auto (`scan`, web algorithms; `photo-set`); screens and the camera itself: hand.
+## 2. Getting documents in
 
 ### 2.0 Look around before uploading
 - On an empty timeline, Explore with sample records adds five invented documents (English or Romanian, by the interface language) about nobody: a consultation, two blood tests with the same five tests, a prescription and a chest X-ray. Nothing is read by a model and nothing leaves the host.
@@ -171,7 +162,7 @@ Status: auto (`demo`); screens: hand.
 - The app's reports on uploads collect in one Activity conversation, which is unread again with each report; a file attached in a conversation is reported there instead.
 - None of it is in the demo or in a share.
 
-Status: auto (`guide`, `chat-notices`, `chat-agent`, `i18n-coverage`); screens: hand.
+Status: auto (`guide`, `chat-notices`, `chat-agent`, `i18n-coverage`); live (`guide.it.ts`: on an empty archive the assistant explains sharing from the app's own text, says what goes to the relay without claiming it cannot see it, and invents nothing for what Spine does not do); screens: hand.
 
 
 ### 2.1 Upload a PDF that holds several documents
@@ -219,7 +210,7 @@ The owner photographs a letter and uploads the picture.
 - It becomes a one-page upload with the usual title, details and review.
 - With image reading off, the owner is told the photo needs it, and nothing leaves the machine.
 
-Status: auto (`photos`, `upload`); the upload and the upright page in the running app: hand; how well a real model reads a phone photo: real model.
+Status: auto (`photos`, `upload`); live (`photo.it.ts`: a page rendered to a picture, with no text layer, is read by the model, its values come out as printed and no box is drawn); the upload and the upright page in the running app: hand; how well a real model reads a phone's own photo (shadow, tilt, noise): not yet, the live picture is clean.
 
 ### 2.4 A scan with no text layer
 The file is a PDF made by a scanner or a scanning app, so its pages are pictures with no text.
@@ -277,6 +268,15 @@ The provider is down, or its answer is unusable, while a file is being read.
 Status: auto (`pipeline`, `upload`, `resume-stalled`); the Try again button, closing the page while an upload is read and opening it again, and a failure, then a recovered provider, then a retry in the running app: hand.
 
 ---
+
+### 2.8 Scan paper with the camera
+- There is no Scan button: a photo, taken with the phone's own camera or chosen, goes to Scan from the Upload page's picker, and the page is found and the corners can be moved before it is straightened.
+- The four corners can be moved by hand; the page is then straightened and, unless turned off for that page, cleaned up (shadows and fading flattened, handwriting kept). All of it happens on the device.
+- Everything is on the one screen: the pages stay in view as they are added, and each can be moved, have its corners redone (a sheet over the same screen), be filtered or be removed in place; "Add a page" is at the end of them, and the set is saved as one document, which the grouping screen can split afterwards. The photos as taken are kept beside it.
+- Photos chosen on the Upload page, or attached in the chat, go to Scan first (one photo: its corners are shown; several: each is added with the page found in it). A photo attached in the chat comes back to that conversation after Save, and the report of reading it is written there (`POST /api/chat/attachments?photos=1`).
+- Where neither image reading nor local OCR is switched on, Scan says so instead of filling the archive with pages nobody can search.
+
+Status: auto (`scan`, web algorithms; `photo-set`); screens and the camera itself: hand.
 
 ## 3. Checking what was read
 
@@ -657,6 +657,15 @@ Status: auto (`cli`, `accounts`, `isolation`).
 
 Status: auto for making the snapshot (`backup`); a restore to a blank machine: not yet rehearsed.
 
+### 9.4 Where the data goes
+- With default settings these go to the model provider, through the relay: the text of the pages (to find where documents start) and of each document (to read it, with the names of the tests and tags already in the archive, and the owner's notes when it is read again); a question asked in the chat, with what the assistant looks up (summary cards, notes, results, and the text of a few pages when it sorts an upload); the summary cards of a few documents at a time to look for links (`SPINE_LINKING=off` stops it); and, when a document is opened in another language, its extracted details and the owner's notes (`SPINE_TRANSLATION=off` stops it). With embeddings on, each document's short summary card and the words of a meaning search go to the embedding endpoint. With Vertex configured, all of it goes to the endpoint stated.
+- Page images leave only for pages and files the owner chose or that image reading selected, and only when both settings are on.
+- Nothing about a document goes in an email.
+
+Status: stated in [ARCHITECTURE.md](../ARCHITECTURE.md#egress-what-leaves-the-host); residency at the provider is checked against the provider's request logs, which has not been done.
+
+---
+
 ### 9.5 Take a copy of everything, or of one document
 - **Export one document** (Export, bottom right of its page): a zip with only that document's pages (cut out of the file it was scanned with, so the others do not come along; pages the owner hid are left out) and a manifest of what was read from it.
 - **Export everything** (Upload page): every finished upload as it is, with grouping, hidden pages, details, results, doctors, tags, notes and what was reviewed.
@@ -666,12 +675,14 @@ Status: auto for making the snapshot (`backup`); a restore to a blank machine: n
 
 Status: auto (`archive`); a full restore of a real archive: not yet tried.
 
-### 9.4 Where the data goes
-- With default settings these go to the model provider, through the relay: the text of the pages (to find where documents start) and of each document (to read it, with the names of the tests and tags already in the archive, and the owner's notes when it is read again); a question asked in the chat, with what the assistant looks up (summary cards, notes, results, and the text of a few pages when it sorts an upload); the summary cards of a few documents at a time to look for links (`SPINE_LINKING=off` stops it); and, when a document is opened in another language, its extracted details and the owner's notes (`SPINE_TRANSLATION=off` stops it). With embeddings on, each document's short summary card and the words of a meaning search go to the embedding endpoint. With Vertex configured, all of it goes to the endpoint stated.
-- Page images leave only for pages and files the owner chose or that image reading selected, and only when both settings are on.
-- Nothing about a document goes in an email.
+## 10. On a phone
 
-Status: stated in [ARCHITECTURE.md](../ARCHITECTURE.md#egress-what-leaves-the-host); residency at the provider is checked against the provider's request logs, which has not been done.
+### 10.1 Use it from a phone
+- The screens fit a 390-pixel-wide phone with no sideways scrolling.
+- Navigation collapses to a menu (below 1280 px, where the full header no longer fits), and the upload page offers the file picker instead of drag and drop.
+- The spine, document page, trends, doctors, search and grouping screens use the same data as on a desktop, laid out in one column.
+
+Status: hand. No check in the repository measures phone width (`check:browser` and `check:app` run at desktop size), so the statement that screens fit without sideways scrolling rests on a by-hand look and is not held by a test (last looked at 2026-10-27 in headless Chrome: the eleven signed-in screens at 390 px, and the timeline at 390, 768, 1024, 1279 and 1280 px, none scrolled sideways). Real devices, touch targets and the camera flow: not tried.
 
 ---
 
@@ -708,17 +719,6 @@ Every page, the front page, the sign-in pages and a shared link's pages included
 - Nothing about the look reaches the server.
 
 Status: auto (`web/src/theme.test.ts`: the choice, the device, a blocked store, another tab, the switch back); looked at in Chrome on the front page, the demo's timeline, a document and its review, trends and a trend's chart, the library and search, at 1280 and 390 px. Not looked at in Safari, or on a share link or the account pages.
-
----
-
-## 10. On a phone
-
-### 10.1 Use it from a phone
-- The screens fit a 390-pixel-wide phone with no sideways scrolling.
-- Navigation collapses to a menu (below 1280 px, where the full header no longer fits), and the upload page offers the file picker instead of drag and drop.
-- The spine, document page, trends, doctors, search and grouping screens use the same data as on a desktop, laid out in one column.
-
-Status: hand. No check in the repository measures phone width (`check:browser` and `check:app` run at desktop size), so the statement that screens fit without sideways scrolling rests on a by-hand look and is not held by a test (last looked at 2026-10-27 in headless Chrome: the eleven signed-in screens at 390 px, and the timeline at 390, 768, 1024, 1279 and 1280 px, none scrolled sideways). Real devices, touch targets and the camera flow: not tried.
 
 ---
 
@@ -859,46 +859,6 @@ Status: auto (`growth`); the footer: not yet checked by hand.
 
 ---
 
-## 15. More than one person
-
-### 15.1 Keep a child's or a parent's records apart
-On the account page, "See and add people" opens a page that lists the people the account keeps records for. Adding one starts empty records with a key of their own; opening one saves the current person and shows the other's records, with no master password asked again. The name of the person open is in the top bar once there is more than one (on a wide screen; on a narrow one the page of people says). Each has their own documents, search, share links and emergency card; nothing of one person shows in another's screens.
-
-- A plan with room for one person says so and points to the account page; the trial has room for six. A person already made stays when a plan ends.
-- If something could not be saved, opening another person asks first.
-
-Status: auto (`billing`, `crypto`); real browser (`check:app`: add a person, their records start empty, back to the first); not on a phone.
-
-### 15.2 Let someone else in
-On a person's Access, "Let someone in" makes a code (in groups of four) and a link, for someone to open that person's records either as someone who can change them or who can only read them. The code works once, for a week; Spine does not keep it. The other person signs in or makes an account (the link takes them to `/invite`, and the code waits for them on the page of people), types the code under "Join with a code", and the person appears in their list, marked as shared by the owner and with what they may do. Opening it shows the owner's records; what they add is in the owner's vault and the owner sees it.
-
-- A wrong, used or expired code is refused in words. The owner can cancel an invitation that is waiting, and pause or resume access.
-- Ending access (password asked again) gives the records a new key and signs the owner out of their other devices; the person let in stops reaching them at once, and what they already read stays with them. Leaving is the person's own call.
-
-Status: auto (`delegation`, `vault.e2e`: the crypto, the server and the lock-out); real browser: the code and the cancelling (`check:app`); the joining and the second account's screens: not yet checked by hand.
-
-### 15.2b Correct a name or a birth date
-On a person's row, "Edit" changes the name and, for a child, the birth date (a real date, year-month-day). The ages the page shows, the offer of an account of their own from sixteen and the note at eighteen follow the corrected date. A guardian let in cannot edit.
-
-Status: auto (`vault.e2e`); real browser (`check:app`).
-
-### 15.3 A child, a co-guardian, a teenager
-"This is a child I look after" asks for a birth date (year-month-day, a real day) and keeps it sealed with the child's records; the list shows "child, 9 years old". The other parent is let in as someone who can change the records. From sixteen the child can be let in as themselves, "with an account of their own": the child makes or uses an account, joins with the code, and sees their own records, which they can change; below sixteen that choice is not offered, and says why. Only one account can be the person themselves.
-
-- Nothing is hidden from a guardian before eighteen (a question for the lawyer, CR-FAM-03); a teenager sees what the guardian sees.
-
-Status: auto (`family`, `delegation`); real browser: a child with a birth date, refused without a real one (`check:app`); the teenager's own screens: not yet checked by hand.
-
-### 15.4 Becoming eighteen
-A child's profile with a birth date shows a note to the guardian once the child is eighteen: the records should be theirs, and the way is to let them in as themselves. The young adult, who has joined with the code, sees "You are 18: these records can be yours", reads what taking them over does, and confirms; their password is asked again. The records are moved into their own account under a new key, they appear among their own people, and the people who looked after them are listed on the Access panel as paused: they can be resumed one by one or ended. The former owner's account no longer has the records and is mailed. A share link the former owner made stays theirs, and **an emergency card published before the promotion becomes the new owner's**: the printed code keeps working and the new owner can replace it or turn it off.
-
-- It cannot be undone, and only the young adult can do it, not a guardian. Nothing is refused for what a plan holds.
-
-Status: auto (`delegation`, `vault.e2e`: three accounts, the move, the new key, the paused guardian and its resuming); the screens: not yet checked by hand.
-
-
----
-
 ## 14. The emergency card
 
 ### 14.1 Write the card and turn it on
@@ -930,6 +890,46 @@ Status: auto (`emergency` in core: the text and its limit); the code on a real p
 
 ---
 
+## 15. Records for more than one person
+
+### 15.1 Keep a child's or a parent's records apart
+On the account page, "See and add people" opens a page that lists the people the account keeps records for. Adding one starts empty records with a key of their own; opening one saves the current person and shows the other's records, with no master password asked again. The name of the person open is in the top bar once there is more than one (on a wide screen; on a narrow one the page of people says). Each has their own documents, search, share links and emergency card; nothing of one person shows in another's screens.
+
+- A plan with room for one person says so and points to the account page; the trial has room for six. A person already made stays when a plan ends.
+- If something could not be saved, opening another person asks first.
+
+Status: auto (`billing`, `crypto`); real browser (`check:app`: add a person, their records start empty, back to the first); not on a phone.
+
+### 15.2 Let someone else in
+On a person's Access, "Let someone in" makes a code (in groups of four) and a link, for someone to open that person's records either as someone who can change them or who can only read them. The code works once, for a week; Spine does not keep it. The other person signs in or makes an account (the link takes them to `/invite`, and the code waits for them on the page of people), types the code under "Join with a code", and the person appears in their list, marked as shared by the owner and with what they may do. Opening it shows the owner's records; what they add is in the owner's vault and the owner sees it.
+
+- A wrong, used or expired code is refused in words. The owner can cancel an invitation that is waiting, and pause or resume access.
+- Ending access (password asked again) gives the records a new key and signs the owner out of their other devices; the person let in stops reaching them at once, and what they already read stays with them. Leaving is the person's own call.
+
+Status: auto (`delegation`, `vault.e2e`: the crypto, the server, the lock-out and cancelling an invitation that waits); real browser: the code and the cancelling (`check:app`); the joining and the second account's screens: not yet checked by hand.
+
+### 15.2b Correct a name or a birth date
+On a person's row, "Edit" changes the name and, for a child, the birth date (a real date, year-month-day). The ages the page shows, the offer of an account of their own from sixteen and the note at eighteen follow the corrected date. A guardian let in cannot edit.
+
+Status: auto (`vault.e2e`); real browser (`check:app`).
+
+### 15.3 A child, a co-guardian, a teenager
+"This is a child I look after" asks for a birth date (year-month-day, a real day) and keeps it sealed with the child's records; the list shows "child, 9 years old". The other parent is let in as someone who can change the records. From sixteen the child can be let in as themselves, "with an account of their own": the child makes or uses an account, joins with the code, and sees their own records, which they can change; below sixteen that choice is not offered, and says why. Only one account can be the person themselves.
+
+- Nothing is hidden from a guardian before eighteen (a question for the lawyer, CR-FAM-03); a teenager sees what the guardian sees.
+
+Status: auto (`family`, `delegation`); real browser: a child with a birth date, refused without a real one (`check:app`); the teenager's own screens: not yet checked by hand.
+
+### 15.4 Becoming eighteen
+A child's profile with a birth date shows a note to the guardian once the child is eighteen: the records should be theirs, and the way is to let them in as themselves. The young adult, who has joined with the code, sees "You are 18: these records can be yours", reads what taking them over does, and confirms; their password is asked again. The records are moved into their own account under a new key, they appear among their own people, and the people who looked after them are listed on the Access panel as paused: they can be resumed one by one or ended. The former owner's account no longer has the records and is mailed. A share link the former owner made stays theirs, and **an emergency card published before the promotion becomes the new owner's**: the printed code keeps working and the new owner can replace it or turn it off.
+
+- It cannot be undone, and only the young adult can do it, not a guardian. Nothing is refused for what a plan holds.
+
+Status: auto (`delegation`, `vault.e2e`: three accounts, the move, the new key, the paused guardian and its resuming); the screens: not yet checked by hand.
+
+
+---
+
 ## Gaps found while writing this
 
 Found by checking each scenario against the code.
@@ -942,4 +942,4 @@ Still open:
 
 ## Not covered yet
 
-Things people will reasonably ask for that no scenario above promises: other photo formats such as WebP, signed exports (an imported export is believed; SECURITY.md S-26), deleting an account from the app itself (today the operator does it), reminders for follow-ups the documents mention, sharing a chart, and merging two uploads' history. Add a scenario when one is wanted.
+Things people will reasonably ask for that no scenario above promises: other photo formats such as WebP, signed exports (an imported export is believed; SECURITY.md S-26), reminders for follow-ups the documents mention, sharing a chart, and merging two uploads' history. Add a scenario when one is wanted.

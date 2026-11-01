@@ -64,10 +64,10 @@ export async function until<T>(what: string, check: () => Promise<T | null | und
 
 const B = 'ItBoundary';
 /** Attach files in the chat, as the paperclip does. */
-export async function attach(w: World, files: Array<{ name: string; content: Buffer }>, conversation?: string) {
+export async function attach(w: World, files: Array<{ name: string; content: Buffer; type?: string }>, conversation?: string) {
   const chunks: Buffer[] = [];
   if (conversation) chunks.push(Buffer.from(`--${B}\r\nContent-Disposition: form-data; name="conversation_id"\r\n\r\n${conversation}\r\n`));
-  for (const f of files) chunks.push(Buffer.from(`--${B}\r\nContent-Disposition: form-data; name="files"; filename="${f.name}"\r\nContent-Type: application/pdf\r\n\r\n`), f.content, Buffer.from('\r\n'));
+  for (const f of files) chunks.push(Buffer.from(`--${B}\r\nContent-Disposition: form-data; name="files"; filename="${f.name}"\r\nContent-Type: ${f.type ?? 'application/pdf'}\r\n\r\n`), f.content, Buffer.from('\r\n'));
   chunks.push(Buffer.from(`--${B}--`));
   const res = await w.app.inject({ method: 'POST', url: '/api/chat/attachments', headers: { cookie: w.cookie, 'content-type': `multipart/form-data; boundary=${B}` }, payload: Buffer.concat(chunks) });
   if (res.statusCode !== 200) throw new Error(`attaching answered ${res.statusCode}: ${res.body.slice(0, 300)}`);
