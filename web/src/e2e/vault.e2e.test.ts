@@ -363,4 +363,52 @@ describe.skipIf(!haveServer)('the device and the server together', () => {
     expect(new TextDecoder().decode((await view.get('bundle-child-0001', 'bundle')).plaintext)).toBe('vaccinations, 2012 to 2020');
     for (const s of [parent, teen, coparent]) await s.close();
   });
+
+  it('keeps a second person let in reading after the first is let out, with the profile’s new key, while the first and the old key open nothing', async () => {
+    const signedIn = async (email: string, password: string) => {
+      const f = browser();
+      const prepared = await prepareSignIn(email, password, f);
+      expect((await post(f, '/api/auth/login', { email, password: prepared.credential })).status).toBe(200);
+      return { f, session: await VaultSession.open(prepared.masterKey!, f) };
+    };
+    const makeAccount = async (email: string, password: string) => {
+      const made = await createAccountKeys(password, FAST);
+      const f = browser();
+      expect((await post(f, '/api/auth/register', { email, auth_value: made.authValue, keys: made.keys, consent_health_data: true, accept_terms: true })).status).toBe(200);
+      await store.getStore().users.markVerified((await store.getStore().users.findByEmail(email))!.id, new Date().toISOString());
+    };
+    const PARENT = { email: 'parent-two@example.com', password: 'the first parent’s master password' };
+    const A = { email: 'leaves@example.com', password: 'the one let out’s master password' };
+    const B = { email: 'stays@example.com', password: 'the one who stays’s master password' };
+    for (const a of [PARENT, A, B]) await makeAccount(a.email, a.password);
+
+    const parent = (await signedIn(PARENT.email, PARENT.password)).session;
+    const child = await parent.createProfile('Sam', { kind: 'child', born: '2016-06-01' });
+    await parent.put(child, 'bundle', 'bundle-two-guardians', new TextEncoder().encode('allergy to penicillin'));
+    const aSession = (await signedIn(A.email, A.password)).session;
+    const bSession = (await signedIn(B.email, B.password)).session;
+    await aSession.accept((await parent.invite(child, 'guardian')).code);
+    await bSession.accept((await parent.invite(child, 'guardian')).code);
+
+    const [forB] = await bSession.openReceived((await bSession.delegations()).received);
+    const oldKey = forB.profileKey.slice();
+    const [forA] = await aSession.openReceived((await aSession.delegations()).received);
+    const readNow = async (k: typeof forB) => new TextDecoder().decode((await VaultSession.delegated(bSession, k.grant.id, child, k.profileKey).get('bundle-two-guardians', 'bundle')).plaintext);
+    expect(await readNow(forB)).toBe('allergy to penicillin');
+
+    // The first is let out: the profile gets a new key, and the one who stays is handed it without doing anything.
+    await parent.revoke(forA.grant.id);
+    expect((await aSession.delegations()).received).toEqual([]);
+    await expect(VaultSession.delegated(aSession, forA.grant.id, child, forA.profileKey).get('bundle-two-guardians', 'bundle')).rejects.toMatchObject({ status: 404 });
+
+    const [stillB] = await bSession.openReceived((await bSession.delegations()).received);
+    expect(stillB.grant.id).toBe(forB.grant.id);
+    expect(Buffer.from(stillB.profileKey).equals(Buffer.from(oldKey))).toBe(false); // a new key
+    expect(await readNow(stillB)).toBe('allergy to penicillin');
+    // What the one who stays held before no longer opens the stored object.
+    const meta = (await parent.list(0)).objects.find(o => o.id === 'bundle-two-guardians')!;
+    const body = new Uint8Array(await (await (await signedIn(PARENT.email, PARENT.password)).f('/api/vault/objects/bundle-two-guardians')).arrayBuffer());
+    await expect(openObject(oldKey, 'bundle', 'bundle-two-guardians', body, meta.wrapped_key)).rejects.toBeInstanceOf(OpenError);
+    for (const s of [parent, aSession, bSession]) await s.close();
+  });
 });

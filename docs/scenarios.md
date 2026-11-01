@@ -210,7 +210,7 @@ The owner photographs a letter and uploads the picture.
 - It becomes a one-page upload with the usual title, details and review.
 - With image reading off, the owner is told the photo needs it, and nothing leaves the machine.
 
-Status: auto (`photos`, `upload`); live (`photo.it.ts`: a page rendered to a picture, with no text layer, is read by the model, its values come out as printed and no box is drawn); the upload and the upright page in the running app: hand; how well a real model reads a phone's own photo (shadow, tilt, noise): not yet, the live picture is clean.
+Status: auto (`photos`, `upload`); live (`photo.it.ts`: a page rendered to a picture, with no text layer, is read by the model, its values come out as printed and no box is drawn); the upload and the upright page in the running app: hand.
 
 ### 2.4 A scan with no text layer
 The file is a PDF made by a scanner or a scanning app, so its pages are pictures with no text.
@@ -903,10 +903,12 @@ Status: auto (`billing`, `crypto`); real browser (`check:app`: add a person, the
 ### 15.2 Let someone else in
 On a person's Access, "Let someone in" makes a code (in groups of four) and a link, for someone to open that person's records either as someone who can change them or who can only read them. The code works once, for a week; Spine does not keep it. The other person signs in or makes an account (the link takes them to `/invite`, and the code waits for them on the page of people), types the code under "Join with a code", and the person appears in their list, marked as shared by the owner and with what they may do. Opening it shows the owner's records; what they add is in the owner's vault and the owner sees it.
 
-- A wrong, used or expired code is refused in words. The owner can cancel an invitation that is waiting, and pause or resume access.
+- The link (`/invite#<code>`) says the person has been invited before any sign-in, and the code waits through signing in or making an account: a banner offers it on the next page, and the page of people has it in the box. A wrong, used or expired code is refused in words. The owner can cancel an invitation that is waiting, and pause or resume access.
+- Someone let in as a reader sees the owner's records and nothing else of the owner's. What they change is not kept: the vault refuses it, and the page says that their latest changes are not saved yet. The page does not stop them trying.
+- After joining, the person is in the list, marked "Shared by" the owner and with what they may do, and a message says that the records can now be opened. Joining reloads the keys and the page of people is drawn again, so the message is kept for the tab for a minute and shown by the new page.
 - Ending access (password asked again) gives the records a new key and signs the owner out of their other devices; the person let in stops reaching them at once, and what they already read stays with them. Leaving is the person's own call.
 
-Status: auto (`delegation`, `vault.e2e`: the crypto, the server, the lock-out and cancelling an invitation that waits); real browser: the code and the cancelling (`check:app`); the joining and the second account's screens: not yet checked by hand.
+Status: auto (`delegation`, `vault.e2e`: the crypto, the server, the lock-out and cancelling an invitation that waits); real browser (`check:app`): the code and the cancelling, then a second account following the link, signing in, joining as a reader, the message that it worked, opening the owner's records, a refused change, and the same code refused a second time.
 
 ### 15.2b Correct a name or a birth date
 On a person's row, "Edit" changes the name and, for a child, the birth date (a real date, year-month-day). The ages the page shows, the offer of an account of their own from sixteen and the note at eighteen follow the corrected date. A guardian let in cannot edit.
@@ -927,6 +929,34 @@ A child's profile with a birth date shows a note to the guardian once the child 
 
 Status: auto (`delegation`, `vault.e2e`: three accounts, the move, the new key, the paused guardian and its resuming); the screens: not yet checked by hand.
 
+### 15.5 The account that looks after a child is deleted
+The person who keeps a child's records deletes their account (the password again, and the address typed out). Everything goes with it, as for any account: its records, its files, and the access it gave. A co-guardian or a teenager who was let in loses the child from their list at once and can open nothing; an invitation still waiting opens nothing. What they already read stays with them.
+
+- The delete screen says it: "If you have let other people into the records of someone you look after, they lose access to them when this account is deleted."
+- The only way records pass from one account to another is the young adult taking them over at eighteen (scenario 15.4). A co-guardian cannot keep them once the owner has deleted the account.
+- The accounts that were let in are not deleted; they only lose what was shared into them.
+
+Status: auto (`delegation`: a co-guardian and a waiting invitation, through the route that deletes an account); real browser (`check:app`: the sentence on the delete screen).
+
+### 15.6 A child turns eighteen without an account of their own
+The guardian's list shows, on the child's row, "{name} is now 18, and these records should be theirs. Let them in as themselves, under Access." Nothing else changes: the guardian keeps the records and can go on changing them, the offer "Is this person, with an account of their own" is there (it is offered from sixteen), and what happens next is scenario 15.4 once the young adult has joined. Until they join, nothing moves and nobody is asked.
+
+Status: auto (`family`: the age rule).
+
+### 15.7 A child who is not sixteen yet
+In the Access panel, "Is this person, with an account of their own" is not among the choices, and a line says "A child can have an account of their own from sixteen, with a guardian's consent." A child with no birth date counts as under sixteen. Guardians and readers can be let in meanwhile.
+
+Status: auto (`family`: the rule at sixteen, and for a missing date).
+
+### 15.8 Sharing a child's records with a doctor
+With the child open, Share links makes a link of the child's documents, as for anyone; the child's emergency card is written and published from the same place. Each person has links and a card of their own, so the child's are separate from the guardian's. A link or a card made by a co-guardian who was let in belongs to that guardian's account, not the owner's: the owner's other devices cannot refresh it, and it ends if that guardian's account does.
+
+Status: SECURITY.md **M-49** states it; auto for the parts that run on the server (`delegation`, `emergency`).
+
+### 15.9 One of two guardians is let out
+The owner ends one guardian's access. The profile gets a new key, the guardian who stays is handed it with nothing to do and goes on reading and writing, and the one let out can open nothing, with the old key or the new. What the guardian let out already read stays with them. The owner is signed out of their other devices when the key changes.
+
+Status: auto (`delegation`: the grants that remain; `vault.e2e`: two guardians, with real keys, the new key and the old one failing to open anything).
 
 ---
 
@@ -937,7 +967,6 @@ Found by checking each scenario against the code.
 Fixed: signature stamps not being read (now read as small crops when image reading is on); search covering only titles and summaries; splitting or joining replacing reviewed edits without asking; the upload type not being checked on the server (and a duplicate leaving a copy on disk); a failed upload that could not be retried without image reading; and the same doctor appearing twice under two spellings with no help finding them (now suggested for confirmation); and search results not saying why they matched (now an excerpt with the match highlighted).
 
 Still open:
-
 
 
 ## Not covered yet

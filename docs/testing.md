@@ -147,8 +147,10 @@ The integration suite drives the server's routes with `app.inject`. Since the re
 ```bash
 npm run build                 # at the root: core, server and web. The checks run the built server and web, not the sources
 npm run check:browser       # each native piece of the core: text, rendering, OCR, trimming, photos, zip, stamps
-npm run check:app           # the demo (with files of one's own, kept into an account), sign-up, vault, sample records, reload and unlock, search, upload, shares, export and import
+npm run check:app           # the demo (with files of one's own, kept into an account), sign-up, vault, sample records, reload and unlock, search, upload, shares, export and import, a second device, people and children, a second account joining as a reader, the emergency card, and the three QR codes read back
 ```
+
+**The QR codes are read back, not trusted.** The page draws three (the code that pairs a device, the card's address with its key, the card as text for use with no signal); `check:app` paints each on a canvas in a blank page and decodes it with jsQR (a dev dependency of the web app, Apache-2.0, never in the build), and compares what it holds with what the page shows. `web/src/emergency-qr.test.ts` holds the fullest card the schema allows, in Romanian and with emoji, to its byte limit and checks it still fits a code at the lowest error correction.
 
 `check:app` uses a stand-in for the model behind the real relay code. Two switches change that, and nothing else:
 
@@ -173,7 +175,7 @@ Every run also exports everything from the first account and imports it into a s
 
 ## Last full run
 
-2026-11-01, against `gemini-3.5-flash` on Vertex (eu), with retries off (`--retry=0`): 33 of 33 passed, with every unit suite and a test required to assert something (`expect.requireAssertions`). `check:browser` and `check:app` (153 steps) last passed on 2026-10-31.
+2026-11-01, against `gemini-3.5-flash` on Vertex (eu), with retries off (`--retry=0`): 33 of 33 passed, with every unit suite and a test required to assert something (`expect.requireAssertions`). `check:app` (173 steps) passed on 2026-11-01 and `check:browser` on 2026-10-31.
 
 **A fixture is a story set on fixed dates** (`support/archive.ts`: visits in October 2025 and March 2026), and the assistant is told today's date. So a request in the flows names its months ("the March follow-up"), never "now", "recently" or "a year ago": those are counted from the real day and stop matching the story as it ages. That is a choice, not a gap: the flows test that the assistant turns named periods into the right documents, and the unit tests check that it is given the date. The date-reasoning flow failed 3 of 17 first attempts while its request said "the tests … asked for now", which in November it read as the last few weeks.
 

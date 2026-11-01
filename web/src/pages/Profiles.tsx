@@ -8,7 +8,7 @@ import { buttonClass, inputClass, Notice } from '../components/AuthCard';
 import ProfileAccess from '../components/ProfileAccess';
 import { vaultState } from '../crypto/vault-state';
 import { readInviteCode } from '../crypto/delegation';
-import { pendingInvite, forgetInvite } from '../invite';
+import { pendingInvite, forgetInvite, rememberJoined, recentlyJoined } from '../invite';
 import { ageOn, isAdult, parseBorn } from 'spine-core/family';
 import { useI18n } from '../i18n';
 
@@ -28,7 +28,7 @@ export default function Profiles() {
   const [unsaved, setUnsaved] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [joining, setJoining] = useState(pendingInvite() ?? '');
-  const [joined, setJoined] = useState('');
+  const [joined, setJoined] = useState(recentlyJoined());
   const [openAccess, setOpenAccess] = useState('');
   const [editing, setEditing] = useState<{ id: string; name: string; born: string } | null>(null);
 
@@ -45,6 +45,7 @@ export default function Profiles() {
       if (!session) { setError(t('Open your records first.')); return; }
       const accepted = await session.accept(read.code);
       forgetInvite();
+      rememberJoined(accepted.ownerEmail); // before the keys are reloaded: the page is drawn again then, and starts from this
       setJoining('');
       await device.reloadKeys();
       await refresh();

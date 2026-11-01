@@ -303,6 +303,36 @@ describe('letting another account into a profile', () => {
     expect(refused.json().code).toBe('plan_required');
   });
 
+  it('stops when the owner leaves: the person let in loses the records, and an invitation still waiting opens nothing', async () => {
+    const makeVault = async (email: string) => {
+      const u = await createTestUser(email);
+      const cookie = await loginAs(app, u.email, u.password);
+      await app.inject({ method: 'PUT', url: '/api/vault/keys', headers: { cookie }, payload: { auth_value: fakeAuthValue(), keys: fakeVaultKeys() } });
+      return { ...u, cookie };
+    };
+    const leaver = await makeVault('leaver@spine.test');
+    const coGuardian = await makeVault('co-guardian@spine.test');
+    const child = 'profile-leave-0007';
+    await put(leaver.cookie, child, 'profile', child, 'a child’s record');
+    await put(leaver.cookie, 'object-leave-0001', 'bundle', child, 'a child’s note');
+    const make = (id: string, proof: string) => call('POST', '/api/delegations/invites', leaver.cookie, { id, profile_id: child, role: 'guardian', wrapped: WRAPPED, proof_hash: hex(proof) });
+    expect((await make('l1'.repeat(21) + 'l', 'l'.repeat(43))).statusCode).toBe(201);
+    expect((await make('m1'.repeat(21) + 'm', 'm'.repeat(43))).statusCode).toBe(201); // never used
+    const claimed = await call('POST', '/api/delegations/claim', coGuardian.cookie, { id: 'l1'.repeat(21) + 'l', proof: 'l'.repeat(43) });
+    const grant = claimed.json().grant.id as string;
+    expect((await call('PUT', `/api/delegations/${grant}/key`, coGuardian.cookie, { wrapped_key: K('d') })).statusCode).toBe(200);
+    expect((await call('GET', `/api/delegated/${grant}/objects`, coGuardian.cookie)).statusCode).toBe(200);
+    expect((await call('GET', '/api/delegations', coGuardian.cookie)).json().received).toHaveLength(1);
+
+    // The owner leaves: the address typed out, with the password lately typed (a sign-in just made counts).
+    expect((await call('POST', '/api/account/delete', leaver.cookie, { confirm: leaver.email })).statusCode).toBe(200);
+
+    expect((await call('GET', '/api/delegations', coGuardian.cookie)).json().received).toEqual([]);
+    expect((await call('GET', `/api/delegated/${grant}/objects`, coGuardian.cookie)).statusCode).toBe(404);
+    expect((await call('GET', `/api/delegated/${grant}/objects/object-leave-0001`, coGuardian.cookie)).statusCode).toBe(404);
+    expect((await call('POST', '/api/delegations/claim', coGuardian.cookie, { id: 'm1'.repeat(21) + 'm', proof: 'm'.repeat(43) })).statusCode).toBe(404);
+  });
+
   it('goes with the account: grants and invitations of a deleted account are gone', async () => {
     const store = getAccountsStore();
     await invite('viewer', 'x'.repeat(43), 'y'.repeat(43));
