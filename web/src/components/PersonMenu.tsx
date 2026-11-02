@@ -41,7 +41,10 @@ export default function PersonMenu({ people }: { people: People }) {
         title={t('Whose records are open')}
         className={`flex items-center gap-2 max-w-[12rem] ${TOP_BAR_CONTROL}`}
       >
-        <span className="truncate">{current?.name ?? t('People')}</span>
+        <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-brand-600" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" aria-hidden="true">
+          <circle cx="12" cy="8" r="3.5" /><path d="M5 20a7 7 0 0 1 14 0" />
+        </svg>
+        <span className="truncate font-medium text-gray-900">{current?.name ?? t('People')}</span>
         <span aria-hidden className="text-gray-400 text-xs">▾</span>
       </button>
       {open && (

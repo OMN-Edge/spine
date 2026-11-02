@@ -180,7 +180,7 @@ try {
     check(await waitDemo('This is a demo with invented records'), 'the front page opens the demo with no account');
     check(await waitDemo('Chest X-ray'), 'and the demo shows the sample records');
     const nav = await d.evaluate(() => [...document.querySelectorAll('nav a, nav button')].map(e => e.innerText.trim()).filter(Boolean));
-    check(nav.includes('Upload') && !nav.includes('Share links') && !nav.includes('Sign out') && nav.includes('Leave the demo'), `and offers uploading, but no sharing or account (${nav.join(', ')})`);
+    check(nav.includes('Upload') && !nav.includes('Share') && !nav.includes('Sign out') && nav.includes('Leave the demo'), `and offers uploading, but no sharing or account (${nav.join(', ')})`);
     await d.evaluate(() => [...document.querySelectorAll('a')].find(a => a.innerText.includes('Chest X-ray'))?.click());
     check(await waitDemo('the report states that there are no changes', 20000) && (await d.evaluate(() => location.pathname)).startsWith('/documents/'), 'a sample document opens');
     await go('/scan');
@@ -268,7 +268,23 @@ try {
   seen = () => last;
   const wait = ms => new Promise(r => setTimeout(r, ms));
   const waitFor = async (what, ms = 20000) => { for (let t = 0; t < ms; t += 250) { if ((await text()).includes(what)) return true; await wait(250); } return false; };
-  const click = async label => { const h = await p.evaluateHandle(l => [...document.querySelectorAll('button,a')].find(e => e.offsetParent && e.innerText.trim().toLowerCase().startsWith(l.toLowerCase())), label); await h.asElement().click(); };
+  // Sign out is in the account's menu in the top bar; the account page has buttons of its own that start the same way (the sessions').
+  const signOut = async () => {
+    await p.click('nav button[aria-label="Account and settings"]');
+    await (await p.waitForFunction(() => [...document.querySelectorAll('[role=menu] button')].find(b => b.innerText.trim() === 'Sign out'))).asElement().click();
+  };
+  // A page that is not in the top bar itself is under More, and Sign out under the account's menu: they are opened when what is asked for is not on the page.
+  const click = async label => {
+    const find = () => p.evaluateHandle(l => [...document.querySelectorAll('button,a')].find(e => e.offsetParent && e.innerText.trim().toLowerCase().startsWith(l.toLowerCase())) ?? null, label);
+    let h = (await find()).asElement();
+    for (const menu of ['nav button[aria-haspopup=menu]:not([title]):not([aria-label])', 'nav button[aria-label="Account and settings"]']) {
+      if (h) break;
+      await p.evaluate(sel => document.querySelector(sel)?.click(), menu);
+      h = (await find()).asElement();
+      if (!h) await p.keyboard.press('Escape');
+    }
+    await h.click();
+  };
   // Chooses in one of the app's dropdowns (a combobox): opens it, then picks the option with that text. `within` narrows to one part of the page.
   const choose = async (label, option, within = 'body') => {
     await (await p.waitForFunction((w, l) => [...document.querySelectorAll(`${w} [role=combobox]`)].find(i => i.getAttribute('aria-label') === l && i.offsetParent), {}, within, label)).asElement().click();
@@ -276,7 +292,7 @@ try {
   };
   // The page of people, from the menu in the header that says whose records are open.
   const openPeople = async () => {
-    await (await p.waitForSelector('button[aria-haspopup=menu]', { visible: true })).click();
+    await (await p.waitForSelector('button[title="Whose records are open"]', { visible: true })).click();
     await waitFor('Add or manage people', 5000);
     await click('Add or manage people');
     await waitFor('Add a person');
@@ -336,7 +352,7 @@ try {
 
   // Sharing: a link is a sealed copy; the key is in the address after the #; a stranger's browser opens it with no account.
   p.on('dialog', d => void d.accept());
-  await click('Share links');
+  await click('Share');
   check(await waitFor('Create share link'), 'the share page opens from the device');
   await click('Create link');
   check(await waitFor('Link created', 40000), 'a link is made and sent to the server sealed');
@@ -362,7 +378,7 @@ try {
 
   // The owner's device collects what the server noted: that it was opened, and where from.
   await click('Timeline');
-  await click('Share links');
+  await click('Share');
   const viewed = async () => { for (let t = 0; t < 20000; t += 250) { if (/[1-9]\d* views?/.test(await text())) return true; await wait(250); } return false; };
   check(await viewed(), 'the owner sees that it was opened');
 
@@ -391,7 +407,7 @@ try {
 
   // A link with the page images and questions allowed: the recipient's trends, scans and a question, all read from the sealed copy.
   await click('Timeline');
-  await click('Share links');
+  await click('Share');
   await waitFor('Create share link');
   for (const label of ['Include scans of the original pages', 'Let the recipient ask questions']) {
     await (await p.evaluateHandle(l => [...document.querySelectorAll('label')].find(e => e.innerText.includes(l)).querySelector('input'), label)).asElement().click();
@@ -483,7 +499,7 @@ try {
   check(g3Errors.length === 0, `no errors on the recipient's page with scans and questions${g3Errors.length ? `: ${g3Errors[0]}` : ''}`);
   await fullContext.close();
   await click('Timeline'); // leaving the page clears the form and the banner of the link just made
-  await click('Share links');
+  await click('Share');
   await waitFor('Create share link');
 
   // A link that needs approval has no key in it; the owner's device wraps the key to the visitor's own.
@@ -502,7 +518,7 @@ try {
   await (await guest2.evaluateHandle(() => [...document.querySelectorAll('button')].find(b => b.innerText.startsWith('Ask for access')))).asElement().click();
   check(await guest2Wait('request was sent'), 'the request is sent with the browser\'s own public key');
   await click('Timeline');
-  await click('Share links');
+  await click('Share');
   check(await waitFor('Waiting for your approval', 20000), 'the owner sees the request');
   await click('Approve');
   check(await guest2Wait('Chest X-ray', 40000), 'once approved, that browser (and only it) opens the records');
@@ -755,7 +771,10 @@ try {
     check(await dWait('Chest X-ray', 60000), 'a second device signing in with the master password sees the records the first device saved');
 
     const removeTag = async (page, read, name) => {
-      await page.evaluate(() => [...document.querySelectorAll('a')].find(a => a.getAttribute('href') === '/library')?.click()); // within the page: a reload would lock it
+      await page.evaluate(async () => { // within the page: a reload would lock it. The Library is under More in the top bar.
+        if (!document.querySelector('a[href="/library"]')) { document.querySelector('nav button[aria-haspopup=menu]:not([title]):not([aria-label])')?.click(); await new Promise(r => setTimeout(r, 100)); }
+        [...document.querySelectorAll('a')].find(a => a.getAttribute('href') === '/library')?.click();
+      });
 
       for (let t = 0; t < 20000 && !(await read()).includes(name); t += 250) await wait(250);
       if (process.env.SPINE_CHECK_DEBUG) console.log('     library:', JSON.stringify(await page.evaluate(() => [...document.querySelectorAll('li')].map(l => l.innerText.slice(0, 40)))));
@@ -812,7 +831,10 @@ try {
         await wait(250);
       }
     };
-    await p.evaluate(() => [...document.querySelectorAll('a')].find(a => a.getAttribute('href') === '/account')?.click());
+    await p.evaluate(async () => { // Account is in the account's menu in the top bar
+      if (!document.querySelector('a[href="/account"]')) { document.querySelector('nav button[aria-label="Account and settings"]')?.click(); await new Promise(r => setTimeout(r, 100)); }
+      [...document.querySelectorAll('a')].find(a => a.getAttribute('href') === '/account')?.click();
+    });
     check(await waitFor('Add a device', 15000), 'the account page offers to add a device');
     await clickIn(p, 'Show a code');
     await confirmIfAsked(p);
@@ -857,12 +879,12 @@ try {
     await click('Remove tag');
     await p.evaluate(() => [...document.querySelectorAll('[role=alertdialog] button')].find(b => b.innerText.trim().startsWith('Remove tag'))?.click());
     check(await waitFor('Your latest changes are not saved yet', 25000), 'a save that fails is shown on the page');
-    await click('Sign out');
+    await signOut();
     check(await waitFor('If you sign out now, they will be lost', 8000), 'signing out over unsaved changes asks first');
     await click('Keep this page open');
     await wait(500);
     const afterKeeping = await text();
-    check(!afterKeeping.includes('If you sign out now') && afterKeeping.includes('Sign out') && afterKeeping.includes('Library'), 'keeping the page open leaves the person signed in, with the records open');
+    check(!afterKeeping.includes('If you sign out now') && !!(await p.$('nav button[aria-label="Account and settings"]')) && afterKeeping.includes('Library'), 'keeping the page open leaves the person signed in, with the records open');
     failVaultWrites = false;
     let gone = false;
     for (let t = 0; t < 30000 && !gone; t += 500) { gone = !(await text()).includes('Your latest changes are not saved yet'); if (!gone) await wait(500); }
@@ -873,7 +895,7 @@ try {
   // Records for more than one person: a second person starts empty, is opened and saved apart, and the first person's records are back on
   // opening them again, without the master password being asked for again.
   {
-    await click('check@example.com');
+    await click('Account'); // in the account's menu in the top bar
     check(await waitFor('See and add people'), 'the account page offers people');
     await click('See and add people');
     check(await waitFor('Add a person'), 'the page of people opens');
@@ -885,7 +907,7 @@ try {
     check(!(await text()).includes('Chest X-ray'), "and none of the first person's documents are in them");
     check((await text()).includes('Child'), "the page says whose records are open");
     check(!(await text()).includes('Open your records'), 'opening them did not ask for the master password');
-    await (await p.waitForSelector('button[aria-haspopup=menu]', { visible: true })).click();
+    await (await p.waitForSelector('button[title="Whose records are open"]', { visible: true })).click();
     check(await waitFor('Add or manage people', 5000) && (await p.evaluate(() => [...document.querySelectorAll('[role=menu] [role=menuitemradio]')].length)) === 2, 'the name in the header opens a menu of the people, both of them');
     check(await p.evaluate(() => { const m = document.querySelector('[role=menu]'); const r = m.getBoundingClientRect(); const e = document.elementFromPoint(r.right - 6, r.bottom - 6); return !!e && m.contains(e); }), 'and the menu is drawn over whatever is beside it, the chat panel included');
     await click('Add or manage people');
@@ -924,7 +946,7 @@ try {
     await waitFor('Chest X-ray');
 
     // The emergency card: written with an official number kept off it until ticked, turned on, and printable at the size of a bank card.
-    await click('Share links');
+    await click('Share');
     await waitFor('Write an emergency card');
     await click('Write an emergency card');
     check(await waitFor('Official details'), 'the emergency card is written under Share links');
@@ -1053,7 +1075,10 @@ try {
       await q.evaluate(() => [...document.querySelectorAll('a')].find(a => a.getAttribute('href') === '/')?.click());
       check(await qWait('Chest X-ray', 60000), "the shared person's records, the owner's, are what is open");
       // A change made by someone who can only read is refused by the vault, and the page says it was not saved.
-      await q.evaluate(() => [...document.querySelectorAll('a')].find(a => a.getAttribute('href') === '/library')?.click());
+      await q.evaluate(async () => { // the Library is under More in the top bar
+        if (!document.querySelector('a[href="/library"]')) { document.querySelector('nav button[aria-haspopup=menu]:not([title]):not([aria-label])')?.click(); await new Promise(r => setTimeout(r, 100)); }
+        [...document.querySelectorAll('a')].find(a => a.getAttribute('href') === '/library')?.click();
+      });
       await qWait('Remove tag', 20000);
       const removed = await q.evaluate(() => { const b = [...document.querySelectorAll('button')].find(x => x.innerText.trim() === 'Remove tag'); b?.click(); return !!b; });
       if (removed) { await wait(400); await q.evaluate(() => [...document.querySelectorAll('[role=alertdialog] button')].find(b => b.innerText.trim() === 'Remove tag')?.click()); }
@@ -1153,7 +1178,7 @@ try {
     await cdp.send('WebAuthn.enable');
     await cdp.send('WebAuthn.addVirtualAuthenticator', { options: { protocol: 'ctap2', ctap2Version: 'ctap2_1', transport: 'internal', hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true, hasPrf: true } });
     const reauth = async () => { for (let t = 0; t < 4000; t += 250) { if (await p.$('[role=dialog] input[type=password]')) { await p.type('[role=dialog] input[type=password]', password); await p.keyboard.press('Enter'); return; } await wait(250); } };
-    await click('check@example.com');
+    await click('Account'); // in the account's menu in the top bar
     check(await waitFor('Add a passkey on this device'), 'the account page offers passkeys');
     check((await text()).includes('they lose access to them when this account is deleted'), 'deleting the account says that the people let into its records lose them');
     await click('Add a passkey on this device');
@@ -1166,7 +1191,7 @@ try {
     check(opens, 'the passkey is set to open the records');
 
     // The server holds the sealed key and not the PRF output: a sign-in is verified without it.
-    await click('Sign out');
+    await signOut();
     check(await waitFor('Sign in with a passkey'), 'signed out');
     check(!(await p.evaluate(async () => (await indexedDB.databases()).map(d => d.name))).includes('spine-sealed'), 'and signing out removes the sealed objects kept in the browser');
     await click('Sign in with a passkey');

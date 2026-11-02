@@ -680,7 +680,8 @@ Status: auto (`archive`).
 
 ### 10.1 Use it from a phone
 - The screens fit a 390-pixel-wide phone with no sideways scrolling.
-- Navigation collapses to a menu (below 1280 px, where the full header no longer fits), and the upload page offers the file picker instead of drag and drop.
+- The top bar has five pages (Timeline, Upload, Review with the number of documents waiting, Share, Search), More (Episodes, Trends, Doctors, Library, the emergency card) and one round button for the account (the address, Account, Add or manage people, the language and the look, Sign out). Below 1024 px it collapses to a menu with the same groups, and the upload page offers the file picker instead of drag and drop.
+- The pages before an account have a menu button on a phone instead of an open list, with the language and the look in it, so the name Spine and Sign in keep their room.
 - The spine, document page, trends, doctors, search and grouping screens use the same data as on a desktop, laid out in one column.
 
 Status: hand (2026-10-27, headless Chrome: the eleven signed-in screens at 390 px, and the timeline at 390, 768, 1024, 1279 and 1280 px, none scrolled sideways).
