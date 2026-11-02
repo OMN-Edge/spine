@@ -83,6 +83,25 @@ describe('what the device keeps in the vault', () => {
     expect(await second.db.tags.namesForDocument(USER, 'd1')).toEqual(['cardio']);
   });
 
+  it('says when a person was added, changed or removed elsewhere, and not otherwise', async () => {
+    const { store, objects } = fakeVault();
+    const d = await device(store);
+    const people: number[] = [];
+    d.p.onPeople = () => people.push(1);
+    await d.p.load();
+    await addDoc(d.db, 'd1', 'amlodipine');
+    await d.p.save();
+    expect(people).toEqual([]); // the records' own objects are not people
+    // Another device, or the person taking their records over, changes a profile record: the next look sees it.
+    objects.set('profile-bbbbbbbb', { kind: 'profile', profile: 'profile-bbbbbbbb', data: new Uint8Array(), seq: 1000, deleted: true });
+    await addDoc(d.db, 'd2', 'ferritin');
+    await d.p.save();
+    expect(people).toEqual([1]);
+    await addDoc(d.db, 'd3', 'lipids');
+    await d.p.save();
+    expect(people).toEqual([1]); // seen once
+  });
+
   it('writes a segment for a save and nothing for a save with nothing new', async () => {
     const { store, log } = fakeVault();
     const d = await device(store);

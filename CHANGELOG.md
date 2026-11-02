@@ -4,6 +4,7 @@ Spine is versioned `0.x` until its first production release: anything may change
 
 ## Unreleased
 
+- The top bar always says whose records are open, with a menu to switch person or add and manage people. An invitation followed from a link waits, with a note in the page, at the top of the page of people, saying who it is from and what it allows, with Accept and Decline. Who else can open each person's records is shown under that person. A young adult who takes over their records at eighteen sees them as simply their own, the parent who kept them is paused like the other guardians and can be let back in, and the parent's device lets go of the records and says why.
 - The pages a visitor reads before an account are new: a front page that shows how a document's values are read and how records are sealed before the server keeps them, and pages of detail (how it works, how records are protected, the encryption in detail, Spine for families), in English, Romanian, French and German, light and dark.
 - The assistant knows today's date, so "a year ago" or "the latest" mean what you mean; it can find documents by a period, a tag or a clinic without keywords, and sees the documents each one is linked to, so a request such as "the visit and the tests it asked for" takes fewer steps.
 - The server's store can be Postgres (`SPINE_STORE=postgres`, `SPINE_DATABASE_URL`), so more than one instance, or a host with no disk, can share accounts, sign-ins, the vault's index and sealed shares and the relay's counts. `npm run test:postgres` runs the accounts' tests on it.

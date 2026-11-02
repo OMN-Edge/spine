@@ -67,7 +67,7 @@ export interface Core {
   store: Store;
 }
 
-export async function startCore(vault?: { objects: ObjectStore; profileId: string }, hooks: { onConflict?: () => void; onChanged?: () => void; onSaveState?: (state: SaveState) => void } = {}, options: { shares?: boolean } = {}): Promise<Core> {
+export async function startCore(vault?: { objects: ObjectStore; profileId: string }, hooks: { onConflict?: () => void; onChanged?: () => void; onSaveState?: (state: SaveState) => void; onPeople?: () => void } = {}, options: { shares?: boolean } = {}): Promise<Core> {
   await hashingReady();
   useNativeTools(browserTools);
   useDigests(browserDigests);
@@ -89,6 +89,7 @@ export async function startCore(vault?: { objects: ObjectStore; profileId: strin
   const persistence = vault && new Persistence(vault.objects, vault.profileId, indexIdFor(vault.profileId), newId, { changes: store.changes, files: store.files, userId: DEVICE_USER });
   if (persistence) {
     persistence.onChanged = () => { hooks.onChanged?.(); followRecords(); };
+    persistence.onPeople = () => hooks.onPeople?.();
     const { empty } = await persistence.load();
     if (empty) await store.tags.ensure(DEVICE_USER, [...STARTER_TAGS]);
   }

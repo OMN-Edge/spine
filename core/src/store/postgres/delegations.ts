@@ -42,6 +42,9 @@ export function delegationRepository(q: Query, begin: Begin): DelegationReposito
         await copy(seq, update.profileSize, update.profileWrapped, profileId);
         await tombstone(profileId);
         for (const x of update.grants) await run("UPDATE delegations SET owner_user_id = $1, state = 'paused', wrapped_key = $2, updated_at = $3 WHERE id = $4 AND owner_user_id = $5", [id, x.wrappedKey, now, x.id, from]);
+        // The owner it came from is one of the people who looked after the person: paused like the rest, theirs to be let back in.
+        await run("INSERT INTO delegations (id, owner_user_id, profile_id, delegate_user_id, role, wrapped_key, state, created_at, updated_at) VALUES ($1, $2, $3, $4, 'guardian', $5, 'paused', $6, $6)",
+          [update.former.grantId, id, profileId, from, update.former.wrappedKey, now]);
         await run("UPDATE delegations SET state = 'promoted', wrapped_key = NULL, updated_at = $1 WHERE id = $2", [now, grantId]);
         await run('DELETE FROM profile_invites WHERE owner_user_id = $1 AND profile_id = $2', [from, profileId]);
         return { seq, fromUserId: from, objectIds: live };
@@ -66,6 +69,9 @@ export function delegationRepository(q: Query, begin: Begin): DelegationReposito
         return { grant: asGrant((await one(run, `SELECT ${COLUMNS} FROM delegations WHERE id = $1`, [grantId]))!), wrapped: spent.wrapped };
       });
     },
+    async peek(delegateId, id, proofHash, now) {
+      return one<{ owner_user_id: string; role: DelegationRecord['role']; expires_at: string }>(q, "SELECT owner_user_id, role, expires_at FROM profile_invites WHERE id = $1 AND proof_hash = $2 AND state = 'offered' AND expires_at > $3 AND owner_user_id <> $4", [id, proofHash, now, owner(delegateId)]);
+    },
     async complete(delegateId, id, wrappedKey, now) {
       return (await changed(q, "UPDATE delegations SET wrapped_key = $1, state = 'active', updated_at = $2 WHERE id = $3 AND delegate_user_id = $4 AND state = 'pending'", [wrappedKey, now, id, owner(delegateId)])) === 1;
     },
@@ -78,13 +84,13 @@ export function delegationRepository(q: Query, begin: Begin): DelegationReposito
         .map(r => ({ ...asGrant(r), delegate_email: r.delegate_email as string, delegate_public_key: (r.delegate_public_key as string | null) ?? null }));
     },
     async madeTo(delegateId) {
-      const rows = await many(q, `SELECT ${prefixed('d')}, u.email AS owner_email FROM delegations d JOIN users u ON u.id = d.owner_user_id WHERE d.delegate_user_id = $1 AND d.state IN ('active', 'paused') ORDER BY d.created_at`, [owner(delegateId)]);
+      const rows = await many(q, `SELECT ${prefixed('d')}, u.email AS owner_email, k.public_key AS owner_public_key FROM delegations d JOIN users u ON u.id = d.owner_user_id LEFT JOIN vault_keys k ON k.user_id = d.owner_user_id WHERE d.delegate_user_id = $1 AND d.state IN ('active', 'paused') ORDER BY d.created_at`, [owner(delegateId)]);
       const out = [];
       for (const r of rows) {
         const g = asGrant(r);
         const others = g.role !== 'self' ? [] : (await many(q, `SELECT d.id, d.role, d.state, u.email AS delegate_email, k.public_key AS delegate_public_key FROM delegations d JOIN users u ON u.id = d.delegate_user_id LEFT JOIN vault_keys k ON k.user_id = d.delegate_user_id WHERE d.owner_user_id = $1 AND d.profile_id = $2 AND d.id <> $3 AND d.state IN ('active', 'paused') ORDER BY d.created_at`, [g.owner_user_id, g.profile_id, g.id]))
           .map(o => ({ id: o.id as string, role: o.role as DelegationRecord['role'], state: o.state as DelegationRecord['state'], delegate_email: o.delegate_email as string, delegate_public_key: (o.delegate_public_key as string | null) ?? null }));
-        out.push({ ...g, owner_email: r.owner_email as string, others });
+        out.push({ ...g, owner_email: r.owner_email as string, owner_public_key: g.role === 'self' ? (r.owner_public_key as string | null) ?? null : null, others });
       }
       return out;
     },

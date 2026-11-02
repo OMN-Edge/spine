@@ -12,6 +12,7 @@ export type ToWorker =
   | { id: number; type: 'profiles' }
   /** Makes another person's records, with a key of their own; answers with `{ id }`. The server refuses past what the plan allows. */
   | { id: number; type: 'createProfile'; name: string; kind?: 'child'; born?: string }
+  | { id: number; type: 'removeProfile'; profileId: string }
   /** Look again at the keys and the people the account may open (after a profile's key was replaced, or access was given or taken). */
   | { id: number; type: 'reloadKeys' }
   /** Saves what is open, then opens another person's records. Refused with code `unsaved` unless `force`. */
@@ -39,6 +40,8 @@ export type FromWorker =
   | { id: 0; changed: true }
   /** The state of saving changed. */
   | { id: 0; save: SaveState }
+  /** The people changed elsewhere; `gone` names the one that was open if it is no longer this account's (another is open in its place). */
+  | { id: 0; people: { gone: string | null } }
 
   | { id: number; ok: true; status?: number; headers?: Record<string, string>; body?: ArrayBuffer; stream?: boolean }
   /** A piece of a streamed reply, in the order written, and its end. */

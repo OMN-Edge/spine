@@ -27,6 +27,17 @@ export function rememberJoined(owner: string, now = Date.now()): void {
   try { sessionStorage.setItem(JOINED, JSON.stringify({ owner, at: now })); } catch { /* the page's own state shows it, if it survives */ }
 }
 
+/** That records were just taken over, for the same reason: opening them is a change of person, and the page is drawn anew. */
+const TOOK_OVER = 'spine-took-over';
+
+export function rememberTookOver(now = Date.now()): void {
+  try { sessionStorage.setItem(TOOK_OVER, String(now)); } catch { /* the page's own state shows it, if it survives */ }
+}
+
+export function recentlyTookOver(now = Date.now()): boolean {
+  try { const at = Number(sessionStorage.getItem(TOOK_OVER)); return at > 0 && now - at >= 0 && now - at < JOINED_FOR_MS; } catch { return false; }
+}
+
 export function recentlyJoined(now = Date.now()): string {
   try {
     const kept = JSON.parse(sessionStorage.getItem(JOINED) ?? 'null') as { owner?: unknown; at?: unknown } | null;

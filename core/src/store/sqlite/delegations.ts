@@ -16,12 +16,13 @@ export function delegationRepository(db: Database): DelegationRepository {
   const cancel = db.prepare("DELETE FROM profile_invites WHERE owner_user_id = ? AND id = ? AND state = 'offered'");
   // Spent by one statement that also checks the proof, the end and the state: two claims cannot both succeed.
   const spend = db.prepare("UPDATE profile_invites SET state = 'used' WHERE id = ? AND proof_hash = ? AND state = 'offered' AND expires_at > ? AND owner_user_id <> ? RETURNING owner_user_id, profile_id, role, wrapped");
+  const peek = db.prepare("SELECT owner_user_id, role, expires_at FROM profile_invites WHERE id = ? AND proof_hash = ? AND state = 'offered' AND expires_at > ? AND owner_user_id <> ?");
   const insertGrant = db.prepare("INSERT INTO delegations (id, owner_user_id, profile_id, delegate_user_id, role, state, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)");
   const grant = db.prepare(`SELECT ${COLUMNS} FROM delegations WHERE id = ?`);
   const complete = db.prepare("UPDATE delegations SET wrapped_key = ?, state = 'active', updated_at = ? WHERE id = ? AND delegate_user_id = ? AND state = 'pending'");
   const owned = db.prepare(`SELECT ${COLUMNS.split(', ').map(c => `d.${c}`).join(', ')}, u.email AS delegate_email, k.public_key AS delegate_public_key FROM delegations d JOIN users u ON u.id = d.delegate_user_id LEFT JOIN vault_keys k ON k.user_id = d.delegate_user_id WHERE d.owner_user_id = ? AND d.state NOT IN ('revoked', 'promoted') ORDER BY d.created_at`);
   const othersOf = db.prepare(`SELECT d.id, d.role, d.state, u.email AS delegate_email, k.public_key AS delegate_public_key FROM delegations d JOIN users u ON u.id = d.delegate_user_id LEFT JOIN vault_keys k ON k.user_id = d.delegate_user_id WHERE d.owner_user_id = ? AND d.profile_id = ? AND d.id <> ? AND d.state IN ('active', 'paused') ORDER BY d.created_at`);
-  const madeTo = db.prepare(`SELECT ${COLUMNS.split(', ').map(c => `d.${c}`).join(', ')}, u.email AS owner_email FROM delegations d JOIN users u ON u.id = d.owner_user_id WHERE d.delegate_user_id = ? AND d.state IN ('active', 'paused') ORDER BY d.created_at`);
+  const madeTo = db.prepare(`SELECT ${COLUMNS.split(', ').map(c => `d.${c}`).join(', ')}, u.email AS owner_email, k.public_key AS owner_public_key FROM delegations d JOIN users u ON u.id = d.owner_user_id LEFT JOIN vault_keys k ON k.user_id = d.owner_user_id WHERE d.delegate_user_id = ? AND d.state IN ('active', 'paused') ORDER BY d.created_at`);
   const setState = db.prepare("UPDATE delegations SET state = ?, updated_at = ?, wrapped_key = CASE WHEN ? = 'revoked' THEN NULL ELSE wrapped_key END WHERE owner_user_id = ? AND id = ? AND state NOT IN ('revoked', 'promoted')");
   const leave = db.prepare("UPDATE delegations SET state = 'revoked', wrapped_key = NULL, updated_at = ? WHERE delegate_user_id = ? AND id = ? AND state NOT IN ('revoked', 'promoted')");
   const rewrap = db.prepare("UPDATE delegations SET wrapped_key = ?, updated_at = ? WHERE owner_user_id = ? AND profile_id = ? AND id = ? AND state IN ('active', 'paused')");
@@ -64,6 +65,9 @@ export function delegationRepository(db: Database): DelegationRepository {
     // The profile is the delegate's now, with everyone else who had it paused until they choose, each holding the new key sealed to them.
     const pause = db.prepare("UPDATE delegations SET owner_user_id = ?, state = 'paused', wrapped_key = ?, updated_at = ? WHERE id = ? AND owner_user_id = ?");
     for (const x of u.grants) pause.run(delegateId, x.wrappedKey, now, x.id, ok.from);
+    // The owner it came from is one of the people who looked after the person: paused like the rest, theirs to be let back in.
+    db.prepare("INSERT INTO delegations (id, owner_user_id, profile_id, delegate_user_id, role, wrapped_key, state, created_at, updated_at) VALUES (?, ?, ?, ?, 'guardian', ?, 'paused', ?, ?)")
+      .run(u.former.grantId, delegateId, ok.profileId, ok.from, u.former.wrappedKey, now, now);
     db.prepare("UPDATE delegations SET state = 'promoted', wrapped_key = NULL, updated_at = ? WHERE id = ?").run(now, grantId);
     db.prepare('DELETE FROM profile_invites WHERE owner_user_id = ? AND profile_id = ?').run(ok.from, ok.profileId);
     return { seq, fromUserId: ok.from, objectIds: ok.live };
@@ -83,6 +87,7 @@ export function delegationRepository(db: Database): DelegationRepository {
     async invites(ownerId, now) { return invites.all(owner(ownerId), now) as DelegationInvite[]; },
     async cancelInvite(ownerId, id) { return cancel.run(owner(ownerId), id).changes === 1; },
     async claim(delegateId, id, proofHash, now, grantId) { return claimTx(owner(delegateId), id, proofHash, now, grantId); },
+    async peek(delegateId, id, proofHash, now) { return (peek.get(id, proofHash, now, owner(delegateId)) as { owner_user_id: string; role: DelegationRecord['role']; expires_at: string } | undefined) ?? null; },
     async complete(delegateId, id, wrappedKey, now) { return complete.run(wrappedKey, now, id, owner(delegateId)).changes === 1; },
     async get(id) { const r = grant.get(id) as Record<string, unknown> | undefined; return r ? asGrant(r) : null; },
     async ownedBy(ownerId) { return (owned.all(owner(ownerId)) as Array<Record<string, unknown>>).map(r => ({ ...asGrant(r), delegate_email: r.delegate_email as string, delegate_public_key: (r.delegate_public_key as string | null) ?? null })); },
@@ -90,7 +95,7 @@ export function delegationRepository(db: Database): DelegationRepository {
       return (madeTo.all(owner(delegateId)) as Array<Record<string, unknown>>).map(r => {
         const g = asGrant(r);
         const others = g.role === 'self' ? (othersOf.all(g.owner_user_id, g.profile_id, g.id) as Array<Record<string, unknown>>).map(o => ({ id: o.id as string, role: o.role as DelegationRecord['role'], state: o.state as DelegationRecord['state'], delegate_email: o.delegate_email as string, delegate_public_key: (o.delegate_public_key as string | null) ?? null })) : [];
-        return { ...g, owner_email: r.owner_email as string, others };
+        return { ...g, owner_email: r.owner_email as string, owner_public_key: g.role === 'self' ? (r.owner_public_key as string | null) ?? null : null, others };
       });
     },
     async setState(ownerId, id, state, now) { return setState.run(state, now, state, owner(ownerId), id).changes === 1; },
