@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { PROFILE_CHANGED, device, rememberProfile, type Person } from './core/client';
+import { PEOPLE_CHANGED, PROFILE_CHANGED, device, rememberProfile, type Person } from './core/client';
 import { vaultState } from './crypto/vault-state';
 
 export type { Person };
@@ -7,7 +7,7 @@ export interface People { profiles: Person[]; current: string }
 
 /**
  * The people (profiles) this account keeps records for and the one open now. Each has records and keys of their own (docs/key-hierarchy.md);
- * `null` until the vault is open. Looks again when another person's records are opened.
+ * `null` until the vault is open. Looks again when another person's records are opened, and when the list itself changes.
  */
 export function useProfiles(open: boolean): { people: People | null; refresh: () => Promise<void> } {
   const [people, setPeople] = useState<People | null>(null);
@@ -18,14 +18,15 @@ export function useProfiles(open: boolean): { people: People | null; refresh: ()
   useEffect(() => {
     void refresh();
     window.addEventListener(PROFILE_CHANGED, refresh);
-    return () => window.removeEventListener(PROFILE_CHANGED, refresh);
+    window.addEventListener(PEOPLE_CHANGED, refresh);
+    return () => { window.removeEventListener(PROFILE_CHANGED, refresh); window.removeEventListener(PEOPLE_CHANGED, refresh); };
   }, [refresh]);
   return { people, refresh };
 }
 
 /** Opens another person's records, and remembers the choice on this device for the next sign-in. */
-export async function openPerson(id: string, force = false): Promise<void> {
-  await device.switchProfile(id, force);
+export async function openPerson(id: string, force = false, dropEmpty = false): Promise<void> {
+  await device.switchProfile(id, force, dropEmpty);
   const account = vaultState.email();
   if (account) rememberProfile(account, id);
 }

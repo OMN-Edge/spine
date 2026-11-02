@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { LanguageSwitcher, useI18n } from '../i18n';
+import { useI18n } from '../i18n';
+import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { ThemeSwitcher } from '../components/ThemeSwitcher';
 import { openPart } from '../core/share/keys';
 import { DETAIL_LABELS } from '../detailLabels';
@@ -87,7 +88,7 @@ export default function CardView({ id }: { id: string }) {
                 <ul className="mt-1 space-y-1">
                   {card.contacts.map((c, i) => {
                     const href = dialable(c.phone);
-                    return <li key={i} className="text-gray-900">{c.name}{c.relation && ` (${c.relation})`}{c.phone && <> · {href ? <a href={href} className="text-brand-600 underline">{c.phone}</a> : c.phone}</>}</li>;
+                    return <li key={i} className="text-gray-900">{c.name}{c.relation && ` (${c.relation})`}{c.phone && <> · {/* a number to dial is read as one, never broken across lines */}{href ? <a href={href} className="whitespace-nowrap text-brand-600 underline">{c.phone}</a> : <span className="whitespace-nowrap">{c.phone}</span>}</>}</li>;
                   })}
                 </ul>
               </section>

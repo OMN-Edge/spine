@@ -5,7 +5,7 @@ import { api, type Document, type Episode, type ShareLink, type ShareRequest } f
 import { episodeName } from '../components/episode';
 import { useOnDataChanged } from '../dataChanged';
 import ShareRequestCard from '../components/ShareRequestCard';
-import { LANGUAGES, useI18n } from '../i18n';
+import { LANGUAGES, languageChoice, useI18n } from '../i18n';
 import { Combobox } from '../components/Combobox';
 import GuideTip from '../components/GuideTip';
 import { languageName } from '../i18n/useTranslation';
@@ -237,13 +237,10 @@ export default function ShareLinks() {
 
           <div>
             <label htmlFor="s-hours" className={label}>{t('Expires in')}</label>
-            <select
-              id="s-hours" value={form.expires_hours}
-              onChange={e => setForm(f => ({ ...f, expires_hours: parseInt(e.target.value) }))}
-              className="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
-            >
-              {LIFETIMES.map(l => <option key={l.hours} value={l.hours}>{t(l.label)}</option>)}
-            </select>
+            <Combobox
+              id="s-hours" value={String(form.expires_hours)} onChange={v => setForm(f => ({ ...f, expires_hours: parseInt(v) }))} wrapperClassName="relative w-48"
+              options={LIFETIMES.map(l => ({ value: String(l.hours), label: t(l.label) }))}
+            />
           </div>
 
           <label className="flex items-start gap-2 text-sm text-gray-700">
@@ -280,7 +277,7 @@ export default function ShareLinks() {
             <label htmlFor="s-lang" className={label}>{t('Language the page opens in')}</label>
             <Combobox
               id="s-lang" value={form.language} onChange={v => setForm(f => ({ ...f, language: v }))} className={input}
-              options={[{ value: '', label: t('Not set: the reader chooses') }, ...LANGUAGES.map(l => ({ value: l.code, label: l.name }))]}
+              options={[{ value: '', label: t('Not set: the reader chooses') }, ...LANGUAGES.map(l => ({ value: l.code, label: languageChoice(l.code) }))]}
             />
             <p className="text-xs text-gray-500 mt-1">{t('The reader can still switch language on the page. Extracted details and your notes are translated by the model provider.')}</p>
           </div>

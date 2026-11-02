@@ -38,7 +38,7 @@ function readRecord(plain: Uint8Array): Omit<ProfileSummary, 'id'> {
 export interface Delegations {
   owned: Array<{ id: string; profile_id: string; delegate_email: string; delegate_public_key: string | null; role: 'guardian' | 'viewer' | 'self'; state: 'pending' | 'active' | 'paused' | 'revoked'; created_at: string }>;
   invites: Array<{ id: string; profile_id: string; role: 'guardian' | 'viewer' | 'self'; expires_at: string }>;
-  received: Array<{ id: string; owner_email: string; profile_id: string; role: 'guardian' | 'viewer' | 'self'; state: 'pending' | 'active' | 'paused' | 'revoked'; wrapped_key: string | null; others: Array<{ id: string; role: 'guardian' | 'viewer' | 'self'; state: 'pending' | 'active' | 'paused' | 'revoked'; delegate_email: string; delegate_public_key: string | null }> }>;
+  received: Array<{ id: string; owner_email: string; owner_public_key: string | null; profile_id: string; role: 'guardian' | 'viewer' | 'self'; state: 'pending' | 'active' | 'paused' | 'revoked'; wrapped_key: string | null; others: Array<{ id: string; role: 'guardian' | 'viewer' | 'self'; state: 'pending' | 'active' | 'paused' | 'revoked'; delegate_email: string; delegate_public_key: string | null }> }>;
 }
 
 export interface ObjectList {
@@ -353,6 +353,28 @@ export class VaultSession {
 
   cancelInvite(id: string): Promise<unknown> { return this.json(`/api/delegations/invites/${encodeURIComponent(id)}`, 'DELETE'); }
 
+  /** Who an invitation is from and what it lets this account do, without using it. Throws (404) if the code is not valid, used or ended. */
+  async previewInvite(code: string): Promise<{ ownerEmail: string; role: 'guardian' | 'viewer' | 'self'; expiresAt: string }> {
+    const invite = await fromInviteCode(code);
+    try {
+      const seen = await this.json<{ owner_email: string; role: 'guardian' | 'viewer' | 'self'; expires_at: string }>('/api/delegations/invites/preview', 'POST', { id: invite.id, proof: invite.proof });
+      return { ownerEmail: seen.owner_email, role: seen.role, expiresAt: seen.expires_at };
+    } finally {
+      (await sodium()).memzero(invite.key);
+    }
+  }
+
+  /**
+   * Removes one of this account's own people with everything kept for them: used only for the empty records an account starts with, when the
+   * person joins their own records as themselves. The profile record goes last, so an interruption leaves the person listed, never half gone.
+   */
+  async removeProfile(profileId: string): Promise<void> {
+    const mine = (await this.list(0)).objects.filter(o => o.profile_id === profileId && !o.deleted);
+    for (const o of mine.filter(o => o.kind !== 'profile')) await this.remove(o.id, o.seq);
+    for (const o of mine.filter(o => o.kind === 'profile')) await this.remove(o.id, o.seq);
+    this.profileKeys.delete(profileId);
+  }
+
   /** Takes up an invitation: opens the profile key with the code and seals it to this account's own key pair. Throws if the code is not valid. */
   async accept(code: string): Promise<{ grantId: string; ownerEmail: string; role: 'guardian' | 'viewer' | 'self' }> {
     const invite = await fromInviteCode(code);
@@ -394,17 +416,22 @@ export class VaultSession {
     const profileId = grant.profile_id;
     const view = VaultSession.delegated(this, grant.id, profileId, profileKey);
     const mine = (await view.list(0)).objects.filter(o => o.profile_id === profileId && !o.deleted);
-    const plain = await openProfileRecord(profileKey, profileId, (await view.fetchObject(profileId)).body);
+    // The record is theirs now: no longer a child in someone's care, so it says so no more (the birth date stays).
+    const { kind: _child, ...own } = JSON.parse(new TextDecoder().decode(await openProfileRecord(profileKey, profileId, (await view.fetchObject(profileId)).body))) as Record<string, unknown>;
+    const plain = new TextEncoder().encode(JSON.stringify(own));
     const next = await newProfileKey(this.unlocked, profileId);
     const body = await sealProfileRecord(next.profileKey, profileId, plain);
     const objects = await Promise.all(mine.filter(o => o.kind !== 'profile').map(async o => ({ id: o.id, wrapped_key: await rewrapObjectKey(profileKey, next.profileKey, o.id, o.wrapped_key) })));
+    // The owner it came from is paused like everyone else who looked after the person, holding the new key until let back in.
+    if (!grant.owner_public_key) throw new Error('the owner of these records has no key to seal the new one to');
+    const formerWrappedKey = await sealProfileKeyTo(grant.owner_public_key, next.profileKey);
     const grants: Array<{ id: string; wrapped_key: string }> = [];
     for (const other of grant.others) {
       if (!other.delegate_public_key) throw new Error('someone let in has no key to seal the new one to');
       grants.push({ id: other.id, wrapped_key: await sealProfileKeyTo(other.delegate_public_key, next.profileKey) });
     }
     const s = await sodium();
-    await this.json(`/api/delegations/${encodeURIComponent(grant.id)}/promote`, 'POST', { profile_wrapped: next.wrapped, profile_body: toB64(s, body), objects, grants });
+    await this.json(`/api/delegations/${encodeURIComponent(grant.id)}/promote`, 'POST', { profile_wrapped: next.wrapped, profile_body: toB64(s, body), objects, grants, former_wrapped_key: formerWrappedKey });
     s.memzero(profileKey);
     this.profileKeys.set(profileId, next.profileKey);
   }

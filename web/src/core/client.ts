@@ -30,6 +30,7 @@ class CoreWorker {
       if (typeof m?.id !== 'number') return;
       if ('changed' in m) { window.dispatchEvent(new Event(RECORDS_CHANGED)); return; }
       if ('save' in m) { this.saveState = m.save; window.dispatchEvent(new Event(SAVE_STATE_CHANGED)); return; }
+      if ('people' in m) { if (m.people.gone !== null) { gone = m.people.gone; window.dispatchEvent(new CustomEvent(PERSON_GONE, { detail: m.people.gone })); window.dispatchEvent(new Event(PROFILE_CHANGED)); } window.dispatchEvent(new Event(PEOPLE_CHANGED)); return; }
       if ('trace' in m) { if (m.trace === 'loaded') this.onLoaded(); else console.debug('[core]', m.trace); return; }
       if ('chunk' in m) { this.streams.get(m.id)?.enqueue(new Uint8Array(m.chunk)); return; }
       if ('end' in m) { try { this.streams.get(m.id)?.close(); } catch { /* the reader already left */ } this.streams.delete(m.id); return; }
@@ -111,6 +112,7 @@ class CoreWorker {
     if (this.worker) {
       try {
         await this.send({ type: 'lock', force });
+        gone = null;
       } catch (err) {
         // A worker that is already gone has nothing to save; one that refused has the person's work.
         if ((err as { code?: string }).code === 'unsaved') throw new UnsavedChangesError();
@@ -132,7 +134,7 @@ class CoreWorker {
   /** Takes the keys and the people as they now are, after a key was replaced or access changed. Stays on the same person. */
   async reloadKeys(): Promise<void> {
     await this.send({ type: 'reloadKeys' });
-    window.dispatchEvent(new Event(PROFILE_CHANGED));
+    window.dispatchEvent(new Event(PEOPLE_CHANGED));
   }
 
   /** Makes records for another person (a child, a parent), with a key of their own. Does not open them. */
@@ -142,9 +144,9 @@ class CoreWorker {
   }
 
   /** Saves what is open and opens another person's records. Throws `UnsavedChangesError` if something could not be saved, unless `force`. */
-  async switchProfile(profileId: string, force = false): Promise<void> {
+  async switchProfile(profileId: string, force = false, dropEmpty = false): Promise<void> {
     try {
-      await this.send({ type: 'switchProfile', profileId, force });
+      await this.send({ type: 'switchProfile', profileId, force, dropEmpty });
     } catch (err) {
       if ((err as { code?: string }).code === 'unsaved') throw new UnsavedChangesError();
       throw err;
@@ -205,6 +207,14 @@ export const RECORDS_CHANGED = 'spine:records-changed';
 export const SAVE_STATE_CHANGED = 'spine:save-state';
 /** Announced on the window after another person's records were opened, so the screens that hold records look again. */
 export const PROFILE_CHANGED = 'spine:profile-changed';
+/** The list of people changed (one added, removed, let in or paused) and the same person is open: the list is read again, nothing remounts. */
+export const PEOPLE_CHANGED = 'spine:people-changed';
+/** The person whose records were open is no longer this account's (taken over by them): the event's detail is their name. */
+export const PERSON_GONE = 'spine:person-gone';
+/** The name of the person last gone, until the notice is dismissed: the change of person remounts the page that shows it. */
+let gone: string | null = null;
+export const personGone = (): string | null => gone;
+export const dismissPersonGone = (): void => { gone = null; };
 
 /** Which person's records this browser opened last, per account (an opaque id, not a secret). Best effort: the first person is opened where there is none. */
 const rememberedKey = (account: string) => `spine.profile:${account}`;

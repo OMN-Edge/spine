@@ -6,6 +6,7 @@ import { getStore } from 'spine-core/store/index.js';
 import { resetChatLlm, type ChatLlm, type TranslationBundle } from 'spine-core/llm/index.js';
 import { LlmBlockedError } from 'spine-core/llm/types.js';
 import { translateDocument } from 'spine-core/translation.js';
+import { SUPPORTED_LANGUAGES } from 'spine-core/languages.js';
 
 /**
  * Translating a document on demand and keeping it: what is sent, what is kept, when the kept copy stops being
@@ -387,6 +388,9 @@ describe('the routes', () => {
     expect(ok.statusCode).toBe(200);
     expect(ok.json()).toMatchObject({ status: 'translated', title: 'EN[Buletin de analize]' });
     expect((await get(`/api/documents/${d.id}/translation?lang=xx`)).statusCode).toBe(400);
+    // A language the screens are not written in is still one documents are translated into, named to the model from the list.
+    expect((await get(`/api/documents/${d.id}/translation?lang=it`)).json()).toMatchObject({ status: 'translated', language: 'it' });
+    expect(calls.at(-1)?.target).toBe('Italian');
     expect((await get(`/api/documents/${d.id}/translation`)).statusCode).toBe(400);
     expect((await get(`/api/documents/${uuidv4()}/translation?lang=en`)).statusCode).toBe(404);
     expect((await get(`/api/documents/${d.id}/translation?lang=en`, null)).statusCode).toBe(401);
@@ -403,7 +407,7 @@ describe('the routes', () => {
     expect(ok.statusCode).toBe(200);
     expect(ok.json()).toMatchObject({ status: 'translated', title: 'EN[Buletin de analize]' });
     expect((await get(`/api/share/${shareId}/documents/${outside.id}/translation?lang=en`, null)).statusCode).toBe(404);
-    expect((await get(`/api/share/${shareId}/documents/${inside.id}/translation?lang=es`, null)).statusCode).toBe(400);
+    expect((await get(`/api/share/${shareId}/documents/${inside.id}/translation?lang=xx`, null)).statusCode).toBe(400);
     expect((await get(`/api/share/${uuidv4()}/documents/${inside.id}/translation?lang=en`, null)).statusCode).toBe(410);
     const text = ok.body;
     for (const forbidden of ['user_id', OWNER_ID, 'secret source', 'source_snippet']) expect(text).not.toContain(forbidden);
@@ -433,7 +437,7 @@ describe('the routes', () => {
   it('the share list without a language is as it was, and a language the page cannot offer is ignored', async () => {
     const d = await romanian();
     const { id: shareId } = await link('document_ids', [d.id]);
-    for (const url of [`/api/share/${shareId}/documents`, `/api/share/${shareId}/documents?lang=es`]) {
+    for (const url of [`/api/share/${shareId}/documents`, `/api/share/${shareId}/documents?lang=xx`]) {
       const body = (await get(url, undefined)).json() as Array<Record<string, unknown>>;
       expect(body[0]).not.toHaveProperty('translation');
     }
@@ -447,7 +451,7 @@ describe('the routes', () => {
     expect((await get(`/api/share/${shareId}/documents/${d.id}/translation?lang=en`, null)).json()).toMatchObject({ status: 'cached' });
 
     const meta = (await get(`/api/share/${shareId}/meta`, null)).json();
-    expect(meta).toEqual({ language: 'en', languages: ['en', 'ro', 'fr', 'de'], translation: true, chat: false, landing_url: '/' });
+    expect(meta).toEqual({ language: 'en', languages: [...SUPPORTED_LANGUAGES], translation: true, chat: false, landing_url: '/' });
     const plain = await link('document_ids', [d.id]);
     expect((await get(`/api/share/${plain.id}/meta`, null)).json().language).toBeNull();
     expect((await get(`/api/share/${uuidv4()}/meta`, null)).statusCode).toBe(410);
@@ -455,7 +459,7 @@ describe('the routes', () => {
 
   it('refuses a language that is not offered when making a link, and lists the choice for the owner', async () => {
     const d = await romanian();
-    for (const language of ['es', 7, 'EN']) {
+    for (const language of ['xx', 7, 'EN', 'Italian']) {
       const res = await app.inject({ method: 'POST', url: '/api/share-links', headers: { cookie }, payload: { scope: 'document_ids', scope_value: [d.id], language } });
       expect(res.statusCode, String(language)).toBe(400);
     }

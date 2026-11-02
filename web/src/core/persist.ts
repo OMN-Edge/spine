@@ -107,6 +107,8 @@ export class Persistence {
   /** What `load` has opened so far, for the line it logs. */
   private loaded = { bytes: 0, objects: 0 };
   onChanged: (() => void) | null = null;
+  /** A person was added, changed or removed elsewhere (another device, or taken over by the person): the list of people is read again. */
+  onPeople: (() => void) | null = null;
 
   constructor(
     private readonly store: ObjectStore,
@@ -310,6 +312,7 @@ export class Persistence {
   /** What other devices have written since this one last looked, and a newer snapshot if one was made. */
   private async pull(): Promise<void> {
     const { objects } = await this.store.list(this.seen);
+    if (objects.some(o => o.kind === 'profile')) this.onPeople?.();
     const index = objects.find(o => o.id === this.indexId && !o.deleted);
     const incoming: Change[] = [];
     if (index && index.seq !== this.indexSeq) {

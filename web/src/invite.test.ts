@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { rememberJoined, recentlyJoined } from './invite';
+import { rememberJoined, recentlyJoined, rememberTookOver, recentlyTookOver } from './invite';
 
 /** A tab's session storage, as far as the helpers use it. */
 function fakeSession() {
@@ -32,5 +32,21 @@ describe('that joining worked, for the page of people', () => {
     expect(recentlyJoined()).toBe('');
     (globalThis as { sessionStorage?: unknown }).sessionStorage = { getItem: () => 'not json', setItem: () => undefined, removeItem: () => undefined };
     expect(recentlyJoined()).toBe('');
+  });
+});
+
+describe('that records were just taken over, for the page of people', () => {
+  beforeEach(() => { (globalThis as { sessionStorage?: unknown }).sessionStorage = fakeSession(); });
+  afterEach(() => { delete (globalThis as { sessionStorage?: unknown }).sessionStorage; });
+
+  it('is there for a minute after, and not before or later, and breaks nothing where nothing is kept', () => {
+    expect(recentlyTookOver(1_000)).toBe(false);
+    rememberTookOver(1_000);
+    expect(recentlyTookOver(1_000 + 59_999)).toBe(true);
+    expect(recentlyTookOver(1_000 + 60_000)).toBe(false);
+    expect(recentlyTookOver(500)).toBe(false);
+    delete (globalThis as { sessionStorage?: unknown }).sessionStorage;
+    expect(() => rememberTookOver()).not.toThrow();
+    expect(recentlyTookOver()).toBe(false);
   });
 });

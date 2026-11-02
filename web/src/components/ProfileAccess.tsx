@@ -7,6 +7,7 @@ import { planRefusal } from '../billing';
 import type { Person } from '../core/client';
 import { mayHaveOwnAccount } from 'spine-core/family';
 import { Notice } from './AuthCard';
+import { Combobox } from './Combobox';
 import { useI18n } from '../i18n';
 
 /**
@@ -21,6 +22,7 @@ export default function ProfileAccess({ person }: { person: Person }) {
   const [data, setData] = useState<Delegations | null>(null);
   const [role, setRole] = useState<'guardian' | 'viewer' | 'self'>('guardian');
   const [code, setCode] = useState<{ code: string; expiresAt: string } | null>(null);
+  const [inviting, setInviting] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const session = vaultState.session();
@@ -43,12 +45,13 @@ export default function ProfileAccess({ person }: { person: Person }) {
 
   return (
     <div className="mt-3 border-t border-gray-100 pt-3 text-sm">
-      <h3 className="font-medium text-gray-800">{t('Who else can open {name}’s records', { name })}</h3>
+      {/* "Me" is what an account calls its own first records. */}
+      <h3 className="font-medium text-gray-800">{name === 'Me' ? t('Who else can open your records') : t('Who else can open {name}’s records', { name })}</h3>
       {mine.length === 0 && waiting.length === 0 && <p className="text-gray-500 mt-1">{t('No one else.')}</p>}
       <ul className="mt-1 divide-y divide-gray-100">
         {mine.map(g => (
           <li key={g.id} className="py-1.5 flex items-center justify-between gap-2">
-            <span className="text-gray-800 truncate">{g.delegate_email} · {g.role === 'self' ? t('has an account of their own') : g.role === 'guardian' ? t('can change them') : t('can only read them')}{g.state === 'paused' && ` · ${t('paused')}`}</span>
+            <span className="text-gray-800 min-w-0 break-words">{g.delegate_email} · {g.role === 'self' ? t('has an account of their own') : g.role === 'guardian' ? t('can change them') : t('can only read them')}{g.state === 'paused' && ` · ${t('paused')}`}</span>
             <span className="shrink-0 flex gap-3">
               <button disabled={busy} className="text-brand-600 hover:underline" onClick={() => void run(() => session.setGrantState(g.id, g.state === 'paused' ? 'active' : 'paused'), t('Could not change this'))}>{g.state === 'paused' ? t('Resume') : t('Pause')}</button>
               <button disabled={busy} className="text-red-600 hover:underline" onClick={() => void run(async () => { await session.revoke(g.id); await device.reloadKeys(); }, t('Could not end this'))}>{t('End')}</button>
@@ -68,20 +71,26 @@ export default function ProfileAccess({ person }: { person: Person }) {
           <p className="text-gray-700">{t('Tell this code to the person, or send them the link. It works once, for a week, and Spine does not keep it.')}</p>
           <p className="mt-2 font-mono text-base tracking-wide text-gray-900 break-all">{showInviteCode(code.code)}</p>
           <p className="mt-1 text-xs text-gray-500 break-all">{link}</p>
-          <button className="mt-2 text-brand-600 hover:underline" onClick={() => setCode(null)}>{t('Done')}</button>
+          <button className="mt-2 text-brand-600 hover:underline" onClick={() => { setCode(null); setInviting(false); }}>{t('Done')}</button>
         </div>
+      ) : !inviting ? (
+        <button className="mt-2 text-brand-600 hover:underline" onClick={() => setInviting(true)}>{t('Let someone in')}</button>
       ) : (
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <select aria-label={t('What they can do')} value={role} onChange={e => setRole(e.target.value as 'guardian' | 'viewer' | 'self')} className="border border-gray-300 rounded-lg px-2 py-1">
-            <option value="guardian">{t('Can change the records')}</option>
-            <option value="viewer">{t('Can only read the records')}</option>
-            {ownAccount && <option value="self">{t('Is this person, with an account of their own')}</option>}
-          </select>
-          <button disabled={busy} className="text-brand-600 hover:underline" onClick={() => void run(async () => { await session.loadProfiles(); setCode(await session.invite(profileId, role)); }, t('Could not make a code'))}>{t('Let someone in')}</button>
+          <Combobox
+            ariaLabel={t('What they can do')} value={role} onChange={v => setRole(v as 'guardian' | 'viewer' | 'self')} wrapperClassName="relative w-full sm:w-80"
+            options={[
+              { value: 'guardian', label: t('Can change the records') },
+              { value: 'viewer', label: t('Can only read the records') },
+              ...(ownAccount ? [{ value: 'self', label: t('Is this person, with an account of their own') }] : []),
+            ]}
+          />
+          <button disabled={busy} className="text-brand-600 hover:underline" onClick={() => void run(async () => { await session.loadProfiles(); setCode(await session.invite(profileId, role)); }, t('Could not make a code'))}>{t('Make the invitation')}</button>
+          <button type="button" className="text-gray-500 hover:underline" onClick={() => setInviting(false)}>{t('Cancel')}</button>
         </div>
       )}
-      {!ownAccount && <p className="mt-1 text-xs text-gray-500">{t('A child can have an account of their own from sixteen, with a guardian’s consent.')}</p>}
-      <p className="mt-1 text-xs text-gray-500">{t('Ending access also gives the records a new key and signs this account out of its other devices. Anything the person already read cannot be taken back.')}</p>
+      {inviting && !ownAccount && <p className="mt-1 text-xs text-gray-500">{t('A child can have an account of their own from sixteen, with a guardian’s consent.')}</p>}
+      {mine.length > 0 && <p className="mt-1 text-xs text-gray-500">{t('Ending access also gives the records a new key and signs this account out of its other devices. Anything the person already read cannot be taken back.')}</p>}
     </div>
   );
 }

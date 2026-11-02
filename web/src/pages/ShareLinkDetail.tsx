@@ -6,7 +6,7 @@ import { api, type Document, type ShareLinkChange, type ShareLinkDetail as Detai
 import { useChat } from '../components/ChatProvider';
 import ShareRequestCard from '../components/ShareRequestCard';
 import { announceChange, useOnDataChanged } from '../dataChanged';
-import { LANGUAGES, useI18n } from '../i18n';
+import { LANGUAGES, languageChoice, useI18n } from '../i18n';
 import { countryName } from '../i18n/useTranslation';
 import { Combobox } from '../components/Combobox';
 import { languageName } from '../i18n/useTranslation';
@@ -137,10 +137,10 @@ export default function ShareLinkDetail() {
           <div>
             <label htmlFor="d-days" className="block text-xs font-medium text-gray-500 mb-1">{t('Works until {date}', { date: link.expires_at.slice(0, 10) })}</label>
             <span className="text-sm text-gray-600">{t('Change to')}{' '}
-              <select id="d-days" value={form.hours} disabled={!editable} onChange={e => setForm(f => ({ ...f, hours: parseInt(e.target.value) }))} className={`${input} w-40`}>
-                <option value={0}>{t('Keep')}</option>
-                {LIFETIMES.map(l => <option key={l.hours} value={l.hours}>{t('{time} from now', { time: t(l.label) })}</option>)}
-              </select>
+              <Combobox
+                id="d-days" value={String(form.hours)} disabled={!editable} onChange={v => setForm(f => ({ ...f, hours: parseInt(v) }))} wrapperClassName="relative inline-block w-48 align-middle"
+                options={[{ value: '0', label: t('Keep') }, ...LIFETIMES.map(l => ({ value: String(l.hours), label: t('{time} from now', { time: t(l.label) }) }))]}
+              />
             </span>
           </div>
           <label className="flex items-start gap-2 text-sm text-gray-700"><input type="checkbox" checked={form.scans} disabled={!editable} onChange={e => setForm(f => ({ ...f, scans: e.target.checked }))} className="mt-0.5" /><span>{t('Include scans of the original pages')}</span></label>
@@ -155,7 +155,7 @@ export default function ShareLinkDetail() {
             <label htmlFor="d-lang" className="block text-xs font-medium text-gray-500 mb-1">{t('Language the page opens in')}</label>
             <Combobox
               id="d-lang" value={form.language} disabled={!editable} onChange={v => setForm(f => ({ ...f, language: v }))} className={input}
-              options={[{ value: '', label: t('Not set: the reader chooses') }, ...LANGUAGES.map(l => ({ value: l.code, label: l.name }))]}
+              options={[{ value: '', label: t('Not set: the reader chooses') }, ...LANGUAGES.map(l => ({ value: l.code, label: languageChoice(l.code) }))]}
             />
           </div>
         </div>

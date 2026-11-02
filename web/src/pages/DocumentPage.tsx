@@ -18,7 +18,7 @@ import GuideTip from '../components/GuideTip';
 import { useGuide } from '../guide';
 import { useScreen } from '../components/ChatProvider';
 import { DOC_TYPE_NAMES, documentByline, documentTitle, fieldName, isSection, labelFromName, valueLines } from '../titles';
-import { LANGUAGES, useI18n } from '../i18n';
+import { LANGUAGES, languageChoice, useI18n } from '../i18n';
 import { languageName, useTranslation } from '../i18n/useTranslation';
 import { downloadFromDevice } from '../core/client';
 import { useAuth } from '../auth';
@@ -529,7 +529,7 @@ export default function DocumentPage() {
                 <label htmlFor="d-language" className={label}>{t('Written in')}</label>
                 <Combobox
                   id="d-language" value={draft.language} onChange={v => set({ language: v })}
-                  options={[{ value: '', label: t('Not known') }, ...LANGUAGES.map(l => ({ value: l.code, label: l.name }))]}
+                  options={[{ value: '', label: t('Not known') }, ...LANGUAGES.map(l => ({ value: l.code, label: languageChoice(l.code) }))]}
                 />
               </div>
               <div>

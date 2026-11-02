@@ -690,7 +690,7 @@ Status: hand (2026-10-27, headless Chrome: the eleven signed-in screens at 390 p
 ## 11. In another language
 
 ### 11.1 Read the app and a document in my language
-The interface is in English, Romanian, French and German. The switcher is in the navigation and on the sign-in pages, remembered in the browser, and defaults to the browser's language.
+The interface is in English, Romanian, French and German, and documents are translated into any of about forty-five languages. The switcher is in the navigation and on the sign-in pages, remembered in the browser, and defaults to the browser's language when the screens are written in it (else English). It lists the four first, then the others, each marked "documents only": in one of those the screens stay in English, a line at the top of the page says so (it can be dismissed, for that language, in that browser), and documents are translated into it.
 
 - The whole interface changes at once. Words the app stores (document types, field names) show in the chosen language.
 - A document opens in the language it was written in, at once. If that differs from the chosen language, the title, summary, notes and doctors' specialties are translated first (one short call) and replace the original, then the fields and measurement names follow. A note says it was translated, with "Show original".
@@ -699,14 +699,14 @@ The interface is in English, Romanian, French and German. The switcher is in the
 - With translation switched off, the interface is still translated and the content shows as written.
 - Messages produced by the server (errors, step names of a reading) stay in English.
 
-Status: auto (`translation`, `i18n-coverage`).
+Status: auto (`translation`: a document translated into a language the screens are not in, named to the model from the list; `i18n-coverage`; `Combobox.test`: the list and the fallback to English).
 
 ### 11.2 A doctor in another country
 The owner can preset the language a link opens in; the recipient can still switch it on the page, and the choice is kept in their browser.
 
 - Documents already translated show at once; the rest are translated in the background and the cards switch as they finish. Creating the link starts that for the documents it covers.
 - Opening a document translates it as in 11.1.
-- A recipient can cause a model call, so it is bounded: four languages, once per document and language, the relay's daily count for the share, and only for documents the link covers.
+- A recipient can cause a model call, so it is bounded: a fixed list of languages, once per document and language, the relay's daily count for the share, and only for documents the link covers.
 
 Status: auto (`translation`, `public-share-detail`).
 
@@ -866,11 +866,12 @@ Status: auto (`growth`).
 The owner opens Share links, then "Write an emergency card", writes what someone helping them must know (nothing is taken from the documents), saves, and turns it on. The page says, before it does, that anyone with the address or the code reads the card without asking, that they are told when it is opened, and that a card already seen may have been copied. A code and an address appear; printing is one click. An edit is sent again under the same address, so a printed code keeps working.
 
 - Official numbers (national identification, health insurance, a card number, organ donor, or one of their own) can be kept with the card and are **off it unless ticked**; the page says that anyone who reads the card reads what is ticked. A detail that is off is not in the sealed card, the offline code or the printed copy.
-- "Print a card-sized copy" prints the front and back at 85.6 × 54 mm side by side, to cut along the dotted line; the back holds the code.
+- The card prints at the size of a bank card, 85.6 × 54 mm, landscape: the front holds what is written, each value beside a small label of its own, allergies in red, with the mark; the back holds the code and the mark. "Print at home (A4)" prints one page (A4 or Letter) with the steps (print at actual size, cut along the dashed line, fold along the dotted line, glue or laminate), a line that measures 5 cm to check the printer kept the size, and the card to cut out, its front and back joined along a long edge and the back upside down so it reads once folded. "Print for a print shop" prints each side alone on a page of exactly the card's size, with no lines, to save as a PDF for a shop that makes plastic cards.
+- The page that turns it on says when the card was last checked, and turning on an empty card is refused in words.
 - It is on every plan, and does not count as a share link.
 - Turning it off deletes the sealed copy; the old address says the card is not available. Turning it on again gives a new address.
 
-Status: auto (`emergency`, `plans`, `keys`). (One card for each person the account keeps records for, at most ten.)
+Status: auto (`emergency`, `plans`, `keys`); real browser (`check:app`: the card's QR codes read back, a lost code replaced, each side the size of a bank card with what is written inside it, the home page's steps and its 5 cm line, the fold and cut lines and the turned back, the print shop's PDF two pages of exactly that size, the mark on both sides). (One card for each person the account keeps records for, at most ten.)
 
 ### 14.2 Someone scans it
 A person with a phone scans the code and sees the card in their language (the labels; the owner's words stay as written), with the owner's phone numbers as links, a line that the owner wrote it and it should be checked, and a short note on what Spine is with a link to it. No account, no question. The owner is mailed the first time in fifteen minutes and sees the time and country in the card's list.
@@ -894,22 +895,22 @@ Status: auto (`emergency` in core: the text and its limit).
 ## 15. Records for more than one person
 
 ### 15.1 Keep a child's or a parent's records apart
-On the account page, "See and add people" opens a page that lists the people the account keeps records for. Adding one starts empty records with a key of their own; opening one saves the current person and shows the other's records, with no master password asked again. The name of the person open is in the top bar once there is more than one (on a wide screen; on a narrow one the page of people says). Each has their own documents, search, share links and emergency card; nothing of one person shows in another's screens.
+The top bar always says whose records are open, on every screen size; its menu lists the people the account keeps records for or was let into, opens another, and leads to "Add or manage people". The account page leads there too ("See and add people"). Adding one starts empty records with a key of their own; opening one saves the current person and shows the other's records, with no master password asked again. Each has their own documents, search, share links and emergency card; nothing of one person shows in another's screens.
 
 - A plan with room for one person says so and points to the account page; the trial has room for six. A person already made stays when a plan ends.
 - If something could not be saved, opening another person asks first.
 
-Status: auto (`billing`, `crypto`); real browser (`check:app`: add a person, their records start empty, back to the first).
+Status: auto (`billing`, `crypto`); real browser (`check:app`: add a person, their records start empty, the menu in the top bar lists both and leads to the page of people, back to the first).
 
 ### 15.2 Let someone else in
-On a person's Access, "Let someone in" makes a code (in groups of four) and a link, for someone to open that person's records either as someone who can change them or who can only read them. The code works once, for a week; Spine does not keep it. The other person signs in or makes an account (the link takes them to `/invite`, and the code waits for them on the page of people), types the code under "Join with a code", and the person appears in their list, marked as shared by the owner and with what they may do. Opening it shows the owner's records; what they add is in the owner's vault and the owner sees it.
+Under each of the account's own people, the page of people says who else can open their records, and "Let someone in" makes a code (in groups of four) and a link, for someone to open that person's records either as someone who can change them or who can only read them. The code works once, for a week; Spine does not keep it. The other person follows the link and signs in or makes an account; nothing opens on its own, but a note in the page says an invitation is waiting and leads to it, at the top of the page of people: it says who it is from and what it allows, with Accept and Decline. Accepting opens the person's records, and a message says whose they are and that the menu in the top bar switches between people. A code given by voice is typed under "Join with a code", which shows the same invitation. What they add is in the owner's vault and the owner sees it.
 
-- The link (`/invite#<code>`) says the person has been invited before any sign-in, and the code waits through signing in or making an account: a banner offers it on the next page, and the page of people has it in the box. A wrong, used or expired code is refused in words. The owner can cancel an invitation that is waiting, and pause or resume access.
+- The link (`/invite#<code>`) says the person has been invited before any sign-in, and the code waits through signing in or making an account, in that tab only. The code is not shown. A wrong, used or expired code says it cannot be used; Decline forgets it. The owner can cancel an invitation that is waiting, and pause or resume access.
 - Someone let in as a reader sees the owner's records and nothing else of the owner's. What they change is not kept: the vault refuses it, and the page says that their latest changes are not saved yet. The page does not stop them trying.
-- After joining, the person is in the list, marked "Shared by" the owner and with what they may do, and a message says that the records can now be opened. Joining reloads the keys and the page of people is drawn again, so the message is kept for the tab for a minute and shown by the new page.
+- After accepting, the person is in the list, marked "Shared by" the owner and with what they may do. Accepting opens other records, and the page is drawn again, so the message is kept for the tab for a minute and shown by the new page.
 - Ending access (password asked again) gives the records a new key and signs the owner out of their other devices; the person let in stops reaching them at once, and what they already read stays with them. Leaving is the person's own call.
 
-Status: auto (`delegation`, `vault.e2e`: the crypto, the server, the lock-out and cancelling an invitation that waits); real browser (`check:app`): the code and the cancelling, then a second account following the link, signing in, joining as a reader, the message that it worked, opening the owner's records, a refused change, and the same code refused a second time.
+Status: auto (`delegation`, `vault.e2e`: the crypto, the server, the preview, the lock-out and cancelling an invitation that waits); real browser (`check:app`): the code and the cancelling, then a second account following the link, signing in, the note that an invitation waits and nothing opened on its own, the invitation naming the owner and the role with no code shown, accepting as a reader, the message that it worked, the owner's records open, a refused change, and the same code refused a second time.
 
 ### 15.2b Correct a name or a birth date
 On a person's row, "Edit" changes the name and, for a child, the birth date (a real date, year-month-day). The ages the page shows, the offer of an account of their own from sixteen and the note at eighteen follow the corrected date. A guardian let in cannot edit.
@@ -917,18 +918,18 @@ On a person's row, "Edit" changes the name and, for a child, the birth date (a r
 Status: auto (`vault.e2e`); real browser (`check:app`).
 
 ### 15.3 A child, a co-guardian, a teenager
-"This is a child I look after" asks for a birth date (year-month-day, a real day) and keeps it sealed with the child's records; the list shows "child, 9 years old". The other parent is let in as someone who can change the records. From sixteen the child can be let in as themselves, "with an account of their own": the child makes or uses an account, joins with the code, and sees their own records, which they can change; below sixteen that choice is not offered, and says why. Only one account can be the person themselves.
+"This is a child I look after" asks for a birth date (year-month-day, a real day) and keeps it sealed with the child's records; the list shows "child, 9 years old". The other parent is let in as someone who can change the records. From sixteen the child can be let in as themselves, "with an account of their own": the child makes or uses an account, accepts the invitation ("invites you into your own records"), and sees their own records, listed as "Your own records, kept by" the guardian, which they can change; the empty records a new account starts with are removed then, if nothing was uploaded to them, so the person is not listed twice; below sixteen that choice is not offered, and says why. Only one account can be the person themselves.
 
 - Nothing is hidden from a guardian before eighteen (a question for the lawyer, CR-FAM-03); a teenager sees what the guardian sees.
 
 Status: auto (`family`, `delegation`); real browser: a child with a birth date, refused without a real one (`check:app`).
 
 ### 15.4 Becoming eighteen
-A child's profile with a birth date shows a note to the guardian once the child is eighteen: the records should be theirs, and the way is to let them in as themselves. The young adult, who has joined with the code, sees "You are 18: these records can be yours", reads what taking them over does, and confirms; their password is asked again. The records are moved into their own account under a new key, they appear among their own people, and the people who looked after them are listed on the Access panel as paused: they can be resumed one by one or ended. The former owner's account no longer has the records and is mailed. A share link the former owner made stays theirs, and **an emergency card published before the promotion becomes the new owner's**: the printed code keeps working and the new owner can replace it or turn it off.
+A child's profile with a birth date shows a note to the guardian once the child is eighteen: the records should be theirs, and the way is to let them in as themselves. The young adult, who has joined with the code, sees "You are 18: these records can be yours", reads what taking them over does, and confirms; their password is asked again. The records are moved into their own account under a new key and are simply theirs (no longer "kept by" anyone; empty records the account started with are removed, as when joining), and everyone who looked after them, **the former owner included**, is listed under them as paused: each can be resumed or ended. The former owner's account no longer has the records until let back in, and is mailed; a device of theirs that had them open notices within a minute, opens the account's own records instead, and says why. Once let back in, the former owner finds them listed as shared by the young adult. A share link the former owner made stays theirs, and **an emergency card published before the promotion becomes the new owner's**: the printed code keeps working and the new owner can replace it or turn it off.
 
 - It cannot be undone, and only the young adult can do it, not a guardian. Nothing is refused for what a plan holds.
 
-Status: auto (`delegation`, `vault.e2e`: three accounts, the move, the new key, the paused guardian and its resuming).
+Status: auto (`delegation`, `vault.e2e`: three accounts, the move, the new key, the paused guardians, the former owner among them, and their resuming with real keys; `persist`: a device notices a person removed); real browser (`check:app`): a child of eighteen invited as themselves, a new account accepting, the empty records gone, the take-over, the former owner listed as paused, the former owner's device letting go of the records it had open and saying why, and the former owner let back in and seeing them as shared by the young adult.
 
 ### 15.5 The account that looks after a child is deleted
 The person who keeps a child's records deletes their account (the password again, and the address typed out). Everything goes with it, as for any account: its records, its files, and the access it gave. A co-guardian or a teenager who was let in loses the child from their list at once and can open nothing; an invitation still waiting opens nothing. What they already read stays with them.
@@ -940,12 +941,12 @@ The person who keeps a child's records deletes their account (the password again
 Status: auto (`delegation`: a co-guardian and a waiting invitation, through the route that deletes an account); real browser (`check:app`: the sentence on the delete screen).
 
 ### 15.6 A child turns eighteen without an account of their own
-The guardian's list shows, on the child's row, "{name} is now 18, and these records should be theirs. Let them in as themselves, under Access." Nothing else changes: the guardian keeps the records and can go on changing them, the offer "Is this person, with an account of their own" is there (it is offered from sixteen), and what happens next is scenario 15.4 once the young adult has joined. Until they join, nothing moves and nobody is asked.
+The guardian's list shows, on the child's row, "{name} is now 18, and these records should be theirs. Let them in as themselves, below." Nothing else changes: the guardian keeps the records and can go on changing them, the offer "Is this person, with an account of their own" is there (it is offered from sixteen), and what happens next is scenario 15.4 once the young adult has joined. Until they join, nothing moves and nobody is asked.
 
 Status: auto (`family`: the age rule).
 
 ### 15.7 A child who is not sixteen yet
-In the Access panel, "Is this person, with an account of their own" is not among the choices, and a line says "A child can have an account of their own from sixteen, with a guardian's consent." A child with no birth date counts as under sixteen. Guardians and readers can be let in meanwhile.
+In what the page of people shows under the child, "Is this person, with an account of their own" is not among the choices, and a line says "A child can have an account of their own from sixteen, with a guardian's consent." A child with no birth date counts as under sixteen. Guardians and readers can be let in meanwhile.
 
 Status: auto (`family`: the rule at sixteen, and for a missing date).
 

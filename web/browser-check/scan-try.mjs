@@ -195,7 +195,8 @@ try {
   const brokenAfterRedo = await p.evaluate(() => [...document.querySelectorAll('ol li img')].filter(i => !i.complete || i.naturalWidth === 0).length);
   check(brokenAfterRedo === 0, 'and the page whose corners were redone still shows its picture', `${brokenAfterRedo} broken`);
   // A filter, and one more page from the camera input: one picture opens its corners first.
-  await p.select('ol li:nth-child(2) select', 'bw');
+  await p.click('ol li:nth-child(2) [role=combobox]');
+  await (await p.waitForFunction(() => [...document.querySelectorAll('[role=listbox] [role=option]')].find(e => e.innerText.trim() === 'Black and white'))).asElement().evaluate(e => e.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })));
   const camera = await p.$('ol li:last-child input[capture]');
   await camera.uploadFile(photos[2]);
   check(await waitUntil(() => !!document.querySelector('[role=dialog]'), 60000), 'a picture taken from the grid opens its corners');

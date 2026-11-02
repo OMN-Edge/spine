@@ -57,6 +57,13 @@ describe('letting another account into a profile', () => {
   });
 
   it('is spent once, by someone who shows the proof, and not by the owner', async () => {
+    // Before using it, the holder of the code can see who it is from and what it allows, and looking changes nothing; nobody else can.
+    const preview = (who: string, proof: string) => call('POST', '/api/delegations/invites/preview', who, { id: INVITE_ID, proof });
+    expect((await preview(guest, PROOF)).json()).toMatchObject({ owner_email: 'owner@spine.test', role: 'guardian' });
+    expect((await preview(guest, PROOF)).statusCode).toBe(200);
+    expect((await preview(guest, 'q'.repeat(43))).statusCode).toBe(404);
+    expect((await preview(owner, PROOF)).statusCode).toBe(404);
+    expect((await call('POST', '/api/delegations/invites/preview', guest, { id: 'short', proof: PROOF })).statusCode).toBe(400);
     expect((await call('POST', '/api/delegations/claim', guest, { id: INVITE_ID, proof: 'q'.repeat(43) })).statusCode).toBe(404);
     expect((await call('POST', '/api/delegations/claim', owner, { id: INVITE_ID, proof: PROOF })).statusCode).toBe(404);
     const claimed = await call('POST', '/api/delegations/claim', guest, { id: INVITE_ID, proof: PROOF });
@@ -64,6 +71,7 @@ describe('letting another account into a profile', () => {
     expect(claimed.json()).toMatchObject({ wrapped: WRAPPED, grant: { profile_id: PROFILE, role: 'guardian', owner_email: 'owner@spine.test' } });
     grantId = claimed.json().grant.id;
     expect((await call('POST', '/api/delegations/claim', guest, { id: INVITE_ID, proof: PROOF })).statusCode).toBe(404);
+    expect((await preview(guest, PROOF)).statusCode).toBe(404); // used: nothing to show
     await new Promise(r => setTimeout(r, 20));
     expect(mails.some(m => m.to === 'owner@spine.test' && /accepted your invitation/.test(m.text))).toBe(true);
   });
@@ -90,7 +98,7 @@ describe('letting another account into a profile', () => {
     expect((await call('PUT', `/api/delegations/${grantId}/key`, guest, { wrapped_key: 'short' })).statusCode).toBe(400);
     expect((await call('PUT', `/api/delegations/${grantId}/key`, guest, { wrapped_key: K('d') })).statusCode).toBe(200);
     const seen = (await call('GET', '/api/delegations', guest)).json();
-    expect(seen.received).toEqual([{ id: grantId, owner_email: 'owner@spine.test', profile_id: PROFILE, role: 'guardian', state: 'active', wrapped_key: K('d'), others: [] }]);
+    expect(seen.received).toEqual([{ id: grantId, owner_email: 'owner@spine.test', owner_public_key: null, profile_id: PROFILE, role: 'guardian', state: 'active', wrapped_key: K('d'), others: [] }]);
     expect((await call('GET', '/api/delegations', owner)).json().owned).toMatchObject([{ id: grantId, delegate_email: 'guest@spine.test', role: 'guardian', state: 'active' }]);
   });
 
@@ -159,7 +167,7 @@ describe('letting another account into a profile', () => {
   });
 
   describe('promotion at eighteen', () => {
-    const promoteBody = (objects: string[], grants: Array<{ id: string }>) => ({ profile_wrapped: K('p'), profile_body: Buffer.from('the profile record, taken over').toString('base64url'), objects: objects.map(id => ({ id, wrapped_key: K('q') })), grants: grants.map(g => ({ id: g.id, wrapped_key: K('r') })) });
+    const promoteBody = (objects: string[], grants: Array<{ id: string }>) => ({ profile_wrapped: K('p'), profile_body: Buffer.from('the profile record, taken over').toString('base64url'), objects: objects.map(id => ({ id, wrapped_key: K('q') })), grants: grants.map(g => ({ id: g.id, wrapped_key: K('r') })), former_wrapped_key: K('f') });
     const makeVault = async (email: string) => {
       const u = await createTestUser(email);
       const cookie = await loginAs(app, u.email, u.password);
@@ -216,13 +224,20 @@ describe('letting another account into a profile', () => {
       // The guardian's grant is the teenager's to resume, paused with the new key; theirs as a self grant is over.
       expect((await call('GET', `/api/delegated/${asGuardian}/objects`, guardian.cookie)).statusCode).toBe(404);
       const held = (await call('GET', '/api/delegations', teen.cookie)).json();
-      expect(held.owned).toMatchObject([{ id: asGuardian, delegate_email: 'promo-guardian@spine.test', state: 'paused' }]);
+      expect(held.owned).toMatchObject([{ id: asGuardian, delegate_email: 'promo-guardian@spine.test', state: 'paused' }, { delegate_email: 'owner@spine.test', role: 'guardian', state: 'paused' }]);
       expect(held.received).toEqual([]);
       expect((await call('GET', '/api/delegations', guardian.cookie)).json().received[0]).toMatchObject({ id: asGuardian, state: 'paused', wrapped_key: K('r') });
       expect((await call('POST', `/api/delegations/${asGuardian}/state`, teen.cookie, { state: 'active' })).statusCode).toBe(200);
       expect((await call('GET', `/api/delegated/${asGuardian}/objects/object-c-0001`, guardian.cookie)).rawPayload.toString()).toBe('a child’s note');
       // The old owner cannot pause or end what is no longer theirs.
       expect((await call('POST', `/api/delegations/${asGuardian}/state`, owner, { state: 'paused' })).statusCode).toBe(404);
+      // The old owner looked after the person too: paused, with the new key, until the new owner lets them back in or ends it.
+      const former = (await call('GET', '/api/delegations', owner)).json().received.find((g: { profile_id: string }) => g.profile_id === child);
+      expect(former).toMatchObject({ role: 'guardian', state: 'paused', wrapped_key: K('f'), owner_email: 'promo-teen@spine.test' });
+      expect((await call('GET', '/api/delegations', teen.cookie)).json().owned.map((g: { delegate_email: string; state: string }) => [g.delegate_email, g.state])).toContainEqual(['owner@spine.test', 'paused']);
+      expect((await call('GET', `/api/delegated/${former.id}/objects`, owner)).statusCode).toBe(404);
+      expect((await call('POST', `/api/delegations/${former.id}/state`, teen.cookie, { state: 'active' })).statusCode).toBe(200);
+      expect((await call('GET', `/api/delegated/${former.id}/objects/object-c-0001`, owner)).rawPayload.toString()).toBe('a child’s note');
       // And it cannot be done twice.
       expect((await call('POST', `/api/delegations/${asSelf}/promote`, teen.cookie, promoteBody(['object-c-0001'], [{ id: asGuardian }]))).statusCode).toBe(409);
     });

@@ -6,7 +6,8 @@ import '@fontsource/literata/500.css';
 import { api, type AuthOptions } from '../api';
 import { useAuth } from '../auth';
 import { LogoMark } from './Logo';
-import { LanguageSwitcher, useI18n } from '../i18n';
+import { useI18n } from '../i18n';
+import { LanguageSwitcher } from './LanguageSwitcher';
 import { ThemeSwitcher } from './ThemeSwitcher';
 import { BUILD_COMMIT } from '../build-info';
 

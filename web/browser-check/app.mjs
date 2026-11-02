@@ -89,6 +89,8 @@ const made = execFileSync('node', ['dist/cli.js', 'create-user', 'check@example.
 const keeperPassword = execFileSync('node', ['dist/cli.js', 'create-user', 'keeper@example.com'], { cwd: path.join(root, 'server'), env, encoding: 'utf8' }).match(/password \(shown once\): (\S+)/)[1];
 const password = made.match(/password \(shown once\): (\S+)/)[1];
 const guestPassword = execFileSync('node', ['dist/cli.js', 'create-user', 'guest@example.com'], { cwd: path.join(root, 'server'), env, encoding: 'utf8' }).match(/password \(shown once\): (\S+)/)[1];
+const teenPassword = execFileSync('node', ['dist/cli.js', 'create-user', 'teen@example.com'], { cwd: path.join(root, 'server'), env, encoding: 'utf8' }).match(/password \(shown once\): (\S+)/)[1];
+const TEEN_MASTER = 'saffron-kettle-4Wq-meadow-anvil-62';
 const JSQR = fs.readFileSync(path.join(root, 'node_modules/jsqr/dist/jsQR.js'), 'utf8');
 const CSP = fs.readFileSync(path.join(root, 'Caddyfile'), 'utf8').match(/Content-Security-Policy "([^"]+)"/)[1].replace('{$SPINE_RELAY_URL:}', relay.url);
 const puts = []; // when the owner's device sent a sealed copy
@@ -267,6 +269,18 @@ try {
   const wait = ms => new Promise(r => setTimeout(r, ms));
   const waitFor = async (what, ms = 20000) => { for (let t = 0; t < ms; t += 250) { if ((await text()).includes(what)) return true; await wait(250); } return false; };
   const click = async label => { const h = await p.evaluateHandle(l => [...document.querySelectorAll('button,a')].find(e => e.offsetParent && e.innerText.trim().toLowerCase().startsWith(l.toLowerCase())), label); await h.asElement().click(); };
+  // Chooses in one of the app's dropdowns (a combobox): opens it, then picks the option with that text. `within` narrows to one part of the page.
+  const choose = async (label, option, within = 'body') => {
+    await (await p.waitForFunction((w, l) => [...document.querySelectorAll(`${w} [role=combobox]`)].find(i => i.getAttribute('aria-label') === l && i.offsetParent), {}, within, label)).asElement().click();
+    await (await p.waitForFunction(o => [...document.querySelectorAll('[role=listbox] [role=option]')].find(e => e.innerText.trim() === o), {}, option)).asElement().evaluate(e => e.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })));
+  };
+  // The page of people, from the menu in the header that says whose records are open.
+  const openPeople = async () => {
+    await (await p.waitForSelector('button[aria-haspopup=menu]', { visible: true })).click();
+    await waitFor('Add or manage people', 5000);
+    await click('Add or manage people');
+    await waitFor('Add a person');
+  };
   const type = async (sel, v) => { await p.waitForSelector(sel, { visible: true }); await p.type(sel, v); };
 
   await p.goto(`http://localhost:${front}/login`, { waitUntil: 'networkidle0' });
@@ -871,16 +885,16 @@ try {
     check(!(await text()).includes('Chest X-ray'), "and none of the first person's documents are in them");
     check((await text()).includes('Child'), "the page says whose records are open");
     check(!(await text()).includes('Open your records'), 'opening them did not ask for the master password');
-    await click('Child');
-    check(await waitFor('Add a person'), 'the page of people opens again from the name');
+    await (await p.waitForSelector('button[aria-haspopup=menu]', { visible: true })).click();
+    check(await waitFor('Add or manage people', 5000) && (await p.evaluate(() => [...document.querySelectorAll('[role=menu] [role=menuitemradio]')].length)) === 2, 'the name in the header opens a menu of the people, both of them');
+    check(await p.evaluate(() => { const m = document.querySelector('[role=menu]'); const r = m.getBoundingClientRect(); const e = document.elementFromPoint(r.right - 6, r.bottom - 6); return !!e && m.contains(e); }), 'and the menu is drawn over whatever is beside it, the chat panel included');
+    await click('Add or manage people');
+    check(await waitFor('Add a person'), 'and from it the page of people');
     await (await p.evaluateHandle(() => [...document.querySelectorAll('li')].find(li => !li.innerText.includes('Open now'))?.querySelector('button'))).asElement().click();
     check(await waitFor('Chest X-ray', 30000), "the first person's records are back, as they were");
 
     // A child's records carry a birth date, kept sealed with them; without a real date they are refused.
-    await click('check@example.com');
-    await waitFor('See and add people');
-    await click('See and add people');
-    await waitFor('Add a person');
+    await openPeople();
     await type('input[aria-label=Name]', 'Kid');
     await p.click('input[type=checkbox]');
     await type('input[aria-label="Born (year-month-day)"]', '2015-02-30');
@@ -895,10 +909,7 @@ try {
     await waitFor('Chest X-ray');
 
     // A person's name and a child's birth date can be corrected, and the list shows the correction.
-    await click('check@example.com');
-    await waitFor('See and add people');
-    await click('See and add people');
-    await waitFor('Add a person');
+    await openPeople();
     await (await p.evaluateHandle(() => [...document.querySelectorAll('li')].find(li => li.innerText.includes('Kid'))?.querySelectorAll('button')[1])).asElement().click();
     await p.waitForSelector('li input[aria-label=Name]', { visible: true });
     await p.focus('li input[aria-label=Name]');
@@ -937,27 +948,50 @@ try {
     let changed = false;
     for (let t = 0; t < 15000 && !changed; t += 250) { const now = await addressOf(); changed = !!now && now !== firstAddress; if (!changed) await wait(250); }
     check(changed, 'a lost card is replaced with a new code, and the address is a different one');
+    // Printed two ways: at home (a page with the steps, a 5 cm line and the card to cut out and fold) and for a print shop (one side a page).
     await p.emulateMediaType('print');
-    await p.evaluate(() => document.body.classList.add('printing-card'));
-    const faces = await p.evaluate(() => [...document.querySelectorAll('.print-card .card-face')].map(f => { const r = f.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; }));
-    const printed = await p.evaluate(() => document.querySelector('.print-card')?.innerText ?? '');
-    await p.evaluate(() => document.body.classList.remove('printing-card'));
+    const home = await p.evaluate(() => {
+      document.body.classList.add('printing-card', 'printing-home');
+      const box = e => { const r = e.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), top: Math.round(r.top), bottom: Math.round(r.bottom), left: Math.round(r.left) }; };
+      const faces = [...document.querySelectorAll('.print-card .card-face')].map(f => ({ ...box(f), turned: getComputedStyle(f).transform.startsWith('matrix(-1'), edgeTop: getComputedStyle(f).borderTopStyle, edgeBottom: getComputedStyle(f).borderBottomStyle }));
+      const ruler = box(document.querySelector('.print-card .card-ruler-line'));
+      const steps = [...document.querySelectorAll('.print-card .card-sheet li')].map(li => li.textContent);
+      const rows = [...document.querySelectorAll('.print-card .card-row')].map(r => [r.querySelector('dt').textContent, r.querySelector('dd').textContent, getComputedStyle(r.querySelector('dd')).color]);
+      // Every line ends inside its side: the lowest text is above the side's bottom edge (the back is turned, so its box is checked as drawn).
+      const fits = [...document.querySelectorAll('.print-card .card-face')].every(f => { const r = f.getBoundingClientRect(); return [...f.querySelectorAll('p, dt, dd, svg')].every(e => { const b = e.getBoundingClientRect(); return b.top >= r.top - 1 && b.bottom <= r.bottom + 1; }); });
+      const printed = document.querySelector('.print-card')?.innerText ?? '';
+      document.body.classList.remove('printing-card', 'printing-home');
+      return { faces, ruler, steps, rows, fits, printed };
+    });
+    // For a print shop: each face alone on a page of exactly a bank card's size, as the PDF a browser saves.
+    await p.evaluate(() => document.body.classList.add('printing-card', 'printing-shop'));
+    const shopPdf = Buffer.from(await p.pdf({ preferCSSPageSize: true })).toString('latin1');
+    const marks = await p.evaluate(() => [...document.querySelectorAll('.print-card .card-face .card-mark')].map(m => getComputedStyle(m).color));
+    await p.evaluate(() => document.body.classList.remove('printing-card', 'printing-shop'));
     await p.emulateMediaType('screen');
-    check(faces.length === 2 && faces.every(([w, h]) => Math.abs(w - 324) <= 3 && Math.abs(h - 204) <= 3), `the printed card is the size of a bank card, front and back (${JSON.stringify(faces)} px)`);
-    check(printed.includes('Jane Example') && printed.includes('1234567890123'), 'and carries the name and the number that was ticked');
+    const boxes = [...shopPdf.matchAll(/\/MediaBox\s*\[\s*0 0 ([\d.]+) ([\d.]+)\s*\]/g)].map(m => [Math.round(Number(m[1]) / 72 * 25.4 * 10) / 10, Math.round(Number(m[2]) / 72 * 25.4 * 10) / 10]);
+    const [ff, fb] = home.faces;
+    check(home.faces.length === 2 && home.faces.every(x => Math.abs(x.w - 324) <= 3 && Math.abs(x.h - 204) <= 3), `each side is the size of a bank card, landscape (${JSON.stringify(home.faces.map(x => [x.w, x.h]))} px)`);
+    check(home.fits, 'and what is written fits on it');
+    check(Math.abs(fb.top - ff.bottom) <= 1 && fb.left === ff.left && fb.turned && !ff.turned, 'at home: the back is joined under the front along the long edge, and upside down so it reads once folded');
+    check(fb.edgeBottom === 'dotted' && fb.edgeTop === 'dashed' && ff.edgeBottom === 'none', 'the line between the faces is the dotted one to fold along, and the outer edge the dashed one to cut');
+    check(home.steps.length === 4 && /100%/.test(home.steps[0]) && /dashed/.test(home.steps[1]) && /dotted/.test(home.steps[2]), 'the page says to print at actual size, cut, fold and glue');
+    check(Math.abs(home.ruler.w - 189) <= 2, `and has a line 5 cm long to check the size (${home.ruler.w} px)`);
+    check(home.rows.some(([l, v, c]) => l === 'Allergies' && /Penicillin|1234567890123|\w/.test(v) && c === 'rgb(185, 28, 28)') || !home.rows.some(([l]) => l === 'Allergies'), 'the front gives each value a label of its own, and allergies stand out in red');
+    check(home.printed.includes('Jane Example') && home.printed.includes('1234567890123'), 'and the card carries the name and the number that was ticked');
+    check(boxes.length === 2 && boxes.every(([w, h]) => Math.abs(w - 85.6) <= 0.3 && Math.abs(h - 54) <= 0.3), `for a print shop: two pages, front and back, each exactly the size of a bank card (${JSON.stringify(boxes)} mm)`);
+    check(marks.length === 2 && marks.every(c => c === 'rgb(15, 118, 110)'), `the mark is on both sides, in its own colour on paper (${JSON.stringify(marks)})`);
     await click('Turn the card off');
     check(await waitFor('Turn the card on'), 'the card can be turned off');
     await click('Timeline');
     await waitFor('Chest X-ray');
 
     // Letting someone in: a code is made on the device, shown once, and an invitation that is not used can be cancelled.
-    await click('check@example.com');
-    await waitFor('See and add people');
-    await click('See and add people');
-    await waitFor('Add a person');
-    await click('Access');
-    check(await waitFor('Let someone in'), "a person's access can be opened");
+    await openPeople();
+    check(await waitFor('Let someone in'), "who else can open a person's records is on the page of people, for each person");
+    check(!(await text()).includes('Ending access also gives'), 'with no warning about ending access while nobody has it');
     await click('Let someone in');
+    await click('Make the invitation');
     check(await waitFor('Tell this code to the person', 20000), 'a code is made for the invitation');
     check(/\b[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{2}\b/.test(await text()), 'in groups of four that can be read out');
     await click('Done');
@@ -968,8 +1002,9 @@ try {
 
     // The other side. A read-only invitation is made; a second account follows its link, signs in, joins, reads the person's records, and the
     // device does not let it change them.
-    await p.select('select[aria-label="What they can do"]', 'viewer');
     await click('Let someone in');
+    await choose('What they can do', 'Can only read the records');
+    await click('Make the invitation');
     check(await waitFor('Tell this code to the person', 20000), 'a read-only invitation is made');
     const inviteText = await text();
     const inviteCode = inviteText.match(/\b([0-9A-Z]{4}-){4}[0-9A-Z]{2}\b/)?.[0] ?? '';
@@ -999,24 +1034,24 @@ try {
       await (await q.$('input[type=checkbox]')).click(); await qClick('Continue');
       check(await qWait('Open your records', 20000), 'its records open with its own password');
       await q.type('input[type=password]', GUEST_MASTER); await qClick('Open');
-      check(await qWait('You have an invitation waiting', 40000), 'once in, the invitation that came with the link is offered');
+      check(await qWait('You have an invitation waiting', 40000), 'once in, a note in the page says an invitation is waiting');
+      check(!(await qText()).includes('Pending invitation'), 'and nothing opens on its own');
       await qClick('Open it');
-      check(await qWait('Join with a code', 20000), 'and leads to the page where the code is used');
-      const waiting = await q.evaluate(() => document.querySelector('input[aria-label="The code"]')?.value ?? '');
-      check(waiting !== '' && waiting.replace(/-/g, '').toUpperCase() === inviteCode.replace(/-/g, ''), 'the code from the link is already in the box');
-      await qClick('Join');
-      // Joining reloads the keys and the page of people is drawn again; the message that it worked has to survive that, so it is looked for often.
+      check(await qWait('check@example.com invites you to read the records of someone they care for', 20000), 'the invitation says who it is from and what it allows, before it is used');
+      check(!/\b([0-9A-Z]{4}-){4}[0-9A-Z]{2}\b/.test(await qText()), 'and the code is not shown');
+      await qClick('Accept');
+      // Accepting reloads the keys and the page of people is drawn again; the message that it worked has to survive that, so it is looked for often.
       let sawNotice = false; let listed = false;
-      for (let t = 0; t < 40000 && !listed; t += 40) { const now = await qText(); sawNotice ||= now.includes('You can now open the records'); listed = now.includes('Shared by check@example.com'); await wait(40); }
-      check(listed, 'joining with the code works');
-      check(sawNotice, 'and the page says so, though it is drawn again when the keys are reloaded');
-      check((await qText()).includes('Shared by check@example.com') && /only read/.test(await qText()), 'the person is listed as shared by the owner, as someone the guest can only read');
-      // Spent: the same code does not work a second time, from the same account.
-      await q.type('input[aria-label="The code"]', inviteCode); await qClick('Join');
-      check(await qWait('not valid', 15000) || await qWait('Could not', 15000), 'the code does not work twice');
-      // Open the shared person: the owner's sample records are there.
-      await q.evaluate(() => [...document.querySelectorAll('li')].find(li => li.innerText.includes('Shared by'))?.querySelector('button')?.click());
-      check(await qWait('Chest X-ray', 60000), "opening the shared person shows the owner's records");
+      for (let t = 0; t < 40000 && !(listed && sawNotice); t += 40) { const now = await qText(); sawNotice ||= now.includes('the records check@example.com shared with you. Switch between people'); listed = now.includes('Shared by check@example.com'); await wait(40); }
+      check(listed, 'accepting the invitation works');
+      check(sawNotice, 'and the page says whose records are open now, and where to switch');
+      check(/only read/.test(await qText()), 'the person is listed as shared by the owner, as someone the guest can only read');
+      // Spent: the same code does not work a second time, typed by hand.
+      await q.type('input[aria-label="The code"]', inviteCode); await qClick('See the invitation');
+      check(await qWait('This invitation cannot be used', 15000), 'the code does not work twice');
+      // The shared person is open: the owner's sample records are there.
+      await q.evaluate(() => [...document.querySelectorAll('a')].find(a => a.getAttribute('href') === '/')?.click());
+      check(await qWait('Chest X-ray', 60000), "the shared person's records, the owner's, are what is open");
       // A change made by someone who can only read is refused by the vault, and the page says it was not saved.
       await q.evaluate(() => [...document.querySelectorAll('a')].find(a => a.getAttribute('href') === '/library')?.click());
       await qWait('Remove tag', 20000);
@@ -1029,6 +1064,85 @@ try {
     // What the guest changed was refused: the owner still has all of it.
     await click('Timeline');
     check(await waitFor('Chest X-ray', 20000), "the owner's records are as they were");
+
+    // A teenager's own records: the parent invites them as themselves, they accept, and the empty records their new account started with are
+    // not kept beside them; at eighteen they take them over, the parent's device lets go of them, and the teenager decides who comes back.
+    await openPeople();
+    await type('input[aria-label=Name]', 'Alex Example');
+    await p.click('input[type=checkbox]');
+    await type('input[aria-label="Born (year-month-day)"]', '2007-03-01');
+    await click('Add');
+    check(await waitFor('Alex Example', 15000), 'a child who is now eighteen is added');
+    await (await p.evaluateHandle(() => [...[...document.querySelectorAll('li')].find(l => l.innerText.startsWith('Alex Example'))?.querySelectorAll('button') ?? []].find(b => b.innerText.trim() === 'Let someone in'))).asElement().click();
+    await p.evaluate(() => [...document.querySelectorAll('li')].find(l => l.innerText.startsWith('Alex Example'))?.setAttribute('data-check', 'alex'));
+    await choose('What they can do', 'Is this person, with an account of their own', 'li[data-check=alex]');
+    await (await p.evaluateHandle(() => [...[...document.querySelectorAll('li')].find(l => l.innerText.startsWith('Alex Example'))?.querySelectorAll('button') ?? []].find(b => b.innerText.trim() === 'Make the invitation'))).asElement().click();
+    check(await waitFor('Tell this code to the person', 20000), 'an invitation for the person themselves is made');
+    const selfLink = (await text()).match(/https?:\/\/\S+\/invite#\S+/)?.[0] ?? '';
+    await click('Done');
+    // The parent has Alex's records open when the teenager takes them over.
+    await (await p.evaluateHandle(() => [...document.querySelectorAll('li')].find(l => l.innerText.startsWith('Alex Example'))?.querySelector('button'))).asElement().click();
+    check(await waitFor('Explore with sample records', 30000), "the parent opens Alex's records");
+    {
+      const tctx = await browser.createBrowserContext();
+      const q = await tctx.newPage();
+      const qErrors = [];
+      q.on('pageerror', e => qErrors.push(e.message));
+      q.on('console', m => { if (m.type() === 'warn' && /could not|failed/i.test(m.text())) console.log('     teenager console:', m.text().slice(0, 300)); });
+      const qText = () => q.evaluate(() => document.body.innerText);
+      const qWait = async (what, ms = 30000) => { for (let t = 0; t < ms; t += 250) { if ((await qText()).includes(what)) return true; await wait(250); } return false; };
+      const qClick = async label => { const h = await q.evaluateHandle(l => [...document.querySelectorAll('button,a')].find(e => e.offsetParent && e.innerText.trim().toLowerCase().startsWith(l.toLowerCase())), label); await h.asElement().click(); };
+      await q.goto(selfLink.replace(/^https?:\/\/[^/]+/, `http://localhost:${front}`), { waitUntil: 'networkidle0' });
+      await qWait('You have been invited', 15000);
+      await qClick('Sign in');
+      await q.waitForSelector('input[type=email]', { visible: true });
+      await q.type('input[type=email]', 'teen@example.com'); await q.type('input[type=password]', teenPassword); await qClick('Sign in');
+      await qWait('Before you start', 20000);
+      for (const c of await q.$$('input[type=checkbox]')) await c.click();
+      await qClick('Agree and continue');
+      await qWait('Protect your records', 20000);
+      const tpw = await q.$$('input[type=password]'); await tpw[0].type(TEEN_MASTER); await tpw[1].type(TEEN_MASTER); await qClick('Continue');
+      await qWait('recovery kit', 20000);
+      await (await q.$('input[type=checkbox]')).click(); await qClick('Continue');
+      await qWait('Open your records', 20000);
+      await q.type('input[type=password]', TEEN_MASTER); await qClick('Open');
+      check(await qWait('You have an invitation waiting', 40000), "the teenager's new account is told an invitation is waiting");
+      await qClick('Open it');
+      check(await qWait('invites you into your own records', 20000), 'the invitation says it is to their own records');
+      await qClick('Accept');
+      check(await qWait('Your own records, kept by check@example.com', 40000), 'accepting lists them as their own records, kept by the parent');
+      check(await qWait('You are now in Alex Example’s records', 60000), 'and opens them');
+      const names = async () => q.evaluate(() => [...document.querySelectorAll('li')].map(l => l.innerText.split('\n')[0].trim()).filter(Boolean));
+      let only = false;
+      for (let t = 0; t < 60000 && !only; t += 250) { const n = await names(); only = n.filter(x => !/@/.test(x)).every(x => x.startsWith('Alex Example')) && n.some(x => x.startsWith('Alex Example')); if (!only) await wait(250); }
+      if (!only) console.log('     the teenager\'s people:', JSON.stringify(await names()));
+      check(only, 'and the empty records the new account started with are gone: Alex is the only person in it');
+      check(await qWait('You are 18: these records can be yours', 10000), 'at eighteen they are offered to take the records over');
+      await qClick('Take over my records');
+      await qClick('Yes, take them over');
+      for (let t = 0; t < 6000; t += 250) { if (await q.$('[role=dialog] input[type=password]')) { await q.type('[role=dialog] input[type=password]', TEEN_MASTER); await q.keyboard.press('Enter'); break; } await wait(250); }
+      check(await qWait('These records are yours now', 60000), 'taking them over works, and the page says what happens to the people who looked after them');
+      check(!(await qText()).includes('kept by check@example.com'), 'they are listed as their own records now, not as shared');
+      check(/check@example\.com · can change them · paused/.test(await qText()), 'the parent who kept them is listed, paused, with the choice to let them back in');
+      const lost = (await qText()).split('\n').find(l => l.includes('took over'));
+      if (lost) console.log('     the teenager\'s page says:', lost);
+      check(!lost, 'the young adult is not told that records were lost: they are theirs');
+      check(!/Alex Example\s+child/.test(await qText()), 'and Alex is no longer marked as a child in someone\'s care');
+      // The parent's device notices that Alex's records are no longer the parent's, and says so.
+      check(await waitFor('took over their own records', 90000), "the parent's device lets go of Alex's records and says why");
+      check(await waitFor('Chest X-ray', 30000), "and opens the parent's own records instead");
+      // The teenager lets the parent back in; the parent sees Alex again, as shared by the teenager.
+      await q.evaluate(() => [...document.querySelectorAll('li li')].find(l => /check@example\.com · can change them · paused/.test(l.innerText))?.querySelector('button')?.click());
+      let resumed = false;
+      for (let t = 0; t < 20000 && !resumed; t += 250) { resumed = /check@example\.com · can change them(?! · paused)/.test(await qText()); if (!resumed) await wait(250); }
+      check(resumed, 'the teenager lets the parent back in');
+      check(qErrors.length === 0, `no errors on the teenager's page${qErrors.length ? `: ${qErrors[0]}` : ''}`);
+      await tctx.close();
+    }
+    await openPeople();
+    check(await waitFor('Shared by teen@example.com', 30000) && /Alex Example\s+Shared by teen@example\.com · you can change the records/.test(await text()), "the parent sees Alex's records again, shared by Alex and no longer as a child, once let back in");
+    await click('Timeline');
+    await waitFor('Chest X-ray');
     await click('Timeline');
     await waitFor('Chest X-ray');
   }

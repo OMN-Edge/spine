@@ -12,12 +12,16 @@ const fold = (text: string) => text.normalize('NFD').replace(/[̀-ͯ]/g, '').toL
 
 const FIELD = 'w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:bg-gray-50 disabled:text-gray-400';
 
+/** Above this many options, or where something new can be added, the list can be searched by typing; below, it is only chosen from. */
+const SEARCH_ABOVE = 8;
+
 /**
- * A dropdown you can type into: the list narrows as you type (case, accents and word order do not matter),
- * arrows and Enter choose, Escape closes. With `newLabel` the typed text can also be added as something new,
- * which calls `onChange(text, true)`; a value that is not among the options is shown as it is.
+ * The app's one dropdown. A long list (more than eight options) or one that takes something new is typed into: the list narrows as you type
+ * (case, accents and word order do not matter), arrows and Enter choose, Escape closes. With `newLabel` the typed text can also be added as
+ * something new, which calls `onChange(text, true)`; a value that is not among the options is shown as it is. A short fixed list is only
+ * chosen from, the same to look at: a click or Enter opens it, the arrows move, Enter or Space chooses, Escape closes.
  */
-export function Combobox({ id, ariaLabel, options, value, onChange, placeholder, className = FIELD, wrapperClassName = 'relative w-full', disabled, newLabel, commitOnBlur }: {
+export function Combobox({ id, ariaLabel, options, value, onChange, placeholder, className = FIELD, wrapperClassName = 'relative w-full', listClassName = 'left-0 right-0', disabled, newLabel, commitOnBlur }: {
   id?: string;
   ariaLabel?: string;
   options: ComboOption[];
@@ -26,6 +30,8 @@ export function Combobox({ id, ariaLabel, options, value, onChange, placeholder,
   placeholder?: string;
   className?: string;
   wrapperClassName?: string;
+  /** Where the list sits and how wide it is, when it should not be the box's width. */
+  listClassName?: string;
   disabled?: boolean;
   /** Offers the typed text as a new entry, worded by this. */
   newLabel?: (text: string) => string;
@@ -42,6 +48,7 @@ export function Combobox({ id, ariaLabel, options, value, onChange, placeholder,
   const chosen = options.find(o => o.value === value);
   const shown = chosen?.label ?? value;
   const typed = query.trim();
+  const searchable = newLabel !== undefined || options.length > SEARCH_ABOVE;
 
   const matches = useMemo(() => {
     const words = fold(typed).split(/\s+/).filter(Boolean);
@@ -58,7 +65,8 @@ export function Combobox({ id, ariaLabel, options, value, onChange, placeholder,
     ...(newLabel && typed ? [{ add: typed }] : []),
   ];
 
-  useEffect(() => { setAt(0); }, [typed, open]);
+  // A list that is only chosen from opens on what is chosen now; a searched one on its first match.
+  useEffect(() => { setAt(searchable ? 0 : Math.max(0, options.findIndex(o => o.value === value))); }, [typed, open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!open) return;
@@ -76,28 +84,41 @@ export function Combobox({ id, ariaLabel, options, value, onChange, placeholder,
   };
 
   const onKey = (e: React.KeyboardEvent) => {
-    if (e.key === 'ArrowDown') { e.preventDefault(); setOpen(true); setAt(i => Math.min(entries.length - 1, i + 1)); }
+    if (e.key === 'ArrowDown') { e.preventDefault(); if (!open) { setOpen(true); return; } setAt(i => Math.min(entries.length - 1, i + 1)); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setAt(i => Math.max(0, i - 1)); }
-    else if (e.key === 'Enter' && open) { e.preventDefault(); pick(entries[at]); }
+    else if ((e.key === 'Enter' || (!searchable && e.key === ' ')) && !open && !searchable) { e.preventDefault(); setOpen(true); }
+    else if ((e.key === 'Enter' || (!searchable && e.key === ' ')) && open) { e.preventDefault(); pick(entries[at]); }
     else if (e.key === 'Escape' && open) { e.preventDefault(); e.stopPropagation(); setOpen(false); setQuery(''); }
   };
 
   return (
     <div ref={box} className={wrapperClassName}>
-      <input
-        id={id} type="text" role="combobox" aria-label={ariaLabel} aria-expanded={open} aria-controls={listId} aria-autocomplete="list"
-        autoComplete="off" disabled={disabled} placeholder={placeholder}
-        className={`${className} pr-7`}
-        value={open ? query : shown}
-        onChange={e => { setQuery(e.target.value); setOpen(true); }}
-        onFocus={e => { setOpen(true); setQuery(''); e.currentTarget.select(); }}
-        onClick={() => setOpen(true)}
-        onBlur={() => { if (commitOnBlur && newLabel && typed && typed !== shown) onChange(typed, true); }}
-        onKeyDown={onKey}
-      />
+      {searchable ? (
+        <input
+          id={id} type="text" role="combobox" aria-label={ariaLabel} aria-expanded={open} aria-controls={listId} aria-autocomplete="list"
+          autoComplete="off" disabled={disabled}
+          // Open, the box is for typing; what is chosen stays visible, greyed, until something is typed.
+          placeholder={open ? shown || placeholder : placeholder}
+          className={`${className} pr-7`}
+          value={open ? query : shown}
+          onChange={e => { setQuery(e.target.value); setOpen(true); }}
+          onFocus={e => { setOpen(true); setQuery(''); e.currentTarget.select(); }}
+          onClick={() => setOpen(true)}
+          onBlur={() => { if (commitOnBlur && newLabel && typed && typed !== shown) onChange(typed, true); }}
+          onKeyDown={onKey}
+        />
+      ) : (
+        <button
+          id={id} type="button" role="combobox" aria-label={ariaLabel} aria-expanded={open} aria-controls={listId} aria-haspopup="listbox"
+          disabled={disabled} className={`${className} pr-7 text-left truncate`}
+          onClick={() => setOpen(o => !o)} onKeyDown={onKey}
+        >
+          {shown ? shown : <span className="text-gray-400">{placeholder ?? '\u00a0'}</span>}
+        </button>
+      )}
       <span aria-hidden className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">▾</span>
       {open && (
-        <ul id={listId} role="listbox" className="absolute z-30 left-0 right-0 mt-1 max-h-60 overflow-auto bg-white border border-gray-200 rounded-lg shadow-lg py-1 text-sm">
+        <ul id={listId} role="listbox" className={`absolute z-50 ${listClassName} mt-1 max-h-60 overflow-auto bg-white border border-gray-200 rounded-lg shadow-lg py-1 text-sm`}>
           {entries.length === 0 && <li className="px-3 py-1.5 text-gray-400">{t('No match')}</li>}
           {entries.map((entry, i) => (
             <li

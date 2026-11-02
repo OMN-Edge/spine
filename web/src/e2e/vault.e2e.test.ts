@@ -340,7 +340,7 @@ describe.skipIf(!haveServer)('the device and the server together', () => {
     await teen.promote(entry);
 
     // They are theirs now, in the teenager's own vault, under a key of the teenager's account.
-    expect(await teen.loadProfiles()).toContainEqual({ id: child, name: 'Alex', kind: 'child', born: '2008-01-05' });
+    expect(await teen.loadProfiles()).toContainEqual({ id: child, name: 'Alex', born: '2008-01-05' }); // theirs: no longer a child in someone's care
     expect(new TextDecoder().decode((await teen.get('bundle-child-0001', 'bundle')).plaintext)).toBe('vaccinations, 2012 to 2020');
     expect((await teen.delegations()).received).toEqual([]);
 
@@ -356,11 +356,18 @@ describe.skipIf(!haveServer)('the device and the server together', () => {
     expect(waiting.map(g => g.state)).toEqual(['paused']);
     expect(await coparent.openReceived(waiting)).toEqual([]); // paused opens nothing
     const owned = (await teen.delegations()).owned;
-    expect(owned).toMatchObject([{ delegate_email: 'coparent@example.com', role: 'guardian', state: 'paused' }]);
+    expect(owned).toMatchObject([{ delegate_email: 'coparent@example.com', role: 'guardian', state: 'paused' }, { delegate_email: 'parent@example.com', role: 'guardian', state: 'paused' }]);
     await teen.setGrantState(owned[0].id, 'active');
     const [back] = await coparent.openReceived((await coparent.delegations()).received);
     const view = VaultSession.delegated(coparent, back.grant.id, child, back.profileKey);
     expect(new TextDecoder().decode((await view.get('bundle-child-0001', 'bundle')).plaintext)).toBe('vaccinations, 2012 to 2020');
+
+    // The parent who owned them waits the same way, and is let back in with the new key sealed to their own account at the take-over.
+    expect(await parent.openReceived((await parent.delegations()).received)).toEqual([]);
+    await teen.setGrantState(owned[1].id, 'active');
+    const [again] = await parent.openReceived((await parent.delegations()).received);
+    expect(again.grant).toMatchObject({ owner_email: 'teen@example.com', role: 'guardian' });
+    expect(new TextDecoder().decode((await VaultSession.delegated(parent, again.grant.id, child, again.profileKey).get('bundle-child-0001', 'bundle')).plaintext)).toBe('vaccinations, 2012 to 2020');
     for (const s of [parent, teen, coparent]) await s.close();
   });
 

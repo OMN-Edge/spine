@@ -12,7 +12,7 @@ Your records are read, searched and kept on your own device, in your browser. Th
 - Expiring, revocable, read-only share links for a doctor, scoped to everything, a tag, documents you pick, a date range or an episode, with no account or app needed
 - Ask your records questions in a chat that only reads
 - Related documents, episodes and care chains, suggested from the data and confirmed by you
-- The interface in English, Romanian, French and German, and documents translated on demand
+- The interface in English, Romanian, French and German, and documents translated on demand into about forty-five languages
 - Records for several people, an emergency card, and export and restore as a zip
 - A demo on the front page with invented records, in the visitor's browser, with no account and nothing saved
 

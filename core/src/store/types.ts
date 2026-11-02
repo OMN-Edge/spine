@@ -901,14 +901,19 @@ export interface DelegationRepository {
    * account. Null if the code is wrong, used, ended, or is the owner's own. Answers the sealed profile key the code opens.
    */
   claim(delegateId: string, id: string, proofHash: string, now: string, grantId: string): Promise<{ grant: DelegationRecord; wrapped: string } | null>;
+  /** The delegate's, before claiming: who an invitation is from and what it lets them do, under the same conditions as `claim`; it changes nothing. */
+  peek(delegateId: string, id: string, proofHash: string, now: string): Promise<{ owner_user_id: string; role: DelegationRole; expires_at: string } | null>;
   /** The delegate completes a pending grant with the profile key sealed to their own key; false if it is not theirs or not pending. */
   complete(delegateId: string, id: string, wrappedKey: string, now: string): Promise<boolean>;
   /** One grant, by its id; the caller checks whose it is (the owner's, or the delegate's, with `delegateId`). */
   get(id: string): Promise<DelegationRecord | null>;
   /** Grants of the owner's profiles, with the delegate's address and public key (to seal a replaced profile key to them). */
   ownedBy(ownerId: string): Promise<Array<DelegationRecord & { delegate_email: string; delegate_public_key: string | null }>>;
-  /** Grants made to this account that are active or paused, with the owner's address; for the person themselves (`self`), also who else is let in, whose keys a promotion seals the new one to. */
-  madeTo(delegateId: string): Promise<Array<DelegationRecord & { owner_email: string; others: Array<{ id: string; role: DelegationRole; state: DelegationState; delegate_email: string; delegate_public_key: string | null }> }>>;
+  /**
+   * Grants made to this account that are active or paused, with the owner's address; for the person themselves (`self`), also who else is let
+   * in and the owner's public key, which a promotion seals the new key to (null otherwise).
+   */
+  madeTo(delegateId: string): Promise<Array<DelegationRecord & { owner_email: string; owner_public_key: string | null; others: Array<{ id: string; role: DelegationRole; state: DelegationState; delegate_email: string; delegate_public_key: string | null }> }>>;
   /** The owner's: pauses, resumes or ends a grant (one already ended, or promoted, is not theirs to change). False if it is not theirs. */
   setState(ownerId: string, id: string, state: DelegationState, now: string): Promise<boolean>;
   /** The delegate's: gives the grant up. */
@@ -917,7 +922,8 @@ export interface DelegationRepository {
    * Promotion at eighteen (CR-FAM-02, SECURITY.md **M-51**): the person the profile is of (the `self` grant's delegate) takes it into a vault of
    * their own, in one step. Every live object moves from the owner's vault to theirs with its data key sealed under the new profile key (the
    * new profile record likewise); the owner's rows become tombstones; every other grant of the profile moves to the new owner, paused, with
-   * the new key sealed to its holder; the old `self` grant ends; invitations for the profile are cancelled. `before` receives what is to move
+   * the new key sealed to its holder; the owner it came from gets a grant of their own (`former.grantId`), a guardian's, paused, with the new
+   * key sealed to them, so the new owner decides whether they come back; the old `self` grant ends; invitations for the profile are cancelled. `before` receives what is to move
    * and runs once the step is known to be possible and before anything changes (it copies the sealed files across), so its failure changes
    * nothing. Not subject to the plan's limits on people or size: nothing is refused because of what a plan holds. Null if it is not possible
    * (the grant is not the caller's, active and `self`; the objects named are not exactly the profile's live ones; the grants are not exactly the
@@ -925,7 +931,7 @@ export interface DelegationRepository {
    */
   promote(
     delegateId: string, grantId: string,
-    update: { profileWrapped: string; profileSize: number; objects: Array<{ id: string; wrappedKey: string }>; grants: Array<{ id: string; wrappedKey: string }> },
+    update: { profileWrapped: string; profileSize: number; objects: Array<{ id: string; wrappedKey: string }>; grants: Array<{ id: string; wrappedKey: string }>; former: { grantId: string; wrappedKey: string } },
     now: string, before: (move: { fromUserId: string; profileId: string; objectIds: string[] }) => Promise<void>,
   ): Promise<{ seq: number; fromUserId: string; objectIds: string[] } | null | 'no_vault'>;
   /** The owner's, after a profile key rotates: the new sealed key for each remaining grant of the profile. */

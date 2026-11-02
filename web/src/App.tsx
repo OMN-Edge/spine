@@ -40,7 +40,8 @@ import SyncNotice from './components/SyncNotice';
 import SaveStatus from './components/SaveStatus';
 import DemoBanner from './components/DemoBanner';
 import DemoCarryOver from './components/DemoCarryOver';
-import { PROFILE_CHANGED, UnsavedChangesError, device } from './core/client';
+import { PERSON_GONE, PROFILE_CHANGED, UnsavedChangesError, device, dismissPersonGone, personGone } from './core/client';
+import PersonMenu from './components/PersonMenu';
 import Doctors from './pages/Doctors';
 import Library from './pages/Library';
 import DoctorPage from './pages/DoctorPage';
@@ -53,7 +54,8 @@ import ShareRouter from './pages/ShareRouter';
 import ShareRequestPage from './pages/ShareRequest';
 import ShareLinkDetail from './pages/ShareLinkDetail';
 import { Wordmark } from './components/Logo';
-import { LanguageSwitcher, msg, useI18n } from './i18n';
+import { msg, useI18n } from './i18n';
+import { LanguageSwitcher } from './components/LanguageSwitcher';
 import { ThemeSwitcher } from './components/ThemeSwitcher';
 
 const NAV_LINKS = [
@@ -84,9 +86,15 @@ function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const chat = useChat();
-  // Who is open, when this account keeps records for more than one person: the name is a link to the page where another is chosen.
+  // Whose records are open, always shown, with the others to switch to and the page where people are added and let in.
   const { people } = useProfiles(!demo);
-  const whose = people && people.profiles.length > 1 ? people.profiles.find(p => p.id === people.current)?.name : undefined;
+  // A person whose records were open was taken over by them (SECURITY.md M-51): another person is open now, and the page says why.
+  const [gone, setGone] = useState<string | null>(personGone());
+  useEffect(() => {
+    const said = (e: Event) => setGone((e as CustomEvent<string>).detail);
+    window.addEventListener(PERSON_GONE, said);
+    return () => window.removeEventListener(PERSON_GONE, said);
+  }, []);
 
   // A link was followed: the menu has done its job.
   useEffect(() => setMenuOpen(false), [location.pathname]);
@@ -135,8 +143,8 @@ function Layout({ children }: { children: React.ReactNode }) {
             {links.map(link => (
               <NavLink key={link.to} to={link.to} end={link.to === '/'} className={linkClass}>{t(link.label)}</NavLink>
             ))}
-            {whose && <Link to="/profiles" className="ml-auto text-sm text-brand-700 hover:underline truncate max-w-[10rem]" title={t('Whose records are open')}>{whose}</Link>}
-            <LanguageSwitcher className={whose ? '' : 'ml-auto'} />
+            {people && <div className="ml-auto"><PersonMenu people={people} /></div>}
+            <LanguageSwitcher className={people ? '' : 'ml-auto'} />
             <ThemeSwitcher />
             {demo ? (
               <button onClick={() => void leave()} className="text-sm text-gray-500 hover:text-gray-900">{t('Leave the demo')}</button>
@@ -148,14 +156,15 @@ function Layout({ children }: { children: React.ReactNode }) {
             )}
           </div>
 
-          {/* narrow screens: a menu button */}
+          {/* narrow screens: whose records are open, and a menu button */}
+          {people && <div className="xl:hidden ml-auto"><PersonMenu people={people} /></div>}
           <button
             type="button"
             onClick={() => setMenuOpen(open => !open)}
             aria-expanded={menuOpen}
             aria-controls="nav-menu"
             aria-label={menuOpen ? t('Close menu') : t('Open menu')}
-            className="xl:hidden ml-auto -mr-2 p-2 rounded-lg text-gray-600 hover:bg-gray-100"
+            className={`xl:hidden ${people ? '' : 'ml-auto'} -mr-2 p-2 rounded-lg text-gray-600 hover:bg-gray-100`}
           >
             <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden="true">
               {menuOpen ? <path d="M6 6l12 12M18 6L6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
@@ -187,7 +196,13 @@ function Layout({ children }: { children: React.ReactNode }) {
       </nav>
       {!demo && pendingInvite() && location.pathname !== '/profiles' && (
         <div className="bg-brand-50 border-b border-brand-100 px-4 sm:px-6 py-2 text-sm text-brand-800">
-          {t('You have an invitation waiting.')} <Link to="/profiles" className="underline">{t('Open it')}</Link>
+          {t('You have an invitation waiting.')} <Link to="/profiles#invitations" className="underline">{t('Open it')}</Link>
+        </div>
+      )}
+      {gone !== null && (
+        <div role="status" className="bg-amber-50 border-b border-amber-100 px-4 sm:px-6 py-2 text-sm text-amber-900 flex items-center justify-between gap-3">
+          <span>{gone ? t('{name} took over their own records, so they are no longer in this account. Your access is paused until they let you back in.', { name: gone }) : t('These records were taken over by the person they are of, so they are no longer in this account. Your access is paused until they let you back in.')}</span>
+          <button type="button" onClick={() => { dismissPersonGone(); setGone(null); }} className="shrink-0 underline">{t('Dismiss')}</button>
         </div>
       )}
       {demo && <DemoBanner />}

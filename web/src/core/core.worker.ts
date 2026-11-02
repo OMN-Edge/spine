@@ -49,19 +49,28 @@ const grants = new Map<string, { session: VaultSession; profileId: string }>();
 
 interface Person { id: string; name: string; kind?: 'child'; born?: string; shared?: { owner: string; role: 'guardian' | 'viewer' | 'self' } }
 
-/** Opens the profiles other accounts have let this one into. A failure leaves them out and the account's own people are still there. */
+/**
+ * Opens the profiles other accounts have let this one into. A failure leaves them out and the account's own people are still there. The
+ * session of the one open now is kept while its grant is: the open records read and write through it, and closing it would wipe its key
+ * under them. The others are made afresh, and a session whose grant is gone is closed.
+ */
 async function loadGrants(received: Awaited<ReturnType<VaultSession['delegations']>>['received']): Promise<Person[]> {
-  for (const g of grants.values()) await g.session.close();
-  grants.clear();
+  const next = new Map<string, { session: VaultSession; profileId: string }>();
   const people: Person[] = [];
   for (const { grant, profileKey } of await session!.openReceived(received)) {
     try {
-      const view = VaultSession.delegated(session!, grant.id, grant.profile_id, profileKey);
       const id = `grant:${grant.id}`;
-      people.push({ id, ...(await view.profileRecord(grant.profile_id)), shared: { owner: grant.owner_email, role: grant.role } });
-      grants.set(id, { session: view, profileId: grant.profile_id });
+      const kept = id === currentProfile ? grants.get(id) : undefined;
+      const view = kept?.session ?? VaultSession.delegated(session!, grant.id, grant.profile_id, profileKey);
+      const record = await view.profileRecord(grant.profile_id);
+      // "Me" is what an account calls its own first records; to anyone let into them it means nothing, so the owner's address stands in.
+      people.push({ id, ...record, ...(record.name === 'Me' ? { name: grant.owner_email } : {}), shared: { owner: grant.owner_email, role: grant.role } });
+      next.set(id, { session: view, profileId: grant.profile_id });
     } catch { /* paused or ended meanwhile, or the key no longer opens it: left out */ }
   }
+  for (const [id, g] of grants) if (next.get(id)?.session !== g.session) await g.session.close();
+  grants.clear();
+  for (const [id, g] of next) grants.set(id, g);
   return people;
 }
 let cachedList: Awaited<ReturnType<VaultSession['list']>> | null = null;
@@ -111,7 +120,41 @@ async function openProfile(profileId: string, listed: NonNullable<typeof cachedL
   }, {
     onChanged: () => (self as unknown as Worker).postMessage({ id: 0, changed: true } satisfies FromWorker),
     onSaveState: state => (self as unknown as Worker).postMessage({ id: 0, save: state } satisfies FromWorker),
+    onPeople: () => void peopleChanged().catch(err => console.warn('the list of people could not be read again:', (err as Error)?.message)),
   });
+}
+
+/**
+ * The people as they now are, after a change made elsewhere: a person added on another device, or one taken over by the person they are of
+ * (SECURITY.md M-51), whose records this account no longer holds. If that one was open, the first of this account's own opens instead:
+ * what was not saved of it could not be saved anyway.
+ */
+// One reading at a time, each after the last, so a reading asked for after a change always starts after it.
+let rereading: Promise<void> = Promise.resolve();
+function peopleChanged(): Promise<void> {
+  rereading = rereading.catch(() => undefined).then(rereadPeople);
+  return rereading;
+}
+async function rereadPeople(): Promise<void> {
+  if (!session) return;
+  {
+    const was = knownProfiles.find(p => p.id === currentProfile);
+    const wasProfile = grants.get(currentProfile)?.profileId;
+    const own = await session.loadProfiles();
+    knownProfiles = [...own, ...(await loadGrants((await session.delegations()).received))];
+    let gone: string | null = null;
+    if (currentProfile && !knownProfiles.some(p => p.id === currentProfile)) {
+      // Records this account just took over are its own now: they open as such, and nobody is told they were lost.
+      const taken = wasProfile && own.some(p => p.id === wasProfile) ? wasProfile : null;
+      gone = taken ? null : was?.name ?? '';
+      await core?.close(true).catch(() => undefined);
+      core = null;
+      const next = taken ?? own[0]?.id ?? (await session.createProfile('Me'));
+      if (!own[0]) knownProfiles = [...(await session.loadProfiles()), ...knownProfiles];
+      await openProfile(next, await session.list(0));
+    }
+    (self as unknown as Worker).postMessage({ id: 0, people: { gone } } satisfies FromWorker);
+  }
 }
 
 /**
@@ -160,8 +203,7 @@ self.onmessage = async (event: MessageEvent<ToWorker>) => {
     } else if (m.type === 'reloadKeys') {
       // The page replaced a profile's key or changed who is let in: take the keys and the people as they now are, and stay on the same person.
       if (!session) throw Object.assign(new Error('the vault is locked'), { status: 423, code: 'locked' });
-      const own = await session.loadProfiles();
-      knownProfiles = [...own, ...(await loadGrants((await session.delegations()).received))];
+      await peopleChanged();
       reply({ id: m.id, ok: true });
     } else if (m.type === 'createProfile') {
       if (!session) throw Object.assign(new Error('the vault is locked'), { status: 423, code: 'locked' });
@@ -177,10 +219,22 @@ self.onmessage = async (event: MessageEvent<ToWorker>) => {
       if (!session || !core) throw Object.assign(new Error('the vault is locked'), { status: 423, code: 'locked' });
       if (m.profileId !== currentProfile && !knownProfiles.some(p => p.id === m.profileId)) throw Object.assign(new Error('not one of this account’s people'), { status: 404 });
       if (m.profileId !== currentProfile) {
+        // Someone opening their own records, kept until now by another account: the records this account started with go, when they are its
+        // only own ones and nothing was ever uploaded to them, so the person is not listed twice. Asked of the records themselves, before they close.
+        const own = knownProfiles.filter(p => !p.shared);
+        let drop: string | null = null;
+        if (m.dropEmpty && own.length === 1 && own[0]!.id === currentProfile) {
+          const uploads = await core.inject({ method: 'GET', url: '/api/source-files' }).catch(() => null);
+          if (uploads?.statusCode === 200 && Array.isArray(uploads.json()) && (uploads.json() as unknown[]).length === 0) drop = currentProfile;
+        }
         // Saves first, and refuses (code `unsaved`) rather than drop what could not be saved; then the other person's records open in its place.
         await core.close(m.force);
         core = null;
         await openProfile(m.profileId, await (grants.get(m.profileId)?.session ?? session).list(0));
+        if (drop) {
+          await session.removeProfile(drop).catch(err => console.warn('the empty records could not be removed:', (err as Error)?.message));
+          knownProfiles = knownProfiles.filter(p => p.id !== drop);
+        }
       }
       reply({ id: m.id, ok: true });
     } else if (m.type === 'startDemo') {

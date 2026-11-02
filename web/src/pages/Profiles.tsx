@@ -8,7 +8,7 @@ import { buttonClass, inputClass, Notice } from '../components/AuthCard';
 import ProfileAccess from '../components/ProfileAccess';
 import { vaultState } from '../crypto/vault-state';
 import { readInviteCode } from '../crypto/delegation';
-import { pendingInvite, forgetInvite, rememberJoined, recentlyJoined } from '../invite';
+import { pendingInvite, forgetInvite, rememberJoined, recentlyJoined, rememberTookOver, recentlyTookOver } from '../invite';
 import { ageOn, isAdult, parseBorn } from 'spine-core/family';
 import { useI18n } from '../i18n';
 
@@ -27,27 +27,56 @@ export default function Profiles() {
   const [error, setError] = useState('');
   const [unsaved, setUnsaved] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [joining, setJoining] = useState(pendingInvite() ?? '');
+  // An invitation followed from a link, or a code typed below: who it is from is looked up before anything is used.
+  const [pending, setPending] = useState(pendingInvite() ?? '');
+  const [invitation, setInvitation] = useState<{ ownerEmail: string; role: 'guardian' | 'viewer' | 'self'; expiresAt: string } | 'invalid' | null>(null);
+  const [typed, setTyped] = useState('');
   const [joined, setJoined] = useState(recentlyJoined());
-  const [openAccess, setOpenAccess] = useState('');
+  const [tookOver, setTookOver] = useState(recentlyTookOver());
   const [editing, setEditing] = useState<{ id: string; name: string; born: string } | null>(null);
 
-  // The page's own session needs the people's keys to make an invitation.
-  useEffect(() => { void vaultState.session()?.loadProfiles().catch(() => undefined); }, []);
+  // The page's own session needs the people's keys to make an invitation. Who was let in, paused or let back in by someone else changes
+  // nothing in this account's vault, so the device would not notice: the people are read afresh whenever this page opens.
+  useEffect(() => {
+    void vaultState.session()?.loadProfiles().catch(() => undefined);
+    if (device.isOpen()) void device.reloadKeys().catch(() => undefined);
+  }, []);
 
-  const join = async (e: React.FormEvent) => {
+  // Who the invitation is from and what it allows, before the person decides. Looking changes nothing.
+  useEffect(() => {
+    if (!pending) { setInvitation(null); return; }
+    let live = true;
+    void (async () => {
+      const read = await readInviteCode(pending);
+      const session = vaultState.session();
+      if (!read.ok || !session) { if (live) setInvitation('invalid'); return; }
+      try { const seen = await session.previewInvite(read.code); if (live) setInvitation(seen); } catch { if (live) setInvitation('invalid'); }
+    })();
+    return () => { live = false; };
+  }, [pending]);
+
+  const lookUp = (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
+    setPending(typed.trim());
+    setTyped('');
+  };
+
+  const decline = () => { forgetInvite(); setPending(''); };
+
+  const accept = async () => {
     setError(''); setBusy(true);
     try {
-      const read = await readInviteCode(joining);
-      if (!read.ok) { setError(t('That code is not right. Check it and try again.')); return; }
+      const read = await readInviteCode(pending);
       const session = vaultState.session();
-      if (!session) { setError(t('Open your records first.')); return; }
+      if (!read.ok || !session) { setError(t('That code is not right. Check it and try again.')); return; }
       const accepted = await session.accept(read.code);
       forgetInvite();
+      setPending('');
       rememberJoined(accepted.ownerEmail); // before the keys are reloaded: the page is drawn again then, and starts from this
-      setJoining('');
       await device.reloadKeys();
+      // Someone joining their own records does not need the empty ones the account started with: those go as the records open.
+      await openPerson(`grant:${accepted.grantId}`, false, accepted.role === 'self');
       await refresh();
       setJoined(accepted.ownerEmail);
     } catch (err) {
@@ -70,12 +99,14 @@ export default function Profiles() {
       const own = people.profiles.find(p => !p.shared);
       if (people.current === personId && own) await openPerson(own.id);
       await session.promote(entry);
+      rememberTookOver(); // before the records open: the page is drawn anew then, and starts from this
       await device.reloadKeys();
       await openPerson(entry.grant.profile_id);
       // A card the old owner's account published for this person becomes this account's, so its printed code is theirs to replace or turn off.
       await api.emergency.takeOver().catch(() => undefined);
       setTaking('');
-      navigate('/');
+      setTookOver(true);
+      await refresh();
     } catch (err) {
       setError(err instanceof UnsavedChangesError ? t('Some of the latest changes are not saved yet.') : t('Could not take over these records'));
     } finally { setBusy(false); }
@@ -135,40 +166,74 @@ export default function Profiles() {
   };
 
   if (!people) return <p className="text-gray-500">{t('Loading…')}</p>;
+  const roleText = (role: 'guardian' | 'viewer' | 'self', owner: string) => role === 'self'
+    ? t('{owner} invites you into your own records, which they have kept until now. You will be able to read and change them.', { owner })
+    : role === 'guardian'
+      ? t('{owner} invites you to look after the records of someone they care for. You will be able to read and change them.', { owner })
+      : t('{owner} invites you to read the records of someone they care for. You will not be able to change them.', { owner });
+  const current = people.profiles.find(p => p.id === people.current);
 
   return (
     <div className="max-w-md mx-auto">
       <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900 mb-1">{t('People')}</h1>
       <p className="text-sm text-gray-500 mb-6">{t('Keep the records of someone you look after, such as a child or a parent, apart from your own. Each person has records, search, share links and an emergency card of their own, and a key of their own.')}</p>
 
+      {pending && (
+        <section id="invitations" className="bg-white border border-brand-200 rounded-xl p-5 mb-6">
+          <h2 className="font-medium text-gray-900 mb-2">{t('Pending invitation')}</h2>
+          {invitation === null && <p className="text-sm text-gray-500">{t('Loading…')}</p>}
+          {invitation === 'invalid' && (
+            <>
+              <p className="text-sm text-gray-700">{t('This invitation cannot be used: it was already used or cancelled, or it has expired. Ask for a new one.')}</p>
+              <button className="mt-3 text-sm text-gray-500 hover:underline" onClick={decline}>{t('Dismiss')}</button>
+            </>
+          )}
+          {invitation && invitation !== 'invalid' && (
+            <>
+              <p className="text-sm text-gray-700">{roleText(invitation.role, invitation.ownerEmail)}</p>
+              <p className="mt-1 text-xs text-gray-500">{t('It can be used until {when}.', { when: new Date(invitation.expiresAt).toLocaleDateString() })}</p>
+              <div className="mt-3 flex items-center gap-4">
+                <button disabled={busy} onClick={() => void accept()} className="rounded-full bg-brand-600 px-4 py-1.5 text-sm text-white hover:bg-brand-700 disabled:opacity-50">{t('Accept')}</button>
+                <button disabled={busy} onClick={decline} className="text-sm text-gray-500 hover:underline">{t('Decline')}</button>
+              </div>
+            </>
+          )}
+        </section>
+      )}
+      {joined && current?.shared && <Notice kind="ok">{current.name === joined ? t('You are now in the records {owner} shared with you. Switch between people from the menu at the top of the page.', { owner: joined }) : t('You are now in {name}’s records, shared by {owner}. Switch between people from the menu at the top of the page.', { name: current.name, owner: joined })}</Notice>}
+      {tookOver && <Notice kind="ok">{t('These records are yours now. Everyone who looked after them is paused until you let them back in: you decide below, one by one.')}</Notice>}
+
       <ul className="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100">
         {people.profiles.map(p => (
           <li key={p.id} className="p-4">
             <div className="flex items-center justify-between gap-3">
               <span className="text-gray-900">
-                {p.name}{p.kind === 'child' && <span className="ml-2 text-xs text-gray-500">{ageLine(p.born)}</span>}
+                {p.name}{p.kind === 'child' && p.shared?.role !== 'self' && <span className="ml-2 text-xs text-gray-500">{ageLine(p.born)}</span>}
                 {p.id === people.current && <span className="ml-2 text-xs text-green-700">{t('Open now')}</span>}
-                {p.shared && <span className="block text-xs text-gray-500">{t('Shared by {owner}', { owner: p.shared.owner })} · {p.shared.role === 'guardian' ? t('you can change the records') : t('you can only read the records')}</span>}
+                {p.shared && (
+                  <span className="block text-xs text-gray-500">
+                    {p.shared.role === 'self'
+                      ? t('Your own records, kept by {owner}', { owner: p.shared.owner })
+                      : `${t('Shared by {owner}', { owner: p.shared.owner })} · ${p.shared.role === 'guardian' ? t('you can change the records') : t('you can only read the records')}`}
+                  </span>
+                )}
               </span>
               <span className="shrink-0 flex gap-3 text-sm">
                 {p.id !== people.current && <button disabled={busy} onClick={() => void open(p.id)} className="text-brand-600 hover:underline">{t('Open')}</button>}
                 {p.shared ? <button disabled={busy} onClick={() => void leave(p.id)} className="text-red-600 hover:underline">{t('Leave')}</button>
-                  : <>
-                    <button className="text-gray-500 hover:underline" onClick={() => setEditing(editing?.id === p.id ? null : { id: p.id, name: p.name, born: p.born ?? '' })}>{t('Edit')}</button>
-                    <button className="text-gray-500 hover:underline" onClick={() => setOpenAccess(openAccess === p.id ? '' : p.id)}>{t('Access')}</button>
-                  </>}
+                  : <button className="text-gray-500 hover:underline" onClick={() => setEditing(editing?.id === p.id ? null : { id: p.id, name: p.name, born: p.born ?? '' })}>{t('Edit')}</button>}
               </span>
             </div>
             {p.shared?.role === 'self' && isAdult(p.born) && (
               <div className="mt-2 text-sm bg-brand-50 rounded-lg px-3 py-2 text-brand-900">
                 <p className="font-medium">{t('You are 18: these records can be yours.')}</p>
-                <p className="mt-1 text-xs">{t('Taking them over moves them into your own account, under a new key that only your account opens. The people who looked after you lose access until you let them back in, one by one. This cannot be undone.')}</p>
+                <p className="mt-1 text-xs">{t('Taking them over moves them into your own account, under a new key that only your account opens. Everyone who looked after you, {owner} included, is paused until you let them back in, one by one. This cannot be undone.', { owner: p.shared.owner })}</p>
                 {taking === p.id
                   ? <button disabled={busy} className="mt-2 rounded-full bg-brand-600 px-3 py-1 text-white" onClick={() => void takeOver(p.id)}>{t('Yes, take them over')}</button>
                   : <button className="mt-2 underline" onClick={() => setTaking(p.id)}>{t('Take over my records')}</button>}
               </div>
             )}
-            {!p.shared && p.kind === 'child' && isAdult(p.born) && <p className="mt-2 text-xs text-brand-800 bg-brand-50 rounded-lg px-3 py-2">{t('{name} is now 18, and these records should be theirs. Let them in as themselves, under Access.', { name: p.name })}</p>}
+            {!p.shared && p.kind === 'child' && isAdult(p.born) && <p className="mt-2 text-xs text-brand-800 bg-brand-50 rounded-lg px-3 py-2">{t('{name} is now 18, and these records should be theirs. Let them in as themselves, below.', { name: p.name })}</p>}
             {editing?.id === p.id && (
               <form onSubmit={e => void saveEdit(e)} className="mt-2 space-y-2">
                 <input className={inputClass} value={editing.name} maxLength={60} onChange={e => setEditing({ ...editing, name: e.target.value })} aria-label={t('Name')} />
@@ -177,7 +242,7 @@ export default function Profiles() {
                 <button type="button" className="ml-3 text-sm text-gray-500 hover:underline" onClick={() => setEditing(null)}>{t('Cancel')}</button>
               </form>
             )}
-            {!p.shared && openAccess === p.id && <ProfileAccess person={p} />}
+            {!p.shared && <ProfileAccess person={p} />}
           </li>
         ))}
       </ul>
@@ -187,14 +252,7 @@ export default function Profiles() {
           <button className="underline" onClick={() => void open(unsaved, true)}>{t('Open anyway')}</button>
         </Notice>
       )}
-
-      <form onSubmit={e => void join(e)} className="bg-white border border-gray-200 rounded-xl p-5 mt-6">
-        <h2 className="font-medium text-gray-900 mb-1">{t('Join with a code')}</h2>
-        <p className="text-sm text-gray-500 mb-3">{t('Someone who looks after a person can give you a code that lets you open that person’s records, here.')}</p>
-        <input className={inputClass} value={joining} onChange={e => setJoining(e.target.value)} placeholder={t('The code')} aria-label={t('The code')} autoComplete="off" />
-        {joined && <Notice kind="ok">{t('You can now open the records {owner} shared with you.', { owner: joined })}</Notice>}
-        <button type="submit" disabled={busy || !joining.trim()} className={buttonClass}>{t('Join')}</button>
-      </form>
+      {error && <Notice kind="error">{error}</Notice>}
 
       <form onSubmit={e => void add(e)} className="bg-white border border-gray-200 rounded-xl p-5 mt-6">
         <h2 className="font-medium text-gray-900 mb-1">{t('Add a person')}</h2>
@@ -202,8 +260,14 @@ export default function Profiles() {
         <input className={inputClass} value={name} maxLength={60} onChange={e => setName(e.target.value)} placeholder={t('Name')} aria-label={t('Name')} />
         <label className="flex items-center gap-2 text-sm text-gray-700 mt-2"><input type="checkbox" checked={child} onChange={e => setChild(e.target.checked)} />{t('This is a child I look after')}</label>
         {child && <input className={inputClass} value={born} onChange={e => setBorn(e.target.value)} placeholder={t('Born (year-month-day)')} aria-label={t('Born (year-month-day)')} inputMode="numeric" />}
-        {error && <Notice kind="error">{error}</Notice>}
         <button type="submit" disabled={busy || !name.trim()} className={buttonClass}>{t('Add')}</button>
+      </form>
+
+      <form onSubmit={lookUp} className="bg-white border border-gray-200 rounded-xl p-5 mt-6">
+        <h2 className="font-medium text-gray-900 mb-1">{t('Join with a code')}</h2>
+        <p className="text-sm text-gray-500 mb-3">{t('Someone who looks after a person can give you a code instead of a link. Type it here to see the invitation.')}</p>
+        <input className={inputClass} value={typed} onChange={e => setTyped(e.target.value)} placeholder={t('The code')} aria-label={t('The code')} autoComplete="off" />
+        <button type="submit" disabled={!typed.trim()} className={buttonClass}>{t('See the invitation')}</button>
       </form>
       <p className="mt-6 text-sm"><Link to="/account" className="text-brand-600 hover:underline">{t('Account')}</Link></p>
     </div>

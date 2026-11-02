@@ -6,6 +6,7 @@ import { DETAIL_KINDS, EMPTY_CARD, publicCard, type CardContent, type CardDetail
 import PrintCard, { printCard } from '../components/PrintCard';
 import CardQr from '../components/CardQr';
 import { buttonClass, inputClass, Notice } from '../components/AuthCard';
+import { Combobox } from '../components/Combobox';
 import { useI18n } from '../i18n';
 
 /** One item to a line; the card keeps them as a list. */
@@ -78,10 +79,10 @@ export default function Emergency() {
         <fieldset>
           <legend className="text-sm text-gray-700 mb-1">{t('Emergency contacts')}</legend>
           {card.contacts.map((c, n) => (
-            <div key={n} className="grid grid-cols-3 gap-2 mb-2">
-              <input aria-label={t('Contact name')} placeholder={t('Contact name')} className={inputClass} value={c.name} maxLength={80} onChange={e => setContact(n, 'name', e.target.value)} />
-              <input aria-label={t('Relation')} placeholder={t('Relation')} className={inputClass} value={c.relation} maxLength={40} onChange={e => setContact(n, 'relation', e.target.value)} />
-              <input aria-label={t('Phone')} placeholder={t('Phone')} className={inputClass} value={c.phone} maxLength={40} onChange={e => setContact(n, 'phone', e.target.value)} />
+            <div key={n} className="grid grid-cols-1 sm:grid-cols-3 gap-x-2 mb-2">
+              <input aria-label={t('Contact name')} placeholder={t('Contact name')} className={`${inputClass} text-sm`} value={c.name} maxLength={80} onChange={e => setContact(n, 'name', e.target.value)} />
+              <input aria-label={t('Relation')} placeholder={t('Relation')} className={`${inputClass} text-sm`} value={c.relation} maxLength={40} onChange={e => setContact(n, 'relation', e.target.value)} />
+              <input aria-label={t('Phone')} placeholder={t('Phone')} className={`${inputClass} text-sm`} value={c.phone} maxLength={40} onChange={e => setContact(n, 'phone', e.target.value)} />
             </div>
           ))}
           {card.contacts.length < 5 && <button type="button" className="text-sm text-brand-600 hover:underline" onClick={() => set('contacts', [...card.contacts, { name: '', relation: '', phone: '' }])}>{t('Add a contact')}</button>}
@@ -91,15 +92,13 @@ export default function Emergency() {
           <p className="text-xs text-gray-500 mb-2">{t('Numbers that identify you, such as a national identification number or health insurance. They are kept here, sealed with everything else, and are on the card only where you tick the box. Anyone who reads the card reads what is ticked.')}</p>
           {card.details.map((d, n) => (
             <div key={n} className="mb-2 border border-gray-100 rounded-lg p-2 space-y-2">
-              <div className="grid grid-cols-2 gap-2">
-                <select aria-label={t('What it is')} className={inputClass} value={d.kind} onChange={e => setDetail(n, { kind: e.target.value as CardDetail['kind'] })}>
-                  {DETAIL_KINDS.map(k => <option key={k} value={k}>{k === 'other' ? t('Something else') : t(DETAIL_LABELS[k])}</option>)}
-                </select>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <Combobox ariaLabel={t('What it is')} value={d.kind} onChange={v => setDetail(n, { kind: v as CardDetail['kind'] })} options={DETAIL_KINDS.map(k => ({ value: k, label: k === 'other' ? t('Something else') : t(DETAIL_LABELS[k]) }))} />
                 {d.kind === 'other'
-                  ? <input aria-label={t('Label')} placeholder={t('Label')} className={inputClass} value={d.label} maxLength={40} onChange={e => setDetail(n, { label: e.target.value })} />
+                  ? <input aria-label={t('Label')} placeholder={t('Label')} className={`${inputClass} text-sm`} value={d.label} maxLength={40} onChange={e => setDetail(n, { label: e.target.value })} />
                   : <span />}
               </div>
-              <input aria-label={t('Number or value')} placeholder={t('Number or value')} className={inputClass} value={d.value} maxLength={60} onChange={e => setDetail(n, { value: e.target.value })} />
+              <input aria-label={t('Number or value')} placeholder={t('Number or value')} className={`${inputClass} text-sm`} value={d.value} maxLength={60} onChange={e => setDetail(n, { value: e.target.value })} />
               <div className="flex items-center justify-between">
                 <label className="flex items-center gap-2 text-sm text-gray-700"><input type="checkbox" checked={d.on_card} onChange={e => setDetail(n, { on_card: e.target.checked })} />{t('Put it on the card')}</label>
                 <button type="button" className="text-sm text-red-600 hover:underline" onClick={() => set('details', card.details.filter((_, i) => i !== n))}>{t('Remove')}</button>
@@ -122,10 +121,12 @@ export default function Emergency() {
             <CardQr text={view.published.address} label={t('Code that opens the card')} />
             <p className="text-xs text-gray-500 break-all">{view.published.address}</p>
             {view.reviewed_at && <p className="text-xs text-gray-500">{t('Last checked {when}', { when: new Date(view.reviewed_at).toLocaleDateString() })}</p>}
-            <div className="flex gap-4 text-sm">
-              <button className="text-brand-600 hover:underline" onClick={printCard}>{t('Print a card-sized copy')}</button>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+              <button className="text-brand-600 hover:underline" onClick={() => printCard('home')}>{t('Print at home (A4)')}</button>
+              <button className="text-brand-600 hover:underline" onClick={() => printCard('shop')}>{t('Print for a print shop')}</button>
               <button disabled={busy} className="text-red-600 hover:underline" onClick={() => void run(() => api.emergency.unpublish(), t('Could not turn the card off'))}>{t('Turn the card off')}</button>
             </div>
+            <p className="text-xs text-gray-500">{t('At home: one page with the steps and the card to cut out and fold. For a print shop: each side on its own page at the size of a bank card, with no lines, to save as a PDF and send to a shop that makes plastic cards.')}</p>
             <div className="border-t border-gray-100 pt-3 text-sm">
               <p className="font-medium text-gray-800">{t('Lost the card?')}</p>
               <p className="text-gray-500 mt-1">{t('Make a new code: the old one stops opening the card at once, and you print the new one. A code that holds the card itself (the one that works with no signal) cannot be replaced, so do not print that one if you might lose it.')}</p>
@@ -147,7 +148,11 @@ export default function Emergency() {
             <CardQr text={view.offline.text} level="L" label={t('Code that holds the card')} />
             {view.offline.omitted > 0 && <Notice kind="error">{tn(view.offline.omitted, '{n} item did not fit in the code and was left out.', '{n} items did not fit in the code and were left out.')}</Notice>}
             <p className="text-xs text-gray-500">{t('It shows what was last saved.')}</p>
-            {!on && <button className="text-sm text-brand-600 hover:underline" onClick={printCard}>{t('Print a card-sized copy')}</button>}
+            {!on && <span className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+              <button className="text-brand-600 hover:underline" onClick={() => printCard('home')}>{t('Print at home (A4)')}</button>
+              <button className="text-brand-600 hover:underline" onClick={() => printCard('shop')}>{t('Print for a print shop')}</button>
+            </span>}
+            {!on && <p className="text-xs text-gray-500">{t('At home: one page with the steps and the card to cut out and fold. For a print shop: each side on its own page at the size of a bank card, with no lines, to save as a PDF and send to a shop that makes plastic cards.')}</p>}
           </div>
         )}
       </section>

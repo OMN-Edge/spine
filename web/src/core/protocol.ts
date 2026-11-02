@@ -15,7 +15,7 @@ export type ToWorker =
   /** Look again at the keys and the people the account may open (after a profile's key was replaced, or access was given or taken). */
   | { id: number; type: 'reloadKeys' }
   /** Saves what is open, then opens another person's records. Refused with code `unsaved` unless `force`. */
-  | { id: number; type: 'switchProfile'; profileId: string; force?: boolean }
+  | { id: number; type: 'switchProfile'; profileId: string; force?: boolean; dropEmpty?: boolean }
   | { id: number; type: 'request'; method: string; url: string; headers: Record<string, string>; body?: string; parts?: Part[] }
   | { id: number; type: 'startShare'; shareId: string; key: string }
   /** The demo: no vault and no account, an archive in memory that is gone when the page is, and nothing that needs a model or the server. */
@@ -39,6 +39,8 @@ export type FromWorker =
   | { id: 0; changed: true }
   /** The state of saving changed. */
   | { id: 0; save: SaveState }
+  /** The people changed elsewhere; `gone` names the one that was open if it is no longer this account's (another is open in its place). */
+  | { id: 0; people: { gone: string | null } }
 
   | { id: number; ok: true; status?: number; headers?: Record<string, string>; body?: ArrayBuffer; stream?: boolean }
   /** A piece of a streamed reply, in the order written, and its end. */
