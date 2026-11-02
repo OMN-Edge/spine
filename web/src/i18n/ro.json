@@ -116,8 +116,6 @@
  "Dose": "Doză",
  "Dose at discharge": "Doza la externare",
  "Dose number": "Numărul dozei",
- "Drag & drop PDFs here": "Trageți PDF-urile aici",
- "Drag & drop PDFs or photos here": "Trageți PDF-uri sau fotografii aici",
  "Drop here to make it a document of its own": "Plasați aici pentru a forma un document separat",
  "Drop here to make it the last document": "Plasați aici pentru a forma ultimul document",
  "Drug": "Medicament",
@@ -378,8 +376,6 @@
  "Tag": "Etichetă",
  "Tag: {name}": "Etichetă: {name}",
  "Tags": "Etichete",
- "Tap to choose PDFs": "Atingeți pentru a alege PDF-uri",
- "Tap to choose PDFs or photos": "Atingeți pentru a alege PDF-uri sau fotografii",
  "Test": "Analiză",
  "Test name": "Numele analizei",
  "Tests": "Analize",
@@ -1692,6 +1688,10 @@
  "That code is not right. Try again.": "Codul nu este corect. Încercați din nou.",
  "The email address or the password is not right.": "Adresa de e-mail sau parola nu este corectă.",
  "Choose what to share…": "Alegeți ce partajați…",
+ "Drag & drop PDFs, Word files, photos or a zip here": "Trageți aici PDF-uri, fișiere Word, fotografii sau o arhivă zip",
+ "Drag & drop PDFs, Word files or a zip here": "Trageți aici PDF-uri, fișiere Word sau o arhivă zip",
+ "Tap to choose PDFs, Word files or photos": "Atingeți pentru a alege PDF-uri, fișiere Word sau fotografii",
+ "Tap to choose PDFs or Word files": "Atingeți pentru a alege PDF-uri sau fișiere Word",
  "Reviewed or not": "Verificat sau nu",
  "Any review state": "Orice stare de verificare",
  "Plan and people": "Abonament și persoane",
@@ -1699,5 +1699,6 @@
  "Devices": "Dispozitive",
  "Data and privacy": "Date și confidențialitate",
  "Change your master password": "Schimbați parola principală",
- "The one you sign in with and that opens your records.": "Cea cu care vă conectați și care vă deschide înregistrările."
+ "The one you sign in with and that opens your records.": "Cea cu care vă conectați și care vă deschide înregistrările.",
+ "A photo goes to Scan to be straightened, and is read on this device: nothing of it is sent to a model.": "O fotografie trece prin Scanare pentru a fi îndreptată și este citită pe acest dispozitiv: nimic din ea nu este trimis către un model."
 }

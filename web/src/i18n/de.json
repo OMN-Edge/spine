@@ -116,8 +116,6 @@
  "Dose": "Dosis",
  "Dose at discharge": "Dosis bei Entlassung",
  "Dose number": "Dosisnummer",
- "Drag & drop PDFs here": "PDFs hierher ziehen",
- "Drag & drop PDFs or photos here": "PDFs oder Fotos hierher ziehen",
  "Drop here to make it a document of its own": "Hier ablegen, um ein eigenes Dokument daraus zu machen",
  "Drop here to make it the last document": "Hier ablegen, um es zum letzten Dokument zu machen",
  "Drug": "Medikament",
@@ -378,8 +376,6 @@
  "Tag": "Schlagwort",
  "Tag: {name}": "Schlagwort: {name}",
  "Tags": "Schlagwörter",
- "Tap to choose PDFs": "Tippen, um PDFs auszuwählen",
- "Tap to choose PDFs or photos": "Tippen, um PDFs oder Fotos auszuwählen",
  "Test": "Untersuchung",
  "Test name": "Name der Untersuchung",
  "Tests": "Untersuchungen",
@@ -1692,6 +1688,10 @@
  "That code is not right. Try again.": "Dieser Code ist nicht richtig. Versuchen Sie es erneut.",
  "The email address or the password is not right.": "Die E-Mail-Adresse oder das Passwort ist nicht richtig.",
  "Choose what to share…": "Wählen Sie, was Sie teilen…",
+ "Drag & drop PDFs, Word files, photos or a zip here": "Ziehen Sie PDFs, Word-Dateien, Fotos oder ein ZIP hierher",
+ "Drag & drop PDFs, Word files or a zip here": "Ziehen Sie PDFs, Word-Dateien oder ein ZIP hierher",
+ "Tap to choose PDFs, Word files or photos": "Tippen, um PDFs, Word-Dateien oder Fotos auszuwählen",
+ "Tap to choose PDFs or Word files": "Tippen, um PDFs oder Word-Dateien auszuwählen",
  "Reviewed or not": "Geprüft oder nicht",
  "Any review state": "Jeder Prüfstatus",
  "Plan and people": "Tarif und Personen",
@@ -1699,5 +1699,6 @@
  "Devices": "Geräte",
  "Data and privacy": "Daten und Datenschutz",
  "Change your master password": "Master-Passwort ändern",
- "The one you sign in with and that opens your records.": "Das, mit dem Sie sich anmelden und das Ihre Unterlagen öffnet."
+ "The one you sign in with and that opens your records.": "Das, mit dem Sie sich anmelden und das Ihre Unterlagen öffnet.",
+ "A photo goes to Scan to be straightened, and is read on this device: nothing of it is sent to a model.": "Ein Foto wird in Scan begradigt und auf diesem Gerät gelesen: Nichts davon wird an ein Modell gesendet."
 }

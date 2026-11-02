@@ -272,13 +272,15 @@ Status: auto (`pipeline`, `upload`, `resume-stalled`); the Try again button, clo
 ---
 
 ### 2.8 Scan paper with the camera
-- There is no Scan button: a photo, taken with the phone's own camera or chosen, goes to Scan from the Upload page's picker, and the page is found and the corners can be moved before it is straightened.
+- There is one way in: the Upload area (or the chat's paperclip). A picture chosen, dropped or taken with the phone's own camera from the picker goes to Scan by itself, and everything else is uploaded as it is (`web/src/scan/route.ts`). An iPhone's HEIC photo goes to Scan where the browser can draw it (Safari) and is uploaded as it is where it cannot (Chrome), the server making it a JPEG. Other picture types the browser draws, such as WebP, go to Scan too.
+- Where a page is found, its corners are shown to check and it is cleaned up. Where none is (a screenshot, an image a clinic sent), the whole picture becomes the page as it is, with no corners asked for and no clean-up.
+- Pictures are offered wherever something can read them: local OCR on the device (then the Upload page says nothing of them is sent to a model) or the model where image reading is allowed.
 - The four corners can be moved by hand; the page is then straightened and, unless turned off for that page, cleaned up (shadows and fading flattened, handwriting kept). All of it happens on the device.
 - Everything is on the one screen: the pages stay in view as they are added, and each can be moved, have its corners redone (a sheet over the same screen), be filtered or be removed in place; "Add a page" is at the end of them, and the set is saved as one document, which the grouping screen can split afterwards. The photos as taken are kept beside it.
 - Photos chosen on the Upload page, or attached in the chat, go to Scan first (one photo: its corners are shown; several: each is added with the page found in it). A photo attached in the chat comes back to that conversation after Save, and the report of reading it is written there (`POST /api/chat/attachments?photos=1`).
 - Where neither image reading nor local OCR is switched on, Scan says so instead of filling the archive with pages nobody can search.
 
-Status: auto (`scan`, web algorithms; `photo-set`); screens and the camera itself: hand.
+Status: auto (`scan`, web algorithms; `photo-set`; `web/src/scan/route.test.ts`: which files go to Scan, and a picture with no page kept as it is); screens and the camera itself: hand.
 
 ## 3. Checking what was read
 
@@ -975,4 +977,4 @@ Still open:
 
 ## Not covered yet
 
-Things people will reasonably ask for that no scenario above promises: other photo formats such as WebP, signed exports (an imported export is believed; SECURITY.md S-26), reminders for follow-ups the documents mention, sharing a chart, and merging two uploads' history. Add a scenario when one is wanted.
+Things people will reasonably ask for that no scenario above promises: other photo formats such as WebP where the browser cannot draw them, signed exports (an imported export is believed; SECURITY.md S-26), reminders for follow-ups the documents mention, sharing a chart, and merging two uploads' history. Add a scenario when one is wanted.
