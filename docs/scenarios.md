@@ -138,7 +138,7 @@ Status: auto (`enrolment`, `crypto/enrolment`); a third browser let in with a co
 - Signing up asks for two separate ticks: consent to the use of health data (with the privacy notice), and acceptance of the terms. Neither is implied by the other and the account is not made on one.
 - An account the operator made, or any account after a text changed, sees a screen asking for what is missing before anything else, and can leave from it by deleting the account.
 - The privacy notice, the terms and what Spine is for are public pages, linked from every sign-in page.
-- The account page lists which features send what to which model provider, exports everything (the vault is open, so the master password was used), and deletes the account after the address is written out (and the password typed again if it was not typed in the last ten minutes).
+- The account page lists which features send what to which model provider, or, where the instance has no relay and so no model can be called, says nothing is sent to one (not the provider the device would use by default); it exports everything (the vault is open, so the master password was used), and deletes the account after the address is written out (and the password typed again if it was not typed in the last ten minutes).
 
 Status: auto (`own-account`, `accounts`); screens: hand.
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { createChatLlm, llmProviders, LlmConfigError } from '../llm/index.js';
+import { createChatLlm, llmProviders, LlmConfigError, modelCallsPossible } from '../llm/index.js';
 import { loadLlmConfig, loadParserConfig } from '../config.js';
 import type { ChatLlmConfig } from '../llm/index.js';
 
@@ -36,6 +36,12 @@ describe('createChatLlm — the adapter registry', () => {
     const base = loadLlmConfig({ SPINE_LLM_PROVIDER: 'relay', SPINE_LLM_ENDPOINT: 'relay.example' } as NodeJS.ProcessEnv);
     expect(() => createChatLlm(base)).not.toThrow();
     expect(() => createChatLlm({ ...base, endpoint: undefined })).toThrow(/relay/);
+  });
+
+  it('says no model can be called where the provider named is not one this process has, as on a device whose server has no relay', () => {
+    // The device keeps the default provider (anthropic) when /api/relay/config is refused; the account page must not say records go there.
+    expect(modelCallsPossible('anthropic')).toBe(false);
+    expect(modelCallsPossible('relay')).toBe(true);
   });
 
 });

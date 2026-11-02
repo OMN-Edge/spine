@@ -985,7 +985,8 @@ export const api = {
       req<{ status: string; progress: number; step: string; error?: string; grouping_confirmed?: boolean; reading?: boolean; documents: UploadDocument[] }>(`/api/source-files/${id}/status`),
     capabilities: () =>
       req<{
-        aiReading: { enabled: boolean; provider: string; endpoint: string | null };
+        /** `connected`: whether any model can be called here; false on a device whose server has no relay. */
+        aiReading: { enabled: boolean; provider: string; endpoint: string | null; connected?: boolean };
         /** How an upload is read here: the parser, whether local OCR is on, and whether it can send page images. */
         reading: { mode: 'text' | 'ocr' | 'hybrid' | 'multimodal'; ocr: boolean; images: boolean };
         models: ModelChoice[];

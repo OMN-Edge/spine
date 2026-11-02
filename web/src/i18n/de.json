@@ -1678,5 +1678,6 @@
  "Cut the card out along the dashed line.": "Schneiden Sie die Karte entlang der gestrichelten Linie aus.",
  "Fold it along the dotted line, so the code is on the back.": "Falten Sie sie entlang der gepunkteten Linie, sodass der Code hinten ist.",
  "Glue the two halves together, or laminate the card, and keep it with your ID.": "Kleben Sie die beiden Hälften zusammen oder laminieren Sie die Karte, und bewahren Sie sie bei Ihrem Ausweis auf.",
- "Anyone who reads the card reads what is on it. If you lose it, make a new code on the emergency card page: the old one stops working.": "Wer die Karte liest, liest, was darauf steht. Wenn Sie sie verlieren, erstellen Sie auf der Seite der Notfallkarte einen neuen Code: Der alte funktioniert dann nicht mehr."
+ "Anyone who reads the card reads what is on it. If you lose it, make a new code on the emergency card page: the old one stops working.": "Wer die Karte liest, liest, was darauf steht. Wenn Sie sie verlieren, erstellen Sie auf der Seite der Notfallkarte einen neuen Code: Der alte funktioniert dann nicht mehr.",
+ "No AI model is set up on this server, so nothing in your records is sent to one.": "Auf diesem Server ist kein KI-Modell eingerichtet, daher wird nichts aus Ihren Unterlagen an eines gesendet."
 }

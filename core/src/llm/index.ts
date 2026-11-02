@@ -28,6 +28,12 @@ export function registerLlmProvider(name: string, factory: TaskClientsFactory): 
 export const llmProviders = (): string[] => Object.keys(ADAPTERS);
 
 /**
+ * Whether this process can call the provider its settings name. A device knows only `relay`, and keeps the default provider when its
+ * server has no relay: then nothing is sent to any model, and the account page must not say otherwise.
+ */
+export const modelCallsPossible = (provider: string = loadLlmConfig().provider): boolean => provider in ADAPTERS;
+
+/**
  * Construction. Pure: validates its config, returns a new port, touches no
  * global state — so it is unit-testable with a config literal.
  *

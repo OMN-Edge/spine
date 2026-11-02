@@ -15,7 +15,7 @@ import { scheduleSync } from '../similarity/index.js';
 import { aiReadingAllowed, getParser } from '../parser/index.js';
 import { getAiReading, isReadingPages, startAiReading } from '../ingestion/ai-reading.js';
 import { chatEnabled, linkingEnabled, loadLlmConfig, loadParserConfig, translationEnabled } from '../config.js';
-import { chooseModel } from '../llm/index.js';
+import { chooseModel, modelCallsPossible } from '../llm/index.js';
 import { requireAuth } from './middleware.js';
 import { v4 as uuidv4 } from 'uuid';
 import { applyRegroup, RegroupError } from '../ingestion/regroup.js';
@@ -199,7 +199,8 @@ export async function sourceFileRoutes(app: HttpApp) {
     const llm = loadLlmConfig();
     const parser = loadParserConfig();
     return reply.send({
-      aiReading: { enabled: aiReadingAllowed(), provider: llm.provider, endpoint: llm.endpoint ?? null },
+      // `connected` is false where no model can be called at all (a device whose server has no relay): nothing is sent anywhere.
+      aiReading: { enabled: aiReadingAllowed(), provider: llm.provider, endpoint: llm.endpoint ?? null, connected: modelCallsPossible(llm.provider) },
       // Whether documents can be found by meaning (embeddings are on), for the search page to offer it.
       similarity: { enabled: similarityEnabled() },
       // Which features send content to the model provider (the account page lists them, so no call is a surprise).

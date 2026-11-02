@@ -51,6 +51,9 @@ describe('screen text', () => {
   "Pages with no text and photos are not sent anywhere: they are not read, because sending images is switched off on this server.",
   "Pages from a camera have no text, so they can only be read here if image reading or local OCR is switched on for this server. A scanning app that saves a PDF works without either.",
   "The certificates in the file lead to an authority this server trusts",
+  // The account page where the instance has no relay (web/src/components/YourData.tsx): the server gives a device no relay settings, so no
+  // model call can be made at all (core/src/llm/index.ts, modelCallsPossible).
+  "No AI model is set up on this server, so nothing in your records is sent to one.",
   // The front page and the page on protection (web/src/pages/Landing.tsx, Protection.tsx): what the server holds of a record, which is sealed
   // pieces it cannot open (README.md, SECURITY.md P7 and the share row under "Principles", M-34, M-36).
   "Your records are read, searched and kept in your browser. The keys that open them are made there, from your password. The server stores them only as sealed pieces it cannot open.",
