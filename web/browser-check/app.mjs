@@ -948,14 +948,39 @@ try {
     let changed = false;
     for (let t = 0; t < 15000 && !changed; t += 250) { const now = await addressOf(); changed = !!now && now !== firstAddress; if (!changed) await wait(250); }
     check(changed, 'a lost card is replaced with a new code, and the address is a different one');
+    // Printed two ways: at home (a page with the steps, a 5 cm line and the card to cut out and fold) and for a print shop (one side a page).
     await p.emulateMediaType('print');
-    await p.evaluate(() => document.body.classList.add('printing-card'));
-    const faces = await p.evaluate(() => [...document.querySelectorAll('.print-card .card-face')].map(f => { const r = f.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; }));
-    const printed = await p.evaluate(() => document.querySelector('.print-card')?.innerText ?? '');
-    await p.evaluate(() => document.body.classList.remove('printing-card'));
+    const home = await p.evaluate(() => {
+      document.body.classList.add('printing-card', 'printing-home');
+      const box = e => { const r = e.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), top: Math.round(r.top), bottom: Math.round(r.bottom), left: Math.round(r.left) }; };
+      const faces = [...document.querySelectorAll('.print-card .card-face')].map(f => ({ ...box(f), turned: getComputedStyle(f).transform.startsWith('matrix(-1'), edgeTop: getComputedStyle(f).borderTopStyle, edgeBottom: getComputedStyle(f).borderBottomStyle }));
+      const ruler = box(document.querySelector('.print-card .card-ruler-line'));
+      const steps = [...document.querySelectorAll('.print-card .card-sheet li')].map(li => li.textContent);
+      const rows = [...document.querySelectorAll('.print-card .card-row')].map(r => [r.querySelector('dt').textContent, r.querySelector('dd').textContent, getComputedStyle(r.querySelector('dd')).color]);
+      // Every line ends inside its side: the lowest text is above the side's bottom edge (the back is turned, so its box is checked as drawn).
+      const fits = [...document.querySelectorAll('.print-card .card-face')].every(f => { const r = f.getBoundingClientRect(); return [...f.querySelectorAll('p, dt, dd, svg')].every(e => { const b = e.getBoundingClientRect(); return b.top >= r.top - 1 && b.bottom <= r.bottom + 1; }); });
+      const printed = document.querySelector('.print-card')?.innerText ?? '';
+      document.body.classList.remove('printing-card', 'printing-home');
+      return { faces, ruler, steps, rows, fits, printed };
+    });
+    // For a print shop: each face alone on a page of exactly a bank card's size, as the PDF a browser saves.
+    await p.evaluate(() => document.body.classList.add('printing-card', 'printing-shop'));
+    const shopPdf = Buffer.from(await p.pdf({ preferCSSPageSize: true })).toString('latin1');
+    const marks = await p.evaluate(() => [...document.querySelectorAll('.print-card .card-face .card-mark')].map(m => getComputedStyle(m).color));
+    await p.evaluate(() => document.body.classList.remove('printing-card', 'printing-shop'));
     await p.emulateMediaType('screen');
-    check(faces.length === 2 && faces.every(([w, h]) => Math.abs(w - 324) <= 3 && Math.abs(h - 204) <= 3), `the printed card is the size of a bank card, front and back (${JSON.stringify(faces)} px)`);
-    check(printed.includes('Jane Example') && printed.includes('1234567890123'), 'and carries the name and the number that was ticked');
+    const boxes = [...shopPdf.matchAll(/\/MediaBox\s*\[\s*0 0 ([\d.]+) ([\d.]+)\s*\]/g)].map(m => [Math.round(Number(m[1]) / 72 * 25.4 * 10) / 10, Math.round(Number(m[2]) / 72 * 25.4 * 10) / 10]);
+    const [ff, fb] = home.faces;
+    check(home.faces.length === 2 && home.faces.every(x => Math.abs(x.w - 324) <= 3 && Math.abs(x.h - 204) <= 3), `each side is the size of a bank card, landscape (${JSON.stringify(home.faces.map(x => [x.w, x.h]))} px)`);
+    check(home.fits, 'and what is written fits on it');
+    check(Math.abs(fb.top - ff.bottom) <= 1 && fb.left === ff.left && fb.turned && !ff.turned, 'at home: the back is joined under the front along the long edge, and upside down so it reads once folded');
+    check(fb.edgeBottom === 'dotted' && fb.edgeTop === 'dashed' && ff.edgeBottom === 'none', 'the line between the faces is the dotted one to fold along, and the outer edge the dashed one to cut');
+    check(home.steps.length === 4 && /100%/.test(home.steps[0]) && /dashed/.test(home.steps[1]) && /dotted/.test(home.steps[2]), 'the page says to print at actual size, cut, fold and glue');
+    check(Math.abs(home.ruler.w - 189) <= 2, `and has a line 5 cm long to check the size (${home.ruler.w} px)`);
+    check(home.rows.some(([l, v, c]) => l === 'Allergies' && /Penicillin|1234567890123|\w/.test(v) && c === 'rgb(185, 28, 28)') || !home.rows.some(([l]) => l === 'Allergies'), 'the front gives each value a label of its own, and allergies stand out in red');
+    check(home.printed.includes('Jane Example') && home.printed.includes('1234567890123'), 'and the card carries the name and the number that was ticked');
+    check(boxes.length === 2 && boxes.every(([w, h]) => Math.abs(w - 85.6) <= 0.3 && Math.abs(h - 54) <= 0.3), `for a print shop: two pages, front and back, each exactly the size of a bank card (${JSON.stringify(boxes)} mm)`);
+    check(marks.length === 2 && marks.every(c => c === 'rgb(15, 118, 110)'), `the mark is on both sides, in its own colour on paper (${JSON.stringify(marks)})`);
     await click('Turn the card off');
     check(await waitFor('Turn the card on'), 'the card can be turned off');
     await click('Timeline');

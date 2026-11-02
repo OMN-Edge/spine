@@ -1436,7 +1436,6 @@
  "Number or value": "Număr sau valoare",
  "Put it on the card": "Pune pe card",
  "Add a detail": "Adaugă o dată",
- "Print a card-sized copy": "Tipărește o copie de mărimea unui card",
  "Could not save this change": "Modificarea nu a putut fi salvată",
  "It has been over a year since this card was checked.": "A trecut mai mult de un an de când a fost verificat acest card.",
  "Medicines, allergies and phone numbers change. Look it over, change what is out of date, then say it is still right.": "Medicamentele, alergiile și numerele de telefon se schimbă. Citește-l, schimbă ce nu mai e valabil, apoi spune că este în continuare corect.",
@@ -1670,5 +1669,14 @@
  "Make the invitation": "Creați invitația",
  "You are now in the records {owner} shared with you. Switch between people from the menu at the top of the page.": "Acum sunteți în dosarele pe care {owner} vi le-a partajat. Treceți de la o persoană la alta din meniul din partea de sus a paginii.",
  "{language} is used for translating your documents. The screens are not available in it yet, so they are in English.": "{language} este folosită pentru traducerea documentelor dumneavoastră. Ecranele nu sunt încă disponibile în această limbă, așa că sunt în engleză.",
- "documents only": "doar documentele"
+ "documents only": "doar documentele",
+ "Print for a print shop": "Tipăriți pentru o tipografie",
+ "Print at home (A4)": "Tipăriți acasă (A4)",
+ "At home: one page with the steps and the card to cut out and fold. For a print shop: each side on its own page at the size of a bank card, with no lines, to save as a PDF and send to a shop that makes plastic cards.": "Acasă: o pagină cu pașii și cardul de decupat și pliat. Pentru o tipografie: fiecare față pe o pagină separată, la dimensiunea unui card bancar, fără linii, de salvat ca PDF și trimis unei tipografii care face carduri din plastic.",
+ "Emergency card for {name}": "Card de urgență pentru {name}",
+ "Print this page at 100% (“Actual size”), not “Fit to page”. The line below should measure 5 cm; if it does not, print it again.": "Tipăriți această pagină la 100% („Dimensiune reală”), nu „Potrivire în pagină”. Linia de mai jos trebuie să măsoare 5 cm; dacă nu, tipăriți din nou.",
+ "Cut the card out along the dashed line.": "Decupați cardul de-a lungul liniei întrerupte.",
+ "Fold it along the dotted line, so the code is on the back.": "Pliați-l pe linia punctată, astfel încât codul să fie pe spate.",
+ "Glue the two halves together, or laminate the card, and keep it with your ID.": "Lipiți cele două jumătăți sau laminați cardul și păstrați-l lângă actul de identitate.",
+ "Anyone who reads the card reads what is on it. If you lose it, make a new code on the emergency card page: the old one stops working.": "Oricine citește cardul citește ce scrie pe el. Dacă îl pierdeți, creați un cod nou pe pagina cardului de urgență: cel vechi nu mai funcționează."
 }

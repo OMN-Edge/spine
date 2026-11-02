@@ -1436,7 +1436,6 @@
  "Number or value": "Nummer oder Wert",
  "Put it on the card": "Auf die Karte setzen",
  "Add a detail": "Angabe hinzufügen",
- "Print a card-sized copy": "Kopie im Kartenformat drucken",
  "Could not save this change": "Diese Änderung konnte nicht gespeichert werden",
  "It has been over a year since this card was checked.": "Diese Karte wurde seit über einem Jahr nicht geprüft.",
  "Medicines, allergies and phone numbers change. Look it over, change what is out of date, then say it is still right.": "Medikamente, Allergien und Telefonnummern ändern sich. Sehen Sie sie durch, ändern Sie, was veraltet ist, und sagen Sie dann, dass sie noch stimmt.",
@@ -1670,5 +1669,14 @@
  "Make the invitation": "Einladung erstellen",
  "You are now in the records {owner} shared with you. Switch between people from the menu at the top of the page.": "Sie sind jetzt in den Unterlagen, die {owner} mit Ihnen geteilt hat. Wechseln Sie zwischen Personen über das Menü oben auf der Seite.",
  "{language} is used for translating your documents. The screens are not available in it yet, so they are in English.": "{language} wird für die Übersetzung Ihrer Dokumente verwendet. Die Bildschirme gibt es in dieser Sprache noch nicht, daher sind sie auf Englisch.",
- "documents only": "nur Dokumente"
+ "documents only": "nur Dokumente",
+ "Print for a print shop": "Für eine Druckerei drucken",
+ "Print at home (A4)": "Zu Hause drucken (A4)",
+ "At home: one page with the steps and the card to cut out and fold. For a print shop: each side on its own page at the size of a bank card, with no lines, to save as a PDF and send to a shop that makes plastic cards.": "Zu Hause: eine Seite mit den Schritten und der Karte zum Ausschneiden und Falten. Für eine Druckerei: jede Seite auf einer eigenen Seite im Format einer Bankkarte, ohne Linien, als PDF zu speichern und an eine Druckerei zu schicken, die Plastikkarten herstellt.",
+ "Emergency card for {name}": "Notfallkarte für {name}",
+ "Print this page at 100% (“Actual size”), not “Fit to page”. The line below should measure 5 cm; if it does not, print it again.": "Drucken Sie diese Seite mit 100 % („Tatsächliche Größe“), nicht „An Seite anpassen“. Die Linie unten sollte 5 cm lang sein; wenn nicht, drucken Sie erneut.",
+ "Cut the card out along the dashed line.": "Schneiden Sie die Karte entlang der gestrichelten Linie aus.",
+ "Fold it along the dotted line, so the code is on the back.": "Falten Sie sie entlang der gepunkteten Linie, sodass der Code hinten ist.",
+ "Glue the two halves together, or laminate the card, and keep it with your ID.": "Kleben Sie die beiden Hälften zusammen oder laminieren Sie die Karte, und bewahren Sie sie bei Ihrem Ausweis auf.",
+ "Anyone who reads the card reads what is on it. If you lose it, make a new code on the emergency card page: the old one stops working.": "Wer die Karte liest, liest, was darauf steht. Wenn Sie sie verlieren, erstellen Sie auf der Seite der Notfallkarte einen neuen Code: Der alte funktioniert dann nicht mehr."
 }

@@ -1436,7 +1436,6 @@
  "Number or value": "Numéro ou valeur",
  "Put it on the card": "Mettre sur la carte",
  "Add a detail": "Ajouter une information",
- "Print a card-sized copy": "Imprimer une copie au format carte",
  "Could not save this change": "Cette modification n’a pas pu être enregistrée",
  "It has been over a year since this card was checked.": "Cela fait plus d’un an que cette carte n’a pas été vérifiée.",
  "Medicines, allergies and phone numbers change. Look it over, change what is out of date, then say it is still right.": "Les médicaments, les allergies et les numéros de téléphone changent. Relisez-la, changez ce qui n’est plus à jour, puis dites qu’elle est toujours juste.",
@@ -1670,5 +1669,14 @@
  "Make the invitation": "Créer l’invitation",
  "You are now in the records {owner} shared with you. Switch between people from the menu at the top of the page.": "Vous êtes maintenant dans le dossier que {owner} a partagé avec vous. Passez d’une personne à l’autre depuis le menu en haut de la page.",
  "{language} is used for translating your documents. The screens are not available in it yet, so they are in English.": "Le {language} sert à traduire vos documents. Les écrans ne sont pas encore disponibles dans cette langue, ils sont donc en anglais.",
- "documents only": "documents seulement"
+ "documents only": "documents seulement",
+ "Print for a print shop": "Imprimer pour un imprimeur",
+ "Print at home (A4)": "Imprimer chez vous (A4)",
+ "At home: one page with the steps and the card to cut out and fold. For a print shop: each side on its own page at the size of a bank card, with no lines, to save as a PDF and send to a shop that makes plastic cards.": "Chez vous : une page avec les étapes et la carte à découper et plier. Pour un imprimeur : chaque face sur sa propre page, au format d’une carte bancaire, sans traits, à enregistrer en PDF et à envoyer à un imprimeur qui fait des cartes en plastique.",
+ "Emergency card for {name}": "Carte d’urgence de {name}",
+ "Print this page at 100% (“Actual size”), not “Fit to page”. The line below should measure 5 cm; if it does not, print it again.": "Imprimez cette page à 100 % (« Taille réelle »), pas « Ajuster à la page ». La ligne ci-dessous doit mesurer 5 cm ; sinon, imprimez-la à nouveau.",
+ "Cut the card out along the dashed line.": "Découpez la carte le long du trait en tirets.",
+ "Fold it along the dotted line, so the code is on the back.": "Pliez-la le long du pointillé, pour que le code soit au dos.",
+ "Glue the two halves together, or laminate the card, and keep it with your ID.": "Collez les deux moitiés ensemble, ou plastifiez la carte, et gardez-la avec votre pièce d’identité.",
+ "Anyone who reads the card reads what is on it. If you lose it, make a new code on the emergency card page: the old one stops working.": "Quiconque lit la carte lit ce qui y figure. Si vous la perdez, créez un nouveau code sur la page de la carte d’urgence : l’ancien cesse de fonctionner."
 }

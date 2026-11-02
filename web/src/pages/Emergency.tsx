@@ -121,10 +121,12 @@ export default function Emergency() {
             <CardQr text={view.published.address} label={t('Code that opens the card')} />
             <p className="text-xs text-gray-500 break-all">{view.published.address}</p>
             {view.reviewed_at && <p className="text-xs text-gray-500">{t('Last checked {when}', { when: new Date(view.reviewed_at).toLocaleDateString() })}</p>}
-            <div className="flex gap-4 text-sm">
-              <button className="text-brand-600 hover:underline" onClick={printCard}>{t('Print a card-sized copy')}</button>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+              <button className="text-brand-600 hover:underline" onClick={() => printCard('home')}>{t('Print at home (A4)')}</button>
+              <button className="text-brand-600 hover:underline" onClick={() => printCard('shop')}>{t('Print for a print shop')}</button>
               <button disabled={busy} className="text-red-600 hover:underline" onClick={() => void run(() => api.emergency.unpublish(), t('Could not turn the card off'))}>{t('Turn the card off')}</button>
             </div>
+            <p className="text-xs text-gray-500">{t('At home: one page with the steps and the card to cut out and fold. For a print shop: each side on its own page at the size of a bank card, with no lines, to save as a PDF and send to a shop that makes plastic cards.')}</p>
             <div className="border-t border-gray-100 pt-3 text-sm">
               <p className="font-medium text-gray-800">{t('Lost the card?')}</p>
               <p className="text-gray-500 mt-1">{t('Make a new code: the old one stops opening the card at once, and you print the new one. A code that holds the card itself (the one that works with no signal) cannot be replaced, so do not print that one if you might lose it.')}</p>
@@ -146,7 +148,11 @@ export default function Emergency() {
             <CardQr text={view.offline.text} level="L" label={t('Code that holds the card')} />
             {view.offline.omitted > 0 && <Notice kind="error">{tn(view.offline.omitted, '{n} item did not fit in the code and was left out.', '{n} items did not fit in the code and were left out.')}</Notice>}
             <p className="text-xs text-gray-500">{t('It shows what was last saved.')}</p>
-            {!on && <button className="text-sm text-brand-600 hover:underline" onClick={printCard}>{t('Print a card-sized copy')}</button>}
+            {!on && <span className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+              <button className="text-brand-600 hover:underline" onClick={() => printCard('home')}>{t('Print at home (A4)')}</button>
+              <button className="text-brand-600 hover:underline" onClick={() => printCard('shop')}>{t('Print for a print shop')}</button>
+            </span>}
+            {!on && <p className="text-xs text-gray-500">{t('At home: one page with the steps and the card to cut out and fold. For a print shop: each side on its own page at the size of a bank card, with no lines, to save as a PDF and send to a shop that makes plastic cards.')}</p>}
           </div>
         )}
       </section>
