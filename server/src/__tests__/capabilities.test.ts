@@ -31,7 +31,7 @@ describe('GET /api/capabilities', () => {
   it('says where the images would go when it is on', async () => {
     process.env.SPINE_MULTIMODAL_ENABLED = 'true';
     const body = (await app.inject({ method: 'GET', url: '/api/capabilities', headers: { cookie } })).json();
-    expect(body.aiReading).toMatchObject({ enabled: true, provider: 'anthropic', endpoint: 'api.anthropic.com' });
+    expect(body.aiReading).toMatchObject({ enabled: true, provider: 'anthropic', endpoint: 'api.anthropic.com', connected: true });
   });
 
   it('says how an upload is read here, so the page can say what reading a whole document does', async () => {

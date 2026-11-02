@@ -8,13 +8,18 @@ import { useOnDataChanged } from './dataChanged';
  * happens, the Get started checklist. Kept with the records, so a second device does not greet them again. Off in the demo, which keeps
  * nothing, and until the records are open.
  *
- * The welcome is not pushy: the chat opens on it by itself the first time only. The next few times the app is opened a small note offers
- * it; after `WELCOME_NOTES` of those it stops. Anything done from it (a button, a question) puts it away, and so does a first upload.
+ * The welcome is not pushy: the chat never opens on it by itself, over the page. The first times the app is opened a small note beside Ask
+ * offers it; after the one shown with nothing before and `WELCOME_NOTES` more it stops. Anything done from it (a button, a question) puts it away, and so does a first upload.
  */
 export const WELCOME_NOTES = 3;
 
 /** What the welcome does this time the app is opened, decided once from what was shown before. */
-export type WelcomeMode = 'open' | 'note' | 'none';
+export type WelcomeMode = 'note' | 'none';
+
+/** A note while it has been shown no more than `WELCOME_NOTES` times before, nothing was done from it and nothing was uploaded; never the chat opened over the page. */
+export function welcomeMode({ shown, done, uploads }: { shown: number; done: boolean; uploads: number }): WelcomeMode {
+  return done || uploads > 0 || shown > WELCOME_NOTES ? 'none' : 'note';
+}
 
 interface GuideApi {
   state: GuideState | null;
@@ -60,14 +65,12 @@ export function GuideProvider({ enabled, children }: { enabled: boolean; childre
     void api.guide.done(key).catch(() => undefined);
   }, [enabled]);
 
-  // Once a session: the first time ever opens the chat on the welcome; the next few show the note; then nothing.
+  // Once a session: the first few times a note beside Ask offers the welcome; then nothing. The chat never opens by itself over the page.
   useEffect(() => {
     if (!state || decided.current) return;
     decided.current = true;
     const mark = state.marks.welcome;
-    if (mark?.done_at || state.progress.uploads > 0) return;
-    const before = mark?.shown ?? 0;
-    const mode: WelcomeMode = before === 0 ? 'open' : before <= WELCOME_NOTES ? 'note' : 'none';
+    const mode = welcomeMode({ shown: mark?.shown ?? 0, done: !!mark?.done_at, uploads: state.progress.uploads });
     setWelcome(mode);
     if (mode !== 'none') shown('welcome');
   }, [state, shown]);

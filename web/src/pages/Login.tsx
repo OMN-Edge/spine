@@ -30,6 +30,21 @@ export default function Login() {
   // The core loads while the address and password are typed, and the key is derived in it, not in the page.
   useEffect(() => { vaultState.prefetch(); }, []);
 
+  // The server answers in its own short English words; the screen says them in a sentence of its own, in the person's language. A rate
+  // limit's words, and anything not known here, are shown as they come.
+  const signInError = (err: unknown): string => {
+    if (err instanceof ApiError) {
+      if (err.code === 'awaiting_approval') return t('Your account is waiting for the administrator to approve it. You will be able to sign in once it has.');
+      if (err.code === 'email_not_verified') return t('Confirm your email address first: follow the link in the message we sent you.');
+      if (err.code === 'login_expired') return t('That took too long. Sign in again.');
+      if (err.status === 400 && /code/.test(err.message)) return t('Type the code.');
+      if (err.status === 400) return t('Type your email address and your password.');
+      if (err.status === 401 && /code/.test(err.message)) return t('That code is not right. Try again.');
+      if (err.status === 401) return t('The email address or the password is not right.');
+    }
+    return err instanceof Error ? err.message : t('Could not sign in');
+  };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -49,9 +64,7 @@ export default function Login() {
       // notice, or that the address is not confirmed yet. It deliberately does
       // not say which half of a wrong login was wrong.
       setUnverified(err instanceof ApiError && err.code === 'email_not_verified');
-      setError(err instanceof ApiError && err.code === 'awaiting_approval'
-        ? t('Your account is waiting for the administrator to approve it. You will be able to sign in once it has.')
-        : err instanceof Error ? err.message : t('Could not sign in'));
+      setError(signInError(err));
     }
   };
 
@@ -68,7 +81,7 @@ export default function Login() {
         setNeedsCode(false);
         setCode('');
       }
-      setError(err instanceof Error ? err.message : t('Could not sign in'));
+      setError(signInError(err));
     }
   };
 
@@ -123,11 +136,11 @@ export default function Login() {
       ) : (
       <form onSubmit={submit}>
         <input
-          type="email" placeholder={t('Email')} autoComplete="username" autoFocus
+          type="email" required placeholder={t('Email')} autoComplete="username" autoFocus
           value={email} onChange={e => setEmail(e.target.value)} className={inputClass}
         />
         <input
-          type="password" placeholder={t('Password')} autoComplete="current-password"
+          type="password" required placeholder={t('Password')} autoComplete="current-password"
           value={password} onChange={e => setPassword(e.target.value)} className={inputClass}
         />
         {error && <Notice kind="error">{error}</Notice>}

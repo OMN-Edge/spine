@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import CornerEditor from '../scan/CornerEditor';
 import { defaultQuad, detectDocument } from '../scan/detect';
+import { firstLook, madeOnScreen } from '../scan/route';
 import type { Quad } from '../scan/image';
 import { loadRaster, processPage, type Loaded, type PageFilter } from '../scan/process';
 import { useChat } from '../components/ChatProvider';
@@ -50,15 +51,25 @@ export default function Scan() {
   /** The picture opened, with the page found in it (or the whole photo, when none was). */
   const prepare = async (raw: Blob, quadHint?: Quad) => {
     const loaded = await loadRaster(raw);
-    const quad = quadHint ?? (await detectDocument(loaded.raster).catch(() => null)) ?? defaultQuad(loaded.width, loaded.height);
-    return { loaded, quad };
+    const onScreen = !quadHint && madeOnScreen(raw);
+    const detected = quadHint ?? (onScreen ? null : await detectDocument(loaded.raster).catch(() => null));
+    const look = firstLook({ onScreen });
+    // A screenshot is the page edge to edge; a photo with no page found starts from corners a little inside it, to be moved.
+    const quad = detected ?? defaultQuad(loaded.width, loaded.height, onScreen ? 0 : undefined);
+    return { loaded, quad, look };
   };
 
   /** One picture: the corners are shown to be moved before it becomes a page. */
   const open = useCallback(async (raw: Blob, quadHint?: Quad, replaces: number | null = null) => {
     setBusy(t('Looking for the page…')); setError('');
     try {
-      const { loaded, quad } = await prepare(raw, quadHint);
+      const { loaded, quad, look } = await prepare(raw, quadHint);
+      // A picture with no page in it (a screenshot) becomes a page as it is; its corners can still be set from the page's own menu.
+      if (!look.askCorners && replaces === null) {
+        const page = await makePage(raw, loaded, quad, next.current++, look.filter);
+        setPages(list => [...list, page]);
+        return;
+      }
       setStill({ raw, url: URL.createObjectURL(raw), loaded, quad, replaces });
     } catch (err) {
       setError(err instanceof Error ? err.message : t('Could not open the picture.'));
@@ -67,9 +78,9 @@ export default function Scan() {
     }
   }, [t]);
 
-  const makePage = async (raw: Blob, loaded: Loaded, quad: Quad, id: number): Promise<Page> => {
+  const makePage = async (raw: Blob, loaded: Loaded, quad: Quad, id: number, filter: PageFilter = 'clean'): Promise<Page> => {
     const versions = await processPage(loaded, quad);
-    return { id, raw, versions, previewUrl: URL.createObjectURL(versions.clean), filter: 'clean', quad };
+    return { id, raw, versions, previewUrl: URL.createObjectURL(versions[filter]), filter, quad };
   };
 
   /** Several pictures at once: each is added with the page found in it, and the corners are there to move afterwards. */
@@ -79,8 +90,8 @@ export default function Scan() {
     for (const [i, raw] of files.entries()) {
       setBusy(t('Straightening page {n} of {total}…', { n: i + 1, total: files.length }));
       try {
-        const { loaded, quad } = await prepare(raw);
-        const page = await makePage(raw, loaded, quad, next.current++);
+        const { loaded, quad, look } = await prepare(raw);
+        const page = await makePage(raw, loaded, quad, next.current++, look.filter);
         setPages(list => [...list, page]);
       } catch {
         failed += 1;

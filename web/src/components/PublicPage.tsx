@@ -29,6 +29,7 @@ export function usePublicOptions(): PublicOptions {
 
 export function PublicPage({ options, children }: { options: PublicOptions; children: ReactNode }) {
   const { t } = useI18n();
+  const [menuOpen, setMenuOpen] = useState(false);
   const links = [
     { to: '/how-it-works', label: t('How it works') },
     { to: '/protection', label: t('Protection') },
@@ -45,24 +46,34 @@ export function PublicPage({ options, children }: { options: PublicOptions; chil
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <Link to="/" aria-label={t('Spine, home')} className="inline-flex shrink-0 items-center gap-2 rounded-full py-1 pr-2">
             <LogoMark className="h-7 w-7 shrink-0 text-accent" />
-            {/* On a narrow phone the mark alone is the way home (the link is labelled), so the language menu keeps its room. */}
-            <span className="font-display text-xl font-medium max-[420px]:sr-only">Spine</span>
+            <span className="font-display text-xl font-medium">Spine</span>
           </Link>
           <nav aria-label={t('Pages')} className="hidden items-center gap-1 text-sm lg:flex">
             {links.map(l => <NavLink key={l.to} to={l.to} className={navClass}>{l.label}</NavLink>)}
           </nav>
           <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
-            <LanguageSwitcher />
-            <ThemeSwitcher />
+            {/* On a phone the language and the look are in the menu, so the name and Sign in keep their room. */}
+            <span className="hidden sm:contents"><LanguageSwitcher /><ThemeSwitcher /></span>
             <Link to="/login" className="rounded-full border border-ink/20 px-4 py-1.5 text-sm font-medium hover:bg-ink/5">{t('Sign in')}</Link>
+            <button
+              type="button" onClick={() => setMenuOpen(o => !o)} aria-expanded={menuOpen} aria-controls="public-menu"
+              aria-label={menuOpen ? t('Close menu') : t('Open menu')}
+              className="-mr-2 rounded-full p-2 text-ink/70 hover:bg-ink/5 lg:hidden"
+            >
+              <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden="true">
+                {menuOpen ? <path d="M6 6l12 12M18 6L6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
+              </svg>
+            </button>
           </div>
         </div>
-        <details className="border-t border-ink/10 lg:hidden">
-          <summary className="mx-auto max-w-6xl cursor-pointer px-4 py-2.5 text-sm text-ink/70 sm:px-6">{t('Pages')}</summary>
-          <nav aria-label={t('Pages')} className="mx-auto flex max-w-6xl flex-col px-2 pb-3 text-sm sm:px-4">
-            {links.map(l => <NavLink key={l.to} to={l.to} className={navClass}>{l.label}</NavLink>)}
-          </nav>
-        </details>
+        {menuOpen && (
+          <div id="public-menu" className="border-t border-ink/10 lg:hidden">
+            <nav aria-label={t('Pages')} className="mx-auto flex max-w-6xl flex-col px-2 py-2 text-base sm:px-4">
+              {links.map(l => <NavLink key={l.to} to={l.to} onClick={() => setMenuOpen(false)} className={navClass}>{l.label}</NavLink>)}
+            </nav>
+            <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 pb-3 sm:hidden"><LanguageSwitcher /><ThemeSwitcher /></div>
+          </div>
+        )}
       </header>
 
       <main id="main">{children}</main>

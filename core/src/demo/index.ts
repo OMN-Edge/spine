@@ -7,6 +7,7 @@ import { removeUploadFiles } from '../ingestion/remove-upload.js';
 import { startRestore } from '../archive/import-file.js';
 import { getJobStatus } from '../ingestion/jobs.js';
 import { demoRecords, type DemoLanguage } from './records.js';
+import { scheduleEpisodes } from '../episodes/index.js';
 
 /**
  * "Explore with sample records" (FR-ACC-03): invented records written into the person's own archive through the restore path
@@ -18,14 +19,18 @@ export async function loadDemo(userId: string, lang: DemoLanguage): Promise<'loa
   const store = getStore();
   if ((await store.sourceFiles.listFor(userId)).some(u => u.sample)) return 'already';
 
-  for (const demo of demoRecords(lang)) {
+  // Once every record is in, the episodes are looked for, as they are after an upload is read, so the samples show a suggested one.
+  const records = demoRecords(lang);
+  let left = records.length;
+  const oneDone = () => { if (--left === 0) scheduleEpisodes(userId, 0); };
+  for (const demo of records) {
     const { fileId, filePath } = newUploadPath(userId, '.pdf');
     await textToPdf(demo.text, filePath);
     const checksum = sha256Hex(fileSystem().readFileSync(filePath));
     await store.sourceFiles.create(userId, {
       id: fileId, uploadedAt: new Date().toISOString(), originalFilename: demo.file.original_filename, filePath, mimeType: 'application/pdf', checksum, sample: true, fromExport: true,
     });
-    startRestore(userId, fileId, filePath, false, demo.file, new Set(), []);
+    startRestore(userId, fileId, filePath, false, demo.file, new Set(), [], oneDone);
   }
   return 'loaded';
 }

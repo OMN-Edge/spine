@@ -139,10 +139,11 @@ try {
   await click('Agree and continue'); await waitFor('Protect your records');
   const pw = await p.$$('input[type=password]'); await pw[0].type(MASTER); await pw[1].type(MASTER); await click('Continue');
   await waitFor('recovery kit'); await (await p.$('input[type=checkbox]')).click(); await click('Continue');
-  await waitFor('Open your records'); await p.type('input[type=password]', MASTER); await click('Open');
+  // The records open with the password just chosen.
 
   // The sample records: results, doctors, and (with the real model) a suggested connection.
-  check(await waitFor('Welcome to Spine', 40000), 'the welcome opens');
+  await waitFor('take a look', 40000); await click('Getting started');
+  check(await waitFor('Welcome to Spine', 10000), 'the welcome opens from its note');
   const welcome = await text();
   check(!welcome.includes('What is an episode?') && welcome.includes('What can the assistant do?'), 'the welcome offers only the first steps');
   await click('Look around with sample records');

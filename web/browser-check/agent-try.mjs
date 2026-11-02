@@ -131,7 +131,7 @@ try {
   await click('Agree and continue'); await waitFor('Protect your records');
   const pw = await p.$$('input[type=password]'); await pw[0].type(MASTER); await pw[1].type(MASTER); await click('Continue');
   await waitFor('recovery kit'); await (await p.$('input[type=checkbox]')).click(); await click('Continue');
-  await waitFor('Open your records'); await p.type('input[type=password]', MASTER); await click('Open');
+  // The records open with the password just chosen.
   await waitFor('Get started', 40000);
   await go('/upload'); await waitFor('Upload');
   await (await p.$('input[type=file]')).uploadFile(upload);

@@ -57,20 +57,18 @@ import { Wordmark } from './components/Logo';
 import { msg, useI18n } from './i18n';
 import { LanguageSwitcher } from './components/LanguageSwitcher';
 import { ThemeSwitcher } from './components/ThemeSwitcher';
+import { AccountMenu, MORE_LINKS, MoreMenu, ReviewBadge, useReviewCount } from './components/TopBarMenus';
 
+/** The pages in the bar itself, in the order of the work: what is kept, adding to it, checking it, showing it, finding in it. The rest are under More. */
 const NAV_LINKS = [
   { to: '/', label: msg('Timeline') },
-  { to: '/episodes', label: msg('Episodes') },
   { to: '/upload', label: msg('Upload') },
   { to: '/review', label: msg('Review') },
-  { to: '/trends', label: msg('Trends') },
-  { to: '/doctors', label: msg('Doctors') },
-  { to: '/library', label: msg('Library') },
+  { to: '/share', label: msg('Share') },
   { to: '/search', label: msg('Search') },
-  { to: '/share', label: msg('Share links') },
 ];
-/** What the demo leaves out: there is no account to upload into or to share from, and nothing in it is kept. */
-const NOT_IN_DEMO = new Set(['/upload', '/share']);
+/** What the demo leaves out: there is no account to upload into or to share from, nothing in it is kept, and it has no emergency card. */
+const NOT_IN_DEMO = new Set(['/upload', '/share', '/emergency']);
 
 /**
  * Whether the person signed out on purpose, as opposed to a session that ended where they were. A session that ended sends them back to
@@ -117,9 +115,12 @@ function Layout({ children }: { children: React.ReactNode }) {
   const leave = async () => { await leaveDemo(); navigate('/'); };
   // Where the operator lets visitors read files of their own, the demo has Upload too.
   const links = demo ? NAV_LINKS.filter(link => !NOT_IN_DEMO.has(link.to) || (link.to === '/upload' && demoUploads)) : NAV_LINKS;
+  const more = demo ? MORE_LINKS.filter(link => !NOT_IN_DEMO.has(link.to)) : MORE_LINKS;
+  // How many documents wait, beside Review (the demo's records are asked too).
+  const waiting = useReviewCount(true);
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
-    `text-sm ${isActive ? 'text-gray-900 font-medium' : 'text-gray-600 hover:text-gray-900'}`;
+    `inline-flex items-center text-sm whitespace-nowrap ${isActive ? 'text-gray-900 font-medium' : 'text-gray-600 hover:text-gray-900'}`;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -136,35 +137,39 @@ function Layout({ children }: { children: React.ReactNode }) {
       )}
       <nav className="bg-white border-b border-gray-200">
         <div className="px-4 sm:px-6 py-3 flex items-center gap-6">
-          <Link to="/" className="mr-2 xl:mr-4" aria-label={t('Spine, home')}><Wordmark /></Link>
+          <Link to="/" className="mr-2 lg:mr-4" aria-label={t('Spine, home')}><Wordmark /></Link>
 
-          {/* wide screens (1280px and up, where it fits): everything in one row */}
-          <div className="hidden xl:flex items-center gap-6 flex-1">
+          {/* wide screens (1024px and up): the main pages, More, whose records are open, and the account's menu */}
+          <div className="hidden lg:flex items-center gap-6 flex-1">
             {links.map(link => (
-              <NavLink key={link.to} to={link.to} end={link.to === '/'} className={linkClass}>{t(link.label)}</NavLink>
+              <NavLink key={link.to} to={link.to} end={link.to === '/'} className={linkClass}>
+                {t(link.label)}{link.to === '/review' && <ReviewBadge count={waiting} />}
+              </NavLink>
             ))}
-            {people && <div className="ml-auto"><PersonMenu people={people} /></div>}
-            <LanguageSwitcher className={people ? '' : 'ml-auto'} />
-            <ThemeSwitcher />
-            {demo ? (
-              <button onClick={() => void leave()} className="text-sm text-gray-500 hover:text-gray-900">{t('Leave the demo')}</button>
-            ) : (
-              <>
-                <Link to="/account" className="text-sm text-gray-500 hover:text-gray-900 truncate max-w-[16rem]">{email}</Link>
-                <button onClick={() => void logout()} className="text-sm text-gray-500 hover:text-gray-900">{t('Sign out')}</button>
-              </>
-            )}
+            <MoreMenu links={more} />
+            <div className="ml-auto flex items-center gap-4">
+              {people && <PersonMenu people={people} />}
+              {demo ? (
+                <>
+                  <LanguageSwitcher />
+                  <ThemeSwitcher />
+                  <button onClick={() => void leave()} className="text-sm text-gray-500 hover:text-gray-900 whitespace-nowrap">{t('Leave the demo')}</button>
+                </>
+              ) : (
+                <AccountMenu email={email} onSignOut={() => void logout()} />
+              )}
+            </div>
           </div>
 
           {/* narrow screens: whose records are open, and a menu button */}
-          {people && <div className="xl:hidden ml-auto"><PersonMenu people={people} /></div>}
+          {people && <div className="lg:hidden ml-auto"><PersonMenu people={people} /></div>}
           <button
             type="button"
             onClick={() => setMenuOpen(open => !open)}
             aria-expanded={menuOpen}
             aria-controls="nav-menu"
             aria-label={menuOpen ? t('Close menu') : t('Open menu')}
-            className={`xl:hidden ${people ? '' : 'ml-auto'} -mr-2 p-2 rounded-lg text-gray-600 hover:bg-gray-100`}
+            className={`lg:hidden ${people ? '' : 'ml-auto'} -mr-2 p-2 rounded-lg text-gray-600 hover:bg-gray-100`}
           >
             <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden="true">
               {menuOpen ? <path d="M6 6l12 12M18 6L6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
@@ -173,19 +178,31 @@ function Layout({ children }: { children: React.ReactNode }) {
         </div>
 
         {menuOpen && (
-          <div id="nav-menu" className="xl:hidden border-t border-gray-100 px-4 pb-3">
+          <div id="nav-menu" className="lg:hidden border-t border-gray-100 px-4 pb-3">
             {links.map(link => (
               <NavLink
                 key={link.to} to={link.to} end={link.to === '/'}
+                className={({ isActive }) => `flex items-center py-3 text-base border-b border-gray-100 ${isActive ? 'text-gray-900 font-medium' : 'text-gray-600'}`}
+              >
+                {t(link.label)}{link.to === '/review' && <ReviewBadge count={waiting} />}
+              </NavLink>
+            ))}
+            <p className="pt-4 pb-1 text-xs font-medium uppercase tracking-wide text-gray-400">{t('More')}</p>
+            {more.map(link => (
+              <NavLink
+                key={link.to} to={link.to}
                 className={({ isActive }) => `block py-3 text-base border-b border-gray-100 ${isActive ? 'text-gray-900 font-medium' : 'text-gray-600'}`}
               >
                 {t(link.label)}
               </NavLink>
             ))}
             {!demo && (
-              <Link to="/account" className="block py-3 text-base text-gray-600 border-b border-gray-100 truncate">
-                {t('Account')} <span className="text-gray-500">· {email}</span>
-              </Link>
+              <>
+                <p className="pt-4 pb-1 text-xs font-medium uppercase tracking-wide text-gray-400">{t('Account')}</p>
+                <Link to="/account" className="block py-3 text-base text-gray-600 border-b border-gray-100 truncate">
+                  {t('Account')} <span className="text-gray-500">· {email}</span>
+                </Link>
+              </>
             )}
             <div className="py-3 flex items-center gap-2"><LanguageSwitcher /><ThemeSwitcher /></div>
             {demo

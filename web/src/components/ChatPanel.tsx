@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
 import { type ChatSource, type ChatStep } from '../api';
 import { useI18n } from '../i18n';
-import { PAGE_NAMES, useChat } from './ChatProvider';
+import { pageName, useChat } from './ChatProvider';
 import Markdown from './Markdown';
 import ProposalCard from './ProposalCard';
 import { draftText, stepText } from './chatSteps';
 import UploadNoticeMessage, { RegroupNoticeMessage } from './UploadNoticeMessage';
 import AttachmentMessage from './AttachmentMessage';
 import { ChatWelcome, HelpMessage } from './ChatWelcome';
+import { routeFiles } from '../scan/route';
 import { useGuide } from '../guide';
 import AnswerSources, { chipClass, numbered, sourceFor, useSourceName } from './AnswerSources';
 
@@ -31,6 +32,7 @@ export default function ChatPanel() {
   const nameOf = useSourceName();
   const chat = useChat();
   const navigate = useNavigate();
+  const location = useLocation();
   const { demo } = useAuth();
   const guide = useGuide();
   const [text, setText] = useState('');
@@ -73,16 +75,6 @@ export default function ChatPanel() {
     return () => window.removeEventListener('keydown', onKey);
   }, [open, view, chat]);
 
-  // The first time ever, the chat opens by itself on the welcome (guide.tsx says when); once, and never over a conversation already open.
-  const welcomed = useRef(false);
-  useEffect(() => {
-    if (!chat?.enabled || guide?.welcome !== 'open' || welcomed.current) return;
-    welcomed.current = true;
-    if (chat.unread > 0) return;
-    chat.startNew();
-    chat.setOpen(true);
-  }, [chat?.enabled, guide?.welcome]); // eslint-disable-line react-hooks/exhaustive-deps
-
   if (!chat || !chat.enabled) return null;
   const { turns, busy, conversations, draft } = chat;
   const stepLine = (step: ChatStep) => stepText(t, step);
@@ -100,11 +92,13 @@ export default function ChatPanel() {
     else await chat.send(question);
   };
   // Pasting a file (a screenshot or a document copied in Finder or Files), dropping one, or choosing one all add it to the message.
-  // A photo is scanned first (pages/Scan.tsx: the page found, its corners moved if need be), as on the Upload page, so it goes there and not into the message; a HEIC photo has no preview in a browser and stays attached.
-  const addFiles = (list: FileList | File[] | null | undefined) => {
+  // A picture is scanned first (pages/Scan.tsx: the page found, its corners moved if need be), as on the Upload page, so it goes there and not into the message;
+  // one this browser cannot draw (HEIC in Chrome) stays attached (scan/route.ts).
+  const addFiles = async (list: FileList | File[] | null | undefined) => {
     const chosen = Array.from(list ?? []).filter(f => f.size > 0);
-    const photos = demo ? [] : chosen.filter(f => f.type === 'image/jpeg' || f.type === 'image/png');
-    const added = chosen.filter(f => !photos.includes(f));
+    const routed = demo ? { scan: [], upload: chosen } : await routeFiles(chosen);
+    const photos = routed.scan;
+    const added = routed.upload;
     if (added.length > 0) setFiles(prev => [...prev, ...added].slice(0, 20));
     if (photos.length > 0) { chat?.setOpen(false); navigate('/scan', { state: { files: photos, conversationId: chat?.currentId ?? null, fromChat: true } }); }
   };
@@ -165,7 +159,7 @@ export default function ChatPanel() {
           <h2 className="truncate text-[0.95rem] font-medium text-gray-900">{view === 'history' ? t('Conversations') : (chat.origin || turns[0]?.notice || turns[0]?.regroupNotice ? t(chat.title ?? '') : (chat.title ?? t('Ask your records')))}</h2>
           <p className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-gray-400">
             <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden="true" />
-            {t('Looking at: {page}', { page: t(PAGE_NAMES[chat.page] ?? PAGE_NAMES.other) })}
+            {t('Looking at: {page}', { page: t(pageName(chat.page, location.pathname)) })}
           </p>
         </div>
         <div className="flex shrink-0 items-center">

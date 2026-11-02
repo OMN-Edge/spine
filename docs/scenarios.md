@@ -110,10 +110,11 @@ Status: auto (`auth`, `second-factor`, `vault`, `web/src/crypto`).
 ### 1.6 An account with no vault
 An account the operator made, or one from before the vault, signs in and, after agreeing to the texts, is asked to choose a master password and shown its recovery kit before anything else.
 
+- The two screens say which step they are (choosing the password, then saving the recovery kit). Once the kit is saved, the records open with the password just chosen: it is not asked for again until a reload.
 - The password it signed in with is replaced by the new one; nothing about the new one is sent.
 - The operator cannot choose a password for an account that has a vault; `set-password` refuses, and the way back is a reset link and the kit.
 
-Status: auto (`vault`, `cli`).
+Status: auto (`vault`, `cli`); real browser (`check:app`: the records open after the kit without the unlock screen).
 
 ---
 
@@ -138,23 +139,23 @@ Status: auto (`enrolment`, `crypto/enrolment`); a third browser let in with a co
 - Signing up asks for two separate ticks: consent to the use of health data (with the privacy notice), and acceptance of the terms. Neither is implied by the other and the account is not made on one.
 - An account the operator made, or any account after a text changed, sees a screen asking for what is missing before anything else, and can leave from it by deleting the account.
 - The privacy notice, the terms and what Spine is for are public pages, linked from every sign-in page.
-- The account page lists which features send what to which model provider, exports everything (the vault is open, so the master password was used), and deletes the account after the address is written out (and the password typed again if it was not typed in the last ten minutes).
+- The account page lists which features send what to which model provider, or, where the instance has no relay and so no model can be called, says nothing is sent to one (not the provider the device would use by default); it exports everything (the vault is open, so the master password was used), and deletes the account after the address is written out (and the password typed again if it was not typed in the last ten minutes).
 
 Status: auto (`own-account`, `accounts`); screens: hand.
 
 ## 2. Getting documents in
 
 ### 2.0 Look around before uploading
-- On an empty timeline, Explore with sample records adds five invented documents (English or Romanian, by the interface language) about nobody: a consultation, two blood tests with the same five tests, a prescription and a chest X-ray. Nothing is read by a model and nothing leaves the host.
+- On an empty timeline, Explore with sample records adds five invented documents (English or Romanian, by the interface language) about nobody: a consultation, two blood tests with the same five tests, a prescription and a chest X-ray a week after it. The X-ray is left waiting for review and the prescription and the X-ray are suggested as an episode, so Review and Episodes have something to show. Nothing is read by a model and nothing leaves the host.
 - A banner says they are samples. Remove the sample records takes away exactly them, not anything uploaded since.
 - They are that account's own records: they can be searched, charted, shared and edited like any other, and no other account sees them.
 
 Status: auto (`demo`); screens: hand.
 
 ### 2.0a Being shown where to start, and asking how Spine works
-- The first time the records are opened with nothing uploaded, the chat opens on a welcome: what Spine does, Add a document, Look around with sample records, and questions about how it works (adding, the grouping, the "check" marks, sharing, privacy, the master password, the assistant).
+- The first times the records are opened with nothing uploaded, a note beside Ask offers a welcome; the chat does not open over the page by itself. The welcome says what Spine does, offers Add a document, Look around with sample records (not once they are in), and questions about how it works (adding, the grouping, the "check" marks, sharing, privacy, the master password, the assistant).
 - A question about Spine is answered at once in the person's language, from Spine's own help and not by the model, in their Getting started conversation (or the conversation they are in); the answer says where it came from.
-- The welcome does not open by itself again. The next three times a note beside Ask offers it and can be put away; after that nothing. Anything done from it, or a first upload, ends it, and a second device does not greet again.
+- The note shows the first four times and can be put away; after that nothing. Anything done from it, or a first upload, ends it, and a second device does not greet again.
 - The empty timeline has a Get started list (add a document, review what was read, share it) that ticks itself off from the person's own uploads, reviewed documents and links, not the sample records, and goes when done or hidden.
 - A tip appears once the first time an upload waits for its grouping, documents have been read, and a link has been made; Got it puts it away for good, Tell me more opens the answer about it in the chat.
 - A tip also appears the first time a document has results (they are on Trends too), names doctors (they are kept on Doctors, and a possible duplicate is asked about, never merged by itself) or has a suggested connection (it stays a suggestion until confirmed); a document page shows one at a time. The results and doctors tips are also on the Trends and Doctors pages, and Got it in either place puts both away.
@@ -271,13 +272,15 @@ Status: auto (`pipeline`, `upload`, `resume-stalled`); the Try again button, clo
 ---
 
 ### 2.8 Scan paper with the camera
-- There is no Scan button: a photo, taken with the phone's own camera or chosen, goes to Scan from the Upload page's picker, and the page is found and the corners can be moved before it is straightened.
+- There is one way in: the Upload area (or the chat's paperclip). A picture chosen, dropped or taken with the phone's own camera from the picker goes to Scan by itself, and everything else is uploaded as it is (`web/src/scan/route.ts`). An iPhone's HEIC photo goes to Scan where the browser can draw it (Safari) and is uploaded as it is where it cannot (Chrome), the server making it a JPEG. Other picture types the browser draws, such as WebP, go to Scan too.
+- Where a page is found, its corners are shown to check and it is cleaned up. Where none is (a screenshot, an image a clinic sent), the whole picture becomes the page as it is, with no corners asked for and no clean-up.
+- Pictures are offered wherever something can read them: local OCR on the device (then the Upload page says nothing of them is sent to a model) or the model where image reading is allowed.
 - The four corners can be moved by hand; the page is then straightened and, unless turned off for that page, cleaned up (shadows and fading flattened, handwriting kept). All of it happens on the device.
 - Everything is on the one screen: the pages stay in view as they are added, and each can be moved, have its corners redone (a sheet over the same screen), be filtered or be removed in place; "Add a page" is at the end of them, and the set is saved as one document, which the grouping screen can split afterwards. The photos as taken are kept beside it.
 - Photos chosen on the Upload page, or attached in the chat, go to Scan first (one photo: its corners are shown; several: each is added with the page found in it). A photo attached in the chat comes back to that conversation after Save, and the report of reading it is written there (`POST /api/chat/attachments?photos=1`).
 - Where neither image reading nor local OCR is switched on, Scan says so instead of filling the archive with pages nobody can search.
 
-Status: auto (`scan`, web algorithms; `photo-set`); screens and the camera itself: hand.
+Status: auto (`scan`, web algorithms; `photo-set`; `web/src/scan/route.test.ts`: which files go to Scan, and a picture with no page kept as it is); screens and the camera itself: hand.
 
 ## 3. Checking what was read
 
@@ -542,7 +545,7 @@ Status: auto (`chat`, `chat-agent`: search by dates and filters, links in the re
 ## 7. Sharing with a doctor
 
 ### 7.1 Send a doctor what they need
-The owner creates a link scoped to everything, a tag, chosen documents, or a date range, and sends it. Making one: a tag is picked from a dropdown of the account's tags; documents are picked from a searchable list with checkboxes; a date range is two dates. The form says how many documents the link would share and will not create one that is incomplete. Each link in the list says what it shares.
+The owner creates a link scoped to chosen documents, a tag, episodes, a date range or everything, and sends it. Nothing is chosen at first, so a link never shares everything because a default was left as it was. Making one: a tag is picked from a dropdown of the account's tags; documents are picked from a searchable list with checkboxes; a date range is two dates. The form says how many documents the link would share and will not create one that is incomplete. Each link in the list says what it shares.
 
 - The link shows only what the scope allows; a scope that cannot be fully worked out is refused at creation, and a copy that cannot be built from a stored scope shares nothing.
 - It expires (default 7 days, at most 30) and can be revoked at once.
@@ -680,7 +683,8 @@ Status: auto (`archive`).
 
 ### 10.1 Use it from a phone
 - The screens fit a 390-pixel-wide phone with no sideways scrolling.
-- Navigation collapses to a menu (below 1280 px, where the full header no longer fits), and the upload page offers the file picker instead of drag and drop.
+- The top bar has five pages (Timeline, Upload, Review with the number of documents waiting, Share, Search), More (Episodes, Trends, Doctors, Library, the emergency card) and one round button for the account (the address, Account, Add or manage people, the language and the look, Sign out). Below 1024 px it collapses to a menu with the same groups, and the upload page offers the file picker instead of drag and drop.
+- The pages before an account have a menu button on a phone instead of an open list, with the language and the look in it, so the name Spine and Sign in keep their room.
 - The spine, document page, trends, doctors, search and grouping screens use the same data as on a desktop, laid out in one column.
 
 Status: hand (2026-10-27, headless Chrome: the eleven signed-in screens at 390 px, and the timeline at 390, 768, 1024, 1279 and 1280 px, none scrolled sideways).
@@ -973,4 +977,4 @@ Still open:
 
 ## Not covered yet
 
-Things people will reasonably ask for that no scenario above promises: other photo formats such as WebP, signed exports (an imported export is believed; SECURITY.md S-26), reminders for follow-ups the documents mention, sharing a chart, and merging two uploads' history. Add a scenario when one is wanted.
+Things people will reasonably ask for that no scenario above promises: other photo formats such as WebP where the browser cannot draw them, signed exports (an imported export is believed; SECURITY.md S-26), reminders for follow-ups the documents mention, sharing a chart, and merging two uploads' history. Add a scenario when one is wanted.

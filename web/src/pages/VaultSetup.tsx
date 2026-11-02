@@ -45,6 +45,10 @@ export default function VaultSetup({ done }: { done: () => void }) {
     try {
       await api.auth.createVault(account);
       vaultState.adopt(VaultSession.adopt(account.unlocked, account.keys));
+      // The records open with the password chosen a moment ago, as the unlock screen would open them, instead of asking for it again.
+      // If that fails, the unlock screen asks: nothing is lost.
+      await vaultState.unlock(password).catch(() => undefined);
+      setPassword(''); setAgain('');
       done();
     } catch (err) {
       setError(err instanceof Error ? err.message : t('Something went wrong. Try again.'));
@@ -56,14 +60,17 @@ export default function VaultSetup({ done }: { done: () => void }) {
   const signOut = async () => { await api.auth.logout(); setAuthenticated(false); };
 
   return (
-    <AuthCard title={t('Protect your records')} footer={<button type="button" onClick={signOut} className="text-brand-600">{t('Sign out')}</button>}>
+    <AuthCard title={account ? t('Save your recovery kit') : t('Protect your records')} footer={<button type="button" onClick={signOut} className="text-brand-600">{t('Sign out')}</button>}>
       {account ? (
         <>
+          <p className="text-xs font-medium uppercase tracking-wide text-gray-400 mb-2">{t('Step {n} of {total}', { n: 2, total: 2 })}</p>
           <RecoveryKit recoveryKey={account.recoveryKey} email={email} onDone={save} busy={busy} />
+          {busy && <p role="status" className="text-sm text-gray-500 mt-2">{t('Opening your records…')}</p>}
           {error && <Notice kind="error">{error}</Notice>}
         </>
       ) : (
         <form onSubmit={choose}>
+          <p className="text-xs font-medium uppercase tracking-wide text-gray-400 mb-2">{t('Step {n} of {total}', { n: 1, total: 2 })}</p>
           <p className="text-sm text-gray-600 mb-4">{t('Your records will be locked with a key made from a master password. Spine never receives that password and cannot reset it for you. Choose a new one; it replaces the password you signed in with.')}</p>
           <input type="password" placeholder={t('Master password (at least 12 characters)')} autoComplete="new-password" autoFocus
             value={password} onChange={e => setPassword(e.target.value)} className={inputClass} />

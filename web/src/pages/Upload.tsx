@@ -6,6 +6,7 @@ import { failureKind } from 'spine-core/failure-kind';
 import { documentTitle } from '../titles';
 import { whereTo } from '../components/aiTarget';
 import DeleteUpload from '../components/DeleteUpload';
+import { routeFiles } from '../scan/route';
 import { msg, useI18n } from '../i18n';
 import type { I18n } from '../i18n';
 import { useAuth } from '../auth';
@@ -228,13 +229,17 @@ export default function Upload() {
   const [refused, setRefused] = useState<Array<{ name: string; reason: string }>>([]);
   // What each zip turned out to be.
   const [zips, setZips] = useState<ZipSummary[]>([]);
-  // Photos are read by the model, so they are offered only where the operator has allowed images to leave.
-  const [photos, setPhotos] = useState<{ enabled: boolean; where: string } | null>(null);
+  // Pictures are offered where something can read them: local OCR on this device (scanned pages), or the model where the operator has
+  // allowed images to leave. The demo has no Scan and no OCR, so there only the model reads them.
+  const [photos, setPhotos] = useState<{ enabled: boolean; where: string; onDevice: boolean } | null>(null);
   useEffect(() => {
     api.sourceFiles.capabilities()
-      .then(c => setPhotos({ enabled: c.aiReading.enabled, where: whereTo(c.aiReading) }))
-      .catch(() => setPhotos({ enabled: false, where: '' }));
-  }, []);
+      .then(c => {
+        const onDevice = !demo && (c.reading.mode === 'ocr' || c.reading.mode === 'hybrid') && c.reading.ocr;
+        setPhotos({ enabled: c.aiReading.enabled || onDevice, where: whereTo(c.aiReading), onDevice });
+      })
+      .catch(() => setPhotos({ enabled: false, where: '', onDevice: false }));
+  }, [demo]);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const update = useCallback((key: string, patch: Partial<JobState>) => {
@@ -308,12 +313,13 @@ export default function Upload() {
     countOwn();
   }, [pollStatus, update, t, countOwn]);
 
-  // Photos are scanned first: the page found, its corners moved if need be, then saved as one document (pages/Scan.tsx). Whatever else was chosen goes as it always did. The demo has no scanning, so its photos go as they are.
+  // Pictures are scanned first: the page found, its corners moved if need be, then saved as one document (pages/Scan.tsx); which ones is
+  // scan/route.ts's to say. Whatever else was chosen goes as it always did. The demo has no scanning, so its pictures go as they are.
   const handleFiles = useCallback(async (fileList: FileList) => {
     const files = Array.from(fileList);
-    const isPhoto = (f: File) => f.type === 'image/jpeg' || f.type === 'image/png'; // a HEIC photo has no preview in a browser, so it goes as its own upload
-    const photoFiles = demo ? [] : files.filter(isPhoto);
-    const others = files.filter(f => !photoFiles.includes(f));
+    const routed = demo ? { scan: [], upload: files } : await routeFiles(files);
+    const photoFiles = routed.scan;
+    const others = routed.upload;
     if (others.length > 0) handleResults(await api.sourceFiles.upload(others));
     if (photoFiles.length > 0) navigate('/scan', { state: { files: photoFiles } });
   }, [demo, handleResults, navigate]);
@@ -343,16 +349,18 @@ export default function Upload() {
       >
         {/* A phone has nothing to drag from; it gets the file picker  */}
         <p className="text-gray-500 sm:mb-2">
-          <span className="hidden sm:inline">{photos?.enabled ? t('Drag & drop PDFs or photos here') : t('Drag & drop PDFs here')}</span>
-          <span className="sm:hidden">{photos?.enabled ? t('Tap to choose PDFs or photos') : t('Tap to choose PDFs')}</span>
+          <span className="hidden sm:inline">{photos?.enabled ? t('Drag & drop PDFs, Word files, photos or a zip here') : t('Drag & drop PDFs, Word files or a zip here')}</span>
+          <span className="sm:hidden">{photos?.enabled ? t('Tap to choose PDFs, Word files or photos') : t('Tap to choose PDFs or Word files')}</span>
         </p>
         <p className="hidden text-sm text-gray-400 sm:block">{t('or click to browse')} — {t('up to 200 MB per file')}</p>
-        {photos?.enabled && photos.where && <p className="text-xs text-gray-400 mt-2">{t('A photo is sent to {where} to be read. A PDF with a text layer sends no image.', { where: photos.where })}</p>}
+        {photos?.onDevice
+          ? <p className="text-xs text-gray-400 mt-2">{t('A photo goes to Scan to be straightened, and is read on this device: nothing of it is sent to a model.')}</p>
+          : photos?.enabled && photos.where && <p className="text-xs text-gray-400 mt-2">{t('A photo is sent to {where} to be read. A PDF with a text layer sends no image.', { where: photos.where })}</p>}
         <input
           ref={fileRef}
           type="file"
           multiple
-          accept={photos?.enabled ? DOCUMENT_TYPES + ',image/jpeg,image/png,image/heic,image/heif,.heic,.heif' : DOCUMENT_TYPES}
+          accept={!photos?.enabled ? DOCUMENT_TYPES : demo ? DOCUMENT_TYPES + ',image/jpeg,image/png,image/heic,image/heif,.heic,.heif' : DOCUMENT_TYPES + ',image/*,.heic,.heif'}
           className="hidden"
           onChange={e => {
             if (e.target.files?.length) handleFiles(e.target.files);
@@ -362,6 +370,7 @@ export default function Upload() {
           }}
         />
       </div>
+
 
       </>)}
 

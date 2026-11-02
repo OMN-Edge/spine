@@ -64,7 +64,16 @@ describe.skipIf(!hasPoppler)('POST /api/demo', () => {
 
     const docs = (await call('GET', '/api/documents')).json() as Array<{ id: string; reviewed: boolean; doc_type: string }>;
     expect(docs).toHaveLength(5);
-    expect(docs.every(d => d.reviewed)).toBe(true);
+    // One is left to review, so the samples show what checking a reading is like; the rest are reviewed.
+    expect(docs.filter(d => !d.reviewed).map(d => d.doc_type)).toEqual(['imaging']);
+    // And the visit's prescription and the X-ray a week later are suggested as an episode, as they would be after an upload.
+    let episodes: Array<{ state: string; document_ids: string[] }> = [];
+    for (let i = 0; i < 50 && episodes.length === 0; i++) {
+      episodes = (await call('GET', '/api/episodes')).json();
+      if (episodes.length === 0) await new Promise(r => setTimeout(r, 100));
+    }
+    expect(episodes.map(e => e.state)).toEqual(['proposed']);
+    expect(episodes[0].document_ids.map(id => docs.find(d => d.id === id)?.doc_type).sort()).toEqual(['imaging', 'prescription']);
     const trend = (await call('GET', '/api/measurements/series?name=ldl%20cholesterol')).json() as { points: Array<{ value_num: number }> };
     expect(trend.points).toHaveLength(2);
     // Each has a page to look at.

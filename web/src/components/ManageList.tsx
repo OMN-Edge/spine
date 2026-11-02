@@ -56,7 +56,7 @@ export default function ManageList({ items, filterLabel, removeLabel, removeWarn
       {shown.length === 0 ? <p className="text-sm text-gray-400">{t('Nothing matches.')}</p> : (
         <ul className="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100">
           {shown.map(item => (
-            <li key={item.key} className="px-4 py-3">
+            <li key={item.key} className="group px-4 py-3">
               <div className="flex items-center justify-between gap-3">
                 <span className="min-w-0">
                   {item.href
@@ -64,9 +64,10 @@ export default function ManageList({ items, filterLabel, removeLabel, removeWarn
                     : <span className="block text-sm font-medium text-gray-900 truncate">{item.name}</span>}
                   <span className="block text-xs text-gray-400">{item.count}</span>
                 </span>
-                <span className="flex gap-3 text-xs shrink-0">
+                {/* Where there is a pointer, the actions show on the row it is over (or one tabbed into), so the list reads as names, not as a column of red. */}
+                <span className="flex gap-3 text-xs shrink-0 transition-opacity [@media(hover:hover)]:opacity-0 group-hover:opacity-100 group-focus-within:opacity-100">
                   <button type="button" className="text-brand-600 hover:underline" onClick={() => { setError(''); setMessage(''); setRemoving(null); setEditing({ key: item.key, name: item.name }); }}>{t('Rename or merge')}</button>
-                  <button type="button" className="text-red-600 hover:underline" onClick={() => { setError(''); setMessage(''); setEditing(null); setRemoving(item.key); }}>{removeLabel}</button>
+                  <button type="button" className="text-gray-500 hover:text-red-600 hover:underline" onClick={() => { setError(''); setMessage(''); setEditing(null); setRemoving(item.key); }}>{removeLabel}</button>
                 </span>
               </div>
 
