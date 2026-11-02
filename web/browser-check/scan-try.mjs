@@ -161,8 +161,7 @@ try {
   // The records open with the password just chosen.
   check(await waitFor('Explore with sample records', 40000), 'the vault opens and the empty timeline shows');
 
-  // The first time, the chat opens on its welcome; put it away to get at the page.
-  if (await waitUntil(() => /Welcome to Spine/.test(document.body.innerText), 15000)) { await (await p.$('button[aria-label="Close"]')).click(); await wait(500); }
+  // The chat does not open by itself any more; the page is there at once.
   // The chat button: it was never shown for a real account, because chat was asked about before the vault was open.
   const ask = await waitUntil(() => !!document.querySelector('button[aria-label^="Ask your records"]'), 15000);
   check(ask, 'the Ask button is there once the vault is open');

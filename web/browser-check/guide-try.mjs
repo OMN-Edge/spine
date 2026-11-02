@@ -141,8 +141,10 @@ try {
   await waitFor('recovery kit'); await (await p.$('input[type=checkbox]')).click(); await click('Continue');
   // The records open with the password just chosen.
 
-  // 1. The first time: the chat opens on the welcome by itself.
-  check(await waitFor('Welcome to Spine', 40000), 'the first time, the chat opens on the welcome');
+  // 1. The first time: a note beside Ask offers the welcome; the chat does not open over the page by itself.
+  check(await waitFor('take a look', 40000) && !(await panelOpen()), 'the first time, a note offers the welcome and the chat stays closed');
+  await click('Getting started');
+  check(await waitFor('Welcome to Spine', 10000), 'the note opens the chat on the welcome');
   await wait(400); await shot('g1-welcome');
   await click('How is my data kept private?');
   check(await waitFor('Your records are locked on this device', 15000), 'a question about Spine is answered with the fixed text');

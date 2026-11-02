@@ -73,16 +73,6 @@ export default function ChatPanel() {
     return () => window.removeEventListener('keydown', onKey);
   }, [open, view, chat]);
 
-  // The first time ever, the chat opens by itself on the welcome (guide.tsx says when); once, and never over a conversation already open.
-  const welcomed = useRef(false);
-  useEffect(() => {
-    if (!chat?.enabled || guide?.welcome !== 'open' || welcomed.current) return;
-    welcomed.current = true;
-    if (chat.unread > 0) return;
-    chat.startNew();
-    chat.setOpen(true);
-  }, [chat?.enabled, guide?.welcome]); // eslint-disable-line react-hooks/exhaustive-deps
-
   if (!chat || !chat.enabled) return null;
   const { turns, busy, conversations, draft } = chat;
   const stepLine = (step: ChatStep) => stepText(t, step);

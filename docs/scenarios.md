@@ -153,9 +153,9 @@ Status: auto (`own-account`, `accounts`); screens: hand.
 Status: auto (`demo`); screens: hand.
 
 ### 2.0a Being shown where to start, and asking how Spine works
-- The first time the records are opened with nothing uploaded, the chat opens on a welcome: what Spine does, Add a document, Look around with sample records, and questions about how it works (adding, the grouping, the "check" marks, sharing, privacy, the master password, the assistant).
+- The first times the records are opened with nothing uploaded, a note beside Ask offers a welcome; the chat does not open over the page by itself. The welcome says what Spine does, offers Add a document, Look around with sample records (not once they are in), and questions about how it works (adding, the grouping, the "check" marks, sharing, privacy, the master password, the assistant).
 - A question about Spine is answered at once in the person's language, from Spine's own help and not by the model, in their Getting started conversation (or the conversation they are in); the answer says where it came from.
-- The welcome does not open by itself again. The next three times a note beside Ask offers it and can be put away; after that nothing. Anything done from it, or a first upload, ends it, and a second device does not greet again.
+- The note shows the first four times and can be put away; after that nothing. Anything done from it, or a first upload, ends it, and a second device does not greet again.
 - The empty timeline has a Get started list (add a document, review what was read, share it) that ticks itself off from the person's own uploads, reviewed documents and links, not the sample records, and goes when done or hidden.
 - A tip appears once the first time an upload waits for its grouping, documents have been read, and a link has been made; Got it puts it away for good, Tell me more opens the answer about it in the chat.
 - A tip also appears the first time a document has results (they are on Trends too), names doctors (they are kept on Doctors, and a possible duplicate is asked about, never merged by itself) or has a suggested connection (it stays a suggestion until confirmed); a document page shows one at a time. The results and doctors tips are also on the Trends and Doctors pages, and Got it in either place puts both away.
