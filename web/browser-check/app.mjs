@@ -267,6 +267,11 @@ try {
   seen = () => last;
   const wait = ms => new Promise(r => setTimeout(r, ms));
   const waitFor = async (what, ms = 20000) => { for (let t = 0; t < ms; t += 250) { if ((await text()).includes(what)) return true; await wait(250); } return false; };
+  // The account page is reached from the account's menu in the top bar: the menu is opened and its link waited for, not looked for by text.
+  const openAccount = async () => {
+    await p.click('nav button[aria-label="Account and settings"]');
+    await (await p.waitForSelector('[role=menu] a[href="/account"]', { visible: true })).click();
+  };
   // Sign out is in the account's menu in the top bar; the account page has buttons of its own that start the same way (the sessions').
   const signOut = async () => {
     await p.click('nav button[aria-label="Account and settings"]');
@@ -892,7 +897,7 @@ try {
   // Records for more than one person: a second person starts empty, is opened and saved apart, and the first person's records are back on
   // opening them again, without the master password being asked for again.
   {
-    await click('Account'); // in the account's menu in the top bar
+    await openAccount();
     check(await waitFor('See and add people'), 'the account page offers people');
     await click('See and add people');
     check(await waitFor('Add a person'), 'the page of people opens');
@@ -1173,7 +1178,7 @@ try {
     await cdp.send('WebAuthn.enable');
     await cdp.send('WebAuthn.addVirtualAuthenticator', { options: { protocol: 'ctap2', ctap2Version: 'ctap2_1', transport: 'internal', hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true, hasPrf: true } });
     const reauth = async () => { for (let t = 0; t < 4000; t += 250) { if (await p.$('[role=dialog] input[type=password]')) { await p.type('[role=dialog] input[type=password]', password); await p.keyboard.press('Enter'); return; } await wait(250); } };
-    await click('Account'); // in the account's menu in the top bar
+    await openAccount();
     check(await waitFor('Add a passkey on this device'), 'the account page offers passkeys');
     check((await text()).includes('they lose access to them when this account is deleted'), 'deleting the account says that the people let into its records lose them');
     await click('Add a passkey on this device');
