@@ -146,7 +146,7 @@ Status: auto (`own-account`, `accounts`); screens: hand.
 ## 2. Getting documents in
 
 ### 2.0 Look around before uploading
-- On an empty timeline, Explore with sample records adds five invented documents (English or Romanian, by the interface language) about nobody: a consultation, two blood tests with the same five tests, a prescription and a chest X-ray. Nothing is read by a model and nothing leaves the host.
+- On an empty timeline, Explore with sample records adds five invented documents (English or Romanian, by the interface language) about nobody: a consultation, two blood tests with the same five tests, a prescription and a chest X-ray a week after it. The X-ray is left waiting for review and the prescription and the X-ray are suggested as an episode, so Review and Episodes have something to show. Nothing is read by a model and nothing leaves the host.
 - A banner says they are samples. Remove the sample records takes away exactly them, not anything uploaded since.
 - They are that account's own records: they can be searched, charted, shared and edited like any other, and no other account sees them.
 

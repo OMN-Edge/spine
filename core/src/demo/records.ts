@@ -72,7 +72,7 @@ function record(text: string, fileName: string, doc: ManifestDocument): DemoReco
 export function demoRecords(lang: DemoLanguage, now = new Date()): DemoRecord[] {
   const w = WORDS[lang];
   const ro = lang === 'ro';
-  const visit = monthsAgo(now, 14, 12); const labOne = monthsAgo(now, 8, 3); const labTwo = monthsAgo(now, 2, 5); const xray = monthsAgo(now, 2, 9);
+  const visit = monthsAgo(now, 14, 12); const labOne = monthsAgo(now, 8, 3); const labTwo = monthsAgo(now, 2, 5); const xray = monthsAgo(now, 8, 9);
 
   const field = (label: string, value: string, group: number | null = null) => ({ label, value, group_no: group, page: 1, source_snippet: null, bbox: null, confidence: 1, owner_edited: false });
 
@@ -131,7 +131,7 @@ export function demoRecords(lang: DemoLanguage, now = new Date()): DemoRecord[] 
   const imaging = record(imagingText, ro ? 'radiografie-exemplu.pdf' : 'sample-chest-xray.pdf', {
     page_start: 1, page_end: 1, title: ro ? 'Radiografie toracică' : 'Chest X-ray', doc_date: xray, provider: w.clinic, doc_type: 'imaging',
     ai_summary: ro ? 'Radiografie toracică; raportul scrie că nu există modificări.' : 'Chest X-ray; the report states that there are no changes.',
-    user_notes: null, language: lang, reviewed: true, tags: ['imaging'],
+    user_notes: null, language: lang, reviewed: false, tags: ['imaging'],
     doctors: [{ name: w.radio, specialty: ro ? 'radiologie' : 'radiology', clinic: w.clinic, license_code: null, role: 'author', person: null, source: 'text', printed_code: null }],
     fields: [
       field('modality', ro ? 'radiografie' : 'X-ray'), field('body_part', ro ? 'torace' : 'chest'),
