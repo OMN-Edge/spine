@@ -352,7 +352,7 @@ try {
   p.on('dialog', d => void d.accept());
   await click('Share');
   check(await waitFor('Create share link'), 'the share page opens from the device');
-  await click('Create link');
+  await choose('What to share', 'All history'); await click('Create link');
   check(await waitFor('Link created', 40000), 'a link is made and sent to the server sealed');
   const direct = (await text()).match(/https?:\/\/\S+\/share\/\S+/)?.[0] ?? '';
   const key = direct.split('#')[1] ?? '';
@@ -410,7 +410,7 @@ try {
   for (const label of ['Include scans of the original pages', 'Let the recipient ask questions']) {
     await (await p.evaluateHandle(l => [...document.querySelectorAll('label')].find(e => e.innerText.includes(l)).querySelector('input'), label)).asElement().click();
   }
-  await click('Create link');
+  await choose('What to share', 'All history'); await click('Create link');
   check(await waitFor('Link created', 40000), 'a link with scans and questions is made');
   const full = (await text()).match(/https?:\/\/\S+\/share\/\S+/)?.[0] ?? '';
   const fullContext = await browser.createBrowserContext();
@@ -504,7 +504,7 @@ try {
   await p.waitForSelector('input[type=checkbox]');
   const boxes = await p.$$('input[type=checkbox]');
   await boxes[2].click();
-  await click('Create link');
+  await choose('What to share', 'All history'); await click('Create link');
   check(await waitFor('Link created', 40000), 'a link that needs approval is made');
   const gated = (await text()).match(/https?:\/\/\S+\/share\/[A-Za-z0-9_-]+(#\S*)?/g)?.pop() ?? '';
   check(gated.length > 0 && !gated.includes('#'), 'its address has no key in it');

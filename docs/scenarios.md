@@ -543,7 +543,7 @@ Status: auto (`chat`, `chat-agent`: search by dates and filters, links in the re
 ## 7. Sharing with a doctor
 
 ### 7.1 Send a doctor what they need
-The owner creates a link scoped to everything, a tag, chosen documents, or a date range, and sends it. Making one: a tag is picked from a dropdown of the account's tags; documents are picked from a searchable list with checkboxes; a date range is two dates. The form says how many documents the link would share and will not create one that is incomplete. Each link in the list says what it shares.
+The owner creates a link scoped to chosen documents, a tag, episodes, a date range or everything, and sends it. Nothing is chosen at first, so a link never shares everything because a default was left as it was. Making one: a tag is picked from a dropdown of the account's tags; documents are picked from a searchable list with checkboxes; a date range is two dates. The form says how many documents the link would share and will not create one that is incomplete. Each link in the list says what it shares.
 
 - The link shows only what the scope allows; a scope that cannot be fully worked out is refused at creation, and a copy that cannot be built from a stored scope shares nothing.
 - It expires (default 7 days, at most 30) and can be revoked at once.

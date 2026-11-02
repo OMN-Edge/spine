@@ -69,9 +69,9 @@ export default function Timeline() {
             options={[{ value: '', label: t('All types') }, ...Object.entries(DOC_TYPE_LABELS).map(([k, v]) => ({ value: k, label: t(v) }))]}
           />
           <Combobox
-            ariaLabel={t('All')} wrapperClassName="relative w-36" value={filter.reviewed ?? ''}
+            ariaLabel={t('Reviewed or not')} wrapperClassName="relative w-44" value={filter.reviewed ?? ''}
             onChange={v => setFilter(f => ({ ...f, reviewed: v || undefined! }))}
-            options={[{ value: '', label: t('All') }, { value: 'false', label: t('Unreviewed') }, { value: 'true', label: t('Reviewed') }]}
+            options={[{ value: '', label: t('Any review state') }, { value: 'false', label: t('Unreviewed') }, { value: 'true', label: t('Reviewed') }]}
           />
         </div>
       </div>

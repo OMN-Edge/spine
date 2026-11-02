@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
 import { type ChatSource, type ChatStep } from '../api';
 import { useI18n } from '../i18n';
-import { PAGE_NAMES, useChat } from './ChatProvider';
+import { pageName, useChat } from './ChatProvider';
 import Markdown from './Markdown';
 import ProposalCard from './ProposalCard';
 import { draftText, stepText } from './chatSteps';
@@ -31,6 +31,7 @@ export default function ChatPanel() {
   const nameOf = useSourceName();
   const chat = useChat();
   const navigate = useNavigate();
+  const location = useLocation();
   const { demo } = useAuth();
   const guide = useGuide();
   const [text, setText] = useState('');
@@ -155,7 +156,7 @@ export default function ChatPanel() {
           <h2 className="truncate text-[0.95rem] font-medium text-gray-900">{view === 'history' ? t('Conversations') : (chat.origin || turns[0]?.notice || turns[0]?.regroupNotice ? t(chat.title ?? '') : (chat.title ?? t('Ask your records')))}</h2>
           <p className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-gray-400">
             <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden="true" />
-            {t('Looking at: {page}', { page: t(PAGE_NAMES[chat.page] ?? PAGE_NAMES.other) })}
+            {t('Looking at: {page}', { page: t(pageName(chat.page, location.pathname)) })}
           </p>
         </div>
         <div className="flex shrink-0 items-center">

@@ -88,7 +88,8 @@ export default function ShareLinks() {
   const [links, setLinks] = useState<ShareLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
-  const [scope, setScope] = useState<ShareLink['scope']>('all');
+  // Nothing is chosen at first: a link shares what the owner picked, never everything because nobody changed a default.
+  const [scope, setScope] = useState<ShareLink['scope'] | ''>('');
   const [tag, setTag] = useState('');
   const [ids, setIds] = useState<string[]>([]);
   const [episodes, setEpisodes] = useState<Episode[]>([]);
@@ -124,7 +125,7 @@ export default function ShareLinks() {
 
   const inRange = docs && from && to ? docs.filter(d => d.doc_date && d.doc_date >= from && d.doc_date <= to).length : null;
   const inEpisodes = new Set(episodes.filter(e => episodeIds.includes(e.id)).flatMap(e => e.document_ids)).size;
-  const count = scope === 'all' ? docs?.length ?? null : scope === 'tag' ? tagged : scope === 'document_ids' ? ids.length : scope === 'episode' ? inEpisodes : inRange;
+  const count = scope === '' ? null : scope === 'all' ? docs?.length ?? null : scope === 'tag' ? tagged : scope === 'document_ids' ? ids.length : scope === 'episode' ? inEpisodes : inRange;
   const ready = scope === 'all' || (scope === 'tag' && !!tag) || (scope === 'document_ids' && ids.length > 0) || (scope === 'episode' && episodeIds.length > 0) || (scope === 'date_range' && !!from && !!to && from <= to);
 
   const create = async (e: React.FormEvent) => {
@@ -183,8 +184,8 @@ export default function ShareLinks() {
           <div>
             <label htmlFor="s-scope" className={label}>{t('What to share')}</label>
             <Combobox
-              id="s-scope" value={scope} onChange={v => setScope(v as ShareLink['scope'])} className={input}
-              options={[{ value: 'all', label: t('All history') }, { value: 'tag', label: t('Documents with a tag') }, { value: 'document_ids', label: t('Documents I pick') }, ...(episodes.length > 0 ? [{ value: 'episode', label: t('Episodes') }] : []), { value: 'date_range', label: t('A date range') }]}
+              id="s-scope" ariaLabel={t('What to share')} value={scope} onChange={v => setScope(v as ShareLink['scope'])} className={input} placeholder={t('Choose what to share…')}
+              options={[{ value: 'document_ids', label: t('Documents I pick') }, { value: 'tag', label: t('Documents with a tag') }, ...(episodes.length > 0 ? [{ value: 'episode', label: t('Episodes') }] : []), { value: 'date_range', label: t('A date range') }, { value: 'all', label: t('All history') }]}
             />
           </div>
 

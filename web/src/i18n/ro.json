@@ -11,7 +11,6 @@
  "Add doctor": "Adaugă medic",
  "Add measurement": "Adaugă o măsurătoare",
  "Admission date": "Data internării",
- "All": "Toate",
  "All caught up. No documents need review.": "Totul este la zi. Niciun document nu așteaptă verificarea.",
  "All doctors": "Toți medicii",
  "All documents": "Toate documentele",
@@ -1691,5 +1690,14 @@
  "Type the code.": "Introduceți codul.",
  "Type your email address and your password.": "Introduceți adresa de e-mail și parola.",
  "That code is not right. Try again.": "Codul nu este corect. Încercați din nou.",
- "The email address or the password is not right.": "Adresa de e-mail sau parola nu este corectă."
+ "The email address or the password is not right.": "Adresa de e-mail sau parola nu este corectă.",
+ "Choose what to share…": "Alegeți ce partajați…",
+ "Reviewed or not": "Verificat sau nu",
+ "Any review state": "Orice stare de verificare",
+ "Plan and people": "Abonament și persoane",
+ "Sign-in and security": "Conectare și securitate",
+ "Devices": "Dispozitive",
+ "Data and privacy": "Date și confidențialitate",
+ "Change your master password": "Schimbați parola principală",
+ "The one you sign in with and that opens your records.": "Cea cu care vă conectați și care vă deschide înregistrările."
 }

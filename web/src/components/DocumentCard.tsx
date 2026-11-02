@@ -63,7 +63,7 @@ export default function DocumentCard({ doc, to, owner = true }: {
           <p className="text-sm text-gray-900">{doc.doc_date ?? '—'}</p>
           {owner && (
             <p className="text-xs text-gray-400 mt-0.5">
-              {t('p. {from}–{to}', { from: doc.page_start, to: doc.page_end })}
+              {doc.page_start === doc.page_end ? t('p. {n}', { n: doc.page_start }) : t('p. {from}–{to}', { from: doc.page_start, to: doc.page_end })}
             </p>
           )}
         </div>

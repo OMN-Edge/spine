@@ -76,6 +76,17 @@ export const PAGE_NAMES: Record<string, string> = {
   library: msg('Library'), share: msg('Share links'), account: msg('Account'), other: msg('Spine'),
 };
 
+/** The pages the assistant knows only as "other", named for the "Looking at" line by their address. */
+const OTHER_PAGE_NAMES: Record<string, string> = {
+  episodes: msg('Episodes'), emergency: msg('Emergency card'), profiles: msg('People'), scan: msg('Scan'), 'share-links': msg('Share links'), 'share-requests': msg('Share links'),
+};
+
+/** What the "Looking at" line calls the page: its screen name, or for one the assistant calls "other", the name its address gives. */
+export function pageName(page: string, pathname: string): string {
+  if (page !== 'other') return PAGE_NAMES[page] ?? PAGE_NAMES.other;
+  return OTHER_PAGE_NAMES[pathname.split('/').filter(Boolean)[0] ?? ''] ?? PAGE_NAMES.other;
+}
+
 interface ChatApi {
   /** Null until the server has said; false hides the chat. */
   enabled: boolean | null;

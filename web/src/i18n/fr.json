@@ -11,7 +11,6 @@
  "Add doctor": "Ajouter un médecin",
  "Add measurement": "Ajouter une mesure",
  "Admission date": "Date d'admission",
- "All": "Tous",
  "All caught up. No documents need review.": "Tout est à jour. Aucun document n'attend de relecture.",
  "All doctors": "Tous les médecins",
  "All documents": "Tous les documents",
@@ -1691,5 +1690,14 @@
  "Type the code.": "Saisissez le code.",
  "Type your email address and your password.": "Saisissez votre adresse e-mail et votre mot de passe.",
  "That code is not right. Try again.": "Ce code n’est pas correct. Réessayez.",
- "The email address or the password is not right.": "L’adresse e-mail ou le mot de passe n’est pas correct."
+ "The email address or the password is not right.": "L’adresse e-mail ou le mot de passe n’est pas correct.",
+ "Choose what to share…": "Choisissez quoi partager…",
+ "Reviewed or not": "Vérifié ou non",
+ "Any review state": "Tout état de vérification",
+ "Plan and people": "Offre et personnes",
+ "Sign-in and security": "Connexion et sécurité",
+ "Devices": "Appareils",
+ "Data and privacy": "Données et confidentialité",
+ "Change your master password": "Changer votre mot de passe principal",
+ "The one you sign in with and that opens your records.": "Celui avec lequel vous vous connectez et qui ouvre vos dossiers."
 }
