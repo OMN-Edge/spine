@@ -143,16 +143,10 @@ class CoreWorker {
     return (JSON.parse(new TextDecoder().decode(m.body ?? new ArrayBuffer(0))) as { id: string }).id;
   }
 
-  /** Removes one of this account's own people that is not open, with everything kept for them. */
-  async removeProfile(profileId: string): Promise<void> {
-    await this.send({ type: 'removeProfile', profileId });
-    window.dispatchEvent(new Event(PEOPLE_CHANGED));
-  }
-
   /** Saves what is open and opens another person's records. Throws `UnsavedChangesError` if something could not be saved, unless `force`. */
-  async switchProfile(profileId: string, force = false): Promise<void> {
+  async switchProfile(profileId: string, force = false, dropEmpty = false): Promise<void> {
     try {
-      await this.send({ type: 'switchProfile', profileId, force });
+      await this.send({ type: 'switchProfile', profileId, force, dropEmpty });
     } catch (err) {
       if ((err as { code?: string }).code === 'unsaved') throw new UnsavedChangesError();
       throw err;

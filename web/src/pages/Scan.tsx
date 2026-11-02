@@ -6,6 +6,7 @@ import { defaultQuad, detectDocument } from '../scan/detect';
 import type { Quad } from '../scan/image';
 import { loadRaster, processPage, type Loaded, type PageFilter } from '../scan/process';
 import { useChat } from '../components/ChatProvider';
+import { Combobox } from '../components/Combobox';
 import { useI18n } from '../i18n';
 
 /**
@@ -203,15 +204,19 @@ export default function Scan() {
                   <button type="button" onClick={() => void open(p.raw, p.quad, p.id)} className="text-brand-600 hover:underline">{t('Corners')}</button>
                   <button type="button" onClick={() => remove(p.id)} className="text-gray-500 hover:text-red-600">{t('Remove')}</button>
                 </div>
-                <label className="flex items-center justify-center gap-1 text-xs text-gray-600 mt-1 min-w-0">
+                <div className="flex items-center justify-center gap-1 text-xs text-gray-600 mt-1 min-w-0">
                   {t('Filter')}
-                  <select value={p.filter} onChange={e => setFilter(p.id, e.target.value as PageFilter)} className="min-w-0 flex-1 border border-gray-300 rounded px-1 py-0.5 text-xs">
-                    <option value="original">{t('Original')}</option>
-                    <option value="clean">{t('Clean')}</option>
-                    <option value="grey">{t('Greyscale')}</option>
-                    <option value="bw">{t('Black and white')}</option>
-                  </select>
-                </label>
+                  <Combobox
+                    ariaLabel={t('Filter')} value={p.filter} onChange={v => setFilter(p.id, v as PageFilter)} wrapperClassName="relative min-w-0 flex-1"
+                    className="w-full border border-gray-300 rounded-lg bg-white px-2 py-0.5 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    options={[
+                      { value: 'original', label: t('Original') },
+                      { value: 'clean', label: t('Clean') },
+                      { value: 'grey', label: t('Greyscale') },
+                      { value: 'bw', label: t('Black and white') },
+                    ]}
+                  />
+                </div>
               </li>
             ))}
             <li className="flex min-h-40 flex-col justify-center rounded-xl border-2 border-dashed border-gray-300 bg-white p-2"><AddPage onTake={take} /></li>

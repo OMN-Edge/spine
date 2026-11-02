@@ -111,12 +111,15 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 }
 
 /** The language picker: a small select in the page's corner. */
+/** The look of a control in the top bar (the language, whose records are open), so they read as one set. */
+export const TOP_BAR_CONTROL = 'rounded-full border border-gray-300 bg-white px-3 py-1 text-sm text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-500';
+
 export function LanguageSwitcher({ className = '' }: { className?: string }) {
   const { lang, setLang, t } = useI18n();
   return (
     <Combobox
-      value={lang} ariaLabel={t('Language')} onChange={v => setLang(v as LanguageCode)} wrapperClassName={`relative w-28 ${className}`}
-      className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700"
+      value={lang} ariaLabel={t('Language')} onChange={v => setLang(v as LanguageCode)} wrapperClassName={`relative w-32 ${className}`}
+      className={`w-full ${TOP_BAR_CONTROL}`}
       options={LANGUAGES.map(l => ({ value: l.code, label: l.name }))}
     />
   );

@@ -25,8 +25,8 @@ export function useProfiles(open: boolean): { people: People | null; refresh: ()
 }
 
 /** Opens another person's records, and remembers the choice on this device for the next sign-in. */
-export async function openPerson(id: string, force = false): Promise<void> {
-  await device.switchProfile(id, force);
+export async function openPerson(id: string, force = false, dropEmpty = false): Promise<void> {
+  await device.switchProfile(id, force, dropEmpty);
   const account = vaultState.email();
   if (account) rememberProfile(account, id);
 }

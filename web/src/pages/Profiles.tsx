@@ -64,31 +64,19 @@ export default function Profiles() {
 
   const decline = () => { forgetInvite(); setPending(''); };
 
-  /**
-   * The empty records an account starts with, when it is about to hold the person's own records instead: the only own person, open now, with
-   * nothing uploaded. Null otherwise, and whenever it cannot tell: nothing is removed on a guess.
-   */
-  const emptyOwnRecords = async (): Promise<string | null> => {
-    const own = people?.profiles.filter(p => !p.shared) ?? [];
-    if (own.length !== 1 || own[0]!.id !== people?.current) return null;
-    try { return (await api.sourceFiles.list()).length === 0 ? own[0]!.id : null; } catch { return null; }
-  };
-
   const accept = async () => {
     setError(''); setBusy(true);
     try {
       const read = await readInviteCode(pending);
       const session = vaultState.session();
       if (!read.ok || !session) { setError(t('That code is not right. Check it and try again.')); return; }
-      // Someone joining their own records does not need the empty ones the account started with: those go once the records open.
-      const empty = invitation !== 'invalid' && invitation?.role === 'self' ? await emptyOwnRecords() : null;
       const accepted = await session.accept(read.code);
       forgetInvite();
       setPending('');
       rememberJoined(accepted.ownerEmail); // before the keys are reloaded: the page is drawn again then, and starts from this
       await device.reloadKeys();
-      await openPerson(`grant:${accepted.grantId}`);
-      if (empty) await device.removeProfile(empty).catch(err => console.warn('the empty records could not be removed:', (err as Error)?.message));
+      // Someone joining their own records does not need the empty ones the account started with: those go as the records open.
+      await openPerson(`grant:${accepted.grantId}`, false, accepted.role === 'self');
       await refresh();
       setJoined(accepted.ownerEmail);
     } catch (err) {
@@ -110,13 +98,10 @@ export default function Profiles() {
       // The records open on this device are the ones being moved: leave them first, on one of this account's own.
       const own = people.profiles.find(p => !p.shared);
       if (people.current === personId && own) await openPerson(own.id);
-      // The records are the account's own from now on: empty ones it started with are not kept beside them.
-      const empty = await emptyOwnRecords();
       await session.promote(entry);
       rememberTookOver(); // before the records open: the page is drawn anew then, and starts from this
       await device.reloadKeys();
       await openPerson(entry.grant.profile_id);
-      if (empty) await device.removeProfile(empty).catch(err => console.warn('the empty records could not be removed:', (err as Error)?.message));
       // A card the old owner's account published for this person becomes this account's, so its printed code is theirs to replace or turn off.
       await api.emergency.takeOver().catch(() => undefined);
       setTaking('');

@@ -237,13 +237,10 @@ export default function ShareLinks() {
 
           <div>
             <label htmlFor="s-hours" className={label}>{t('Expires in')}</label>
-            <select
-              id="s-hours" value={form.expires_hours}
-              onChange={e => setForm(f => ({ ...f, expires_hours: parseInt(e.target.value) }))}
-              className="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
-            >
-              {LIFETIMES.map(l => <option key={l.hours} value={l.hours}>{t(l.label)}</option>)}
-            </select>
+            <Combobox
+              id="s-hours" value={String(form.expires_hours)} onChange={v => setForm(f => ({ ...f, expires_hours: parseInt(v) }))} wrapperClassName="relative w-48"
+              options={LIFETIMES.map(l => ({ value: String(l.hours), label: t(l.label) }))}
+            />
           </div>
 
           <label className="flex items-start gap-2 text-sm text-gray-700">

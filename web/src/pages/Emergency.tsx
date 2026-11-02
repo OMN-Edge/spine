@@ -6,6 +6,7 @@ import { DETAIL_KINDS, EMPTY_CARD, publicCard, type CardContent, type CardDetail
 import PrintCard, { printCard } from '../components/PrintCard';
 import CardQr from '../components/CardQr';
 import { buttonClass, inputClass, Notice } from '../components/AuthCard';
+import { Combobox } from '../components/Combobox';
 import { useI18n } from '../i18n';
 
 /** One item to a line; the card keeps them as a list. */
@@ -92,9 +93,7 @@ export default function Emergency() {
           {card.details.map((d, n) => (
             <div key={n} className="mb-2 border border-gray-100 rounded-lg p-2 space-y-2">
               <div className="grid grid-cols-2 gap-2">
-                <select aria-label={t('What it is')} className={inputClass} value={d.kind} onChange={e => setDetail(n, { kind: e.target.value as CardDetail['kind'] })}>
-                  {DETAIL_KINDS.map(k => <option key={k} value={k}>{k === 'other' ? t('Something else') : t(DETAIL_LABELS[k])}</option>)}
-                </select>
+                <Combobox ariaLabel={t('What it is')} value={d.kind} onChange={v => setDetail(n, { kind: v as CardDetail['kind'] })} options={DETAIL_KINDS.map(k => ({ value: k, label: k === 'other' ? t('Something else') : t(DETAIL_LABELS[k]) }))} />
                 {d.kind === 'other'
                   ? <input aria-label={t('Label')} placeholder={t('Label')} className={inputClass} value={d.label} maxLength={40} onChange={e => setDetail(n, { label: e.target.value })} />
                   : <span />}

@@ -205,14 +205,6 @@ self.onmessage = async (event: MessageEvent<ToWorker>) => {
       if (!session) throw Object.assign(new Error('the vault is locked'), { status: 423, code: 'locked' });
       await peopleChanged();
       reply({ id: m.id, ok: true });
-    } else if (m.type === 'removeProfile') {
-      // Only one of this account's own, and never the one open: its records would go on being written.
-      if (!session) throw Object.assign(new Error('the vault is locked'), { status: 423, code: 'locked' });
-      const target = knownProfiles.find(p => p.id === m.profileId && !p.shared);
-      if (!target || m.profileId === currentProfile) throw Object.assign(new Error('not a person this account can remove now'), { status: 409 });
-      await session.removeProfile(m.profileId);
-      knownProfiles = knownProfiles.filter(p => p.id !== m.profileId);
-      reply({ id: m.id, ok: true });
     } else if (m.type === 'createProfile') {
       if (!session) throw Object.assign(new Error('the vault is locked'), { status: 423, code: 'locked' });
       const name = m.name.trim().slice(0, 60) || 'Someone';
@@ -227,10 +219,22 @@ self.onmessage = async (event: MessageEvent<ToWorker>) => {
       if (!session || !core) throw Object.assign(new Error('the vault is locked'), { status: 423, code: 'locked' });
       if (m.profileId !== currentProfile && !knownProfiles.some(p => p.id === m.profileId)) throw Object.assign(new Error('not one of this account’s people'), { status: 404 });
       if (m.profileId !== currentProfile) {
+        // Someone opening their own records, kept until now by another account: the records this account started with go, when they are its
+        // only own ones and nothing was ever uploaded to them, so the person is not listed twice. Asked of the records themselves, before they close.
+        const own = knownProfiles.filter(p => !p.shared);
+        let drop: string | null = null;
+        if (m.dropEmpty && own.length === 1 && own[0]!.id === currentProfile) {
+          const uploads = await core.inject({ method: 'GET', url: '/api/source-files' }).catch(() => null);
+          if (uploads?.statusCode === 200 && Array.isArray(uploads.json()) && (uploads.json() as unknown[]).length === 0) drop = currentProfile;
+        }
         // Saves first, and refuses (code `unsaved`) rather than drop what could not be saved; then the other person's records open in its place.
         await core.close(m.force);
         core = null;
         await openProfile(m.profileId, await (grants.get(m.profileId)?.session ?? session).list(0));
+        if (drop) {
+          await session.removeProfile(drop).catch(err => console.warn('the empty records could not be removed:', (err as Error)?.message));
+          knownProfiles = knownProfiles.filter(p => p.id !== drop);
+        }
       }
       reply({ id: m.id, ok: true });
     } else if (m.type === 'startDemo') {

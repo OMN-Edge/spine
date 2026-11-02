@@ -269,6 +269,11 @@ try {
   const wait = ms => new Promise(r => setTimeout(r, ms));
   const waitFor = async (what, ms = 20000) => { for (let t = 0; t < ms; t += 250) { if ((await text()).includes(what)) return true; await wait(250); } return false; };
   const click = async label => { const h = await p.evaluateHandle(l => [...document.querySelectorAll('button,a')].find(e => e.offsetParent && e.innerText.trim().toLowerCase().startsWith(l.toLowerCase())), label); await h.asElement().click(); };
+  // Chooses in one of the app's dropdowns (a combobox): opens it, then picks the option with that text. `within` narrows to one part of the page.
+  const choose = async (label, option, within = 'body') => {
+    await (await p.waitForFunction((w, l) => [...document.querySelectorAll(`${w} input[role=combobox]`)].find(i => i.getAttribute('aria-label') === l && i.offsetParent), {}, within, label)).asElement().click();
+    await (await p.waitForFunction(o => [...document.querySelectorAll('[role=listbox] [role=option]')].find(e => e.innerText.trim() === o), {}, option)).asElement().evaluate(e => e.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })));
+  };
   // The page of people, from the menu in the header that says whose records are open.
   const openPeople = async () => {
     await (await p.waitForSelector('button[aria-haspopup=menu]', { visible: true })).click();
@@ -882,6 +887,7 @@ try {
     check(!(await text()).includes('Open your records'), 'opening them did not ask for the master password');
     await (await p.waitForSelector('button[aria-haspopup=menu]', { visible: true })).click();
     check(await waitFor('Add or manage people', 5000) && (await p.evaluate(() => [...document.querySelectorAll('[role=menu] [role=menuitemradio]')].length)) === 2, 'the name in the header opens a menu of the people, both of them');
+    check(await p.evaluate(() => { const m = document.querySelector('[role=menu]'); const r = m.getBoundingClientRect(); const e = document.elementFromPoint(r.right - 6, r.bottom - 6); return !!e && m.contains(e); }), 'and the menu is drawn over whatever is beside it, the chat panel included');
     await click('Add or manage people');
     check(await waitFor('Add a person'), 'and from it the page of people');
     await (await p.evaluateHandle(() => [...document.querySelectorAll('li')].find(li => !li.innerText.includes('Open now'))?.querySelector('button'))).asElement().click();
@@ -972,7 +978,7 @@ try {
     // The other side. A read-only invitation is made; a second account follows its link, signs in, joins, reads the person's records, and the
     // device does not let it change them.
     await click('Let someone in');
-    await p.select('select[aria-label="What they can do"]', 'viewer');
+    await choose('What they can do', 'Can only read the records');
     await click('Make the invitation');
     check(await waitFor('Tell this code to the person', 20000), 'a read-only invitation is made');
     const inviteText = await text();
@@ -1043,7 +1049,8 @@ try {
     await click('Add');
     check(await waitFor('Alex Example', 15000), 'a child who is now eighteen is added');
     await (await p.evaluateHandle(() => [...[...document.querySelectorAll('li')].find(l => l.innerText.startsWith('Alex Example'))?.querySelectorAll('button') ?? []].find(b => b.innerText.trim() === 'Let someone in'))).asElement().click();
-    await (await p.waitForFunction(() => [...document.querySelectorAll('li')].find(l => l.innerText.startsWith('Alex Example'))?.querySelector('select[aria-label="What they can do"]'))).asElement().select('self');
+    await p.evaluate(() => [...document.querySelectorAll('li')].find(l => l.innerText.startsWith('Alex Example'))?.setAttribute('data-check', 'alex'));
+    await choose('What they can do', 'Is this person, with an account of their own', 'li[data-check=alex]');
     await (await p.evaluateHandle(() => [...[...document.querySelectorAll('li')].find(l => l.innerText.startsWith('Alex Example'))?.querySelectorAll('button') ?? []].find(b => b.innerText.trim() === 'Make the invitation'))).asElement().click();
     check(await waitFor('Tell this code to the person', 20000), 'an invitation for the person themselves is made');
     const selfLink = (await text()).match(/https?:\/\/\S+\/invite#\S+/)?.[0] ?? '';
@@ -1079,6 +1086,7 @@ try {
       check(await qWait('invites you into your own records', 20000), 'the invitation says it is to their own records');
       await qClick('Accept');
       check(await qWait('Your own records, kept by check@example.com', 40000), 'accepting lists them as their own records, kept by the parent');
+      check(await qWait('You are now in Alex Example’s records', 60000), 'and opens them');
       const names = async () => q.evaluate(() => [...document.querySelectorAll('li')].map(l => l.innerText.split('\n')[0].trim()).filter(Boolean));
       let only = false;
       for (let t = 0; t < 60000 && !only; t += 250) { const n = await names(); only = n.filter(x => !/@/.test(x)).every(x => x.startsWith('Alex Example')) && n.some(x => x.startsWith('Alex Example')); if (!only) await wait(250); }

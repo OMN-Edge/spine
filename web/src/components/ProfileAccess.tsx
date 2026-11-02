@@ -7,6 +7,7 @@ import { planRefusal } from '../billing';
 import type { Person } from '../core/client';
 import { mayHaveOwnAccount } from 'spine-core/family';
 import { Notice } from './AuthCard';
+import { Combobox } from './Combobox';
 import { useI18n } from '../i18n';
 
 /**
@@ -76,11 +77,14 @@ export default function ProfileAccess({ person }: { person: Person }) {
         <button className="mt-2 text-brand-600 hover:underline" onClick={() => setInviting(true)}>{t('Let someone in')}</button>
       ) : (
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <select aria-label={t('What they can do')} value={role} onChange={e => setRole(e.target.value as 'guardian' | 'viewer' | 'self')} className="border border-gray-300 rounded-lg px-2 py-1">
-            <option value="guardian">{t('Can change the records')}</option>
-            <option value="viewer">{t('Can only read the records')}</option>
-            {ownAccount && <option value="self">{t('Is this person, with an account of their own')}</option>}
-          </select>
+          <Combobox
+            ariaLabel={t('What they can do')} value={role} onChange={v => setRole(v as 'guardian' | 'viewer' | 'self')} wrapperClassName="relative w-full sm:w-80"
+            options={[
+              { value: 'guardian', label: t('Can change the records') },
+              { value: 'viewer', label: t('Can only read the records') },
+              ...(ownAccount ? [{ value: 'self', label: t('Is this person, with an account of their own') }] : []),
+            ]}
+          />
           <button disabled={busy} className="text-brand-600 hover:underline" onClick={() => void run(async () => { await session.loadProfiles(); setCode(await session.invite(profileId, role)); }, t('Could not make a code'))}>{t('Make the invitation')}</button>
           <button type="button" className="text-gray-500 hover:underline" onClick={() => setInviting(false)}>{t('Cancel')}</button>
         </div>

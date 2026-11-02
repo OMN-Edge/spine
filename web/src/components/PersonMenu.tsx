@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { openPerson, type People } from '../profiles';
-import { useI18n } from '../i18n';
+import { TOP_BAR_CONTROL, useI18n } from '../i18n';
 
 /**
  * Whose records are open, always in the header: one tap shows the other people this account keeps or was let into, opens another, or goes
@@ -38,23 +38,23 @@ export default function PersonMenu({ people }: { people: People }) {
         aria-expanded={open}
         aria-haspopup="menu"
         title={t('Whose records are open')}
-        className="flex items-center gap-1 rounded-full border border-gray-200 px-3 py-1 text-sm text-brand-700 hover:bg-gray-50 max-w-[12rem]"
+        className={`flex items-center gap-2 max-w-[12rem] ${TOP_BAR_CONTROL}`}
       >
         <span className="truncate">{current?.name ?? t('People')}</span>
-        <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 fill-current" aria-hidden="true"><path d="M5.5 7.5 10 12l4.5-4.5z" /></svg>
+        <span aria-hidden className="text-gray-400 text-xs">▾</span>
       </button>
       {open && (
-        <div role="menu" className="absolute right-0 z-40 mt-2 w-64 rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
+        <div role="menu" className="absolute right-0 z-50 mt-1 w-64 rounded-lg border border-gray-200 bg-white py-1 text-sm shadow-lg">
           {people.profiles.map(p => (
             <button
               key={p.id} role="menuitemradio" aria-checked={p.id === people.current} type="button" onClick={() => void choose(p.id)}
-              className="flex w-full items-center justify-between gap-2 px-4 py-2 text-left text-sm text-gray-800 hover:bg-gray-50"
+              className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-gray-900 hover:bg-brand-50"
             >
               <span className="truncate">{p.name}{p.shared && <span className="block text-xs text-gray-500 truncate">{t('Shared by {owner}', { owner: p.shared.owner })}</span>}</span>
               {p.id === people.current && <span className="text-xs text-green-700">{t('Open now')}</span>}
             </button>
           ))}
-          <Link role="menuitem" to="/profiles" onClick={() => setOpen(false)} className="block border-t border-gray-100 px-4 py-2 text-sm text-brand-700 hover:bg-gray-50">{t('Add or manage people')}</Link>
+          <Link role="menuitem" to="/profiles" onClick={() => setOpen(false)} className="block border-t border-gray-100 px-3 py-1.5 text-brand-700 hover:bg-brand-50">{t('Add or manage people')}</Link>
         </div>
       )}
     </div>

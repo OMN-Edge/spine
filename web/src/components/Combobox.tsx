@@ -97,7 +97,7 @@ export function Combobox({ id, ariaLabel, options, value, onChange, placeholder,
       />
       <span aria-hidden className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">▾</span>
       {open && (
-        <ul id={listId} role="listbox" className="absolute z-30 left-0 right-0 mt-1 max-h-60 overflow-auto bg-white border border-gray-200 rounded-lg shadow-lg py-1 text-sm">
+        <ul id={listId} role="listbox" className="absolute z-50 left-0 right-0 mt-1 max-h-60 overflow-auto bg-white border border-gray-200 rounded-lg shadow-lg py-1 text-sm">
           {entries.length === 0 && <li className="px-3 py-1.5 text-gray-400">{t('No match')}</li>}
           {entries.map((entry, i) => (
             <li
