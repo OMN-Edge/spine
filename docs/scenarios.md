@@ -110,10 +110,11 @@ Status: auto (`auth`, `second-factor`, `vault`, `web/src/crypto`).
 ### 1.6 An account with no vault
 An account the operator made, or one from before the vault, signs in and, after agreeing to the texts, is asked to choose a master password and shown its recovery kit before anything else.
 
+- The two screens say which step they are (choosing the password, then saving the recovery kit). Once the kit is saved, the records open with the password just chosen: it is not asked for again until a reload.
 - The password it signed in with is replaced by the new one; nothing about the new one is sent.
 - The operator cannot choose a password for an account that has a vault; `set-password` refuses, and the way back is a reset link and the kit.
 
-Status: auto (`vault`, `cli`).
+Status: auto (`vault`, `cli`); real browser (`check:app`: the records open after the kit without the unlock screen).
 
 ---
 

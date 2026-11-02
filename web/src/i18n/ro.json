@@ -1682,5 +1682,14 @@
  "No AI model is set up on this server, so nothing in your records is sent to one.": "Pe acest server nu este configurat niciun model AI, așa că nimic din înregistrările dumneavoastră nu este trimis către unul.",
  "More": "Mai mult",
  "Account and settings": "Cont și setări",
- "Signed in as": "Conectat ca"
+ "Signed in as": "Conectat ca",
+ "Save your recovery kit": "Salvați kitul de recuperare",
+ "Step {n} of {total}": "Pasul {n} din {total}",
+ "Opening your records…": "Se deschid înregistrările dumneavoastră…",
+ "Confirm your email address first: follow the link in the message we sent you.": "Confirmați mai întâi adresa de e-mail: urmați linkul din mesajul pe care vi l-am trimis.",
+ "That took too long. Sign in again.": "A durat prea mult. Conectați-vă din nou.",
+ "Type the code.": "Introduceți codul.",
+ "Type your email address and your password.": "Introduceți adresa de e-mail și parola.",
+ "That code is not right. Try again.": "Codul nu este corect. Încercați din nou.",
+ "The email address or the password is not right.": "Adresa de e-mail sau parola nu este corectă."
 }

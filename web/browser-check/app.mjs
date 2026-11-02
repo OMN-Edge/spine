@@ -235,8 +235,7 @@ try {
     const pwd = await d.$$('input[type=password]'); await pwd[0].type(MASTER); await pwd[1].type(MASTER); await press('Continue');
     await waitDemo('recovery kit');
     await (await d.$('input[type=checkbox]')).click(); await press('Continue');
-    await waitDemo('Open your records');
-    await d.type('input[type=password]', MASTER); await press('Open');
+    await waitDemo('Timeline', 30000); // the records open with the password just chosen
     check(await waitDemo('This browser kept the 3 files you read in the demo', 30000), 'the new account is offered the files kept from the demo');
     const callsAtAdd = relay.calls.length;
     await press('Add to my records');
@@ -308,8 +307,7 @@ try {
   const pw = await p.$$('input[type=password]'); await pw[0].type(MASTER); await pw[1].type(MASTER); await click('Continue');
   check(await waitFor('recovery kit'), 'and shows the recovery kit');
   await (await p.$('input[type=checkbox]')).click(); await click('Continue');
-  check(await waitFor('Open your records'), 'the records open only with the master password');
-  await type('input[type=password]', MASTER); await click('Open');
+  check(await waitFor('Timeline', 30000) && !(await text()).includes('Open your records'), 'the records open with the master password just chosen, without asking for it again');
   check(await waitFor('Explore with sample records'), 'the empty timeline is shown from the device');
   await click('Explore with sample records');
   check(await waitFor('Chest X-ray'), 'sample records are written on the device');
@@ -668,8 +666,7 @@ try {
       const pw2 = await q.$$('input[type=password]'); await pw2[0].type(MASTER); await pw2[1].type(MASTER); await click2('Continue');
       await waitFor2('recovery kit');
       await (await q.$('input[type=checkbox]')).click(); await click2('Continue');
-      await waitFor2('Open your records');
-      await type2('input[type=password]', MASTER); await click2('Open');
+      await waitFor2('Timeline', 30000); // the records open with the password just chosen
       check(await waitFor2('Explore with sample records'), 'a second, empty account is ready on another device');
       await click2('Upload');
       await waitFor2('Drag & drop');
@@ -1054,8 +1051,7 @@ try {
       const qpw = await q.$$('input[type=password]'); await qpw[0].type(GUEST_MASTER); await qpw[1].type(GUEST_MASTER); await qClick('Continue');
       check(await qWait('recovery kit', 20000), 'and keeps its own recovery kit');
       await (await q.$('input[type=checkbox]')).click(); await qClick('Continue');
-      check(await qWait('Open your records', 20000), 'its records open with its own password');
-      await q.type('input[type=password]', GUEST_MASTER); await qClick('Open');
+      check(await qWait('Timeline', 30000), 'its records open with its own password, without asking for it again');
       check(await qWait('You have an invitation waiting', 40000), 'once in, a note in the page says an invitation is waiting');
       check(!(await qText()).includes('Pending invitation'), 'and nothing opens on its own');
       await qClick('Open it');
@@ -1129,8 +1125,7 @@ try {
       const tpw = await q.$$('input[type=password]'); await tpw[0].type(TEEN_MASTER); await tpw[1].type(TEEN_MASTER); await qClick('Continue');
       await qWait('recovery kit', 20000);
       await (await q.$('input[type=checkbox]')).click(); await qClick('Continue');
-      await qWait('Open your records', 20000);
-      await q.type('input[type=password]', TEEN_MASTER); await qClick('Open');
+      await qWait('Timeline', 30000); // the records open with the password just chosen
       check(await qWait('You have an invitation waiting', 40000), "the teenager's new account is told an invitation is waiting");
       await qClick('Open it');
       check(await qWait('invites you into your own records', 20000), 'the invitation says it is to their own records');

@@ -1682,5 +1682,14 @@
  "No AI model is set up on this server, so nothing in your records is sent to one.": "Aucun modèle d’IA n’est configuré sur ce serveur : rien de vos dossiers n’est donc envoyé à un modèle.",
  "More": "Plus",
  "Account and settings": "Compte et réglages",
- "Signed in as": "Connecté en tant que"
+ "Signed in as": "Connecté en tant que",
+ "Save your recovery kit": "Enregistrez votre kit de récupération",
+ "Step {n} of {total}": "Étape {n} sur {total}",
+ "Opening your records…": "Ouverture de vos dossiers…",
+ "Confirm your email address first: follow the link in the message we sent you.": "Confirmez d’abord votre adresse e-mail : suivez le lien du message que nous vous avons envoyé.",
+ "That took too long. Sign in again.": "Cela a pris trop de temps. Reconnectez-vous.",
+ "Type the code.": "Saisissez le code.",
+ "Type your email address and your password.": "Saisissez votre adresse e-mail et votre mot de passe.",
+ "That code is not right. Try again.": "Ce code n’est pas correct. Réessayez.",
+ "The email address or the password is not right.": "L’adresse e-mail ou le mot de passe n’est pas correct."
 }

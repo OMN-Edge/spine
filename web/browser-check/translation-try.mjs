@@ -136,7 +136,7 @@ try {
   await click('Agree and continue'); await waitFor('Protect your records');
   const pw = await p.$$('input[type=password]'); await pw[0].type(MASTER); await pw[1].type(MASTER); await click('Continue');
   await waitFor('recovery kit'); await (await p.$('input[type=checkbox]')).click(); await click('Continue');
-  await unlock();
+  // The records open with the password just chosen.
   await waitFor('Explore with sample records'); await click('Explore with sample records'); await waitFor('Chest X-ray');
   await wait(4000);
 

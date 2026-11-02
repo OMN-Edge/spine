@@ -1682,5 +1682,14 @@
  "No AI model is set up on this server, so nothing in your records is sent to one.": "Auf diesem Server ist kein KI-Modell eingerichtet, daher wird nichts aus Ihren Unterlagen an eines gesendet.",
  "More": "Mehr",
  "Account and settings": "Konto und Einstellungen",
- "Signed in as": "Angemeldet als"
+ "Signed in as": "Angemeldet als",
+ "Save your recovery kit": "Speichern Sie Ihr Wiederherstellungs-Kit",
+ "Step {n} of {total}": "Schritt {n} von {total}",
+ "Opening your records…": "Ihre Unterlagen werden geöffnet…",
+ "Confirm your email address first: follow the link in the message we sent you.": "Bestätigen Sie zuerst Ihre E-Mail-Adresse: Folgen Sie dem Link in der Nachricht, die wir Ihnen geschickt haben.",
+ "That took too long. Sign in again.": "Das hat zu lange gedauert. Melden Sie sich erneut an.",
+ "Type the code.": "Geben Sie den Code ein.",
+ "Type your email address and your password.": "Geben Sie Ihre E-Mail-Adresse und Ihr Passwort ein.",
+ "That code is not right. Try again.": "Dieser Code ist nicht richtig. Versuchen Sie es erneut.",
+ "The email address or the password is not right.": "Die E-Mail-Adresse oder das Passwort ist nicht richtig."
 }

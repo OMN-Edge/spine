@@ -3,6 +3,7 @@ import { useI18n } from '../i18n';
 import { vaultState, OpenError } from '../crypto/vault-state';
 import { api } from '../api';
 import { prfSupported } from '../crypto/passkey-prf';
+import AuthCard, { Notice, buttonClass, inputClass } from './AuthCard';
 
 /**
  * Shown when someone is signed in but the records are not open: after a reload, the page has forgotten the master key, and the
@@ -48,21 +49,22 @@ export default function UnlockScreen({ opened, signOut }: { opened: () => void; 
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
-      <form onSubmit={submit} className="w-full max-w-sm space-y-4">
-        <h1 className="text-xl font-semibold text-gray-900">{t('Open your records')}</h1>
-        <p className="text-sm text-gray-600">{t('Your records are encrypted on this device. Type your master password to open them.')}</p>
-        <label className="block text-sm text-gray-700">
-          {t('Master password')}
-          <input type="password" autoFocus autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} className="mt-1 w-full rounded border border-gray-300 px-3 py-2" />
-        </label>
-        {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-        <div className="flex items-center justify-between">
-          <button type="submit" disabled={busy || password.length === 0} className="rounded bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50">{busy ? t('Opening…') : t('Open')}</button>
-          {prfSupported() && api.auth.passkeys.supported() && <button type="button" onClick={() => void withPasskey()} disabled={busy} className="text-sm text-brand-600 hover:underline">{t('Open with a passkey')}</button>}
-          <button type="button" onClick={() => { void api.auth.logout().then(signOut); }} className="text-sm text-gray-500 hover:text-gray-700">{t('Sign out')}</button>
-        </div>
+    <AuthCard
+      title={t('Open your records')}
+      footer={<button type="button" onClick={() => { void api.auth.logout().then(signOut); }} className="text-brand-600">{t('Sign out')}</button>}
+    >
+      <form onSubmit={submit}>
+        <p className="text-sm text-gray-600 mb-4">{t('Your records are encrypted on this device. Type your master password to open them.')}</p>
+        <input
+          type="password" autoFocus autoComplete="current-password" aria-label={t('Master password')} placeholder={t('Master password')}
+          value={password} onChange={e => setPassword(e.target.value)} className={inputClass}
+        />
+        {error && <Notice kind="error">{error}</Notice>}
+        <button type="submit" disabled={busy || password.length === 0} className={buttonClass}>{busy ? t('Opening…') : t('Open')}</button>
+        {prfSupported() && api.auth.passkeys.supported() && (
+          <button type="button" onClick={() => void withPasskey()} disabled={busy} className="mt-3 w-full rounded-full border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-50 disabled:opacity-50">{t('Open with a passkey')}</button>
+        )}
       </form>
-    </div>
+    </AuthCard>
   );
 }
