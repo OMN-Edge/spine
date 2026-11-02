@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { openPerson, type People } from '../profiles';
-import { TOP_BAR_CONTROL, useI18n } from '../i18n';
+import { useI18n } from '../i18n';
+import { TOP_BAR_CONTROL } from './LanguageSwitcher';
 
 /**
  * Whose records are open, always in the header: one tap shows the other people this account keeps or was let into, opens another, or goes

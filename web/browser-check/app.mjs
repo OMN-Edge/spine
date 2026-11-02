@@ -271,7 +271,7 @@ try {
   const click = async label => { const h = await p.evaluateHandle(l => [...document.querySelectorAll('button,a')].find(e => e.offsetParent && e.innerText.trim().toLowerCase().startsWith(l.toLowerCase())), label); await h.asElement().click(); };
   // Chooses in one of the app's dropdowns (a combobox): opens it, then picks the option with that text. `within` narrows to one part of the page.
   const choose = async (label, option, within = 'body') => {
-    await (await p.waitForFunction((w, l) => [...document.querySelectorAll(`${w} input[role=combobox]`)].find(i => i.getAttribute('aria-label') === l && i.offsetParent), {}, within, label)).asElement().click();
+    await (await p.waitForFunction((w, l) => [...document.querySelectorAll(`${w} [role=combobox]`)].find(i => i.getAttribute('aria-label') === l && i.offsetParent), {}, within, label)).asElement().click();
     await (await p.waitForFunction(o => [...document.querySelectorAll('[role=listbox] [role=option]')].find(e => e.innerText.trim() === o), {}, option)).asElement().evaluate(e => e.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })));
   };
   // The page of people, from the menu in the header that says whose records are open.

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { LanguageSwitcher, useI18n } from '../i18n';
+import { useI18n } from '../i18n';
+import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { ThemeSwitcher } from '../components/ThemeSwitcher';
 import { openPart } from '../core/share/keys';
 import { DETAIL_LABELS } from '../detailLabels';

@@ -6,7 +6,7 @@ import { api, type Document, type ShareLinkChange, type ShareLinkDetail as Detai
 import { useChat } from '../components/ChatProvider';
 import ShareRequestCard from '../components/ShareRequestCard';
 import { announceChange, useOnDataChanged } from '../dataChanged';
-import { LANGUAGES, useI18n } from '../i18n';
+import { LANGUAGES, languageChoice, useI18n } from '../i18n';
 import { countryName } from '../i18n/useTranslation';
 import { Combobox } from '../components/Combobox';
 import { languageName } from '../i18n/useTranslation';
@@ -155,7 +155,7 @@ export default function ShareLinkDetail() {
             <label htmlFor="d-lang" className="block text-xs font-medium text-gray-500 mb-1">{t('Language the page opens in')}</label>
             <Combobox
               id="d-lang" value={form.language} disabled={!editable} onChange={v => setForm(f => ({ ...f, language: v }))} className={input}
-              options={[{ value: '', label: t('Not set: the reader chooses') }, ...LANGUAGES.map(l => ({ value: l.code, label: l.name }))]}
+              options={[{ value: '', label: t('Not set: the reader chooses') }, ...LANGUAGES.map(l => ({ value: l.code, label: languageChoice(l.code) }))]}
             />
           </div>
         </div>

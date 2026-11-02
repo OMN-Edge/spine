@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import { LogoMark } from './Logo';
 import { Link } from 'react-router-dom';
-import { LanguageSwitcher, useI18n } from '../i18n';
+import { useI18n } from '../i18n';
+import { LanguageSwitcher } from './LanguageSwitcher';
 import { ThemeSwitcher } from './ThemeSwitcher';
 
 /** The centred card the sign-in, signup and recovery pages share. */

@@ -32,7 +32,7 @@ spine/
 │       ├── files.ts, digest.ts  # ports: the files (originals, page images, scratch) and the hashing the shared code uses, registered with useFiles / useDigests by the device and by the tests' setup (Node's); settings (the environment) are a port too, `useSettings` in config.ts
 │       ├── native-tools.ts # NativeTools: what the shared code asks the machine for (render a PDF, OCR, pictures, zips ...), registered by the device and by the server's tests
 │       ├── relay/protocol.ts  # the neutral wire format of a device's model calls (the relay service itself is in server/)
-│       ├── translation.ts  # translateDocument(): on-demand, cached by digest; languages.ts lists the four languages
+│       ├── translation.ts  # translateDocument(): on-demand, cached by digest; languages.ts lists the languages documents are translated into and the four the screens are written in
 │       ├── embedding/      # embedder interface: types.ts, index.ts (registry), adapters/{none,relay}.ts (`vertex` is the relay service's)
 │       ├── similarity/     # card.ts (what a document is embedded as), index.ts (sync, related, hybrid search)
 │       ├── chat/           # agent.ts (the LangGraph agent and its read-only tools), screen.ts (what is on screen, resolved), index.ts (askQuestion; the fixed-pipeline fallback), retrieval.ts (keywords, fused search)

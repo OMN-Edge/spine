@@ -5,7 +5,7 @@ import { api, type Document, type Episode, type ShareLink, type ShareRequest } f
 import { episodeName } from '../components/episode';
 import { useOnDataChanged } from '../dataChanged';
 import ShareRequestCard from '../components/ShareRequestCard';
-import { LANGUAGES, useI18n } from '../i18n';
+import { LANGUAGES, languageChoice, useI18n } from '../i18n';
 import { Combobox } from '../components/Combobox';
 import GuideTip from '../components/GuideTip';
 import { languageName } from '../i18n/useTranslation';
@@ -277,7 +277,7 @@ export default function ShareLinks() {
             <label htmlFor="s-lang" className={label}>{t('Language the page opens in')}</label>
             <Combobox
               id="s-lang" value={form.language} onChange={v => setForm(f => ({ ...f, language: v }))} className={input}
-              options={[{ value: '', label: t('Not set: the reader chooses') }, ...LANGUAGES.map(l => ({ value: l.code, label: l.name }))]}
+              options={[{ value: '', label: t('Not set: the reader chooses') }, ...LANGUAGES.map(l => ({ value: l.code, label: languageChoice(l.code) }))]}
             />
             <p className="text-xs text-gray-500 mt-1">{t('The reader can still switch language on the page. Extracted details and your notes are translated by the model provider.')}</p>
           </div>

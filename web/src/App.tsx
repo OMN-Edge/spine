@@ -54,7 +54,8 @@ import ShareRouter from './pages/ShareRouter';
 import ShareRequestPage from './pages/ShareRequest';
 import ShareLinkDetail from './pages/ShareLinkDetail';
 import { Wordmark } from './components/Logo';
-import { LanguageSwitcher, msg, useI18n } from './i18n';
+import { msg, useI18n } from './i18n';
+import { LanguageSwitcher } from './components/LanguageSwitcher';
 import { ThemeSwitcher } from './components/ThemeSwitcher';
 
 const NAV_LINKS = [

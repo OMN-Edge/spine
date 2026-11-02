@@ -1668,5 +1668,7 @@
  "Your own records, kept by {owner}": "Propriile dumneavoastră dosare, păstrate de {owner}",
  "Who else can open your records": "Cine altcineva vă poate deschide dosarele",
  "Make the invitation": "Creați invitația",
- "You are now in the records {owner} shared with you. Switch between people from the menu at the top of the page.": "Acum sunteți în dosarele pe care {owner} vi le-a partajat. Treceți de la o persoană la alta din meniul din partea de sus a paginii."
+ "You are now in the records {owner} shared with you. Switch between people from the menu at the top of the page.": "Acum sunteți în dosarele pe care {owner} vi le-a partajat. Treceți de la o persoană la alta din meniul din partea de sus a paginii.",
+ "{language} is used for translating your documents. The screens are not available in it yet, so they are in English.": "{language} este folosită pentru traducerea documentelor dumneavoastră. Ecranele nu sunt încă disponibile în această limbă, așa că sunt în engleză.",
+ "documents only": "doar documentele"
 }

@@ -690,7 +690,7 @@ Status: hand (2026-10-27, headless Chrome: the eleven signed-in screens at 390 p
 ## 11. In another language
 
 ### 11.1 Read the app and a document in my language
-The interface is in English, Romanian, French and German. The switcher is in the navigation and on the sign-in pages, remembered in the browser, and defaults to the browser's language.
+The interface is in English, Romanian, French and German, and documents are translated into any of about forty-five languages. The switcher is in the navigation and on the sign-in pages, remembered in the browser, and defaults to the browser's language when the screens are written in it (else English). It lists the four first, then the others, each marked "documents only": in one of those the screens stay in English, a line at the top of the page says so (it can be dismissed, for that language, in that browser), and documents are translated into it.
 
 - The whole interface changes at once. Words the app stores (document types, field names) show in the chosen language.
 - A document opens in the language it was written in, at once. If that differs from the chosen language, the title, summary, notes and doctors' specialties are translated first (one short call) and replace the original, then the fields and measurement names follow. A note says it was translated, with "Show original".
@@ -699,14 +699,14 @@ The interface is in English, Romanian, French and German. The switcher is in the
 - With translation switched off, the interface is still translated and the content shows as written.
 - Messages produced by the server (errors, step names of a reading) stay in English.
 
-Status: auto (`translation`, `i18n-coverage`).
+Status: auto (`translation`: a document translated into a language the screens are not in, named to the model from the list; `i18n-coverage`; `Combobox.test`: the list and the fallback to English).
 
 ### 11.2 A doctor in another country
 The owner can preset the language a link opens in; the recipient can still switch it on the page, and the choice is kept in their browser.
 
 - Documents already translated show at once; the rest are translated in the background and the cards switch as they finish. Creating the link starts that for the documents it covers.
 - Opening a document translates it as in 11.1.
-- A recipient can cause a model call, so it is bounded: four languages, once per document and language, the relay's daily count for the share, and only for documents the link covers.
+- A recipient can cause a model call, so it is bounded: a fixed list of languages, once per document and language, the relay's daily count for the share, and only for documents the link covers.
 
 Status: auto (`translation`, `public-share-detail`).
 

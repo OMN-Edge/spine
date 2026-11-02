@@ -1668,5 +1668,7 @@
  "Your own records, kept by {owner}": "Ihre eigenen Unterlagen, geführt von {owner}",
  "Who else can open your records": "Wer Ihre Unterlagen sonst öffnen kann",
  "Make the invitation": "Einladung erstellen",
- "You are now in the records {owner} shared with you. Switch between people from the menu at the top of the page.": "Sie sind jetzt in den Unterlagen, die {owner} mit Ihnen geteilt hat. Wechseln Sie zwischen Personen über das Menü oben auf der Seite."
+ "You are now in the records {owner} shared with you. Switch between people from the menu at the top of the page.": "Sie sind jetzt in den Unterlagen, die {owner} mit Ihnen geteilt hat. Wechseln Sie zwischen Personen über das Menü oben auf der Seite.",
+ "{language} is used for translating your documents. The screens are not available in it yet, so they are in English.": "{language} wird für die Übersetzung Ihrer Dokumente verwendet. Die Bildschirme gibt es in dieser Sprache noch nicht, daher sind sie auf Englisch.",
+ "documents only": "nur Dokumente"
 }
