@@ -29,7 +29,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     question: 'What does checking the grouping mean?',
     paragraphs: [
       'One file often holds several documents: a scan of a whole folder, or a lab report with a letter behind it. Spine guesses where each document starts and ends, and asks you to look before it reads them.',
-      'On the grouping screen you can join documents, split one, move a page or set a blank one aside. When it looks right, confirm it and the documents are read. A file of a single page has nothing to group and is read straight away.',
+      'On the grouping screen you can join documents, split one, move a page or set a blank one aside. When it looks right, confirm it and the documents are read. A file read as one document has nothing to check and is read straight away; only a file split into several waits for you.',
       'Until you confirm, those documents stay out of the timeline and search, so a wrong guess never mixes up your records.',
     ],
   },

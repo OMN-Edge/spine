@@ -6,6 +6,9 @@ import { I18nProvider } from './i18n';
 import { LanguageNotice } from './components/LanguageSwitcher';
 import '@fontsource-variable/inter';
 import './index.css';
+import { lockPageZoomInInstalledApp } from './page-zoom';
+
+lockPageZoomInInstalledApp();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

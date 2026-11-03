@@ -177,6 +177,9 @@ describe('pipeline — multi-page merged PDF', () => {
     const job = await waitForJob(id);
 
     expect(job.status).toBe('done');
+    // Grouped as one document: nothing to split, so it was read at once and is shown, as a one-page upload is.
+    expect((await getStore().sourceFiles.findFor(OWNER_ID, id))!.grouping_confirmed).toBe(true);
+    expect(await getStore().documents.listFor(OWNER_ID, { sourceFileId: id, limit: 10, offset: 0 })).toHaveLength(1);
 
     const docs = await documentsFor(id);
     expect(docs).toHaveLength(1);
@@ -202,6 +205,9 @@ describe('pipeline — multi-page merged PDF', () => {
     const job = await waitForJob(id);
 
     expect(job.status).toBe('done');
+    // Cut into two: the split waits for the owner, and the documents stay out of the listings until then.
+    expect((await getStore().sourceFiles.findFor(OWNER_ID, id))!.grouping_confirmed).toBe(false);
+    expect(await getStore().documents.listFor(OWNER_ID, { sourceFileId: id, limit: 10, offset: 0 })).toHaveLength(0);
 
     const docs = await documentsFor(id);
     expect(docs).toHaveLength(2);

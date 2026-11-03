@@ -7,7 +7,10 @@
   input:not([type='checkbox']):not([type='radio']), textarea, select { font-size: 16px !important; }
 }
 html { -webkit-text-size-adjust: 100%; }
-/* No double-tap zoom (it zooms by accident, and makes every tap wait to see if a second follows); pinch zoom stays, for small print.
+/* No rubber-band past the top or bottom: flung upward, the whole page, the menu with it, was pulled down and sprang back. */
+html, body { overscroll-behavior-y: none; }
+/* No double-tap zoom (it zooms by accident, and makes every tap wait to see if a second follows); pinch zoom stays in a browser tab, for small print
+   (the installed app zooms only a document's scan: page-zoom.ts).
    On every element, not only <html>: the value is not inherited, and the browser combines it with the ancestors only up to the nearest
    scrolling box (the page viewer, the chat, the panes). In the base layer, so a class such as touch-none still wins. */
 @layer base {
