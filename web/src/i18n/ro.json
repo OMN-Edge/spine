@@ -1701,5 +1701,8 @@
  "Data and privacy": "Date și confidențialitate",
  "Change your master password": "Schimbați parola principală",
  "The one you sign in with and that opens your records.": "Cea cu care vă conectați și care vă deschide înregistrările.",
- "A photo goes to Scan to be straightened, and is read on this device: nothing of it is sent to a model.": "O fotografie trece prin Scanare pentru a fi îndreptată și este citită pe acest dispozitiv: nimic din ea nu este trimis către un model."
+ "A photo goes to Scan to be straightened, and is read on this device: nothing of it is sent to a model.": "O fotografie trece prin Scanare pentru a fi îndreptată și este citită pe acest dispozitiv: nimic din ea nu este trimis către un model.",
+ "The limit on reading for today has been reached. This is read by itself when it starts again, at {time}.": "Limita de citire pentru azi a fost atinsă. Se citește singur când limita se reia, la {time}.",
+ "The reading service could not be reached. This is tried again by itself at {time}.": "Serviciul de citire nu a putut fi contactat. Se reîncearcă singur la {time}.",
+ "{n} document waits for the reading service and is read by itself later.|{n} documents wait for the reading service and are read by themselves later.": "{n} document așteaptă serviciul de citire și va fi citit singur mai târziu.|{n} documente așteaptă serviciul de citire și vor fi citite singure mai târziu.|{n} de documente așteaptă serviciul de citire și vor fi citite singure mai târziu."
 }

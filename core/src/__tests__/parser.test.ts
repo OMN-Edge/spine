@@ -3,7 +3,9 @@ import { createParser, PARSERS, ParserConfigError } from '../parser/index.js';
 import type { ParserDeps } from '../parser/deps.js';
 import type { ParserConfig } from '../parser/types.js';
 import type { OcrReading } from '../parser/ocr.js';
-import type { PageReading } from '../llm/types.js';
+import { LlmBlockedError, type PageReading } from '../llm/types.js';
+import { ModelUnreachableError } from '../llm/availability.js';
+import { ModelBudgetError } from '../llm/budget.js';
 import type { ParseResponse, UnstructuredElement } from '../types.js';
 import { groundSnippet } from '../ingestion/grounding.js';
 import { loadLlmConfig, loadParserConfig } from '../config.js';
@@ -359,6 +361,28 @@ describe('the hybrid parser: text layer, then local OCR, then the model', () => 
     expect(result.pages[0].elements).toEqual([]);
     // Nothing read it, so it is not called OCR.
     expect(result.pages[0].extraction_source).toBe('unread');
+  });
+
+  it('does not keep a page unread because the model could not be asked: the parse fails with that, so the upload waits', async () => {
+    // Nov 2: pages the relay could not get read were kept with no text, and the documents made of them were read as empty.
+    const off = { ...config, ocrEnabled: false };
+    const relay = (status: number, code?: string) => Object.assign(new Error(`the model service answered ${status}`), { status, code });
+    for (const failure of [relay(429), relay(402, 'allowance_used'), relay(503, 'unavailable'), relay(401), new ModelUnreachableError(new TypeError('Failed to fetch')), new ModelBudgetError(10)]) {
+      const { d } = deps({ sidecar: { pages: [] }, readPage: async () => { throw failure; } });
+      await expect(createParser(off, d).parse(input(2))).rejects.toBe(failure);
+    }
+    // Even where local OCR read something: the model was asked because that was not good enough, and it will be asked again.
+    const { d } = deps({ ocrPage: async () => ocr(30, 60, 0.4), readPage: async () => { throw relay(503, 'unavailable'); } });
+    await expect(createParser(config, d).parse(input(1))).rejects.toThrow('503');
+  });
+
+  it('keeps a page unread when the model refused it or the provider turned the request down: asking again would not change that', async () => {
+    const off = { ...config, ocrEnabled: false };
+    for (const failure of [new LlmBlockedError('Prompt blocked: SAFETY'), Object.assign(new Error('the model service answered 502'), { status: 502, code: 'rejected' })]) {
+      const { d } = deps({ sidecar: { pages: [] }, readPage: async () => { throw failure; } });
+      const result = await createParser(off, d).parse(input(1));
+      expect(result.pages[0].extraction_source).toBe('unread');
+    }
   });
 
   it('still calls a page OCR when the model fails but local OCR did read it', async () => {

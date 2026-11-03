@@ -1,11 +1,12 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { api, type UploadDocument, type UploadSummary } from '../api';
+import { api, type ModelWaiting, type UploadDocument, type UploadSummary } from '../api';
 import SpineLog, { type VertebraState } from '../components/SpineLog';
 import { failureKind } from 'spine-core/failure-kind';
 import { documentTitle } from '../titles';
 import { whereTo } from '../components/aiTarget';
 import DeleteUpload from '../components/DeleteUpload';
+import ModelWaitNote from '../components/ModelWaitNote';
 import { routeFiles } from '../scan/route';
 import { msg, useI18n } from '../i18n';
 import type { I18n } from '../i18n';
@@ -56,6 +57,8 @@ interface JobState {
   groupingConfirmed?: boolean;
   /** Its documents are being read, after which the grouping is confirmed (a one-page upload is read without asking). */
   reading?: boolean;
+  /** It, or documents of it, wait for the reading service and are read by themselves later. */
+  waiting?: ModelWaiting | null;
 }
 
 /** A row for an upload the server already knows about. */
@@ -72,6 +75,7 @@ function fromHistory(upload: UploadSummary): JobState {
     uploadedAt: upload.uploaded_at,
     hiddenDocuments: upload.hidden_documents ?? 0,
     groupingConfirmed: upload.grouping_confirmed ?? true,
+    waiting: upload.waiting ?? null,
   };
 }
 
@@ -163,7 +167,8 @@ function UploadRow({ job, onRetry, onDeleted }: { job: JobState; onRetry: () => 
           <Link to={`/uploads/${job.fileId}`} className="shrink-0 rounded-full bg-brand-600 px-3 py-1 font-medium text-white hover:bg-brand-700">{t('Check the grouping')}</Link>
         </div>
       )}
-      {job.documents.length === 0 && <p className="text-xs text-gray-400 mt-0.5">{job.step}</p>}
+      {job.waiting && <ModelWaitNote waiting={job.waiting} className="mt-2" />}
+      {job.documents.length === 0 && !job.waiting && <p className="text-xs text-gray-400 mt-0.5">{job.step}</p>}
       {job.status === 'error' && <p className="text-xs text-red-500 mt-1">{t(FAILURE_TEXT[failureKind(job.error)])}</p>}
       {(job.documents.length > 0 || !!job.hiddenDocuments || job.status === 'done' || job.status === 'error') && (
         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
@@ -250,9 +255,10 @@ export default function Upload() {
     const interval = setInterval(async () => {
       try {
         const s = await api.sourceFiles.status(fileId);
-        update(key, { status: s.status, progress: s.progress, step: s.step, error: s.error, documents: s.documents ?? [], groupingConfirmed: s.grouping_confirmed ?? true, reading: !!s.reading });
-        // Followed until the documents have been read too, so a grouping confirmed by that is not left asking.
-        if ((s.status === 'done' && !s.reading) || s.status === 'error') clearInterval(interval);
+        update(key, { status: s.status, progress: s.progress, step: s.step, error: s.error, documents: s.documents ?? [], groupingConfirmed: s.grouping_confirmed ?? true, reading: !!s.reading, waiting: s.waiting ?? null });
+        // Followed until the documents have been read too, so a grouping confirmed by that is not left asking; and while it waits for the
+        // reading service, so the row changes when that is over.
+        if ((s.status === 'done' && !s.reading && !s.waiting) || s.status === 'error') clearInterval(interval);
       } catch {
         clearInterval(interval);
       }
@@ -281,7 +287,7 @@ export default function Upload() {
         });
         for (const upload of history) {
           // One waiting for its grouping may be being read right now (a one-page upload), so it is followed until that ends.
-          if (upload.status === 'pending' || upload.status === 'processing' || (upload.status === 'done' && upload.grouping_confirmed === false)) pollStatus(upload.id, upload.id);
+          if (upload.status === 'pending' || upload.status === 'processing' || (upload.status === 'done' && upload.grouping_confirmed === false) || upload.waiting) pollStatus(upload.id, upload.id);
         }
       })
       .catch(() => {});

@@ -7,6 +7,7 @@ import { elementsFromReading } from './multimodal.js';
 import { limiter, mapLimit } from '../../concurrency.js';
 import { textCharsOf } from '../text-layer.js';
 import { describeError } from '../../failure.js';
+import { modelWait } from '../../llm/availability.js';
 
 /**
  * Cheapest signal first, and each step only for the pages the one before could not
@@ -29,8 +30,10 @@ import { describeError } from '../../failure.js';
  * `ocr` label is not used: it came from a `detection_origin` of "ocr" that Unstructured
  * never sets, so every scanned page came back as `native_text`.
  *
- * The model can only improve a page, never lose one: if it fails or gives an unusable
- * answer, the page keeps what local OCR read, and the failure is logged.
+ * The model can only improve a page, never lose one: if it refuses the page or gives an
+ * unusable answer, the page keeps what local OCR read, and that is logged. If it could not be
+ * asked at all (a daily limit, an outage: `llm/availability.ts`), the parse fails with that
+ * error, so the upload waits and is read again later rather than kept with a page unread.
  *
  * Pages are handled in parallel (up to `SPINE_LLM_CONCURRENCY`), so one page waiting on the
  * model does not hold up the next. Local OCR is the exception: it is CPU-bound and
@@ -133,6 +136,7 @@ export function createHybridParser(deps: ParserDeps, config: ParserConfig): Pars
           }
           deps.logger.warn(`the model read nothing usable from a page; ${fallbackNote}`, { sourceFileId: input.sourceFileId, page: n });
         } catch (err) {
+          if (modelWait(err)) throw err;
           deps.logger.warn(`the model could not read a page; ${fallbackNote}`, {
             sourceFileId: input.sourceFileId, page: n, error: describeError(err),
           });

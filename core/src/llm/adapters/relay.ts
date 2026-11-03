@@ -7,6 +7,7 @@ import { convertToOpenAITool } from '@langchain/core/utils/function_calling';
 import type { StreamLine } from '../../relay/protocol.js';
 import type { TaskClients, TaskSpecs } from '../tasks.js';
 import { LlmBlockedError, LlmConfigError, type ChatLlmConfig } from '../types.js';
+import { ModelUnreachableError } from '../availability.js';
 
 /**
  * The model reached through a relay (docs/relay.md): this side only says which task and sends the messages; the relay holds the
@@ -23,7 +24,7 @@ export function useRelayHooks(next: RelayHooks): void { hooks = next; }
 async function refusal(res: Response): Promise<Error> {
   const body = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
   if (body.code === 'blocked') return new LlmBlockedError(body.error ?? 'the model refused');
-  return Object.assign(new Error(`the model service answered ${res.status}${body.error ? `: ${body.error}` : ''}`), { status: res.status });
+  return Object.assign(new Error(`the model service answered ${res.status}${body.error ? `: ${body.error}` : ''}`), { status: res.status, code: body.code });
 }
 
 export async function postToRelay(endpoint: string, path: string, body: unknown, signal?: AbortSignal): Promise<Response> {
@@ -34,6 +35,10 @@ export async function postToRelay(endpoint: string, path: string, body: unknown,
     headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
     body: JSON.stringify(body),
     signal,
+  }).catch((err: unknown) => {
+    // Stopped by the caller: that is not the service being down.
+    if (signal?.aborted) throw err;
+    throw new ModelUnreachableError(err);
   });
   if (!res.ok) throw await refusal(res);
   return res;

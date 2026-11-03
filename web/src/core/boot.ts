@@ -23,6 +23,7 @@ import type { Store } from 'spine-core/store/types';
 import { decorateAuth, useRequestAuth } from 'spine-core/routes/middleware';
 import { HEALTH_CONSENT_VERSION, TERMS_VERSION } from 'spine-core/consent';
 import { resumeStalledJobs } from 'spine-core/ingestion/pipeline';
+import { resumeUnreadDocuments } from 'spine-core/ingestion/read-upload';
 import { tagRoutes } from 'spine-core/routes/tags';
 import { doctorRoutes } from 'spine-core/routes/doctors';
 import { trendRoutes } from 'spine-core/routes/trends';
@@ -107,8 +108,10 @@ export async function startCore(vault?: { objects: ObjectStore; profileId: strin
   }
 
   // Nothing can still be running in a core that has just started: an upload left reading when the page closed is read again (TR-AI-11),
-  // and one that cannot be is failed, or it would wait for ever. After the routes, because reading may call a model.
+  // and one that cannot be is failed, or it would wait for ever; so is one that waited for the model. Documents of a confirmed upload
+  // still unread (the model could not be asked, or the page closed) are read. After the routes, because reading may call a model.
   await resumeStalledJobs();
+  await resumeUnreadDocuments();
 
   let locked = false;
   let ticks = 0;

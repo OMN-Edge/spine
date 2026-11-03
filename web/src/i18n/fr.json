@@ -1701,5 +1701,8 @@
  "Data and privacy": "Données et confidentialité",
  "Change your master password": "Changer votre mot de passe principal",
  "The one you sign in with and that opens your records.": "Celui avec lequel vous vous connectez et qui ouvre vos dossiers.",
- "A photo goes to Scan to be straightened, and is read on this device: nothing of it is sent to a model.": "Une photo passe par Scan pour être redressée, et elle est lue sur cet appareil : rien n’en est envoyé à un modèle."
+ "A photo goes to Scan to be straightened, and is read on this device: nothing of it is sent to a model.": "Une photo passe par Scan pour être redressée, et elle est lue sur cet appareil : rien n’en est envoyé à un modèle.",
+ "The limit on reading for today has been reached. This is read by itself when it starts again, at {time}.": "La limite de lecture pour aujourd’hui est atteinte. La lecture se fera d’elle-même quand elle reprend, à {time}.",
+ "The reading service could not be reached. This is tried again by itself at {time}.": "Le service de lecture n’a pas pu être joint. Une nouvelle tentative se fera d’elle-même à {time}.",
+ "{n} document waits for the reading service and is read by itself later.|{n} documents wait for the reading service and are read by themselves later.": "{n} document attend le service de lecture et sera lu de lui-même plus tard.|{n} documents attendent le service de lecture et seront lus d’eux-mêmes plus tard."
 }

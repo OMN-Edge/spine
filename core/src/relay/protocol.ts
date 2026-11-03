@@ -8,7 +8,9 @@ import { z } from 'zod';
  *   `{ result }` (already parsed against the schema the relay's adapter bound); the agent, which is the chat model itself, takes the tools
  *   it may call and answers `{ message }`, or, when `stream` is set, one JSON line a piece (`StreamLine`).
  * - `POST /v1/embed`: texts in, one vector each out.
- * Errors are `{ error, code? }` with a status; `code: 'blocked'` means the model refused these words.
+ * Errors are `{ error, code? }` with a status; `code: 'blocked'` means the model refused these words, `code: 'rejected'` (502) that the
+ *   provider turned the request down (a 4xx of its own), and `code: 'unavailable'` (503) that it did not answer, or answered that it
+ *   could not. A device tries the last again later and not the first two (`llm/availability.ts`).
  */
 export const TASK_PATH = /^\/v1\/task\/([A-Za-z]+)$/;
 export const EMBED_PATH = '/v1/embed';

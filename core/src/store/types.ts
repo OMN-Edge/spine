@@ -1379,6 +1379,8 @@ export interface MaintenanceRepository {
   stalledSourceFiles(): Promise<Array<{ id: string; user_id: string; file_path: string; from_export: boolean }>>;
   /** Startup: fails the stalled uploads except the ones named, which are being started again. */
   failStalledSourceFiles(keep?: string[]): Promise<number>;
+  /** Startup: the uploads, grouping confirmed and not set aside, that still hold a document never read (`needs_reading`): their reading goes on. */
+  uploadsWithUnreadDocuments(): Promise<Array<{ id: string; user_id: string }>>;
   /** Every account's sign-in rows (browser, address) started before the first cutoff or idle since the second, so one that is never signed in again does not keep them (privacy notice). */
   pruneSessions(startedBefore: string, idleSince: string, devicesFirstSeenBefore?: string, cookiesExpiredBefore?: string): Promise<number>;
 }

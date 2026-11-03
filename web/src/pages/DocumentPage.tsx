@@ -13,6 +13,7 @@ import ReadAgainMenu from '../components/ReadAgainMenu';
 import { SOURCE_CHIP } from '../components/pageSource';
 import PageTextPanel from '../components/PageTextPanel';
 import RelatedDocuments from '../components/RelatedDocuments';
+import ModelWaitNote from '../components/ModelWaitNote';
 import CareChain from '../components/CareChain';
 import GuideTip from '../components/GuideTip';
 import { useGuide } from '../guide';
@@ -174,9 +175,10 @@ export default function DocumentPage() {
   const beingRead = !!doc?.reading || (!!doc?.needs_reading && doc.grouping_confirmed !== false);
   useEffect(() => {
     if (!beingRead || draft !== null) return;
-    const timer = window.setInterval(() => { if (document.visibilityState === 'visible') void load(); }, 3000);
+    // Waiting for the reading service takes minutes or hours: asked less often then.
+    const timer = window.setInterval(() => { if (document.visibilityState === 'visible') void load(); }, doc?.waiting ? 30_000 : 3000);
     return () => window.clearInterval(timer);
-  }, [beingRead, draft, load]);
+  }, [beingRead, draft, load, !!doc?.waiting]);
 
   // A change made from the chat (a note, a correction): read the document again, unless the person is editing it.
   useOnDataChanged(() => { if (draft === null) void load(); });
@@ -461,7 +463,8 @@ export default function DocumentPage() {
                 </div>
               )}
               {notice && <p className="text-sm text-green-700 mt-4" role="status">{notice}</p>}
-              {beingRead && <p className="mt-4 rounded-lg bg-brand-50 px-3 py-2 text-sm text-brand-800" role="status">{t('This document is being read. Its details appear here when it is done.')}</p>}
+              {beingRead && doc.waiting && <ModelWaitNote waiting={doc.waiting} className="mt-4" />}
+              {beingRead && !doc.waiting && <p className="mt-4 rounded-lg bg-brand-50 px-3 py-2 text-sm text-brand-800" role="status">{t('This document is being read. Its details appear here when it is done.')}</p>}
               {!beingRead && !!doc.needs_reading && doc.grouping_confirmed === false && (
                 <p className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900" role="status">
                   {t('Its details are read once you confirm how the pages of its upload were grouped.')} <Link to={`/uploads/${doc.source_file_id}`} className="font-medium text-brand-600 hover:underline">{t('Check the grouping')}</Link>

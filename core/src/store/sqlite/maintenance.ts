@@ -1,5 +1,6 @@
 import type { Database } from './driver.js';
 import type { MaintenanceRepository } from '../types.js';
+import { VISIBLE } from './visibility.js';
 
 /**
  * Boot-time operations across all rows, run by the process itself. No acting
@@ -29,6 +30,16 @@ export function maintenanceRepository(db: Database): MaintenanceRepository {
     async stalledSourceFiles() {
       const rows = db.prepare(`SELECT id, user_id, file_path, from_export FROM source_files WHERE status IN ('pending', 'processing')`).all() as Array<{ id: string; user_id: string; file_path: string; from_export: number }>;
       return rows.map(row => ({ ...row, from_export: row.from_export === 1 }));
+    },
+
+    async uploadsWithUnreadDocuments() {
+      // Prepared here, as below: only the device's core has `documents`.
+      return db.prepare(`
+        SELECT DISTINCT d.source_file_id AS id, d.user_id
+        FROM documents d
+        JOIN source_files s ON s.id = d.source_file_id AND s.user_id = d.user_id
+        WHERE d.needs_reading = 1 AND s.status = 'done' AND ${VISIBLE}
+      `).all() as Array<{ id: string; user_id: string }>;
     },
 
     async failStalledSourceFiles(keep = []) {

@@ -9,7 +9,7 @@ import { acceptParts, acceptPhotoParts } from '../ingestion/accept-parts.js';
 import { similarityEnabled } from '../similarity/index.js';
 import { removeUploadFiles } from '../ingestion/remove-upload.js';
 import { rawPhotoPath } from '../ingestion/raw-originals.js';
-import { rereadDocuments } from '../ingestion/document-reading.js';
+import { readDocumentsOrWait } from '../ingestion/document-reading.js';
 import { scheduleLinking } from '../linking/index.js';
 import { scheduleSync } from '../similarity/index.js';
 import { aiReadingAllowed, getParser } from '../parser/index.js';
@@ -21,7 +21,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { applyRegroup, RegroupError } from '../ingestion/regroup.js';
 import { openQuestions } from '../matching/index.js';
 import { guessTitle } from '../ingestion/title-guess.js';
-import { getReadingJob, isReadingUpload, startReadingUpload } from '../ingestion/read-upload.js';
+import { getReadingJob, isReadingUpload, readLater, startReadingUpload } from '../ingestion/read-upload.js';
 import { getRegroupJob, isAnalysingPages, startRegroupAnalysis } from '../regroup/jobs.js';
 import type { Document } from '../types.js';
 
@@ -55,7 +55,8 @@ export async function sourceFileRoutes(app: HttpApp) {
         // Documents whose every page the owner hid are not listed, but the card says how many there are,
         // so an upload that is nothing but hidden pages can still be opened and brought back.
         const everything = await store.documents.listFor(req.userId, { ...filter, includeHidden: true });
-        return { ...upload, documents, hidden_documents: everything.length - documents.length };
+        const waiting = getJobStatus(upload.id)?.waiting ?? getReadingJob(upload.id)?.waiting ?? null;
+        return { ...upload, documents, hidden_documents: everything.length - documents.length, waiting };
       }),
     );
     return reply.send(withDocuments.sort((a, b) => b.uploaded_at.localeCompare(a.uploaded_at)));
@@ -189,8 +190,12 @@ export async function sourceFileRoutes(app: HttpApp) {
     for (const documentId of ids as string[]) {
       if ((await store.pages.listForDocument(req.userId, documentId)).length > 0) readable.push(documentId);
     }
-    const worked = await rereadDocuments(req.userId, readable);
-    const outcome = new Map(readable.map((documentId, i) => [documentId, worked[i] ? 'done' : 'failed'] as const));
+    const { read, wait } = await readDocumentsOrWait(req.userId, readable);
+    // One the model could not be asked about and that was left unread (a regrouped document is) is read later by itself. One that
+    // was read before keeps that reading, and the owner is told this one did not work.
+    const unread = new Set((await store.documents.listFor(req.userId, { sourceFileId: id, includeHidden: true, includeUnconfirmed: true, limit: 1000, offset: 0 })).filter(d => d.needs_reading).map(d => d.id));
+    const later = !!wait && readable.some((documentId, i) => !read[i] && unread.has(documentId)) && readLater(req.userId, id, wait) !== null;
+    const outcome = new Map(readable.map((documentId, i) => [documentId, read[i] ? 'done' : later && unread.has(documentId) ? 'waiting' : 'failed'] as const));
     return reply.send({ results: (ids as string[]).map(documentId => ({ id: documentId, reread: outcome.get(documentId) ?? 'skipped' })) });
   });
 
@@ -352,6 +357,8 @@ export async function sourceFileRoutes(app: HttpApp) {
       grouping_confirmed: row.grouping_confirmed,
       // The documents are being read (a one-page upload starts that itself), so the grouping is about to be confirmed: not a question.
       reading: isReadingUpload(id),
+      // Waiting for the model (a daily limit, an outage): the upload, or its unread documents, are read by themselves at `retry_at`.
+      waiting: job?.waiting ?? getReadingJob(id)?.waiting ?? null,
       documents,
     });
   });

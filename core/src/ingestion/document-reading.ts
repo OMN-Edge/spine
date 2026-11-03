@@ -5,6 +5,7 @@ import { normaliseMeasurements } from './measurements.js';
 import { extractFields } from './extraction.js';
 import { groundSnippet } from './grounding.js';
 import { EXTRACTION_FALLBACK } from '../llm/types.js';
+import { modelWait } from '../llm/availability.js';
 import { llmConcurrency, llmContextChars } from '../config.js';
 import { mapLimit } from '../concurrency.js';
 import { cleanLanguageCode } from '../languages.js';
@@ -232,7 +233,9 @@ async function readExisting(userId: string, documentId: string, model?: string):
   try {
     const reading = await readDocument(userId, documentId, pages, model);
     return reading.extraction === EXTRACTION_FALLBACK ? null : reading;
-  } catch {
+  } catch (err) {
+    // The model could not be asked: not this document's fault, and the caller decides whether to wait (`readDocumentsOrWait`).
+    if (modelWait(err)) throw err;
     return null;
   }
 }
@@ -274,7 +277,8 @@ async function applyReading(userId: string, documentId: string, reading: Documen
 
 /** Reads one document again and, if that worked, replaces what it held. */
 export async function rereadDocument(userId: string, documentId: string, model?: string): Promise<boolean> {
-  const reading = await readExisting(userId, documentId, model);
+  // Asked for by the owner, who is told it did not work and can ask again; the document keeps what it had.
+  const reading = await readExisting(userId, documentId, model).catch(() => null);
   if (!reading) return false;
   await applyReading(userId, documentId, reading);
   return true;
@@ -285,11 +289,24 @@ export async function rereadDocument(userId: string, documentId: string, model?:
  * setting; the writes then happen one after another. Whether each one worked, in the order given.
  */
 export async function rereadDocuments(userId: string, documentIds: string[], model?: string): Promise<boolean[]> {
-  const readings = await mapLimit(documentIds, llmConcurrency(), id => readExisting(userId, id, model));
-  const done: boolean[] = [];
+  return (await readDocumentsOrWait(userId, documentIds, model)).read;
+}
+
+/**
+ * The same, and also why the documents not read were not: `wait` is the error of one the model could not be asked about (a daily
+ * limit, an outage), which asking again later can change, or null. A document not read keeps what it had, and one never read stays
+ * `needs_reading`.
+ */
+export async function readDocumentsOrWait(userId: string, documentIds: string[], model?: string): Promise<{ read: boolean[]; wait: unknown }> {
+  let wait: unknown = null;
+  const readings = await mapLimit(documentIds, llmConcurrency(), id => readExisting(userId, id, model).catch((err: unknown) => {
+    wait ??= err;
+    return null;
+  }));
+  const read: boolean[] = [];
   for (const [i, reading] of readings.entries()) {
     if (reading) await applyReading(userId, documentIds[i], reading);
-    done.push(reading !== null);
+    read.push(reading !== null);
   }
-  return done;
+  return { read, wait };
 }

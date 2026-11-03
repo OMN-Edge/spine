@@ -1,14 +1,16 @@
-import { getStore } from '../store/index.js';
 import { readsByModel } from '../file-kind.js';
 import { logger } from '../logger.js';
 import { describeError } from '../failure.js';
 import { llmConcurrency } from '../config.js';
+import { limiter } from '../concurrency.js';
 import { normaliseLicenseCode } from '../doctors.js';
 import { announceUploadLater } from '../chat/notices.js';
 import { scheduleSync } from '../similarity/index.js';
 import { scheduleLinking } from '../linking/index.js';
 import { scheduleEpisodes } from '../episodes/index.js';
-import { rereadDocuments } from './document-reading.js';
+import { readDocumentsOrWait } from './document-reading.js';
+import { getAccountsStore, getStore } from '../store/index.js';
+import { modelAnswered, waitForModel, type ModelWaiting } from './model-wait.js';
 import { readDigitalSigners, readSignatures } from './signatures.js';
 
 /**
@@ -18,7 +20,8 @@ import { readDigitalSigners, readSignatures } from './signatures.js';
  * read several times. A document that still `needs_reading` is one this has not read yet (or whose pages changed since).
  */
 export interface ReadingJob {
-  status: 'running' | 'done' | 'failed';
+  /** `waiting`: some documents could not be read because the model could not be asked; they are read by themselves later (`waiting`). */
+  status: 'running' | 'done' | 'failed' | 'waiting';
   step: string;
   progress: number;
   documents: number;
@@ -28,9 +31,17 @@ export interface ReadingJob {
   started_at: string;
   finished_at?: string;
   error?: string;
+  waiting?: ModelWaiting;
 }
 
 const jobs = new Map<string, ReadingJob>();
+
+/**
+ * One upload is read at a time; the documents of each are read several at once (`llmConcurrency`). Not for the model's sake: a reading
+ * writes each document in a transaction, and two readings writing at once on the one connection collide ("cannot start a transaction
+ * within a transaction"). They would, when the readings that waited for the model start again together (after midnight, at start-up).
+ */
+const lane = limiter(1);
 
 export const getReadingJob = (sourceFileId: string): ReadingJob | undefined => jobs.get(sourceFileId);
 export const isReadingUpload = (sourceFileId: string): boolean => jobs.get(sourceFileId)?.status === 'running';
@@ -38,13 +49,14 @@ export const isReadingUpload = (sourceFileId: string): boolean => jobs.get(sourc
 /**
  * Reads every document of the upload that still needs it and, if `confirm`, confirms the grouping when that is over: the documents
  * then appear, are embedded and looked at for links. A document the model could not read stays marked, so it can be read again; it
- * does not hold the others back. Runs in the background; a restart stops it, and confirming again continues.
+ * does not hold the others back. One it could not be asked about (a daily limit, an outage) is read again by itself later, and the
+ * job says `waiting` until then. Runs in the background; a restart stops it, and the next start continues (`resumeUnreadDocuments`).
  */
 export function startReadingUpload(userId: string, sourceFileId: string, confirm: boolean): ReadingJob {
   const running = jobs.get(sourceFileId);
   if (running?.status === 'running') return running;
   const job = begin(sourceFileId, confirm);
-  void run(userId, sourceFileId, confirm, job);
+  void lane(() => run(userId, sourceFileId, confirm, job));
   return job;
 }
 
@@ -53,7 +65,7 @@ export async function readUpload(userId: string, sourceFileId: string, confirm: 
   const running = jobs.get(sourceFileId);
   if (running?.status === 'running') return running;
   const job = begin(sourceFileId, confirm);
-  await run(userId, sourceFileId, confirm, job);
+  await lane(() => run(userId, sourceFileId, confirm, job));
   return job;
 }
 
@@ -75,15 +87,20 @@ async function run(userId: string, sourceFileId: string, confirm: boolean, job: 
 
       // In groups of the model concurrency, so the progress moves and a stop between groups loses nothing.
       const readIds: string[] = [];
+      let wait: unknown = null;
       const step = Math.max(1, llmConcurrency());
       for (let i = 0; i < todo.length; i += step) {
         const group = todo.slice(i, i + step);
-        const worked = await rereadDocuments(userId, group.map(d => d.id));
-        group.forEach((d, k) => { if (worked[k]) readIds.push(d.id); });
+        const outcome = await readDocumentsOrWait(userId, group.map(d => d.id));
+        group.forEach((d, k) => { if (outcome.read[k]) readIds.push(d.id); });
+        wait ??= outcome.wait;
         job.read = i + group.length;
         job.progress = Math.round((job.read / Math.max(1, todo.length)) * 90);
       }
-      if (todo.length > 0 && readIds.length === 0) throw new Error('the model could not read any of the documents');
+      // Some could not be read because the model could not be asked: they are read by themselves later, and the owner's confirmation
+      // stands (below), so what was read is shown and the rest appear when they are read. Not a failure: nothing is given up.
+      const waiting = wait ? readLater(userId, sourceFileId, wait) : null;
+      if (todo.length > 0 && readIds.length === 0 && !waiting) throw new Error('the model could not read any of the documents');
 
       // Doctors named by a stamp or a signature: they belong to documents, so they are filed once the documents are read.
       job.step = 'reading signatures';
@@ -95,6 +112,12 @@ async function run(userId: string, sourceFileId: string, confirm: boolean, job: 
         scheduleLinking(userId, (await store.documents.listFor(userId, { sourceFileId, limit: 1000, offset: 0 })).map(d => d.id));
         scheduleEpisodes(userId);
       }
+      if (waiting) {
+        job.status = 'waiting'; job.step = 'waiting for the model'; job.waiting = waiting; job.error = describeError(wait);
+        logger.warn('documents of an upload wait for the model', { sourceFileId, documents: todo.length, read: readIds.length, reason: waiting.reason, retryAt: waiting.retry_at });
+        return;
+      }
+      modelAnswered(`read:${sourceFileId}`);
       job.status = 'done'; job.step = 'complete'; job.progress = 100; job.finished_at = new Date().toISOString();
       logger.info('an upload was read', { sourceFileId, documents: todo.length, read: readIds.length });
       announceUploadLater(userId, sourceFileId, 'read');
@@ -103,6 +126,31 @@ async function run(userId: string, sourceFileId: string, confirm: boolean, job: 
       job.status = 'failed'; job.step = 'failed'; job.error = describeError(err); job.finished_at = new Date().toISOString();
     }
   }
+}
+
+/**
+ * Plans another reading of the upload's unread documents for when the model can be asked, if `err` says it could not be; null if
+ * `err` is not a failure to wait out. For a reading that ran here, and for the routes that read documents of an upload themselves
+ * (a split, a merge, regrouping's "Done"): a document they could not read for that reason is not left unread for good.
+ */
+export function readLater(userId: string, sourceFileId: string, err: unknown): ModelWaiting | null {
+  const waiting = waitForModel(`read:${sourceFileId}`, err, () => startReadingUpload(userId, sourceFileId, false));
+  if (!waiting) return null;
+  // What the screens see until then, unless a reading is running and will say so itself.
+  if (jobs.get(sourceFileId)?.status !== 'running') {
+    jobs.set(sourceFileId, { status: 'waiting', step: 'waiting for the model', progress: 0, documents: 0, read: 0, confirming: false, started_at: new Date().toISOString(), waiting, error: describeError(err) });
+  }
+  return waiting;
+}
+
+/**
+ * Start-up: reads the documents that uploads whose grouping is confirmed still hold unread, for every account on this core, so a reading
+ * that waited for the model, or was stopped by a closed page, goes on. A document the model refused stays unread and is tried again.
+ */
+export async function resumeUnreadDocuments(): Promise<number> {
+  const uploads = await getAccountsStore().maintenance.uploadsWithUnreadDocuments();
+  for (const upload of uploads) startReadingUpload(upload.user_id, upload.id, false);
+  return uploads.length;
 }
 
 /** Stamps (pictures, so only with image reading allowed) and digital signatures name an author of the document they end. */
