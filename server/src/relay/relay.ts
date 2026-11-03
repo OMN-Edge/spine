@@ -17,7 +17,7 @@ import { verifyToken } from './token.js';
  * configuration: the device speaks the neutral protocol in `protocol.ts` and never knows.
  *
  * What it keeps to: it **stores nothing and logs no content**. A request is read, answered and forgotten; the only things written down are
- * the task, the model, the status, the sizes and the time. It runs only the tasks Spine has (`LLM_TASKS`) on the models it was configured
+ * the task, the model, the status (and the provider's, when it failed), the sizes and the time. It runs only the tasks Spine has (`LLM_TASKS`) on the models it was configured
  * with, and a tool the device names is a declaration handed to the model, never something the relay runs. It does see what passes through
  * it, in plaintext: it ends the TLS connection. That is why the words are "does not store or log", not "cannot see".
  */
@@ -80,9 +80,21 @@ export function createRelay(config: RelayConfig) {
     return Buffer.concat(chunks);
   }
 
-  /** The words for a failure, never the provider's own message, which may quote what was sent. */
-  const failure = (err: unknown): { status: number; error: string; code?: string } =>
-    err instanceof LlmBlockedError ? { status: 422, error: 'the model refused these words', code: 'blocked' } : { status: 502, error: 'the model provider could not answer' };
+  /**
+   * The words for a failure, never the provider's own message, which may quote what was sent. Whether asking again could help is said
+   * in the code (protocol.ts): the provider turned the request itself down (a 4xx of its own: `rejected`), or it did not answer or was
+   * busy (`unavailable`), which a device tries again later. The provider's status goes in the log, so an operator can tell them apart.
+   */
+  const failure = (err: unknown): { status: number; error: string; code: string; provider_status: number | null } => {
+    if (err instanceof LlmBlockedError) return { status: 422, error: 'the model refused these words', code: 'blocked', provider_status: null };
+    const provider = providerStatus(err);
+    if (provider !== null && provider >= 400 && provider < 500 && provider !== 408 && provider !== 429) {
+      return { status: 502, error: 'the model provider turned the request down', code: 'rejected', provider_status: provider };
+    }
+    return { status: 503, error: 'the model provider could not answer', code: 'unavailable', provider_status: provider };
+  };
+  /** A call the device gave up on (the page closed, a reload) is logged as such, not as the provider failing: nginx's 499. */
+  const CLOSED = 499;
 
   /** Each runner answers whether the call succeeded, which is when it is charged to the plan. */
   async function runTask(task: LlmTask, req: IncomingMessage, res: ServerResponse, payload: Buffer, started: number): Promise<boolean> {
@@ -117,6 +129,7 @@ export function createRelay(config: RelayConfig) {
       // Streamed: one JSON line a piece. Once the status is sent, a failure can only be said in a line.
       res.writeHead(200, { 'content-type': 'application/x-ndjson', 'cache-control': 'no-store' });
       let status = 200;
+      let fromProvider: number | null = null;
       try {
         for await (const chunk of await bound.stream(history, { signal: abort.signal })) {
           const line: StreamLine = { chunk: { content: chunk.content, tool_call_chunks: (chunk as { tool_call_chunks?: unknown[] }).tool_call_chunks, additional_kwargs: chunk.additional_kwargs, response_metadata: chunk.response_metadata, usage_metadata: (chunk as { usage_metadata?: unknown }).usage_metadata, id: chunk.id } };
@@ -124,16 +137,17 @@ export function createRelay(config: RelayConfig) {
         }
       } catch (err) {
         const f = failure(err);
-        status = f.status;
+        status = abort.signal.aborted ? CLOSED : f.status;
+        fromProvider = f.provider_status;
         if (!abort.signal.aborted) res.write(`${JSON.stringify({ error: f.error, code: f.code } satisfies StreamLine)}\n`);
       }
       res.end();
-      log({ ...label, status, bytes_in: payload.length, ms: now() - started });
+      log({ ...label, status, ...(fromProvider !== null ? { provider_status: fromProvider } : {}), bytes_in: payload.length, ms: now() - started });
       return status === 200;
     } catch (err) {
       const f = failure(err);
       if (!res.headersSent) reply(res, f.status, f.error, f.code); else res.end();
-      log({ ...label, status: f.status, bytes_in: payload.length, ms: now() - started });
+      log({ ...label, status: abort.signal.aborted ? CLOSED : f.status, ...(f.provider_status !== null ? { provider_status: f.provider_status } : {}), bytes_in: payload.length, ms: now() - started });
       return false;
     }
   }
@@ -149,9 +163,10 @@ export function createRelay(config: RelayConfig) {
       res.end(JSON.stringify({ vectors: vectors.map(v => Array.from(v)), id: embedder.id }));
       log({ task: 'embed', model: embedder.id, status: 200, bytes_in: payload.length, ms: now() - started });
       return true;
-    } catch {
-      reply(res, 502, 'the model provider could not answer');
-      log({ task: 'embed', model: 'embedder', status: 502, bytes_in: payload.length, ms: now() - started });
+    } catch (err) {
+      const f = failure(err);
+      reply(res, f.status, f.error, f.code);
+      log({ task: 'embed', model: 'embedder', status: f.status, ...(f.provider_status !== null ? { provider_status: f.provider_status } : {}), bytes_in: payload.length, ms: now() - started });
       return false;
     }
   }
@@ -172,13 +187,19 @@ export function createRelay(config: RelayConfig) {
     if (req.method !== 'POST' || (!isEmbed && !(task && (LLM_TASKS as readonly string[]).includes(task)))) return reply(res, 404, 'not a call this service makes');
     if ((req.url ?? '') !== path) return reply(res, 400, 'unexpected query');
 
+    const relayTask: RelayTask = isEmbed ? 'embed' : (task as LlmTask);
+    // A call turned away before it runs is written down too (with the task and the status, nothing of who or what), so a day's
+    // allowance running out shows in the log and not only in the browser that was refused.
+    const refuse = (status: number, error: string, code?: string) => {
+      log({ task: relayTask, status, ...(code ? { code } : {}), ms: now() - started });
+      reply(res, status, error, code);
+    };
     const bearer = /^Bearer (.+)$/.exec(String(req.headers.authorization ?? ''))?.[1];
     const who = bearer ? verifyToken(config.secret, bearer, now()) : null;
-    if (!who) return reply(res, 401, 'sign in again');
-    const relayTask: RelayTask = isEmbed ? 'embed' : (task as LlmTask);
-    if (!(await spend(who.userId))) return reply(res, 429, 'the daily allowance of model calls is used up');
+    if (!who) return refuse(401, 'sign in again');
+    if (!(await spend(who.userId))) return refuse(429, 'the daily allowance of model calls is used up');
     const refusal = await config.gate?.admit(who.userId, relayTask);
-    if (refusal) return reply(res, refusal.status, refusal.error, refusal.code);
+    if (refusal) return refuse(refusal.status, refusal.error, refusal.code);
 
     const payload = await body(req);
     if (!payload) return reply(res, 413, 'too large');
@@ -189,4 +210,19 @@ export function createRelay(config: RelayConfig) {
 
 function safeJson(payload: Buffer): unknown {
   try { return JSON.parse(payload.toString('utf8')); } catch { return null; }
+}
+
+/**
+ * The status the provider answered with, from the shapes its SDKs throw: a `status` (Anthropic), a `response.status` (Google's HTTP
+ * client), or only the words "status code 400" (LangChain's Vertex wrapper). Null when there was no answer: a timeout, a dropped connection.
+ */
+function providerStatus(err: unknown): number | null {
+  for (let e: unknown = err, depth = 0; e && depth < 3; e = (e as { cause?: unknown }).cause, depth++) {
+    const { status, response, message } = e as { status?: unknown; response?: { status?: unknown }; message?: unknown };
+    if (typeof status === 'number') return status;
+    if (typeof response?.status === 'number') return response.status;
+    const said = /status code (\d{3})/.exec(typeof message === 'string' ? message : '');
+    if (said) return Number(said[1]);
+  }
+  return null;
 }
