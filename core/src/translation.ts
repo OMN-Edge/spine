@@ -11,6 +11,7 @@ import { modelWait } from './llm/availability.js';
 import { LANGUAGE_NAMES, isSupportedLanguage, type SupportedLanguage } from './languages.js';
 import { cleanLanguageCode } from './languages.js';
 import type { Document } from './types.js';
+import type { Store } from './store/types.js';
 
 /**
  * A document in the reader's language: its extracted details and the owner's notes, translated on demand and
@@ -58,8 +59,7 @@ interface Source {
   hash: string;
 }
 
-const sourceOf = async (userId: string, document: Document, language: SupportedLanguage): Promise<Source> => {
-  const store = getStore();
+const sourceOf = async (userId: string, document: Document, language: SupportedLanguage, store: Store = getStore()): Promise<Source> => {
   const [fields, measurements, doctors] = await Promise.all([
     store.fields.listForDocument(userId, document.id),
     store.measurements.listForDocument(userId, document.id),
@@ -409,4 +409,38 @@ export function warmTranslations(userId: string, documentIds: string[], language
   void mapLimit(documentIds, Math.min(2, llmConcurrency()), async id => {
     await translateDocument(userId, id, language, { persistLanguage: false }).catch(() => null);
   }).catch(() => undefined);
+}
+
+/**
+ * Into a share's copy (`SliceOptions.finish`): the translations the owner keeps of the documents it holds, so the reader is shown them at
+ * once and no model is asked again for what was already translated. Only a translation still good for the owner's document is carried,
+ * and only what of it the copy holds the original of: a field or result on a page the owner hid is in neither. It is kept under the
+ * digest of the copy's own text, which is what the reader's core compares it with.
+ */
+export async function carryTranslations(userId: string, documentIds: string[], copy: Store): Promise<void> {
+  const store = getStore();
+  for (const documentId of documentIds) {
+    const [mine, theirs] = [await store.documents.findFor(userId, documentId), await copy.documents.findFor(userId, documentId)];
+    if (!mine || !theirs) continue;
+    for (const language of await store.translations.languagesFor(userId, documentId)) {
+      if (!isSupportedLanguage(language)) continue;
+      const kept = await store.translations.get(userId, documentId, language);
+      if (!kept || kept.sourceHash !== (await sourceOf(userId, mine, language)).hash) continue;
+      let content: TranslationBundle;
+      try { content = JSON.parse(kept.content) as TranslationBundle; } catch { continue; }
+      const held = await sourceOf(userId, theirs, language, copy);
+      const ids = <T extends { id: string }>(list: T[]) => new Set(list.map(item => item.id));
+      const [fields, measurements, doctors] = [ids(held.bundle.fields), ids(held.bundle.measurements), ids(held.bundle.doctors)];
+      const cut: TranslationBundle = {
+        title: held.bundle.title ? content.title : null,
+        summary: held.bundle.summary ? content.summary : null,
+        notes: held.bundle.notes ? content.notes : null,
+        fields: (content.fields ?? []).filter(f => fields.has(f.id)),
+        measurements: (content.measurements ?? []).filter(m => measurements.has(m.id)),
+        doctors: (content.doctors ?? []).filter(d => doctors.has(d.id)),
+        source_language: content.source_language ?? null,
+      };
+      await copy.translations.put(userId, documentId, language, held.hash, JSON.stringify(cut), kept.createdAt);
+    }
+  }
 }

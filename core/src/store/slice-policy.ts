@@ -75,13 +75,18 @@ export const SLICE = {
 /**
  * The link itself is written by hand, as the recipient's core knows it: the documents named one by one, no approval (the key is the
  * approval), chat as the owner set it. Its counters start at zero.
+ *
+ * The translations are written by `translation.ts` (`carryTranslations`, through `SliceOptions.finish`), not copied: a kept translation
+ * covers the whole document, and the copy may hold less of it (not the fields and results of a page the owner hid). Each is cut to the
+ * texts the copy holds, every one of which leaves in the original too (title, summary, notes, field labels and values, result names,
+ * specialties: all `copy` above, none `text`), and is kept under the digest of what the copy holds, so the reader's core uses it.
  */
-export const SLICE_BUILT = ['share_links'] as const;
+export const SLICE_BUILT = ['share_links', 'document_translations'] as const;
 
 /** Tables of records that never leave: the owner's working state, other people's visits, the model's conversations, the secrets. */
 export const SLICE_NEVER = [
   'regroup_plans', 'removed_readings', 'measurement_aliases', 'match_decisions', 'share_access_requests', 'share_link_events', 'share_link_access_log',
-  'document_translations', 'episodes', 'episode_documents', 'chat_conversations', 'chat_messages', 'guide_marks', 'vault_files', 'share_link_keys', 'emergency_cards', 'emergency_scans',
+  'episodes', 'episode_documents', 'chat_conversations', 'chat_messages', 'guide_marks', 'vault_files', 'share_link_keys', 'emergency_cards', 'emergency_scans',
 ] as const;
 
 export type SliceName = keyof typeof SLICE;

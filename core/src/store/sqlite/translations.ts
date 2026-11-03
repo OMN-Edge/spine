@@ -8,6 +8,7 @@ export function translationRepository(db: Database): TranslationRepository {
     SELECT source_hash, content, created_at FROM document_translations
     WHERE document_id = ? AND language = ? AND user_id = ?
   `);
+  const languages = db.prepare('SELECT language FROM document_translations WHERE document_id = ? AND user_id = ? ORDER BY language');
   // Only for a document that is the user's.
   const upsert = db.prepare(`
     INSERT INTO document_translations (user_id, document_id, language, source_hash, content, created_at)
@@ -20,6 +21,10 @@ export function translationRepository(db: Database): TranslationRepository {
     async get(userId, documentId, language) {
       const row = find.get(documentId, language, owner(userId)) as { source_hash: string; content: string; created_at: string } | undefined;
       return row ? { sourceHash: row.source_hash, content: row.content, createdAt: row.created_at } : null;
+    },
+
+    async languagesFor(userId, documentId) {
+      return (languages.all(documentId, owner(userId)) as Array<{ language: string }>).map(row => row.language);
     },
 
     async put(userId, documentId, language, sourceHash, content, createdAt) {

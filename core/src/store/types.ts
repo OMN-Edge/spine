@@ -105,6 +105,11 @@ export interface SliceOptions {
   link: { id: string; label: string | null; createdAt: string; expiresAt: string; language: string | null; allowChat: boolean };
   /** Where a page's image is in the share's own file system (when scans are included). */
   imagePathOf: (pageId: string) => string;
+  /**
+   * What is written into the copy once it is made, by what knows more than the store does: the translations the owner kept, cut to what
+   * the copy holds (`carryTranslations`). Given the copy as a store of its own; what it writes leaves with the rest.
+   */
+  finish?: (copy: Store) => Promise<void>;
 }
 
 export interface SliceResult {
@@ -1134,6 +1139,8 @@ export interface ResolvedShareLink {
 /** A document's details in another language, kept until what was translated changes (see the schema files). */
 export interface TranslationRepository {
   get(userId: string, documentId: string, language: string): Promise<{ sourceHash: string; content: string; createdAt: string } | null>;
+  /** The languages a document has a translation kept in. */
+  languagesFor(userId: string, documentId: string): Promise<string[]>;
   /** Replaces any earlier translation into that language. Nothing is written if the document is not the user's. */
   put(userId: string, documentId: string, language: string, sourceHash: string, content: string, createdAt: string): Promise<void>;
 }
