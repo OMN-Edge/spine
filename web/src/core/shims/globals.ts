@@ -1,5 +1,6 @@
 import { Buffer } from 'buffer';
 import process from 'process';
+import { addStreamIteration } from './stream-iteration';
 
 /**
  * The server's code reaches for `Buffer` and `process` as globals. This module is imported first by the core's entry, so they exist
@@ -19,3 +20,6 @@ const g = globalThis as unknown as { Buffer: typeof Buffer; process: typeof proc
 g.Buffer = Buffer;
 g.process = process;
 process.env.NODE_ENV = 'production';
+
+// Safari: PDF.js reads streams with `for await` (stream-iteration.ts).
+addStreamIteration(globalThis.ReadableStream);
