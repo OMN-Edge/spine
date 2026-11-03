@@ -106,10 +106,10 @@ export async function publicShareRoutes(app: HttpApp) {
     return { link, store };
   }
 
-  // One shared document, for the recipient to read: the details Spine extracted from it, and, only if the
-  // owner allowed scans for this link, which pages it has. The document must be one the link's scope
-  // resolves to, so a recipient cannot name an id outside what was shared. Explicit columns throughout:
-  // no owner id, no server path, no source text, no box.
+  // One shared document, for the recipient to read: the details Spine extracted from it, the episode it belongs to (the copy holds only a
+  // confirmed one whose every document is shared), and, only if the owner allowed scans for this link, which pages it has and where on
+  // them each detail was read. The document must be one the link's scope resolves to, so a recipient cannot name an id outside what was
+  // shared. Explicit columns throughout: no owner id, no server path, no source text.
   app.get<{ Params: { link: string; id: string } }>(
     '/api/share/:link/documents/:id',
     async (req, reply) => {
@@ -117,17 +117,25 @@ export async function publicShareRoutes(app: HttpApp) {
       if (!opened) return;
       const { link, store } = opened;
 
-      const shared = (await store.documents.listForShare(link)).find(d => d.id === req.params.id);
+      const inScope = await store.documents.listForShare(link);
+      const shared = inScope.find(d => d.id === req.params.id);
       if (!shared) return reply.status(404).send({ error: 'not found' });
 
       const owner = link.userId;
-      const [fields, measurements, doctors, tags, pages] = await Promise.all([
+      const [fields, measurements, doctors, tags, pages, episodes] = await Promise.all([
         store.fields.listForDocument(owner, shared.id),
         store.measurements.listForDocument(owner, shared.id),
         store.doctors.forDocument(owner, shared.id),
         store.tags.namesForDocument(owner, shared.id),
         link.includeScans ? store.pages.listForDocument(owner, shared.id) : Promise.resolve([]),
+        store.episodes.list(owner, ['confirmed']),
       ]);
+      // Only one whose every document the link shares, as in the copy: its dates and provider would otherwise tell of the others.
+      const ids = new Set(inScope.map(d => d.id));
+      const episode = episodes.find(e => e.document_ids.includes(shared.id) && e.document_ids.every(d => ids.has(d)));
+      // Where on its page a detail was read: with the scans only, as the copy holds it.
+      const box = (r: { page_id: string; bbox_x0: number | null; bbox_y0: number | null; bbox_x1: number | null; bbox_y1: number | null }) =>
+        link.includeScans ? { page_id: r.page_id, bbox_x0: r.bbox_x0, bbox_y0: r.bbox_y0, bbox_x1: r.bbox_x1, bbox_y1: r.bbox_y1 } : {};
 
       return reply
         .header('Cache-Control', 'no-store')
@@ -138,15 +146,16 @@ export async function publicShareRoutes(app: HttpApp) {
             page_start: shared.page_start, page_end: shared.page_end,
           },
           // Ids are only there so a translation, which is keyed by them, can be laid over the details.
-          fields: fields.map(f => ({ id: f.id, label: f.label, value: f.value, group_no: f.group_no })),
+          fields: fields.map(f => ({ id: f.id, label: f.label, value: f.value, group_no: f.group_no, ...box(f) })),
           measurements: measurements.map(m => ({
             id: m.id, name: m.name, value_text: m.value_text, unit: m.unit, ref_low: m.ref_low, ref_high: m.ref_high,
-            flag: m.flag, taken_on: m.taken_on,
+            flag: m.flag, taken_on: m.taken_on, ...box(m),
           })),
-          doctors: doctors.map(d => ({ id: d.id, name: d.name, specialty: d.specialty, role: d.role })),
+          doctors: doctors.map(d => ({ id: d.id, name: d.name, specialty: d.specialty, role: d.role, license_code: d.license_code })),
           tags,
+          episode: episode ? { title: episode.title, first_date: episode.first_date, last_date: episode.last_date, provider: episode.provider } : null,
           scans: link.includeScans,
-          pages: pages.map(p => ({ id: p.id, page_number: p.page_number, image_width: p.image_width, image_height: p.image_height })),
+          pages: pages.map(p => ({ id: p.id, page_number: p.page_number, image_width: p.image_width, image_height: p.image_height, extraction_source: p.extraction_source, rotation: p.rotation })),
         });
     },
   );

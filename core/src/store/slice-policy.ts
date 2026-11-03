@@ -8,8 +8,9 @@ import type { Cell } from './types.js';
  *
  * Each table names what happens to every column. A column that is `copy`ed leaves as it is; one that is `set` leaves with a fixed value
  * (the owner's file names and paths become placeholders); one that is `text` leaves only when the recipient may ask questions
- * (`includeText`) and is blank otherwise; every other column is `left`, kept at its default, which is how the owner's e-mail, the
- * checksums, word boxes, the reasons the app gave for a link, the doctors' professional codes and the rest stay out. `slice-policy.test.ts`
+ * (`includeText`) and is blank otherwise; one that is `scans` leaves only when the page images do (`includeScans`), since a position on a
+ * page means nothing without it; every other column is `left`, kept at its default, which is how the checksums, the pages' word boxes (the
+ * page's text, with positions), the reasons the app gave for a link and the rest stay out. `slice-policy.test.ts`
  * holds the lists to the schema: a new column or table is out of a share until it is named here, and the test fails until someone has
  * decided which.
  */
@@ -18,6 +19,8 @@ export interface SliceTable {
   set?: Record<string, Cell>;
   /** Copied when the recipient may ask questions; this blank otherwise. */
   text?: Record<string, Cell>;
+  /** Copied when the page images are; this blank otherwise. */
+  scans?: Record<string, Cell>;
   left: string[];
 }
 
@@ -43,20 +46,24 @@ export const SLICE = {
   extracted_fields: {
     copy: ['id', 'user_id', 'document_id', 'page_id', 'label', 'value', 'group_no', 'owner_edited'],
     text: { source_snippet: null },
-    left: ['bbox_x0', 'bbox_y0', 'bbox_x1', 'bbox_y1', 'confidence'],
+    // Where on the page it was read, so the reader can see it on the scan.
+    scans: { bbox_x0: null, bbox_y0: null, bbox_x1: null, bbox_y1: null },
+    left: ['confidence'],
   },
   measurements: {
     copy: ['id', 'user_id', 'document_id', 'page_id', 'name', 'canonical', 'value_text', 'value_num', 'unit', 'ref_low', 'ref_high', 'flag', 'taken_on', 'owner_edited'],
     text: { source_snippet: null },
-    left: ['bbox_x0', 'bbox_y0', 'bbox_x1', 'bbox_y1', 'confidence'],
+    scans: { bbox_x0: null, bbox_y0: null, bbox_x1: null, bbox_y1: null },
+    left: ['confidence'],
   },
+  // The professional code too: it is printed on the documents that name the doctor.
   doctors: {
-    copy: ['id', 'user_id', 'name', 'key', 'specialty', 'clinic', 'created_at'],
-    left: ['license_code'],
+    copy: ['id', 'user_id', 'name', 'key', 'specialty', 'clinic', 'created_at', 'license_code'],
+    left: [],
   },
   document_doctors: {
-    copy: ['user_id', 'document_id', 'doctor_id', 'role', 'source'],
-    left: ['printed_code'],
+    copy: ['user_id', 'document_id', 'doctor_id', 'role', 'source', 'printed_code'],
+    left: [],
   },
   tags: { copy: ['id', 'user_id', 'name'], left: [] },
   document_tags: { copy: ['user_id', 'document_id', 'tag_id'], left: [] },
@@ -65,6 +72,13 @@ export const SLICE = {
     copy: ['user_id', 'from_document_id', 'to_document_id', 'kind', 'source', 'state', 'created_at'],
     left: ['reason', 'confidence'],
   },
+  // An episode the owner confirmed, and only one whose every document is shared (`slice.ts` chooses them): its title, dates and provider
+  // are then the shared documents' own. Not one the app only proposed.
+  episodes: {
+    copy: ['id', 'user_id', 'title', 'state', 'source', 'created_at'],
+    left: [],
+  },
+  episode_documents: { copy: ['episode_id', 'document_id', 'user_id'], left: [] },
   // Closeness in meaning among the shared documents only: numbers, never text.
   document_embeddings: {
     copy: ['user_id', 'document_id', 'model', 'dims', 'text_hash', 'vector', 'created_at'],
@@ -86,17 +100,18 @@ export const SLICE_BUILT = ['share_links', 'document_translations'] as const;
 /** Tables of records that never leave: the owner's working state, other people's visits, the model's conversations, the secrets. */
 export const SLICE_NEVER = [
   'regroup_plans', 'removed_readings', 'measurement_aliases', 'match_decisions', 'share_access_requests', 'share_link_events', 'share_link_access_log',
-  'episodes', 'episode_documents', 'chat_conversations', 'chat_messages', 'guide_marks', 'vault_files', 'share_link_keys', 'emergency_cards', 'emergency_scans',
+  'chat_conversations', 'chat_messages', 'guide_marks', 'vault_files', 'share_link_keys', 'emergency_cards', 'emergency_scans',
 ] as const;
 
 export type SliceName = keyof typeof SLICE;
 
-/** One row as it leaves: the copied columns, the fixed ones, the text ones if allowed, and what the caller adds (a path of its own). */
-export function sliceRow(table: SliceName, row: Record<string, unknown>, o: { includeText: boolean }, extra: Record<string, unknown> = {}): Record<string, unknown> {
+/** One row as it leaves: the copied columns, the fixed ones, the text and scan ones if allowed, and what the caller adds (a path of its own). */
+export function sliceRow(table: SliceName, row: Record<string, unknown>, o: { includeText: boolean; includeScans: boolean }, extra: Record<string, unknown> = {}): Record<string, unknown> {
   const spec: SliceTable = SLICE[table];
   const out: Record<string, unknown> = {};
   for (const c of spec.copy) out[c] = row[c];
   Object.assign(out, spec.set);
   for (const [c, blank] of Object.entries(spec.text ?? {})) out[c] = o.includeText ? row[c] : blank;
+  for (const [c, blank] of Object.entries(spec.scans ?? {})) out[c] = o.includeScans ? row[c] : blank;
   return Object.assign(out, extra);
 }

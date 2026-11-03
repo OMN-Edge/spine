@@ -80,12 +80,32 @@ describe('the copy a share is made of', () => {
   it('leaves out what the recipient is not meant to have', () => {
     const { everything, all } = slice({ includeText: false, includeScans: false });
     const text = everything();
-    for (const word of ['owner@spine.test', 'jane-example-labs', '/home/owner', 'X12345', 'Jane Example', 'secret', 'unrelated visit', 'Glucose', '"x0"']) expect(text).not.toContain(word);
+    for (const word of ['owner@spine.test', 'jane-example-labs', '/home/owner', 'Jane Example', 'secret', 'unrelated visit', 'Glucose', '"x0"']) expect(text).not.toContain(word);
     expect(all('SELECT raw_text, elements, image_path FROM pages')).toEqual([{ raw_text: '', elements: '[]', image_path: '' }, { raw_text: '', elements: '[]', image_path: '' }]);
     expect(all('SELECT file_path, original_filename, checksum FROM source_files')).toEqual([{ file_path: '', original_filename: 'shared', checksum: null }]);
-    expect(all('SELECT license_code FROM doctors')).toEqual([{ license_code: null }]);
     expect(all('SELECT source_snippet, bbox_x0 FROM extracted_fields')).toEqual([{ source_snippet: null, bbox_x0: null }]);
     expect(all('SELECT email FROM users')).toEqual([{ email: 'shared@invalid.example' }]);
+  });
+
+  it('carries the doctor’s professional code, which the documents print, and where a detail sits on its page with the scans', () => {
+    expect(slice({ includeText: false, includeScans: false }).all('SELECT license_code FROM doctors')).toEqual([{ license_code: 'X12345' }]);
+    expect(slice({ includeText: false, includeScans: false }).all('SELECT printed_code FROM document_doctors')).toEqual([{ printed_code: 'X12345' }]);
+    expect(slice({ includeText: false, includeScans: true }).all('SELECT bbox_x0, bbox_y0, bbox_x1, bbox_y1 FROM extracted_fields')).toEqual([{ bbox_x0: 1, bbox_y0: 2, bbox_x1: 3, bbox_y1: 4 }]);
+  });
+
+  it('carries an episode the owner confirmed only when it shares every document of it, never one the app only proposed', async () => {
+    const episodes = (s: ReturnType<typeof slice>) => s.all('SELECT title FROM episodes').map(r => r.title);
+    const store = getStore();
+    await store.episodes.create(OWNER_ID, { id: uuidv4(), title: 'Both documents', state: 'confirmed', source: 'owner', documentIds: [shared[0], outside] }, new Date().toISOString());
+    expect(episodes(slice({ includeText: false, includeScans: false }))).toEqual([]);
+    await store.episodes.create(OWNER_ID, { id: uuidv4(), title: 'Only a proposal', state: 'proposed', source: 'auto', documentIds: [shared[0]] }, new Date().toISOString());
+    expect(episodes(slice({ includeText: false, includeScans: false }))).toEqual([]);
+    const id = uuidv4();
+    await store.episodes.create(OWNER_ID, { id, title: 'The shared one', state: 'confirmed', source: 'owner', documentIds: [shared[0]] }, new Date().toISOString());
+    const copy = slice({ includeText: false, includeScans: false });
+    expect(episodes(copy)).toEqual(['The shared one']);
+    expect(copy.all('SELECT episode_id, document_id FROM episode_documents')).toEqual([{ episode_id: id, document_id: shared[0] }]);
+    await store.episodes.setState(OWNER_ID, id, 'dismissed');
   });
 
   it('carries page text only when the recipient may ask questions, and images only when scans are allowed', () => {

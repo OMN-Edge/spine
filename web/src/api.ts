@@ -508,16 +508,21 @@ export interface SharedDocument {
     id: string; title: string | null; doc_date: string | null; provider: string | null; doc_type: string | null;
     ai_summary: string | null; user_notes: string | null; language: string | null; page_start: number; page_end: number;
   };
-  fields: Array<{ id: string; label: string; value: string; group_no: number | null }>;
+  fields: Array<{ id: string; label: string; value: string; group_no: number | null } & SharedPlace>;
   measurements: Array<{
     id: string; name: string; value_text: string; unit: string | null; ref_low: number | null; ref_high: number | null;
     flag: string | null; taken_on: string | null;
-  }>;
-  doctors: Array<{ id: string; name: string; specialty: string | null; role: string }>;
+  } & SharedPlace>;
+  doctors: Array<{ id: string; name: string; specialty: string | null; role: string; license_code: string | null }>;
   tags: string[];
+  /** A confirmed episode it belongs to, all of whose documents the link shares. */
+  episode: { title: string; first_date: string | null; last_date: string | null; provider: string | null } | null;
   scans: boolean;
-  pages: Array<{ id: string; page_number: number; image_width: number; image_height: number }>;
+  pages: Array<{ id: string; page_number: number; image_width: number; image_height: number; extraction_source: Page['extraction_source']; rotation: number }>;
 }
+
+/** Where on its page a shared detail was read: only when the link shares the scans. */
+interface SharedPlace { page_id?: string; bbox_x0?: number | null; bbox_y0?: number | null; bbox_x1?: number | null; bbox_y1?: number | null }
 
 /** An error response, with the machine-readable `code` when the server sent one. */
 export class ApiError extends Error {
