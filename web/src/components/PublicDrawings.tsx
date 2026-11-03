@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { useI18n } from '../i18n';
+import { vertebraPath } from './vertebra';
 
 /**
  * The drawings of the pages a visitor reads before an account. Each shows how something works rather than decorating: a report whose
@@ -184,16 +185,6 @@ export function WhoCanSee() {
   );
 }
 
-/** One vertebral body, as the mark draws it: rounded, waisted at the sides, `w` wide and `h` high, centred on `cx`. */
-function vertebra(cx: number, y: number, w: number, h: number): string {
-  const x = cx - w / 2;
-  const r = Math.min(5, h / 2.4);
-  const notch = w * 0.11; // the waist the mark has at each side
-  const mid = y + h / 2;
-  return `M${x + r} ${y}H${x + w - r}Q${x + w} ${y} ${x + w} ${y + r}C${x + w - notch} ${mid - h * 0.2} ${x + w - notch} ${mid + h * 0.2} ${x + w} ${y + h - r}`
-    + `Q${x + w} ${y + h} ${x + w - r} ${y + h}H${x + r}Q${x} ${y + h} ${x} ${y + h - r}C${x + notch} ${mid + h * 0.2} ${x + notch} ${mid - h * 0.2} ${x} ${y + r}Q${x} ${y} ${x + r} ${y}Z`;
-}
-
 /**
  * Three people's records side by side: yours, a child's and a parent's. Each document is a vertebra on that person's spine (the timeline
  * draws them so), each spine stands on a lock of its own, and three documents are named, one with a value marked as with a highlighter.
@@ -226,7 +217,7 @@ export function FamilySpines() {
             const w = p.w * (1 - 0.035 * i); // widest at the bottom, as a spine is
             return (
               <g key={i} className="settle" style={{ animationDelay: `${0.12 + pi * 0.18 + i * 0.07}s` }}>
-                <path d={vertebra(xOf(p, i), y, w, h)} fill={p.tone} opacity={p.opacity} />
+                <path d={vertebraPath(xOf(p, i) - w / 2, y, w, h)} fill={p.tone} opacity={p.opacity} />
                 {i > 0 && <rect x={xOf(p, i) - w * 0.36} y={y + h + 1.5} width={w * 0.72} height="3" rx="1.5" fill={p.tone} opacity={p.opacity * 0.35} />}
               </g>
             );
