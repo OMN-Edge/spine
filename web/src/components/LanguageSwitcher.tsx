@@ -6,11 +6,15 @@ import { LANGUAGES, languageChoice, useI18n, type LanguageCode } from '../i18n';
 /** The look of a control in the top bar (the language, whose records are open), so they read as one set. */
 export const TOP_BAR_CONTROL = 'rounded-full border border-gray-300 bg-white px-3 py-1 text-sm text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-500';
 
-export function LanguageSwitcher({ className = '' }: { className?: string }) {
+/**
+ * The list is wider than the button, so it opens towards the side with room: from the right edge in a corner (the default), from the
+ * left where the button starts a row at the screen's left edge (the phone menu), or it is cut off there.
+ */
+export function LanguageSwitcher({ className = '', opens = 'left' }: { className?: string; opens?: 'left' | 'right' }) {
   const { lang, setLang, t } = useI18n();
   return (
     <Combobox
-      value={lang} ariaLabel={t('Language')} onChange={v => setLang(v as LanguageCode)} wrapperClassName={`relative w-32 ${className}`} listClassName="right-0 w-64"
+      value={lang} ariaLabel={t('Language')} onChange={v => setLang(v as LanguageCode)} wrapperClassName={`relative w-32 ${className}`} listClassName={opens === 'left' ? 'right-0 w-64' : 'left-0 w-64'}
       className={`w-full ${TOP_BAR_CONTROL}`}
       options={LANGUAGES.map(l => ({ value: l.code, label: languageChoice(l.code), ...(l.screens ? {} : { hint: t('documents only') }) }))}
     />

@@ -7,7 +7,9 @@ import { isTurn } from '../geometry.js';
 import { extname } from 'path';
 import { getStore, type DocumentPatch, type MeasurementChange, type NewMeasurement } from '../store/index.js';
 import { requireAuth } from './middleware.js';
-import { rereadDocument, rereadDocuments } from '../ingestion/document-reading.js';
+import { readDocumentsOrWait, rereadDocument } from '../ingestion/document-reading.js';
+import { getReadingJob, readLater } from '../ingestion/read-upload.js';
+import { getJobStatus } from '../ingestion/jobs.js';
 import { chooseModel } from '../llm/index.js';
 import { cleanLanguageCode, isSupportedLanguage, SUPPORTED_LANGUAGES } from '../languages.js';
 import { translateDocument } from '../translation.js';
@@ -322,6 +324,8 @@ export async function documentRoutes(app: HttpApp) {
       ...doc, fields, tags, pages, measurements, doctors, grouping_confirmed: upload?.grouping_confirmed ?? true,
       // Its upload is being read now (after a confirm, or a one-page upload): the page waits for the details rather than showing none.
       reading: isReadingPages(doc.source_file_id) || upload?.status === 'pending' || upload?.status === 'processing',
+      // Not read yet because the model could not be asked: it is read by itself at `retry_at`.
+      waiting: doc.needs_reading ? (getReadingJob(doc.source_file_id)?.waiting ?? getJobStatus(doc.source_file_id)?.waiting ?? null) : null,
       episode: episode ? { id: episode.id, title: episode.title, state: episode.state, first_date: episode.first_date, last_date: episode.last_date, provider: episode.provider } : null,
     });
   });
@@ -517,8 +521,10 @@ export async function documentRoutes(app: HttpApp) {
       // `defer`: the grouping is saved and nothing is read, so a run of changes costs one reading,
       // which the caller asks for when it is done (POST /api/source-files/:id/extract).
       if (body.defer) return reply.send({ split_into: [id, newId], reread: 'deferred' });
-      const read = await rereadDocuments(req.userId, [id, newId]);
-      return reply.send({ split_into: [id, newId], reread: read.every(Boolean) ? 'done' : 'failed' });
+      // Both halves are unread now; one the model could not be asked about is read later by itself (`readLater`).
+      const outcome = await readDocumentsOrWait(req.userId, [id, newId]);
+      if (outcome.read.every(Boolean)) return reply.send({ split_into: [id, newId], reread: 'done' });
+      return reply.send({ split_into: [id, newId], reread: outcome.wait && readLater(req.userId, doc.source_file_id, outcome.wait) ? 'waiting' : 'failed' });
     }
 
     if (body.action === 'merge') {
@@ -544,8 +550,9 @@ export async function documentRoutes(app: HttpApp) {
       });
 
       if (body.defer) return reply.send({ merged: id, reread: 'deferred' });
-      const read = await rereadDocument(req.userId, id);
-      return reply.send({ merged: id, reread: read ? 'done' : 'failed' });
+      const outcome = await readDocumentsOrWait(req.userId, [id]);
+      if (outcome.read[0]) return reply.send({ merged: id, reread: 'done' });
+      return reply.send({ merged: id, reread: outcome.wait && readLater(req.userId, doc.source_file_id, outcome.wait) ? 'waiting' : 'failed' });
     }
 
     return reply.status(400).send({ error: 'unknown action' });

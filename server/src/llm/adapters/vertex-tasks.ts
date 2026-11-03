@@ -82,10 +82,9 @@ export function buildVertexTasks(config: ChatLlmConfig, tasks: TaskSpecs, endpoi
   // on how: some take `thinkingBudget: 0` and refuse `thinkingLevel: MINIMAL` (a 400), and some do the reverse,
   // or take the budget for text and refuse it beside an image. Which one a model wants is not something to
   // guess from its name, so the budget goes first and a 400 is tried once more with the level; the one that
-  // worked is used from then on. Claude on Vertex has no such option.
+  // worked is used from then on, by that task only (a page is an image, the others text). Claude on Vertex has no such option.
   const gemini = /^gemini/i.test(config.model);
   const thinkingVariants: Array<Record<string, unknown>> = [{ thinkingBudget: thinkingBudgetFor(config.model) }, { thinkingLevel: 'MINIMAL' }];
-  let variant = 0;
 
   const clients = {} as TaskClients;
   for (const task of Object.values(tasks)) {
@@ -114,21 +113,27 @@ export function buildVertexTasks(config: ChatLlmConfig, tasks: TaskSpecs, endpoi
     }).withStructuredOutput(task.jsonSchema, { name: task.name });
     const structured = thinkingVariants.map(clientWith);
     const canSwitch = task.reasoning === 'none' && gemini;
+    let variant = 0;
 
     type Input = Parameters<(typeof structured)[number]['invoke']>[0];
     const call = async (input: Input) => {
+      // The one this call sent, not `variant` as it is when the answer comes: calls run side by side, and one that
+      // switched while this one was out would otherwise send this one back with the setting that was just refused.
+      const tried = variant;
       try {
-        return await structured[variant].invoke(input);
+        return await structured[tried].invoke(input);
       } catch (err) {
         // The library throws these as an error of a class it does not export, worded "Finish reason: RECITATION",
         // "Prompt blocked: SAFETY": the model refused these words. Said in the seam's terms.
         if (err instanceof Error && /^(Finish reason|Prompt blocked): /.test(err.message)) throw new LlmBlockedError(err.message);
         if (!canSwitch || !(err instanceof Error) || !/status code 400/.test(err.message)) throw err;
-        const other = 1 - variant;
+        const other = 1 - tried;
         try {
           const result = await structured[other].invoke(input);
-          variant = other;
-          (config.logger ?? logger).info('the model took the other way of turning thinking off', { model: config.model, setting: Object.keys(thinkingVariants[other])[0] });
+          if (variant !== other) {
+            variant = other;
+            (config.logger ?? logger).info('the model took the other way of turning thinking off', { model: config.model, task: task.name, setting: Object.keys(thinkingVariants[other])[0] });
+          }
           return result;
         } catch {
           throw err; // the request is wrong for another reason; the first error is the one that says so

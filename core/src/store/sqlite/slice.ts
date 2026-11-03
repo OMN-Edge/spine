@@ -23,7 +23,7 @@ export function copySlice(source: Database, dest: Database, o: SliceOptions): Sl
     const cols = Object.keys(row);
     dest.prepare(`INSERT INTO ${table} (${cols.join(', ')}) VALUES (${marks(cols.length)})`).run(...cols.map(c => row[c]));
   };
-  const cut = (table: Parameters<typeof sliceRow>[0], row: Record<string, unknown>, extra: Record<string, unknown> = {}) => sliceRow(table, row, { includeText: o.includeText }, extra);
+  const cut = (table: Parameters<typeof sliceRow>[0], row: Record<string, unknown>, extra: Record<string, unknown> = {}) => sliceRow(table, row, { includeText: o.includeText, includeScans: o.includeScans }, extra);
 
   const images: SliceResult['images'] = [];
   const copy = dest.transaction(() => {
@@ -79,6 +79,19 @@ export function copySlice(source: Database, dest: Database, o: SliceOptions): Sl
     // Only the confirmed links between two documents both shared.
     for (const l of rows(`SELECT * FROM document_links WHERE user_id = ? AND state = 'confirmed' AND from_document_id IN (${inDocs}) AND to_document_id IN (${inDocs})`, o.userId, ...docs, ...docs)) {
       insert('document_links', cut('document_links', l));
+    }
+
+    // Confirmed episodes whose every document is shared: one with a document outside the link would show its dates or provider.
+    const shared = new Set(docs);
+    const members = rows(`SELECT episode_id, document_id, user_id FROM episode_documents WHERE user_id = ? AND episode_id IN (SELECT episode_id FROM episode_documents WHERE user_id = ? AND document_id IN (${inDocs}))`, o.userId, o.userId, ...docs);
+    const byEpisode = new Map<string, Array<Record<string, unknown>>>();
+    for (const m of members) byEpisode.set(m.episode_id as string, [...(byEpisode.get(m.episode_id as string) ?? []), m]);
+    const whole = [...byEpisode].filter(([, list]) => list.every(m => shared.has(m.document_id as string))).map(([id]) => id);
+    if (whole.length > 0) {
+      for (const e of rows(`SELECT * FROM episodes WHERE user_id = ? AND state = 'confirmed' AND id IN (${marks(whole.length)})`, o.userId, ...whole)) {
+        insert('episodes', cut('episodes', e));
+        for (const m of byEpisode.get(e.id as string) ?? []) insert('episode_documents', cut('episode_documents', m));
+      }
     }
 
     for (const e of rows(`SELECT * FROM document_embeddings WHERE user_id = ? AND document_id IN (${inDocs})`, o.userId, ...docs)) {

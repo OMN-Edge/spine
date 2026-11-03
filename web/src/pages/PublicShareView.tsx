@@ -1,4 +1,5 @@
-import DeviceImg from '../components/DeviceImg';
+import PageImageOverlay, { type Highlight } from '../components/PageImageOverlay';
+import { episodeName } from '../components/episode';
 import { useState, useEffect } from 'react';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { api, type SharedDocument, type SharedListDocument, type TranslatedDocument, type TrendName, type TrendSeries } from '../api';
@@ -70,7 +71,7 @@ export default function PublicShareView() {
         )}
         {state === 'pending' && <p className="text-gray-500 text-sm" role="status">{t('Your request was sent. Keep this page open: it opens when the owner approves.')}</p>}
         {state === 'denied' && <p className="text-gray-500 text-sm" role="alert">{t('The owner did not approve this request.')}</p>}
-        <div className="mt-6 flex items-center justify-center gap-2"><LanguageSwitcher /><ThemeSwitcher /></div>
+        <div className="mt-6 flex items-center justify-center gap-2"><LanguageSwitcher opens="right" /><ThemeSwitcher /></div>
       </div>
     </div>
   );
@@ -107,7 +108,9 @@ function SharedContent({ shareId }: { shareId: string }) {
     api.publicShare.meta(shareId).then(m => { setTranslating(m.translation); setChatOn(m.chat); setLandingUrl(m.landing_url); preferLang(m.language); }).catch(() => {}).finally(() => setMetaReady(true));
   }, [shareId, preferLang]);
 
-  // The list in the reader's language. Documents not yet translated come back as pending: ask again shortly, a few times.
+  // The list in the reader's language. Documents not yet translated come back as pending: ask again while any is, less often as it
+  // goes on. A list of many documents takes longer than a minute, and stopping earlier left it saying "translating" for good; one that
+  // could not be translated comes back in its original (`unavailable`), not as pending, so this ends.
   useEffect(() => {
     if (!shareId || !metaReady) return;
     let live = true;
@@ -119,7 +122,7 @@ function SharedContent({ shareId }: { shareId: string }) {
           if (!live) return;
           setDocs(list);
           setLoading(false);
-          if (translating && list.some(d => d.translation_pending) && tries++ < 20) timer = window.setTimeout(load, 2500);
+          if (translating && list.some(d => d.translation_pending)) timer = window.setTimeout(load, Math.min(2500 * 1.25 ** tries++, 20_000));
         })
         .catch(err => { if (live) { setError(err.message ?? t('This link is no longer active.')); setLoading(false); } });
     };
@@ -143,7 +146,7 @@ function SharedContent({ shareId }: { shareId: string }) {
   }
 
   const pending = docs.some(d => d.translation_pending);
-  const translated = docs.some(d => d.translation && d.translation.status !== 'same' && d.translation.status !== 'off');
+  const translated = docs.some(d => d.translation && d.translation.status !== 'same' && d.translation.status !== 'off' && d.translation.status !== 'unavailable');
   const shown = docs.filter(d => !type || d.doc_type === type);
   const types = [...new Set(docs.map(d => d.doc_type).filter((x): x is NonNullable<typeof x> => !!x))];
   const byYear = shown.reduce<Record<string, SharedListDocument[]>>((acc, doc) => {
@@ -246,12 +249,15 @@ function SharedDocumentView({ shareId, id, translating, original, titleOf, onBac
   const [error, setError] = useState('');
   const [pageIdx, setPageIdx] = useState(0);
   const [showOriginal, setShowOriginal] = useState(false);
+  // A detail chosen in the list, shown where it was read on its page: with the scans, as on the owner's document page.
+  const [selected, setSelected] = useState<Highlight | null>(null);
   const tr = useTranslation(translating ? id : null, (lang: string, part: 'head' | 'full'): Promise<TranslatedDocument> => api.publicShare.translation(shareId, id, lang, part));
 
   useEffect(() => {
     setData(null);
     setError('');
     setPageIdx(0);
+    setSelected(null);
     api.publicShare.document(shareId, id).then(setData).catch(err => setError(err.message ?? t('Could not open this document.')));
   }, [shareId, id, t]);
 
@@ -281,14 +287,29 @@ function SharedDocumentView({ shareId, id, translating, original, titleOf, onBac
   const single = fields.filter(f => f.group_no === null);
   const groups = [...new Set(fields.filter(f => f.group_no !== null).map(f => f.group_no as number))];
   const currentPage = pages[pageIdx];
+  /** What a detail is shown with on the scan, or null when there is nothing to show it on. */
+  const placeOf = (r: { id: string; page_id?: string; bbox_x0?: number | null; bbox_y0?: number | null; bbox_x1?: number | null; bbox_y1?: number | null }): Highlight | null =>
+    data.scans && r.page_id && r.bbox_x0 != null && pages.some(p => p.id === r.page_id)
+      ? { id: r.id, page_id: r.page_id, bbox_x0: r.bbox_x0, bbox_y0: r.bbox_y0 ?? null, bbox_x1: r.bbox_x1 ?? null, bbox_y1: r.bbox_y1 ?? null }
+      : null;
+  const choose = (place: Highlight | null) => {
+    if (!place) return;
+    if (selected?.id === place.id) { setSelected(null); return; }
+    setSelected(place);
+    setPageIdx(pages.findIndex(p => p.id === place.page_id));
+  };
 
-  const field = (f: SharedDocument['fields'][number]) => (
-    <FieldRow
-      key={f.id} label={useIt?.fields[f.id]?.label ?? fieldName(f.label, t)} stored={f.label} value={useIt?.fields[f.id]?.value ?? f.value}
-      original={useIt && useIt.fields[f.id] && useIt.fields[f.id].value !== f.value ? f.value : null}
-      critical={!!useIt && isCriticalField(f.label)}
-    />
-  );
+  const field = (f: SharedDocument['fields'][number]) => {
+    const place = placeOf(f);
+    return (
+      <FieldRow
+        key={f.id} label={useIt?.fields[f.id]?.label ?? fieldName(f.label, t)} stored={f.label} value={useIt?.fields[f.id]?.value ?? f.value}
+        original={useIt && useIt.fields[f.id] && useIt.fields[f.id].value !== f.value ? f.value : null}
+        critical={!!useIt && isCriticalField(f.label)}
+        onSelect={place ? () => choose(place) : undefined} selected={selected?.id === f.id}
+      />
+    );
+  };
 
   return (
     <div>
@@ -298,6 +319,7 @@ function SharedDocumentView({ shareId, id, translating, original, titleOf, onBac
           <div id="section-summary" className="bg-white border border-gray-200 rounded-xl p-4 transition-shadow">
             <h2 className="text-lg font-semibold text-gray-900 break-words">{documentTitle({ ...doc, title }, t)}</h2>
             <p className="text-sm text-gray-500">{documentByline(doc, t)}</p>
+            {data.episode && <p className="text-sm text-gray-500 mt-1">{t('Episode: {name}', { name: episodeName(data.episode, t) })}</p>}
             {tags.length > 0 && (
               <div className="flex flex-wrap gap-1 mt-2">
                 {tags.map(tag => <span key={tag} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{tag}</span>)}
@@ -334,7 +356,10 @@ function SharedDocumentView({ shareId, id, translating, original, titleOf, onBac
           {measurements.length > 0 && (
             <div id="section-results" className="bg-white border border-gray-200 rounded-xl p-4 transition-shadow">
               <h3 className="font-medium text-gray-900 mb-3 text-sm">{t('Measurements')}</h3>
-              <MeasurementsList plain items={measurements.map(m => ({ ...m, flag: m.flag as 'low' | 'high' | 'normal' | null, name: useIt?.measurements[m.id] ?? m.name }))} />
+              <MeasurementsList
+                plain items={measurements.map(m => ({ ...m, flag: m.flag as 'low' | 'high' | 'normal' | null, name: useIt?.measurements[m.id] ?? m.name }))}
+                selectedId={selected?.id} onSelect={measurements.some(m => placeOf(m)) ? m => choose(placeOf(m)) : undefined}
+              />
             </div>
           )}
 
@@ -370,11 +395,9 @@ function SharedDocumentView({ shareId, id, translating, original, titleOf, onBac
               </div>
             )}
             {currentPage && (
-              <DeviceImg
-                key={currentPage.id}
-                src={`/api/share/${shareId}/pages/${currentPage.id}/image`} alt={t('Page {n}', { n: pageIdx + 1 })}
-                width={currentPage.image_width} height={currentPage.image_height}
-                className="w-full h-auto rounded border border-gray-200 shadow-sm bg-white"
+              <PageImageOverlay
+                key={currentPage.id} page={currentPage} number={pageIdx + 1} highlightField={selected}
+                src={`/api/share/${shareId}/pages/${currentPage.id}/image`}
               />
             )}
           </div>
@@ -385,16 +408,21 @@ function SharedDocumentView({ shareId, id, translating, original, titleOf, onBac
 }
 
 /** The same rows as the document page: a short value beside its name, a long one under it. */
-function FieldRow({ label: name, stored, value, original = null, critical = false }: { label: string; stored: string; value: string; original?: string | null; critical?: boolean }) {
+function FieldRow({ label: name, stored, value, original = null, critical = false, onSelect, selected = false }: { label: string; stored: string; value: string; original?: string | null; critical?: boolean; onSelect?: () => void; selected?: boolean }) {
   const { t } = useI18n();
   // In a translation: the original under the translated value, and allergies, medicines and doses marked to be checked against it.
-  const mark = critical ? 'bg-amber-50 border border-amber-300 rounded-lg' : '';
+  // One that can be shown on the scan is chosen like a row of the owner's document page.
+  const mark = `${critical ? 'bg-amber-50 border border-amber-300 rounded-lg' : ''} ${onSelect ? `cursor-pointer rounded-lg ${selected ? 'bg-yellow-50' : 'hover:bg-gray-50'}` : ''}`;
+  const choose = onSelect ? {
+    role: 'button', tabIndex: 0, 'aria-pressed': selected, onClick: onSelect,
+    onKeyDown: (e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(); } },
+  } : {};
   const was = original && (
     <p className="mt-1 text-gray-500 break-words">{critical && <span className="font-medium text-amber-800">{t('Check against the original')}: </span>}{t('Original')}: {original}</p>
   );
   if (isSection(value)) {
     return (
-      <div className={`p-2 text-xs ${mark}`}>
+      <div {...choose} className={`p-2 text-xs ${mark}`}>
         <span className="font-medium text-gray-500">{name}</span>
         <div className="mt-1 space-y-1 text-gray-900 leading-relaxed break-words">
           {valueLines(stored, value).map((line, i) => <p key={i}>{line}</p>)}
@@ -404,7 +432,7 @@ function FieldRow({ label: name, stored, value, original = null, critical = fals
     );
   }
   return (
-    <div className={`p-2 text-xs ${mark}`}>
+    <div {...choose} className={`p-2 text-xs ${mark}`}>
       <div className="flex items-start justify-between gap-3">
         <span className="font-medium text-gray-500 shrink-0">{name}</span>
         <span className="text-gray-900 text-right break-words min-w-0">{value}</span>

@@ -14,14 +14,16 @@ export interface Highlight {
 }
 
 interface Props {
-  page: Page;
+  page: Pick<Page, 'id' | 'page_number' | 'rotation' | 'extraction_source'>;
+  /** Where the image is, when not the owner's own (a share's reader has its pages at the share's address). */
+  src?: string;
   /** The page's place in its document, for the description; the file's own number if not given. */
   number?: number;
   /** Anything read off the page with a box on it: a field or a measurement. */
   highlightField: Highlight | null;
 }
 
-export default function PageImageOverlay({ page, number, highlightField }: Props) {
+export default function PageImageOverlay({ page, src, number, highlightField }: Props) {
   const { t } = useI18n();
   const containerRef = useRef<HTMLDivElement>(null);
   const [imgSize, setImgSize] = useState<{ w: number; h: number } | null>(null);
@@ -51,7 +53,7 @@ export default function PageImageOverlay({ page, number, highlightField }: Props
   return (
     <div ref={containerRef} className="relative inline-block w-full">
       <DeviceImg
-        src={`/api/pages/${page.id}/image?r=${page.rotation ?? 0}`}
+        src={src ?? `/api/pages/${page.id}/image?r=${page.rotation ?? 0}`}
         alt={t('Page {n}', { n: number ?? page.page_number })}
         className="w-full rounded border border-gray-200 shadow-sm"
         draggable={false}

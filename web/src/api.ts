@@ -48,7 +48,12 @@ export interface Document {
   needs_reading?: boolean | number;
   /** Its upload is being read at this moment; the details follow. */
   reading?: boolean;
+  /** Not read yet because the reading service could not be asked; read by itself at `retry_at`. */
+  waiting?: ModelWaiting | null;
 }
+
+/** Work that waits for the reading service (a daily limit, an outage) and is done by itself at `retry_at`. */
+export interface ModelWaiting { reason: 'limit' | 'unavailable'; retry_at: string }
 
 export type Flag = 'low' | 'high' | 'normal';
 export type DoctorRole = 'author' | 'prescriber' | 'referrer' | 'other';
@@ -206,11 +211,13 @@ export interface UploadSummary {
   documents: UploadDocument[];
   /** Documents whose every page is hidden: not in `documents`, but there. */
   hidden_documents?: number;
+  /** It, or documents of it, wait for the reading service and are read by themselves at `retry_at`. */
+  waiting?: ModelWaiting | null;
 }
 
 export interface UploadLayout extends UploadSummary {
   /** The documents are read after the grouping is confirmed: how far that is, if it has started. */
-  reading?: { status: 'running' | 'done' | 'failed'; step: string; progress: number; documents: number; read: number; error?: string } | null;
+  reading?: { status: 'running' | 'done' | 'failed' | 'waiting'; step: string; progress: number; documents: number; read: number; error?: string; waiting?: ModelWaiting } | null;
   pages: Array<{ id: string; page_number: number; image_width: number; image_height: number; extraction_source: string | null; hidden: boolean; source_page: number; rotation: number }>;
 }
 
@@ -476,7 +483,7 @@ export interface TranslatedDocument {
   language: string;
   source_language: string | null;
   /** `same`: already in that language. `off`: translating is switched off here. */
-  status: 'same' | 'cached' | 'translated' | 'off';
+  status: 'same' | 'cached' | 'translated' | 'off' | 'unavailable';
   /** `head`: the title, summary, notes and specialties, which come first; the fields and results follow in `full`. */
   part: 'head' | 'full';
   /** Some of it could not be translated and shows in the original; the rest is asked for again later. */
@@ -501,16 +508,21 @@ export interface SharedDocument {
     id: string; title: string | null; doc_date: string | null; provider: string | null; doc_type: string | null;
     ai_summary: string | null; user_notes: string | null; language: string | null; page_start: number; page_end: number;
   };
-  fields: Array<{ id: string; label: string; value: string; group_no: number | null }>;
+  fields: Array<{ id: string; label: string; value: string; group_no: number | null } & SharedPlace>;
   measurements: Array<{
     id: string; name: string; value_text: string; unit: string | null; ref_low: number | null; ref_high: number | null;
     flag: string | null; taken_on: string | null;
-  }>;
-  doctors: Array<{ id: string; name: string; specialty: string | null; role: string }>;
+  } & SharedPlace>;
+  doctors: Array<{ id: string; name: string; specialty: string | null; role: string; license_code: string | null }>;
   tags: string[];
+  /** A confirmed episode it belongs to, all of whose documents the link shares. */
+  episode: { title: string; first_date: string | null; last_date: string | null; provider: string | null } | null;
   scans: boolean;
-  pages: Array<{ id: string; page_number: number; image_width: number; image_height: number }>;
+  pages: Array<{ id: string; page_number: number; image_width: number; image_height: number; extraction_source: Page['extraction_source']; rotation: number }>;
 }
+
+/** Where on its page a shared detail was read: only when the link shares the scans. */
+interface SharedPlace { page_id?: string; bbox_x0?: number | null; bbox_y0?: number | null; bbox_x1?: number | null; bbox_y1?: number | null }
 
 /** An error response, with the machine-readable `code` when the server sent one. */
 export class ApiError extends Error {
@@ -982,7 +994,7 @@ export const api = {
     /** One upload's pages and how they are grouped into documents. */
     get: (id: string) => req<UploadLayout>(`/api/source-files/${id}`),
     status: (id: string) =>
-      req<{ status: string; progress: number; step: string; error?: string; grouping_confirmed?: boolean; reading?: boolean; documents: UploadDocument[] }>(`/api/source-files/${id}/status`),
+      req<{ status: string; progress: number; step: string; error?: string; grouping_confirmed?: boolean; reading?: boolean; waiting?: ModelWaiting | null; documents: UploadDocument[] }>(`/api/source-files/${id}/status`),
     capabilities: () =>
       req<{
         /** `connected`: whether any model can be called here; false on a device whose server has no relay. */
@@ -997,7 +1009,7 @@ export const api = {
       }>('/api/capabilities'),
     /** Extract the details of some of an upload's documents again, from the text already read. */
     extract: (id: string, documentIds: string[]) =>
-      req<{ results: Array<{ id: string; reread: 'done' | 'failed' | 'skipped' | 'deferred' }> }>(`/api/source-files/${id}/extract`, {
+      req<{ results: Array<{ id: string; reread: 'done' | 'failed' | 'waiting' | 'skipped' | 'deferred' }> }>(`/api/source-files/${id}/extract`, {
         method: 'POST', body: JSON.stringify({ document_ids: documentIds }),
       }),
     /** Delete an upload and everything made from it: documents, pages, the original and its backup copy. */

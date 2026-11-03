@@ -2,6 +2,7 @@ import fs from '../shims/fs';
 import { Buffer } from 'buffer';
 import type { Store } from 'spine-core/store/types';
 import type { ShareHost } from 'spine-core/share-host';
+import { carryTranslations } from 'spine-core/translation';
 import { sodium } from '../../crypto/sodium';
 import { newShareKey, sealPart, wrapShareKey } from './keys';
 
@@ -38,6 +39,8 @@ export function createShareHost(deps: { store: () => Store; mail: () => boolean 
         userId, documentIds, includeText: link.allow_chat, includeScans: link.include_scans,
         link: { id: link.id, label: link.label, createdAt: link.created_at, expiresAt: link.expires_at, language: link.language, allowChat: link.allow_chat },
         imagePathOf: () => SHARE_IMAGE(next++),
+        // What the owner already had translated goes with it, so a reader in that language is not kept waiting for the model again.
+        finish: copy => carryTranslations(userId, documentIds, copy),
       });
       const changes = result.changes;
       // A keyed hash of what the copy holds (without the clocks, which differ every time it is made), so that a copy that would be the

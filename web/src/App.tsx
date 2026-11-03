@@ -204,7 +204,7 @@ function Layout({ children }: { children: React.ReactNode }) {
                 </Link>
               </>
             )}
-            <div className="py-3 flex items-center gap-2"><LanguageSwitcher /><ThemeSwitcher /></div>
+            <div className="py-3 flex items-center gap-2"><LanguageSwitcher opens="right" /><ThemeSwitcher /></div>
             {demo
               ? <button onClick={() => void leave()} className="block w-full text-left py-3 text-base text-gray-600">{t('Leave the demo')}</button>
               : <button onClick={() => void logout()} className="block w-full text-left py-3 text-base text-gray-600">{t('Sign out')}</button>}

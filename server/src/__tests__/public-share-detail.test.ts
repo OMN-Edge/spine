@@ -64,16 +64,43 @@ describe('opening one shared document', () => {
     const body = (await get(`/api/share/${shareId}/documents/${doc.id}`)).json();
     expect(body.scans).toBe(true);
     expect(body.pages.map((p: { id: string }) => p.id)).toContain(doc.pageId);
-    expect(Object.keys(body.pages[0]).sort()).toEqual(['id', 'image_height', 'image_width', 'page_number']);
+    expect(Object.keys(body.pages[0]).sort()).toEqual(['extraction_source', 'id', 'image_height', 'image_width', 'page_number', 'rotation']);
   });
 
-  it('carries nothing the recipient has no use for: no owner, path, source text, box or shareId', async () => {
+  it('carries nothing the recipient has no use for: no owner, path, source text or shareId; a place on the page only with the scans', async () => {
     const doc = await shared();
-    const shareId = await link('document_ids', [doc.id], true);
-    const text = (await get(`/api/share/${shareId}/documents/${doc.id}`)).body;
-    for (const forbidden of ['user_id', OWNER_ID, 'image_path', 'file_path', 'secret source text', 'source_snippet', 'bbox', 'page_id', 'source_file_id', 'checksum', shareId, dir]) {
-      expect(text, forbidden).not.toContain(forbidden);
+    for (const scans of [false, true]) {
+      const shareId = await link('document_ids', [doc.id], scans);
+      const text = (await get(`/api/share/${shareId}/documents/${doc.id}`)).body;
+      for (const forbidden of ['user_id', OWNER_ID, 'image_path', 'file_path', 'secret source text', 'source_snippet', 'source_file_id', 'checksum', shareId, dir, ...(scans ? [] : ['bbox', 'page_id'])]) {
+        expect(text, forbidden).not.toContain(forbidden);
+      }
     }
+  });
+
+  it('shows where a detail was read on its page when the scans are shared, so the reader can find it there', async () => {
+    const doc = await shared();
+    const fieldId = uuidv4();
+    await getStore().fields.create(OWNER_ID, { id: fieldId, documentId: doc.id, pageId: doc.pageId, label: 'finding', value: 'Invented finding', sourceSnippet: null, bbox: { x0: 0.1, y0: 0.2, x1: 0.5, y1: 0.3 }, confidence: 1 });
+    const body = (await get(`/api/share/${await link('document_ids', [doc.id], true)}/documents/${doc.id}`)).json();
+    expect(body.fields.find((f: { id: string }) => f.id === fieldId)).toMatchObject({ page_id: doc.pageId, bbox_x0: 0.1, bbox_y0: 0.2, bbox_x1: 0.5, bbox_y1: 0.3 });
+  });
+
+  it('names the doctor with the professional code the documents print', async () => {
+    const doc = await shared();
+    const doctor = (await getStore().doctors.upsert(OWNER_ID, { name: 'Dr. Ana Example', specialty: 'cardiology', licenseCode: 'A99999' }, new Date().toISOString()))!;
+    await getStore().doctors.link(OWNER_ID, doc.id, doctor, 'author');
+    const body = (await get(`/api/share/${await link('document_ids', [doc.id])}/documents/${doc.id}`)).json();
+    expect(body.doctors).toEqual([expect.objectContaining({ name: 'Ana Example', license_code: 'A99999' })]);
+  });
+
+  it('names the episode a document belongs to only when the link shares every document of it', async () => {
+    const [a, b] = [await shared(), await shared()];
+    await getStore().episodes.create(OWNER_ID, { id: uuidv4(), title: 'Invented hospital stay', state: 'confirmed', source: 'owner', documentIds: [a.id, b.id] }, new Date().toISOString());
+    const one = (await get(`/api/share/${await link('document_ids', [a.id])}/documents/${a.id}`)).json();
+    expect(one.episode).toBeNull();
+    const both = (await get(`/api/share/${await link('document_ids', [a.id, b.id])}/documents/${a.id}`)).json();
+    expect(both.episode).toMatchObject({ title: 'Invented hospital stay' });
   });
 
   it('answers 404 for a document the link does not cover, and for another user’s', async () => {

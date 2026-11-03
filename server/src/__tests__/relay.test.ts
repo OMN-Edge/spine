@@ -51,7 +51,16 @@ describe('the relay', () => {
     demoTotal = 100;
     const stand = standInClients({ continuation: { is_continuation: true, confidence: 0.9, reasoning: 'same table' } });
     calls = stand.calls;
-    const clients: TaskClients = { ...stand.clients, translation: { invoke: async () => { throw new LlmBlockedError('Prompt blocked: SAFETY'); } } as never };
+    const clients: TaskClients = {
+      ...stand.clients,
+      translation: { invoke: async () => { throw new LlmBlockedError('Prompt blocked: SAFETY'); } } as never,
+      // The shapes a provider's failure arrives in: a 4xx of its own in the words of LangChain's Vertex wrapper, and no answer at all.
+      linking: { invoke: async () => { throw new Error('Request failed with status code 400: image too large, patient Jane Example'); } } as never,
+      grouping: { invoke: async () => { throw Object.assign(new Error('Resource exhausted'), { status: 429 }); } } as never,
+      stamps: { invoke: async () => { throw new Error('socket hang up'); } } as never,
+      // Answers only when the device has gone: stands for a slow model the page was closed on.
+      chat: { invoke: (_: unknown, options: { signal: AbortSignal }) => new Promise((_resolve, reject) => options.signal.addEventListener('abort', () => reject(new Error('aborted')))) } as never,
+    };
     const handle = createRelay({
       secret: SECRET, allowedOrigin: 'https://app.example', get dailyCalls() { return limit; }, get dailySharedCalls() { return sharedLimit; }, get dailyDemoCalls() { return demoLimit; }, get dailyDemoTotalCalls() { return demoTotal; }, maxBodyBytes: 2000, usage: usageRepository(openDatabase(':memory:', openNative, undefined, 'accounts')),
       clients: model => (model === undefined || model === MODEL ? clients : null),
@@ -64,8 +73,8 @@ describe('the relay', () => {
   });
   afterEach(() => new Promise<void>(r => server.close(() => r())));
 
-  const post = (path: string, body: unknown, token: string | null = mint(), extra: Record<string, string> = {}) =>
-    fetch(base + path, { method: 'POST', body: typeof body === 'string' ? body : JSON.stringify(body), headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}), ...extra } });
+  const post = (path: string, body: unknown, token: string | null = mint(), extra: Record<string, string> = {}, signal?: AbortSignal) =>
+    fetch(base + path, { method: 'POST', body: typeof body === 'string' ? body : JSON.stringify(body), headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}), ...extra }, signal });
 
   it('runs a task through the relay’s own model and answers the parsed result', async () => {
     const res = await post(TASK, { model: MODEL, messages: messages('Hemoglobin 13.5') }, mint(), { cookie: 'session=secret' });
@@ -94,6 +103,37 @@ describe('the relay', () => {
     const res = await post('/v1/task/translation', { messages: messages('x') });
     expect(res.status).toBe(422);
     expect(await res.json()).toEqual({ error: 'the model refused these words', code: 'blocked' });
+  });
+
+  it('says whether asking again can help: a request the provider turned down is final, no answer or a busy provider is not', async () => {
+    const rejected = await post('/v1/task/linking', { messages: messages('x') });
+    expect(rejected.status).toBe(502);
+    expect(await rejected.json()).toEqual({ error: 'the model provider turned the request down', code: 'rejected' });
+    const busy = await post('/v1/task/grouping', { messages: messages('x') });
+    expect(busy.status).toBe(503);
+    expect(await busy.json()).toEqual({ error: 'the model provider could not answer', code: 'unavailable' });
+    expect((await post('/v1/task/stamps', { messages: messages('x') })).status).toBe(503);
+    // The provider's status is written down, its words are not.
+    expect(logs.map(l => [l.task, l.status, l.provider_status])).toEqual([['linking', 502, 400], ['grouping', 503, 429], ['stamps', 503, undefined]]);
+    expect(JSON.stringify(logs)).not.toMatch(/Jane|too large/);
+  });
+
+  it('writes down a call the device gave up on as closed (499), not as the provider failing', async () => {
+    const leaving = new AbortController();
+    const call = post('/v1/task/chat', { messages: messages('x') }, mint(), {}, leaving.signal).catch(() => null);
+    await new Promise(r => setTimeout(r, 50)); // the request is in, and the model is "thinking"
+    leaving.abort();
+    await call;
+    await expect.poll(() => logs.length).toBe(1);
+    expect(logs[0]).toMatchObject({ task: 'chat', status: 499 });
+  });
+
+  it('writes down a call it turned away, with the task and the status and nothing of who', async () => {
+    limit = 0;
+    expect((await post(TASK, { messages: messages('x') })).status).toBe(429);
+    expect((await post(TASK, { messages: messages('x') }, null)).status).toBe(401);
+    expect(logs.map(l => [l.task, l.status])).toEqual([['continuation', 429], ['continuation', 401]]);
+    expect(JSON.stringify(logs)).not.toMatch(/user-1/);
   });
 
   it('embeds texts and says which vector space they are in', async () => {

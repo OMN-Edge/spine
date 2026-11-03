@@ -149,13 +149,35 @@ describe('translating a document', () => {
     expect(calls).toHaveLength(2); // one translation (the short parts, then the rest), not three
   });
 
-  it('keeps nothing, and says so, when the model gives no usable answer, then works on the next try', async () => {
+  it('keeps nothing, and says so, when the model gives no usable answer; asks again only once the pause has passed', async () => {
     const d = await romanian();
     answer = () => null;
     expect(await translateDocument(OWNER_ID, d.id, 'en')).toBeNull();
     expect(await getStore().translations.get(OWNER_ID, d.id, 'en')).toBeNull();
+    // A list asks at every poll: within the pause the model is not asked, and the list is told to show the original.
+    const before = calls.length;
     answer = mark;
-    expect(await translateDocument(OWNER_ID, d.id, 'en')).toMatchObject({ status: 'translated' });
+    expect(await translateDocument(OWNER_ID, d.id, 'en')).toBeNull();
+    expect(await translateDocument(OWNER_ID, d.id, 'en', { cachedOnly: true })).toMatchObject({ status: 'unavailable', title: 'Buletin de analize' });
+    expect(calls).toHaveLength(before);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(Date.now() + 11 * 60_000);
+      expect(await translateDocument(OWNER_ID, d.id, 'en')).toMatchObject({ status: 'translated' });
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('keeps a share reader’s “already in this language”, so a document with no language is not asked about at every look', async () => {
+    // A document read from no text has no language recorded; a share reader records none, so it was detected afresh each time.
+    const d = await romanian();
+    await getStore().documents.update(OWNER_ID, d.id, { language: null });
+    answer = bundle => ({ ...mark(bundle), source_language: 'en' });
+    expect(await translateDocument(OWNER_ID, d.id, 'en', { persistLanguage: false })).toMatchObject({ status: 'same' });
+    expect((await getStore().documents.findFor(OWNER_ID, d.id))?.language).toBeNull(); // still not written by a reader
+    const asked = calls.length;
+    expect(await translateDocument(OWNER_ID, d.id, 'en', { cachedOnly: true })).toMatchObject({ status: 'same', title: 'Buletin de analize' });
+    expect(await translateDocument(OWNER_ID, d.id, 'en', { persistLanguage: false })).toMatchObject({ status: 'same' });
+    expect(calls).toHaveLength(asked);
   });
 
   it('when the provider refuses a reply, asks again in halves: one refused text costs that text, not the document', async () => {
@@ -432,6 +454,16 @@ describe('the routes', () => {
     const ready = (await get(`/api/share/${shareId}/documents?lang=en`, null)).json() as Array<{ translation: { title: string; status: string } }>;
     expect(ready[0].translation).toMatchObject({ status: 'cached', title: 'EN[Buletin de analize]' });
     expect(calls).toHaveLength(2);
+  });
+
+  it('the share list shows a document that could not be translated in its original, and stops saying it is translating', async () => {
+    const d = await romanian();
+    const { id: shareId } = await link('document_ids', [d.id]);
+    answer = () => null;
+    expect(((await get(`/api/share/${shareId}/documents?lang=en`, null)).json() as Array<{ translation_pending: boolean }>)[0].translation_pending).toBe(true);
+    await settle(async () => ((await get(`/api/share/${shareId}/documents?lang=en`, null)).json() as Array<{ translation_pending: boolean }>)[0].translation_pending === false);
+    const shown = (await get(`/api/share/${shareId}/documents?lang=en`, null)).json() as Array<{ translation: { status: string; title: string } }>;
+    expect(shown[0].translation).toMatchObject({ status: 'unavailable', title: 'Buletin de analize' });
   });
 
   it('the share list without a language is as it was, and a language the page cannot offer is ignored', async () => {

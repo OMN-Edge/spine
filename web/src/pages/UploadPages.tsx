@@ -8,6 +8,7 @@ import PagePreview from '../components/PagePreview';
 import { sourceLabel } from '../components/pageSource';
 import { documentByline, documentTitle } from '../titles';
 import DeleteUpload from '../components/DeleteUpload';
+import ModelWaitNote from '../components/ModelWaitNote';
 import { useI18n } from '../i18n';
 import DeviceImg from '../components/DeviceImg';
 
@@ -196,8 +197,9 @@ export default function UploadPages() {
   const reading = layout?.reading ?? null;
   const started = useRef(false);
   useEffect(() => {
-    if (reading?.status !== 'running') return;
-    const timer = window.setTimeout(load, 2500);
+    // Waiting for the reading service is longer: asked less often, so the screen still changes when the documents are read.
+    if (reading?.status !== 'running' && reading?.status !== 'waiting') return;
+    const timer = window.setTimeout(load, reading.status === 'waiting' ? 30_000 : 2500);
     return () => window.clearTimeout(timer);
   }, [reading?.status, reading?.read, layout, load]);
   useEffect(() => {
@@ -235,9 +237,11 @@ export default function UploadPages() {
       const failed = results.filter(r => r.reread === 'failed').map(r => r.id);
       // A document with every page hidden has nothing to read: it is not waiting for anything.
       const skipped = results.filter(r => r.reread === 'skipped').length;
-      const read = results.length - failed.length - skipped;
+      // One the reading service could not be asked about is read by itself later; the note on this screen says when.
+      const waiting = results.filter(r => r.reread === 'waiting').length;
+      const read = results.length - failed.length - skipped - waiting;
       setPending(failed);
-      const hidden = skipped > 0 && <> {tn(skipped, '{n} document has every page hidden, so nothing was read for it.', '{n} documents have every page hidden, so nothing was read for them.')}</>;
+      const hidden = <>{skipped > 0 && <> {tn(skipped, '{n} document has every page hidden, so nothing was read for it.', '{n} documents have every page hidden, so nothing was read for them.')}</>}{waiting > 0 && <> {tn(waiting, '{n} document waits for the reading service and is read by itself later.', '{n} documents wait for the reading service and are read by themselves later.')}</>}</>;
       setNotice(
         failed.length === 0
           ? <>{t('Done.')}{read > 0 && (layout?.grouping_confirmed === false
@@ -289,6 +293,8 @@ export default function UploadPages() {
           </div>
         </div>
       )}
+
+      {reading?.status === 'waiting' && reading.waiting && <ModelWaitNote waiting={reading.waiting} className="mb-4" />}
 
       {layout.status === 'done' && layout.grouping_confirmed === false && (
         <div className="mb-4 bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm">

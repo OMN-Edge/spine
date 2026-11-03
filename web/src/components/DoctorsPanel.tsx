@@ -36,9 +36,9 @@ export function DoctorsList({ doctors, plain = false }: { doctors: Array<Pick<Do
             <span className="min-w-0">
               <span className="font-medium text-gray-900 break-words">{d.name}</span>
               {d.specialty && <span className="block text-gray-400">{d.specialty}</span>}
-              {/* The code is the owner's to see on their own pages; a recipient's list never carries it. */}
               {!plain && !!d.signature_verified && <span className="block text-green-700" title={t('The certificates in the file lead to an authority this server trusts')}>{t('Digital signature verified')}</span>}
-              {!plain && d.license_code && <span className="block text-gray-400" title={t('Professional code')}>{t('Code {code}', { code: d.license_code })}</span>}
+              {/* Printed on the documents that name the doctor, so a share's reader is shown it too. */}
+              {d.license_code && <span className="block text-gray-400" title={t('Professional code')}>{t('Code {code}', { code: d.license_code })}</span>}
             </span>
             <span className="text-gray-500 shrink-0">{t(ROLE_LABELS[d.role] ?? ROLE_LABELS.other)}</span>
           </>

@@ -21,5 +21,6 @@ export function maintenanceRepository(q: Query): MaintenanceRepository {
 
     async stalledSourceFiles() { return []; },
     async failStalledSourceFiles() { return 0; },
+    async uploadsWithUnreadDocuments() { return []; },
   };
 }

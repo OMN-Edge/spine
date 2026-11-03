@@ -7,9 +7,11 @@ import { translationEnabled, llmConcurrency } from './config.js';
 import { mapLimit } from './concurrency.js';
 import { logger } from './logger.js';
 import { describeError } from './failure.js';
+import { modelWait } from './llm/availability.js';
 import { LANGUAGE_NAMES, isSupportedLanguage, type SupportedLanguage } from './languages.js';
 import { cleanLanguageCode } from './languages.js';
 import type { Document } from './types.js';
+import type { Store } from './store/types.js';
 
 /**
  * A document in the reader's language: its extracted details and the owner's notes, translated on demand and
@@ -29,7 +31,7 @@ import type { Document } from './types.js';
  * needs no translation, and every other language is translated from it, never from another translation.
  */
 
-export type TranslationStatus = 'same' | 'cached' | 'translated' | 'off';
+export type TranslationStatus = 'same' | 'cached' | 'translated' | 'off' | 'unavailable';
 
 export interface TranslatedDocument {
   language: SupportedLanguage;
@@ -57,8 +59,7 @@ interface Source {
   hash: string;
 }
 
-const sourceOf = async (userId: string, document: Document, language: SupportedLanguage): Promise<Source> => {
-  const store = getStore();
+const sourceOf = async (userId: string, document: Document, language: SupportedLanguage, store: Store = getStore()): Promise<Source> => {
   const [fields, measurements, doctors] = await Promise.all([
     store.fields.listForDocument(userId, document.id),
     store.measurements.listForDocument(userId, document.id),
@@ -236,7 +237,9 @@ const inFlight = new Map<string, Run>();
  * translation to be made in the background.
  *
  * `same`: the document is already in that language. `off`: translation is switched off here, so the original
- * is what there is. `null` (not cached-only): the model could not be reached or its answer was unusable.
+ * is what there is. `unavailable` (cached-only): it could not be translated a moment ago and is not asked for again
+ * until the pause is over, so a list shows the original rather than waiting for it. `null` (not cached-only): the
+ * model could not be reached or its answer was unusable.
  */
 export async function translateDocument(
   userId: string,
@@ -274,17 +277,21 @@ export async function translateDocument(
         await store.translations.put(userId, documentId, language, recorded.hash, cached.content, cached.createdAt);
         return shape(recorded, kept, language, 'cached');
       }
+      // Already in this language, as the model said for a reader who records no language (a share's): nothing to translate, and
+      // nothing to ask again at every look. Before this was kept, a document with no language recorded (one read from no text) was
+      // detected afresh at each of a list's polls, and stayed "translating".
+      if (cleanLanguageCode(kept.source_language) === language) return unchanged('same');
       if (isEmpty(leftOver(source.bundle, kept))) return shape(source, kept, language, 'cached');
       base = kept;
     } catch { /* an unreadable row is the same as a stale one: translate again */ }
   }
   const keptPart = () => (base ? shape(source, base, language, 'cached') : null);
-  if (options.cachedOnly) return keptPart();
-
   // One translation of a document into a language at a time, however many readers ask at once.
   const key = `${documentId}:${language}:${source.hash}`;
   const failedAt = failures.get(key);
-  if (failedAt && Date.now() - failedAt < FAILURE_PAUSE_MS) return keptPart();
+  const paused = !!failedAt && Date.now() - failedAt < FAILURE_PAUSE_MS;
+  if (options.cachedOnly) return keptPart() ?? (paused ? unchanged('unavailable') : null);
+  if (paused) return keptPart();
   let run = inFlight.get(key);
   if (!run) {
     let resolveHead!: (value: TranslatedDocument | null) => void;
@@ -325,7 +332,11 @@ export async function translateDocument(
         const headBundle: TranslationBundle = { ...wanted, fields: [], measurements: [] };
         const bodyBundle: TranslationBundle = { title: null, summary: null, notes: null, doctors: [], fields: wanted.fields, measurements: wanted.measurements };
         const headAnswer = isEmpty(headBundle) ? null : await ask(headBundle);
-        if (!isEmpty(headBundle) && !headAnswer) return null; // an outage is tried again next time; only a half answer is paused
+        // Nothing usable for any part (an outage throws instead, below): paused like a half answer, or each look asks again.
+        if (!isEmpty(headBundle) && !headAnswer) {
+          failures.set(key, Date.now());
+          return null;
+        }
 
         // A document whose language was never recorded gets it from the model's answer, and is not translated into
         // the language it is already in.
@@ -340,7 +351,14 @@ export async function translateDocument(
               await store.documents.update(userId, documentId, { language: detected });
               current = await sourceOf(userId, { ...document, language: detected }, language);
             }
-            if (detected === language) return unchanged('same');
+            if (detected === language) {
+              // Kept as that, for a reader who records no language too, so the next look does not ask the model again.
+              if (options.persistLanguage === false) {
+                const marker: TranslationBundle = { title: null, summary: null, notes: null, fields: [], measurements: [], doctors: [], source_language: detected };
+                await store.translations.put(userId, documentId, language, current.hash, JSON.stringify(marker), new Date().toISOString());
+              }
+              return unchanged('same');
+            }
           }
         }
 
@@ -366,8 +384,8 @@ export async function translateDocument(
         return shape(current, merged, language, 'translated');
       } catch (err) {
         logger.warn('a document could not be translated', { documentId, language, error: describeError(err) });
-        // A rate limit is the provider's quota: asking again at every view of the page spends more of it.
-        if (/status code 429/.test(describeError(err))) failures.set(key, Date.now());
+        // A limit or an outage (`llm/availability.ts`): asking again at every view of the page spends more of the quota, or waits again.
+        if (modelWait(err) || /status code 429/.test(describeError(err))) failures.set(key, Date.now());
         return null;
       } finally {
         resolveHead(null); // no effect if the head was already delivered
@@ -391,4 +409,38 @@ export function warmTranslations(userId: string, documentIds: string[], language
   void mapLimit(documentIds, Math.min(2, llmConcurrency()), async id => {
     await translateDocument(userId, id, language, { persistLanguage: false }).catch(() => null);
   }).catch(() => undefined);
+}
+
+/**
+ * Into a share's copy (`SliceOptions.finish`): the translations the owner keeps of the documents it holds, so the reader is shown them at
+ * once and no model is asked again for what was already translated. Only a translation still good for the owner's document is carried,
+ * and only what of it the copy holds the original of: a field or result on a page the owner hid is in neither. It is kept under the
+ * digest of the copy's own text, which is what the reader's core compares it with.
+ */
+export async function carryTranslations(userId: string, documentIds: string[], copy: Store): Promise<void> {
+  const store = getStore();
+  for (const documentId of documentIds) {
+    const [mine, theirs] = [await store.documents.findFor(userId, documentId), await copy.documents.findFor(userId, documentId)];
+    if (!mine || !theirs) continue;
+    for (const language of await store.translations.languagesFor(userId, documentId)) {
+      if (!isSupportedLanguage(language)) continue;
+      const kept = await store.translations.get(userId, documentId, language);
+      if (!kept || kept.sourceHash !== (await sourceOf(userId, mine, language)).hash) continue;
+      let content: TranslationBundle;
+      try { content = JSON.parse(kept.content) as TranslationBundle; } catch { continue; }
+      const held = await sourceOf(userId, theirs, language, copy);
+      const ids = <T extends { id: string }>(list: T[]) => new Set(list.map(item => item.id));
+      const [fields, measurements, doctors] = [ids(held.bundle.fields), ids(held.bundle.measurements), ids(held.bundle.doctors)];
+      const cut: TranslationBundle = {
+        title: held.bundle.title ? content.title : null,
+        summary: held.bundle.summary ? content.summary : null,
+        notes: held.bundle.notes ? content.notes : null,
+        fields: (content.fields ?? []).filter(f => fields.has(f.id)),
+        measurements: (content.measurements ?? []).filter(m => measurements.has(m.id)),
+        doctors: (content.doctors ?? []).filter(d => doctors.has(d.id)),
+        source_language: content.source_language ?? null,
+      };
+      await copy.translations.put(userId, documentId, language, held.hash, JSON.stringify(cut), kept.createdAt);
+    }
+  }
 }

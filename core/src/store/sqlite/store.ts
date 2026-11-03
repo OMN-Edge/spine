@@ -134,6 +134,7 @@ function recordsOver(db: Database, depth: number, how: Opened): Store {
       const staging = recordsOver(stagingDb, 0, how);
       try {
         const result = copySlice(db, stagingDb, options);
+        await options.finish?.(staging);
         return { ...result, changes: await staging.changes.drain() };
       } finally {
         await staging.close();

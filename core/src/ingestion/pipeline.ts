@@ -16,6 +16,7 @@ import { mapLimit } from '../concurrency.js';
 import { beginJob, getJobStatus, runQueued } from './jobs.js';
 import type { JobStatus, UnstructuredElement } from '../types.js';
 import { describeError } from '../failure.js';
+import { modelAnswered, waitForModel } from './model-wait.js';
 
 export { getJobStatus };
 
@@ -176,6 +177,7 @@ async function runPipeline(
     // before the upload counts as done, so there is no moment when it is done and shown.
     await store.sourceFiles.setGroupingConfirmed(userId, sourceFileId, false);
     await store.sourceFiles.setStatus(userId, sourceFileId, 'done');
+    modelAnswered(`upload:${sourceFileId}`);
     job.status = 'done';
     job.progress = 100;
     job.step = 'complete';
@@ -184,6 +186,19 @@ async function runPipeline(
     else announceUploadLater(userId, sourceFileId);
   } catch (err) {
     const msg = describeError(err);
+    // The model could not be asked (a daily limit, an outage): the upload is not failed but waits, and is read again from its file
+    // by itself. Nothing was stored yet, since every model call comes before the first write. A core that starts again resumes it
+    // at once, as it does any upload left `pending`.
+    const waiting = waitForModel(`upload:${sourceFileId}`, err, () => startIngestionJob(sourceFileId, userId, { retry: true }));
+    if (waiting) {
+      logger.warn('an upload waits for the model', { sourceFileId, reason: waiting.reason, retryAt: waiting.retry_at, error: msg });
+      await store.sourceFiles.setStatus(userId, sourceFileId, 'pending', msg);
+      job.status = 'pending';
+      job.step = 'waiting for the model';
+      job.error = msg;
+      job.waiting = waiting;
+      return;
+    }
     logger.error('an upload failed', { sourceFileId, error: msg });
     await store.sourceFiles.setStatus(userId, sourceFileId, 'error', msg);
     job.status = 'error';
