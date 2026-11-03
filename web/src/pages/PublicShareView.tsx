@@ -70,7 +70,7 @@ export default function PublicShareView() {
         )}
         {state === 'pending' && <p className="text-gray-500 text-sm" role="status">{t('Your request was sent. Keep this page open: it opens when the owner approves.')}</p>}
         {state === 'denied' && <p className="text-gray-500 text-sm" role="alert">{t('The owner did not approve this request.')}</p>}
-        <div className="mt-6 flex items-center justify-center gap-2"><LanguageSwitcher /><ThemeSwitcher /></div>
+        <div className="mt-6 flex items-center justify-center gap-2"><LanguageSwitcher opens="right" /><ThemeSwitcher /></div>
       </div>
     </div>
   );
@@ -107,7 +107,9 @@ function SharedContent({ shareId }: { shareId: string }) {
     api.publicShare.meta(shareId).then(m => { setTranslating(m.translation); setChatOn(m.chat); setLandingUrl(m.landing_url); preferLang(m.language); }).catch(() => {}).finally(() => setMetaReady(true));
   }, [shareId, preferLang]);
 
-  // The list in the reader's language. Documents not yet translated come back as pending: ask again shortly, a few times.
+  // The list in the reader's language. Documents not yet translated come back as pending: ask again while any is, less often as it
+  // goes on. A list of many documents takes longer than a minute, and stopping earlier left it saying "translating" for good; one that
+  // could not be translated comes back in its original (`unavailable`), not as pending, so this ends.
   useEffect(() => {
     if (!shareId || !metaReady) return;
     let live = true;
@@ -119,7 +121,7 @@ function SharedContent({ shareId }: { shareId: string }) {
           if (!live) return;
           setDocs(list);
           setLoading(false);
-          if (translating && list.some(d => d.translation_pending) && tries++ < 20) timer = window.setTimeout(load, 2500);
+          if (translating && list.some(d => d.translation_pending)) timer = window.setTimeout(load, Math.min(2500 * 1.25 ** tries++, 20_000));
         })
         .catch(err => { if (live) { setError(err.message ?? t('This link is no longer active.')); setLoading(false); } });
     };
@@ -143,7 +145,7 @@ function SharedContent({ shareId }: { shareId: string }) {
   }
 
   const pending = docs.some(d => d.translation_pending);
-  const translated = docs.some(d => d.translation && d.translation.status !== 'same' && d.translation.status !== 'off');
+  const translated = docs.some(d => d.translation && d.translation.status !== 'same' && d.translation.status !== 'off' && d.translation.status !== 'unavailable');
   const shown = docs.filter(d => !type || d.doc_type === type);
   const types = [...new Set(docs.map(d => d.doc_type).filter((x): x is NonNullable<typeof x> => !!x))];
   const byYear = shown.reduce<Record<string, SharedListDocument[]>>((acc, doc) => {

@@ -18,7 +18,7 @@ export const countryName = (code: string | null | undefined, lang: string): stri
  * what to show meanwhile is the original, so the page is never empty and never waits.
  *
  * `status: same` means the document is already in the reader's language, and `off` that translating is switched
- * off on this server: neither changes anything on screen, so `active` is false for both.
+ * off on this server, and `unavailable` that it could not be translated a moment ago: none changes anything on screen, so `active` is false for them.
  */
 export function useTranslation(
   key: string | null,
@@ -58,7 +58,7 @@ export function useTranslation(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, lang]);
 
-  const active = !!translation && translation.status !== 'same' && translation.status !== 'off';
+  const active = !!translation && translation.status !== 'same' && translation.status !== 'off' && translation.status !== 'unavailable';
   return {
     translation,
     /** The translation is what to show now. */
