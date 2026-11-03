@@ -144,14 +144,17 @@ export async function describeAccount(userId: string): Promise<DeletedAccount> {
  *
  * Files first: if the process dies halfway, the account still exists and the
  * command can be run again, whereas rows deleted first would leave sealed files
- * nothing refers to.
+ * nothing refers to. And the backup's copy before the live one: it is the step
+ * most likely to fail (the backup is often on another disk, which the process
+ * must be allowed to write to: `spine-web.service`), and when it does nothing is
+ * gone yet. The other way round, an account was left signed in with no records.
  */
 export async function deleteAccount(userId: string): Promise<DeletedAccount> {
   const store = getAccountsStore();
   const summary = await describeAccount(userId);
-  // The sealed vault: the live copy and the backup's, so no ciphertext of the account is left.
-  await removeAllObjects(userId);
+  // The sealed vault: the backup's copy and the live one, so no ciphertext of the account is left.
   fs.rmSync(path.join(resolveBackupDir(), 'vault', userId), { recursive: true, force: true });
+  await removeAllObjects(userId);
   // The sealed shares too (their rows go with the account's, below).
   for (const id of await store.shared.eraseFor(userId)) await removeShare(id);
   await store.users.delete(userId);

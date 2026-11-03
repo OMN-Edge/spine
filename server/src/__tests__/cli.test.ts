@@ -1,11 +1,12 @@
 import { holdsRecordsInThisRun } from 'spine-core/testing/store-kind.js';
 import { fakeVaultKeys } from 'spine-core/testing/vault.js';
 import { describe, it, expect, beforeEach } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, rmSync } from 'fs';
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync, rmSync, chmodSync } from 'fs';
 import { tmpdir } from 'os';
 import path from 'path';
 import { afterEach } from 'vitest';
 import { runCli, type CliIo } from '../cli.js';
+import { deleteAccount } from '../accounts.js';
 import { getStore, resetStore, getAccountsStore } from 'spine-core/store/index.js';
 import { verifyPassword, MIN_PASSWORD_LENGTH } from '../passwords.js';
 import { hashUserToken } from '../user-tokens.js';
@@ -276,6 +277,26 @@ describe('delete-user', () => {
     expect(existsSync(paths.original)).toBe(false);
     expect(existsSync(paths.mirrored)).toBe(false);
     expect(console_.out_.join()).toMatch(/snapshots already taken/);
+  });
+
+  // As root nothing is read-only, so there is no failure to see.
+  it.skipIf(process.getuid?.() === 0)('deletes nothing when the backup’s copy cannot be removed, so the account is never left half deleted', async () => {
+    // Nov 3: the web service could not write to the backup on another disk; the live vault was removed, then the backup's copy failed,
+    // and the account was left signed in with no records and its backup copy still there.
+    setUp();
+    await createTestUser();
+    const paths = filesFor(OWNER_ID, 'no-upload');
+    // The backup's tree read-only, as a disk the process may not write to is.
+    const readOnly = [path.dirname(paths.mirrored), paths.mirrored];
+    for (const dir of readOnly) chmodSync(dir, 0o555);
+    try {
+      await expect(deleteAccount(OWNER_ID)).rejects.toThrow();
+    } finally {
+      for (const dir of readOnly) chmodSync(dir, 0o755);
+    }
+    expect(await getAccountsStore().users.findByEmail('owner@spine.test')).not.toBeNull();
+    expect(existsSync(path.join(paths.original, 'f'))).toBe(true);
+    expect(existsSync(path.join(paths.mirrored, 'f'))).toBe(true);
   });
 
   it.skipIf(!records)('leaves every other user’s records and files alone', async () => {

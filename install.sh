@@ -216,7 +216,7 @@ function install_services() {
 
   # P11. By default the same disk as the archive, which covers corruption and
   # mistakes, not losing the disk: set SPINE_BACKUP_DIR in .env to another one.
-  # It goes into spine-backup.service's ReadWritePaths.
+  # It goes into the ReadWritePaths of spine-backup.service and spine-web.service (deleting an account removes its backup copy).
   local backup_dir
   backup_dir=$(env_value SPINE_BACKUP_DIR | sed 's|/*$||')
   backup_dir="${backup_dir:-${SPINE_DIR}/backups}"
