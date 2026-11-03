@@ -1401,6 +1401,7 @@
  "A child’s records need a birth date, written year-month-day.": "Documentele unui copil au nevoie de o dată a nașterii, scrisă an-lună-zi.",
  "This is a child I look after": "Acesta este un copil de care am grijă",
  "Born (year-month-day)": "Născut (an-lună-zi)",
+ "Choose on a calendar": "Alege din calendar",
  "child, {n} year old|child, {n} years old": "copil, {n} an|copil, {n} ani|copil, {n} de ani",
  "Could not take over these records": "Aceste documente nu au putut fi preluate",
  "Some of the latest changes are not saved yet.": "Unele dintre ultimele modificări nu sunt încă salvate.",

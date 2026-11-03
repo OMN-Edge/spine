@@ -1,5 +1,6 @@
 import { useId } from 'react';
 import type { ReactNode } from 'react';
+import { vertebraPath } from './vertebra';
 
 /**
  * The upload log, drawn as a spine seen from the front. Each upload is a small vertebral
@@ -36,8 +37,8 @@ export interface SpineLogItem {
   children: ReactNode;
 }
 
-const COLUMN = 40; // width of the spine column, in px
-const BODY_HEIGHT = 22;
+const COLUMN = 48; // width of the spine column, in px
+const BODY_HEIGHT = 22; // with the widths below, wide and low like the front page's drawing, but tall enough to hold its own beside a card
 const GAP = 12; // between rows; the disc sits in it
 const DISC_HEIGHT = 6;
 const AXIS = COLUMN / 2;
@@ -51,34 +52,21 @@ const TONE = {
 } as const;
 
 /** Slightly wider down the column, as real vertebrae are. */
-const bodyWidth = (index: number) => 24 + Math.min(index, 6);
+const bodyWidth = (index: number) => 38 + Math.min(index, 6);
 
 // Loose vertebrae: varied rather than growing (there is no column to grow down), and each
 // set down at a small fixed angle and offset. Fixed per position, so nothing jumps on a
 // re-render.
-const LOOSE_WIDTH = [26, 24, 28, 25, 27, 24, 26];
+const LOOSE_WIDTH = [40, 38, 42, 39, 41, 38, 40];
 const LOOSE_TILT = [-8, 5, -3, 7, -6, 3, -4];
 const LOOSE_SHIFT = [-3, 2, 0, 3, -2, 1, -1];
 const pick = (list: number[], index: number) => list[index % list.length];
-
-/** A vertebral body: a rounded block whose sides curve in at the middle. */
-function bodyPath(x0: number, y0: number, w: number, h: number, r: number, waist: number) {
-  const x1 = x0 + w;
-  const y1 = y0 + h;
-  return [
-    `M${x0 + r} ${y0}H${x1 - r}Q${x1} ${y0} ${x1} ${y0 + r}`,
-    `C${x1 - waist} ${y0 + h * 0.35} ${x1 - waist} ${y0 + h * 0.65} ${x1} ${y1 - r}`,
-    `Q${x1} ${y1} ${x1 - r} ${y1}H${x0 + r}Q${x0} ${y1} ${x0} ${y1 - r}`,
-    `C${x0 + waist} ${y0 + h * 0.65} ${x0 + waist} ${y0 + h * 0.35} ${x0} ${y0 + r}`,
-    `Q${x0} ${y0} ${x0 + r} ${y0}Z`,
-  ].join('');
-}
 
 function Vertebra({ item, index, loose }: { item: SpineLogItem; index: number; loose: boolean }) {
   const clip = `vert-${useId().replace(/:/g, '')}`;
   const width = loose ? pick(LOOSE_WIDTH, index) : bodyWidth(index);
   const height = BODY_HEIGHT + 2; // room for the stroke
-  const d = bodyPath(AXIS - width / 2, 1, width, BODY_HEIGHT, 5, width * 0.09);
+  const d = vertebraPath(AXIS - width / 2, 1, width, BODY_HEIGHT);
   const tone = TONE[item.state];
   const dash = item.state === 'duplicate' ? '3 2' : undefined;
   const filled = item.state === 'done' ? 100

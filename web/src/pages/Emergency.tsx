@@ -7,6 +7,7 @@ import PrintCard, { printCard } from '../components/PrintCard';
 import CardQr from '../components/CardQr';
 import { buttonClass, inputClass, Notice } from '../components/AuthCard';
 import { Combobox } from '../components/Combobox';
+import { DateInput } from '../components/DateInput';
 import { useI18n } from '../i18n';
 
 /** One item to a line; the card keeps them as a list. */
@@ -68,7 +69,7 @@ export default function Emergency() {
       <section className="bg-white border border-gray-200 rounded-xl p-5 space-y-3">
         <label className="block text-sm text-gray-700">{t('Name')}<input className={inputClass} value={card.name} maxLength={120} onChange={e => set('name', e.target.value)} /></label>
         <div className="grid grid-cols-2 gap-3">
-          <label className="block text-sm text-gray-700">{t('Born (year or date)')}<input className={inputClass} value={card.born} maxLength={10} onChange={e => set('born', e.target.value)} /></label>
+          <label className="block text-sm text-gray-700">{t('Born (year or date)')}<DateInput className={inputClass} value={card.born} onChange={born => set('born', born)} max={new Date().toISOString().slice(0, 10)} /></label>
           <label className="block text-sm text-gray-700">{t('Blood type')}<input className={inputClass} value={card.blood_type} maxLength={5} onChange={e => set('blood_type', e.target.value)} /></label>
         </div>
         {([['allergies', 'Allergies'], ['medications', 'Medications'], ['conditions', 'Conditions']] as const).map(([key, label]) => (

@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import { cardText, type CardContent } from 'spine-core/emergency';
 import CardQr from './CardQr';
 import { LogoMark } from './Logo';
@@ -11,6 +12,13 @@ const row = (line: string): { label: string; items: string[] } | null => {
   const at = line.indexOf(': ');
   return at > 0 ? { label: line.slice(0, at), items: line.slice(at + 2).split('; ') } : null;
 };
+
+/** An item of a row, with a contact's phone number kept on one line: a number broken across two is misread or misdialled. */
+function Item({ item, phones }: { item: string; phones: string[] }) {
+  const phone = phones.find(p => p && item.endsWith(p));
+  if (!phone) return <>{item}</>;
+  return <>{item.slice(0, item.length - phone.length)}<span className="card-phone">{phone}</span></>;
+}
 
 /**
  * The card on paper, the size of a bank card (85.6 by 54 mm, landscape): the front is what is written, in two columns (a small label, then
@@ -50,7 +58,7 @@ export default function PrintCard({ card, qr }: { card: CardContent; qr: { text:
             {rows.map((r, i) => (
               <div key={i} className={r.label === 'Allergies' ? 'card-row card-alert' : 'card-row'}>
                 <dt>{r.label}</dt>
-                <dd>{r.items.join(' · ')}</dd>
+                <dd>{r.items.map((item, j) => <Fragment key={j}>{j > 0 && ' · '}<Item item={item} phones={card.contacts.map(c => c.phone)} /></Fragment>)}</dd>
               </div>
             ))}
           </dl>

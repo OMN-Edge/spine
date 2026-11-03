@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import type { Measurement, Page } from '../api';
 import { useI18n } from '../i18n';
 import { Combobox } from './Combobox';
+import { DateInput } from './DateInput';
 
 /** One row of the review form. `id` is absent for a row added in this session. */
 export interface DraftMeasurement {
@@ -129,9 +130,9 @@ export function MeasurementsEditor({ rows, pages, currentPageId, onChange, onAdd
             <input aria-label={t('Reference high')} placeholder={t('Ref. high')} inputMode="decimal" className={cell} value={r.ref_high} onChange={e => onChange(r.key, { ref_high: e.target.value })} />
           </div>
           <div className="flex gap-2 items-center">
-            <input
-              aria-label={t('Date taken')} placeholder={t('YYYY-MM-DD or YYYY-MM')} inputMode="numeric" maxLength={10} className={cell}
-              pattern="\d{4}-\d{2}(-\d{2})?" value={r.taken_on} onChange={e => onChange(r.key, { taken_on: e.target.value })}
+            <DateInput
+              aria-label={t('Date taken')} placeholder={t('YYYY-MM-DD or YYYY-MM')} className={cell}
+              value={r.taken_on} onChange={taken_on => onChange(r.key, { taken_on })}
             />
             {pages.length > 1 && (
               <Combobox

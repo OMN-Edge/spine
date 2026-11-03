@@ -53,6 +53,7 @@ img, svg, video { max-width: 100%; }
   .print-card .card-row { display: grid; grid-template-columns: 15mm 1fr; column-gap: 1.6mm; margin-bottom: 0.9mm; }
   .print-card .card-row dt { font-size: 5.6pt; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #555; padding-top: 0.35mm; }
   .print-card .card-row dd { margin: 0; }
+  .print-card .card-phone { white-space: nowrap; }
   .print-card .card-alert dt, .print-card .card-alert dd { color: #b91c1c; }
   .print-card .card-alert dd { font-weight: 700; }
   .print-card .card-more { color: #444; font-size: 6pt; }
