@@ -71,7 +71,7 @@ export function PublicPage({ options, children }: { options: PublicOptions; chil
             <nav aria-label={t('Pages')} className="mx-auto flex max-w-6xl flex-col px-2 py-2 text-base sm:px-4">
               {links.map(l => <NavLink key={l.to} to={l.to} onClick={() => setMenuOpen(false)} className={navClass}>{l.label}</NavLink>)}
             </nav>
-            <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 pb-3 sm:hidden"><LanguageSwitcher /><ThemeSwitcher /></div>
+            <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 pb-3 sm:hidden"><LanguageSwitcher opens="right" /><ThemeSwitcher /></div>
           </div>
         )}
       </header>
