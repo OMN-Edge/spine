@@ -2,8 +2,8 @@
 Description=Spine — medical document server
 After=network-online.target
 Wants=network-online.target
-# The repository may be on a disk mounted at boot (a USB drive): start once it is there
-RequiresMountsFor=SPINE_DIR
+# The repository and the backup may be on disks mounted at boot (a USB drive, another card): start once both are there
+RequiresMountsFor=SPINE_DIR SPINE_BACKUP_TARGET
 
 [Service]
 Type=simple
@@ -18,7 +18,9 @@ RestartSec=5s
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=SPINE_DIR/data
+# The archive, and the backup (SPINE_BACKUP_DIR, written in by install.sh -s): deleting an account removes the backup's copy of its vault,
+# which with ProtectSystem=strict and a backup on another path was read-only, and the deletion failed
+ReadWritePaths=SPINE_DIR/data SPINE_BACKUP_TARGET
 PrivateTmp=true
 
 [Install]

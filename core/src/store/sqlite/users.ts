@@ -163,6 +163,18 @@ export function userRepository(db: Database): UserRepository {
   const deleteGrants = db.prepare('DELETE FROM delegations WHERE owner_user_id = ? OR delegate_user_id = ?');
   const deleteInvites = db.prepare('DELETE FROM profile_invites WHERE owner_user_id = ?');
   const deleteUser = db.prepare('DELETE FROM users WHERE id = ?');
+  // What a wipe keeps: the account and how it signs in, its plan, and what it used (the counts are the plan's and the instance's).
+  const KEPT_BY_WIPE = new Set(['model_usage', 'ai_usage', 'subscriptions', 'user_devices', 'user_passkeys', 'user_recovery_codes', 'user_totp']);
+  const wipeFrom = OWNED_TABLES.filter(table => tables.has(table) && !KEPT_BY_WIPE.has(table)).map(table => db.prepare(`DELETE FROM ${table} WHERE user_id = ?`));
+  // A passkey that opened the vault held its key sealed under the passkey: that vault is gone, so it only signs in now.
+  const unwrapPasskeys = tables.has('user_passkeys') ? db.prepare('UPDATE user_passkeys SET wrapped_key = NULL WHERE user_id = ?') : null;
+  const wipeEverything = db.transaction((id: string) => {
+    for (const statement of wipeFrom) statement.run(id);
+    // Records shared with this account were sealed to its old key, which is gone: the grant cannot open, so it goes, both ways.
+    deleteGrants.run(id, id);
+    deleteInvites.run(id);
+    unwrapPasskeys?.run(id);
+  });
   const deleteEverything = db.transaction((id: string) => {
     for (const statement of deleteFrom) statement.run(id);
     deleteGrants.run(id, id);
@@ -256,6 +268,10 @@ export function userRepository(db: Database): UserRepository {
 
     async delete(id) {
       deleteEverything(id);
+    },
+
+    async wipe(id) {
+      wipeEverything(id);
     },
 
     async getTotp(userId) {

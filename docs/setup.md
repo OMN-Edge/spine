@@ -108,7 +108,7 @@ By default backups land beside `data/`, on the same disk, which protects against
 SPINE_BACKUP_DIR=/var/backups/spine     # e.g. the SD card, when the repository is on a USB drive (or the other way round)
 ```
 
-`install.sh -s` creates it and gives the backup service write access to it (`ReadWritePaths=` in `systemd/spine-backup.service`); run it again after changing the setting. The repository itself can be on a drive mounted at boot (`/mnt/...`): the services wait for the mount (`RequiresMountsFor=`). Not under `/home`, which the units hide (`ProtectHome=true`), and on a Linux filesystem such as ext4, since the installer sets owners and SQLite needs real file locks.
+`install.sh -s` creates it and gives the backup service and the web service write access to it (`ReadWritePaths=` in `systemd/spine-backup.service` and `systemd/spine-web.service`: deleting an account removes its copy there); run it again after changing the setting. The repository itself can be on a drive mounted at boot (`/mnt/...`): the services wait for the mount (`RequiresMountsFor=`). Not under `/home`, which the units hide (`ProtectHome=true`), and on a Linux filesystem such as ext4, since the installer sets owners and SQLite needs real file locks.
 
 ## 4. Start the services
 

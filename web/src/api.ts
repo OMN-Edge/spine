@@ -1081,6 +1081,15 @@ export const api = {
       await clearSealedCache();
       return result;
     },
+    /**
+     * Start over: every record, file and share goes, the account stays, with the new, empty vault made here (`createAccountKeys`), whose
+     * master password is the account's password from now on. Every device is signed out, this one too.
+     */
+    wipe: async (confirm: string, fresh: { authValue: string; keys: VaultKeyPayload }) => {
+      const result = await post<{ wiped: boolean }>('/api/account/wipe', { confirm, auth_value: fresh.authValue, keys: fresh.keys });
+      await clearSealedCache();
+      return result;
+    },
   },
 
   /** What has been shown to help the person start, and how far they have got. */
