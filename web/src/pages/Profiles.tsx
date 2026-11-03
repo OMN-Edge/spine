@@ -5,6 +5,7 @@ import { device, UnsavedChangesError } from '../core/client';
 import { openPerson, useProfiles } from '../profiles';
 import { planRefusal } from '../billing';
 import { buttonClass, inputClass, Notice } from '../components/AuthCard';
+import { DateInput } from '../components/DateInput';
 import ProfileAccess from '../components/ProfileAccess';
 import { vaultState } from '../crypto/vault-state';
 import { readInviteCode } from '../crypto/delegation';
@@ -237,7 +238,7 @@ export default function Profiles() {
             {editing?.id === p.id && (
               <form onSubmit={e => void saveEdit(e)} className="mt-2 space-y-2">
                 <input className={inputClass} value={editing.name} maxLength={60} onChange={e => setEditing({ ...editing, name: e.target.value })} aria-label={t('Name')} />
-                {p.kind === 'child' && <input className={inputClass} value={editing.born} onChange={e => setEditing({ ...editing, born: e.target.value })} aria-label={t('Born (year-month-day)')} placeholder={t('Born (year-month-day)')} inputMode="numeric" />}
+                {p.kind === 'child' && <DateInput className={inputClass} value={editing.born} onChange={born => setEditing({ ...editing, born })} aria-label={t('Born (year-month-day)')} placeholder={t('Born (year-month-day)')} min="1900-01-01" max={new Date().toISOString().slice(0, 10)} />}
                 <button type="submit" disabled={busy} className={buttonClass}>{t('Save')}</button>
                 <button type="button" className="ml-3 text-sm text-gray-500 hover:underline" onClick={() => setEditing(null)}>{t('Cancel')}</button>
               </form>
@@ -258,8 +259,8 @@ export default function Profiles() {
         <h2 className="font-medium text-gray-900 mb-1">{t('Add a person')}</h2>
         <p className="text-sm text-gray-500 mb-3">{t('Their records start empty. The name is kept with them, sealed like everything else.')}</p>
         <input className={inputClass} value={name} maxLength={60} onChange={e => setName(e.target.value)} placeholder={t('Name')} aria-label={t('Name')} />
-        <label className="flex items-center gap-2 text-sm text-gray-700 mt-2"><input type="checkbox" checked={child} onChange={e => setChild(e.target.checked)} />{t('This is a child I look after')}</label>
-        {child && <input className={inputClass} value={born} onChange={e => setBorn(e.target.value)} placeholder={t('Born (year-month-day)')} aria-label={t('Born (year-month-day)')} inputMode="numeric" />}
+        <label className="flex items-center gap-2 text-sm text-gray-700 mb-3"><input type="checkbox" checked={child} onChange={e => setChild(e.target.checked)} />{t('This is a child I look after')}</label>
+        {child && <DateInput className={inputClass} value={born} onChange={setBorn} placeholder={t('Born (year-month-day)')} aria-label={t('Born (year-month-day)')} min="1900-01-01" max={new Date().toISOString().slice(0, 10)} />}
         <button type="submit" disabled={busy || !name.trim()} className={buttonClass}>{t('Add')}</button>
       </form>
 
