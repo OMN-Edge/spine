@@ -4,7 +4,8 @@ import { buildTestApp, loginAs } from './helpers/app.js';
 import { createTestUser, seedDocument, TEST_PASSWORD } from './helpers/seed.js';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { HEALTH_CONSENT_VERSION, TERMS_VERSION, legalText } from '../legal.js';
-import { existsSync, mkdtempSync, rmSync } from 'fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { fakeAuthValue, fakeVaultKeys } from 'spine-core/testing/vault.js';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
@@ -127,5 +128,90 @@ describe('leaving', () => {
 
   it('is not possible without signing in', async () => {
     expect((await call('POST', '/api/account/delete', undefined, { confirm: 'x' })).statusCode).toBe(401);
+  });
+});
+
+describe('starting over', () => {
+  const savedBackup = process.env.SPINE_BACKUP_DIR;
+  afterEach(() => { if (savedBackup === undefined) delete process.env.SPINE_BACKUP_DIR; else process.env.SPINE_BACKUP_DIR = savedBackup; });
+
+  /** An account with a vault: its keys, one sealed object (live and in the backup), a passkey that opens it, an invitation into it. */
+  async function withVault(email: string) {
+    const u = await createTestUser(email);
+    const cookie = await loginAs(app, u.email, u.password);
+    const store = getAccountsStore();
+    const now = new Date().toISOString();
+    const old = fakeVaultKeys();
+    await store.vault.putKeys(u.id, { ...old, kdf_params: JSON.stringify(old.kdf_params) }, now);
+    await store.vault.put(u.id, { id: 'object-0001', profileId: 'profile-0001', kind: 'bundle', size: 4, wrappedKey: 'k', baseSeq: 0 }, now, 1 << 20);
+    const backup = mkdtempSync(join(tmpdir(), 'spine-wipe-backup-'));
+    process.env.SPINE_BACKUP_DIR = backup;
+    const live = join(dir, 'vault', u.id);
+    const mirrored = join(backup, 'vault', u.id);
+    for (const folder of [live, mirrored]) { mkdirSync(folder, { recursive: true }); writeFileSync(join(folder, 'object-0001'), 'sealed'); }
+    await store.users.addPasskey(u.id, { id: 'cred-0001', public_key: 'pk', counter: 0, transports: null, name: 'Phone', backed_up: false, created_at: now });
+    await store.users.setPasskeyWrappedKey(u.id, 'cred-0001', 'sealed-account-key');
+    await store.delegations.invite(u.id, { id: `invite-${u.id}`, profileId: 'profile-0001', role: 'viewer', wrapped: 'w', proofHash: 'p', now, expiresAt: new Date(Date.now() + 86_400_000).toISOString() });
+    return { ...u, cookie, old, live, mirrored };
+  }
+
+  it('erases the records, their files and the backup’s copy, keeps the account, and puts the new vault in the same step', async () => {
+    const u = await withVault('wipe@spine.test');
+    await call('POST', '/api/auth/reauth', u.cookie, { password: TEST_PASSWORD });
+    const fresh = { auth_value: fakeAuthValue(), keys: fakeVaultKeys() };
+
+    const res = await call('POST', '/api/account/wipe', u.cookie, { confirm: u.email, ...fresh });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ wiped: true, objects: 1 });
+
+    const store = getAccountsStore();
+    expect(await store.users.findById(u.id)).not.toBeNull();
+    expect((await store.vault.getKeys(u.id))?.kdf_salt).toBe(fresh.keys.kdf_salt);
+    expect(await store.vault.list(u.id, 0)).toEqual([]);
+    expect(existsSync(u.live)).toBe(false);
+    expect(existsSync(u.mirrored)).toBe(false);
+    // The passkey still signs in, but the vault it opened is gone; nobody is let into a profile that no longer exists.
+    expect((await store.users.listPasskeys(u.id)).map(p => [p.id, p.wrapped_key])).toEqual([['cred-0001', null]]);
+    expect(await store.delegations.invites(u.id, new Date().toISOString())).toEqual([]);
+    // Every sign-in ended, this one too; the new master password is the way in, and the old password is not.
+    expect((await call('GET', '/api/auth/sessions', u.cookie)).statusCode).toBe(401);
+    expect((await call('POST', '/api/auth/login', undefined, { email: u.email, password: TEST_PASSWORD })).statusCode).toBe(401);
+    expect((await call('POST', '/api/auth/login', undefined, { email: u.email, password: fresh.auth_value })).statusCode).toBe(200);
+  });
+
+  it('asks for the password typed lately, the address written out and the new vault, and changes nothing otherwise', async () => {
+    const u = await withVault('wipe-refused@spine.test');
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(Date.now() + 11 * 60_000);
+    await getAccountsStore().sessions.touch(u.id, (await getAccountsStore().sessions.list(u.id))[0].id, new Date().toISOString());
+    const fresh = { auth_value: fakeAuthValue(), keys: fakeVaultKeys() };
+    expect((await call('POST', '/api/account/wipe', u.cookie, { confirm: u.email, ...fresh })).statusCode).toBe(403);
+    await call('POST', '/api/auth/reauth', u.cookie, { password: TEST_PASSWORD });
+    expect((await call('POST', '/api/account/wipe', u.cookie, { confirm: 'someone@else.test', ...fresh })).statusCode).toBe(400);
+    expect((await call('POST', '/api/account/wipe', u.cookie, { confirm: u.email })).statusCode).toBe(400);
+    expect((await call('POST', '/api/account/wipe', u.cookie, { confirm: u.email, auth_value: 'short', keys: fresh.keys })).statusCode).toBe(400);
+    expect((await getAccountsStore().vault.getKeys(u.id))?.kdf_salt).toBe(u.old.kdf_salt);
+    expect(existsSync(join(u.live, 'object-0001'))).toBe(true);
+  });
+
+  // As root nothing is read-only, so there is no failure to see.
+  it.skipIf(process.getuid?.() === 0)('leaves everything as it was when the backup’s copy cannot be removed', async () => {
+    const u = await withVault('wipe-readonly@spine.test');
+    await call('POST', '/api/auth/reauth', u.cookie, { password: TEST_PASSWORD });
+    const readOnly = [join(u.mirrored, '..'), u.mirrored];
+    for (const folder of readOnly) chmodSync(folder, 0o555);
+    try {
+      const res = await call('POST', '/api/account/wipe', u.cookie, { confirm: u.email, auth_value: fakeAuthValue(), keys: fakeVaultKeys() });
+      expect(res.statusCode).toBe(500);
+    } finally {
+      for (const folder of readOnly) chmodSync(folder, 0o755);
+    }
+    expect((await getAccountsStore().vault.getKeys(u.id))?.kdf_salt).toBe(u.old.kdf_salt);
+    expect(existsSync(join(u.live, 'object-0001'))).toBe(true);
+    expect((await call('POST', '/api/auth/login', undefined, { email: u.email, password: TEST_PASSWORD })).statusCode).toBe(200);
+  });
+
+  it('is not possible without signing in', async () => {
+    expect((await call('POST', '/api/account/wipe', undefined, { confirm: 'x' })).statusCode).toBe(401);
   });
 });

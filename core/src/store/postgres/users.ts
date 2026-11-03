@@ -7,6 +7,9 @@ const OWNED_TABLES = [
   'user_passkeys', 'device_enrolments', 'vault_objects', 'vault_keys', 'user_recovery_codes', 'user_totp',
 ];
 
+/** What a wipe removes: all of the above but the account, how it signs in, its plan and what it used (sqlite/users.ts says the same). */
+const WIPED_TABLES = ['shared_requests', 'shared_opens', 'shared_bundles', 'user_sessions', 'cookie_sessions', 'user_tokens', 'device_enrolments', 'vault_objects', 'vault_keys'];
+
 const asPasskey = (r: Record<string, unknown>): PasskeyRecord => ({
   id: r.id as string, user_id: r.user_id as string, public_key: r.public_key as string, counter: Number(r.counter),
   transports: r.transports ? (JSON.parse(r.transports as string) as string[]) : null, name: r.name as string,
@@ -172,6 +175,15 @@ export function userRepository(q: Query, begin: Begin): UserRepository {
         await run('DELETE FROM delegations WHERE owner_user_id = $1 OR delegate_user_id = $1', [id]);
         await run('DELETE FROM profile_invites WHERE owner_user_id = $1', [id]);
         await run('DELETE FROM users WHERE id = $1', [id]);
+      });
+    },
+
+    async wipe(id) {
+      await begin(async run => {
+        for (const table of WIPED_TABLES) await run(`DELETE FROM ${table} WHERE user_id = $1`, [id]);
+        await run('DELETE FROM delegations WHERE owner_user_id = $1 OR delegate_user_id = $1', [id]);
+        await run('DELETE FROM profile_invites WHERE owner_user_id = $1', [id]);
+        await run('UPDATE user_passkeys SET wrapped_key = NULL WHERE user_id = $1', [id]);
       });
     },
   };

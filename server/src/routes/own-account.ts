@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { getAccountsStore } from 'spine-core/store/index.js';
-import { deleteAccount } from '../accounts.js';
+import { deleteAccount, wipeAccount } from '../accounts.js';
+import { AUTH_VALUE, parseVaultKeys } from '../vault-keys.js';
+import { mailAfter, securityChangeMail } from '../notify.js';
 import { HEALTH_CONSENT_VERSION, LEGAL_DOCS, TERMS_VERSION, consentNeeded, legalText, type LegalDoc } from '../legal.js';
 import { requireAuth, requireRecentAuth } from 'spine-core/routes/middleware.js';
 import { logger } from 'spine-core/logger.js';
@@ -46,5 +48,26 @@ export async function ownAccountRoutes(app: FastifyInstance) {
     logger.info('an account was deleted by its owner', { objects: summary.objects });
     await req.session.destroy();
     return reply.send({ deleted: true, ...summary });
+  });
+
+  // Starting over: every record, file, share and the old vault go, the account stays, with the new, empty vault the device made
+  // (`wipeAccount`). Asked for as a deletion is, because nothing of it can be brought back; every device is signed out, this one too, and
+  // the next sign-in is with the new master password. The owner is told by mail, as of a password change.
+  app.post<{ Body: { confirm?: unknown; auth_value?: unknown; keys?: unknown } }>('/api/account/wipe', { preHandler: [requireAuth, requireRecentAuth] }, async (req, reply) => {
+    const user = await getAccountsStore().users.findById(req.userId);
+    if (!user) return reply.status(401).send({ error: 'not authenticated' });
+    if (typeof req.body?.confirm !== 'string' || req.body.confirm.trim().toLowerCase() !== user.email.toLowerCase()) {
+      return reply.status(400).send({ error: 'type your email address to confirm' });
+    }
+    const keys = parseVaultKeys(req.body?.keys);
+    const authValue = req.body?.auth_value;
+    if (!keys || typeof authValue !== 'string' || !AUTH_VALUE.test(authValue)) {
+      return reply.status(400).send({ error: 'the new keys are not in the expected form' });
+    }
+    const summary = await wipeAccount(req.userId, { authValue, keys });
+    logger.info('an account was wiped by its owner', { objects: summary.objects });
+    mailAfter(req, user.id, securityChangeMail(user.email, 'Your records were erased and your account started over with a new password', new Date().toISOString()), 'wipe');
+    await req.session.destroy();
+    return reply.send({ wiped: true, ...summary });
   });
 }

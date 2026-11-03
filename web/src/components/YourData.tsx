@@ -6,6 +6,9 @@ import { askForPassword } from '../reauth';
 import { buttonClass, inputClass, Notice } from './AuthCard';
 import { useI18n } from '../i18n';
 import { downloadFromDevice } from '../core/client';
+import RecoveryKit from './RecoveryKit';
+import { checkPasswordPolicy } from '../crypto/password-policy';
+import { createAccountKeys, type NewAccount } from '../crypto/keys';
 
 type Capabilities = Awaited<ReturnType<typeof api.sourceFiles.capabilities>>;
 
@@ -18,6 +21,12 @@ export default function YourData() {
   const { email, setAuthenticated } = useAuth();
   const [caps, setCaps] = useState<Capabilities | null>(null);
   const [confirm, setConfirm] = useState('');
+  const [wipeConfirm, setWipeConfirm] = useState('');
+  const [wipeError, setWipeError] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [newAgain, setNewAgain] = useState('');
+  const [fresh, setFresh] = useState<NewAccount | null>(null);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   useEffect(() => { api.sourceFiles.capabilities().then(setCaps).catch(() => undefined); }, []);
 
@@ -33,6 +42,28 @@ export default function YourData() {
     setError('');
     try { await api.account.remove(confirm); setAuthenticated(false); } catch (err) { setError(err instanceof Error ? err.message : t('Something went wrong. Try again.')); }
   };
+
+  // Starting over makes the new, empty vault here first (its master password is the account's password from then on), shows its recovery
+  // kit, and only then erases: the server installs the new keys in the same step, so the account is never left with no way in.
+  const makeNewKeys = async () => {
+    setWipeError('');
+    if (newPassword !== newAgain) return setWipeError(t('The two passwords do not match'));
+    const problem = checkPasswordPolicy(newPassword, { email });
+    if (problem) {
+      return setWipeError(problem === 'short' ? t('The password must be at least 12 characters.') : problem === 'long' ? t('The password is too long.')
+        : t('That password is too easy to guess: use a longer phrase that is not a common word, a pattern or part of your address.'));
+    }
+    setBusy(true);
+    try { setFresh(await createAccountKeys(newPassword)); } catch (err) { setWipeError(err instanceof Error ? err.message : t('Something went wrong. Try again.')); } finally { setBusy(false); }
+  };
+  const wipe = async () => {
+    if (!fresh) return;
+    setWipeError('');
+    setBusy(true);
+    // Every device is signed out, this one too; the next sign-in is with the new master password, to an empty archive.
+    try { await api.account.wipe(wipeConfirm, fresh); setAuthenticated(false); } catch (err) { setWipeError(err instanceof Error ? err.message : t('Something went wrong. Try again.')); } finally { setBusy(false); }
+  };
+  const typed = (value: string) => value.trim().toLowerCase() === email.toLowerCase();
 
   const where = caps ? `${caps.aiReading.provider}${caps.aiReading.endpoint ? ` (${caps.aiReading.endpoint})` : ''}` : '';
   const flows: string[] = !caps ? [] : caps.aiReading.connected === false ? [
@@ -64,12 +95,30 @@ export default function YourData() {
       <p className="text-xs text-gray-600 mb-2">{t('Every document with what was read from it, in one ZIP that Spine can read back.')}</p>
       <button type="button" onClick={exportEverything} className="text-sm text-brand-600 hover:underline mb-5">{t('Export everything')}</button>
 
+      <h3 className="text-sm font-medium text-gray-900 mb-1">{t('Start over')}</h3>
+      <p className="text-xs text-gray-600 mb-2">{t('This erases every record, file and share link of {email}, with the copy of them in the backups, and keeps the account: its address, two-factor sign-in, passkeys and plan. You choose a new master password, which opens the new, empty records and is the password you sign in with from then on, and you get a new recovery kit. Every device is signed out. An emergency card you printed stops opening. Type your address to confirm.', { email })}</p>
+      <p className="text-xs text-gray-600 mb-2">{t('Anyone you let into records, and anyone who let you into theirs, loses that access: they have to be invited again.')}</p>
+      {fresh ? (
+        <div className="mb-5">
+          <RecoveryKit recoveryKey={fresh.recoveryKey} email={email} onDone={wipe} busy={busy} />
+          {wipeError && <Notice kind="error">{wipeError}</Notice>}
+        </div>
+      ) : (
+        <>
+          <input value={wipeConfirm} onChange={e => setWipeConfirm(e.target.value)} placeholder={email} aria-label={t('Email')} className={inputClass} />
+          <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder={t('New password (at least 12 characters)')} autoComplete="new-password" className={inputClass} />
+          <input type="password" value={newAgain} onChange={e => setNewAgain(e.target.value)} placeholder={t('New password again')} autoComplete="new-password" className={inputClass} />
+          {wipeError && <Notice kind="error">{wipeError}</Notice>}
+          <button type="button" onClick={makeNewKeys} disabled={!typed(wipeConfirm) || !newPassword || busy} className={`${buttonClass} bg-red-700 hover:bg-red-800 disabled:opacity-50 mb-5`}>{busy ? t('Making your keys…') : t('Wipe my records')}</button>
+        </>
+      )}
+
       <h3 className="text-sm font-medium text-gray-900 mb-1">{t('Delete the account')}</h3>
       <p className="text-xs text-gray-600 mb-2">{t('This deletes the account {email}, its records and its files, at once, with the copy of them in the backups. Database backups made earlier keep the account’s row, its wrapped keys and a list of its sealed objects, for a few days. Type your address to confirm.', { email })}</p>
       <p className="text-xs text-gray-600 mb-2">{t('If you have let other people into the records of someone you look after, they lose access to them when this account is deleted.')}</p>
       <input value={confirm} onChange={e => setConfirm(e.target.value)} placeholder={email} aria-label={t('Email')} className={inputClass} />
       {error && <Notice kind="error">{error}</Notice>}
-      <button type="button" onClick={remove} disabled={confirm.trim().toLowerCase() !== email.toLowerCase()} className={`${buttonClass} bg-red-700 hover:bg-red-800 disabled:opacity-50`}>{t('Delete my account')}</button>
+      <button type="button" onClick={remove} disabled={!typed(confirm)} className={`${buttonClass} bg-red-700 hover:bg-red-800 disabled:opacity-50`}>{t('Delete my account')}</button>
     </section>
   );
 }

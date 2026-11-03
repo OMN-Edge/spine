@@ -143,6 +143,13 @@ Status: auto (`enrolment`, `crypto/enrolment`); a third browser let in with a co
 
 Status: auto (`own-account`, `accounts`); screens: hand.
 
+### 1.9a Starting over
+- The account page offers Start over: every record, file, share link and the backup's copy of them is erased, and the account stays, with its address, two-factor sign-in, passkeys and plan.
+- It asks for the address written out and a new master password twice (and the password typed again if it was not typed in the last ten minutes), makes the new, empty vault on the device, shows its recovery kit, and only once the kit is kept erases the old one and puts the new one in its place, in one request, so there is never an account with no way in. If the backup's copy cannot be removed, nothing is.
+- Every device is signed out, this one too. The next sign-in is with the new master password, to empty records; the old password no longer works. A passkey still signs in but no longer opens the records until it is set to again. Anyone let into the records, or who let this account into theirs, has to be invited again; a printed emergency card stops opening. The owner is told by mail, as of a password change.
+
+Status: auto (`own-account`, `cli`); screens: hand.
+
 ## 2. Getting documents in
 
 ### 2.0 Look around before uploading

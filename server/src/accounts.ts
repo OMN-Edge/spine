@@ -5,7 +5,9 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { publicUrl, resolveBackupDir } from 'spine-core/config.js';
 import { type UserTokenKind, getAccountsStore } from 'spine-core/store/index.js';
+import type { VaultKeys } from 'spine-core/store/types.js';
 import { createUserToken, hashUserToken } from './user-tokens.js';
+import { hashPassword } from './passwords.js';
 import type { MailMessage } from './mail/index.js';
 
 /**
@@ -150,13 +152,34 @@ export async function describeAccount(userId: string): Promise<DeletedAccount> {
  * gone yet. The other way round, an account was left signed in with no records.
  */
 export async function deleteAccount(userId: string): Promise<DeletedAccount> {
+  const summary = await describeAccount(userId);
+  await removeFiles(userId);
+  await getAccountsStore().users.delete(userId);
+  return summary;
+}
+
+/**
+ * Start over: everything the account holds goes, as `deleteAccount` removes it, but the account itself stays, with its address, second
+ * factor, passkeys and plan (`users.wipe` says what goes), and a new, empty vault takes the old one's place. The new vault is made on the
+ * device (a new master password and recovery kit) and installed here in the same step, because the master password is the account's
+ * credential: with the old vault's keys gone and no new ones, the next sign-in would derive nothing and the account could not be entered.
+ * The same order as a deletion, files first and the backup's copy first of all, so a failure there leaves everything as it was; the new
+ * credential is checked and hashed before anything is removed. Every sign-in ends (setting the password moves its version).
+ */
+export async function wipeAccount(userId: string, fresh: { authValue: string; keys: VaultKeys }): Promise<DeletedAccount> {
   const store = getAccountsStore();
   const summary = await describeAccount(userId);
-  // The sealed vault: the backup's copy and the live one, so no ciphertext of the account is left.
+  const passwordHash = await hashPassword(fresh.authValue);
+  await removeFiles(userId);
+  await store.users.wipe(userId);
+  await store.users.setPassword(userId, passwordHash);
+  await store.vault.putKeys(userId, fresh.keys, new Date().toISOString());
+  return summary;
+}
+
+/** The sealed vault, the backup's copy and then the live one, so no ciphertext of the account is left; then the sealed shares' files. */
+async function removeFiles(userId: string): Promise<void> {
   fs.rmSync(path.join(resolveBackupDir(), 'vault', userId), { recursive: true, force: true });
   await removeAllObjects(userId);
-  // The sealed shares too (their rows go with the account's, below).
-  for (const id of await store.shared.eraseFor(userId)) await removeShare(id);
-  await store.users.delete(userId);
-  return summary;
+  for (const id of await getAccountsStore().shared.eraseFor(userId)) await removeShare(id);
 }

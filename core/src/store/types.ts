@@ -254,6 +254,12 @@ export interface UserRepository {
   recordConsent(id: string, consent: { healthVersion: string; termsVersion: string }, at: string): Promise<void>;
   /** Removes the user and everything they own. Files on disk are the caller's. */
   delete(id: string): Promise<void>;
+  /**
+   * Starting over: everything the account holds is removed but the account itself (its address, password, second factor, passkeys,
+   * plan and usage). The vault goes with its keys; a passkey keeps signing in but no longer opens a vault; every sign-in, device let in,
+   * share and grant ends. The caller removes the files first and installs the new vault's keys and credential after (`wipeAccount`).
+   */
+  wipe(id: string): Promise<void>;
 
   /** The enrolment, confirmed or not; null if the user never started one. */
   getTotp(userId: string): Promise<TotpRecord | null>;
