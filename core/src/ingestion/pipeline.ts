@@ -181,8 +181,9 @@ async function runPipeline(
     job.status = 'done';
     job.progress = 100;
     job.step = 'complete';
-    // One page is one document: there is no grouping to check, so it is read and shown at once (the report says so when that is over).
-    if (documentRanges.length === 1 && documentRanges[0].start === documentRanges[0].end) startReadingUpload(userId, sourceFileId, true);
+    // The model found one document: there is no split to check, so it is read and shown at once (the report says so when that is over).
+    // Only an upload it cut into several waits for the owner; checking every multi-page letter was a step that almost never changed anything.
+    if (documentRanges.length === 1) startReadingUpload(userId, sourceFileId, true);
     else announceUploadLater(userId, sourceFileId);
   } catch (err) {
     const msg = describeError(err);
