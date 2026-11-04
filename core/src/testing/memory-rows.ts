@@ -27,11 +27,13 @@ export class MemoryRows implements Rows {
     return Object.fromEntries(this.specs[table].key.map(c => [c, row[c]]));
   }
 
-  private clashWith(table: string, row: Row): string[] | null {
+  private clashWith(table: string, row: Row): Clash | null {
     const mine = JSON.stringify(this.keyOf(table, row));
+    // A write of some columns keeps the others the row has, as a database's update does.
+    const whole = { ...this.data.get(table)!.get(mine), ...row };
     for (const columns of this.specs[table].unique ?? []) {
       for (const [id, other] of this.data.get(table)!) {
-        if (id !== mine && columns.every(c => other[c] === row[c])) return columns;
+        if (id !== mine && columns.every(c => other[c] === whole[c])) return { columns, values: columns.map(c => whole[c]) };
       }
     }
     return null;
@@ -40,7 +42,7 @@ export class MemoryRows implements Rows {
   /** The application's write. */
   set(table: string, row: Row): void {
     const clash = this.clashWith(table, row);
-    if (clash) throw new Error(`UNIQUE constraint failed: ${clash.map(c => `${table}.${c}`).join(', ')}`);
+    if (clash) throw new Error(`UNIQUE constraint failed: ${clash.columns.map(c => `${table}.${c}`).join(', ')}`);
     const id = JSON.stringify(this.keyOf(table, row));
     const before = this.data.get(table)!.get(id);
     this.data.get(table)!.set(id, { ...row });
@@ -77,8 +79,8 @@ export class MemoryRows implements Rows {
   addAlias(table: string, incoming: string, local: string) { this.aliasOf.set(`${table}|${incoming}`, local); }
 
   write(table: string, row: Row): Clash | null {
-    const columns = this.clashWith(table, row);
-    if (columns) return { columns };
+    const clash = this.clashWith(table, row);
+    if (clash) return clash;
     const id = JSON.stringify(this.keyOf(table, row));
     // Only the columns given are written, as in a database: the others stay as they are.
     this.data.get(table)!.set(id, { ...this.data.get(table)!.get(id), ...row });

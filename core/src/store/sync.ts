@@ -40,8 +40,11 @@ export interface Stamp { h: string; b?: string; cols?: Record<string, string> }
 /** Older than any stamp a device makes: what a column nobody has written is taken to have been written at. */
 export const NEVER = '00000000000000.00000.00000000';
 
-/** A row that could not be written because another already holds the values of a unique constraint: the columns of that constraint. */
-export interface Clash { columns: string[] }
+/**
+ * A row that could not be written because another already holds the values of a unique constraint: the columns of that constraint, and the
+ * values the row would have had in them (for a write of some columns, the others are the row's as it is here).
+ */
+export interface Clash { columns: string[]; values: Cell[] }
 
 type Key = Record<string, Cell>;
 
@@ -216,7 +219,7 @@ export function createChangeLog(rows: Rows, clock: HybridClock = new HybridClock
     if (!clash) return;
 
     const keyColumns = Object.keys(change.k);
-    const values = clash.columns.map(c => row[c]);
+    const { values } = clash;
     if (ALIASED[change.t]?.some(([column]) => column === 'id') && keyColumns.length === 1) {
       // The same tag or doctor made on two devices: the one already here stays, and the other's key means it from now on.
       const existing = rows.holders(change.t, clash.columns, values, null)[0];
