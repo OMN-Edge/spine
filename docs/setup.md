@@ -77,12 +77,13 @@ Complete the [GCP checklist](deployment-gcp.md#setup-checklist) first, then set 
 
 ```bash
 SPINE_LLM_PROVIDER=vertex
-SPINE_LLM_MODEL=gemini-3.8-flash
 SPINE_LLM_ENDPOINT=aiplatform.eu.rep.googleapis.com
 SPINE_LLM_REGION=eu
 SPINE_LLM_PROJECT=your-gcp-project
 GOOGLE_APPLICATION_CREDENTIALS=/etc/spine/vertex-sa.json   # service-account key file
 ```
+
+and a model Vertex serves in the server's `.env`, `SPINE_LLM_MODEL=gemini-3.8-flash`: a device names the model with every call, as the server told it, and the relay refuses one it does not offer. A relay beside the server reads `.env` too; one elsewhere needs the same value in its own settings.
 
 There are no defaults on purpose. The relay **refuses to start if `GOOGLE_API_KEY`, `GEMINI_API_KEY` or `GOOGLE_GENAI_API_KEY` is set anywhere in its environment**, because that silently sends requests to a global endpoint. After the first real call, check the provider's request logs to confirm the EU host was used.
 
