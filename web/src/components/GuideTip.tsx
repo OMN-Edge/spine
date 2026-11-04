@@ -40,14 +40,16 @@ export default function GuideTip({ tip, topic, className = 'mb-4', children }: {
  * The first steps, on the timeline, ticked off from the person's own records (sample records do not count) until all are done or the
  * list is put away.
  */
+/** Where "Review" leads: an upload waiting for its grouping has nothing in the review queue yet, so to the first such upload on the upload page. */
+export const reviewTarget = (progress: { grouping_waiting: number }): string => (progress.grouping_waiting > 0 ? '/upload#grouping' : '/review');
+
 export function GetStarted() {
   const { t } = useI18n();
   const guide = useGuide();
   const progress = guide?.state?.progress;
   const steps = progress ? [
     { done: progress.uploads > 0, label: t('Add your first document'), to: '/upload', action: t('Add') },
-    // An upload still waiting for its grouping has nothing in the review queue yet, so the step leads there first.
-    { done: progress.reviewed > 0, label: t('Review what was read from it'), to: progress.grouping_waiting > 0 ? '/upload' : '/review', action: t('Review') },
+    { done: progress.reviewed > 0, label: t('Review what was read from it'), to: reviewTarget(progress), action: t('Review') },
     { done: progress.shares > 0, label: t('Share it with a doctor, when you need to'), to: '/share', action: t('Share') },
   ] : [];
   const all = steps.length > 0 && steps.every(s => s.done);

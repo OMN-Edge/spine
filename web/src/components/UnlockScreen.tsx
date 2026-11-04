@@ -1,6 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useI18n } from '../i18n';
 import { vaultState, OpenError } from '../crypto/vault-state';
+import { coreStep } from '../core/client';
+import { classifyOpenFailure, type OpenFailure } from '../core/open-failure';
+import CopyDetails from './CopyDetails';
 import { api } from '../api';
 import { prfSupported } from '../crypto/passkey-prf';
 import AuthCard, { Notice, buttonClass, inputClass } from './AuthCard';
@@ -14,6 +17,8 @@ export default function UnlockScreen({ opened, signOut }: { opened: () => void; 
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  // Why the records did not open when the password was not the reason: the sign-in's attempt, or the one made here.
+  const [failure, setFailure] = useState<OpenFailure | null>(() => vaultState.openFailure());
   // While the password is typed: the core loads, and the server is asked for what opening the records will need.
   useEffect(() => { vaultState.prefetch(); }, []);
 
@@ -25,8 +30,11 @@ export default function UnlockScreen({ opened, signOut }: { opened: () => void; 
       await vaultState.unlock(password);
       opened();
     } catch (err) {
-      if (!(err instanceof OpenError)) console.error('could not open the records', err);
-      setError(err instanceof OpenError ? t('That is not the master password.') : t('Something went wrong. Try again.'));
+      if (err instanceof OpenError) { setError(t('That is not the master password.')); return; }
+      console.error('could not open the records', err);
+      const found = classifyOpenFailure(err, coreStep());
+      if (found.kind === 'key') setError(t('That is not the master password.'));
+      else setFailure(found);
     } finally {
       setBusy(false);
     }
@@ -47,6 +55,34 @@ export default function UnlockScreen({ opened, signOut }: { opened: () => void; 
       setBusy(false);
     }
   };
+
+  // Tried again from the sign-in's key when there is one, else with the password typed here.
+  const tryAgain = async () => {
+    setBusy(true);
+    try {
+      if (await vaultState.startDevice() === 'open') { vaultState.forgetOpenFailure(); opened(); return; }
+      if (password) { setFailure(null); await submit({ preventDefault() {} } as FormEvent); return; }
+      setFailure(null);
+    } catch (err) {
+      setFailure(classifyOpenFailure(err, coreStep()));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (failure && failure.kind !== 'key') {
+    return (
+      <AuthCard
+        title={t('Your records did not open')}
+        footer={<button type="button" onClick={() => { void api.auth.logout().then(signOut); }} className="text-brand-600">{t('Sign out')}</button>}
+      >
+        <p className="text-sm text-gray-900 mb-2">{failure.kind === 'vault' ? t('We can’t reach your vault right now.') : t('We couldn’t load your records on this device.')}</p>
+        <p className="text-sm text-gray-600 mb-4">{t('Your password was accepted, so there is no need to change it. Try again, and if it keeps happening, copy the details and send them to support.')}</p>
+        <button type="button" onClick={() => void tryAgain()} disabled={busy} className={buttonClass}>{busy ? t('Opening…') : t('Try again')}</button>
+        <div className="mt-3"><CopyDetails report={failure.report} /></div>
+      </AuthCard>
+    );
+  }
 
   return (
     <AuthCard

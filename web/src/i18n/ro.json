@@ -1712,5 +1712,11 @@
  "Zoom": "Mărire",
  "Zoom in": "Mărește",
  "Zoom out": "Micșorează",
- "Fit to width": "Potrivește la lățime"
+ "Fit to width": "Potrivește la lățime",
+ "Your records did not open": "Înregistrările dumneavoastră nu s-au deschis",
+ "We can’t reach your vault right now.": "Nu ne putem conecta acum la seiful dumneavoastră.",
+ "We couldn’t load your records on this device.": "Nu am putut încărca înregistrările dumneavoastră pe acest dispozitiv.",
+ "Your password was accepted, so there is no need to change it. Try again, and if it keeps happening, copy the details and send them to support.": "Parola dumneavoastră a fost acceptată, deci nu trebuie să o schimbați. Încercați din nou, iar dacă se repetă, copiați detaliile și trimiteți-le echipei de asistență.",
+ "Copy details for support": "Copiați detaliile pentru asistență",
+ "Details for support": "Detalii pentru asistență"
 }

@@ -1712,5 +1712,11 @@
  "Zoom": "Zoom",
  "Zoom in": "Agrandir",
  "Zoom out": "Réduire",
- "Fit to width": "Ajuster à la largeur"
+ "Fit to width": "Ajuster à la largeur",
+ "Your records did not open": "Vos dossiers ne se sont pas ouverts",
+ "We can’t reach your vault right now.": "Nous ne parvenons pas à joindre votre coffre pour le moment.",
+ "We couldn’t load your records on this device.": "Nous n’avons pas pu charger vos dossiers sur cet appareil.",
+ "Your password was accepted, so there is no need to change it. Try again, and if it keeps happening, copy the details and send them to support.": "Votre mot de passe a été accepté, il n’est donc pas nécessaire de le changer. Réessayez et, si cela se reproduit, copiez les détails et envoyez-les au support.",
+ "Copy details for support": "Copier les détails pour le support",
+ "Details for support": "Détails pour le support"
 }

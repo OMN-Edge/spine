@@ -2,7 +2,8 @@ import { deriveFromPassword, type KdfParams } from './keys.js';
 import { VaultSession, fetchKdf, fetchKeys, type KeysResponse, type PasskeyUnlock } from './vault-client.js';
 import { sodium } from './sodium.js';
 import { OpenError } from './seal.js';
-import { device, forgetDeviceObjectUrls, rememberedProfile } from '../core/client';
+import { device, forgetDeviceObjectUrls, rememberedProfile, coreStep } from '../core/client';
+import { classifyOpenFailure, type OpenFailure } from '../core/open-failure';
 
 /**
  * What the page holds about the vault between steps: the address signed in with, the master key from the sign-in until the vault has
@@ -11,6 +12,8 @@ import { device, forgetDeviceObjectUrls, rememberedProfile } from '../core/clien
 let email = '';
 let pendingMaster: Uint8Array | null = null;
 let session: VaultSession | null = null;
+/** Why the core did not open after the sign-in handed it the key, when it was not the key (`open-failure.ts`); the unlock screen says it. */
+let failure: OpenFailure | null = null;
 
 /**
  * What the unlock screen asks the server for before the password is typed (the key derivation's parameters and the sealed keys), so that
@@ -46,9 +49,20 @@ export const vaultState = {
   async startDevice(): Promise<'open' | 'locked'> {
     if (device.isOpen()) return 'open';
     if (!pendingMaster) return 'locked';
-    await device.unlock(pendingMaster.slice(), undefined, rememberedProfile(email));
+    try {
+      await device.unlock(pendingMaster.slice(), undefined, rememberedProfile(email));
+    } catch (err) {
+      // A key that does not open asks for the password again; anything else is not the password's doing, and the screen says so.
+      const found = classifyOpenFailure(err, coreStep());
+      failure = found.kind === 'key' ? null : found;
+      console.error('could not open the records', err);
+      throw err;
+    }
+    failure = null;
     return 'open';
   },
+  openFailure: (): OpenFailure | null => failure,
+  forgetOpenFailure() { failure = null; },
 
   /** Opens the vault with the master key a sign-in left, if there is one. Returns what happened. */
   async openStashed(): Promise<'open' | 'locked' | 'no_vault'> {

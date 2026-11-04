@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { api, type ModelWaiting, type UploadDocument, type UploadSummary } from '../api';
 import SpineLog, { type VertebraState } from '../components/SpineLog';
 import { failureKind } from 'spine-core/failure-kind';
@@ -119,14 +119,18 @@ const LISTED_DOCUMENTS = 5;
 const pagesOf = (doc: UploadDocument, t: I18n['t']) =>
   doc.page_start === doc.page_end ? t('page {n}', { n: doc.page_start }) : t('pages {from}–{to}', { from: doc.page_start, to: doc.page_end });
 
-function UploadRow({ job, onRetry, onDeleted }: { job: JobState; onRetry: () => void; onDeleted: () => void }) {
+/** An upload read and cut into documents that is waiting for the owner to confirm the cut. */
+const needsGrouping = (job: JobState): boolean =>
+  job.status === 'done' && !job.reading && job.groupingConfirmed === false && (job.documents.length > 0 || !!job.hiddenDocuments);
+
+function UploadRow({ job, anchor, onRetry, onDeleted }: { job: JobState; /** The first upload waiting for its grouping: where the Get started list leads. */ anchor?: boolean; onRetry: () => void; onDeleted: () => void }) {
   const i18n = useI18n();
   const { t, tn } = i18n;
   const [showAll, setShowAll] = useState(false);
   const listed = showAll ? job.documents : job.documents.slice(0, LISTED_DOCUMENTS);
   const unlisted = job.documents.length - listed.length;
   return (
-    <div className="bg-white border border-gray-200 rounded-xl px-4 py-3">
+    <div id={anchor ? 'grouping' : undefined} className="bg-white border border-gray-200 rounded-xl px-4 py-3 scroll-mt-24">
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm font-medium text-gray-900 truncate">{heading(job, i18n)}</p>
         <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${CHIP[job.status] ?? 'bg-brand-100 text-brand-700'}`}>
@@ -161,7 +165,7 @@ function UploadRow({ job, onRetry, onDeleted }: { job: JobState; onRetry: () => 
         </ul>
       )}
       {job.status === 'done' && job.reading && <p className="mt-1 text-xs text-gray-400">{t('Reading document…')}</p>}
-      {job.status === 'done' && !job.reading && job.groupingConfirmed === false && (job.documents.length > 0 || !!job.hiddenDocuments) && (
+      {needsGrouping(job) && (
         <div role="status" className="mt-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-900 flex flex-wrap items-center justify-between gap-2">
           <span>{t('Check how the pages were grouped. These documents stay out of your timeline, search and shares until you confirm it.')}</span>
           <Link to={`/uploads/${job.fileId}`} className="shrink-0 rounded-full bg-brand-600 px-3 py-1 font-medium text-white hover:bg-brand-700">{t('Check the grouping')}</Link>
@@ -230,6 +234,15 @@ export default function Upload() {
   useEffect(countOwn, [countOwn]);
   const [dragging, setDragging] = useState(false);
   const [jobs, setJobs] = useState<JobState[]>([]);
+  // The Get started list leads to the first upload waiting for its grouping (`#grouping`); the page scrolls there once the uploads are listed.
+  const firstWaiting = jobs.find(needsGrouping);
+  const { hash } = useLocation();
+  const scrolled = useRef(false);
+  useEffect(() => {
+    if (hash !== '#grouping' || scrolled.current || !firstWaiting) return;
+    scrolled.current = true;
+    document.getElementById('grouping')?.scrollIntoView({ block: 'start' });
+  }, [hash, firstWaiting]);
   // Files the server would not take, by name.
   const [refused, setRefused] = useState<Array<{ name: string; reason: string }>>([]);
   // What each zip turned out to be.
@@ -424,7 +437,7 @@ export default function Upload() {
         </div>
       )}
 
-      {jobs.some(job => job.status === 'done' && !job.reading && job.groupingConfirmed === false && (job.documents.length > 0 || !!job.hiddenDocuments)) && (
+      {jobs.some(needsGrouping) && (
         <div className="mt-8">
           <GuideTip tip="tip.grouping" topic="grouping">
             {t('One file often holds several documents. Spine has guessed where each one starts and ends: look at the grouping, fix what is wrong, and confirm it. Only then are the documents read and added to your timeline.')}
@@ -439,7 +452,7 @@ export default function Upload() {
               state: STATE[job.status] ?? 'working',
               progress: job.progress,
               label: `${heading(job, i18n)}: ${t(STATUS_NAME[job.status] ?? job.status)}`,
-              children: <UploadRow job={job} onRetry={() => retry(job)} onDeleted={() => setJobs(prev => prev.filter(j => j.fileId !== job.fileId))} />,
+              children: <UploadRow job={job} anchor={job.key === firstWaiting?.key} onRetry={() => retry(job)} onDeleted={() => setJobs(prev => prev.filter(j => j.fileId !== job.fileId))} />,
             }))}
           />
         </div>

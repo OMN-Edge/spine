@@ -32,7 +32,7 @@ class CoreWorker {
       if ('changed' in m) { window.dispatchEvent(new Event(RECORDS_CHANGED)); return; }
       if ('save' in m) { this.saveState = m.save; window.dispatchEvent(new Event(SAVE_STATE_CHANGED)); return; }
       if ('people' in m) { if (m.people.gone !== null) { gone = m.people.gone; window.dispatchEvent(new CustomEvent(PERSON_GONE, { detail: m.people.gone })); window.dispatchEvent(new Event(PROFILE_CHANGED)); } window.dispatchEvent(new Event(PEOPLE_CHANGED)); return; }
-      if ('trace' in m) { if (m.trace === 'loaded') this.onLoaded(); else console.debug('[core]', m.trace); return; }
+      if ('trace' in m) { if (m.trace === 'loaded') this.onLoaded(); else { lastStep = m.trace; console.debug('[core]', m.trace); } return; }
       if ('chunk' in m) { this.streams.get(m.id)?.enqueue(new Uint8Array(m.chunk)); return; }
       if ('end' in m) { try { this.streams.get(m.id)?.close(); } catch { /* the reader already left */ } this.streams.delete(m.id); return; }
       const w = this.waiting.get(m.id);
@@ -79,6 +79,7 @@ class CoreWorker {
 
   /** Opens the vault with this master key and loads the records. The key is handed over, not copied: this page no longer has it. `keys` are the sealed keys the page already fetched. */
   async unlock(masterKey: Uint8Array, keys?: KeysResponse, profileId?: string): Promise<void> {
+    lastStep = '';
     await this.send({ type: 'start', masterKey, keys, profileId }, [masterKey.buffer]);
     this.ready = true;
   }
@@ -214,6 +215,9 @@ export const PEOPLE_CHANGED = 'spine:people-changed';
 export const PERSON_GONE = 'spine:person-gone';
 /** The name of the person last gone, until the notice is dismissed: the change of person remounts the page that shows it. */
 let gone: string | null = null;
+/** The last thing the core said it was doing while opening: where it stopped if it did not finish (`open-failure.ts`). */
+let lastStep = '';
+export const coreStep = (): string => lastStep;
 export const personGone = (): string | null => gone;
 export const dismissPersonGone = (): void => { gone = null; };
 
