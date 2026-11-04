@@ -69,7 +69,7 @@ The owner asks for a reset. With a mailer they get a link by email; without one,
 - The mail has no document content and no clinical words.
 - For an account with a vault the page asks for the **recovery kit** and a new password: the kit opens the account key on the device, which is sealed again under the new password, and the records stay readable. A mistyped kit is caught by its check characters; a kit from another account does not open this one.
 - Without the kit the page says that the records cannot be opened by anyone, and offers to start empty: every stored object is erased, and a new vault and a new kit are made. Nothing is erased before the person has ticked that they understand.
-- The link alone never gives access to records: the server holds only the key sealed under the kit.
+- The link alone never gives access to records: the server holds only the key sealed under the kit. Nor does it replace the keys: the page signs the reset with a key the kit opens, and the server refuses a reset of a vault that has a verifier without that signature.
 
 Status: auto (`accounts`, `mail`, `cli`, `vault`, `reset-second-factor`, and `web/src/e2e/vault.e2e.test.ts` for the kit and the erase path).
 

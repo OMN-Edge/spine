@@ -6,7 +6,7 @@ import AuthCard, { buttonClass, inputClass, Notice } from '../components/AuthCar
 import RecoveryKit from '../components/RecoveryKit';
 import { useI18n } from '../i18n';
 import { checkPasswordPolicy } from '../crypto/password-policy';
-import { createAccountKeys, resetWithRecovery, type NewAccount, type VaultKeyPayload } from '../crypto/keys';
+import { createAccountKeys, resetProof, resetWithRecovery, type NewAccount, type VaultKeyPayload } from '../crypto/keys';
 import { OpenError } from '../crypto/seal';
 import { readRecoveryKey } from '../crypto/recovery-kit';
 
@@ -81,7 +81,9 @@ export default function Reset() {
     setBusy(true);
     try {
       const reset = await resetWithRecovery(read.key, mode.stored, password);
-      await api.auth.resetVault(token.current ?? '', reset, false, code);
+      // Signed with the key the account key makes, so the server knows the kit was used and not only the mailbox (S-38).
+      const proof = await resetProof(reset.unlocked.accountKey, token.current ?? '', reset.authValue, reset.keys);
+      await api.auth.resetVault(token.current ?? '', reset, false, code, proof);
       setDone(true);
     } catch (err) {
       if (err instanceof OpenError) setError(t('That recovery kit does not open this account.'));

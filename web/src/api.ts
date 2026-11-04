@@ -818,8 +818,9 @@ export const api = {
     /** `code` is a second-factor code, for an account that has one (S-38). */
     reset: (token: string, password: string, code?: string) =>
       post<{ ok: boolean }>('/api/auth/reset', { token, password, code: code || undefined }),
-    resetVault: (token: string, change: { authValue: string; keys: VaultKeyPayload }, erase = false, code?: string) =>
-      post<{ ok: boolean }>('/api/auth/reset', { token, auth_value: change.authValue, keys: change.keys, erase: erase || undefined, code: code || undefined }),
+    /** `proof` is the signature a reset by the recovery kit carries (`resetProof`); starting over (`erase`) has none to give. */
+    resetVault: (token: string, change: { authValue: string; keys: VaultKeyPayload }, erase = false, code?: string, proof?: string) =>
+      post<{ ok: boolean }>('/api/auth/reset', { token, auth_value: change.authValue, keys: change.keys, erase: erase || undefined, code: code || undefined, proof }),
     /** A new master password: the same keys sealed under a new master key, here, so the records stay readable. */
     changePassword: async (current: string, next: string) => {
       const session = await vaultState.unlock(current);

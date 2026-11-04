@@ -117,10 +117,12 @@ CREATE TABLE IF NOT EXISTS vault_keys (
   wrapped_by_recovery TEXT NOT NULL,
   public_key TEXT NOT NULL,
   wrapped_private_key TEXT NOT NULL,
+  reset_verifier TEXT,
   seq BIGINT NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+ALTER TABLE vault_keys ADD COLUMN IF NOT EXISTS reset_verifier TEXT;
 
 CREATE TABLE IF NOT EXISTS vault_objects (
   user_id TEXT NOT NULL REFERENCES users(id),

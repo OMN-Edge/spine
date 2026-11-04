@@ -16,11 +16,12 @@ const asMeta = (r: Record<string, unknown>): VaultObjectMeta => ({
 });
 
 export function vaultRepository(db: Database): VaultRepository {
-  const getKeys = db.prepare('SELECT user_id, kdf_salt, kdf_params, wrapped_by_master, wrapped_by_recovery, public_key, wrapped_private_key, seq, created_at, updated_at FROM vault_keys WHERE user_id = ?');
+  const getKeys = db.prepare('SELECT user_id, kdf_salt, kdf_params, wrapped_by_master, wrapped_by_recovery, public_key, wrapped_private_key, reset_verifier, seq, created_at, updated_at FROM vault_keys WHERE user_id = ?');
   const insertKeys = db.prepare(`
-    INSERT OR IGNORE INTO vault_keys (user_id, kdf_salt, kdf_params, wrapped_by_master, wrapped_by_recovery, public_key, wrapped_private_key, seq, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+    INSERT OR IGNORE INTO vault_keys (user_id, kdf_salt, kdf_params, wrapped_by_master, wrapped_by_recovery, public_key, wrapped_private_key, reset_verifier, seq, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
   `);
+  const setVerifier = db.prepare('UPDATE vault_keys SET reset_verifier = ? WHERE user_id = ? AND reset_verifier IS NULL');
   const updateKeys = db.prepare(`
     UPDATE vault_keys SET kdf_salt = ?, kdf_params = ?, wrapped_by_master = ?, wrapped_by_recovery = ?, public_key = ?, wrapped_private_key = ?, updated_at = ?
     WHERE user_id = ?
@@ -92,11 +93,15 @@ export function vaultRepository(db: Database): VaultRepository {
     },
 
     async putKeys(userId, k: VaultKeys, now) {
-      return insertKeys.run(userId, k.kdf_salt, k.kdf_params, k.wrapped_by_master, k.wrapped_by_recovery, k.public_key, k.wrapped_private_key, now, now).changes === 1;
+      return insertKeys.run(userId, k.kdf_salt, k.kdf_params, k.wrapped_by_master, k.wrapped_by_recovery, k.public_key, k.wrapped_private_key, k.reset_verifier ?? null, now, now).changes === 1;
     },
 
     async replaceKeys(userId, k: VaultKeys, now) {
       return updateKeys.run(k.kdf_salt, k.kdf_params, k.wrapped_by_master, k.wrapped_by_recovery, k.public_key, k.wrapped_private_key, now, userId).changes === 1;
+    },
+
+    async setResetVerifier(userId, verifier) {
+      return setVerifier.run(verifier, userId).changes === 1;
     },
 
     async list(userId, since) {

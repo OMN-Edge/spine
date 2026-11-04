@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import type { AddressInfo } from 'net';
-import { createAccountKeys, resetWithRecovery, type KdfParams } from '../crypto/keys.js';
+import { createAccountKeys, resetProof, resetWithRecovery, type KdfParams } from '../crypto/keys.js';
 import { readRecoveryKey, writeRecoveryKey } from '../crypto/recovery-kit.js';
 import { ConflictError, VaultSession, fetchKeys, prepareSignIn } from '../crypto/vault-client.js';
 import { newInviteCode } from '../crypto/delegation.js';
@@ -224,7 +224,10 @@ describe.skipIf(!haveServer)('the device and the server together', () => {
     const read = await readRecoveryKey(recoveryKit);
     if (!read.ok) throw new Error('the kit did not read back');
     const reset = await resetWithRecovery(read.key, stored, 'a new and different master password', FAST);
-    expect((await post(f, '/api/auth/reset', { token, auth_value: reset.authValue, keys: reset.keys })).status).toBe(200);
+    // The link alone does not replace the keys of a vault that has a verifier; the kit's signature does (SECURITY.md S-38).
+    expect((await post(f, '/api/auth/reset', { token, auth_value: reset.authValue, keys: reset.keys })).status).toBe(401);
+    const proof = await resetProof(reset.unlocked.accountKey, token, reset.authValue, reset.keys);
+    expect((await post(f, '/api/auth/reset', { token, auth_value: reset.authValue, keys: reset.keys, proof })).status).toBe(200);
 
     const g = browser();
     expect((await signIn(g, PASSWORD)).res.status).toBe(401);

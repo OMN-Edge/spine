@@ -58,6 +58,10 @@ function addColumnsInPlace(db: Database): void {
   const passkeys = columnsOf(db, 'user_passkeys');
   if (passkeys.length > 0 && !passkeys.includes('wrapped_key')) db.exec('ALTER TABLE user_passkeys ADD COLUMN wrapped_key TEXT');
 
+  // The lock a reset must be signed for (S-38): a vault made before it has none until a device adds it.
+  const vaultKeys = columnsOf(db, 'vault_keys');
+  if (vaultKeys.length > 0 && !vaultKeys.includes('reset_verifier')) db.exec('ALTER TABLE vault_keys ADD COLUMN reset_verifier TEXT');
+
   const pages = columnsOf(db, 'pages');
   if (pages.length > 0 && !pages.includes('hidden')) {
     db.transaction(() => {

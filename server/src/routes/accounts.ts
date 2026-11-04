@@ -22,7 +22,8 @@ import {
 import { hashUserToken } from '../user-tokens.js';
 import { windowLimiter, type WindowLimit } from '../rate-limit.js';
 import { loadInstanceKind, loadRegistrationMode, type InstanceKind, type RegistrationMode } from '../config.js';
-import { AUTH_VALUE, parseVaultKeys } from '../vault-keys.js';
+import { AUTH_VALUE, parseKdfParams, parseVaultKeys } from '../vault-keys.js';
+import { resetMessage, verifyResetProof } from '../reset-proof.js';
 import { removeAllObjects } from '../vault-files.js';
 import { checkSecondFactor, hasSecondFactor } from '../second-factor.js';
 import { mailAfter, securityChangeMail } from '../notify.js';
@@ -259,7 +260,7 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
     },
     'too many attempts, try again later',
   );
-  app.post<{ Body: { token?: string; password?: string; auth_value?: string; keys?: unknown; erase?: unknown; code?: unknown } }>(
+  app.post<{ Body: { token?: string; password?: string; auth_value?: string; keys?: unknown; erase?: unknown; code?: unknown; proof?: unknown } }>(
     '/api/auth/reset',
     { preHandler: [perSource, perLink] },
     async (req, reply) => {
@@ -291,6 +292,18 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
         if (!(await checkSecondFactor({ id: holder }, code))) {
           req.log.warn({ ip: req.ip, userId: holder }, 'failed second factor on a reset');
           return reply.status(401).send({ error: 'incorrect code', code: 'second_factor_required' });
+        }
+      }
+
+      // The recovery kit, before the link is spent. The link is the mailbox's word and the server cannot open what the kit opens, so a vault with a
+      // verifier is replaced only by a request signed for it, over this link and these keys (S-38). Starting over without the kit cannot be
+      // signed for and is not asked to (a window keeps the old vault meanwhile); a vault from before verifiers has none to check until a device adds it.
+      if (holder && keys && req.body?.erase !== true) {
+        const verifier = (await store.vault.getKeys(holder))?.reset_verifier;
+        const params = parseKdfParams(keys.kdf_params);
+        if (verifier && !(params && verifyResetProof(verifier, resetMessage(token, req.body?.auth_value as string, keys, params), req.body?.proof))) {
+          req.log.warn({ ip: req.ip, userId: holder }, 'reset without the recovery kit refused');
+          return reply.status(401).send({ error: 'this reset needs your recovery kit', code: 'recovery_proof_required' });
         }
       }
 

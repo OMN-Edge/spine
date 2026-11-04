@@ -22,18 +22,22 @@ export function vaultRepository(q: Query, begin: Begin): VaultRepository {
 
   return {
     async getKeys(userId) {
-      const row = await one(q, 'SELECT user_id, kdf_salt, kdf_params, wrapped_by_master, wrapped_by_recovery, public_key, wrapped_private_key, seq, created_at, updated_at FROM vault_keys WHERE user_id = $1', [userId]);
+      const row = await one(q, 'SELECT user_id, kdf_salt, kdf_params, wrapped_by_master, wrapped_by_recovery, public_key, wrapped_private_key, reset_verifier, seq, created_at, updated_at FROM vault_keys WHERE user_id = $1', [userId]);
       return row ? asKeys(row) : null;
     },
 
     async putKeys(userId, k: VaultKeys, now) {
-      return (await changed(q, `INSERT INTO vault_keys (user_id, kdf_salt, kdf_params, wrapped_by_master, wrapped_by_recovery, public_key, wrapped_private_key, seq, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, 0, $8, $8) ON CONFLICT DO NOTHING`, [userId, k.kdf_salt, k.kdf_params, k.wrapped_by_master, k.wrapped_by_recovery, k.public_key, k.wrapped_private_key, now])) === 1;
+      return (await changed(q, `INSERT INTO vault_keys (user_id, kdf_salt, kdf_params, wrapped_by_master, wrapped_by_recovery, public_key, wrapped_private_key, reset_verifier, seq, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0, $9, $9) ON CONFLICT DO NOTHING`, [userId, k.kdf_salt, k.kdf_params, k.wrapped_by_master, k.wrapped_by_recovery, k.public_key, k.wrapped_private_key, k.reset_verifier ?? null, now])) === 1;
     },
 
     async replaceKeys(userId, k: VaultKeys, now) {
       return (await changed(q, `UPDATE vault_keys SET kdf_salt = $1, kdf_params = $2, wrapped_by_master = $3, wrapped_by_recovery = $4, public_key = $5, wrapped_private_key = $6, updated_at = $7
         WHERE user_id = $8`, [k.kdf_salt, k.kdf_params, k.wrapped_by_master, k.wrapped_by_recovery, k.public_key, k.wrapped_private_key, now, userId])) === 1;
+    },
+
+    async setResetVerifier(userId, verifier) {
+      return (await changed(q, 'UPDATE vault_keys SET reset_verifier = $1 WHERE user_id = $2 AND reset_verifier IS NULL', [verifier, userId])) === 1;
     },
 
     async list(userId, since) {

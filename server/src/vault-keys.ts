@@ -46,6 +46,8 @@ export function parseVaultKeys(raw: unknown): VaultKeys | null {
   // 16-byte salt = 22 characters; a public key = 43; a sealed 32-byte key = nonce 24 + 32 + tag 16 = 72 bytes = 96 characters.
   if (!sealed(k.kdf_salt, 22, 22) || !sealed(k.public_key, 43, 43)) return null;
   if (!sealed(k.wrapped_by_master, 90, 200) || !sealed(k.wrapped_by_recovery, 90, 200) || !sealed(k.wrapped_private_key, 90, 200)) return null;
+  // An Ed25519 public key (32 bytes = 43 characters), when the device sends one (S-38).
+  if (k.reset_verifier !== undefined && k.reset_verifier !== null && !sealed(k.reset_verifier, 43, 43)) return null;
   return {
     kdf_salt: k.kdf_salt,
     kdf_params: JSON.stringify(params),
@@ -53,6 +55,7 @@ export function parseVaultKeys(raw: unknown): VaultKeys | null {
     wrapped_by_recovery: k.wrapped_by_recovery,
     public_key: k.public_key,
     wrapped_private_key: k.wrapped_private_key,
+    reset_verifier: typeof k.reset_verifier === 'string' ? k.reset_verifier : null,
   };
 }
 

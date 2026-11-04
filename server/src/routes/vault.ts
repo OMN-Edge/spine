@@ -3,7 +3,7 @@ import { getAccountsStore } from 'spine-core/store/index.js';
 import { vaultLimits } from '../config.js';
 import { accountEntitlements, vaultBytesFor } from '../billing/entitlements.js';
 import { hashPassword, normaliseEmail } from '../passwords.js';
-import { AUTH_VALUE, DEFAULT_KDF, parseKdfParams, parseVaultKeys, pretendSalt } from '../vault-keys.js';
+import { AUTH_VALUE, DEFAULT_KDF, parseKdfParams, parseVaultKeys, pretendSalt, sealed } from '../vault-keys.js';
 import { OBJECT_ID, readObject, removeObject, writeObject } from '../vault-files.js';
 import { endOtherSessions } from '../sessions.js';
 import { mailAfter, securityChangeMail } from '../notify.js';
@@ -56,9 +56,27 @@ export async function vaultRoutes(app: FastifyInstance, opts: VaultRouteOptions 
       wrapped_by_recovery: k.wrapped_by_recovery,
       public_key: k.public_key,
       wrapped_private_key: k.wrapped_private_key,
+      reset_verifier: k.reset_verifier,
       seq: k.seq,
     });
   });
+
+  // A vault made before verifiers gets its one from the first device that opens it (SECURITY.md S-38). Once only, and never replaced here:
+  // the verifier is made from the account key, which does not change with a password or a kit. The password was typed recently, so a stolen
+  // cookie cannot set one that would stop the owner's own reset.
+  app.put<{ Body: { reset_verifier?: unknown } }>(
+    '/api/vault/reset-verifier',
+    { preHandler: [requireAuth, requireRecentAuth, app.rateLimit({ max: 10, timeWindow: '10 minutes' })] },
+    async (req, reply) => {
+      const verifier = req.body?.reset_verifier;
+      if (!sealed(verifier, 43, 43)) return reply.status(400).send({ error: 'the verifier is not in the expected form' });
+      const store = getAccountsStore();
+      if (!(await store.vault.getKeys(req.userId))) return reply.status(404).send({ error: 'this account has no vault yet', code: 'no_vault' });
+      if (!(await store.vault.setResetVerifier(req.userId, verifier))) return reply.status(409).send({ error: 'this vault already has one' });
+      req.log.info({ userId: req.userId }, 'reset verifier added');
+      return reply.send({ ok: true });
+    },
+  );
 
   // Making a vault for an account that has none (the operator made it, or it is from before the vault). The account's credential becomes
   // the value the device derived, so the password it had stops working: the person's master password is now the only one.

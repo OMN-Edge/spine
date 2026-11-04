@@ -32,6 +32,8 @@ export interface VaultKeyPayload {
   wrapped_by_recovery: string;
   public_key: string;
   wrapped_private_key: string;
+  /** The lock a reset must be signed for (`resetProof`): the public half of a key made from the account key. Absent on a vault from before it. */
+  reset_verifier?: string;
 }
 
 /** What an unlocked device holds in memory. Never stored, never sent. */
@@ -85,6 +87,7 @@ export async function createAccountKeys(password: string, params: KdfParams = DE
     wrapped_by_recovery: toB64(s, await seal(recoveryKey, accountKey, CTX.byRecovery)),
     public_key: toB64(s, pair.publicKey),
     wrapped_private_key: toB64(s, await seal(accountKey, pair.privateKey, CTX.privateKey)),
+    reset_verifier: await resetVerifierOf(accountKey),
   };
   s.memzero(masterKey);
   return { authValue, keys, recoveryKey, unlocked: { accountKey, publicKey: pair.publicKey, privateKey: pair.privateKey } };
@@ -151,6 +154,42 @@ export async function newRecoveryKit(unlocked: UnlockedKeys, current: VaultKeyPa
   const s = await sodium();
   const recoveryKey = s.randombytes_buf(32);
   return { recoveryKey, keys: { ...current, wrapped_by_recovery: toB64(s, await seal(recoveryKey, unlocked.accountKey, CTX.byRecovery)) } };
+}
+
+/**
+ * What a reset must be signed for (SECURITY.md S-38). The email link proves the mailbox; the server cannot tell whether the recovery kit was
+ * used, because everything the kit opens is sealed. So the device makes an Ed25519 key from the account key, which the kit and the password
+ * both open, and the server keeps only its public half. A reset that replaces the keys carries a signature for it, over the link and the new
+ * keys, which only a device that opened the account key can make. Nothing is stored on a device for this: it is made again whenever the account
+ * key is open, so a lost device costs nothing and the kit on paper is enough.
+ */
+async function resetKeyPair(accountKey: Uint8Array) {
+  const s = await sodium();
+  const seed = s.crypto_kdf_derive_from_key(32, 3, 'spinersv', accountKey);
+  try {
+    return s.crypto_sign_seed_keypair(seed);
+  } finally {
+    s.memzero(seed);
+  }
+}
+
+export async function resetVerifierOf(accountKey: Uint8Array): Promise<string> {
+  const s = await sodium();
+  return toB64(s, (await resetKeyPair(accountKey)).publicKey);
+}
+
+/** The bytes that are signed: the link, the credential and every field of the new keys, so none can be swapped on the way. The server builds the same (`reset-proof.ts`). */
+export const resetMessage = (token: string, authValue: string, k: VaultKeyPayload): string =>
+  ['spine/v1/reset', token, authValue, k.kdf_salt, k.kdf_params.ops, k.kdf_params.memKiB, k.wrapped_by_master, k.wrapped_by_recovery, k.public_key, k.wrapped_private_key].join('\n');
+
+export async function resetProof(accountKey: Uint8Array, token: string, authValue: string, keys: VaultKeyPayload): Promise<string> {
+  const s = await sodium();
+  const pair = await resetKeyPair(accountKey);
+  try {
+    return toB64(s, s.crypto_sign_detached(s.from_string(resetMessage(token, authValue, keys)), pair.privateKey));
+  } finally {
+    s.memzero(pair.privateKey);
+  }
 }
 
 /** A reset by the recovery kit: unlock with it, then wrap the same account key under a master key made from the new password. */

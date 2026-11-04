@@ -148,6 +148,7 @@ CREATE TABLE IF NOT EXISTS vault_keys (
   wrapped_by_recovery TEXT NOT NULL, -- the account key, sealed under the recovery key
   public_key TEXT NOT NULL,          -- X25519, base64url
   wrapped_private_key TEXT NOT NULL, -- sealed under the account key
+  reset_verifier TEXT,               -- Ed25519 public key made from the account key: a reset must be signed for it (S-38); null before a device adds it
   seq INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL

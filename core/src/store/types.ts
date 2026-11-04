@@ -1430,10 +1430,16 @@ export interface VaultKeys {
   wrapped_by_recovery: string;
   public_key: string;
   wrapped_private_key: string;
+  /**
+   * An Ed25519 public key the device derives from the account key: the lock a reset must be signed for, so that holding the recovery kit is
+   * what the server checks, not only the mailbox (SECURITY.md S-38). Absent on a vault made before it existed, until a device adds it.
+   */
+  reset_verifier?: string | null;
 }
 
 /** The keys again with the counters the server keeps. */
 export interface VaultKeysRecord extends VaultKeys {
+  reset_verifier: string | null;
   user_id: string;
   seq: number;
   created_at: string;
@@ -1468,8 +1474,10 @@ export interface VaultRepository {
   getKeys(userId: string): Promise<VaultKeysRecord | null>;
   /** Only when the account has none; false otherwise. */
   putKeys(userId: string, keys: VaultKeys, now: string): Promise<boolean>;
-  /** The same account key under new wrappings (a new master password, a new recovery kit). Objects are untouched. */
+  /** The same account key under new wrappings (a new master password, a new recovery kit). Objects are untouched. The verifier is not changed here. */
   replaceKeys(userId: string, keys: VaultKeys, now: string): Promise<boolean>;
+  /** Adds the reset verifier to a vault that has none; false when it has one or there is no vault. A verifier is never replaced, only made again with the vault. */
+  setResetVerifier(userId: string, verifier: string): Promise<boolean>;
   /** Everything changed after `since`, deletions included, oldest change first. */
   list(userId: string, since: number): Promise<VaultObjectMeta[]>;
   get(userId: string, id: string): Promise<VaultObjectMeta | null>;
