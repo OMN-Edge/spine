@@ -489,9 +489,12 @@ describe('changing it', () => {
 
 describe('other ways in do not skip it', () => {
   it('a reset link sets a password and leaves the second factor in force', async () => {
-    await enrol();
-    const token = await issueUserToken(OWNER_ID, 'reset', 60_000);
-    const reset = await post('/api/auth/reset', { token, password: 'a-brand-new-password-1' });
+    const { secret } = await enrol();
+    const token = await issueUserToken(OWNER_ID, 'reset', 10 * 60_000);
+    // The link alone is not enough for an account that has a second factor (S-38); the code that enrolled is spent, so wait for the next.
+    expect((await post('/api/auth/reset', { token, password: 'a-brand-new-password-1' })).statusCode).toBe(401);
+    advanceSteps(2);
+    const reset = await post('/api/auth/reset', { token, password: 'a-brand-new-password-1', code: codeFor(secret) });
     expect(reset.statusCode).toBe(200);
     // Any response may carry a session cookie; what matters is that it is not a login.
     expect((await get('/api/auth/me', cookieOf(reset))).statusCode).toBe(401);

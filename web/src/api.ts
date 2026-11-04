@@ -779,7 +779,7 @@ export const api = {
     rewrap: (change: { authValue?: string; keys: VaultKeyPayload }) => post<{ ok: boolean }>('/api/vault/keys/rewrap', { auth_value: change.authValue, keys: change.keys }),
     /** What a reset link is for: the recovery-wrapped key, to open with the kit. */
     resetKeys: (token: string) =>
-      post<{ vault: false } | { vault: true; wrapped_by_recovery: string; public_key: string; wrapped_private_key: string; kdf_params: KdfParams }>('/api/auth/reset/keys', { token }),
+      post<{ vault: false; second_factor: boolean } | { vault: true; second_factor: boolean; wrapped_by_recovery: string; public_key: string; wrapped_private_key: string; kdf_params: KdfParams }>('/api/auth/reset/keys', { token }),
     /** Passkeys: sign in with the device; manage them from the account page. */
     passkeys: {
       supported: () => typeof window !== 'undefined' && !!window.PublicKeyCredential,
@@ -815,10 +815,11 @@ export const api = {
     resendVerification: (email: string) =>
       post<{ ok: boolean; message: string }>('/api/auth/resend-verification', { email }),
     forgot: (email: string) => post<{ ok: boolean; message: string }>('/api/auth/forgot', { email }),
-    reset: (token: string, password: string) =>
-      post<{ ok: boolean }>('/api/auth/reset', { token, password }),
-    resetVault: (token: string, change: { authValue: string; keys: VaultKeyPayload }, erase = false) =>
-      post<{ ok: boolean }>('/api/auth/reset', { token, auth_value: change.authValue, keys: change.keys, erase: erase || undefined }),
+    /** `code` is a second-factor code, for an account that has one (S-38). */
+    reset: (token: string, password: string, code?: string) =>
+      post<{ ok: boolean }>('/api/auth/reset', { token, password, code: code || undefined }),
+    resetVault: (token: string, change: { authValue: string; keys: VaultKeyPayload }, erase = false, code?: string) =>
+      post<{ ok: boolean }>('/api/auth/reset', { token, auth_value: change.authValue, keys: change.keys, erase: erase || undefined, code: code || undefined }),
     /** A new master password: the same keys sealed under a new master key, here, so the records stay readable. */
     changePassword: async (current: string, next: string) => {
       const session = await vaultState.unlock(current);

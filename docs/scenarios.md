@@ -65,12 +65,13 @@ The owner asks for a reset. With a mailer they get a link by email; without one,
 - Asking for a reset looks the same whether or not the address has an account.
 - The link works once, and carries its token in the part of the URL the server never sees (the fragment, which a browser does not send).
 - A new password signs out the owner's other sessions.
+- An account with two-factor on is asked for a code from its authenticator, or a recovery code, with the new password; a wrong code leaves the link good, and five attempts at a link in ten minutes stop it. The owner is mailed that a reset was made, and when it erased the records.
 - The mail has no document content and no clinical words.
 - For an account with a vault the page asks for the **recovery kit** and a new password: the kit opens the account key on the device, which is sealed again under the new password, and the records stay readable. A mistyped kit is caught by its check characters; a kit from another account does not open this one.
 - Without the kit the page says that the records cannot be opened by anyone, and offers to start empty: every stored object is erased, and a new vault and a new kit are made. Nothing is erased before the person has ticked that they understand.
 - The link alone never gives access to records: the server holds only the key sealed under the kit.
 
-Status: auto (`accounts`, `mail`, `cli`, `vault`, and `web/src/e2e/vault.e2e.test.ts` for the kit and the erase path).
+Status: auto (`accounts`, `mail`, `cli`, `vault`, `reset-second-factor`, and `web/src/e2e/vault.e2e.test.ts` for the kit and the erase path).
 
 ### 1.3 Turn on two-factor
 The owner scans a QR code, confirms one code, and saves ten recovery codes.

@@ -29,6 +29,9 @@ export default function Reset() {
   const [password, setPassword] = useState('');
   const [again, setAgain] = useState('');
   const [kit, setKit] = useState('');
+  // The second-factor code, when the account has one: the server asks for it with the reset (S-38).
+  const [secondFactor, setSecondFactor] = useState(false);
+  const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -39,7 +42,7 @@ export default function Reset() {
   useEffect(() => {
     if (!token.current) { setMode({ kind: 'bad' }); return; }
     api.auth.resetKeys(token.current)
-      .then(r => setMode(r.vault ? { kind: 'vault', stored: r as unknown as Stored } : { kind: 'legacy' }))
+      .then(r => { setSecondFactor(r.second_factor === true); setMode(r.vault ? { kind: 'vault', stored: r as unknown as Stored } : { kind: 'legacy' }); })
       .catch(() => setMode({ kind: 'bad' }));
   }, []);
 
@@ -55,7 +58,7 @@ export default function Reset() {
     setError('');
     if (password !== again) return setError(t('The two passwords do not match'));
     try {
-      await api.auth.reset(token.current ?? '', password);
+      await api.auth.reset(token.current ?? '', password, code);
       setDone(true);
     } catch (err) { failed(err); }
   };
@@ -78,7 +81,7 @@ export default function Reset() {
     setBusy(true);
     try {
       const reset = await resetWithRecovery(read.key, mode.stored, password);
-      await api.auth.resetVault(token.current ?? '', reset);
+      await api.auth.resetVault(token.current ?? '', reset, false, code);
       setDone(true);
     } catch (err) {
       if (err instanceof OpenError) setError(t('That recovery kit does not open this account.'));
@@ -99,7 +102,7 @@ export default function Reset() {
     setBusy(true);
     setError('');
     try {
-      await api.auth.resetVault(token.current ?? '', fresh, true);
+      await api.auth.resetVault(token.current ?? '', fresh, true, code);
       setDone(true);
     } catch (err) { failed(err); } finally { setBusy(false); }
   };
@@ -118,11 +121,19 @@ export default function Reset() {
             value={password} onChange={e => setPassword(e.target.value)} className={inputClass} />
           <input type="password" placeholder={t('New password again')} autoComplete="new-password"
             value={again} onChange={e => setAgain(e.target.value)} className={inputClass} />
+          {secondFactor && (
+            <input type="text" placeholder={t('Enter the code from your authenticator app, or one of your recovery codes.')} autoComplete="one-time-code" spellCheck={false}
+              value={code} onChange={e => setCode(e.target.value)} className={inputClass} />
+          )}
           {error && <Notice kind="error">{error}</Notice>}
           <button type="submit" className={buttonClass}>{t('Change password')}</button>
         </form>
       ) : fresh ? (
         <>
+          {secondFactor && (
+            <input type="text" placeholder={t('Enter the code from your authenticator app, or one of your recovery codes.')} autoComplete="one-time-code" spellCheck={false}
+              value={code} onChange={e => setCode(e.target.value)} className={inputClass} />
+          )}
           <RecoveryKit recoveryKey={fresh.recoveryKey} email="" onDone={eraseAndSave} busy={busy} />
           {error && <Notice kind="error">{error}</Notice>}
         </>
@@ -135,6 +146,10 @@ export default function Reset() {
             value={password} onChange={e => setPassword(e.target.value)} className={inputClass} />
           <input type="password" placeholder={t('New password again')} autoComplete="new-password"
             value={again} onChange={e => setAgain(e.target.value)} className={inputClass} />
+          {secondFactor && (
+            <input type="text" placeholder={t('Enter the code from your authenticator app, or one of your recovery codes.')} autoComplete="one-time-code" spellCheck={false}
+              value={code} onChange={e => setCode(e.target.value)} className={inputClass} />
+          )}
           {error && <Notice kind="error">{error}</Notice>}
           <button type="submit" disabled={busy} className={`${buttonClass} disabled:opacity-50`}>{busy ? t('Making your keys…') : t('Change password')}</button>
           <button type="button" onClick={() => { setErasing(true); setError(''); }} className="mt-4 text-sm text-gray-500 hover:underline">{t('I do not have my recovery kit')}</button>
@@ -150,6 +165,10 @@ export default function Reset() {
             value={password} onChange={e => setPassword(e.target.value)} className={inputClass} />
           <input type="password" placeholder={t('New password again')} autoComplete="new-password"
             value={again} onChange={e => setAgain(e.target.value)} className={inputClass} />
+          {secondFactor && (
+            <input type="text" placeholder={t('Enter the code from your authenticator app, or one of your recovery codes.')} autoComplete="one-time-code" spellCheck={false}
+              value={code} onChange={e => setCode(e.target.value)} className={inputClass} />
+          )}
           {error && <Notice kind="error">{error}</Notice>}
           <button type="submit" disabled={!understood || busy} className={`${buttonClass} disabled:opacity-50`}>{t('Continue')}</button>
           <button type="button" onClick={() => { setErasing(false); setError(''); }} className="mt-4 text-sm text-gray-500 hover:underline">{t('I have my recovery kit')}</button>

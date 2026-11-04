@@ -24,6 +24,8 @@ import { windowLimiter, type WindowLimit } from '../rate-limit.js';
 import { loadInstanceKind, loadRegistrationMode, type InstanceKind, type RegistrationMode } from '../config.js';
 import { AUTH_VALUE, parseVaultKeys } from '../vault-keys.js';
 import { removeAllObjects } from '../vault-files.js';
+import { checkSecondFactor, hasSecondFactor } from '../second-factor.js';
+import { mailAfter, securityChangeMail } from '../notify.js';
 
 /**
  * Signup, address verification and password recovery (SECURITY.md M-6, M-11).
@@ -39,10 +41,14 @@ export interface AccountRouteOptions {
   instance?: InstanceKind;
   perSource?: { max: number; timeWindow: string | number };
   perAddress?: WindowLimit;
+  /** Attempts at one reset link in ten minutes, wrong second-factor codes included. */
+  resetCodeAttempts?: number;
 }
 
 const DEFAULT_PER_SOURCE = { max: 10, timeWindow: '10 minutes' };
 const DEFAULT_PER_ADDRESS: WindowLimit = { max: 3, windowMs: 60 * 60 * 1000 };
+const RESET_CODE_ATTEMPTS = 5;
+const RESET_CODE_WINDOW_MS = 10 * 60 * 1000;
 
 /** The answer for every request that names an address, whether or not it has an account. */
 const GENERIC = {
@@ -234,16 +240,28 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
       const userId = await store.users.peekToken(hashUserToken(token), 'reset', new Date().toISOString());
       if (!userId) return reply.status(400).send(INVALID_LINK);
       const k = await store.vault.getKeys(userId);
-      if (!k) return reply.send({ vault: false });
-      return reply.send({ vault: true, wrapped_by_recovery: k.wrapped_by_recovery, public_key: k.public_key, wrapped_private_key: k.wrapped_private_key, kdf_params: JSON.parse(k.kdf_params) });
+      // Whether the reset will ask for a code, so the page can ask before the person has made new keys.
+      const second_factor = await hasSecondFactor(userId);
+      if (!k) return reply.send({ vault: false, second_factor });
+      return reply.send({ vault: true, second_factor, wrapped_by_recovery: k.wrapped_by_recovery, public_key: k.public_key, wrapped_private_key: k.wrapped_private_key, kdf_params: JSON.parse(k.kdf_params) });
     },
   );
 
   // `erase` is the person's choice to go on without the kit: the sealed records could never be opened again, so they are removed and the
   // account starts with an empty vault. Without it, `keys` must hold the same account key the recovery kit opened.
-  app.post<{ Body: { token?: string; password?: string; auth_value?: string; keys?: unknown; erase?: unknown } }>(
+  // A reset replaces the keys the records open with, and the link is only the mailbox's word, so an account with a second factor is asked for
+  // it here too (S-38). A code is a few digits: attempts are counted per link, so holding the link is not a way to try them all.
+  const perLink = windowLimiter(
+    { max: opts.resetCodeAttempts ?? RESET_CODE_ATTEMPTS, windowMs: RESET_CODE_WINDOW_MS },
+    (req: FastifyRequest) => {
+      const token = (req.body as { token?: unknown } | undefined)?.token;
+      return typeof token === 'string' && token ? hashUserToken(token) : null;
+    },
+    'too many attempts, try again later',
+  );
+  app.post<{ Body: { token?: string; password?: string; auth_value?: string; keys?: unknown; erase?: unknown; code?: unknown } }>(
     '/api/auth/reset',
-    { preHandler: [perSource] },
+    { preHandler: [perSource, perLink] },
     async (req, reply) => {
       const { token, password } = req.body ?? {};
       if (typeof token !== 'string' || !token) return reply.status(400).send(INVALID_LINK);
@@ -262,6 +280,18 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
         const owner = await store.users.peekToken(hashUserToken(token), 'reset', new Date().toISOString());
         // A password this server knows would sit beside keys it cannot open: an account with a vault is reset with a vault's keys.
         if (owner && (await store.vault.getKeys(owner))) return reply.status(400).send({ error: 'this account has a vault: reset it from the page, with your recovery kit' });
+      }
+
+      // The second factor, before the link is spent: a wrong code leaves it good for the owner. A code is spent when it is right (a step or a
+      // recovery code is used once), and the check is after what could fail on shape, so a bad request does not use one up.
+      const holder = await store.users.peekToken(hashUserToken(token), 'reset', new Date().toISOString());
+      if (holder && (await hasSecondFactor(holder))) {
+        const code = req.body?.code;
+        if (typeof code !== 'string' || !code || code.length > 64) return reply.status(401).send({ error: 'a code from your authenticator or a recovery code is needed', code: 'second_factor_required' });
+        if (!(await checkSecondFactor({ id: holder }, code))) {
+          req.log.warn({ ip: req.ip, userId: holder }, 'failed second factor on a reset');
+          return reply.status(401).send({ error: 'incorrect code', code: 'second_factor_required' });
+        }
       }
 
       const now = new Date().toISOString();
@@ -286,6 +316,13 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
       await store.users.markVerified(userId, now);
       await store.users.invalidateTokens(userId, 'reset');
       await store.sessions.revokeExcept(userId, null);
+
+      // Said to the address, so a reset the owner did not make is seen (S-38); what the reset did, never anything about the records.
+      const owner = await store.users.findById(userId);
+      if (owner) {
+        const what = keys && req.body?.erase === true ? 'Your password was reset with a link sent to this address, and your records were erased' : 'Your password was reset with a link sent to this address';
+        mailAfter(req, userId, securityChangeMail(owner.email, what, now), 'reset');
+      }
 
       req.log.info({ userId, erased: req.body?.erase === true }, 'password reset by link');
       return reply.send({ ok: true });
