@@ -20,6 +20,20 @@ const BEFORE_RECORDS = new Set(['opening the vault', 'loading profiles']);
 const shortened = (text: string, max: number) => (text.length > max ? `${text.slice(0, max)}…` : text);
 
 /**
+ * An error's text is written by whatever code failed, so it is not trusted to be free of what the person keeps: an address, a title, a file
+ * name, an id, a link with its key. What looks like any of those is replaced before the text goes in the report.
+ */
+export function scrubbed(text: string): string {
+  return text
+    .replace(/https?:\/\/\S+/gi, '[link]')
+    .replace(/[^\s@]+@[^\s@]+\.[^\s@]+/g, '[email]')
+    .replace(/"[^"]*"|“[^”]*”|'[^']*'|‘[^’]*’|`[^`]*`/g, '[text]')
+    .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '[id]')
+    .replace(/(?:[\w.~-]*\/)+[\w.~-]+/g, '[path]')
+    .replace(/[A-Za-z0-9_+=-]{24,}/g, '[token]');
+}
+
+/**
  * `step` is the last thing the core said it was doing. An error from the core reaches the page as a plain `Error` whose `name` is the
  * core's (a class does not cross the worker's boundary), so a wrong key is told by `name`.
  */
@@ -34,7 +48,7 @@ export function classifyOpenFailure(err: unknown, step: string, now: Date = new 
     `Time: ${now.toISOString()}`,
     `App: ${BUILD_VERSION} ${shortened(BUILD_COMMIT, 12)}`,
     `Failed at: ${kind}${step ? ` (${step})` : ''}`,
-    `Error: ${name}: ${shortened(String(e?.message ?? err ?? ''), 300)}`,
+    `Error: ${shortened(scrubbed(name), 60)}: ${shortened(scrubbed(String(e?.message ?? err ?? '')), 300)}`,
     ...(typeof e?.status === 'number' ? [`Status: ${e.status}${e.code ? ` ${e.code}` : ''}`] : []),
     `Online: ${typeof navigator !== 'undefined' && navigator.onLine === false ? 'no' : 'yes'}`,
     `Browser: ${shortened(typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown', 160)}`,

@@ -758,6 +758,56 @@ try {
     fs.rmSync(downloads, { recursive: true, force: true });
   }
 
+  // The records fail to open after the password was accepted (the server answers the listing with a 503, as one that is down would): the
+  // screen says the vault cannot be reached and does not blame the password, offers the details for support, and Try again opens the
+  // records once the server answers. Then the Get started list's Review leads to the first upload waiting for its grouping.
+  {
+    const ctx = await browser.createBrowserContext();
+    const d = await ctx.newPage();
+    const dText = () => d.evaluate(() => document.body.innerText);
+    const dWait = async (what, ms = 30000) => { for (let t = 0; t < ms; t += 250) { if ((await dText()).includes(what)) return true; await wait(250); } return false; };
+    const dClick = async label => { const h = await d.evaluateHandle(l => [...document.querySelectorAll('button,a')].find(e => e.offsetParent && e.innerText.trim().toLowerCase().startsWith(l.toLowerCase())), label); await h.asElement().click(); };
+    let refuse = true;
+    await d.setRequestInterception(true);
+    d.on('request', r => (refuse && /\/api\/vault\/objects(\?|$)/.test(r.url()) ? r.respond({ status: 503, contentType: 'application/json', body: '{"error":"down"}' }) : r.continue()));
+    await d.goto(`http://localhost:${front}/login`, { waitUntil: 'networkidle0' });
+    await d.type('input[type=email]', 'check@example.com'); await d.type('input[type=password]', MASTER); await dClick('Sign in');
+    check(await dWait('We can’t reach your vault right now.', 60000), 'when the vault cannot be reached after the password was accepted, the screen says so');
+    const failed = await dText();
+    check(!failed.includes('not the master password') && !failed.includes('Type your master password') && failed.includes('no need to change it'), 'it does not send the person to the password, and says the password was accepted');
+    const report = await d.evaluate(() => document.querySelector('details pre')?.textContent ?? '');
+    check(failed.includes('Copy details for support') && report.includes('Failed at: vault'), 'it offers the details for support, and shows what is copied');
+    check(report.length > 0 && !report.includes('@') && !report.includes('check@example') && !report.includes(MASTER), 'and those details hold no address and no password');
+    refuse = false;
+    await dClick('Try again');
+    check(await dWait('Chest X-ray', 60000), 'Try again opens the records once the server answers');
+    // Review in the Get started list goes to /upload#grouping: the first upload waiting for its grouping is marked and scrolled into view.
+    const go = to => d.evaluate(address => { history.pushState({}, '', address); dispatchEvent(new PopStateEvent('popstate')); }, to);
+    await go('/upload');
+    await dWait('Drag & drop');
+    // The same two pages as the first file with a line added: the same file twice is refused, and this one must be read.
+    const another = path.join(sandbox, 'invented-second.pdf');
+    {
+      const doc = await PDFDocument.create();
+      const font = await doc.embedFont(StandardFonts.Helvetica);
+      for (const lines of [['Example Clinic - Consultation', 'Patient: Jane Example (invented).', 'Second copy.'], ['Laboratory report', 'Hemoglobin 13.5 g/dL.', 'Second copy.']]) {
+        const page = doc.addPage([595.28, 841.89]);
+        lines.forEach((t, i) => page.drawText(t, { x: 60, y: 760 - i * 28, size: 14, font }));
+      }
+      fs.writeFileSync(another, await doc.save());
+    }
+    await (await d.$('input[type=file]')).uploadFile(another);
+    check(await dWait('Check the grouping', REAL ? 240000 : 40000), 'an upload cut into documents waits for its grouping');
+    await go('/account');
+    await dWait('Account', 10000);
+    await go('/upload#grouping');
+    await dWait('Check the grouping', 30000);
+    await wait(500);
+    const anchor = await d.evaluate(() => { const e = document.getElementById('grouping'); if (!e) return null; const r = e.getBoundingClientRect(); return { text: e.innerText, inView: r.top >= 0 && r.bottom <= innerHeight + 1, count: document.querySelectorAll('#grouping').length }; });
+    check(!!anchor && anchor.count === 1 && anchor.text.includes('Check the grouping') && anchor.inView, 'and it is the one marked, once, and in view');
+    await ctx.close();
+  }
+
   // Two devices on one account: each removes a different tag at the same time, and each ends up with both removals. The first is told, without
   // a reload, that the other made changes.
   {

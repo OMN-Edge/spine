@@ -14,6 +14,12 @@ let pendingMaster: Uint8Array | null = null;
 let session: VaultSession | null = null;
 /** Why the core did not open after the sign-in handed it the key, when it was not the key (`open-failure.ts`); the unlock screen says it. */
 let failure: OpenFailure | null = null;
+/**
+ * The key a failed attempt used, kept for Try again: the page uses `pendingMaster` for its own copy of the vault meanwhile and lets go of it
+ * then, so without this the second attempt would have no key and fall back to asking for the password. Memory only, gone when the records open
+ * or are locked.
+ */
+let retryMaster: Uint8Array | null = null;
 
 /**
  * What the unlock screen asks the server for before the password is typed (the key derivation's parameters and the sealed keys), so that
@@ -48,17 +54,20 @@ export const vaultState = {
    */
   async startDevice(): Promise<'open' | 'locked'> {
     if (device.isOpen()) return 'open';
-    if (!pendingMaster) return 'locked';
+    const master = pendingMaster ?? retryMaster;
+    if (!master) return 'locked';
     try {
-      await device.unlock(pendingMaster.slice(), undefined, rememberedProfile(email));
+      await device.unlock(master.slice(), undefined, rememberedProfile(email));
     } catch (err) {
       // A key that does not open asks for the password again; anything else is not the password's doing, and the screen says so.
       const found = classifyOpenFailure(err, coreStep());
       failure = found.kind === 'key' ? null : found;
+      retryMaster = failure ? master.slice() : null;
       console.error('could not open the records', err);
       throw err;
     }
     failure = null;
+    retryMaster = null;
     return 'open';
   },
   openFailure: (): OpenFailure | null => failure,
@@ -145,6 +154,8 @@ export const vaultState = {
     await session?.close();
     session = null;
     pendingMaster = null;
+    retryMaster = null;
+    failure = null;
   },
 };
 

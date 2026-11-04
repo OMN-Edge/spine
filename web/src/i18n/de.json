@@ -1718,5 +1718,6 @@
  "We couldn’t load your records on this device.": "Ihre Unterlagen konnten auf diesem Gerät nicht geladen werden.",
  "Your password was accepted, so there is no need to change it. Try again, and if it keeps happening, copy the details and send them to support.": "Ihr Passwort wurde akzeptiert, Sie müssen es also nicht ändern. Versuchen Sie es erneut und kopieren Sie die Details für den Support, falls es wieder passiert.",
  "Copy details for support": "Details für den Support kopieren",
- "Details for support": "Details für den Support"
+ "Details for support": "Details für den Support",
+ "What is copied": "Was kopiert wird"
 }

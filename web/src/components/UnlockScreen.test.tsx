@@ -27,7 +27,23 @@ describe('the unlock screen', () => {
     expect(shown).toContain('We couldn’t load your records on this device.');
     expect(shown).toContain('no need to change it');
     expect(shown).toContain('Copy details for support');
+    expect(shown).toContain('What is copied');
+    expect(shown).toContain('Failed at: records');
     expect(shown).not.toContain('Type your master password');
     vaultState.forgetOpenFailure();
+  });
+
+  it('tries again with the key the sign-in left, though the page has let go of its own copy meanwhile (the browser check found it asked for the password instead)', async () => {
+    let calls = 0;
+    device.isOpen = () => false;
+    device.unlock = () => (++calls === 1 ? Promise.reject(new Error('the server answered 503')) : Promise.resolve());
+    vaultState.stashMaster(new Uint8Array(32));
+    await expect(vaultState.startDevice()).rejects.toThrow();
+    vaultState.stashMaster(null); // what the page does once it has opened the vault itself
+    expect(await vaultState.startDevice()).toBe('open');
+    expect(calls).toBe(2);
+    expect(vaultState.openFailure()).toBeNull();
+    // and that key is not kept once the records are open
+    expect(await vaultState.startDevice()).toBe('locked');
   });
 });
