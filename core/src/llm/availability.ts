@@ -1,4 +1,3 @@
-import { ModelBudgetError } from './budget.js';
 import { LlmBlockedError } from './types.js';
 
 /**
@@ -6,7 +5,7 @@ import { LlmBlockedError } from './types.js';
  * could not be asked (a quota, an outage, a dropped connection): it waits and tries again. It gives up only on what asking again would not
  * change: the model refused these words, or the provider turned the request itself down.
  *
- * - `limit`: a daily allowance is used up (the device's own `SPINE_LLM_DAILY_CALLS`, the relay's, or the plan's); try after midnight UTC,
+ * - `limit`: a daily allowance is used up (the relay's, for the account or the share, or the plan's); try after midnight UTC,
  *   when the day's count starts again.
  * - `unavailable`: the relay or the provider did not answer, or answered that it could not; try again soon, then less often.
  */
@@ -29,7 +28,6 @@ const FINAL_CODES = new Set(['blocked', 'rejected']);
 
 export function modelWait(err: unknown, now: number = Date.now()): ModelWait | null {
   if (err instanceof LlmBlockedError) return null;
-  if (err instanceof ModelBudgetError) return { reason: 'limit', until: nextUtcDay(now) };
   if (err instanceof ModelUnreachableError) return { reason: 'unavailable' };
   const { status, code } = (err ?? {}) as { status?: unknown; code?: unknown };
   if (typeof status !== 'number') return null;

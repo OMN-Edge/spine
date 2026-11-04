@@ -75,8 +75,8 @@ describe('what a device is given to call the relay', () => {
     expect(JSON.stringify(env)).not.toContain('secret-project'); // the provider's project is the relay's business
   });
 
-  it('gives a device the daily model-call ceiling the operator set (SECURITY.md S-35)', () => {
+  it('gives a device no daily ceiling of its own: the relay counts each account (SECURITY.md S-35)', () => {
     const env = relayEnv({ url: 'https://relay.example', secret: SECRET }, { SPINE_LLM_DAILY_CALLS: '120' });
-    expect(env.SPINE_LLM_DAILY_CALLS).toBe('120');
+    expect(env).not.toHaveProperty('SPINE_LLM_DAILY_CALLS');
   });
 });

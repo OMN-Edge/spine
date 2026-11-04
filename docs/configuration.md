@@ -18,7 +18,6 @@ Every environment variable, read from `.env` (copy `.env.example`; `./install.sh
 | `SPINE_CHAT` | `off` removes the chat panel and the recipient's chat on share links. Default on: each question sends the question and the matching documents' summary cards, notes and results (never a page image; the text of a few pages only when the owner asks the assistant to sort an upload, `read_pages`) to `SPINE_LLM_PROVIDER` (SECURITY.md **M-18**) |
 | `SPINE_LINKING` | `off` to stop looking for links between documents (a consultation and the tests it asked for, a follow-up). Default on: it sends the summary cards of up to seven documents per call to `SPINE_LLM_PROVIDER` (SECURITY.md **M-16**). Links added by hand still work |
 | `SPINE_LLM_CONCURRENCY` | Model calls in flight at once (1-16, default 4); DB writes stay sequential |
-| `SPINE_LLM_DAILY_CALLS` | Model calls allowed a day to each device (the server passes it on; default 5000, `0` for no ceiling); past it a call is refused before it reaches the provider. The bound across devices is the relay's per-account count (SECURITY.md **S-35**, **M-35**) |
 | `SPINE_LLM_MAX_RETRIES` | Retries inside the adapter (default 2) |
 | `SESSION_SECRET` | ≥32 char random string for cookie signing |
 | `SPINE_DOMAIN` | Domain nginx serves from (e.g. `spine.yourdomain.com`) |

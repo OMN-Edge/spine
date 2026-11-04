@@ -172,7 +172,7 @@ Each is explained in [docs/design-decisions.md](docs/design-decisions.md); the t
 - Every new query over the owner's documents uses `VISIBLE` (`store/sqlite/visibility.ts`).
 - A schema change other than a new defaulted column needs an empty database; there is no migration runner.
 - No vendor package outside `server/src/llm/adapters/`, and `core` imports no native library.
-- A new path to a model calls `spendModelCall()`; a new agent tool is `read` (or returns a proposal) and respects the share `Scope`.
+- A new path to a model goes through the relay, which counts it; a new agent tool is `read` (or returns a proposal) and respects the share `Scope`.
 - A new share-copy column or table is named in `store/slice-policy.ts`; a scope is validated only in `share-scope.ts`.
 - A new screen string needs an entry in `ro.json`, `fr.json` and `de.json`; a changed legal text raises its version.
 - `startSession` is called only by the sign-in steps (`second-factor.test.ts`).
