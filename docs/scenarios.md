@@ -647,7 +647,7 @@ Status: auto (`relay`, `chat`, `usage`).
 ### 9.1 Install and first start
 The operator follows [docs/setup.md](setup.md) on a fresh Pi.
 
-- The service refuses to start, and says why, if the session secret is missing or weak, if image reading is half-enabled, if a Vertex endpoint or region is missing, or if a Google API key is set that would send requests to a global host.
+- The server refuses to start, and says why, if the session secret is missing or weak, if image reading is half-enabled, or if a setting it gives devices is wrong; the relay refuses to start if a Vertex endpoint, region or project is missing (for the models or the embeddings), or if a Google API key is set that would send requests to a global host.
 - An old-shaped database is refused with a message saying whether it is safe to delete.
 
 Status: auto (`config`, `legacy-database`).

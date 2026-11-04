@@ -72,11 +72,12 @@ useLogger({
 });
 
 // The server calls no model any more (a device's calls go through the relay, M-35), so it builds no model client and needs no
-// credential. The settings were validated with the rest of the config above (P3, M-8: endpoint, region and project stated, no stray Google
-// key). P8: residency has to be observable, so log what the device is told to use.
+// credential. The settings a device is given were validated with the rest of the config above; the provider's own (endpoint, region,
+// project, no stray Google key: P3, M-8) are the relay's, which checks them and says where its calls go when it starts. P8: residency has
+// to be observable, so log what the device is told to use.
 app.log.info(
   {
-    provider: config.llm.provider, model: config.llm.model, endpoint: config.llm.endpoint, embeddings: config.embeddings.adapter,
+    model: config.llm.model, models: config.llm.models.map(m => m.id), embeddings: config.embeddings.adapter !== 'none',
     // Whether a device may send page images off the device (the parser sends them and the second switch allows it): residency has to be observable.
     parser: config.parser.mode, imageEgress: config.parser.multimodalEnabled && (config.parser.mode === 'multimodal' || config.parser.mode === 'hybrid'),
   },

@@ -1,22 +1,22 @@
 # Configuration
 
-Every environment variable, read from `.env` (copy `.env.example`; `./install.sh -e` writes one with generated secrets) and, for the relay, `relay.env` ([relay.md](relay.md)). A value that names no secret is also passed to each signed-in device. The server checks all of this at startup and lists every problem ([setup.md](setup.md#when-it-will-not-start)).
+Every environment variable, read from `.env` (copy `.env.example`; `./install.sh -e` writes one with generated secrets) and, for the relay, `relay.env` ([relay.md](relay.md)). A value that names no secret is also passed to each signed-in device. The server checks its own settings and those it passes to devices at startup and lists every problem ([setup.md](setup.md#when-it-will-not-start)); the provider's (which one, its key, Vertex's endpoint, region and project, for the models and the embeddings) are the relay's, which checks them when it starts.
 
 | Variable | Purpose |
 |---|---|
 | `ANTHROPIC_API_KEY` | Claude API key, on the relay (required when its `SPINE_LLM_PROVIDER=anthropic`); the server holds no model credential |
-| `SPINE_LLM_PROVIDER` | The relay's provider: `anthropic` (default) \| `vertex`. The server logs it and tells devices `relay` |
-| `SPINE_LLM_MODEL` | Model id (default `claude-haiku-4-5-20251001`) |
-| `SPINE_LLM_ENDPOINT` | Explicit endpoint. **Required for `vertex`, never defaulted** — residency is a property of the endpoint |
-| `SPINE_LLM_REGION` | Provider region (required for `vertex`, e.g. `eu`) |
-| `SPINE_LLM_PROJECT` | GCP project (required for `vertex`) |
+| `SPINE_LLM_PROVIDER` | The relay's provider: `anthropic` (default) \| `vertex`. The server ignores it and tells devices `relay` |
+| `SPINE_LLM_MODEL` | Model id (default `claude-haiku-4-5-20251001`), in `.env`: a device names it with every call, and the relay refuses one it does not offer |
+| `SPINE_LLM_ENDPOINT` | The relay's endpoint. **Required for `vertex`, never defaulted** — residency is a property of the endpoint |
+| `SPINE_LLM_REGION` | The relay's provider region (required for `vertex`, e.g. `eu`) |
+| `SPINE_LLM_PROJECT` | The relay's GCP project (required for `vertex`) |
 | `SPINE_LLM_MODELS` | Other models offered in a picker for "Read page with AI" and "Read whole document": `id` or `id=Label`, comma separated, on the same provider, endpoint, region and project unless an entry names its own region (`id|europe-west4=Label`). The default model is always first; an id not listed is refused (400) |
 | `SPINE_LLM_MAX_TOKENS_CONTINUATION` / `_EXTRACTION` | Output caps (1024 / 16384). `SPINE_LLM_MAX_TOKENS_PAGE` (16384) caps a page reading. All are ceilings: only generated tokens are billed |
 | `SPINE_LLM_CONTEXT_CHARS` | Context window in characters, the only cap on request text (default 300000); longer documents are chunked |
-| `SPINE_TRANSLATION` | `off` to stop translating documents (the interface stays translated; content shows in its original language). Default on: translating sends the document's extracted text and the owner's notes to `SPINE_LLM_PROVIDER` (SECURITY.md **M-13**) |
-| `SPINE_EMBEDDINGS` | `none` (default) \| `vertex`: embed each document's summary card for related documents and search by meaning. Endpoint, region and project come from `SPINE_EMBEDDING_ENDPOINT/_REGION/_PROJECT` or the Vertex chat settings; **never defaulted**. `SPINE_EMBEDDING_MODEL` (default `gemini-embedding-2`, called with `embedContent`; what the `eu` multi-region serves) and `SPINE_EMBEDDING_DIMS` (768) define the vector space (SECURITY.md **M-15**) |
-| `SPINE_CHAT` | `off` removes the chat panel and the recipient's chat on share links. Default on: each question sends the question and the matching documents' summary cards, notes and results (never a page image; the text of a few pages only when the owner asks the assistant to sort an upload, `read_pages`) to `SPINE_LLM_PROVIDER` (SECURITY.md **M-18**) |
-| `SPINE_LINKING` | `off` to stop looking for links between documents (a consultation and the tests it asked for, a follow-up). Default on: it sends the summary cards of up to seven documents per call to `SPINE_LLM_PROVIDER` (SECURITY.md **M-16**). Links added by hand still work |
+| `SPINE_TRANSLATION` | `off` to stop translating documents (the interface stays translated; content shows in its original language). Default on: translating sends the document's extracted text and the owner's notes to the relay's provider (SECURITY.md **M-13**) |
+| `SPINE_EMBEDDINGS` | `none` (default) \| `vertex`: embed each document's summary card for related documents and search by meaning. Set in `.env`, which the server passes on as on or off. Endpoint, region and project are the relay's (`relay.env`), from `SPINE_EMBEDDING_ENDPOINT/_REGION/_PROJECT` or its Vertex model settings; **never defaulted**. `npm run check-embeddings` (server/) sends one test sentence with the relay's settings. `SPINE_EMBEDDING_MODEL` (default `gemini-embedding-2`, called with `embedContent`; what the `eu` multi-region serves) and `SPINE_EMBEDDING_DIMS` (768) define the vector space (SECURITY.md **M-15**) |
+| `SPINE_CHAT` | `off` removes the chat panel and the recipient's chat on share links. Default on: each question sends the question and the matching documents' summary cards, notes and results (never a page image; the text of a few pages only when the owner asks the assistant to sort an upload, `read_pages`) to the relay's provider (SECURITY.md **M-18**) |
+| `SPINE_LINKING` | `off` to stop looking for links between documents (a consultation and the tests it asked for, a follow-up). Default on: it sends the summary cards of up to seven documents per call to the relay's provider (SECURITY.md **M-16**). Links added by hand still work |
 | `SPINE_LLM_CONCURRENCY` | Model calls in flight at once (1-16, default 4); DB writes stay sequential |
 | `SPINE_LLM_MAX_RETRIES` | Retries inside the adapter (default 2) |
 | `SESSION_SECRET` | ≥32 char random string for cookie signing |
