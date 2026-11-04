@@ -104,7 +104,7 @@ export interface SliceOptions {
   includeScans: boolean;
   link: { id: string; label: string | null; createdAt: string; expiresAt: string; language: string | null; allowChat: boolean };
   /** Where a page's image is in the share's own file system (when scans are included). */
-  imagePathOf: (pageId: string) => string;
+  imagePathOf: (pageId: string, from: string) => string;
   /**
    * What is written into the copy once it is made, by what knows more than the store does: the translations the owner kept, cut to what
    * the copy holds (`carryTranslations`). Given the copy as a store of its own; what it writes leaves with the rest.
@@ -1547,6 +1547,8 @@ export interface SharedRepository {
   take(callerId: string, id: string, now: string): Promise<'ok' | 'not_found' | 'too_many'>;
   /** Counts a sealed file uploaded beside the database. */
   addBlob(userId: string, id: string, bytes: number): Promise<boolean>;
+  /** Stops counting one that was removed (an image the copy no longer uses, or one replaced); the counts never go below 0. */
+  removeBlob(userId: string, id: string, bytes: number): Promise<boolean>;
   /** A change of end date or approval, for the owner's own live bundle. */
   update(userId: string, id: string, patch: { expiresAt?: string; requireApproval?: boolean }): Promise<boolean>;
   /** Ends it now and forgets every wrapped key; false if it is not this owner's or already revoked. */

@@ -34,18 +34,22 @@ export async function startShareCore(shareId: string, key: string): Promise<Shar
   const copy = JSON.parse(new TextDecoder().decode(await openPart(key, shareId, 'records', new Uint8Array(await bundle.arrayBuffer())))) as { v: number; owner: string; changes: Change[] };
   if (copy.v !== 1) throw new Error('this link was made by a newer version of Spine');
 
-  const meta = (await (await fetch(`/api/shared/${id}/meta`)).json()) as { blobs: number };
-  // The page images are sealed files beside the copy, fetched when one is asked for.
-  for (let n = 0; n < meta.blobs; n++) memory.known(`/share/pages/${n}.png`, 0);
+  // The page images are sealed files beside the copy, fetched when one is asked for: the copy names each (`<name>.jpg`, or `<n>.png` in a
+  // copy made before images had names).
+  const image = /^\/share\/pages\/([A-Za-z0-9_-]{1,64})\.(?:jpg|png)$/;
+  for (const c of copy.changes) {
+    const path = c.t === 'pages' ? c.r?.image_path : null;
+    if (typeof path === 'string' && image.test(path)) memory.known(path, 0);
+  }
   memory.useLoader(path => {
-    const n = Number(/^\/share\/pages\/(\d+)\.png$/.exec(path)?.[1]);
-    if (!Number.isInteger(n)) throw Object.assign(new Error('not a file of this share'), { code: 'ENOENT' });
+    const name = image.exec(path)?.[1];
+    if (!name) throw Object.assign(new Error('not a file of this share'), { code: 'ENOENT' });
     const xhr = new XMLHttpRequest();
-    xhr.open('GET', `/api/shared/${id}/blob/${n}`, false);
+    xhr.open('GET', `/api/shared/${id}/blob/${name}`, false);
     xhr.responseType = 'arraybuffer';
     xhr.send();
     if (xhr.status !== 200) throw Object.assign(new Error(`could not read a page of the share (${xhr.status})`), { code: 'EIO' });
-    return openPartNow(key, shareId, `blob-${n}`, new Uint8Array(xhr.response as ArrayBuffer));
+    return openPartNow(key, shareId, `blob-${name}`, new Uint8Array(xhr.response as ArrayBuffer));
   });
 
   // Model calls (translating, a question) go through the relay with a pass for this share alone.

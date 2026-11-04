@@ -42,7 +42,7 @@ export function copySlice(source: Database, dest: Database, o: SliceOptions): Sl
       for (const p of rows('SELECT * FROM pages WHERE user_id = ? AND source_file_id = ? AND page_number BETWEEN ? AND ? AND hidden = 0', o.userId, d.source_file_id, d.page_start, d.page_end)) {
         if (pageIds.has(p.id as string)) continue;
         pageIds.add(p.id as string);
-        const to = o.includeScans ? o.imagePathOf(p.id as string) : '';
+        const to = o.includeScans ? o.imagePathOf(p.id as string, p.image_path as string) : '';
         if (o.includeScans) images.push({ pageId: p.id as string, from: p.image_path as string, to });
         insert('pages', cut('pages', p, { image_path: to }));
       }

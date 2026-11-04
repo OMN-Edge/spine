@@ -14,6 +14,7 @@ import { useI18n } from '../i18n';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { ThemeSwitcher } from '../components/ThemeSwitcher';
 import { useShareAccess } from '../core/share/access';
+import { deviceObjectUrl } from '../core/client';
 import { Combobox } from '../components/Combobox';
 import { languageName, useTranslation } from '../i18n/useTranslation';
 import AiLabel from '../components/AiLabel';
@@ -274,6 +275,14 @@ function SharedDocumentView({ shareId, id, translating, original, titleOf, onBac
     const timer = window.setTimeout(() => el.classList.remove('ring-2', 'ring-brand-400'), 2200);
     return () => { window.clearTimeout(timer); el.classList.remove('ring-2', 'ring-brand-400'); };
   }, [location.key, location.search, data]);
+
+  // The pages beside the one shown are fetched meanwhile, so turning to the next does not wait for it to come from the server and be opened.
+  useEffect(() => {
+    if (!data?.scans) return;
+    for (const p of [data.pages[pageIdx + 1], data.pages[pageIdx - 1]]) {
+      if (p) void deviceObjectUrl(`/api/share/${shareId}/pages/${p.id}/image`).catch(() => undefined);
+    }
+  }, [data, pageIdx, shareId]);
 
   const back = <button type="button" onClick={onBack} className="text-sm text-gray-500 hover:text-gray-800 mb-4">← {t('All documents')}</button>;
   if (error) return <div>{back}<p className="text-sm text-red-600">{error}</p></div>;

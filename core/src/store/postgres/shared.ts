@@ -87,6 +87,9 @@ export function sharedRepository(q: Query, begin: Begin): SharedRepository {
     async addBlob(userId, id, bytes) {
       return (await changed(q, 'UPDATE shared_bundles SET blobs = blobs + 1, blob_bytes = blob_bytes + $1 WHERE id = $2 AND user_id = $3 AND revoked_at IS NULL', [bytes, id, userId])) === 1;
     },
+    async removeBlob(userId, id, bytes) {
+      return (await changed(q, 'UPDATE shared_bundles SET blobs = GREATEST(blobs - 1, 0), blob_bytes = GREATEST(blob_bytes - $1, 0) WHERE id = $2 AND user_id = $3', [bytes, id, userId])) === 1;
+    },
 
     async update(userId, id, patch) {
       return begin(async run => {

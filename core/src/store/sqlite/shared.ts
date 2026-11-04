@@ -107,6 +107,9 @@ export function sharedRepository(db: Database): SharedRepository {
     async addBlob(userId, id, bytes) {
       return db.prepare('UPDATE shared_bundles SET blobs = blobs + 1, blob_bytes = blob_bytes + ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL').run(bytes, id, userId).changes === 1;
     },
+    async removeBlob(userId, id, bytes) {
+      return db.prepare('UPDATE shared_bundles SET blobs = MAX(blobs - 1, 0), blob_bytes = MAX(blob_bytes - ?, 0) WHERE id = ? AND user_id = ?').run(bytes, id, userId).changes === 1;
+    },
     async update(userId, id, patch) {
       const have = get.get(id) as Record<string, unknown> | undefined;
       if (!have || have.user_id !== userId || have.revoked_at) return false;
