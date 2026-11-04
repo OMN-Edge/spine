@@ -55,8 +55,9 @@ The owner opens the site, chooses Sign in, enters their email and password, and 
 - Repeated failures are slowed down, per source and across the whole instance.
 - With two-factor on, the password alone does not sign in: a six-digit code (or a recovery code, once) is also needed.
 - Every API route except the sign-in calls, the legal texts and the public side of a sealed share refuses a visitor with no session; the app's pages open for anyone but show no record until the vault is unlocked.
+- Only a key that does not open is told as "That is not the master password". When the password was accepted and the records still do not open, the screen says which part failed (the vault could not be reached, or the records could not be loaded on this device), says the password is not the cause, and offers Try again and a short report to copy for support: the time, the build, where the core stopped and the error's text, with no record, address or key in it.
 
-Status: auto (`auth`, `second-factor`, `isolation`).
+Status: auto (`auth`, `second-factor`, `isolation`, `open-failure`, `UnlockScreen`).
 
 ### 1.2 Forgotten password
 The owner asks for a reset. With a mailer they get a link by email; without one, the operator produces a one-time link.
@@ -163,7 +164,7 @@ Status: auto (`demo`); screens: hand.
 - The first times the records are opened with nothing uploaded, a note beside Ask offers a welcome; the chat does not open over the page by itself. The welcome says what Spine does, offers Add a document, Look around with sample records (not once they are in), and questions about how it works (adding, the grouping, the "check" marks, sharing, privacy, the master password, the assistant).
 - A question about Spine is answered at once in the person's language, from Spine's own help and not by the model, in their Getting started conversation (or the conversation they are in); the answer says where it came from.
 - The note shows the first four times and can be put away; after that nothing. Anything done from it, or a first upload, ends it, and a second device does not greet again.
-- The empty timeline has a Get started list (add a document, review what was read, share it) that ticks itself off from the person's own uploads, reviewed documents and links, not the sample records, and goes when done or hidden.
+- The empty timeline has a Get started list (add a document, review what was read, share it) that ticks itself off from the person's own uploads, reviewed documents and links, not the sample records, and goes when done or hidden. While an upload waits for its grouping, Review leads to the first such upload on the Upload page, scrolled into view, and otherwise to the review queue.
 - A tip appears once the first time an upload waits for its grouping, documents have been read, and a link has been made; Got it puts it away for good, Tell me more opens the answer about it in the chat.
 - A tip also appears the first time a document has results (they are on Trends too), names doctors (they are kept on Doctors, and a possible duplicate is asked about, never merged by itself) or has a suggested connection (it stays a suggestion until confirmed); a document page shows one at a time. The results and doctors tips are also on the Trends and Doctors pages, and Got it in either place puts both away.
 - Trends, Doctors, Library, Episodes, Review and Search each say in a line under the title what the page is for; the help also answers what results and trends, doctors, connected documents, episodes and the Library are, from a tip's Tell me more or a question to the assistant, though the welcome offers only the first steps.
