@@ -169,7 +169,10 @@ function sqliteRows(db: Database): Rows {
       } catch (err) {
         const named = /UNIQUE constraint failed: (.+)$/.exec(String((err as Error)?.message ?? ''))?.[1];
         if (!named) throw err;
-        return { columns: named.split(',').map(c => c.trim().split('.').pop()!) };
+        const clashing = named.split(',').map(c => c.trim().split('.').pop()!);
+        // A write of some columns (a page's number alone) is in the place of the constraint with the others the row has here (its upload).
+        const here = partial ? (db.prepare(`SELECT ${clashing.map(quote).join(', ')} FROM ${table} WHERE ${where(m.pk)}`).get(...m.pk.map(c => row[c])) as Record<string, Cell>) : {};
+        return { columns: clashing, values: clashing.map(c => (c in row ? row[c] : here[c])) };
       }
     },
 

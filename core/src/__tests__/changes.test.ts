@@ -189,6 +189,29 @@ describe('devices that write and then exchange changes', () => {
     expect(pages).toHaveLength(1);
   });
 
+  it('pages put in another order on one device take their new places on the other (Nov 4: the records would not open)', async () => {
+    const file = await seedDocument(a);
+    const second = uuid();
+    await a.pages.create(USER, { id: second, sourceFileId: file.sourceFileId, pageNumber: 2, imagePath: '/tmp/q.png', imageWidth: 800, imageHeight: 1100, rawText: 'second', elements: [], extractionSource: 'native_text', isContinuation: null, continuationConfidence: null, continuationReasoning: null });
+    await exchange(a, b);
+    await a.pages.renumber(USER, file.sourceFileId, [second, file.pageId]);
+    // Only the page numbers changed, so the changes name that column alone, without the upload the place is in.
+    const sent = await a.changes.drain();
+    expect(sent.filter(c => c.t === 'pages').map(c => c.c)).toEqual([['page_number'], ['page_number']]);
+    await b.changes.apply(sent);
+    expect(await held(b)).toEqual(await held(a));
+    const order = async (s: Store) => [...new Map((await held(s)).filter(c => c.t === 'pages').map(c => [c.k.id, c.r as { id: string; page_number: number }])).values()]
+      .sort((x, y) => x.page_number - y.page_number).map(p => p.id);
+    expect(await order(b)).toEqual([second, file.pageId]);
+    // A device opening the records replays everything from the start.
+    const fresh = open();
+    await account(fresh);
+    await fresh.changes.drain();
+    await fresh.changes.apply(await a.changes.dump());
+    expect(await held(fresh)).toEqual(await held(a));
+    expect(await order(fresh)).toEqual([second, file.pageId]);
+  });
+
   it('a failed apply leaves nothing half done', async () => {
     await seedDocument(a);
     const changes = await a.changes.drain();
