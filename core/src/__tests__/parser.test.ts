@@ -5,7 +5,6 @@ import type { ParserConfig } from '../parser/types.js';
 import type { OcrReading } from '../parser/ocr.js';
 import { LlmBlockedError, type PageReading } from '../llm/types.js';
 import { ModelUnreachableError } from '../llm/availability.js';
-import { ModelBudgetError } from '../llm/budget.js';
 import type { ParseResponse, UnstructuredElement } from '../types.js';
 import { groundSnippet } from '../ingestion/grounding.js';
 import { loadLlmConfig, loadParserConfig } from '../config.js';
@@ -367,7 +366,7 @@ describe('the hybrid parser: text layer, then local OCR, then the model', () => 
     // Nov 2: pages the relay could not get read were kept with no text, and the documents made of them were read as empty.
     const off = { ...config, ocrEnabled: false };
     const relay = (status: number, code?: string) => Object.assign(new Error(`the model service answered ${status}`), { status, code });
-    for (const failure of [relay(429), relay(402, 'allowance_used'), relay(503, 'unavailable'), relay(401), new ModelUnreachableError(new TypeError('Failed to fetch')), new ModelBudgetError(10)]) {
+    for (const failure of [relay(429), relay(402, 'allowance_used'), relay(503, 'unavailable'), relay(401), new ModelUnreachableError(new TypeError('Failed to fetch'))]) {
       const { d } = deps({ sidecar: { pages: [] }, readPage: async () => { throw failure; } });
       await expect(createParser(off, d).parse(input(2))).rejects.toBe(failure);
     }

@@ -57,6 +57,20 @@ describe('loadConfig — secrets (P3, S-3)', () => {
   });
 });
 
+describe('loadConfig — the model settings', () => {
+  it('checks them as a device is given them, and leaves the provider’s own to the relay', () => {
+    // Nov 4: with the embeddings on, the server refused to start without Vertex's endpoint, region and project, which only the relay uses.
+    const config = loadConfig({ ...valid, SPINE_EMBEDDINGS: 'vertex', SPINE_LLM_MODEL: 'gemini-3.8-flash', SPINE_LLM_MODELS: 'gemini-3.8-pro|europe-west4=Pro' });
+    expect(config.embeddings.adapter).toBe('relay');
+    expect(config.llm.models.map(m => m.id)).toEqual(['gemini-3.8-flash', 'gemini-3.8-pro']);
+  });
+
+  it('still refuses a setting a device would be given wrong', () => {
+    expect(() => loadConfig({ ...valid, SPINE_LLM_CONTEXT_CHARS: '500' })).toThrow(/SPINE_LLM_CONTEXT_CHARS/);
+    expect(() => loadConfig({ ...valid, SPINE_EMBEDDINGS: 'vertex', SPINE_EMBEDDING_DIMS: '5' })).toThrow(/SPINE_EMBEDDING_DIMS/);
+  });
+});
+
 describe('loadConfig — bind address', () => {
   it('binds loopback by default, so nginx is the only public listener', () => {
     expect(loadConfig({ ...valid }).host).toBe('127.0.0.1');

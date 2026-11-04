@@ -633,12 +633,12 @@ The owner signs in on a second device with the master password (or a passkey) an
 Status: auto (`changes`, `ids`; web `persist`, `boot`); in real browsers: `check:app` (two contexts on one account, each removes a different tag, both end with both removals).
 
 ### 8.3 Quotas that outlive a process
-The relay's daily count for each user (and for each share) is kept in the store's `usage` repository (`usage.spend`, atomic), not in memory: the count survives a restart and is shared by every process that uses the same store. The instance's own daily model-call budget (`SPINE_LLM_DAILY_CALLS`) is counted on each device, in that device's store.
+The relay's daily count for each user (and for each share) is kept in the store's `usage` repository (`usage.spend`, atomic), not in memory: the count survives a restart and is shared by every process that uses the same store.
 
 - A user past the limit is refused with 429 before the call reaches the provider; the next day starts again.
 - With `SPINE_DB_PATH=:memory:` (the relay image's default) the count is per process; with `SPINE_STORE=postgres` instances share it.
 
-Status: auto (`relay`, `model-budget`, `usage`).
+Status: auto (`relay`, `chat`, `usage`).
 
 ---
 
@@ -647,7 +647,7 @@ Status: auto (`relay`, `model-budget`, `usage`).
 ### 9.1 Install and first start
 The operator follows [docs/setup.md](setup.md) on a fresh Pi.
 
-- The service refuses to start, and says why, if the session secret is missing or weak, if image reading is half-enabled, if a Vertex endpoint or region is missing, or if a Google API key is set that would send requests to a global host.
+- The server refuses to start, and says why, if the session secret is missing or weak, if image reading is half-enabled, or if a setting it gives devices is wrong; the relay refuses to start if a Vertex endpoint, region or project is missing (for the models or the embeddings), or if a Google API key is set that would send requests to a global host.
 - An old-shaped database is refused with a message saying whether it is safe to delete.
 
 Status: auto (`config`, `legacy-database`).

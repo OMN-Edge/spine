@@ -15,8 +15,9 @@ import { keywordsOf, documentsForQuestion } from 'spine-core/chat/retrieval.js';
  */
 const calls: Array<{ question: string; records: ChatRecord[]; history: ChatTurn[] }> = [];
 let reply: { answer: string; sources: string[] } | null = { answer: 'Your haemoglobin was 13.5 [D1].', sources: ['D1'] };
+let failure: Error | null = null;
 const fakeLlm = {
-  answerQuestion: async (question: string, records: ChatRecord[], history: ChatTurn[]) => { calls.push({ question, records, history }); return reply; },
+  answerQuestion: async (question: string, records: ChatRecord[], history: ChatTurn[]) => { calls.push({ question, records, history }); if (failure) throw failure; return reply; },
 } as unknown as ChatLlm;
 
 let app: Awaited<ReturnType<typeof buildTestApp>>;
@@ -33,7 +34,7 @@ beforeAll(async () => {
 });
 afterAll(async () => { await app.close(); });
 beforeEach(async () => {
-  calls.length = 0; reply = { answer: 'Your haemoglobin was 13.5 [D1].', sources: ['D1'] }; resetChatLlm(fakeLlm);
+  calls.length = 0; failure = null; reply = { answer: 'Your haemoglobin was 13.5 [D1].', sources: ['D1'] }; resetChatLlm(fakeLlm);
   for (const userId of [OWNER_ID, otherId]) for (const f of await getStore().sourceFiles.listFor(userId)) await getStore().sourceFiles.delete(userId, f.id);
 });
 afterEach(() => {
@@ -168,6 +169,14 @@ describe('the answer', () => {
     await doc('Blood count', 'Complete blood count');
     reply = null;
     expect((await ask({ question: 'blood count' })).statusCode).toBe(502);
+  });
+
+  it('says the day’s allowance is used up when the relay refuses with that, not that the question failed', async () => {
+    await doc('Blood count', 'Complete blood count');
+    failure = Object.assign(new Error('the model service answered 429'), { status: 429 });
+    const res = await ask({ question: 'blood count' });
+    expect(res.statusCode).toBe(429);
+    expect(res.json().error).toMatch(/daily allowance of model calls is used up/);
   });
 });
 

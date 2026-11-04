@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { modelWait, ModelUnreachableError } from '../llm/availability.js';
-import { ModelBudgetError } from '../llm/budget.js';
 import { LlmBlockedError } from '../llm/types.js';
 import { modelAnswered, waitForModel } from '../ingestion/model-wait.js';
 
@@ -8,9 +7,8 @@ const NOW = Date.UTC(2026, 10, 2, 5, 59);
 const relay = (status: number, code?: string) => Object.assign(new Error(`the model service answered ${status}`), { status, code });
 
 describe('whether a model call that failed can succeed later', () => {
-  it('waits for the next day when a daily allowance is used up: the device’s, the relay’s or the plan’s', () => {
+  it('waits for the next day when a daily allowance is used up: the relay’s or the plan’s', () => {
     const tomorrow = Date.UTC(2026, 10, 3, 0, 5);
-    expect(modelWait(new ModelBudgetError(500), NOW)).toEqual({ reason: 'limit', until: tomorrow });
     expect(modelWait(relay(429), NOW)).toEqual({ reason: 'limit', until: tomorrow });
     expect(modelWait(relay(402, 'allowance_used'), NOW)).toEqual({ reason: 'limit', until: tomorrow });
   });

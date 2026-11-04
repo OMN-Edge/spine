@@ -150,9 +150,6 @@ function make_env() {
   set_env "${env}" SESSION_SECRET "$(random_secret)"
   set_env "${env}" SPINE_DOMAIN "${domain}"
   set_env "${env}" SPINE_RELAY_SECRET "$(random_secret)"
-  # The server holds no model credential: comment out the example's placeholder
-  awk '/^ANTHROPIC_API_KEY=sk-ant-\.\.\.$/ { print "# " $0 " (the relay holds it: relay.env)"; next } { print }' "${env}" > "${env}.tmp"
-  cat "${env}.tmp" > "${env}" && rm -f "${env}.tmp"
 
   if [ -n "${key}" ] || [ -f "${relay}" ]; then
     local relay_domain="${SPINE_RELAY_DOMAIN:-relay.${domain}}"

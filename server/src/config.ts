@@ -143,10 +143,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   }
 
   const store = readStoreConfig(env, problems);
-  const llm = readLlmConfig(env, problems);
+  // The server calls no model (M-35): it checks the model settings as a device is given them (routes/relay.ts names the provider `relay`),
+  // and leaves the provider's own (which one, its endpoint, region, project and key) to the relay, which checks them when it starts.
+  const given = { ...env, SPINE_LLM_PROVIDER: 'relay', SPINE_EMBEDDINGS: /^(none)?$/i.test(env.SPINE_EMBEDDINGS ?? '') ? 'none' : 'relay' };
+  const llm = readLlmConfig(given, problems);
   const { mail, registration, instance } = readMailConfig(env, problems);
   const parser = readParserConfig(env, problems);
-  const embeddings = readEmbeddingConfig(env, problems);
+  const embeddings = readEmbeddingConfig(given, problems);
   const billing = readBillingConfig(env, instance, problems);
 
   if (problems.length > 0) throw new ConfigError(problems);

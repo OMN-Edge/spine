@@ -28,7 +28,7 @@ import {
  *   npm run cli -- waitlist-remove <email>
  *   npm run cli -- metrics [--days=N]
  *   npm run cli -- list-users
- *   npm run cli -- check-embeddings
+ *   npm run check-embeddings      (with relay.env too: the embedding provider's settings are the relay's)
  *
  * Without --password-stdin a password is generated and printed once. It is never
  * stored anywhere readable and cannot be shown again.

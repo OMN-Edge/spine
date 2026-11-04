@@ -1,6 +1,5 @@
 import { fileSystem } from '../files.js';
 import { nativeTools } from '../native-tools.js';
-import { spendModelCall } from './budget.js';
 import { logger } from '../logger.js';
 import { HumanMessage } from '@langchain/core/messages';
 import { OutputParserException } from '@langchain/core/output_parsers';
@@ -43,7 +42,6 @@ async function invokeValidated<T>(
   let raw: unknown;
   for (let attempt = 1; ; attempt++) {
     try {
-      await spendModelCall();
       raw = await clients[task].invoke(prompt);
       break;
     } catch (err) {

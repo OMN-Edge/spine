@@ -1,5 +1,4 @@
 import type { HttpApp } from '../http.js';
-import { ModelBudgetError } from '../llm/budget.js';
 import { v4 as uuidv4 } from 'uuid';
 import { requireAuth } from './middleware.js';
 import { streamReply } from './ndjson.js';
@@ -13,6 +12,7 @@ import type { ChatTurn } from '../llm/types.js';
 import { logger } from '../logger.js';
 import { helpTopic } from '../help.js';
 import { describeError } from '../failure.js';
+import { modelWait } from '../llm/availability.js';
 
 const MAX_TITLE = 60;
 /** The conversation the answers about Spine go into when the person is not in one. */
@@ -215,7 +215,8 @@ export async function chatRoutes(app: HttpApp) {
         if (progress.signal?.aborted) return null;
         // A model's reply can quote the records; describeError drops the quote, so the log holds no medical text.
         logger.warn('a question could not be answered', { error: describeError(err) });
-        if (err instanceof ModelBudgetError) return { status: 429, error: 'the daily limit on model calls is reached; it starts again at midnight UTC' };
+        // The relay's daily allowance for the account is used up: say so, rather than that the question failed.
+        if (modelWait(err)?.reason === 'limit') return { status: 429, error: 'the daily allowance of model calls is used up; it starts again at midnight UTC' };
         return { status: 502, error: 'could not answer just now' };
       }
       if (!answered) return { status: 502, error: 'could not answer just now' };

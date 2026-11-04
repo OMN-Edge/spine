@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { loadLlmConfig } from 'spine-core/config.js';
+import { loadEmbeddingConfig, loadLlmConfig } from 'spine-core/config.js';
 import { createTaskClients, type TaskClients } from 'spine-core/llm/index.js';
 import { getEmbedder } from 'spine-core/embedding/index.js';
 import { getAccountsStore } from 'spine-core/store/index.js';
@@ -14,6 +14,23 @@ import { MIN_SECRET_LENGTH } from './token.js';
  * SPINE_LLM_* and SPINE_EMBEDDING_* settings as the server, and the provider adapter named there does the calling (so Vertex's endpoint,
  * region and project must be stated and a Google API key is refused, as for the server's own calls). The daily allowance per user is counted in the store's `usage`.
  */
+/** A count of calls a day: a whole number, 0 for none; anything else gives the default. */
+const count = (raw: string | undefined, fallback: number) => (raw !== undefined && raw.trim() !== '' && Number.isInteger(Number(raw)) && Number(raw) >= 0 ? Number(raw) : fallback);
+
+/**
+ * The relay's daily allowances: one account (`SPINE_RELAY_DAILY_CALLS`, 500), one share link (`SPINE_RELAY_SHARE_DAILY_CALLS`, 200), one
+ * demo visitor (`SPINE_RELAY_DEMO_DAILY_CALLS`, 40) and every demo visitor together (`SPINE_RELAY_DEMO_TOTAL_DAILY_CALLS`, 400). All four are
+ * read alike: 0 means none, and there is no unlimited; a large number is the way to say "as many as needed".
+ */
+export function relayAllowances(env: NodeJS.ProcessEnv = process.env) {
+  return {
+    dailyCalls: count(env.SPINE_RELAY_DAILY_CALLS, 500),
+    dailySharedCalls: count(env.SPINE_RELAY_SHARE_DAILY_CALLS, 200),
+    dailyDemoCalls: count(env.SPINE_RELAY_DEMO_DAILY_CALLS, 40),
+    dailyDemoTotalCalls: count(env.SPINE_RELAY_DEMO_TOTAL_DAILY_CALLS, 400),
+  };
+}
+
 export function serveRelay(): void {
   const need = (name: string): string => {
     const v = (process.env[name] ?? '').trim();
@@ -40,24 +57,26 @@ export function serveRelay(): void {
     return have;
   }
   clients(undefined); // a bad provider setting stops the process here and not at the first call
-  // Residency has to be observable (SECURITY.md P8, M-8): say once where the calls go. No content and no credential in it.
-  console.log(JSON.stringify({ time: new Date().toISOString(), event: 'relay ready', provider: llm.provider, model: llm.model, endpoint: llm.endpoint ?? null, region: llm.region ?? null }));
+  // The same for the embeddings: Vertex's endpoint, region and project are checked here, the one process that uses them (the server only
+  // passes on whether they are on).
+  const embeddings = loadEmbeddingConfig();
+  const allowances = relayAllowances();
+  // Residency has to be observable (SECURITY.md P8, M-8): say once where the calls go, and what a day allows. No content and no credential in it.
+  console.log(JSON.stringify({
+    time: new Date().toISOString(), event: 'relay ready', provider: llm.provider, model: llm.model, endpoint: llm.endpoint ?? null, region: llm.region ?? null,
+    embeddings: embeddings.adapter === 'none' ? null : { endpoint: embeddings.endpoint ?? null, region: embeddings.region ?? null }, ...allowances,
+  }));
 
   // The daily count lives in the store the environment names (SPINE_STORE, DATA_DIR / SPINE_DB_PATH), chosen as the model provider is. A relay
   // with no database of its own sets SPINE_DB_PATH=:memory:, which counts in this process (run one instance); one that shares the server's
   // database, or a networked adapter, counts across restarts and instances.
   const usage = getAccountsStore().usage;
 
-  /** A count of calls; 0 is a count (none), and a value that is not a whole number gives the default. */
-  const count = (raw: string | undefined, fallback: number) => (raw !== undefined && Number.isInteger(Number(raw)) && Number(raw) >= 0 ? Number(raw) : fallback);
   const handle = createRelay({
     secret,
     allowedOrigin: need('SPINE_RELAY_ORIGIN'),
-    dailyCalls: Number(process.env.SPINE_RELAY_DAILY_CALLS ?? 500) || 500,
-    dailySharedCalls: Number(process.env.SPINE_RELAY_SHARE_DAILY_CALLS ?? 200) || 200,
-    // The demo's calls (SECURITY.md M-39): only the Spine server's SPINE_DEMO_UPLOADS=on gives a pass for them; these bound what they cost.
-    dailyDemoCalls: count(process.env.SPINE_RELAY_DEMO_DAILY_CALLS, 40),
-    dailyDemoTotalCalls: count(process.env.SPINE_RELAY_DEMO_TOTAL_DAILY_CALLS, 400),
+    // The demo's calls (SECURITY.md M-39): only the Spine server's SPINE_DEMO_UPLOADS=on gives a pass for them; its two counts bound what they cost.
+    ...allowances,
     usage,
     // Plans, when the instance has them (SPINE_BILLING=on); the relay reads the same accounts store the server does.
     gate: billingOn() ? createRelayGate(getAccountsStore) : undefined,
