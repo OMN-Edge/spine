@@ -1,6 +1,7 @@
 import type { FromWorker, Part, SaveState, ToWorker } from './protocol';
 import type { KeysResponse } from '../crypto/vault-client';
 import type { KdfParams } from '../crypto/keys';
+import { objectUrlCache } from './object-urls';
 
 /**
  * The page's side of the core: starts the worker, and answers `fetch`-shaped calls from it. `deviceFetch` is what the app's requests
@@ -272,27 +273,13 @@ export async function appFetch(url: string, init?: RequestInit): Promise<Respons
 }
 
 /** A picture the core holds, as an address the page can show; the same address is reused, and the oldest are let go. */
-const shown = new Map<string, Promise<string>>();
-const KEEP = 80;
-export function deviceObjectUrl(url: string): Promise<string> {
-  let found = shown.get(url);
-  if (found) { shown.delete(url); shown.set(url, found); return found; }
-  found = appFetch(url).then(async res => {
-    if (!res.ok) throw new Error(`could not load ${url}`);
-    return URL.createObjectURL(await res.blob());
-  });
-  shown.set(url, found);
-  for (const [key, value] of shown) {
-    if (shown.size <= KEEP) break;
-    shown.delete(key);
-    void value.then(u => URL.revokeObjectURL(u));
-  }
-  return found;
-}
-export function forgetDeviceObjectUrls(): void {
-  for (const value of shown.values()) void value.then(u => URL.revokeObjectURL(u));
-  shown.clear();
-}
+const shown = objectUrlCache(async url => {
+  const res = await appFetch(url);
+  if (!res.ok) throw new Error(`could not load ${url}`);
+  return URL.createObjectURL(await res.blob());
+}, address => URL.revokeObjectURL(address), 80);
+export const deviceObjectUrl = (url: string): Promise<string> => shown.get(url);
+export const forgetDeviceObjectUrls = (): void => shown.clear();
 
 /** Saves what the core returns for this address as a file, the way a link with `download` would. */
 export async function downloadFromDevice(url: string, filename: string): Promise<void> {

@@ -296,8 +296,11 @@ export async function publicShareRoutes(app: HttpApp) {
       const { link, store } = opened;
       if (!link.includeScans) return reply.status(404).send({ error: 'not found' });
 
+      // Only the shared documents of the page's own upload can hold it: the check asks about those, not about every document the link
+      // shares, which for a link to all of the records was hundreds of queries for each image.
+      const file = await store.pages.sourceFileOf(link.userId, req.params.pageId);
       let allowed = false;
-      for (const doc of await store.documents.listForShare(link)) {
+      for (const doc of file ? (await store.documents.listForShare(link)).filter(d => d.source_file_id === file) : []) {
         if ((await store.pages.listForDocument(link.userId, doc.id)).some(p => p.id === req.params.pageId)) { allowed = true; break; }
       }
       if (!allowed) return reply.status(404).send({ error: 'not found' });

@@ -4,12 +4,29 @@ import type { Store } from 'spine-core/store/types';
 import type { ShareHost } from 'spine-core/share-host';
 import { carryTranslations } from 'spine-core/translation';
 import { sodium } from '../../crypto/sodium';
+import { uprightJpeg } from '../native/image-ops';
 import { newShareKey, sealPart, wrapShareKey } from './keys';
 
-/** The fixed address the recipient's own core answers to: it serves one share, so the name does not matter. */
+/**
+ * Where a page's image is inside a share's file system: the name is its sealed file's name at the server. A copy made before images had
+ * names numbered them, as `<n>.png`; the recipient's core reads both.
+ */
+export const SHARE_IMAGE = (name: string) => `/share/pages/${name}.jpg`;
+/** Page images sent at once. */
+const SENDING = 4;
+/**
+ * A page image in a share is a JPEG, at most this many pixels on its long side: a page read at 200 DPI keeps its size, a photo larger than
+ * that is brought down to it. A PNG of a scanned page is several times larger, and every one is sent to the server and to each reader.
+ */
+const SHARE_IMAGE_SIDE = 2400;
 
-/** Where a page's image is inside a share's file system: the number is its sealed file's number at the server. */
-export const SHARE_IMAGE = (n: number) => `/share/pages/${n}.png`;
+/** Runs `work` on every item, `width` at a time; the first failure stops the rest and is thrown. */
+async function eachAtOnce<T>(items: T[], width: number, work: (item: T) => Promise<void>): Promise<void> {
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(width, items.length) }, async () => {
+    while (next < items.length) await work(items[next++]);
+  }));
+}
 
 async function call(method: string, url: string, init: { headers?: Record<string, string>; body?: BodyInit; ok404?: boolean } = {}): Promise<Response> {
   const res = await fetch(url, { method, headers: init.headers, body: init.body });
@@ -33,33 +50,52 @@ export function createShareHost(deps: { store: () => Store; mail: () => boolean 
       const key = have ?? (await newShareKey());
 
       let digest = '';
+      const s = await sodium();
+      const keyBytes = s.from_base64(key, s.base64_variants.URLSAFE_NO_PADDING);
+      // A page image is named after the page and what its file is (its size changes when it is turned or read again), keyed with the share's
+      // key: a copy made again names an unchanged image the same, so it is not sent again, and the name says nothing to the server.
+      const names = new Map<string, string>();
+      const nameOf = (pageId: string, from: string) =>
+        s.to_base64(s.crypto_generichash(16, new TextEncoder().encode(`jpeg-${SHARE_IMAGE_SIDE}:${pageId}:${fs.statSync(from).size}`), keyBytes), s.base64_variants.URLSAFE_NO_PADDING);
       // The copy is built by the store, in a store of its own, and leaves it as changes: the form in which records travel, not a database file.
-      let next = 0;
       const result = await store.slice({
         userId, documentIds, includeText: link.allow_chat, includeScans: link.include_scans,
         link: { id: link.id, label: link.label, createdAt: link.created_at, expiresAt: link.expires_at, language: link.language, allowChat: link.allow_chat },
-        imagePathOf: () => SHARE_IMAGE(next++),
+        imagePathOf: (pageId, from) => { const name = nameOf(pageId, from); names.set(pageId, name); return SHARE_IMAGE(name); },
         // What the owner already had translated goes with it, so a reader in that language is not kept waiting for the model again.
         finish: copy => carryTranslations(userId, documentIds, copy),
       });
       const changes = result.changes;
       // A keyed hash of what the copy holds (without the clocks, which differ every time it is made), so that a copy that would be the
       // same is not sent again. The key makes it useless to anyone who sees it beside the sealed copy.
-      const s = await sodium();
       const canonical = changes.map(c => JSON.stringify([c.t, c.k, c.r])).sort().join('\n') + '\n' + result.images.map(i => `${i.pageId}:${fs.statSync(i.from).size}`).sort().join(',') + `\n${link.label}|${link.expires_at}|${link.language}|${link.allow_chat}|${link.include_scans}`;
-      digest = s.to_base64(s.crypto_generichash(24, new TextEncoder().encode(canonical), s.from_base64(key, s.base64_variants.URLSAFE_NO_PADDING)), s.base64_variants.URLSAFE_NO_PADDING);
+      digest = s.to_base64(s.crypto_generichash(24, new TextEncoder().encode(canonical), keyBytes), s.base64_variants.URLSAFE_NO_PADDING);
       if (unlessUnchanged && !newKey && have && (await store.shareLinks.copyDigest(userId, link.id)) === digest) return { key, published: false, digest };
+
+      const at = `/api/shared/${encodeURIComponent(link.id)}`;
       const sealed = await sealPart(key, link.id, 'records', new TextEncoder().encode(JSON.stringify({ v: 1, owner: userId, changes })));
-      await call('PUT', `/api/shared/${encodeURIComponent(link.id)}`, {
-        headers: { 'content-type': 'application/octet-stream', 'x-spine-expires': new Date(link.expires_at).toISOString(), 'x-spine-approval': link.require_approval ? '1' : '0' },
+      const sendRecords = () => call('PUT', at, {
+        headers: { 'content-type': 'application/octet-stream', 'x-spine-expires': new Date(link.expires_at).toISOString(), 'x-spine-approval': link.require_approval ? '1' : '0', 'x-spine-keep-images': '1' },
         body: sealed as BodyInit,
       });
-      for (const [n, image] of result.images.entries()) {
-        const bytes = new Uint8Array(fs.readFileSync(image.from) as Buffer);
-        await call('PUT', `/api/shared/${encodeURIComponent(link.id)}/blob/${n}`, {
-          headers: { 'content-type': 'application/octet-stream' },
-          body: (await sealPart(key, link.id, `blob-${n}`, bytes)) as BodyInit,
-        });
+      // The images the server holds already (none for a new link): only the others are sent.
+      const held = await call('GET', `${at}/blobs`, { ok404: true });
+      const known = held.status === 404 ? null : new Set(((await held.json()) as { names: string[] }).names);
+      const wanted = [...new Map(result.images.map(i => [names.get(i.pageId)!, i.from])).entries()];
+      const sendImages = () => eachAtOnce(wanted.filter(([name]) => !known?.has(name)), SENDING, async ([name, from]) => {
+        const { jpeg } = await uprightJpeg(from, { maxSide: SHARE_IMAGE_SIDE, maxPixels: 100_000_000 });
+        await call('PUT', `${at}/blob/${name}`, { headers: { 'content-type': 'application/octet-stream' }, body: (await sealPart(key, link.id, `blob-${name}`, new Uint8Array(jpeg))) as BodyInit });
+      });
+      if (known) {
+        // A link that is open somewhere: the new images first, then the records that name them, then the images nothing names any more, so a
+        // reader never has a copy that names an image the server does not have.
+        await sendImages();
+        await sendRecords();
+        await call('POST', `${at}/blobs/keep`, { headers: { 'content-type': 'application/json' }, body: JSON.stringify({ names: wanted.map(([name]) => name) }) });
+      } else {
+        // A new link has no address yet: the server takes images only for a copy it holds.
+        await sendRecords();
+        await sendImages();
       }
       return { key, published: true, digest };
     },

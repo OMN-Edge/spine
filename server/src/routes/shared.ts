@@ -4,7 +4,10 @@ import { v4 as uuidv4 } from 'uuid';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { sharedLimits } from '../config.js';
 import { accountEntitlements, liveSharesFor } from '../billing/entitlements.js';
-import { SHARE_ID, readBlob, readBundle, removeBlobs, removeShare, writeBlob, writeBundle } from '../shared-files.js';
+import { BLOB_NAME, SHARE_ID, blobNames, readBlob, readBundle, removeBlob, removeBlobs, removeShare, writeBlob, writeBundle } from '../shared-files.js';
+
+/** The most page images one share may hold. */
+const MAX_BLOBS = 10_000;
 import { requireAuth } from 'spine-core/routes/middleware.js';
 import { countryOf } from '../geo.js';
 import { accessRequestMail, cardOpenedMail, cardReviewMail } from '../accounts.js';
@@ -134,10 +137,14 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
       const byPlan = plan?.liveShares != null && used.bundles >= plan.liveShares;
       return reply.status(byPlan ? 402 : 409).send({ error: byPlan ? 'another live share is not part of the account’s plan' : 'too many shares are live; revoke one first', code: byPlan ? 'plan_required' : 'too_many' });
     }
-    if (used.bytes - (replacing ? existing.size + existing.blobBytes : 0) + req.body.length > limits.totalBytes) return reply.status(413).send({ error: 'the shares hold too much; revoke one first', code: 'full' });
-    const put = await store.shared.put(req.userId, { id, expiresAt: expires, requireApproval, size: req.body.length, blobs: 0, blobBytes: 0 }, new Date().toISOString());
+    // A device that names its page images (`x-spine-keep-images: 1`) sends the new ones first and this last, so the copy is never without
+    // the pages it names: the images stay, and `blobs/keep` then removes what the new copy no longer uses. Without it (a page from before),
+    // the images of the earlier copy go, and the new ones follow.
+    const keep = replacing && req.headers['x-spine-keep-images'] === '1';
+    if (used.bytes - (replacing ? existing.size + (keep ? 0 : existing.blobBytes) : 0) + req.body.length > limits.totalBytes) return reply.status(413).send({ error: 'the shares hold too much; revoke one first', code: 'full' });
+    const put = await store.shared.put(req.userId, { id, expiresAt: expires, requireApproval, size: req.body.length, blobs: keep ? existing.blobs : 0, blobBytes: keep ? existing.blobBytes : 0 }, new Date().toISOString());
     if (put !== 'ok') return reply.status(put === 'taken' ? 404 : 409).send({ error: put === 'taken' ? 'not found' : 'this share was revoked' });
-    await removeBlobs(id);
+    if (!keep) await removeBlobs(id);
     await writeBundle(id, req.body);
     return reply.status(201).send({ ok: true });
   });
@@ -158,18 +165,53 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     return reply.send({ ok: true });
   });
 
+  /** The owner's own live share, or null. */
+  const ownBundle = async (userId: string, id: string) => {
+    const bundle = SHARE_ID.test(id) ? await getAccountsStore().shared.get(id) : null;
+    return bundle && bundle.userId === userId && !bundle.revokedAt ? bundle : null;
+  };
+
+  // A page image, under the name the owner's device gave it. One sent again under the same name replaces the first, counted once.
   app.put<{ Params: { id: string; n: string }; Body: Buffer }>('/api/shared/:id/blob/:n', { preHandler: requireAuth }, async (req, reply) => {
     const limits = sharedLimits();
-    const n = Number(req.params.n);
+    const name = req.params.n;
     const store = getAccountsStore();
-    const bundle = SHARE_ID.test(req.params.id) ? await store.shared.get(req.params.id) : null;
-    if (!bundle || bundle.userId !== req.userId || bundle.revokedAt) return reply.status(404).send({ error: 'not found' });
-    if (!Number.isInteger(n) || n < 0 || n > 9999 || !Buffer.isBuffer(req.body) || req.body.length === 0) return reply.status(400).send({ error: 'a number and the sealed file are needed' });
+    const bundle = await ownBundle(req.userId, req.params.id);
+    if (!bundle) return reply.status(404).send({ error: 'not found' });
+    if (!BLOB_NAME.test(name) || !Buffer.isBuffer(req.body) || req.body.length === 0) return reply.status(400).send({ error: 'a name and the sealed file are needed' });
+    const old = await readBlob(bundle.id, name);
+    if (!old && bundle.blobs >= MAX_BLOBS) return reply.status(413).send({ error: 'a share holds at most 10,000 page images', code: 'full' });
     const used = await store.shared.usage(req.userId, new Date().toISOString());
-    if (used.bytes + req.body.length > limits.totalBytes) return reply.status(413).send({ error: 'the shares hold too much; revoke one first', code: 'full' });
-    await writeBlob(bundle.id, n, req.body);
+    if (used.bytes - (old?.length ?? 0) + req.body.length > limits.totalBytes) return reply.status(413).send({ error: 'the shares hold too much; revoke one first', code: 'full' });
+    await writeBlob(bundle.id, name, req.body);
+    if (old) await store.shared.removeBlob(req.userId, bundle.id, old.length);
     await store.shared.addBlob(req.userId, bundle.id, req.body.length);
     return reply.status(201).send({ ok: true });
+  });
+
+  // Which page images the share holds, so a copy sent again sends only the ones it lacks.
+  app.get<{ Params: { id: string } }>('/api/shared/:id/blobs', { preHandler: requireAuth }, async (req, reply) => {
+    const bundle = await ownBundle(req.userId, req.params.id);
+    if (!bundle) return reply.status(404).send({ error: 'not found' });
+    return reply.header('Cache-Control', 'no-store').send({ names: await blobNames(bundle.id) });
+  });
+
+  // After a new copy: the images it names stay, every other goes, and stops counting against the account's limit.
+  app.post<{ Params: { id: string }; Body: { names?: unknown } }>('/api/shared/:id/blobs/keep', { preHandler: requireAuth }, async (req, reply) => {
+    const names = req.body?.names;
+    if (!Array.isArray(names) || names.length > MAX_BLOBS || !names.every(n => typeof n === 'string' && BLOB_NAME.test(n))) return reply.status(400).send({ error: 'the names of the images to keep are needed' });
+    const bundle = await ownBundle(req.userId, req.params.id);
+    if (!bundle) return reply.status(404).send({ error: 'not found' });
+    const kept = new Set(names as string[]);
+    let removed = 0;
+    for (const name of await blobNames(bundle.id)) {
+      if (kept.has(name)) continue;
+      const bytes = await readBlob(bundle.id, name);
+      await removeBlob(bundle.id, name);
+      if (bytes) await getAccountsStore().shared.removeBlob(req.userId, bundle.id, bytes.length);
+      removed++;
+    }
+    return reply.send({ removed });
   });
 
   app.patch<{ Params: { id: string }; Body: { expires_at?: unknown; require_approval?: unknown } }>('/api/shared/:id', { preHandler: requireAuth }, async (req, reply) => {
@@ -236,9 +278,9 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
 
   app.get<{ Params: { id: string; n: string } }>('/api/shared/:id/blob/:n', { config: { rateLimit: opts.readPerSource ?? { max: 600, timeWindow: '1 minute' } } }, async (req, reply) => {
     const bundle = await live(req.params.id);
-    const n = Number(req.params.n);
-    if (!bundle || bundle === 'ended' || !Number.isInteger(n) || n < 0) return reply.status(bundle === 'ended' ? 410 : 404).send({ error: bundle === 'ended' ? 'this link is no longer active' : 'not found' });
-    const bytes = await readBlob(bundle.id, n);
+    const name = req.params.n;
+    if (!bundle || bundle === 'ended' || !BLOB_NAME.test(name)) return reply.status(bundle === 'ended' ? 410 : 404).send({ error: bundle === 'ended' ? 'this link is no longer active' : 'not found' });
+    const bytes = await readBlob(bundle.id, name);
     if (!bytes) return reply.status(404).send({ error: 'not found' });
     return reply.type('application/octet-stream').header('Cache-Control', 'no-store').header('X-Robots-Tag', 'noindex, nofollow').send(bytes);
   });

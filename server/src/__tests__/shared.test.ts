@@ -80,6 +80,37 @@ describe('sealed shares on the server', () => {
     expect((await get(`/api/shared/${share}/blob/0`)).statusCode).toBe(404);
   });
 
+  it('keeps the images a copy sent again still names, so a reader is never left with pages the server lacks', async () => {
+    // Nov 4: every change to the records sent a link's copy again, which removed all its page images first and sent them back one at a
+    // time: for a minute a reader had the records and no pages.
+    const share = id();
+    const putBlob = (name: string, bytes: Buffer, cookie = owner) => app.inject({ method: 'PUT', url: `/api/shared/${share}/blob/${name}`, headers: { cookie, 'content-type': 'application/octet-stream' }, payload: bytes });
+    const names = async (cookie = owner) => (await get(`/api/shared/${share}/blobs`, cookie));
+    expect((await names()).statusCode).toBe(404); // a new link: nothing held yet
+    await publish(share, randomBytes(100), owner, { 'x-spine-keep-images': '1' });
+    const first = randomBytes(1000), second = randomBytes(3000), third = randomBytes(500);
+    expect((await putBlob('page-A_1', first)).statusCode).toBe(201);
+    expect((await putBlob('page-B_2', second)).statusCode).toBe(201);
+    expect((await names()).json().names.sort()).toEqual(['page-A_1', 'page-B_2']);
+    expect((await names(other)).statusCode).toBe(404);
+
+    // Sent again: the new image first, then the records, keeping what is there; then what the new copy does not name goes.
+    expect((await putBlob('page-C_3', third)).statusCode).toBe(201);
+    await publish(share, randomBytes(200), owner, { 'x-spine-keep-images': '1' });
+    expect(Buffer.from((await get(`/api/shared/${share}/blob/page-B_2`)).rawPayload).equals(second)).toBe(true);
+    expect((await post(`/api/shared/${share}/blobs/keep`, { names: ['page-B_2', 'page-C_3'] }, other)).statusCode).toBe(404);
+    expect((await post(`/api/shared/${share}/blobs/keep`, { names: ['page-B_2', 'page-C_3'] }, owner)).json()).toEqual({ removed: 1 });
+    expect((await get(`/api/shared/${share}/blob/page-A_1`)).statusCode).toBe(404);
+    expect((await get(`/api/shared/${share}/meta`)).json()).toMatchObject({ size: 200, blobs: 2 });
+    expect((await getAccountsStore().shared.get(share))!.blobBytes).toBe(3500);
+
+    // The same name sent twice is counted once; a name the server would not use as a key is refused.
+    expect((await putBlob('page-C_3', randomBytes(700))).statusCode).toBe(201);
+    expect((await getAccountsStore().shared.get(share))!).toMatchObject({ blobs: 2, blobBytes: 3700 });
+    for (const bad of ['..', 'a.b', 'x'.repeat(65)]) expect((await putBlob(bad, third)).statusCode).not.toBe(201);
+    expect((await post(`/api/shared/${share}/blobs/keep`, { names: ['../db'] }, owner)).statusCode).toBe(400);
+  });
+
   it('ends a share when it is revoked, and deletes what it held', async () => {
     const share = id();
     await publish(share, randomBytes(100));
