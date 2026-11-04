@@ -1,6 +1,7 @@
 import { askForPassword } from './reauth';
 import { credentialFor, deriveKey, vaultState } from './crypto/vault-state';
 import { prepareSignIn, type PasskeyUnlock } from './crypto/vault-client';
+import { rememberKdf } from './crypto/kdf-trust';
 import { getWithPrf, prfSupported } from './crypto/passkey-prf';
 import { checkPasswordPolicy } from './crypto/password-policy';
 import { rewrapForPassword, wrapForPasskey, type KdfParams, type VaultKeyPayload } from './crypto/keys';
@@ -743,7 +744,7 @@ export const api = {
     /** Either signed in, or the password was right and a second factor is still needed. */
     login: async (email: string, password: string) => {
       // The password never leaves the device: what is sent in its place is derived from it (docs/crypto-design.md).
-      const { credential, masterKey } = await prepareSignIn(email, password, undefined, deriveKey);
+      const { credential, masterKey, kdf } = await prepareSignIn(email, password, undefined, deriveKey);
       vaultState.setEmail(email);
       try {
         const result = await req<{ ok?: boolean; email?: string; second_factor_required?: boolean }>('/api/auth/login', {
@@ -751,6 +752,8 @@ export const api = {
           body: JSON.stringify({ email, password: credential }),
         });
         vaultState.stashMaster(masterKey);
+        // The server accepted what was derived: this address has a vault at this cost, and a later answer is held to that (S-37).
+        rememberKdf(email, kdf);
         return result;
       } catch (err) {
         vaultState.stashMaster(null);

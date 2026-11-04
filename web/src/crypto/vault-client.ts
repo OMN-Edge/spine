@@ -2,6 +2,7 @@ import { observeServerClock } from 'spine-core/store/sync';
 import { askForPassword } from '../reauth.js';
 import { sodium, toB64 } from './sodium.js';
 import type { SealedCache } from './sealed-cache.js';
+import { checkKdfAnswer, type KdfAnswer } from './kdf-trust.js';
 import {
   createAccountKeys, rewrapObjectKey, deriveFromPassword, lock, newId, newProfileKey, openObject, openObjectNow, openProfileKey, openProfileRecord, sealObject, sealProfileRecord,
   unlockWithMaster, unlockWithPasskey, type KdfParams, type UnlockedKeys, type VaultKeyPayload,
@@ -86,7 +87,8 @@ const json = (body: unknown): RequestInit => ({ method: 'POST', headers: { 'cont
 export async function fetchKdf(email: string, f: Fetch = defaultFetch): Promise<{ vault: false } | { vault: true; salt: string; params: KdfParams }> {
   const res = await f('/api/auth/kdf', json({ email }));
   if (!res.ok) return fail(res);
-  return res.json();
+  // The answer decides what is sent next, so it is not taken as it comes (kdf-trust.ts).
+  return checkKdfAnswer(email, await res.json()) as Awaited<ReturnType<typeof fetchKdf>>;
 }
 
 /**
@@ -99,11 +101,11 @@ export async function prepareSignIn(
   f: Fetch = defaultFetch,
   /** Where the (slow, memory-hungry) key derivation runs; the page gives its core's worker, so the screen keeps moving while it does. */
   derive: Derive = deriveFromPassword,
-): Promise<{ credential: string; masterKey: Uint8Array | null }> {
+): Promise<{ credential: string; masterKey: Uint8Array | null; kdf: KdfAnswer }> {
   const kdf = await fetchKdf(email, f);
-  if (!kdf.vault) return { credential: password, masterKey: null };
+  if (!kdf.vault) return { credential: password, masterKey: null, kdf };
   const { masterKey, authValue } = await derive(password, kdf.salt, kdf.params);
-  return { credential: authValue, masterKey };
+  return { credential: authValue, masterKey, kdf };
 }
 
 /** The keys as the server holds them, sealed. Fetched alone so a page can have them ready before the password is typed. */
