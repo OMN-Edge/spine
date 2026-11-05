@@ -2,6 +2,7 @@ import { objects } from './objects/index.js';
 import { sessionRoutes } from './routes/sessions.js';
 import { trustedProxies } from './trust-proxy.js';
 import Fastify from 'fastify';
+import { sameOriginOnly } from './same-origin.js';
 import fastifyCookie from '@fastify/cookie';
 import fastifySession from '@fastify/session';
 import { sessionPersistence } from './session-store.js';
@@ -95,6 +96,8 @@ app.log.info(
   'model settings given to devices',
 );
 
+// A request that changes something must come from the app's own origin (SECURITY.md S-50).
+app.addHook('onRequest', sameOriginOnly);
 await app.register(fastifyCookie);
 await app.register(fastifySession, {
   secret: config.sessionSecret,
