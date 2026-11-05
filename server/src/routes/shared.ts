@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'fs';
+import { timingSafeEqual } from 'crypto';
 import type { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
 import { getAccountsStore } from 'spine-core/store/index.js';
@@ -43,6 +44,8 @@ export const ENDED_GRACE_MS = 30 * 24 * 60 * 60 * 1000;
 
 const VISITOR_KEY = /^[A-Za-z0-9_-]{43}$/;
 const WRAPPED = /^[A-Za-z0-9_-]{60,400}$/;
+/** The value a share's key makes for its pass: a 32-byte hash, base64url. */
+const PASS_CHECK = /^[A-Za-z0-9_-]{43}$/;
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
 const DOC_ID = /^[A-Za-z0-9-]{1,64}$/;
 const PASS_MS = 10 * 60 * 1000;
@@ -142,7 +145,11 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     // the images of the earlier copy go, and the new ones follow.
     const keep = replacing && req.headers['x-spine-keep-images'] === '1';
     if (used.bytes - (replacing ? existing.size + (keep ? 0 : existing.blobBytes) : 0) + req.body.length > limits.totalBytes) return reply.status(413).send({ error: 'the shares hold too much; revoke one first', code: 'full' });
-    const put = await store.shared.put(req.userId, { id, expiresAt: expires, requireApproval, size: req.body.length, blobs: keep ? existing.blobs : 0, blobBytes: keep ? existing.blobBytes : 0 }, new Date().toISOString());
+    // What a recipient's browser must show to get the pass for its model calls: a value only the share's key makes, which the owner's device
+    // sends with the copy (S-48). A copy sent again without one keeps the value it has.
+    const passCheck = req.headers['x-spine-pass-check'];
+    if (passCheck !== undefined && (typeof passCheck !== 'string' || !PASS_CHECK.test(passCheck))) return reply.status(400).send({ error: 'the pass check is not in the expected form' });
+    const put = await store.shared.put(req.userId, { id, expiresAt: expires, requireApproval, size: req.body.length, blobs: keep ? existing.blobs : 0, blobBytes: keep ? existing.blobBytes : 0, passCheck: passCheck ?? null }, new Date().toISOString());
     if (put !== 'ok') return reply.status(put === 'taken' ? 404 : 409).send({ error: put === 'taken' ? 'not found' : 'this share was revoked' });
     if (!keep) await removeBlobs(id);
     await writeBundle(id, req.body);
@@ -364,10 +371,19 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
   });
 
   // A pass for the model calls a recipient's browser makes while reading (translating, asking): good for the share's own time only,
-  // counted against the share. Whoever holds the link may make them, as they may read what it shares.
-  app.post<{ Params: { id: string } }>('/api/shared/:id/relay-token', { config: { rateLimit: opts.readPerSource ?? { max: 30, timeWindow: '1 minute' } } }, async (req, reply) => {
+  // counted against the share. Whoever holds the link may make them, as they may read what it shares: the id is in the address and in logs,
+  // so it is not enough, and the browser shows a value only the key makes (S-48). A copy made before the value existed has none to check
+  // and ends within the month a share can last.
+  app.post<{ Params: { id: string }; Body: { check?: unknown } }>('/api/shared/:id/relay-token', { config: { rateLimit: opts.readPerSource ?? { max: 30, timeWindow: '1 minute' } } }, async (req, reply) => {
     const bundle = await live(req.params.id);
     if (!bundle || bundle === 'ended') return reply.status(bundle === 'ended' ? 410 : 404).send({ error: bundle === 'ended' ? 'this link is no longer active' : 'not found' });
+    // A card is read, never asked about: it has no model calls.
+    if (bundle.kind === 'card') return reply.status(404).send({ error: 'not found' });
+    if (bundle.passCheck) {
+      const given = Buffer.from(typeof req.body?.check === 'string' ? req.body.check : '');
+      const expected = Buffer.from(bundle.passCheck);
+      if (given.length !== expected.length || !timingSafeEqual(given, expected)) return reply.status(403).send({ error: 'the share’s key is needed for this', code: 'share_key_needed' });
+    }
     const settings = relaySettings();
     if (!settings) return reply.status(503).send({ error: 'this instance has no relay for model calls', code: 'no_relay' });
     const left = Date.parse(bundle.expiresAt) - Date.now();

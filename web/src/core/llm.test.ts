@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { createRelay } from '../../../server/src/relay/relay';
@@ -70,5 +70,21 @@ describe('a model call from the device', () => {
     expect(embedder.id).toBe('vertex:gemini-embedding-2:128');
     const [vector] = await embedder.embed(['Hemoglobin results'], 'document');
     expect(vector).toHaveLength(128);
+  });
+});
+
+/** SECURITY.md S-48: what the request for a share's pass carries. */
+describe('the request for a share’s pass', () => {
+  afterEach(() => { vi.unstubAllGlobals(); useTokenUrl('/api/relay/token'); });
+
+  it('carries the check as a JSON body, and an account’s request carries none', async () => {
+    const seen: Array<RequestInit | undefined> = [];
+    vi.stubGlobal('fetch', async (_url: string, init?: RequestInit) => { seen.push(init); return new Response(JSON.stringify({ token: 't', expires_at: Date.now() + 120_000 })); });
+    useTokenUrl('/api/shared/abc/relay-token', 'POST', { check: 'c'.repeat(43) });
+    await relayToken();
+    expect(seen[0]).toMatchObject({ method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ check: 'c'.repeat(43) }) });
+    useTokenUrl('/api/relay/token');
+    await relayToken();
+    expect(seen[1]).toEqual({ method: 'GET' });
   });
 });

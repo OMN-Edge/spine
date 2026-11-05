@@ -170,7 +170,7 @@ describe('the relay', () => {
     expect(calls).toHaveLength(3);
     // Accounts and shares are not touched by it.
     expect((await call('user-1')).status).toBe(200);
-    expect((await call('share:s1')).status).toBe(200);
+    expect((await post('/v1/task/agent', { messages: messages('x') }, mint('share:s1'))).status).toBe(200);
     // And it starts again the next day.
     clock += 24 * 60 * 60 * 1000;
     expect((await call('demo:addressC')).status).toBe(200);
@@ -188,12 +188,30 @@ describe('the relay', () => {
   it('gives a share its own, smaller allowance, apart from every account', async () => {
     limit = 5;
     sharedLimit = 1;
-    const call = (subject: string) => post(TASK, { messages: messages('x') }, mint(subject));
+    const call = (subject: string) => post(subject.startsWith('share:') ? '/v1/task/agent' : TASK, { messages: messages('x') }, mint(subject));
     expect((await call('share:s1')).status).toBe(200);
     expect((await call('share:s1')).status).toBe(429);
     expect((await call('share:s2')).status).toBe(200);
     expect((await call('a')).status).toBe(200);
     expect((await call('a')).status).toBe(200);
+  });
+
+  it('lets a share’s pass make only the calls a recipient makes: reading, translating, asking and searching', async () => {
+    sharedLimit = 50;
+    const pass = mint('share:s1');
+    for (const task of ['continuation', 'extraction', 'page', 'pageThinking', 'stamps', 'linking', 'grouping']) {
+      const res = await post(`/v1/task/${task}`, { messages: messages('x') }, pass);
+      expect(res.status, task).toBe(403);
+      expect(await res.json(), task).toMatchObject({ code: 'task_not_for_share' });
+    }
+    // nothing ran, and the refused calls did not use the share's allowance
+    expect(calls).toHaveLength(0);
+    sharedLimit = 1;
+    expect((await post('/v1/task/agent', { messages: messages('x') }, mint('share:s9'))).status).toBe(200);
+    expect((await post('/v1/task/translation', { messages: messages('x') }, mint('share:s8'))).status).toBe(422);
+    expect((await post('/v1/embed', { texts: ['a'], kind: 'query' }, mint('share:s7'))).status).toBe(200);
+    // an account's pass is not limited this way
+    expect((await post(TASK, { messages: messages('x') }, mint('user-1'))).status).toBe(200);
   });
 
   it('counts each user’s calls apart, and starts again the next day', async () => {

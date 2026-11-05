@@ -11,6 +11,7 @@ const bundleOf = (r: Record<string, unknown>): SharedBundle => ({
   blobs: Number(r.blobs),
   blobBytes: Number(r.blob_bytes),
   revokedAt: (r.revoked_at as string | null) ?? null,
+  passCheck: (r.pass_check as string | null) ?? null,
   kind: r.kind === 'card' ? 'card' : 'share',
 });
 
@@ -29,7 +30,7 @@ const requestOf = (r: Record<string, unknown>): SharedRequest => ({
 /** Live emergency cards an account may have: one for each person it keeps records for. */
 const MAX_CARDS = 10;
 
-const BUNDLE = 'id, user_id, created_at, expires_at, require_approval, size, blobs, blob_bytes, revoked_at, kind';
+const BUNDLE = 'id, user_id, created_at, expires_at, require_approval, size, blobs, blob_bytes, revoked_at, kind, pass_check';
 const REQUEST = 'id, bundle_id, visitor_key, status, wrapped_key, note, country, requested_at, decided_at';
 
 export function sharedRepository(q: Query, begin: Begin): SharedRepository {
@@ -50,14 +51,14 @@ export function sharedRepository(q: Query, begin: Begin): SharedRepository {
             await run('SELECT 1 FROM users WHERE id = $1 FOR UPDATE', [userId]);
             if (Number((await one<{ n: number }>(run, "SELECT COUNT(*) AS n FROM shared_bundles WHERE user_id = $1 AND kind = 'card' AND revoked_at IS NULL", [userId]))!.n) >= MAX_CARDS) return 'too_many_cards' as const;
           }
-          await run('INSERT INTO shared_bundles (id, user_id, created_at, expires_at, require_approval, size, blobs, blob_bytes, kind, reviewed_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)', [b.id, userId, now, b.expiresAt, b.requireApproval ? 1 : 0, b.size, b.blobs, b.blobBytes, b.kind ?? 'share', b.kind === 'card' ? now : null]);
+          await run('INSERT INTO shared_bundles (id, user_id, created_at, expires_at, require_approval, size, blobs, blob_bytes, kind, reviewed_at, pass_check) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)', [b.id, userId, now, b.expiresAt, b.requireApproval ? 1 : 0, b.size, b.blobs, b.blobBytes, b.kind ?? 'share', b.kind === 'card' ? now : null, b.passCheck ?? null]);
           return 'ok' as const;
         }
         if (have.user_id !== userId) return 'taken' as const;
         if (have.revoked_at) return 'revoked' as const;
         // Sending a card again is looking at it: the year for the reminder starts over.
         if (have.kind === 'card') await run('UPDATE shared_bundles SET reviewed_at = $1, reminded_at = NULL WHERE id = $2', [now, b.id]);
-        await run('UPDATE shared_bundles SET expires_at = $1, require_approval = $2, size = $3, blobs = $4, blob_bytes = $5 WHERE id = $6 AND user_id = $7', [b.expiresAt, b.requireApproval ? 1 : 0, b.size, b.blobs, b.blobBytes, b.id, userId]);
+        await run('UPDATE shared_bundles SET expires_at = $1, require_approval = $2, size = $3, blobs = $4, blob_bytes = $5, pass_check = COALESCE($6, pass_check) WHERE id = $7 AND user_id = $8', [b.expiresAt, b.requireApproval ? 1 : 0, b.size, b.blobs, b.blobBytes, b.passCheck ?? null, b.id, userId]);
         return 'ok' as const;
       });
     },

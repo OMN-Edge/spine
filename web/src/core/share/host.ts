@@ -5,7 +5,7 @@ import type { ShareHost } from 'spine-core/share-host';
 import { carryTranslations } from 'spine-core/translation';
 import { sodium } from '../../crypto/sodium';
 import { uprightJpeg } from '../native/image-ops';
-import { newShareKey, sealPart, wrapShareKey } from './keys';
+import { newShareKey, sealPart, sharePassCheck, wrapShareKey } from './keys';
 
 /**
  * Where a page's image is inside a share's file system: the name is its sealed file's name at the server. A copy made before images had
@@ -74,8 +74,9 @@ export function createShareHost(deps: { store: () => Store; mail: () => boolean 
 
       const at = `/api/shared/${encodeURIComponent(link.id)}`;
       const sealed = await sealPart(key, link.id, 'records', new TextEncoder().encode(JSON.stringify({ v: 1, owner: userId, changes })));
+      const passCheck = await sharePassCheck(key, link.id);
       const sendRecords = () => call('PUT', at, {
-        headers: { 'content-type': 'application/octet-stream', 'x-spine-expires': new Date(link.expires_at).toISOString(), 'x-spine-approval': link.require_approval ? '1' : '0', 'x-spine-keep-images': '1' },
+        headers: { 'content-type': 'application/octet-stream', 'x-spine-expires': new Date(link.expires_at).toISOString(), 'x-spine-approval': link.require_approval ? '1' : '0', 'x-spine-keep-images': '1', 'x-spine-pass-check': passCheck },
         body: sealed as BodyInit,
       });
       // The images the server holds already (none for a new link): only the others are sent.

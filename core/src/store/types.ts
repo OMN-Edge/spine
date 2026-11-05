@@ -1512,6 +1512,8 @@ export interface SharedBundle {
   blobs: number;
   blobBytes: number;
   revokedAt: string | null;
+  /** What a recipient's browser must show to get the pass for its model calls: a value only the share's key makes, sent with the copy (S-48). Null for a copy made before it. */
+  passCheck: string | null;
   /** `share`: a copy of chosen records with an end time. `card`: an emergency card (one for each person the account keeps records for), with no end (its own switch is the owner's). */
   kind: 'share' | 'card';
 }
@@ -1544,7 +1546,7 @@ export interface SharedRepository {
   /** Public: by the id in the link. Revoked and expired ones are returned as they are; the caller decides. */
   get(id: string): Promise<SharedBundle | null>;
   /** The owner's: makes the row, or replaces its metadata when the same owner publishes again; 'taken' if the id is someone else's. */
-  put(userId: string, bundle: { id: string; expiresAt: string; requireApproval: boolean; size: number; blobs: number; blobBytes: number; kind?: 'share' | 'card' }, now: string): Promise<'ok' | 'taken' | 'revoked' | 'too_many_cards'>;
+  put(userId: string, bundle: { id: string; expiresAt: string; requireApproval: boolean; size: number; blobs: number; blobBytes: number; kind?: 'share' | 'card'; passCheck?: string | null }, now: string): Promise<'ok' | 'taken' | 'revoked' | 'too_many_cards'>;
   /** The owner says the card is still right (or sends it again): the year for the yearly reminder starts over. False if it is not theirs, not a card, or off. */
   touchCard(userId: string, id: string, now: string): Promise<boolean>;
   /** Live cards last reviewed before one date and not reminded since another: whom to remind. */

@@ -187,7 +187,8 @@ CREATE TABLE IF NOT EXISTS shared_bundles (
   revoked_at TEXT,
   kind TEXT NOT NULL DEFAULT 'share', -- 'share' | 'card' (an emergency card, with no end)
   reviewed_at TEXT, -- a card: when its owner last sent it or said it is still right
-  reminded_at TEXT -- a card: when the yearly reminder was last sent
+  reminded_at TEXT, -- a card: when the yearly reminder was last sent
+  pass_check TEXT -- a value only the share's key makes: what a recipient's browser shows to get the pass for its model calls (S-48); null for a copy made before it
 );
 
 CREATE TABLE IF NOT EXISTS shared_requests (

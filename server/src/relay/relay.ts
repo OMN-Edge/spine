@@ -50,6 +50,9 @@ export interface RelayConfig {
 /** The count of every demo call together: no pass is ever for it, since an address's hash never has the `*`. */
 const DEMO_TOTAL = 'demo:*';
 
+/** What a recipient's browser asks the relay for: translations, questions (the agent and the plain answer) and the search's embeddings. */
+const SHARE_TASKS: ReadonlySet<RelayTask> = new Set<RelayTask>(['translation', 'chat', 'agent', 'embed']);
+
 export function createRelay(config: RelayConfig) {
   const now = config.now ?? Date.now;
   const log = config.log ?? (() => undefined);
@@ -197,6 +200,9 @@ export function createRelay(config: RelayConfig) {
     const bearer = /^Bearer (.+)$/.exec(String(req.headers.authorization ?? ''))?.[1];
     const who = bearer ? verifyToken(config.secret, bearer, now()) : null;
     if (!who) return refuse(401, 'sign in again');
+    // A share's pass is given to whoever holds its link, so it runs only what a recipient does: reading, translating, asking and searching
+    // (S-48). Turned away before it is counted, so a refused call does not use the share's day.
+    if (who.userId.startsWith('share:') && !SHARE_TASKS.has(relayTask)) return refuse(403, 'a share’s pass does not run this call', 'task_not_for_share');
     if (!(await spend(who.userId))) return refuse(429, 'the daily allowance of model calls is used up');
     const refusal = await config.gate?.admit(who.userId, relayTask);
     if (refusal) return refuse(refusal.status, refusal.error, refusal.code);

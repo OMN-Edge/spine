@@ -158,6 +158,7 @@ CREATE TABLE IF NOT EXISTS shared_bundles (
 ALTER TABLE shared_bundles ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'share';
 ALTER TABLE shared_bundles ADD COLUMN IF NOT EXISTS reviewed_at TEXT;
 ALTER TABLE shared_bundles ADD COLUMN IF NOT EXISTS reminded_at TEXT;
+ALTER TABLE shared_bundles ADD COLUMN IF NOT EXISTS pass_check TEXT;
 
 CREATE TABLE IF NOT EXISTS shared_requests (
   id TEXT PRIMARY KEY,

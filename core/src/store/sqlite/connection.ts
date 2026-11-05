@@ -100,6 +100,7 @@ function addColumnsInPlace(db: Database): void {
   // When a card was last reviewed and last reminded about (the yearly reminder). Null for every earlier bundle.
   if (bundles.length > 0 && !bundles.includes('reviewed_at')) db.exec('ALTER TABLE shared_bundles ADD COLUMN reviewed_at TEXT');
   if (bundles.length > 0 && !bundles.includes('reminded_at')) db.exec('ALTER TABLE shared_bundles ADD COLUMN reminded_at TEXT');
+  if (bundles.length > 0 && !bundles.includes('pass_check')) db.exec('ALTER TABLE shared_bundles ADD COLUMN pass_check TEXT');
 
   // What a subscription is to (Premium, or the family plan). Every earlier one is Premium.
   const subscriptions = columnsOf(db, 'subscriptions');
