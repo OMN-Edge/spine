@@ -151,7 +151,7 @@ export function createShareHost(deps: { store: () => Store; mail: () => boolean 
       const cardKey = key ?? (await newShareKey());
       // Sealed under a key of its own that only the owner's device and the address it hands out hold; the server stores bytes it cannot open.
       const sealed = await sealPart(cardKey, cardId, 'card', new TextEncoder().encode(content));
-      await call('PUT', `/api/shared/${encodeURIComponent(cardId)}`, { headers: { 'content-type': 'application/octet-stream', 'x-spine-kind': 'card' }, body: sealed as BodyInit });
+      await call('PUT', `/api/shared/${encodeURIComponent(cardId)}`, { headers: { 'content-type': 'application/octet-stream', 'x-spine-kind': 'card', 'x-spine-pass-check': await sharePassCheck(cardKey, cardId) }, body: sealed as BodyInit });
       return { id: cardId, key: cardKey };
     },
 

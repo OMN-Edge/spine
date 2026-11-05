@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { randomBytes } from 'crypto';
 import { buildTestApp, loginAs } from './helpers/app.js';
 import { createTestUser } from './helpers/seed.js';
+import { getAccountsStore } from 'spine-core/store/index.js';
 import { verifyToken } from '../relay/token.js';
 
 /**
@@ -16,11 +17,12 @@ const inHours = (h: number) => new Date(Date.now() + h * 3_600_000).toISOString(
 
 let app: Awaited<ReturnType<typeof buildTestApp>>;
 let owner: string;
+let ownerId: string;
 const saved = { ...process.env };
 beforeEach(async () => {
   Object.assign(process.env, { SPINE_RELAY_URL: 'https://relay.example.run.app', SPINE_RELAY_SECRET: SECRET });
   app = await buildTestApp();
-  await createTestUser('pass-owner@spine.test');
+  ownerId = (await createTestUser('pass-owner@spine.test')).id;
   owner = await loginAs(app, 'pass-owner@spine.test');
 });
 afterEach(async () => { await app.close(); process.env = { ...saved }; });
@@ -77,5 +79,50 @@ describe('the pass for a share’s model calls', () => {
 
   it('is refused for a share that ended or never was, as before', async () => {
     expect((await ask(id(), { check: check() })).statusCode).toBe(404);
+  });
+});
+
+/**
+ * SECURITY.md S-54. The route that notes an opening wrote a row for any request that named a live share's id, so the owner's record of who
+ * read a link could be filled with invented openings. It takes the same value as the pass, and the rows waiting to be collected are capped.
+ */
+describe('the record of who opened a share', () => {
+  const opened = (share: string, payload?: unknown) => app.inject({ method: 'POST', url: `/api/shared/${share}/opened`, payload: payload as object | undefined });
+  const waiting = async () => (await getAccountsStore().shared.pendingOpens(ownerId, 100_000)).length;
+
+  it('takes an opening from a browser that shows the key’s value, and from none that does not', async () => {
+    const share = id();
+    const mine = check();
+    await publish(share, { 'x-spine-pass-check': mine });
+    for (const body of [undefined, {}, { check: 'x'.repeat(43) }, { check: check() }, { document_id: 'doc-12345678', check: 7 }]) {
+      const res = await opened(share, body);
+      expect(res.statusCode, JSON.stringify(body)).toBe(403);
+      expect(res.json()).toMatchObject({ code: 'share_key_needed' });
+    }
+    expect(await waiting()).toBe(0);
+    expect((await opened(share, { check: mine })).statusCode).toBe(204);
+    expect((await opened(share, { document_id: 'doc-12345678', check: mine })).statusCode).toBe(204);
+    expect(await waiting()).toBe(2);
+  });
+
+  it('is the same for an emergency card, which the owner is mailed about', async () => {
+    const card = id();
+    const mine = check();
+    expect((await publish(card, { 'x-spine-kind': 'card', 'x-spine-pass-check': mine })).statusCode).toBe(201);
+    expect((await opened(card, {})).statusCode).toBe(403);
+    expect((await opened(card, { check: mine })).statusCode).toBe(204);
+    expect(await waiting()).toBe(1);
+  });
+
+  it('keeps at most a thousand openings waiting to be collected for a share, however many are made', async () => {
+    const share = id();
+    await publish(share);
+    for (let i = 0; i < 1010; i++) await getAccountsStore().shared.logOpen(share, new Date().toISOString(), 'RO', null, true);
+    expect(await waiting()).toBe(1000);
+    // and once the owner's device has collected them, openings are noted again
+    const pending = await getAccountsStore().shared.pendingOpens(ownerId, 2000);
+    await getAccountsStore().shared.ackOpens(ownerId, pending.map(o => o.id));
+    await getAccountsStore().shared.logOpen(share, new Date().toISOString(), 'RO', null, true);
+    expect(await waiting()).toBe(1);
   });
 });

@@ -97,6 +97,17 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
   // Sealed bytes arrive as the body, as they are.
   app.addContentTypeParser('application/octet-stream', { parseAs: 'buffer', bodyLimit: sharedLimits().partBytes }, (_req, body, done) => done(null, body));
 
+  /**
+   * Whether a request shows what only the share's key makes (S-48, S-54). The id is in every address and in logs, so it proves nothing; a copy
+   * made before the value existed has none to check and ends within the month a share can last.
+   */
+  const showsKey = (bundle: { passCheck: string | null }, given: unknown): boolean => {
+    if (!bundle.passCheck) return true;
+    const a = Buffer.from(typeof given === 'string' ? given : '');
+    const b = Buffer.from(bundle.passCheck);
+    return a.length === b.length && timingSafeEqual(a, b);
+  };
+
   const live = async (id: string) => {
     if (!SHARE_ID.test(id)) return null;
     const bundle = await getAccountsStore().shared.get(id);
@@ -117,7 +128,9 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     // The emergency card: one sealed bundle with no end of its own, outside the plan's share limits (it is on every plan), small, and never waiting for approval.
     if (req.headers['x-spine-kind'] === 'card') {
       if (!SHARE_ID.test(id) || !Buffer.isBuffer(req.body) || req.body.length === 0 || req.body.length > CARD_MAX_BYTES) return reply.status(400).send({ error: 'an id and a sealed card of at most 64 KB are needed' });
-      const put = await getAccountsStore().shared.put(req.userId, { id, expiresAt: CARD_NO_END, requireApproval: false, size: req.body.length, blobs: 0, blobBytes: 0, kind: 'card' }, new Date().toISOString());
+      const cardCheck = req.headers['x-spine-pass-check'];
+      if (cardCheck !== undefined && (typeof cardCheck !== 'string' || !PASS_CHECK.test(cardCheck))) return reply.status(400).send({ error: 'the pass check is not in the expected form' });
+      const put = await getAccountsStore().shared.put(req.userId, { id, expiresAt: CARD_NO_END, requireApproval: false, size: req.body.length, blobs: 0, blobBytes: 0, kind: 'card', passCheck: cardCheck ?? null }, new Date().toISOString());
       if (put === 'too_many_cards') return reply.status(409).send({ error: 'too many cards are on; turn one off first', code: 'too_many_cards' });
       if (put !== 'ok') return reply.status(put === 'taken' ? 404 : 409).send({ error: put === 'taken' ? 'not found' : 'this card was turned off' });
       await writeBundle(id, req.body);
@@ -339,9 +352,12 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
 
   // The recipient's browser says it opened the link, or a document of it (what is in a share only it can know). Only where in the
   // world and when are kept; never an address.
-  app.post<{ Params: { id: string }; Body: { document_id?: unknown } }>('/api/shared/:id/opened', { config: { rateLimit: opts.readPerSource ?? { max: 120, timeWindow: '1 minute' } } }, async (req, reply) => {
+  // It takes the value only the share's key makes, as the pass does, and the store keeps at most a thousand openings waiting to be collected
+  // for a share, so the owner's record of who read a link cannot be filled by someone who holds only its id (S-54).
+  app.post<{ Params: { id: string }; Body: { document_id?: unknown; check?: unknown } }>('/api/shared/:id/opened', { config: { rateLimit: opts.readPerSource ?? { max: 120, timeWindow: '1 minute' } } }, async (req, reply) => {
     const bundle = await live(req.params.id);
     if (!bundle || bundle === 'ended') return reply.status(bundle === 'ended' ? 410 : 404).send({ error: bundle === 'ended' ? 'this link is no longer active' : 'not found' });
+    if (!showsKey(bundle, req.body?.check)) return reply.status(403).send({ error: 'the share’s key is needed for this', code: 'share_key_needed' });
     const doc = req.body?.document_id;
     if (doc !== undefined && doc !== null && (typeof doc !== 'string' || !DOC_ID.test(doc))) return reply.status(400).send({ error: 'document_id must be an id' });
     await getAccountsStore().shared.logOpen(bundle.id, new Date().toISOString(), await countryOf(req.ip ?? null), (doc as string | null | undefined) ?? null, typeof doc === 'string');
@@ -379,11 +395,7 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     if (!bundle || bundle === 'ended') return reply.status(bundle === 'ended' ? 410 : 404).send({ error: bundle === 'ended' ? 'this link is no longer active' : 'not found' });
     // A card is read, never asked about: it has no model calls.
     if (bundle.kind === 'card') return reply.status(404).send({ error: 'not found' });
-    if (bundle.passCheck) {
-      const given = Buffer.from(typeof req.body?.check === 'string' ? req.body.check : '');
-      const expected = Buffer.from(bundle.passCheck);
-      if (given.length !== expected.length || !timingSafeEqual(given, expected)) return reply.status(403).send({ error: 'the share’s key is needed for this', code: 'share_key_needed' });
-    }
+    if (!showsKey(bundle, req.body?.check)) return reply.status(403).send({ error: 'the share’s key is needed for this', code: 'share_key_needed' });
     const settings = relaySettings();
     if (!settings) return reply.status(503).send({ error: 'this instance has no relay for model calls', code: 'no_relay' });
     const left = Date.parse(bundle.expiresAt) - Date.now();

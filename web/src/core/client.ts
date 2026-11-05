@@ -257,8 +257,9 @@ export const goesToServer = (url: string): boolean => SERVER_SIDE.test(url) || !
 const READER = /^\/api\/share\//;
 
 /** The share the reader's core has open, so that what the recipient opens can be noted at the server. */
-let reading: string | null = null;
-export const readingShare = (id: string | null) => { reading = id; };
+let reading: { id: string; check: string } | null = null;
+/** `check` is the value only the share's key makes, shown to the server with each note (SECURITY.md S-54). */
+export const readingShare = (id: string | null, check = '') => { reading = id ? { id, check } : null; };
 
 /** What the app calls instead of `fetch`: the cores for records, the network for the rest. */
 export async function appFetch(url: string, init?: RequestInit): Promise<Response> {
@@ -268,7 +269,7 @@ export async function appFetch(url: string, init?: RequestInit): Promise<Respons
     if (res.ok && reading && (init?.method ?? 'GET') === 'GET') {
       const doc = /^\/api\/share\/[^/]+\/documents\/([^/?]+)$/.exec(url)?.[1];
       if (doc || /^\/api\/share\/[^/]+\/documents(\?|$)/.test(url)) {
-        void fetch(`/api/shared/${encodeURIComponent(reading)}/opened`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(doc ? { document_id: doc } : {}) }).catch(() => undefined);
+        void fetch(`/api/shared/${encodeURIComponent(reading.id)}/opened`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(doc ? { document_id: doc, check: reading.check } : { check: reading.check }) }).catch(() => undefined);
       }
     }
     return res;

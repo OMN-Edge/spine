@@ -27,6 +27,9 @@ const requestOf = (r: Record<string, unknown>): SharedRequest => ({
   decidedAt: (r.decided_at as string | null) ?? null,
 });
 
+/** Openings kept for a share until its owner's device collects them: past this a request is not written down, so the record cannot be filled (S-54). */
+export const MAX_PENDING_OPENS = 1000;
+
 /** Live emergency cards an account may have: one for each person it keeps records for. */
 const MAX_CARDS = 10;
 
@@ -178,6 +181,7 @@ export function sharedRepository(q: Query, begin: Begin): SharedRepository {
     async logOpen(bundleId, at, country, documentId, countView) {
       const have = await bundle(q, bundleId);
       if (!have) return;
+      if (Number((await one<{ n: number }>(q, 'SELECT COUNT(*) AS n FROM shared_opens WHERE bundle_id = $1', [bundleId]))!.n) >= MAX_PENDING_OPENS) return;
       await q('INSERT INTO shared_opens (bundle_id, user_id, at, country, document_id, count_view) VALUES ($1, $2, $3, $4, $5, $6)', [bundleId, have.user_id, at, country, documentId, countView ? 1 : 0]);
     },
 

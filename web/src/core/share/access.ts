@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { reader, readingShare } from '../client';
-import { newVisitorKeys, unwrapShareKey } from './keys';
+import { newVisitorKeys, sharePassCheck, unwrapShareKey } from './keys';
 
 /** Where the recipient's page stands with a link: found out from the server, then, with the key, opened in the page's own core. */
 export type ShareAccess = 'checking' | 'gone' | 'needed' | 'pending' | 'denied' | 'open' | 'broken';
@@ -33,7 +33,7 @@ export function useShareAccess(shareId: string | undefined): { state: ShareAcces
   const open = useCallback(async (id: string, key: string) => {
     try {
       await reader.openShare(id, key);
-      readingShare(id);
+      readingShare(id, await sharePassCheck(key, id));
       remember(keyName(id), key);
       if (live.current) setState('open');
     } catch (err) {
