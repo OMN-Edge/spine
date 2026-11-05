@@ -43,6 +43,7 @@ None of these can be seen from the code either.
 - [ ] **Vertex only:** `SPINE_LLM_ENDPOINT`, `SPINE_LLM_REGION`, `SPINE_LLM_PROJECT` stated, no `GOOGLE_API_KEY`, `GEMINI_API_KEY` or `GOOGLE_GENAI_API_KEY` anywhere in the relay's environment, a service-account key for the relay only.
 - [ ] **TLS and the proxy.** A certificate for `SPINE_DOMAIN`; ports 80 and 443. Behind a proxy of your own, name its address in `SPINE_TRUSTED_PROXIES` and make it overwrite `X-Forwarded-For` ([self-host.md](self-host.md), SECURITY.md **S-31**). The server binds loopback unless `SPINE_HOST` says otherwise.
 - [ ] **Registration.** `operator` (default) or `open`, which needs a working mailer.
+- [ ] **A memory ceiling for the web service.** Reads of sealed objects are streamed, but the server still holds a body in memory while it is written (up to `SPINE_VAULT_MAX_OBJECT_MB`) and nothing in the unit limits the process, so on a small host a burst of large uploads can take the machine's memory. Choose `MemoryMax=` for `spine-web` from the host's memory (a drop-in with `systemctl edit spine-web`), so that the one service is stopped and restarted, not the host (SECURITY.md **S-58**).
 - [ ] **Backups off the disk.** The daily backup lands beside `data/` by default, which does not survive losing the disk. Point `SPINE_BACKUP_DIR` at other storage; `install.sh -s` gives the backup service access to it ([setup.md](setup.md)).
 
 ## Check that it did what you meant

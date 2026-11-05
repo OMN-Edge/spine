@@ -36,6 +36,20 @@ export function createFilesystemObjects(root: () => string): ObjectStore {
       }
     },
 
+    async stream(key) {
+      const file = inside(checkKey(key));
+      let size: number;
+      try {
+        const stat = fs.statSync(file);
+        if (!stat.isFile()) return null;
+        size = stat.size;
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+        throw err;
+      }
+      return { body: fs.createReadStream(file), size };
+    },
+
     async remove(key) {
       fs.rmSync(inside(checkKey(key)), { force: true });
     },

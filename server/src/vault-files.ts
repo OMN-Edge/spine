@@ -16,6 +16,9 @@ export const writeObject = (userId: string, id: string, bytes: Buffer): Promise<
 
 export const readObject = (userId: string, id: string): Promise<Buffer | null> => objects().get(keyOf(userId, id));
 
+/** The object as a stream with its size, for a read that does not hold it whole (S-58). */
+export const streamObject = (userId: string, id: string) => objects().stream(keyOf(userId, id));
+
 export const removeObject = (userId: string, id: string): Promise<void> => objects().remove(keyOf(userId, id));
 
 export const removeAllObjects = (userId: string): Promise<void> => objects().removeAll(`vault/${userId}/`);

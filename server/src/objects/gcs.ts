@@ -1,3 +1,4 @@
+import { Readable } from 'node:stream';
 import { GoogleAuth } from 'google-auth-library';
 import { checkKey, checkPrefix, ObjectsConfigError, type ObjectStore } from './types.js';
 
@@ -71,6 +72,20 @@ export function createGcsObjects(options: GcsOptions): ObjectStore {
       if (res.status === 404) return null;
       if (!res.ok) throw failed('a read', res);
       return Buffer.from(await res.arrayBuffer());
+    },
+
+    async stream(key) {
+      const res = await call('GET', `${base}/storage/v1/b/${bucket}/o/${encodeURIComponent(named(checkKey(key)))}?alt=media`);
+      if (res.status === 404) return null;
+      if (!res.ok) throw failed('a read', res);
+      const length = res.headers.get('content-length');
+      const size = length === null ? NaN : Number(length);
+      // A bucket that does not say how long the object is is read whole, as `get` does.
+      if (!res.body || !Number.isFinite(size) || size < 0) {
+        const whole = Buffer.from(await res.arrayBuffer());
+        return { body: Readable.from([whole]), size: whole.length };
+      }
+      return { body: Readable.fromWeb(res.body as never), size };
     },
 
     async remove(key) {

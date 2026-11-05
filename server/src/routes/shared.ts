@@ -5,7 +5,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { sharedLimits } from '../config.js';
 import { accountEntitlements, liveSharesFor } from '../billing/entitlements.js';
-import { BLOB_NAME, SHARE_ID, blobNames, readBlob, readBundle, removeBlob, removeBlobs, removeShare, writeBlob, writeBundle } from '../shared-files.js';
+import { BLOB_NAME, SHARE_ID, blobNames, readBlob, removeBlob, removeBlobs, removeShare, streamBlob, streamBundle, writeBlob, writeBundle } from '../shared-files.js';
+import { readSlots } from '../read-slots.js';
 
 /** The most page images one share may hold. */
 const MAX_BLOBS = 10_000;
@@ -106,6 +107,21 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     const a = Buffer.from(typeof given === 'string' ? given : '');
     const b = Buffer.from(bundle.passCheck);
     return a.length === b.length && timingSafeEqual(a, b);
+  };
+
+  /**
+   * Sends a sealed copy or page image as a stream (S-58), with no more reads of one share open at once from one source than that source may
+   * have, so the copy is never held whole in memory however often it is asked for.
+   */
+  const sendSealed = async (req: { ip?: string; log: { error: (o: unknown, m: string) => void } }, reply: import('fastify').FastifyReply, what: string, open: () => Promise<{ body: import('node:stream').Readable; size: number } | null>) => {
+    const release = readSlots.take(`${what}:${req.ip ?? ''}`);
+    if (!release) return reply.status(429).send({ error: 'too many reads are open at once; try again in a moment', code: 'too_many_reads' });
+    let opened: Awaited<ReturnType<typeof open>>;
+    try { opened = await open(); } catch (err) { release(); throw err; }
+    if (!opened) { release(); return reply.status(404).send({ error: 'not found' }); }
+    opened.body.once('close', release);
+    opened.body.on('error', err => req.log.error({ err }, 'a sealed copy could not be read to the end'));
+    return reply.type('application/octet-stream').header('content-length', String(opened.size)).header('Cache-Control', 'no-store').header('X-Robots-Tag', 'noindex, nofollow').send(opened.body);
   };
 
   const live = async (id: string) => {
@@ -291,18 +307,14 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     const bundle = await live(req.params.id);
     if (!bundle) return reply.status(404).send({ error: 'not found' });
     if (bundle === 'ended') return reply.status(410).send({ error: 'this link is no longer active', ended: true });
-    const bytes = await readBundle(bundle.id);
-    if (!bytes) return reply.status(404).send({ error: 'not found' });
-    return reply.type('application/octet-stream').header('Cache-Control', 'no-store').header('X-Robots-Tag', 'noindex, nofollow').send(bytes);
+    return sendSealed(req, reply, `bundle:${bundle.id}`, () => streamBundle(bundle.id));
   });
 
   app.get<{ Params: { id: string; n: string } }>('/api/shared/:id/blob/:n', { config: { rateLimit: opts.readPerSource ?? { max: 600, timeWindow: '1 minute' } } }, async (req, reply) => {
     const bundle = await live(req.params.id);
     const name = req.params.n;
     if (!bundle || bundle === 'ended' || !BLOB_NAME.test(name)) return reply.status(bundle === 'ended' ? 410 : 404).send({ error: bundle === 'ended' ? 'this link is no longer active' : 'not found' });
-    const bytes = await readBlob(bundle.id, name);
-    if (!bytes) return reply.status(404).send({ error: 'not found' });
-    return reply.type('application/octet-stream').header('Cache-Control', 'no-store').header('X-Robots-Tag', 'noindex, nofollow').send(bytes);
+    return sendSealed(req, reply, `blob:${bundle.id}`, () => streamBlob(bundle.id, name));
   });
 
   // A browser asks to be let in. It sends its own public key; on approval the owner's device wraps the share key to it, so a leaked

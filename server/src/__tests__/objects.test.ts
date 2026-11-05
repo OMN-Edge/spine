@@ -60,6 +60,18 @@ function describeObjectStore(name: string, make: () => { store: ObjectStore; cle
       expect((await store.get('vault/u1/object-0001'))?.toString()).toBe('sealed');
     });
 
+    it('streams an object with its size, so a read need not hold it whole, and answers null for what it has not', async () => {
+      expect(await store.stream('vault/u1/object-0002')).toBeNull();
+      const body = Buffer.alloc(300_000, 7);
+      await store.put('vault/u1/object-0002', body);
+      const opened = (await store.stream('vault/u1/object-0002'))!;
+      expect(opened.size).toBe(body.length);
+      const chunks: Buffer[] = [];
+      for await (const chunk of opened.body) chunks.push(Buffer.from(chunk));
+      expect(Buffer.concat(chunks).equals(body)).toBe(true);
+      await expect(store.stream('../x')).rejects.toThrow(/invalid/);
+    });
+
     it('replaces an object whole', async () => {
       await store.put('shares/s1/db', bytes('first'));
       await store.put('shares/s1/db', bytes('second, longer'));

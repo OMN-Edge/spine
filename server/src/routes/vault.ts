@@ -4,7 +4,8 @@ import { vaultLimits } from '../config.js';
 import { accountEntitlements, vaultBytesFor } from '../billing/entitlements.js';
 import { hashPassword, normaliseEmail } from '../passwords.js';
 import { AUTH_VALUE, DEFAULT_KDF, parseKdfParams, parseVaultKeys, pretendSalt, sealed } from '../vault-keys.js';
-import { OBJECT_ID, readObject, removeObject, writeObject } from '../vault-files.js';
+import { OBJECT_ID, readObject, removeObject, streamObject, writeObject } from '../vault-files.js';
+import { readSlots } from '../read-slots.js';
 import { endOtherSessions } from '../sessions.js';
 import { mailAfter, securityChangeMail } from '../notify.js';
 import { requireAuth, requireRecentAuth } from 'spine-core/routes/middleware.js';
@@ -154,16 +155,24 @@ export async function getObject(req: ObjectReq, reply: FastifyReply, ownerId: st
   if (!OBJECT_ID.test(req.params.id)) return reply.status(404).send({ error: 'not found' });
   const meta = await getAccountsStore().vault.get(ownerId, req.params.id);
   if (meta && only && meta.profile_id !== only.profileId) return reply.status(404).send({ error: 'not found' });
-  const bytes = meta && !meta.deleted ? await readObject(ownerId, req.params.id) : null;
-  if (!meta || !bytes) return reply.status(404).send({ error: 'not found' });
+  if (!meta || meta.deleted) return reply.status(404).send({ error: 'not found' });
+  // Streamed, and no more reads open at once than one account may have (S-58): the object is never held whole in memory.
+  const release = readSlots.take(`vault:${ownerId}`);
+  if (!release) return reply.status(429).send({ error: 'too many reads are open at once; try again in a moment', code: 'too_many_reads' });
+  let opened: Awaited<ReturnType<typeof streamObject>>;
+  try { opened = await streamObject(ownerId, req.params.id); } catch (err) { release(); throw err; }
+  if (!opened) { release(); return reply.status(404).send({ error: 'not found' }); }
+  opened.body.once('close', release);
+  opened.body.on('error', err => req.log.error({ err }, 'a sealed object could not be read to the end'));
   return reply
+    .header('content-length', String(opened.size))
     .header('content-type', 'application/octet-stream')
     .header('cache-control', 'no-store')
     .header('x-spine-seq', String(meta.seq))
     .header('x-spine-kind', meta.kind)
     .header('x-spine-profile', meta.profile_id)
     .header('x-spine-wrapped-key', meta.wrapped_key)
-    .send(bytes);
+    .send(opened.body);
 }
 
 export async function putObject(req: ObjectReq, reply: FastifyReply, ownerId: string, only?: ObjectScope) {
@@ -195,6 +204,11 @@ export async function putObject(req: ObjectReq, reply: FastifyReply, ownerId: st
       const have = (await store.vault.list(ownerId, 0)).filter(o => o.kind === 'profile' && !o.deleted && o.id !== id).length;
       if (have >= plan.profiles) return reply.status(402).send({ error: 'another person is not part of the account’s plan', code: 'plan_required' });
     }
+  }
+  // The quota counts bytes, so a million one-byte objects would fit: the number of objects is bounded too (S-58). One that is already there may be written again.
+  const held = await store.vault.get(ownerId, id);
+  if ((!held || held.deleted) && (await store.vault.usage(ownerId)).objects >= vaultLimits().objects) {
+    return reply.status(413).send({ error: 'the vault holds as many objects as it may', code: 'full' });
   }
   const result = await store.vault.put(ownerId, { id, profileId: profile, kind, size: body.length, wrappedKey, baseSeq: Number(base) }, new Date().toISOString(), await vaultBytesFor(ownerId));
   if (result === 'no_vault') return reply.status(404).send({ error: 'this account has no vault yet', code: 'no_vault' });

@@ -1,3 +1,5 @@
+import type { Readable } from 'node:stream';
+
 /**
  * Where the sealed bytes live: the vault's objects and the copies a share is made of. The server cannot read them (SECURITY.md **M-34**,
  * **M-36**); a store only moves bytes under keys the server builds from ids it has already checked (`vault-files.ts`, `shared-files.ts`).
@@ -13,6 +15,11 @@ export interface ObjectStore {
   put(key: string, bytes: Buffer): Promise<void>;
   /** The bytes, or null when there are none. A failure to reach the store throws: it is not "no such object". */
   get(key: string): Promise<Buffer | null>;
+  /**
+   * The object as a stream with its size, so that a read does not hold it whole in memory (SECURITY.md S-58); null when there is none. The caller
+   * reads it to the end or destroys it.
+   */
+  stream(key: string): Promise<{ body: Readable; size: number } | null>;
   /** Removes one object; none to remove is not an error. */
   remove(key: string): Promise<void>;
   /** The keys that start with the prefix (`dir/`, or `dir/name-` for the names in a directory that begin so), in no order. */
