@@ -520,9 +520,16 @@ try {
   check(await guest2Wait('Approval needed'), 'a stranger is asked to request access');
   await (await guest2.evaluateHandle(() => [...document.querySelectorAll('button')].find(b => b.innerText.startsWith('Ask for access')))).asElement().click();
   check(await guest2Wait('request was sent'), 'the request is sent with the browser\'s own public key');
+  // The visitor reads a code made from the browser's key to the owner, who approves only when it is the same (SECURITY.md S-40).
+  const visitorCode = await guest2.evaluate(() => document.querySelector('[data-testid="visitor-code"]')?.textContent ?? '');
+  check(/^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/.test(visitorCode), 'the visitor is shown a code made from the browser\'s key');
   await click('Timeline');
   await click('Share');
   check(await waitFor('Waiting for your approval', 20000), 'the owner sees the request');
+  const ownerCode = await p.evaluate(() => document.querySelector('[data-testid="request-code"]')?.textContent ?? '');
+  check(ownerCode === visitorCode && ownerCode !== '', 'the owner is shown the same code the visitor reads out');
+  check(await p.evaluate(() => [...document.querySelectorAll('button')].find(b => b.innerText === 'Approve')?.disabled === true), 'Approve waits until the owner has checked the code');
+  await p.evaluate(() => [...document.querySelectorAll('label')].find(l => l.innerText.includes('It is the same'))?.querySelector('input')?.click());
   await click('Approve');
   check(await guest2Wait('Chest X-ray', 40000), 'once approved, that browser (and only it) opens the records');
 

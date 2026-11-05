@@ -1727,5 +1727,8 @@
  "Turn off recovery by email": "Wiederherstellung per E-Mail ausschalten",
  "Turn on recovery by email": "Wiederherstellung per E-Mail einschalten",
  "Recovery by email is turned off for this account, so only your recovery kit can reset it.": "Die Wiederherstellung per E-Mail ist für dieses Konto ausgeschaltet, daher kann nur Ihr Wiederherstellungskit es zurücksetzen.",
- "The notes you wrote on the shared documents go with the link.": "Die Notizen, die Sie zu den geteilten Dokumenten geschrieben haben, gehen mit dem Link."
+ "The notes you wrote on the shared documents go with the link.": "Die Notizen, die Sie zu den geteilten Dokumenten geschrieben haben, gehen mit dem Link.",
+ "Read it to the person who shared this link, so they can check that the request is yours.": "Lesen Sie ihn der Person vor, die diesen Link geteilt hat, damit sie prüfen kann, dass die Anfrage von Ihnen stammt.",
+ "Ask them for the code on their screen. Approve only if it is the same.": "Fragen Sie nach dem Code auf deren Bildschirm. Genehmigen Sie nur, wenn er gleich ist.",
+ "It is the same": "Er ist gleich"
 }

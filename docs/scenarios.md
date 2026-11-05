@@ -581,12 +581,13 @@ Status: auto (`share`, `public-share-scoped`, `public-share-detail`).
 When making a link the owner ticks **Ask me before anyone opens it**. Whoever opens the link must ask, and the owner approves or denies from their own account; only the browser they approve can read it.
 
 - The recipient opens the link and sees "Approval needed", an optional "Who are you?" line, and **Ask for access**. Asking makes a key pair in that browser, kept in its session storage for as long as the tab is open, and sends the owner one email (when a mailer exists), which says only that someone is waiting and carries a link to the request. It names no document, label or note.
+- The visitor's page shows a short code made from the browser's key, to read to the owner; the owner's request shows the code its key makes, and **Approve** waits until the owner has asked for the visitor's code and ticked that it is the same, so a request made up by someone else's key is told apart from the visitor's.
 - The owner opens that link (signing in first, and coming back to it), sees when and from which country the request came (the address itself is not kept), with the recipient's own words marked as unverified, and presses **Approve** or **Deny**. Following the link never approves anything; only the button does. Waiting requests are also at the top of the Share links page and on the link's page; with no mailer set up that is the only place the owner is told, and creating the link says so.
 - Until approved the browser has no key, so there is nothing to open: the copy on the server is sealed and the page says approval is needed. The owner's device answers an approval by wrapping the share key to that browser's key, and the recipient's page waits and opens by itself.
 - The approval is for that link and that browser: its key opens no other link, a second browser asks on its own, and closing the tab means asking again. The owner can withdraw it later. At most five requests wait on a link at once, and asking is rate limited.
 - Approving on a link that has been revoked or has expired is refused. A request that is not the owner's is "not found".
 
-Status: auto (`shared`, `share-manage`).
+Status: auto (`shared`, `share-manage`, `share-code`, `share-host`); in a real browser: `check:app` (the visitor's code, the same code on the owner's side, Approve waiting for the tick).
 
 ### 7.3 Let the recipient ask questions
 When making a link the owner ticks **Let the recipient ask questions**, which asks for the password again if it was not typed lately, as scans do, and says that the copy then also holds the text of every shared page as printed, with names and numbers. The form says too that the notes the owner wrote on the shared documents go with the link, with or without questions. The recipient's page then has an **Ask** button; they type a question and the assistant answers from the shared documents.

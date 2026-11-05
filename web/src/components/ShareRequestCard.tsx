@@ -11,6 +11,8 @@ export default function ShareRequestCard({ request, onDecided }: { request: Shar
   const { t, lang } = useI18n();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // A request is approved only after the owner has checked the code with the visitor (SECURITY.md S-40).
+  const [same, setSame] = useState(false);
 
   const decide = async (decision: 'approve' | 'deny') => {
     setBusy(true);
@@ -35,9 +37,21 @@ export default function ShareRequestCard({ request, onDecided }: { request: Shar
       </dl>
       <p className="text-xs text-gray-500 mt-2">{t('The country is worked out from the visitor\'s address and the note is written by them. Neither proves who it is.')}</p>
 
+      {request.status === 'pending' && request.code && (
+        <div className="mt-3 rounded-lg bg-gray-50 border border-gray-200 p-3">
+          <p className="text-xs text-gray-500">{t('Code')}</p>
+          <p className="font-mono text-lg tracking-widest text-gray-900" data-testid="request-code">{request.code}</p>
+          <p className="text-xs text-gray-500 mt-1">{t('Ask them for the code on their screen. Approve only if it is the same.')}</p>
+          <label className="flex items-center gap-2 text-sm text-gray-700 mt-2">
+            <input type="checkbox" checked={same} onChange={e => setSame(e.target.checked)} />
+            {t('It is the same')}
+          </label>
+        </div>
+      )}
+
       {request.status === 'pending' ? (
         <div className="flex gap-2 mt-3">
-          <button disabled={busy || !request.link_active} onClick={() => decide('approve')} className="bg-brand-600 text-white rounded-full px-4 py-2 text-sm font-medium hover:bg-brand-700 disabled:opacity-50">{t('Approve')}</button>
+          <button disabled={busy || !request.link_active || (!!request.code && !same)} onClick={() => decide('approve')} className="bg-brand-600 text-white rounded-full px-4 py-2 text-sm font-medium hover:bg-brand-700 disabled:opacity-50">{t('Approve')}</button>
           <button disabled={busy} onClick={() => decide('deny')} className="border border-gray-200 text-gray-700 rounded-lg px-4 py-2 text-sm hover:bg-gray-50 disabled:opacity-50">{t('Deny')}</button>
         </div>
       ) : (

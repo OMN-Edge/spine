@@ -1727,5 +1727,8 @@
  "Turn off recovery by email": "Dezactivează recuperarea prin e-mail",
  "Turn on recovery by email": "Activează recuperarea prin e-mail",
  "Recovery by email is turned off for this account, so only your recovery kit can reset it.": "Recuperarea prin e-mail este dezactivată pentru acest cont, deci doar kitul de recuperare îl poate reseta.",
- "The notes you wrote on the shared documents go with the link.": "Notițele pe care le-ați scris la documentele partajate merg împreună cu linkul."
+ "The notes you wrote on the shared documents go with the link.": "Notițele pe care le-ați scris la documentele partajate merg împreună cu linkul.",
+ "Read it to the person who shared this link, so they can check that the request is yours.": "Citiți-l persoanei care a partajat acest link, ca să poată verifica dacă cererea este a dvs.",
+ "Ask them for the code on their screen. Approve only if it is the same.": "Cereți-le codul de pe ecranul lor. Aprobați doar dacă este același.",
+ "It is the same": "Este același"
 }

@@ -464,6 +464,8 @@ export interface ShareRequest {
   user_agent: string | null;
   requested_at: string;
   decided_at: string | null;
+  /** The code the visitor's key makes, shown on the visitor's screen too; the owner compares them before approving (SECURITY.md S-40). Null if the device does not hold the key. */
+  code: string | null;
 }
 
 /** What has happened to a link since it was made. `detail` is JSON: for `changed`, `{ changes: [{ field, from, to }] }`. */

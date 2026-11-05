@@ -150,6 +150,16 @@ describe('share links made by a device', () => {
     expect(calls).toContain('answer:deny:another-key:null');
   });
 
+  // SECURITY.md S-40: the owner's side shows the code the visitor's page shows, made from the key the request carries.
+  it('shows each request with the code its key makes, for the owner to compare with the visitor’s', async () => {
+    const { id } = (await create({ require_approval: true })).json<{ id: string }>();
+    await getStore().shareLinks.createRequest(id, { id: 'req-code', visitorHash: 'visitor-public-key-for-code', note: null, ipAddress: null, userAgent: null, requestedAt: new Date().toISOString() }, 5);
+    const { visitorCode } = await import('spine-core/share-code.js');
+    const expected = await visitorCode('visitor-public-key-for-code');
+    expect((await call('GET', '/api/share-requests/req-code')).json().code).toBe(expected);
+    expect((await call('GET', '/api/share-requests')).json<Array<{ id: string; code: string }>>().find(r => r.id === 'req-code')?.code).toBe(expected);
+  });
+
   it('leaves a request unanswered here when the answer could not be sent', async () => {
     const { id } = (await create({ require_approval: true })).json<{ id: string }>();
     await getStore().shareLinks.createRequest(id, { id: 'req-3', visitorHash: 'k3', note: null, ipAddress: null, userAgent: null, requestedAt: new Date().toISOString() }, 5);
