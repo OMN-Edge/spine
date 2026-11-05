@@ -30,7 +30,8 @@ import { decorateAuth } from 'spine-core/routes/middleware.js';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { ConfigError, resolveBackupDir, resolveDataDir } from 'spine-core/config.js';
 import { keepPrivate, privateByDefault } from './permissions.js';
-import { loadConfig, sessionLimits, type Config } from './config.js';
+import { disk, quotaWarning } from './disk-space.js';
+import { loadConfig, loadRegistrationMode, sessionLimits, vaultLimits, type Config } from './config.js';
 import { useLogger } from 'spine-core/logger.js';
 import { useAccountsStore } from './store.js';
 import { useSessionAuth } from './session-auth.js';
@@ -63,6 +64,9 @@ const closed = keepPrivate([resolveDataDir(), resolveBackupDir()]);
 if (closed.length > 0) console.log(`closed to other users: ${closed.join(', ')}`);
 // A bad SPINE_OBJECTS stops the process here and not at the first upload.
 try { objects(); } catch (err) { console.error(err instanceof Error ? err.message : String(err)); process.exit(1); }
+// With open registration anyone can make accounts: say at start if the disk could not hold a handful of them at the quota (SECURITY.md S-56).
+const roomWarning = loadRegistrationMode() === 'open' ? quotaWarning(disk.free(), vaultLimits().accountBytes) : null;
+if (roomWarning) console.warn(`warning: ${roomWarning}`);
 
 const app = Fastify({
   logger: true,

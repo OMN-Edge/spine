@@ -7,6 +7,7 @@ import { sharedLimits } from '../config.js';
 import { accountEntitlements, liveSharesFor } from '../billing/entitlements.js';
 import { BLOB_NAME, SHARE_ID, blobNames, readBlob, removeBlob, removeBlobs, removeShare, streamBlob, streamBundle, writeBlob, writeBundle } from '../shared-files.js';
 import { readSlots } from '../read-slots.js';
+import { spaceFor } from '../disk-space.js';
 
 /** The most page images one share may hold. */
 const MAX_BLOBS = 10_000;
@@ -144,6 +145,7 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     // The emergency card: one sealed bundle with no end of its own, outside the plan's share limits (it is on every plan), small, and never waiting for approval.
     if (req.headers['x-spine-kind'] === 'card') {
       if (!SHARE_ID.test(id) || !Buffer.isBuffer(req.body) || req.body.length === 0 || req.body.length > CARD_MAX_BYTES) return reply.status(400).send({ error: 'an id and a sealed card of at most 64 KB are needed' });
+      if (!(await spaceFor(req.body.length))) return reply.status(507).send({ error: 'the server is short of room just now; try again later', code: 'storage_low' });
       const cardCheck = req.headers['x-spine-pass-check'];
       if (cardCheck !== undefined && (typeof cardCheck !== 'string' || !PASS_CHECK.test(cardCheck))) return reply.status(400).send({ error: 'the pass check is not in the expected form' });
       const put = await getAccountsStore().shared.put(req.userId, { id, expiresAt: CARD_NO_END, requireApproval: false, size: req.body.length, blobs: 0, blobBytes: 0, kind: 'card', passCheck: cardCheck ?? null }, new Date().toISOString());
@@ -176,6 +178,7 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     if (used.bytes - (replacing ? existing.size + (keep ? 0 : existing.blobBytes) : 0) + req.body.length > limits.totalBytes) return reply.status(413).send({ error: 'the shares hold too much; revoke one first', code: 'full' });
     // What a recipient's browser must show to get the pass for its model calls: a value only the share's key makes, which the owner's device
     // sends with the copy (S-48). A copy sent again without one keeps the value it has.
+    if (!(await spaceFor(req.body.length))) return reply.status(507).send({ error: 'the server is short of room just now; try again later', code: 'storage_low' });
     const passCheck = req.headers['x-spine-pass-check'];
     if (passCheck !== undefined && (typeof passCheck !== 'string' || !PASS_CHECK.test(passCheck))) return reply.status(400).send({ error: 'the pass check is not in the expected form' });
     const put = await store.shared.put(req.userId, { id, expiresAt: expires, requireApproval, size: req.body.length, blobs: keep ? existing.blobs : 0, blobBytes: keep ? existing.blobBytes : 0, passCheck: passCheck ?? null }, new Date().toISOString());
@@ -215,6 +218,7 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     const bundle = await ownBundle(req.userId, req.params.id);
     if (!bundle) return reply.status(404).send({ error: 'not found' });
     if (!BLOB_NAME.test(name) || !Buffer.isBuffer(req.body) || req.body.length === 0) return reply.status(400).send({ error: 'a name and the sealed file are needed' });
+    if (!(await spaceFor(req.body.length))) return reply.status(507).send({ error: 'the server is short of room just now; try again later', code: 'storage_low' });
     const old = await readBlob(bundle.id, name);
     if (!old && bundle.blobs >= MAX_BLOBS) return reply.status(413).send({ error: 'a share holds at most 10,000 page images', code: 'full' });
     const used = await store.shared.usage(req.userId, new Date().toISOString());

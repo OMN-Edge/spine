@@ -6,6 +6,7 @@ import { hashPassword, normaliseEmail } from '../passwords.js';
 import { AUTH_VALUE, DEFAULT_KDF, parseKdfParams, parseVaultKeys, pretendSalt, sealed } from '../vault-keys.js';
 import { OBJECT_ID, readObject, removeObject, streamObject, writeObject } from '../vault-files.js';
 import { readSlots } from '../read-slots.js';
+import { spaceFor } from '../disk-space.js';
 import { endOtherSessions } from '../sessions.js';
 import { mailAfter, securityChangeMail } from '../notify.js';
 import { requireAuth, requireRecentAuth } from 'spine-core/routes/middleware.js';
@@ -205,6 +206,8 @@ export async function putObject(req: ObjectReq, reply: FastifyReply, ownerId: st
       if (have >= plan.profiles) return reply.status(402).send({ error: 'another person is not part of the account’s plan', code: 'plan_required' });
     }
   }
+  // The disk is the whole instance's: while writing this would leave less than the reserve, it waits (S-56).
+  if (!(await spaceFor(body.length))) return reply.status(507).send({ error: 'the server is short of room just now; try again later', code: 'storage_low' });
   // The quota counts bytes, so a million one-byte objects would fit: the number of objects is bounded too (S-58). One that is already there may be written again.
   const held = await store.vault.get(ownerId, id);
   if ((!held || held.deleted) && (await store.vault.usage(ownerId)).objects >= vaultLimits().objects) {
