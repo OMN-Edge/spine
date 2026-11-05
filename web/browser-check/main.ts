@@ -55,6 +55,30 @@ useDigests(browserDigests); // what the core registers when it starts: the share
   await step(out, 'text', async () => (await parseDocument('/data/originals/a.pdf')).pages.map(p => p.elements.length));
   let pages: Array<{ image_path: string }> = [];
   await step(out, 'raster', async () => { pages = await rasterizePdf('a', '/data/originals/a.pdf'); return pages.map(p => fs.statSync(p.image_path).size); });
+  // A tiny file that names a huge page is drawn smaller, and one that names too many pages is refused before they are drawn (SECURITY.md S-55);
+  // a 575-byte file once took 3 GB here and a few MB could name hundreds of thousands of pages.
+  await step(out, 'big-page', async () => {
+    const doc = await PDFDocument.create();
+    doc.addPage([5000, 5000]);
+    fs.writeFileSync('/data/originals/big.pdf', await doc.save());
+    const [only] = await rasterizePdf('big', '/data/originals/big.pdf');
+    const bitmap = await createImageBitmap(new Blob([fs.readFileSync(only.image_path)], { type: 'image/png' }));
+    if (bitmap.width * bitmap.height > 25_000_000 * 1.01) throw new Error(`a page of 5000 by 5000 points was drawn as ${bitmap.width} by ${bitmap.height} pixels`);
+    return { width: bitmap.width, height: bitmap.height };
+  });
+  await step(out, 'many-pages', async () => {
+    const doc = await PDFDocument.create();
+    for (let i = 0; i < 501; i++) doc.addPage([100, 100]);
+    fs.writeFileSync('/data/originals/many.pdf', await doc.save());
+    try {
+      await rasterizePdf('many', '/data/originals/many.pdf');
+    } catch (e) {
+      if ((e as Error).name !== 'PdfTooLargeError') throw e;
+      if (fs.existsSync('/data/pages/many/page-001.png')) throw new Error('refused, but only after drawing pages');
+      return (e as Error).message.slice(0, 50);
+    }
+    throw new Error('a PDF of 501 pages was drawn');
+  });
   await step(out, 'ocr', async () => { const o = await ocrPage(pages[0].image_path, 1, 'ron+eng'); return { words: o.words, mean: Math.round(o.meanConfidence), first: o.elements[0]?.text }; });
   await step(out, 'trim', async () => { fs.writeFileSync('/data/t.pdf', await extractPdfPages('/data/originals/a.pdf', [1])); return fs.statSync('/data/t.pdf').size; });
   // a photo: draw something, save as JPEG, make it a page, bundle two into a PDF, rotate

@@ -194,6 +194,7 @@ The owner drops a 40-page scan on the Upload page. It was a stack of letters, re
 - When it finishes, the upload is listed under the documents it became, each with a title (the one printed on it, else a short generated one), never the file name.
 - A page numbered "1 / 1" after one numbered "3 / 3" starts a new document; a page numbered "2 / 3" continues the one before.
 - If the model cannot be reached, the upload is marked as failed with the reason; the original file is kept and nothing is half-written.
+- A PDF of more than 500 pages is refused before any page is drawn, and the upload says to split it and add the parts. A page declared to be very large is drawn smaller, to at most 25 million pixels, not refused; the device's memory is not the file's to spend. In a real browser: `check:browser` draws a 575-byte file that names a page of 5000 by 5000 points, and a file of 501 pages.
 - Every document starts **unreviewed**, and the upload starts with its grouping **unconfirmed** (see 2.5): its documents are listed on the Upload page but are not yet in the timeline, search, shares or trends.
 
 Status: auto (`pipeline`, `continuation`, `upload`, `grouping-confirmation`).
