@@ -920,8 +920,8 @@ export interface DelegationRepository {
   peek(delegateId: string, id: string, proofHash: string, now: string): Promise<{ owner_user_id: string; role: DelegationRole; expires_at: string } | null>;
   /** The delegate completes a pending grant with the profile key sealed to their own key; false if it is not theirs or not pending. */
   complete(delegateId: string, id: string, wrappedKey: string, now: string): Promise<boolean>;
-  /** One grant, by its id; the caller checks whose it is (the owner's, or the delegate's, with `delegateId`). */
-  get(id: string): Promise<DelegationRecord | null>;
+  /** One grant, by its id, only for the account that owns it or holds it; any other account's is not found. It holds a sealed profile key, so there is no lookup without the acting account (SECURITY.md S-63, P12). */
+  getFor(actingUserId: string, id: string): Promise<DelegationRecord | null>;
   /** Grants of the owner's profiles, with the delegate's address and public key (to seal a replaced profile key to them). */
   ownedBy(ownerId: string): Promise<Array<DelegationRecord & { delegate_email: string; delegate_public_key: string | null }>>;
   /**

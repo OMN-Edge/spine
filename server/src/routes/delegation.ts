@@ -92,7 +92,7 @@ export async function delegationRoutes(app: FastifyInstance, opts: DelegationRou
   app.post<{ Params: { id: string }; Body: { state?: unknown } }>('/api/delegations/:id/state', { preHandler: [requireAuth, app.rateLimit({ max: 60, timeWindow: '10 minutes' })] }, async (req, reply) => {
     const state = req.body?.state;
     if (state !== 'active' && state !== 'paused') return reply.status(400).send({ error: 'state must be active or paused' });
-    const grant = await repo().get(req.params.id);
+    const grant = await repo().getFor(req.userId, req.params.id);
     if (!grant || grant.owner_user_id !== req.userId || grant.state === 'revoked' || grant.state === 'promoted' || grant.state === 'pending') return reply.status(404).send({ error: 'not found' });
     await repo().setState(req.userId, grant.id, state, new Date().toISOString());
     return reply.send({ ok: true, profile_id: grant.profile_id });
@@ -101,7 +101,7 @@ export async function delegationRoutes(app: FastifyInstance, opts: DelegationRou
   // Ends a grant. It changes who can open a profile, so the password is asked again, as for the other settings that do. The answer names the
   // profile, because its key must be replaced next (the rotation route below).
   app.post<{ Params: { id: string } }>('/api/delegations/:id/revoke', { preHandler: [requireAuth, requireRecentAuth, app.rateLimit({ max: 60, timeWindow: '10 minutes' })] }, async (req, reply) => {
-    const grant = await repo().get(req.params.id);
+    const grant = await repo().getFor(req.userId, req.params.id);
     if (!grant || grant.owner_user_id !== req.userId || grant.state === 'revoked' || grant.state === 'promoted') return reply.status(404).send({ error: 'not found' });
     await repo().setState(req.userId, grant.id, 'revoked', new Date().toISOString());
     return reply.send({ ok: true, profile_id: grant.profile_id });
@@ -109,7 +109,7 @@ export async function delegationRoutes(app: FastifyInstance, opts: DelegationRou
 
   // The delegate gives the access up. The owner is told to replace the key the next time they sign in (the owner's page asks).
   app.delete<{ Params: { id: string } }>('/api/delegations/:id', { preHandler: [requireAuth] }, async (req, reply) => {
-    const grant = await repo().get(req.params.id);
+    const grant = await repo().getFor(req.userId, req.params.id);
     if (!grant || grant.delegate_user_id !== req.userId || !(await repo().leave(req.userId, grant.id, new Date().toISOString()))) return reply.status(404).send({ error: 'not found' });
     return reply.send({ ok: true });
   });
@@ -156,7 +156,7 @@ export async function delegationRoutes(app: FastifyInstance, opts: DelegationRou
 
   /** The grant the request names, if it is this account's and live; the owner's vault and the profile it may reach. */
   const scopeOf = async (req: FastifyRequest<{ Params: { grant: string } }>): Promise<{ ownerId: string; scope: ObjectScope; grant: DelegationRecord } | null> => {
-    const grant = await repo().get(req.params.grant);
+    const grant = await repo().getFor(req.userId, req.params.grant);
     if (!grant || grant.delegate_user_id !== req.userId || grant.state !== 'active') return null;
     return { ownerId: grant.owner_user_id, scope: { profileId: grant.profile_id, write: grant.role !== 'viewer' }, grant };
   };
@@ -202,7 +202,7 @@ export async function delegationRoutes(app: FastifyInstance, opts: DelegationRou
       }
       const bytes = Buffer.from(body, 'base64url');
       const store = getAccountsStore();
-      const grant = await repo().get(req.params.id);
+      const grant = await repo().getFor(req.userId, req.params.id);
       if (!grant || grant.delegate_user_id !== req.userId) return reply.status(404).send({ error: 'not found' });
       const done = await repo().promote(req.userId, grant.id, { profileWrapped, profileSize: bytes.length, objects: objectList.map(o => ({ id: o.id as string, wrappedKey: o.wrapped_key as string })), grants: grantList.map(g => ({ id: g.id as string, wrappedKey: g.wrapped_key as string })), former: { grantId: randomUUID(), wrappedKey: formerKey } }, new Date().toISOString(),
         async move => {

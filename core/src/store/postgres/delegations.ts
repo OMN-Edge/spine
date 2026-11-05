@@ -75,8 +75,8 @@ export function delegationRepository(q: Query, begin: Begin): DelegationReposito
     async complete(delegateId, id, wrappedKey, now) {
       return (await changed(q, "UPDATE delegations SET wrapped_key = $1, state = 'active', updated_at = $2 WHERE id = $3 AND delegate_user_id = $4 AND state = 'pending'", [wrappedKey, now, id, owner(delegateId)])) === 1;
     },
-    async get(id) {
-      const r = await one(q, `SELECT ${COLUMNS} FROM delegations WHERE id = $1`, [id]);
+    async getFor(actingUserId, id) {
+      const r = await one(q, `SELECT ${COLUMNS} FROM delegations WHERE id = $1 AND (owner_user_id = $2 OR delegate_user_id = $2)`, [id, owner(actingUserId)]);
       return r ? asGrant(r) : null;
     },
     async ownedBy(ownerId) {
