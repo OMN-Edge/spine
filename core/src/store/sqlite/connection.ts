@@ -91,6 +91,8 @@ function addColumnsInPlace(db: Database): void {
 
   // Whether the administrator has approved the account (SPINE_REGISTRATION=approval). Every account from before is.
   if (accounts.length > 0 && !accounts.includes('approved')) db.exec('ALTER TABLE users ADD COLUMN approved INTEGER NOT NULL DEFAULT 1');
+  // Whether an emailed link may recover the account (S-38): on for every account from before.
+  if (accounts.length > 0 && !accounts.includes('email_recovery')) db.exec('ALTER TABLE users ADD COLUMN email_recovery INTEGER NOT NULL DEFAULT 1');
 
   // The emergency card is a sealed bundle of its own kind; every earlier bundle is a share.
   const bundles = columnsOf(db, 'shared_bundles');

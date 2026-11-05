@@ -159,6 +159,8 @@ export interface UserRecord {
   email_verified_at: string | null;
   /** 0 until the administrator approves an account that signed up under `SPINE_REGISTRATION=approval`; such an account has no session. */
   approved: number;
+  /** 1 unless the owner turned off recovery by email: then no recovery mail is sent and a link alone cannot start the records over (SECURITY.md S-38). */
+  email_recovery: number;
   created_at: string;
   health_consent_at: string | null;
   health_consent_version: string | null;
@@ -227,6 +229,8 @@ export interface UserRepository {
   markVerified(id: string, at: string): Promise<void>;
   /** Approves an account that was waiting, and confirms its address if it was not (the administrator vouches for it). False if it was not waiting. */
   approve(id: string, at: string): Promise<boolean>;
+  /** The owner's choice whether an emailed link may recover the account (`UserRecord.email_recovery`). */
+  setEmailRecovery(id: string, on: boolean): Promise<void>;
   createToken(token: NewUserToken): Promise<void>;
   /**
    * Spends a token and returns whose it was, or null if it is unknown, the wrong

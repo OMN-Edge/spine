@@ -62,6 +62,10 @@ export function userRepository(q: Query, begin: Begin): UserRepository {
       await q('UPDATE users SET email_verified_at = $1 WHERE id = $2 AND email_verified_at IS NULL', [at, id]);
     },
 
+    async setEmailRecovery(id, on) {
+      await q('UPDATE users SET email_recovery = $1 WHERE id = $2', [on ? 1 : 0, id]);
+    },
+
     async approve(id, at) {
       return (await changed(q, 'UPDATE users SET approved = 1, email_verified_at = COALESCE(email_verified_at, $1) WHERE id = $2 AND approved = 0', [at, id])) === 1;
     },

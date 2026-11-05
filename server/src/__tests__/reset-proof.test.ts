@@ -1,7 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { generateKeyPairSync, sign, type KeyObject } from 'crypto';
 import { buildTestApp, loginAs } from './helpers/app.js';
-import { OWNER_ID } from './helpers/seed.js';
+import { createTestUser } from './helpers/seed.js';
+
+/** Its own account: the files the tests put in the shared data directory are not another test file's (`user-owner`'s are). */
+const OWNER_ID = 'user-reset-proof';
+const OWNER_EMAIL = 'proof@spine.test';
 import { fakeAuthValue, fakeVaultKeys } from 'spine-core/testing/vault.js';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { issueUserToken } from '../accounts.js';
@@ -16,6 +20,7 @@ let app: Awaited<ReturnType<typeof buildTestApp>>;
 beforeEach(async () => {
   resetMailer({ enabled: true, async send() {} });
   app = await buildTestApp({ accounts: { registration: 'open' } });
+  await createTestUser(OWNER_EMAIL, { id: OWNER_ID });
 });
 afterEach(async () => { await app.close(); resetMailer(null); });
 
@@ -121,14 +126,14 @@ describe('the verifier', () => {
   const call = (cookie: string, method: 'GET' | 'PUT', url: string, payload?: unknown) => app.inject({ method, url, payload: payload as object, headers: { cookie } });
 
   it('is stored with a new vault', async () => {
-    const cookie = await loginAs(app);
+    const cookie = await loginAs(app, OWNER_EMAIL);
     const verifier = signer().verifier;
     expect((await call(cookie, 'PUT', '/api/vault/keys', { auth_value: fakeAuthValue(), keys: { ...fakeVaultKeys(), reset_verifier: verifier } })).statusCode).toBe(200);
     expect((await call(cookie, 'GET', '/api/vault/keys')).json()).toMatchObject({ reset_verifier: verifier });
   });
 
   it('is added by a signed-in device to a vault that has none, once', async () => {
-    const cookie = await loginAs(app);
+    const cookie = await loginAs(app, OWNER_EMAIL);
     await store().vault.putKeys(OWNER_ID, asRecord(fakeVaultKeys()), new Date().toISOString());
     const first = signer().verifier;
     expect((await call(cookie, 'PUT', '/api/vault/reset-verifier', { reset_verifier: first })).statusCode).toBe(200);
@@ -138,7 +143,7 @@ describe('the verifier', () => {
   });
 
   it('is refused in a shape that is not a public key, and without a session', async () => {
-    const cookie = await loginAs(app);
+    const cookie = await loginAs(app, OWNER_EMAIL);
     await store().vault.putKeys(OWNER_ID, asRecord(fakeVaultKeys()), new Date().toISOString());
     expect((await call(cookie, 'PUT', '/api/vault/reset-verifier', { reset_verifier: 'short' })).statusCode).toBe(400);
     expect((await app.inject({ method: 'PUT', url: '/api/vault/reset-verifier', payload: { reset_verifier: signer().verifier } })).statusCode).toBe(401);

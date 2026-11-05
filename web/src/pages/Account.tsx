@@ -11,6 +11,7 @@ import PlanCard from '../components/PlanCard';
 import Passkeys from '../components/Passkeys';
 import AddDevice from '../components/AddDevice';
 import RecoveryKitSettings from '../components/RecoveryKitSettings';
+import EmailRecovery from '../components/EmailRecovery';
 import { checkPasswordPolicy } from '../crypto/password-policy';
 import { useI18n } from '../i18n';
 
@@ -86,6 +87,7 @@ export default function Account() {
         <TwoFactor />
         <Passkeys />
         <RecoveryKitSettings />
+        <EmailRecovery />
 
         <h2 id="devices" className={heading}>{t('Devices')}</h2>
         <AddDevice />

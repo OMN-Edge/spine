@@ -1719,5 +1719,12 @@
  "Your password was accepted, so there is no need to change it. Try again, and if it keeps happening, copy the details and send them to support.": "Parola dumneavoastră a fost acceptată, deci nu trebuie să o schimbați. Încercați din nou, iar dacă se repetă, copiați detaliile și trimiteți-le echipei de asistență.",
  "Copy details for support": "Copiați detaliile pentru asistență",
  "Details for support": "Detalii pentru asistență",
- "What is copied": "Ce se copiază"
+ "What is copied": "Ce se copiază",
+ "Could not change this setting": "Nu am putut schimba această setare",
+ "Recovery by email": "Recuperare prin e-mail",
+ "If you forget your password, a link sent to your email can reset it. With your recovery kit your records stay as they are.": "Dacă uitați parola, un link trimis pe e-mail o poate reseta. Cu kitul de recuperare, documentele dumneavoastră rămân neschimbate.",
+ "No recovery email is sent. Your password and your recovery kit are the only way back in: without both, your records cannot be recovered.": "Nu se trimite niciun e-mail de recuperare. Parola și kitul de recuperare sunt singura cale de a reintra: fără amândouă, documentele nu pot fi recuperate.",
+ "Turn off recovery by email": "Dezactivează recuperarea prin e-mail",
+ "Turn on recovery by email": "Activează recuperarea prin e-mail",
+ "Recovery by email is turned off for this account, so only your recovery kit can reset it.": "Recuperarea prin e-mail este dezactivată pentru acest cont, deci doar kitul de recuperare îl poate reseta."
 }

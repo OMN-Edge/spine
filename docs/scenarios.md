@@ -69,9 +69,18 @@ The owner asks for a reset. With a mailer they get a link by email; without one,
 - The mail has no document content and no clinical words.
 - For an account with a vault the page asks for the **recovery kit** and a new password: the kit opens the account key on the device, which is sealed again under the new password, and the records stay readable. A mistyped kit is caught by its check characters; a kit from another account does not open this one.
 - Without the kit the page says that the records cannot be opened by anyone, and offers to start empty: every stored object is erased, and a new vault and a new kit are made. Nothing is erased before the person has ticked that they understand.
+- With recovery by email turned off (1.2a) no link is mailed, and the page does not offer to start empty.
 - The link alone never gives access to records: the server holds only the key sealed under the kit. Nor does it replace the keys: the page signs the reset with a key the kit opens, and the server refuses a reset of a vault that has a verifier without that signature.
 
 Status: auto (`accounts`, `mail`, `cli`, `vault`, `reset-second-factor`, and `web/src/e2e/vault.e2e.test.ts` for the kit and the erase path).
+
+### 1.2a Turn off recovery by email
+- The account page has Recovery by email, on for every account, with one line saying what it does now and a button to turn it off or on again. Changing it asks for the password if it was not typed lately, and mails the owner.
+- Off, no recovery mail is sent, and asking for one gets the same answer as for any address. A link, even one the operator issued with `reset-link`, resets only with the recovery kit; it cannot start the records over, and the page says that only the kit can reset the account.
+- It can be turned off only when the records have been opened on a device, so that the kit can always reset the account; otherwise the page asks to open them first.
+- Turned on again, recovery works as in 1.2.
+
+Status: auto (`email-recovery`); screen: hand.
 
 ### 1.3 Turn on two-factor
 The owner scans a QR code, confirms one code, and saves ten recovery codes.

@@ -31,6 +31,8 @@ export default function Reset() {
   const [kit, setKit] = useState('');
   // The second-factor code, when the account has one: the server asks for it with the reset (S-38).
   const [secondFactor, setSecondFactor] = useState(false);
+  // The owner turned off recovery by email: a link cannot start the records over, only reset them with the recovery kit.
+  const [startOverOff, setStartOverOff] = useState(false);
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
@@ -42,7 +44,7 @@ export default function Reset() {
   useEffect(() => {
     if (!token.current) { setMode({ kind: 'bad' }); return; }
     api.auth.resetKeys(token.current)
-      .then(r => { setSecondFactor(r.second_factor === true); setMode(r.vault ? { kind: 'vault', stored: r as unknown as Stored } : { kind: 'legacy' }); })
+      .then(r => { setSecondFactor(r.second_factor === true); setStartOverOff(r.email_recovery === false); setMode(r.vault ? { kind: 'vault', stored: r as unknown as Stored } : { kind: 'legacy' }); })
       .catch(() => setMode({ kind: 'bad' }));
   }, []);
 
@@ -154,7 +156,9 @@ export default function Reset() {
           )}
           {error && <Notice kind="error">{error}</Notice>}
           <button type="submit" disabled={busy} className={`${buttonClass} disabled:opacity-50`}>{busy ? t('Making your keys…') : t('Change password')}</button>
-          <button type="button" onClick={() => { setErasing(true); setError(''); }} className="mt-4 text-sm text-gray-500 hover:underline">{t('I do not have my recovery kit')}</button>
+          {startOverOff
+            ? <p className="mt-4 text-sm text-gray-500">{t('Recovery by email is turned off for this account, so only your recovery kit can reset it.')}</p>
+            : <button type="button" onClick={() => { setErasing(true); setError(''); }} className="mt-4 text-sm text-gray-500 hover:underline">{t('I do not have my recovery kit')}</button>}
         </form>
       ) : (
         <form onSubmit={startOver}>

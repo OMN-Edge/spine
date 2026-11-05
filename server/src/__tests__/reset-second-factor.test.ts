@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { buildTestApp, loginAs } from './helpers/app.js';
-import { OWNER_EMAIL, OWNER_ID, TEST_PASSWORD } from './helpers/seed.js';
+import { TEST_PASSWORD, createTestUser } from './helpers/seed.js';
+
+/** Its own account: the files the tests put in the shared data directory are not another test file's (`user-owner`'s are). */
+const OWNER_ID = 'user-reset-2fa';
+const OWNER_EMAIL = 'twofa@spine.test';
 import { fakeAuthValue, fakeVaultKeys } from 'spine-core/testing/vault.js';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { issueUserToken } from '../accounts.js';
@@ -24,6 +28,7 @@ beforeEach(async () => {
   sent = [];
   resetMailer(fakeMailer);
   app = await buildTestApp({ accounts: { registration: 'open' } });
+  await createTestUser(OWNER_EMAIL, { id: OWNER_ID });
 });
 afterEach(async () => {
   vi.useRealTimers();

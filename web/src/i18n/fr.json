@@ -1719,5 +1719,12 @@
  "Your password was accepted, so there is no need to change it. Try again, and if it keeps happening, copy the details and send them to support.": "Votre mot de passe a été accepté, il n’est donc pas nécessaire de le changer. Réessayez et, si cela se reproduit, copiez les détails et envoyez-les au support.",
  "Copy details for support": "Copier les détails pour le support",
  "Details for support": "Détails pour le support",
- "What is copied": "Ce qui est copié"
+ "What is copied": "Ce qui est copié",
+ "Could not change this setting": "Impossible de modifier ce réglage",
+ "Recovery by email": "Récupération par e-mail",
+ "If you forget your password, a link sent to your email can reset it. With your recovery kit your records stay as they are.": "Si vous oubliez votre mot de passe, un lien envoyé à votre adresse e-mail peut le réinitialiser. Avec votre kit de récupération, vos documents restent tels quels.",
+ "No recovery email is sent. Your password and your recovery kit are the only way back in: without both, your records cannot be recovered.": "Aucun e-mail de récupération n’est envoyé. Votre mot de passe et votre kit de récupération sont le seul moyen de revenir : sans les deux, vos documents ne peuvent pas être récupérés.",
+ "Turn off recovery by email": "Désactiver la récupération par e-mail",
+ "Turn on recovery by email": "Activer la récupération par e-mail",
+ "Recovery by email is turned off for this account, so only your recovery kit can reset it.": "La récupération par e-mail est désactivée pour ce compte : seul votre kit de récupération peut le réinitialiser."
 }

@@ -769,8 +769,20 @@ export const api = {
       await clearSealedCache();
       return req('/api/auth/logout', { method: 'POST' });
     },
-    me: () => req<{ authenticated: boolean; email: string; second_factor_enabled?: boolean; vault?: boolean; consent_needed?: { health: boolean; terms: boolean } }>('/api/auth/me'),
+    me: () => req<{ authenticated: boolean; email: string; second_factor_enabled?: boolean; email_recovery?: boolean; vault?: boolean; consent_needed?: { health: boolean; terms: boolean } }>('/api/auth/me'),
     options: () => req<AuthOptions>('/api/auth/options'),
+    /** Whether an emailed link may recover the account. Turning it off needs the vault's verifier, which a device adds when the records are opened (SECURITY.md S-38). */
+    setEmailRecovery: async (enabled: boolean) => {
+      const send = () => put<{ ok: boolean; email_recovery: boolean }>('/api/account/email-recovery', { enabled });
+      try {
+        return await send();
+      } catch (err) {
+        if (!(err instanceof ApiError) || err.code !== 'verifier_missing') throw err;
+        // A vault from before verifiers has none yet: the open one adds it (the password was just typed), and the request is made again.
+        await vaultState.session()?.ensureResetVerifier();
+        return send();
+      }
+    },
     /** The keys are made on the device; the server gets the derived credential and the sealed keys, never the password. */
     register: (email: string, account: { authValue: string; keys: VaultKeyPayload }, consent: { health_data: boolean; terms: boolean }, ref?: string) =>
       post<{ ok: boolean; message: string; pending?: boolean }>('/api/auth/register', { email, auth_value: account.authValue, keys: account.keys, consent_health_data: consent.health_data, accept_terms: consent.terms, ref }),
@@ -779,7 +791,7 @@ export const api = {
     rewrap: (change: { authValue?: string; keys: VaultKeyPayload }) => post<{ ok: boolean }>('/api/vault/keys/rewrap', { auth_value: change.authValue, keys: change.keys }),
     /** What a reset link is for: the recovery-wrapped key, to open with the kit. */
     resetKeys: (token: string) =>
-      post<{ vault: false; second_factor: boolean } | { vault: true; second_factor: boolean; wrapped_by_recovery: string; public_key: string; wrapped_private_key: string; kdf_params: KdfParams }>('/api/auth/reset/keys', { token }),
+      post<{ vault: false; second_factor: boolean; email_recovery: boolean } | { vault: true; second_factor: boolean; email_recovery: boolean; wrapped_by_recovery: string; public_key: string; wrapped_private_key: string; kdf_params: KdfParams }>('/api/auth/reset/keys', { token }),
     /** Passkeys: sign in with the device; manage them from the account page. */
     passkeys: {
       supported: () => typeof window !== 'undefined' && !!window.PublicKeyCredential,

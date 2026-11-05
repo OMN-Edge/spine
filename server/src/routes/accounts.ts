@@ -221,7 +221,8 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
       const address = normaliseEmail(String(req.body?.email ?? ''));
       const user = isPlausibleEmail(address) ? await getAccountsStore().users.findByEmail(address) : null;
 
-      if (user) {
+      // An owner who turned off recovery by email gets no mail, and the same answer as anyone (S-38).
+      if (user && user.email_recovery !== 0) {
         const token = await issueUserToken(user.id, 'reset', RESET_TTL_MS);
         sendLater(req, user.id, resetMail(user.email, resetLink(token)), 'reset');
       }
@@ -243,8 +244,9 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
       const k = await store.vault.getKeys(userId);
       // Whether the reset will ask for a code, so the page can ask before the person has made new keys.
       const second_factor = await hasSecondFactor(userId);
-      if (!k) return reply.send({ vault: false, second_factor });
-      return reply.send({ vault: true, second_factor, wrapped_by_recovery: k.wrapped_by_recovery, public_key: k.public_key, wrapped_private_key: k.wrapped_private_key, kdf_params: JSON.parse(k.kdf_params) });
+      const email_recovery = (await store.users.findById(userId))?.email_recovery !== 0;
+      if (!k) return reply.send({ vault: false, second_factor, email_recovery });
+      return reply.send({ vault: true, second_factor, email_recovery, wrapped_by_recovery: k.wrapped_by_recovery, public_key: k.public_key, wrapped_private_key: k.wrapped_private_key, kdf_params: JSON.parse(k.kdf_params) });
     },
   );
 
@@ -283,9 +285,17 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
         if (owner && (await store.vault.getKeys(owner))) return reply.status(400).send({ error: 'this account has a vault: reset it from the page, with your recovery kit' });
       }
 
-      // The second factor, before the link is spent: a wrong code leaves it good for the owner. A code is spent when it is right (a step or a
-      // recovery code is used once), and the check is after what could fail on shape, so a bad request does not use one up.
+      // Whose link it is, without spending it: what follows is checked first, so a refusal leaves it good for the owner.
       const holder = await store.users.peekToken(hashUserToken(token), 'reset', new Date().toISOString());
+
+      // The owner turned off recovery by email: a link cannot start the records over. It can still carry a reset signed with the recovery kit,
+      // which is checked below (S-38).
+      if (holder && req.body?.erase === true && (await store.users.findById(holder))?.email_recovery === 0) {
+        return reply.status(403).send({ error: 'recovery by email is turned off for this account', code: 'email_recovery_off' });
+      }
+
+      // The second factor. A code is spent when it is right (a step or a recovery code is used once), and the check is after what could fail on
+      // shape, so a bad request does not use one up.
       if (holder && (await hasSecondFactor(holder))) {
         const code = req.body?.code;
         if (typeof code !== 'string' || !code || code.length > 64) return reply.status(401).send({ error: 'a code from your authenticator or a recovery code is needed', code: 'second_factor_required' });
@@ -297,7 +307,7 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
 
       // The recovery kit, before the link is spent. The link is the mailbox's word and the server cannot open what the kit opens, so a vault with a
       // verifier is replaced only by a request signed for it, over this link and these keys (S-38). Starting over without the kit cannot be
-      // signed for and is not asked to (a window keeps the old vault meanwhile); a vault from before verifiers has none to check until a device adds it.
+      // signed for and is not asked to (an owner who wants it refused turns off recovery by email, above); a vault from before verifiers has none to check until a device adds it.
       if (holder && keys && req.body?.erase !== true) {
         const verifier = (await store.vault.getKeys(holder))?.reset_verifier;
         const params = parseKdfParams(keys.kdf_params);

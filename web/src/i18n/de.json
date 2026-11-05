@@ -1719,5 +1719,12 @@
  "Your password was accepted, so there is no need to change it. Try again, and if it keeps happening, copy the details and send them to support.": "Ihr Passwort wurde akzeptiert, Sie müssen es also nicht ändern. Versuchen Sie es erneut und kopieren Sie die Details für den Support, falls es wieder passiert.",
  "Copy details for support": "Details für den Support kopieren",
  "Details for support": "Details für den Support",
- "What is copied": "Was kopiert wird"
+ "What is copied": "Was kopiert wird",
+ "Could not change this setting": "Diese Einstellung konnte nicht geändert werden",
+ "Recovery by email": "Wiederherstellung per E-Mail",
+ "If you forget your password, a link sent to your email can reset it. With your recovery kit your records stay as they are.": "Wenn Sie Ihr Passwort vergessen, kann ein an Ihre E-Mail-Adresse gesendeter Link es zurücksetzen. Mit Ihrem Wiederherstellungskit bleiben Ihre Unterlagen unverändert.",
+ "No recovery email is sent. Your password and your recovery kit are the only way back in: without both, your records cannot be recovered.": "Es wird keine Wiederherstellungs-E-Mail gesendet. Ihr Passwort und Ihr Wiederherstellungskit sind der einzige Weg zurück: ohne beides können Ihre Unterlagen nicht wiederhergestellt werden.",
+ "Turn off recovery by email": "Wiederherstellung per E-Mail ausschalten",
+ "Turn on recovery by email": "Wiederherstellung per E-Mail einschalten",
+ "Recovery by email is turned off for this account, so only your recovery kit can reset it.": "Die Wiederherstellung per E-Mail ist für dieses Konto ausgeschaltet, daher kann nur Ihr Wiederherstellungskit es zurücksetzen."
 }

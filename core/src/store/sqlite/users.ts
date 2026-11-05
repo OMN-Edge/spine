@@ -36,6 +36,7 @@ export function userRepository(db: Database): UserRepository {
   const list = db.prepare(
     'SELECT id, email, created_at, email_verified_at, approved FROM users ORDER BY created_at',
   );
+  const setEmailRecovery = db.prepare('UPDATE users SET email_recovery = ? WHERE id = ?');
   const approve = db.prepare('UPDATE users SET approved = 1, email_verified_at = COALESCE(email_verified_at, ?) WHERE id = ? AND approved = 0');
   const markVerified = db.prepare(
     'UPDATE users SET email_verified_at = ? WHERE id = ? AND email_verified_at IS NULL',
@@ -245,6 +246,10 @@ export function userRepository(db: Database): UserRepository {
 
     async markVerified(id, at) {
       markVerified.run(at, id);
+    },
+
+    async setEmailRecovery(id, on) {
+      setEmailRecovery.run(on ? 1 : 0, id);
     },
 
     async approve(id, at) {
