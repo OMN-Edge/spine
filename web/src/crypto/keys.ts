@@ -97,7 +97,9 @@ async function unlockWith(key: Uint8Array, context: string, wrapped: string, pay
   const s = await sodium();
   const accountKey = await open(key, fromB64(s, wrapped), context);
   const privateKey = await open(accountKey, fromB64(s, payload.wrapped_private_key), CTX.privateKey);
-  return { accountKey, publicKey: fromB64(s, payload.public_key), privateKey };
+  // The public key is made from the private one and not taken from the server's copy, which could be a key of its own: every key this device
+  // seals to itself, or shows another as its own, is then the one its private half opens (SECURITY.md S-39).
+  return { accountKey, publicKey: s.crypto_scalarmult_base(privateKey), privateKey };
 }
 
 /** Throws `OpenError` for a wrong master key (that is, a wrong password). */

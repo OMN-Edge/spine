@@ -266,4 +266,10 @@ CREATE TABLE IF NOT EXISTS delegations (
 );
 CREATE INDEX IF NOT EXISTS idx_delegations_owner ON delegations(owner_user_id);
 CREATE INDEX IF NOT EXISTS idx_delegations_delegate ON delegations(delegate_user_id);
+-- Each side's key bound to the other through the invitation code, never through the server (S-39, S-41): sealed on a device, opaque here.
+ALTER TABLE profile_invites ADD COLUMN IF NOT EXISTS owner_blob TEXT;
+ALTER TABLE delegations ADD COLUMN IF NOT EXISTS delegate_hello TEXT;
+ALTER TABLE delegations ADD COLUMN IF NOT EXISTS owner_blob TEXT;
+ALTER TABLE delegations ADD COLUMN IF NOT EXISTS delegate_pin TEXT;
+ALTER TABLE delegations ADD COLUMN IF NOT EXISTS owner_pin TEXT;
 `;

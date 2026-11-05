@@ -278,7 +278,8 @@ CREATE TABLE IF NOT EXISTS profile_invites (
   proof_hash TEXT NOT NULL,
   created_at TEXT NOT NULL,
   expires_at TEXT NOT NULL,
-  state TEXT NOT NULL DEFAULT 'offered'
+  state TEXT NOT NULL DEFAULT 'offered',
+  owner_blob TEXT   -- the invitation's key sealed under the owner's account key, so the owner's devices can open the delegate's hello later (S-39)
 );
 CREATE INDEX IF NOT EXISTS idx_profile_invites_owner ON profile_invites(owner_user_id);
 
@@ -291,7 +292,12 @@ CREATE TABLE IF NOT EXISTS delegations (
   wrapped_key TEXT,
   state TEXT NOT NULL DEFAULT 'pending',
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  -- Each side's key bound to the other through the invitation code, never through the server (S-39, S-41); sealed on a device, opaque here.
+  delegate_hello TEXT,
+  owner_blob TEXT,
+  delegate_pin TEXT,
+  owner_pin TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_delegations_owner ON delegations(owner_user_id);
 CREATE INDEX IF NOT EXISTS idx_delegations_delegate ON delegations(delegate_user_id);

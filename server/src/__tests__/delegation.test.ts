@@ -109,7 +109,7 @@ describe('letting another account into a profile', () => {
     expect((await call('PUT', `/api/delegations/${grantId}/key`, guest, { wrapped_key: 'short' })).statusCode).toBe(400);
     expect((await call('PUT', `/api/delegations/${grantId}/key`, guest, { wrapped_key: K('d') })).statusCode).toBe(200);
     const seen = (await call('GET', '/api/delegations', guest)).json();
-    expect(seen.received).toEqual([{ id: grantId, owner_email: 'owner@spine.test', owner_public_key: null, profile_id: PROFILE, role: 'guardian', state: 'active', wrapped_key: K('d'), others: [] }]);
+    expect(seen.received).toEqual([{ id: grantId, owner_email: 'owner@spine.test', owner_public_key: null, profile_id: PROFILE, role: 'guardian', state: 'active', wrapped_key: K('d'), owner_pin: null, delegate_pinned: false, others: [] }]);
     expect((await call('GET', '/api/delegations', owner)).json().owned).toMatchObject([{ id: grantId, delegate_email: 'guest@spine.test', role: 'guardian', state: 'active' }]);
   });
 

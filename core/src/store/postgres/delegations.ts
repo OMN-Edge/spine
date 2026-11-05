@@ -2,11 +2,13 @@ import type { DelegationInvite, DelegationRecord, DelegationRepository } from '.
 import { changed, many, one, type Begin, type Query } from './query.js';
 import { owner } from '../owner.js';
 
-const COLUMNS = 'id, owner_user_id, profile_id, delegate_user_id, role, wrapped_key, state, created_at, updated_at';
+const COLUMNS = 'id, owner_user_id, profile_id, delegate_user_id, role, wrapped_key, state, created_at, updated_at, delegate_hello, owner_blob, delegate_pin, owner_pin';
 const asGrant = (r: Record<string, unknown>): DelegationRecord => ({
   id: r.id as string, owner_user_id: r.owner_user_id as string, profile_id: r.profile_id as string, delegate_user_id: r.delegate_user_id as string,
   role: r.role as DelegationRecord['role'], wrapped_key: (r.wrapped_key as string | null) ?? null, state: r.state as DelegationRecord['state'],
   created_at: r.created_at as string, updated_at: r.updated_at as string,
+  delegate_hello: (r.delegate_hello as string | null) ?? null, owner_blob: (r.owner_blob as string | null) ?? null,
+  delegate_pin: (r.delegate_pin as string | null) ?? null, owner_pin: (r.owner_pin as string | null) ?? null,
 });
 const prefixed = (alias: string) => COLUMNS.split(', ').map(c => `${alias}.${c}`).join(', ');
 
@@ -41,17 +43,24 @@ export function delegationRepository(q: Query, begin: Begin): DelegationReposito
         const seq = await bump(id);
         await copy(seq, update.profileSize, update.profileWrapped, profileId);
         await tombstone(profileId);
-        for (const x of update.grants) await run("UPDATE delegations SET owner_user_id = $1, state = 'paused', wrapped_key = $2, updated_at = $3 WHERE id = $4 AND owner_user_id = $5", [id, x.wrappedKey, now, x.id, from]);
+        // Another person's grant is theirs only by a key the new owner could vouch for, and the new owner has none for them: it ends, and they are
+        // invited again (S-39). One given a key (a caller that can vouch) is paused holding it.
+        for (const x of update.grants) {
+          if (x.wrappedKey === null) await run("UPDATE delegations SET owner_user_id = $1, state = 'revoked', wrapped_key = NULL, updated_at = $2 WHERE id = $3 AND owner_user_id = $4", [id, now, x.id, from]);
+          else await run("UPDATE delegations SET owner_user_id = $1, state = 'paused', wrapped_key = $2, updated_at = $3 WHERE id = $4 AND owner_user_id = $5", [id, x.wrappedKey, now, x.id, from]);
+        }
         // The owner it came from is one of the people who looked after the person: paused like the rest, theirs to be let back in.
-        await run("INSERT INTO delegations (id, owner_user_id, profile_id, delegate_user_id, role, wrapped_key, state, created_at, updated_at) VALUES ($1, $2, $3, $4, 'guardian', $5, 'paused', $6, $6)",
-          [update.former.grantId, id, profileId, from, update.former.wrappedKey, now]);
+        // Each side already holds the other's key as the code gave it, sealed under its own account key: the old grant's pins change places, so the
+        // former owner can tell the new owner's key and the new owner the former's.
+        await run("INSERT INTO delegations (id, owner_user_id, profile_id, delegate_user_id, role, wrapped_key, state, created_at, updated_at, delegate_pin, owner_pin) VALUES ($1, $2, $3, $4, 'guardian', $5, 'paused', $6, $6, $7, $8)",
+          [update.former.grantId, id, profileId, from, update.former.wrappedKey, now, (g.owner_pin as string | null) ?? null, (g.delegate_pin as string | null) ?? null]);
         await run("UPDATE delegations SET state = 'promoted', wrapped_key = NULL, updated_at = $1 WHERE id = $2", [now, grantId]);
         await run('DELETE FROM profile_invites WHERE owner_user_id = $1 AND profile_id = $2', [from, profileId]);
         return { seq, fromUserId: from, objectIds: live };
       });
     },
     async invite(ownerId, i) {
-      await q('INSERT INTO profile_invites (id, owner_user_id, profile_id, role, wrapped, proof_hash, created_at, expires_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)', [i.id, owner(ownerId), i.profileId, i.role, i.wrapped, i.proofHash, i.now, i.expiresAt]);
+      await q('INSERT INTO profile_invites (id, owner_user_id, profile_id, role, wrapped, proof_hash, created_at, expires_at, owner_blob) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)', [i.id, owner(ownerId), i.profileId, i.role, i.wrapped, i.proofHash, i.now, i.expiresAt, i.ownerBlob ?? null]);
     },
     async invites(ownerId, now) {
       return many<DelegationInvite>(q, "SELECT id, profile_id, role, expires_at FROM profile_invites WHERE owner_user_id = $1 AND state = 'offered' AND expires_at > $2 ORDER BY created_at", [owner(ownerId), now]);
@@ -62,18 +71,21 @@ export function delegationRepository(q: Query, begin: Begin): DelegationReposito
     async claim(delegateId, id, proofHash, now, grantId) {
       return begin(async run => {
         // Spent by one statement that also checks the proof, the end and the state: two claims cannot both succeed.
-        const spent = await one<{ owner_user_id: string; profile_id: string; role: DelegationRecord['role']; wrapped: string }>(run,
-          "UPDATE profile_invites SET state = 'used' WHERE id = $1 AND proof_hash = $2 AND state = 'offered' AND expires_at > $3 AND owner_user_id <> $4 RETURNING owner_user_id, profile_id, role, wrapped", [id, proofHash, now, owner(delegateId)]);
+        const spent = await one<{ owner_user_id: string; profile_id: string; role: DelegationRecord['role']; wrapped: string; owner_blob: string | null }>(run,
+          "UPDATE profile_invites SET state = 'used' WHERE id = $1 AND proof_hash = $2 AND state = 'offered' AND expires_at > $3 AND owner_user_id <> $4 RETURNING owner_user_id, profile_id, role, wrapped, owner_blob", [id, proofHash, now, owner(delegateId)]);
         if (!spent) return null;
-        await run("INSERT INTO delegations (id, owner_user_id, profile_id, delegate_user_id, role, state, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, 'pending', $6, $6)", [grantId, spent.owner_user_id, spent.profile_id, delegateId, spent.role, now]);
+        await run("INSERT INTO delegations (id, owner_user_id, profile_id, delegate_user_id, role, state, created_at, updated_at, owner_blob) VALUES ($1, $2, $3, $4, $5, 'pending', $6, $6, $7)", [grantId, spent.owner_user_id, spent.profile_id, delegateId, spent.role, now, spent.owner_blob]);
         return { grant: asGrant((await one(run, `SELECT ${COLUMNS} FROM delegations WHERE id = $1`, [grantId]))!), wrapped: spent.wrapped };
       });
     },
     async peek(delegateId, id, proofHash, now) {
       return one<{ owner_user_id: string; role: DelegationRecord['role']; expires_at: string }>(q, "SELECT owner_user_id, role, expires_at FROM profile_invites WHERE id = $1 AND proof_hash = $2 AND state = 'offered' AND expires_at > $3 AND owner_user_id <> $4", [id, proofHash, now, owner(delegateId)]);
     },
-    async complete(delegateId, id, wrappedKey, now) {
-      return (await changed(q, "UPDATE delegations SET wrapped_key = $1, state = 'active', updated_at = $2 WHERE id = $3 AND delegate_user_id = $4 AND state = 'pending'", [wrappedKey, now, id, owner(delegateId)])) === 1;
+    async complete(delegateId, id, wrappedKey, now, binding) {
+      return (await changed(q, "UPDATE delegations SET wrapped_key = $1, delegate_hello = $2, owner_pin = $3, state = 'active', updated_at = $4 WHERE id = $5 AND delegate_user_id = $6 AND state = 'pending'", [wrappedKey, binding?.hello ?? null, binding?.ownerPin ?? null, now, id, owner(delegateId)])) === 1;
+    },
+    async setPin(ownerId, id, pin) {
+      return (await changed(q, "UPDATE delegations SET delegate_pin = $1, updated_at = $2 WHERE owner_user_id = $3 AND id = $4 AND state IN ('active', 'paused')", [pin, new Date().toISOString(), owner(ownerId), id])) === 1;
     },
     async getFor(actingUserId, id) {
       const r = await one(q, `SELECT ${COLUMNS} FROM delegations WHERE id = $1 AND (owner_user_id = $2 OR delegate_user_id = $2)`, [id, owner(actingUserId)]);

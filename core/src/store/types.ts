@@ -902,13 +902,24 @@ export interface DelegationRecord {
   state: DelegationState;
   created_at: string;
   updated_at: string;
+  /**
+   * What binds each side's key to the other through the invitation code, never through the server (SECURITY.md S-39, S-41). All of it is sealed
+   * on a device and opaque here; null for a grant made before it existed.
+   * `delegate_hello`: the delegate's public key sealed under the key the code makes. `owner_blob`: that invitation key sealed under the owner's
+   * account key, so any of the owner's devices can open the hello later. `delegate_pin`: the delegate's key as the owner verified it, sealed under
+   * the owner's account key. `owner_pin`: the owner's key (as the code carried it) sealed under the delegate's account key.
+   */
+  delegate_hello: string | null;
+  owner_blob: string | null;
+  delegate_pin: string | null;
+  owner_pin: string | null;
 }
 
 export interface DelegationInvite { id: string; profile_id: string; role: DelegationRole; expires_at: string }
 
 export interface DelegationRepository {
   /** The owner's: leaves an invitation for a profile. `proofHash` is what the claimant must show the hash of. */
-  invite(ownerId: string, invite: { id: string; profileId: string; role: DelegationRole; wrapped: string; proofHash: string; now: string; expiresAt: string }): Promise<void>;
+  invite(ownerId: string, invite: { id: string; profileId: string; role: DelegationRole; wrapped: string; proofHash: string; ownerBlob?: string | null; now: string; expiresAt: string }): Promise<void>;
   invites(ownerId: string, now: string): Promise<DelegationInvite[]>;
   cancelInvite(ownerId: string, id: string): Promise<boolean>;
   /**
@@ -918,8 +929,13 @@ export interface DelegationRepository {
   claim(delegateId: string, id: string, proofHash: string, now: string, grantId: string): Promise<{ grant: DelegationRecord; wrapped: string } | null>;
   /** The delegate's, before claiming: who an invitation is from and what it lets them do, under the same conditions as `claim`; it changes nothing. */
   peek(delegateId: string, id: string, proofHash: string, now: string): Promise<{ owner_user_id: string; role: DelegationRole; expires_at: string } | null>;
-  /** The delegate completes a pending grant with the profile key sealed to their own key; false if it is not theirs or not pending. */
-  complete(delegateId: string, id: string, wrappedKey: string, now: string): Promise<boolean>;
+  /**
+   * The delegate completes a pending grant with the profile key sealed to their own key, and, from a device that binds keys through the code,
+   * the hello and the pin of the owner's key; false if it is not theirs or not pending.
+   */
+  complete(delegateId: string, id: string, wrappedKey: string, now: string, binding?: { hello: string; ownerPin: string } | null): Promise<boolean>;
+  /** The owner's: records the delegate's key as this device verified it (`DelegationRecord.delegate_pin`); false if it is not the owner's live grant. */
+  setPin(ownerId: string, id: string, pin: string): Promise<boolean>;
   /** One grant, by its id, only for the account that owns it or holds it; any other account's is not found. It holds a sealed profile key, so there is no lookup without the acting account (SECURITY.md S-63, P12). */
   getFor(actingUserId: string, id: string): Promise<DelegationRecord | null>;
   /** Grants of the owner's profiles, with the delegate's address and public key (to seal a replaced profile key to them). */
@@ -936,8 +952,9 @@ export interface DelegationRepository {
   /**
    * Promotion at eighteen (CR-FAM-02, SECURITY.md **M-51**): the person the profile is of (the `self` grant's delegate) takes it into a vault of
    * their own, in one step. Every live object moves from the owner's vault to theirs with its data key sealed under the new profile key (the
-   * new profile record likewise); the owner's rows become tombstones; every other grant of the profile moves to the new owner, paused, with
-   * the new key sealed to its holder; the owner it came from gets a grant of their own (`former.grantId`), a guardian's, paused, with the new
+   * new profile record likewise); the owner's rows become tombstones; every other grant of the profile moves to the new owner and ends (`wrappedKey` null), because the new owner
+   * has no way to know their keys and they never met, so they are invited again, or, given a key, is paused holding it (the one the old owner's
+   * pin of the new owner makes authentic); the owner it came from gets a grant of their own (`former.grantId`), a guardian's, paused, with the new
    * key sealed to them, so the new owner decides whether they come back; the old `self` grant ends; invitations for the profile are cancelled. `before` receives what is to move
    * and runs once the step is known to be possible and before anything changes (it copies the sealed files across), so its failure changes
    * nothing. Not subject to the plan's limits on people or size: nothing is refused because of what a plan holds. Null if it is not possible
@@ -946,7 +963,7 @@ export interface DelegationRepository {
    */
   promote(
     delegateId: string, grantId: string,
-    update: { profileWrapped: string; profileSize: number; objects: Array<{ id: string; wrappedKey: string }>; grants: Array<{ id: string; wrappedKey: string }>; former: { grantId: string; wrappedKey: string } },
+    update: { profileWrapped: string; profileSize: number; objects: Array<{ id: string; wrappedKey: string }>; grants: Array<{ id: string; wrappedKey: string | null }>; former: { grantId: string; wrappedKey: string } },
     now: string, before: (move: { fromUserId: string; profileId: string; objectIds: string[] }) => Promise<void>,
   ): Promise<{ seq: number; fromUserId: string; objectIds: string[] } | null | 'no_vault'>;
   /** The owner's, after a profile key rotates: the new sealed key for each remaining grant of the profile. */

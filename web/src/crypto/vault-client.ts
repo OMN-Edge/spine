@@ -7,7 +7,7 @@ import {
   createAccountKeys, rewrapObjectKey, deriveFromPassword, lock, newId, newProfileKey, openObject, openObjectNow, openProfileKey, openProfileRecord, sealObject, sealProfileRecord,
   resetVerifierOf, unlockWithMaster, unlockWithPasskey, type KdfParams, type UnlockedKeys, type VaultKeyPayload,
 } from './keys.js';
-import { fromInviteCode, makeInvite, openGrantKey, openInvite, sealProfileKeyTo } from './delegation.js';
+import { fromInviteCode, helloFor, inviteKeyFromBlob, makeInvite, openGrantKey, openInvite, openPin, readHello, sealGrantKey, sealPin, sealProfileKeyTo } from './delegation.js';
 
 /**
  * The device's side of the vault: derive the credential, unlock the keys, and move sealed objects to and from the server. Everything
@@ -37,9 +37,9 @@ function readRecord(plain: Uint8Array): Omit<ProfileSummary, 'id'> {
 
 /** What `GET /api/delegations` answers (SECURITY.md M-49). */
 export interface Delegations {
-  owned: Array<{ id: string; profile_id: string; delegate_email: string; delegate_public_key: string | null; role: 'guardian' | 'viewer' | 'self'; state: 'pending' | 'active' | 'paused' | 'revoked'; created_at: string }>;
+  owned: Array<{ id: string; profile_id: string; delegate_email: string; delegate_public_key: string | null; role: 'guardian' | 'viewer' | 'self'; state: 'pending' | 'active' | 'paused' | 'revoked'; created_at: string; delegate_hello: string | null; owner_blob: string | null; delegate_pin: string | null; bound: boolean }>;
   invites: Array<{ id: string; profile_id: string; role: 'guardian' | 'viewer' | 'self'; expires_at: string }>;
-  received: Array<{ id: string; owner_email: string; owner_public_key: string | null; profile_id: string; role: 'guardian' | 'viewer' | 'self'; state: 'pending' | 'active' | 'paused' | 'revoked'; wrapped_key: string | null; others: Array<{ id: string; role: 'guardian' | 'viewer' | 'self'; state: 'pending' | 'active' | 'paused' | 'revoked'; delegate_email: string; delegate_public_key: string | null }> }>;
+  received: Array<{ id: string; owner_email: string; owner_public_key: string | null; profile_id: string; role: 'guardian' | 'viewer' | 'self'; state: 'pending' | 'active' | 'paused' | 'revoked'; wrapped_key: string | null; owner_pin: string | null; delegate_pinned: boolean; others: Array<{ id: string; role: 'guardian' | 'viewer' | 'self'; state: 'pending' | 'active' | 'paused' | 'revoked'; delegate_email: string; delegate_public_key: string | null }> }>;
 }
 
 export interface ObjectList {
@@ -362,8 +362,10 @@ export class VaultSession {
 
   /** Makes an invitation to one of my profiles. The code is for the person to tell the other; it is not kept. */
   async invite(profileId: string, role: 'guardian' | 'viewer' | 'self'): Promise<{ code: string; expiresAt: string }> {
-    const made = await makeInvite(this.keyOf(profileId));
-    const sent = await this.json<{ expires_at: string }>('/api/delegations/invites', 'POST', { id: made.id, profile_id: profileId, role, wrapped: made.wrapped, proof_hash: made.proofHash });
+    // What the code opens holds this account's own public key, and the invitation's key is kept sealed under this account's key, so that the
+    // other person's key reaches this account through the code and not through the server (SECURITY.md S-39, S-41).
+    const made = await makeInvite(this.keyOf(profileId), this.unlocked.publicKey, this.unlocked.accountKey);
+    const sent = await this.json<{ expires_at: string }>('/api/delegations/invites', 'POST', { id: made.id, profile_id: profileId, role, wrapped: made.wrapped, proof_hash: made.proofHash, owner_blob: made.ownerBlob });
     return { code: made.code, expiresAt: sent.expires_at };
   }
 
@@ -396,10 +398,22 @@ export class VaultSession {
     const invite = await fromInviteCode(code);
     const s = await sodium();
     try {
-      const claimed = await this.json<{ grant: { id: string; role: 'guardian' | 'viewer' | 'self'; owner_email: string }; wrapped: string }>('/api/delegations/claim', 'POST', { id: invite.id, proof: invite.proof });
-      const profileKey = await openInvite(invite, claimed.wrapped);
+      const claimed = await this.json<{ grant: { id: string; profile_id: string; role: 'guardian' | 'viewer' | 'self'; owner_email: string }; wrapped: string }>('/api/delegations/claim', 'POST', { id: invite.id, proof: invite.proof });
+      const { profileKey, ownerPublicKey } = await openInvite(invite, claimed.wrapped);
       try {
-        await this.json(`/api/delegations/${encodeURIComponent(claimed.grant.id)}/key`, 'PUT', { wrapped_key: await sealProfileKeyTo(toB64(s, this.unlocked.publicKey), profileKey) });
+        if (ownerPublicKey) {
+          // The owner's key as the code carried it is kept, sealed under this account's key, and this account's own key is sent under the code's key:
+          // each side then knows the other's key without the server's word. The first key is sealed to this account by this account, so a server
+          // cannot put one of its own in its place later (S-39, S-41).
+          await this.json(`/api/delegations/${encodeURIComponent(claimed.grant.id)}/key`, 'PUT', {
+            wrapped_key: await sealGrantKey(this.unlocked, this.unlocked.publicKey, profileKey),
+            hello: await helloFor(invite, this.unlocked.publicKey),
+            owner_pin: await sealPin(this.unlocked.accountKey, claimed.grant.profile_id, ownerPublicKey),
+          });
+        } else {
+          // An invitation made before the code carried the owner's key: the grant it makes is as it was.
+          await this.json(`/api/delegations/${encodeURIComponent(claimed.grant.id)}/key`, 'PUT', { wrapped_key: await sealProfileKeyTo(toB64(s, this.unlocked.publicKey), profileKey) });
+        }
       } finally {
         s.memzero(profileKey);
       }
@@ -438,14 +452,16 @@ export class VaultSession {
     const next = await newProfileKey(this.unlocked, profileId);
     const body = await sealProfileRecord(next.profileKey, profileId, plain);
     const objects = await Promise.all(mine.filter(o => o.kind !== 'profile').map(async o => ({ id: o.id, wrapped_key: await rewrapObjectKey(profileKey, next.profileKey, o.id, o.wrapped_key) })));
-    // The owner it came from is paused like everyone else who looked after the person, holding the new key until let back in.
-    if (!grant.owner_public_key) throw new Error('the owner of these records has no key to seal the new one to');
-    const formerWrappedKey = await sealProfileKeyTo(grant.owner_public_key, next.profileKey);
-    const grants: Array<{ id: string; wrapped_key: string }> = [];
-    for (const other of grant.others) {
-      if (!other.delegate_public_key) throw new Error('someone let in has no key to seal the new one to');
-      grants.push({ id: other.id, wrapped_key: await sealProfileKeyTo(other.delegate_public_key, next.profileKey) });
-    }
+    // The owner it came from is paused, holding the new key until let back in. The key it is sealed to is the one the code gave this account, not
+    // the one the server lists; the box says it is from this account, which the old owner knows by the key it pinned for it (S-39, S-41).
+    const ownerKey = grant.owner_pin ? await openPin(this.unlocked.accountKey, profileId, grant.owner_pin) : null;
+    let formerWrappedKey: string;
+    if (ownerKey) formerWrappedKey = grant.delegate_pinned ? await sealGrantKey(this.unlocked, ownerKey, next.profileKey) : await sealProfileKeyTo(toB64(await sodium(), ownerKey), next.profileKey);
+    else if (grant.owner_public_key) formerWrappedKey = await sealProfileKeyTo(grant.owner_public_key, next.profileKey); // a grant made before keys were bound
+    else throw new Error('the owner of these records has no key to seal the new one to');
+    // Everyone else who looked after the person ends here: this account never met them and has no way to know their keys, so a key sealed to what
+    // the server lists for them would be the server's to take. The new owner invites them again, and that carries each side's key through a code.
+    const grants: Array<{ id: string; wrapped_key: string | null }> = grant.others.map(other => ({ id: other.id, wrapped_key: null }));
     const s = await sodium();
     await this.json(`/api/delegations/${encodeURIComponent(grant.id)}/promote`, 'POST', { profile_wrapped: next.wrapped, profile_body: toB64(s, body), objects, grants, former_wrapped_key: formerWrappedKey });
     s.memzero(profileKey);
@@ -460,7 +476,10 @@ export class VaultSession {
     const out: Array<{ grant: Delegations['received'][number]; profileKey: Uint8Array }> = [];
     for (const grant of received) {
       if (grant.state !== 'active' || !grant.wrapped_key) continue;
-      const profileKey = await openGrantKey(this.unlocked, grant.wrapped_key);
+      // A grant whose keys are bound opens only from the owner's key as the code gave it, or from this account's own; one from before opens as it did.
+      const ownerKey = grant.owner_pin ? await openPin(this.unlocked.accountKey, grant.profile_id, grant.owner_pin) : null;
+      if (grant.owner_pin && !ownerKey) continue;
+      const profileKey = await openGrantKey(this.unlocked, grant.wrapped_key, ownerKey ? [ownerKey, this.unlocked.publicKey] : []);
       if (profileKey) out.push({ grant, profileKey });
     }
     return out;
@@ -491,14 +510,42 @@ export class VaultSession {
     const grants: Array<{ id: string; wrapped_key: string }> = [];
     for (const g of (await this.delegations()).owned) {
       if (g.profile_id !== profileId || (g.state !== 'active' && g.state !== 'paused')) continue;
-      if (!g.delegate_public_key) throw new Error('someone let in has no key to seal the new one to');
-      grants.push({ id: g.id, wrapped_key: await sealProfileKeyTo(g.delegate_public_key, next.profileKey) });
+      grants.push({ id: g.id, wrapped_key: await this.sealForDelegate(g, next.profileKey) });
     }
     await this.json(`/api/vault/profiles/${encodeURIComponent(profileId)}/rotate`, 'POST', { profile_wrapped: next.wrapped, profile_body: toB64(s, body), objects, grants });
     s.memzero(old);
     this.profileKeys.set(profileId, next.profileKey);
     // What this device kept of the profile's objects is sealed under keys that no longer open: read from the server again.
     for (const o of mine) void this.cache?.forget(o.id);
+  }
+
+  /**
+   * The delegate's public key as this account knows it from the code and not from the server's list (SECURITY.md S-39): the pin this account
+   * sealed for it, or, the first time, what the delegate sent under the code's key, which is then pinned. Null for a grant made before keys were
+   * bound, or when what the server holds does not open.
+   */
+  private async verifiedKeyOf(g: Delegations['owned'][number]): Promise<Uint8Array | null> {
+    if (g.delegate_pin) return openPin(this.unlocked.accountKey, g.profile_id, g.delegate_pin);
+    if (!g.delegate_hello || !g.owner_blob) return null;
+    const inviteKey = await inviteKeyFromBlob(this.unlocked.accountKey, g.owner_blob);
+    if (!inviteKey) return null;
+    const key = await readHello(inviteKey, g.delegate_hello);
+    (await sodium()).memzero(inviteKey);
+    // Written down at the server, sealed, so that no device has to open the hello again and the pin outlasts it; best effort.
+    if (key) void this.json(`/api/delegations/${encodeURIComponent(g.id)}/pin`, 'PUT', { pin: await sealPin(this.unlocked.accountKey, g.profile_id, key) }).catch(() => undefined);
+    return key;
+  }
+
+  /**
+   * A profile key sealed for a person let in. To the key the code gave this account for them, as a box from this account that they can tell is
+   * from it. A grant from before keys were bound has no such key: it is sealed to the one the server lists, as it was (S-39, S-41).
+   */
+  private async sealForDelegate(g: Delegations['owned'][number], profileKey: Uint8Array): Promise<string> {
+    const verified = await this.verifiedKeyOf(g);
+    if (verified) return g.bound ? sealGrantKey(this.unlocked, verified, profileKey) : sealProfileKeyTo(toB64(await sodium(), verified), profileKey);
+    if (g.delegate_hello || g.delegate_pin) throw new Error('the key of someone let in could not be checked, so the new one is not sealed to them');
+    if (!g.delegate_public_key) throw new Error('someone let in has no key to seal the new one to');
+    return sealProfileKeyTo(g.delegate_public_key, profileKey);
   }
 
   /** Signing out: the keys are wiped from memory. */

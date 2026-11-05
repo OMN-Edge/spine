@@ -51,7 +51,7 @@ export default function Families() {
 
       <Section title={t('At eighteen')}>
         <P>{t('At eighteen the records should be theirs. When they choose, they take them into their own account, under a new key. It cannot be undone, and only they can do it.')}</P>
-        <P>{t('The people who looked after them are paused, and they decide, one by one, who comes back in. An emergency card you made for them goes with them, and its printed code keeps working.')}</P>
+        <P>{t('The people who looked after them lose access: you are paused, and they decide whether you come back in; anyone else has to be invited again. An emergency card you made for them goes with them, and its printed code keeps working.')}</P>
         <P>{t('If they have no account yet, the records stay with you until you invite them.')}</P>
       </Section>
 

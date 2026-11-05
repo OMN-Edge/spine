@@ -202,7 +202,7 @@ export default function Profiles() {
         </section>
       )}
       {joined && current?.shared && <Notice kind="ok">{current.name === joined ? t('You are now in the records {owner} shared with you. Switch between people from the menu at the top of the page.', { owner: joined }) : t('You are now in {name}’s records, shared by {owner}. Switch between people from the menu at the top of the page.', { name: current.name, owner: joined })}</Notice>}
-      {tookOver && <Notice kind="ok">{t('These records are yours now. Everyone who looked after them is paused until you let them back in: you decide below, one by one.')}</Notice>}
+      {tookOver && <Notice kind="ok">{t('These records are yours now. The person who kept them before is paused until you let them back in, and anyone else who looked after them has to be invited again by you.')}</Notice>}
 
       <ul className="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100">
         {people.profiles.map(p => (
@@ -228,7 +228,7 @@ export default function Profiles() {
             {p.shared?.role === 'self' && isAdult(p.born) && (
               <div className="mt-2 text-sm bg-brand-50 rounded-lg px-3 py-2 text-brand-900">
                 <p className="font-medium">{t('You are 18: these records can be yours.')}</p>
-                <p className="mt-1 text-xs">{t('Taking them over moves them into your own account, under a new key that only your account opens. Everyone who looked after you, {owner} included, is paused until you let them back in, one by one. This cannot be undone.', { owner: p.shared.owner })}</p>
+                <p className="mt-1 text-xs">{t('Taking them over moves them into your own account, under a new key that only your account opens. {owner} is paused until you let them back in, and anyone else who looked after you has to be invited again. This cannot be undone.', { owner: p.shared.owner })}</p>
                 {taking === p.id
                   ? <button disabled={busy} className="mt-2 rounded-full bg-brand-600 px-3 py-1 text-white" onClick={() => void takeOver(p.id)}>{t('Yes, take them over')}</button>
                   : <button className="mt-2 underline" onClick={() => setTaking(p.id)}>{t('Take over my records')}</button>}

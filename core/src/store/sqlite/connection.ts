@@ -62,6 +62,14 @@ function addColumnsInPlace(db: Database): void {
   const vaultKeys = columnsOf(db, 'vault_keys');
   if (vaultKeys.length > 0 && !vaultKeys.includes('reset_verifier')) db.exec('ALTER TABLE vault_keys ADD COLUMN reset_verifier TEXT');
 
+  // Each side's key bound to the other through the invitation code (S-39, S-41): grants and invitations from before have none.
+  const invites = columnsOf(db, 'profile_invites');
+  if (invites.length > 0 && !invites.includes('owner_blob')) db.exec('ALTER TABLE profile_invites ADD COLUMN owner_blob TEXT');
+  const grants = columnsOf(db, 'delegations');
+  for (const column of ['delegate_hello', 'owner_blob', 'delegate_pin', 'owner_pin']) {
+    if (grants.length > 0 && !grants.includes(column)) db.exec(`ALTER TABLE delegations ADD COLUMN ${column} TEXT`);
+  }
+
   const pages = columnsOf(db, 'pages');
   if (pages.length > 0 && !pages.includes('hidden')) {
     db.transaction(() => {
