@@ -16,6 +16,9 @@ export interface WindowLimit {
   windowMs: number;
 }
 
+/** The most keys one limiter holds; an attacker with a great many source addresses cannot make the map grow past it. */
+const MAX_KEYS = 100_000;
+
 export function windowLimiter(
   limit: WindowLimit,
   keyOf: (req: FastifyRequest) => string | null,
@@ -28,9 +31,14 @@ export function windowLimiter(
     if (key === null) return; // nothing to key on (e.g. no email in the body)
 
     const now = Date.now();
+    // The map is in the order the windows began (a key is added when its window starts and removed when it ends), so the first key that has
+    // not expired ends the walk: a request pays for the keys that ended, not for every key there is (SECURITY.md S-53).
     for (const [k, w] of windows) {
-      if (now - w.start >= limit.windowMs) windows.delete(k);
+      if (now - w.start < limit.windowMs) break;
+      windows.delete(k);
     }
+    // And never more keys than a small host should hold: past the ceiling the oldest windows end early.
+    while (windows.size >= MAX_KEYS) windows.delete(windows.keys().next().value as string);
 
     const current = windows.get(key) ?? { start: now, count: 0 };
     current.count += 1;
