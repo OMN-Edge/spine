@@ -2,6 +2,7 @@ import {
   createCipheriv,
   createDecipheriv,
   createHash,
+  scrypt,
   createHmac,
   hkdfSync,
   randomBytes,
@@ -160,7 +161,7 @@ const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const RECOVERY_LENGTH = 10;
 export const RECOVERY_CODE_COUNT = 10;
 
-/** `XXXXX-XXXXX`: 50 bits. Random, so a fast hash at rest is enough (as for share tokens). */
+/** `XXXXX-XXXXX`: 50 bits, which is why they are stored with a slow hash (`hashRecoveryCode`). */
 export function generateRecoveryCode(): string {
   let code = '';
   for (let i = 0; i < RECOVERY_LENGTH; i++) code += CODE_ALPHABET[randomInt(CODE_ALPHABET.length)];
@@ -175,6 +176,19 @@ export function normaliseRecoveryCode(input: string): string | null {
   return code;
 }
 
-export function hashRecoveryCode(normalised: string): string {
+/**
+ * What is stored for a recovery code: scrypt over the code, salted with the account's id (SECURITY.md S-42). A code is 50 bits, and a plain
+ * SHA-256 of 50 bits falls to one graphics card in about a day for anyone with a copy of the database, which finds one of an account's ten
+ * and stands in for the authenticator at the second step; a slow hash makes each guess cost what a password's does. It does not depend on
+ * `SESSION_SECRET`, so the codes still work if that changes (S-21).
+ */
+export async function hashRecoveryCode(normalised: string, userId: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    scrypt(normalised, `spine/recovery-code/v1:${userId}`, 32, { N: 2 ** 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 }, (err, key) => (err ? reject(err) : resolve(key.toString('hex'))));
+  });
+}
+
+/** How a code was stored before it was stored slowly: still accepted, once, from a code made then, until the codes are made again. */
+export function legacyHashRecoveryCode(normalised: string): string {
   return createHash('sha256').update(normalised).digest('hex');
 }
