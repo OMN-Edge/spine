@@ -7,6 +7,6 @@ import type { OpenDatabase } from 'spine-core/store/sqlite/driver.js';
 /** The server's driver. The browser does not import this file, so the native module stays out of its bundle. */
 export const openNative: OpenDatabase = location => {
   // A database on disk gets its folder; the engine's adapter in core knows nothing of folders.
-  if (location !== ':memory:') mkdirSync(path.dirname(location), { recursive: true });
+  if (location !== ':memory:') mkdirSync(path.dirname(location), { recursive: true, mode: 0o700 });
   return new Native(location) as unknown as ReturnType<OpenDatabase>;
 };

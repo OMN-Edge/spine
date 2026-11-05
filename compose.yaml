@@ -52,6 +52,8 @@ services:
     environment:
       SESSION_SECRET: ""
       BREVO_API_KEY: ""
+      PADDLE_API_KEY: ""
+      PADDLE_WEBHOOK_SECRET: ""
       SPINE_RELAY_ORIGIN: https://${SPINE_DOMAIN}
       SPINE_RELAY_PORT: "8080"
       # The daily count, kept across restarts; one relay instance uses this file

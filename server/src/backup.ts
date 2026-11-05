@@ -1,3 +1,4 @@
+import { privateByDefault, keepPrivate } from './permissions.js';
 import { existsSync, mkdirSync, readdirSync, statSync, copyFileSync, rmSync, utimesSync } from 'fs';
 import path from 'path';
 import { getAccountsStore } from 'spine-core/store/index.js';
@@ -76,7 +77,7 @@ function mirrorVault(from: string, to: string): number {
     if (!user.isDirectory()) continue;
     const sourceDir = path.join(from, user.name);
     const targetDir = path.join(to, user.name);
-    mkdirSync(targetDir, { recursive: true });
+    mkdirSync(targetDir, { recursive: true, mode: 0o700 });
 
     const held = new Set<string>();
     for (const entry of readdirSync(sourceDir, { withFileTypes: true })) {
@@ -123,7 +124,7 @@ export async function runBackup({
   database = true,
   files = true,
 }: BackupOptions): Promise<BackupResult> {
-  mkdirSync(backupDir, { recursive: true });
+  mkdirSync(backupDir, { recursive: true, mode: 0o700 });
 
   const snapshot = database ? path.join(backupDir, `${SNAPSHOT_PREFIX}${timestamp(now)}${SNAPSHOT_SUFFIX}`) : null;
   if (snapshot && existsSync(snapshot)) rmSync(snapshot); // VACUUM INTO refuses an existing file
@@ -141,6 +142,7 @@ export async function runBackup({
 
 /** CLI entry point: `node dist/backup.js`, run by spine-backup.service. */
 async function main(): Promise<void> {
+  privateByDefault();
   useAccountsStore();
   const dataDir = resolveDataDir();
   const backupDir = resolveBackupDir();
@@ -151,6 +153,8 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  const closed = keepPrivate([dataDir, backupDir]);
+  if (closed.length > 0) console.log(`backup: closed to other users: ${closed.join(', ')}`);
   const result = await runBackup({ dataDir, backupDir, keep, database: loadStoreConfig().adapter === 'sqlite', files: objects().kind === 'filesystem' });
   console.log(
     `backup: ${result.snapshot ?? 'database left to its host'}, ` +

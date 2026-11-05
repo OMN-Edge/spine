@@ -14,7 +14,7 @@ ExecStart=/usr/bin/node SPINE_DIR/server/dist/relay/main.js
 EnvironmentFile=SPINE_DIR/.env
 EnvironmentFile=SPINE_DIR/relay.env
 # The server's secrets are not the relay's to hold; this applies after both files
-UnsetEnvironment=SESSION_SECRET BREVO_API_KEY
+UnsetEnvironment=SESSION_SECRET BREVO_API_KEY PADDLE_API_KEY PADDLE_WEBHOOK_SECRET
 Environment=NODE_ENV=production
 # Loopback only, behind nginx; not PORT, which is the server's. The port is SPINE_RELAY_PORT in .env (default 8080), written by install.sh -r
 Environment=SPINE_RELAY_HOST=127.0.0.1

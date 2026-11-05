@@ -21,9 +21,10 @@ export function createFilesystemObjects(root: () => string): ObjectStore {
 
     async put(key, bytes) {
       const target = inside(checkKey(key));
-      fs.mkdirSync(path.dirname(target), { recursive: true });
+      // Asked for, not left to the umask: a sealed object is for the server's user alone (SECURITY.md S-61).
+      fs.mkdirSync(path.dirname(target), { recursive: true, mode: 0o700 });
       const staged = `${target}.${randomUUID()}.part`;
-      fs.writeFileSync(staged, bytes);
+      fs.writeFileSync(staged, bytes, { mode: 0o600 });
       fs.renameSync(staged, target);
     },
 

@@ -28,7 +28,8 @@ import { remindCardReviews, sharedRoutes, shareShellRoutes, sweepShares } from '
 import { sweepSessions } from './sessions.js';
 import { decorateAuth } from 'spine-core/routes/middleware.js';
 import { getAccountsStore } from 'spine-core/store/index.js';
-import { ConfigError } from 'spine-core/config.js';
+import { ConfigError, resolveBackupDir, resolveDataDir } from 'spine-core/config.js';
+import { keepPrivate, privateByDefault } from './permissions.js';
 import { loadConfig, sessionLimits, type Config } from './config.js';
 import { useLogger } from 'spine-core/logger.js';
 import { useAccountsStore } from './store.js';
@@ -55,6 +56,11 @@ useAccountsStore();
 useSessionAuth();
 
 const config = loadConfigOrExit();
+// What this process makes is for its own user alone, and the directories that hold the data and its backups are closed to everyone else, whatever
+// mode earlier files were made with (SECURITY.md S-61).
+privateByDefault();
+const closed = keepPrivate([resolveDataDir(), resolveBackupDir()]);
+if (closed.length > 0) console.log(`closed to other users: ${closed.join(', ')}`);
 // A bad SPINE_OBJECTS stops the process here and not at the first upload.
 try { objects(); } catch (err) { console.error(err instanceof Error ? err.message : String(err)); process.exit(1); }
 
