@@ -7,6 +7,7 @@ import { sharedLimits } from '../config.js';
 import { accountEntitlements, liveSharesFor } from '../billing/entitlements.js';
 import { BLOB_NAME, SHARE_ID, blobNames, readBlob, removeBlob, removeBlobs, removeShare, streamBlob, streamBundle, writeBlob, writeBundle } from '../shared-files.js';
 import { readSlots } from '../read-slots.js';
+import { readBudget } from '../read-budget.js';
 import { spaceFor } from '../disk-space.js';
 
 /** The most page images one share may hold. */
@@ -120,6 +121,12 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     let opened: Awaited<ReturnType<typeof open>>;
     try { opened = await open(); } catch (err) { release(); throw err; }
     if (!opened) { release(); return reply.status(404).send({ error: 'not found' }); }
+    // In bytes an hour for this source and share, so a known id does not let one source pull a large copy again and again (S-57).
+    if (!readBudget.take(`${what}:${req.ip ?? ''}`, opened.size)) {
+      opened.body.destroy();
+      release();
+      return reply.status(429).send({ error: 'this has been read a great deal from here; try again later', code: 'read_budget' });
+    }
     opened.body.once('close', release);
     opened.body.on('error', err => req.log.error({ err }, 'a sealed copy could not be read to the end'));
     return reply.type('application/octet-stream').header('content-length', String(opened.size)).header('Cache-Control', 'no-store').header('X-Robots-Tag', 'noindex, nofollow').send(opened.body);
