@@ -93,6 +93,7 @@ export function serveRelay(): void {
     // Plans, when the instance has them (SPINE_BILLING=on); the relay reads the same accounts store the server does.
     gate: billingOn() ? createRelayGate(getAccountsStore) : undefined,
     maxBodyBytes: 32 * 1024 * 1024,
+    maxShareBodyBytes: count(process.env.SPINE_RELAY_SHARE_MAX_KB, 512) * 1024,
     clients,
     embedder: getEmbedder,
     // One line a call, and never a word of what it carried.

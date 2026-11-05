@@ -40,6 +40,8 @@ export interface RelayConfig {
   /** Plans (`billing/gate.ts`): whether an account's plan includes a task and has allowance left, and what a call cost. Absent: no plans, only the daily counts. */
   gate?: RelayGate;
   maxBodyBytes: number;
+  /** The largest request a share's pass may send (default 512 KiB): a recipient's question or translation is small, and a count of calls is no bound on cost while their size is free (SECURITY.md S-49). */
+  maxShareBodyBytes?: number;
   /** The clients for a model id (the default when undefined), or null when that model is not offered. */
   clients: (model: string | undefined) => TaskClients | null;
   embedder: () => Embedder;
@@ -49,6 +51,9 @@ export interface RelayConfig {
 
 /** The count of every demo call together: no pass is ever for it, since an address's hash never has the `*`. */
 const DEMO_TOTAL = 'demo:*';
+
+/** What a demo visitor's browser asks for: reading the files it uploads, and nothing else (SECURITY.md M-39, S-49). */
+const DEMO_TASKS: ReadonlySet<RelayTask> = new Set<RelayTask>(['continuation', 'extraction', 'page', 'pageThinking', 'stamps', 'grouping']);
 
 /** What a recipient's browser asks the relay for: translations, questions (the agent and the plain answer) and the search's embeddings. */
 const SHARE_TASKS: ReadonlySet<RelayTask> = new Set<RelayTask>(['translation', 'chat', 'agent', 'embed']);
@@ -72,12 +77,14 @@ export function createRelay(config: RelayConfig) {
     return (await config.usage.spend(subject, day, subject.startsWith('share:') ? config.dailySharedCalls : config.dailyCalls)) !== null;
   };
 
-  async function body(req: IncomingMessage): Promise<Buffer | null> {
+  const bodyLimit = (subject: string): number => (subject.startsWith('share:') ? Math.min(config.maxShareBodyBytes ?? 512 * 1024, config.maxBodyBytes) : config.maxBodyBytes);
+
+  async function body(req: IncomingMessage, limit: number): Promise<Buffer | null> {
     const chunks: Buffer[] = [];
     let size = 0;
     for await (const chunk of req) {
       size += (chunk as Buffer).length;
-      if (size > config.maxBodyBytes) return null;
+      if (size > limit) return null;
       chunks.push(chunk as Buffer);
     }
     return Buffer.concat(chunks);
@@ -203,11 +210,16 @@ export function createRelay(config: RelayConfig) {
     // A share's pass is given to whoever holds its link, so it runs only what a recipient does: reading, translating, asking and searching
     // (S-48). Turned away before it is counted, so a refused call does not use the share's day.
     if (who.userId.startsWith('share:') && !SHARE_TASKS.has(relayTask)) return refuse(403, 'a share’s pass does not run this call', 'task_not_for_share');
+    // A demo reads uploads and nothing else (S-49).
+    if (who.userId.startsWith('demo:') && !DEMO_TASKS.has(relayTask)) return refuse(403, 'a demo’s pass does not run this call', 'task_not_for_demo');
+    // A request over what this kind of pass needs is turned away before it is counted, when its length is known.
+    const declared = Number(req.headers['content-length']);
+    if (Number.isFinite(declared) && declared > bodyLimit(who.userId)) return refuse(413, 'too large', 'too_large');
     if (!(await spend(who.userId))) return refuse(429, 'the daily allowance of model calls is used up');
     const refusal = await config.gate?.admit(who.userId, relayTask);
     if (refusal) return refuse(refusal.status, refusal.error, refusal.code);
 
-    const payload = await body(req);
+    const payload = await body(req, bodyLimit(who.userId));
     if (!payload) return reply(res, 413, 'too large');
     const ok = isEmbed ? await runEmbed(res, payload, started) : await runTask(task as LlmTask, req, res, payload, started);
     if (ok) await config.gate?.settle(who.userId, relayTask, payload.length).catch(() => log({ task: relayTask, note: 'the call could not be charged to the plan' }));
