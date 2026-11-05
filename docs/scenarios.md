@@ -589,7 +589,7 @@ When making a link the owner ticks **Ask me before anyone opens it**. Whoever op
 Status: auto (`shared`, `share-manage`).
 
 ### 7.3 Let the recipient ask questions
-When making a link the owner ticks **Let the recipient ask questions**. The recipient's page then has an **Ask** button; they type a question and the assistant answers from the shared documents.
+When making a link the owner ticks **Let the recipient ask questions**, which asks for the password again if it was not typed lately, as scans do, and says that the copy then also holds the text of every shared page as printed, with names and numbers. The form says too that the notes the owner wrote on the shared documents go with the link, with or without questions. The recipient's page then has an **Ask** button; they type a question and the assistant answers from the shared documents.
 
 - It answers only from the documents the link shares, and tells the recipient nothing about the rest of the archive however it is asked, including by asking it to ignore the limits. It does not know the care chain between documents, and it cannot change anything.
 - It knows the asker is a recipient and not the patient: it speaks of "the patient". The label the owner gave the link is context for it (a purpose, a name), not an instruction.

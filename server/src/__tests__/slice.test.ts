@@ -118,6 +118,13 @@ describe('the copy a share is made of', () => {
     expect(scans.everything()).not.toContain('/home/owner');
   });
 
+  // SECURITY.md S-46: the owner's notes on a shared document are part of the copy, and the link form says so.
+  it('carries the owner’s notes on a shared document, which the link form states', async () => {
+    await getStore().documents.update(OWNER_ID, shared[0], { user_notes: 'a note the owner wrote' });
+    expect(slice({ includeText: false, includeScans: false }).all('SELECT user_notes FROM documents')).toEqual([{ user_notes: 'a note the owner wrote' }]);
+    await getStore().documents.update(OWNER_ID, shared[0], { user_notes: null });
+  });
+
   it('names the link as the recipient’s core knows it', () => {
     const { all } = slice({ includeText: false, includeScans: false });
     expect(all('SELECT id, scope, scope_value, require_approval, include_scans, allow_chat FROM share_links')).toEqual([

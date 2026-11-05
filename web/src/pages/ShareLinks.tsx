@@ -244,6 +244,8 @@ export default function ShareLinks() {
             />
           </div>
 
+          <p className="text-xs text-gray-500">{t('The notes you wrote on the shared documents go with the link.')}</p>
+
           <label className="flex items-start gap-2 text-sm text-gray-700">
             <input type="checkbox" checked={form.include_scans} onChange={e => setForm(f => ({ ...f, include_scans: e.target.checked }))} className="mt-0.5" />
             <span>
@@ -259,7 +261,7 @@ export default function ShareLinks() {
             <span>
               {t('Let the recipient ask questions')}
               <span className="block text-xs text-gray-500">
-                {t("The recipient can ask an AI assistant about the documents in this link, and only those. Each question sends their words, parts of those documents (including your notes on them) and this link's label to the model provider. Nothing they ask is kept. Off by default.")}
+                {t("The recipient can ask an AI assistant about the documents in this link, and only those. Each question sends their words, parts of those documents (including your notes on them) and this link's label to the model provider. Nothing they ask is kept. The copy they hold then also contains the text of every shared page as printed, with names and numbers, which the extracted details leave out. Off by default.")}
               </span>
             </span>
           </label>

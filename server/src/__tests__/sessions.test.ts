@@ -176,6 +176,26 @@ describe('asking for the password again', () => {
     expect((await send('PATCH', `/api/share-links/${id}`, cookie, { include_scans: false })).statusCode).toBe(200);
   });
 
+  // SECURITY.md S-47: letting the recipient ask puts the text of every shared page in the copy, which a scan's warning is about too.
+  it.skipIf(!records)('asks before a share link lets the recipient ask questions, creating or changing, and not otherwise', async () => {
+    const cookie = await loginAs(app);
+    const create = (allow_chat: boolean) => send('POST', '/api/share-links', cookie, { scope: 'all', allow_chat });
+
+    const plain = await create(false);
+    expect(plain.statusCode).toBe(201);
+    expect((await create(true)).statusCode).toBe(201); // just signed in
+
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(Date.now() + 11 * 60_000);
+    await getAccountsStore().sessions.touch(OWNER_ID, (await getAccountsStore().sessions.list(OWNER_ID))[0].id, new Date().toISOString());
+
+    expect((await create(false)).statusCode).toBe(201);
+    expect((await create(true)).statusCode).toBe(403);
+    const id = plain.json().id as string;
+    expect((await send('PATCH', `/api/share-links/${id}`, cookie, { allow_chat: true })).statusCode).toBe(403);
+    expect((await send('PATCH', `/api/share-links/${id}`, cookie, { allow_chat: false })).statusCode).toBe(200);
+  });
+
   it('limits guesses per user, so a stolen cookie cannot guess the password here', async () => {
     const limited = await buildTestApp({});
     const cookie = await loginAs(limited);

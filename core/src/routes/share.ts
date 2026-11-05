@@ -131,6 +131,8 @@ export async function shareRoutes(app: HttpApp) {
     if (include_scans && !recentlyAuthenticated(req)) return reply.status(403).send(REAUTH_REQUIRED);
     if (typeof require_approval !== 'boolean') return reply.status(400).send({ error: 'require_approval must be true or false' });
     if (typeof allow_chat !== 'boolean') return reply.status(400).send({ error: 'allow_chat must be true or false' });
+    // Letting the recipient ask puts the text of every shared page in the copy, with the names and numbers a scan shows too (S-47).
+    if (allow_chat && !recentlyAuthenticated(req)) return reply.status(403).send(REAUTH_REQUIRED);
     if (language !== null && !isSupportedLanguage(language)) return reply.status(400).send({ error: `language must be one of ${SUPPORTED_LANGUAGES.join(', ')}, or left out` });
 
     // P2 and M-5: see `checkScope`.
@@ -256,7 +258,7 @@ export async function shareRoutes(app: HttpApp) {
     const unknown = Object.keys(body).filter(k => !PATCHABLE.includes(k));
     if (unknown.length > 0) return reply.status(400).send({ error: `unknown field(s): ${unknown.join(', ')}` });
 
-    if (body.include_scans === true && !recentlyAuthenticated(req)) return reply.status(403).send(REAUTH_REQUIRED);
+    if ((body.include_scans === true || body.allow_chat === true) && !recentlyAuthenticated(req)) return reply.status(403).send(REAUTH_REQUIRED);
 
     const patch: ShareLinkPatch = {};
     if (body.label !== undefined) {

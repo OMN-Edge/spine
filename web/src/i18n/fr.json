@@ -627,7 +627,7 @@
  "Nothing in this share matches this. Try other words.": "Rien dans ce partage ne correspond. Essayez d'autres mots.",
  "Reading the documents…": "Lecture des documents…",
  "Let the recipient ask questions": "Permettre au destinataire de poser des questions",
- "The recipient can ask an AI assistant about the documents in this link, and only those. Each question sends their words, parts of those documents (including your notes on them) and this link's label to the model provider. Nothing they ask is kept. Off by default.": "Le destinataire peut poser des questions à un assistant IA sur les documents de ce lien, et seulement ceux-là. Chaque question envoie ses mots, des extraits de ces documents (y compris vos notes) et le nom du lien au fournisseur du modèle. Rien de ce qu'il demande n'est conservé. Désactivé par défaut.",
+ "The recipient can ask an AI assistant about the documents in this link, and only those. Each question sends their words, parts of those documents (including your notes on them) and this link's label to the model provider. Nothing they ask is kept. The copy they hold then also contains the text of every shared page as printed, with names and numbers, which the extracted details leave out. Off by default.": "Le destinataire peut poser des questions à un assistant IA sur les documents de ce lien, et seulement ceux-là. Chaque question envoie ses mots, des extraits de ces documents (y compris vos notes) et le nom du lien au fournisseur du modèle. Rien de ce qu'il demande n'est conservé. La copie qu’ils détiennent contient alors aussi le texte de chaque page partagée tel qu’il est imprimé, avec noms et numéros, que les détails extraits laissent de côté. Désactivé par défaut.",
  "questions allowed": "questions autorisées",
  "Could not make this change.": "Impossible de faire cette modification.",
  "Final name, for all of them": "Nom final, pour tous",
@@ -1726,5 +1726,6 @@
  "No recovery email is sent. Your password and your recovery kit are the only way back in: without both, your records cannot be recovered.": "Aucun e-mail de récupération n’est envoyé. Votre mot de passe et votre kit de récupération sont le seul moyen de revenir : sans les deux, vos documents ne peuvent pas être récupérés.",
  "Turn off recovery by email": "Désactiver la récupération par e-mail",
  "Turn on recovery by email": "Activer la récupération par e-mail",
- "Recovery by email is turned off for this account, so only your recovery kit can reset it.": "La récupération par e-mail est désactivée pour ce compte : seul votre kit de récupération peut le réinitialiser."
+ "Recovery by email is turned off for this account, so only your recovery kit can reset it.": "La récupération par e-mail est désactivée pour ce compte : seul votre kit de récupération peut le réinitialiser.",
+ "The notes you wrote on the shared documents go with the link.": "Les notes que vous avez écrites sur les documents partagés partent avec le lien."
 }
