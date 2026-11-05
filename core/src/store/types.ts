@@ -965,6 +965,8 @@ export interface WaitlistRepository {
   /** False if the address was already on it. */
   add(email: string, at: string, source: string | null): Promise<boolean>;
   list(): Promise<Array<{ email: string; created_at: string; source: string | null }>>;
+  /** How many addresses it holds, for the ceiling on it. */
+  count(): Promise<number>;
   remove(email: string): Promise<boolean>;
 }
 

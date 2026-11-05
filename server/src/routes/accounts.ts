@@ -42,6 +42,10 @@ export interface AccountRouteOptions {
   instance?: InstanceKind;
   perSource?: { max: number; timeWindow: string | number };
   perAddress?: WindowLimit;
+  /** Mails the instance sends an hour to addresses that are not its signed-in accounts (a sign-up's, a resend, a reset), all sources together; default `SPINE_MAIL_MAX_PER_HOUR` or 120 (S-51). */
+  mailPerHour?: number;
+  /** New sign-ups an hour, all sources together; default `SPINE_SIGNUPS_MAX_PER_HOUR` or 60 (S-51). */
+  signupsPerHour?: number;
   /** Attempts at one reset link in ten minutes, wrong second-factor codes included. */
   resetCodeAttempts?: number;
 }
@@ -91,6 +95,13 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
     'too many requests for this address, try again later',
   );
 
+  // In all, as login has: each source and each address is limited, but a spread of them made the instance send mail to as many strangers as
+  // there were sources, at its provider's cost and reputation, and take as many sign-ups (S-51). The per-source limit runs first.
+  const hour = 60 * 60 * 1000;
+  const whole = (raw: string | undefined, fallback: number) => (Number.isInteger(Number(raw)) && Number(raw) > 0 && (raw ?? '').trim() !== '' ? Number(raw) : fallback);
+  const mailCap = windowLimiter({ max: opts.mailPerHour ?? whole(process.env.SPINE_MAIL_MAX_PER_HOUR, 120), windowMs: hour }, () => 'instance', 'too many requests just now, try again later');
+  const signupCap = windowLimiter({ max: opts.signupsPerHour ?? whole(process.env.SPINE_SIGNUPS_MAX_PER_HOUR, 60), windowMs: hour }, () => 'instance', 'too many sign-ups just now, try again later');
+
   /**
    * After the response, so how long the mail provider takes does not depend on
    * whether the address exists. A failure is logged; the user's recourse is to
@@ -113,7 +124,7 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
   if (registration === 'open' || registration === 'approval') {
     app.post<{ Body: { email?: string; password?: string; auth_value?: string; keys?: unknown; consent_health_data?: unknown; accept_terms?: unknown; ref?: unknown } }>(
       '/api/auth/register',
-      { preHandler: [perSource, perAddress] },
+      { preHandler: [perSource, perAddress, mailCap, signupCap] },
       async (req, reply) => {
         const { email, password, consent_health_data: health, accept_terms: terms } = req.body ?? {};
         // With a vault the device sends the value it derived from the password, and the keys it made; the server never sees the password.
@@ -196,7 +207,7 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
 
   app.post<{ Body: { email?: string } }>(
     '/api/auth/resend-verification',
-    { preHandler: [perSource, perAddress] },
+    { preHandler: [perSource, perAddress, mailCap] },
     async (req, reply) => {
       const address = normaliseEmail(String(req.body?.email ?? ''));
       const user = isPlausibleEmail(address) ? await getAccountsStore().users.findByEmail(address) : null;
@@ -211,7 +222,7 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
 
   app.post<{ Body: { email?: string } }>(
     '/api/auth/forgot',
-    { preHandler: [perSource, perAddress] },
+    { preHandler: [perSource, perAddress, mailCap] },
     async (req, reply) => {
       // Without a mailer there is nothing to send; the operator issues the link.
       if (!getMailer().enabled) {

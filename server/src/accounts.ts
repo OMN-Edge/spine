@@ -183,3 +183,20 @@ async function removeFiles(userId: string): Promise<void> {
   await removeAllObjects(userId);
   for (const id of await getAccountsStore().shared.eraseFor(userId)) await removeShare(id);
 }
+
+/**
+ * Accounts whose address was never confirmed end after a week (SECURITY.md S-51): open registration made a row for each sign-up, and a spread of
+ * addresses filled the table with rows nobody would ever use. An account waiting for the operator's approval is not one of them, and neither is
+ * one the operator made, which is confirmed at creation. Returns how many ended.
+ */
+export async function sweepUnverified(now = new Date(), days = 7): Promise<number> {
+  const cutoff = new Date(now.getTime() - days * 86_400_000).toISOString();
+  let ended = 0;
+  for (const user of await getAccountsStore().users.list()) {
+    if (user.email_verified_at === null && user.approved !== 0 && user.created_at < cutoff) {
+      await deleteAccount(user.id);
+      ended++;
+    }
+  }
+  return ended;
+}

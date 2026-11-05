@@ -26,6 +26,7 @@ import { demoRelayRoutes } from './routes/demo-relay.js';
 import { trustAnchorRoutes } from './routes/trust-anchors.js';
 import { remindCardReviews, sharedRoutes, shareShellRoutes, sweepShares } from './routes/shared.js';
 import { sweepSessions } from './sessions.js';
+import { sweepUnverified } from './accounts.js';
 import { decorateAuth } from 'spine-core/routes/middleware.js';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { ConfigError, resolveBackupDir, resolveDataDir } from 'spine-core/config.js';
@@ -187,5 +188,10 @@ setInterval(() => void remind(), 60 * 60 * 1000).unref();
 const sweepSignIns = () => sweepSessions().catch(err => app.log.error({ err: err instanceof Error ? err.message : String(err) }, 'removing ended sign-ins failed'));
 await sweepSignIns();
 setInterval(() => void sweepSignIns(), 60 * 60 * 1000).unref();
+
+// Accounts whose address was never confirmed end after a week, so open registration does not fill the table with rows nobody will use (S-51).
+const sweepUnconfirmed = () => sweepUnverified().catch(err => app.log.error({ err: err instanceof Error ? err.message : String(err) }, 'removing unconfirmed accounts failed'));
+await sweepUnconfirmed();
+setInterval(() => void sweepUnconfirmed(), 60 * 60 * 1000).unref();
 
 await app.listen({ port: config.port, host: config.host });
