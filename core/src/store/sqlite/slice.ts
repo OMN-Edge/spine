@@ -16,7 +16,17 @@ export type { SliceOptions, SliceResult };
 const marks = (n: number) => Array.from({ length: n }, () => '?').join(', ');
 
 export function copySlice(source: Database, dest: Database, o: SliceOptions): SliceResult {
-  const docs = [...new Set(o.documentIds)];
+  const named = [...new Set(o.documentIds)];
+  // A page the owner set aside leaves the copy, but the document's title, summary and notes were written while it was still read and can say
+  // what it said; they are replaced only when the document is read again (`needs_reading`). Until then the document is held out of the copy
+  // (SECURITY.md S-45), with its translations, which the caller carries by the ids that remain.
+  const stale = new Set((source.prepare(`
+    SELECT d.id FROM documents d
+    WHERE d.user_id = ? AND d.id IN (${marks(named.length)}) AND d.needs_reading = 1
+      AND EXISTS (SELECT 1 FROM pages p WHERE p.user_id = d.user_id AND p.source_file_id = d.source_file_id
+                  AND p.page_number BETWEEN d.page_start AND d.page_end AND p.hidden = 1)
+  `).all(o.userId, ...named) as Array<{ id: string }>).map(r => r.id));
+  const docs = named.filter(id => !stale.has(id));
   const inDocs = marks(docs.length);
   const rows = (sql: string, ...params: unknown[]) => source.prepare(sql).all(...params) as Array<Record<string, unknown>>;
   const insert = (table: string, row: Record<string, unknown>) => {

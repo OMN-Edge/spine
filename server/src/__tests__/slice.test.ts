@@ -133,4 +133,29 @@ describe('the copy a share is made of', () => {
     shared = [shared[0]];
     expect(slice({ includeText: false, includeScans: false }).all('SELECT * FROM document_links')).toEqual([]);
   });
+
+  // SECURITY.md S-45. Setting a page aside leaves the page and its details out of the copy, but a document's title, summary and notes were
+  // written while the page was still read and can say what it said; they are replaced only when the document is read again.
+  it('holds a document back while a page set aside has not yet been read out of its summary, and takes it again when it is read', async () => {
+    const store = getStore();
+    const page = (source.prepare('SELECT id FROM pages WHERE page_number = 2 AND source_file_id = (SELECT source_file_id FROM documents WHERE id = ?)').get(shared[0]) as { id: string }).id;
+    await store.pages.setHidden(OWNER_ID, page, true);
+    await store.documents.update(OWNER_ID, shared[0], { reviewed: false, needs_reading: true });
+    const pending = slice({ includeText: false, includeScans: false });
+    expect(pending.all('SELECT id FROM documents')).toEqual([]);
+    expect(pending.everything()).not.toContain('a lab report');
+    expect(pending.all('SELECT page_number FROM pages')).toEqual([]);
+
+    // read again: the summary no longer says what the page did, and the document returns without the page
+    await store.documents.update(OWNER_ID, shared[0], { ai_summary: 'a lab report, first page only', needs_reading: false });
+    const read = slice({ includeText: false, includeScans: false });
+    expect(read.all('SELECT id, ai_summary FROM documents')).toEqual([{ id: shared[0], ai_summary: 'a lab report, first page only' }]);
+    expect(read.all('SELECT page_number FROM pages')).toEqual([{ page_number: 1 }]);
+
+    // a document that is waiting to be read for another reason, with every page shown, is still shared
+    await store.pages.setHidden(OWNER_ID, page, false);
+    await store.documents.update(OWNER_ID, shared[0], { needs_reading: true });
+    expect(slice({ includeText: false, includeScans: false }).all('SELECT id FROM documents').map(r => r.id)).toEqual(shared);
+    await store.documents.update(OWNER_ID, shared[0], { needs_reading: false, ai_summary: 'a lab report' });
+  });
 });
