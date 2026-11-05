@@ -144,7 +144,7 @@ export async function delegationRoutes(app: FastifyInstance, opts: DelegationRou
     const claimed = await repo().claim(req.userId, id, sha256(proof), new Date().toISOString(), randomUUID());
     if (!claimed) return reply.status(404).send({ error: 'this code is not valid, or it has been used or has expired', code: 'invalid_code' });
     const owner = await getAccountsStore().users.findById(claimed.grant.owner_user_id);
-    if (owner) mailAfter(req, owner.id, securityChangeMail(owner.email, 'Someone accepted your invitation and was given access to a profile', new Date().toISOString()), 'delegation accepted');
+    if (owner) mailAfter(req, owner.id, securityChangeMail(owner.email, 'Someone accepted your invitation to a profile: their access starts when you confirm the code they read out to you, on that profile\'s page', new Date().toISOString()), 'delegation accepted');
     return reply.header('Cache-Control', 'no-store').send({ grant: { id: claimed.grant.id, profile_id: claimed.grant.profile_id, role: claimed.grant.role, owner_email: owner?.email ?? '' }, wrapped: claimed.wrapped });
   });
 

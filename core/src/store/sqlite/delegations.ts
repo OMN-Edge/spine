@@ -23,7 +23,7 @@ export function delegationRepository(db: Database): DelegationRepository {
   // Inside this file only: the steps that already hold the id and have checked whose it is.
   const grant = db.prepare(`SELECT ${COLUMNS} FROM delegations WHERE id = ?`);
   const grantFor = db.prepare(`SELECT ${COLUMNS} FROM delegations WHERE id = ? AND (owner_user_id = ? OR delegate_user_id = ?)`);
-  const complete = db.prepare("UPDATE delegations SET wrapped_key = ?, delegate_hello = ?, owner_pin = ?, state = 'active', updated_at = ? WHERE id = ? AND delegate_user_id = ? AND state = 'pending'");
+  const complete = db.prepare("UPDATE delegations SET wrapped_key = ?, delegate_hello = ?, owner_pin = ?, state = ?, updated_at = ? WHERE id = ? AND delegate_user_id = ? AND state = 'pending'");
   const setPin = db.prepare("UPDATE delegations SET delegate_pin = ?, updated_at = ? WHERE owner_user_id = ? AND id = ? AND state IN ('active', 'paused')");
   const owned = db.prepare(`SELECT ${COLUMNS.split(', ').map(c => `d.${c}`).join(', ')}, u.email AS delegate_email, k.public_key AS delegate_public_key FROM delegations d JOIN users u ON u.id = d.delegate_user_id LEFT JOIN vault_keys k ON k.user_id = d.delegate_user_id WHERE d.owner_user_id = ? AND d.state NOT IN ('revoked', 'promoted') ORDER BY d.created_at`);
   const othersOf = db.prepare(`SELECT d.id, d.role, d.state, u.email AS delegate_email, k.public_key AS delegate_public_key FROM delegations d JOIN users u ON u.id = d.delegate_user_id LEFT JOIN vault_keys k ON k.user_id = d.delegate_user_id WHERE d.owner_user_id = ? AND d.profile_id = ? AND d.id <> ? AND d.state IN ('active', 'paused') ORDER BY d.created_at`);
@@ -99,7 +99,8 @@ export function delegationRepository(db: Database): DelegationRepository {
     async cancelInvite(ownerId, id) { return cancel.run(owner(ownerId), id).changes === 1; },
     async claim(delegateId, id, proofHash, now, grantId) { return claimTx(owner(delegateId), id, proofHash, now, grantId); },
     async peek(delegateId, id, proofHash, now) { return (peek.get(id, proofHash, now, owner(delegateId)) as { owner_user_id: string; role: DelegationRecord['role']; expires_at: string } | undefined) ?? null; },
-    async complete(delegateId, id, wrappedKey, now, binding) { return complete.run(wrappedKey, binding?.hello ?? null, binding?.ownerPin ?? null, now, id, owner(delegateId)).changes === 1; },
+    // A grant whose keys are bound waits, paused, until the owner has confirmed the code the delegate's key makes (S-39); one from a device that does not bind is live as it was.
+    async complete(delegateId, id, wrappedKey, now, binding) { return complete.run(wrappedKey, binding?.hello ?? null, binding?.ownerPin ?? null, binding ? 'paused' : 'active', now, id, owner(delegateId)).changes === 1; },
     async setPin(ownerId, id, pin) { return setPin.run(pin, new Date().toISOString(), owner(ownerId), id).changes === 1; },
     async getFor(actingUserId, id) { const r = grantFor.get(id, owner(actingUserId), owner(actingUserId)) as Record<string, unknown> | undefined; return r ? asGrant(r) : null; },
     async ownedBy(ownerId) { return (owned.all(owner(ownerId)) as Array<Record<string, unknown>>).map(r => ({ ...asGrant(r), delegate_email: r.delegate_email as string, delegate_public_key: (r.delegate_public_key as string | null) ?? null })); },

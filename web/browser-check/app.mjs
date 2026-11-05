@@ -1081,6 +1081,20 @@ try {
     for (let t = 0; t < 8000 && (await text()).includes('An invitation is waiting'); t += 250) await wait(250);
     check(!(await text()).includes('An invitation is waiting'), 'and cancelled');
 
+    // The owner confirms the code a new person's key makes before their access starts (SECURITY.md S-39): the person reads theirs out, the owner's page
+    // shows the same, and "It is the same" starts the access. The person's page notices by itself and opens the records.
+    const confirmWhoJoined = async (q, qWait, owner) => {
+      check(await qWait(`Read this code to ${owner}`, 40000), 'accepting waits for the owner to confirm the code the new account\'s key makes');
+      const own = await q.evaluate(() => document.querySelector('[data-testid="grant-own-code"]')?.textContent ?? '');
+      check(/^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/.test(own), 'the new account is shown the code its key makes');
+      await openPeople();
+      let shown = '';
+      for (let t = 0; t < 30000 && !shown; t += 250) { shown = await p.evaluate(() => document.querySelector('[data-testid="grant-code"]')?.textContent ?? ''); if (!shown) await wait(250); }
+      check(shown !== '' && shown === own, 'the owner is shown the same code the new account reads out');
+      await p.evaluate(() => [...document.querySelectorAll('button')].find(b => b.innerText.trim() === 'It is the same')?.click());
+      await wait(500);
+      await click('Timeline');
+    };
     // The other side. A read-only invitation is made; a second account follows its link, signs in, joins, reads the person's records, and the
     // device does not let it change them.
     await click('Let someone in');
@@ -1120,6 +1134,7 @@ try {
       check(await qWait('check@example.com invites you to read the records of someone they care for', 20000), 'the invitation says who it is from and what it allows, before it is used');
       check(!/\b([0-9A-Z]{4}-){4}[0-9A-Z]{2}\b/.test(await qText()), 'and the code is not shown');
       await qClick('Accept');
+      await confirmWhoJoined(q, qWait, 'check@example.com');
       // Accepting reloads the keys and the page of people is drawn again; the message that it worked has to survive that, so it is looked for often.
       let sawNotice = false; let listed = false;
       for (let t = 0; t < 40000 && !(listed && sawNotice); t += 40) { const now = await qText(); sawNotice ||= now.includes('the records check@example.com shared with you. Switch between people'); listed = now.includes('Shared by check@example.com'); await wait(40); }
@@ -1192,6 +1207,7 @@ try {
       await qClick('Open it');
       check(await qWait('invites you into your own records', 20000), 'the invitation says it is to their own records');
       await qClick('Accept');
+      await confirmWhoJoined(q, qWait, 'check@example.com');
       check(await qWait('Your own records, kept by check@example.com', 40000), 'accepting lists them as their own records, kept by the parent');
       check(await qWait('You are now in Alex Example’s records', 60000), 'and opens them');
       const names = async () => q.evaluate(() => [...document.querySelectorAll('li')].map(l => l.innerText.split('\n')[0].trim()).filter(Boolean));

@@ -45,7 +45,8 @@ describe('binding each side’s key through the invitation code', () => {
     expect((await call('PUT', `/api/delegations/${grant}/key`, 'guardian', { wrapped_key: K('d'), hello: K('h', 110), owner_pin: K('p', 110) })).statusCode).toBe(200);
 
     const owned = (await call('GET', '/api/delegations', 'owner')).json().owned.find((g: { id: string }) => g.id === grant);
-    expect(owned).toMatchObject({ delegate_hello: K('h', 110), owner_blob: K('o', 120), delegate_pin: null, bound: true });
+    // it waits, paused, for the owner to confirm the code the delegate's key makes; a grant with no binding is live at once (below)
+    expect(owned).toMatchObject({ state: 'paused', delegate_hello: K('h', 110), owner_blob: K('o', 120), delegate_pin: null, bound: true });
     const received = (await call('GET', '/api/delegations', 'guardian')).json().received.find((g: { id: string }) => g.id === grant);
     expect(received).toMatchObject({ owner_pin: K('p', 110), delegate_pinned: false });
 
@@ -75,7 +76,7 @@ describe('binding each side’s key through the invitation code', () => {
     const grant = await claim('guardian', 'd');
     await call('PUT', `/api/delegations/${grant}/key`, 'guardian', { wrapped_key: K('d') });
     const owned = (await call('GET', '/api/delegations', 'owner')).json().owned.find((g: { id: string }) => g.id === grant);
-    expect(owned).toMatchObject({ delegate_hello: null, owner_blob: null, delegate_pin: null, bound: false });
+    expect(owned).toMatchObject({ state: 'active', delegate_hello: null, owner_blob: null, delegate_pin: null, bound: false });
   });
 
   describe('promotion at eighteen', () => {
@@ -91,8 +92,11 @@ describe('binding each side’s key through the invitation code', () => {
       await call('PUT', `/api/delegations/${other}/key`, 'guardian', { wrapped_key: K('d'), hello: K('h', 110), owner_pin: K('p', 110) });
       const asSelf = await claim('self', 'f');
       await call('PUT', `/api/delegations/${asSelf}/key`, 'self', { wrapped_key: K('s'), hello: K('i', 110), owner_pin: K('m', 110) });
-      // the old owner pinned the person's key
+      // a grant whose keys are bound starts paused; the old owner pinned the person's key when they confirmed the code, which starts it
+      expect((await call('GET', '/api/delegations', 'owner')).json().owned.find((g: { id: string }) => g.id === asSelf)).toMatchObject({ state: 'paused' });
       await call('PUT', `/api/delegations/${asSelf}/pin`, 'owner', { pin: K('n', 110) });
+      expect((await call('POST', `/api/delegations/${asSelf}/state`, 'owner', { state: 'active' })).statusCode).toBe(200);
+      await call('POST', `/api/delegations/${other}/state`, 'owner', { state: 'active' });
 
       // every other grant of the profile must be named; a key is given for none, so each ends
       const others = (await call('GET', '/api/delegations', 'self')).json().received.find((g: { id: string }) => g.id === asSelf).others as Array<{ id: string }>;

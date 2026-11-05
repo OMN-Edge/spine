@@ -1730,5 +1730,8 @@
  "The notes you wrote on the shared documents go with the link.": "Notițele pe care le-ați scris la documentele partajate merg împreună cu linkul.",
  "Read it to the person who shared this link, so they can check that the request is yours.": "Citiți-l persoanei care a partajat acest link, ca să poată verifica dacă cererea este a dvs.",
  "Ask them for the code on their screen. Approve only if it is the same.": "Cereți-le codul de pe ecranul lor. Aprobați doar dacă este același.",
- "It is the same": "Este același"
+ "It is the same": "Este același",
+ "It is not the same": "Nu este același",
+ "Ask {email} for the code on their screen. Their access starts when you say it is the same.": "Cereți-i lui {email} codul de pe ecranul lui. Accesul începe când spuneți că este același.",
+ "Read this code to {owner}. Your access starts when they confirm it is the same as the one on their screen.": "Citiți acest cod lui {owner}. Accesul dvs. începe când confirmă că este același cu cel de pe ecranul lor."
 }

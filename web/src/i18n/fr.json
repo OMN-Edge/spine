@@ -1730,5 +1730,8 @@
  "The notes you wrote on the shared documents go with the link.": "Les notes que vous avez écrites sur les documents partagés partent avec le lien.",
  "Read it to the person who shared this link, so they can check that the request is yours.": "Lisez-le à la personne qui a partagé ce lien, pour qu’elle vérifie que la demande est bien la vôtre.",
  "Ask them for the code on their screen. Approve only if it is the same.": "Demandez-leur le code affiché sur leur écran. N’approuvez que s’il est identique.",
- "It is the same": "Il est identique"
+ "It is the same": "Il est identique",
+ "It is not the same": "Il n’est pas identique",
+ "Ask {email} for the code on their screen. Their access starts when you say it is the same.": "Demandez à {email} le code affiché sur son écran. Son accès commence quand vous dites qu’il est identique.",
+ "Read this code to {owner}. Your access starts when they confirm it is the same as the one on their screen.": "Lisez ce code à {owner}. Votre accès commence quand cette personne confirme qu’il est identique à celui de son écran."
 }

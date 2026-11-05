@@ -3,7 +3,7 @@ import { createAccountKeys } from './keys';
 import { sodium, toB64, fromB64 } from './sodium';
 import { seal } from './seal';
 import {
-  fromInviteCode, helloFor, inviteKeyFromBlob, makeInvite, openGrantKey, openInvite, openPin, readHello, sealGrantKey, sealPin, sealProfileKeyTo,
+  fromInviteCode, helloFor, inviteKeyFromBlob, makeInvite, openGrantKey, openInvite, openPin, readHello, sealGrantKey, sealPin,
 } from './delegation';
 
 /**
@@ -97,15 +97,15 @@ describe('a profile key sealed to a delegate', () => {
     const falseKey = await key();
     const senders = [owner.publicKey, delegate.publicKey];
     expect(await openGrantKey(delegate, await sealGrantKey(server, delegate.publicKey, falseKey), senders)).toBeNull();
-    expect(await openGrantKey(delegate, await sealProfileKeyTo(toB64(await sodium(), delegate.publicKey), falseKey), senders)).toBeNull();
+    // an anonymous sealed box, which anyone with the delegate's public key can make
+    const anonymous = toB64(await sodium(), (await sodium()).crypto_box_seal(falseKey, delegate.publicKey));
+    expect(await openGrantKey(delegate, anonymous, senders)).toBeNull();
   });
 
-  it('still opens the anonymous sealed box of a grant made before keys were bound, and only for such a grant', async () => {
+  it('opens nothing for a grant with no sender to expect, even an anonymous sealed box made for this account', async () => {
     const delegate = await person();
-    const profileKey = await key();
-    const old = await sealProfileKeyTo(toB64(await sodium(), delegate.publicKey), profileKey);
-    expect(eq(await openGrantKey(delegate, old, []), profileKey)).toBe(true);
-    expect(await openGrantKey(delegate, old, [delegate.publicKey])).toBeNull();
+    const old = toB64(await sodium(), (await sodium()).crypto_box_seal(await key(), delegate.publicKey));
+    expect(await openGrantKey(delegate, old, [])).toBeNull();
   });
 
   it('is not opened by another account, or from a damaged copy', async () => {

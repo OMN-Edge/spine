@@ -5,7 +5,7 @@ import type { AddressInfo } from 'net';
 import { createAccountKeys, resetProof, resetWithRecovery, type KdfParams } from '../crypto/keys.js';
 import { readRecoveryKey, writeRecoveryKey } from '../crypto/recovery-kit.js';
 import { ConflictError, VaultSession, fetchKeys, prepareSignIn } from '../crypto/vault-client.js';
-import { newInviteCode, openGrantKey, sealGrantKey, sealProfileKeyTo } from '../crypto/delegation.js';
+import { newInviteCode, openGrantKey, sealGrantKey } from '../crypto/delegation.js';
 import { toB64, fromB64, sodium } from '../crypto/sodium.js';
 import { openObject } from '../crypto/keys.js';
 import { OpenError } from '../crypto/seal.js';
@@ -20,6 +20,9 @@ const haveServer = ['../../../node_modules', '../../../server/node_modules'].som
 const FAST: KdfParams = { alg: 'argon2id13', ops: 2, memKiB: 19456 };
 const EMAIL = 'person@example.com';
 const PASSWORD = 'a long and private master password';
+
+/** The owner asks each person for the code their key makes and it is the same: the grants that wait start (SECURITY.md S-39). */
+const confirmAll = async (owner: VaultSession) => { for (const g of (await owner.delegations()).owned) if (VaultSession.needsConfirmation(g)) await owner.confirmGrant(g); };
 
 // Skipped where only the web's dependencies are installed; in CI that would hide the one test of the device against the real server.
 if (!haveServer && process.env.CI) throw new Error('the server is not installed, so the device-and-server test would be skipped and still look green');
@@ -280,6 +283,10 @@ describe.skipIf(!haveServer)('the device and the server together', () => {
     const { code } = await owner.invite(profile, 'guardian');
     await expect(guest.accept(await newInviteCode())).rejects.toMatchObject({ status: 404 });
     const accepted = await guest.accept(code);
+    expect(accepted.waiting).toBe(true);
+    expect((await owner.delegations()).owned.filter(g => VaultSession.needsConfirmation(g))).toHaveLength(1);
+    expect(await guest.openReceived((await guest.delegations()).received)).toEqual([]); // nothing opens until the owner has confirmed the code
+    await confirmAll(owner);
     expect(accepted).toMatchObject({ ownerEmail: 'person@example.com', role: 'guardian' });
     await expect(guest.accept(code)).rejects.toMatchObject({ status: 404 }); // spent
 
@@ -335,6 +342,7 @@ describe.skipIf(!haveServer)('the device and the server together', () => {
     const coparent = (await signedIn(OTHER.email, OTHER.password)).session;
     await teen.accept((await parent.invite(child, 'self')).code);
     await coparent.accept((await parent.invite(child, 'guardian')).code);
+    await confirmAll(parent);
 
     // The teenager takes the records over.
     const [entry] = await teen.openReceived((await teen.delegations()).received);
@@ -398,6 +406,7 @@ describe.skipIf(!haveServer)('the device and the server together', () => {
     const b = (await signedIn(B.email, B.password)).session;
     await a.accept((await parent.invite(child, 'guardian')).code);
     await b.accept((await parent.invite(child, 'guardian')).code);
+    await confirmAll(parent);
 
     // The server lists a key of its own for the first guardian.
     const attacker = await createAccountKeys('the attacker’s master password', FAST);
@@ -431,7 +440,7 @@ describe.skipIf(!haveServer)('the device and the server together', () => {
     const s = await sodium();
     const falseKey = s.randombytes_buf(32);
     const aPublic = real.public_key; // the guardian's own key, as it was before the server listed another
-    for (const forged of [await sealProfileKeyTo(aPublic, falseKey), await sealGrantKey(attacker.unlocked, fromB64(s, aPublic), falseKey)]) {
+    for (const forged of [toB64(s, s.crypto_box_seal(falseKey, fromB64(s, aPublic))), await sealGrantKey(attacker.unlocked, fromB64(s, aPublic), falseKey)]) {
       await accounts.delegations.rewrap((await store.getStore().users.findByEmail(PARENT.email))!.id, child, [{ id: after.id, wrappedKey: forged }], new Date().toISOString());
       expect(await a.openReceived((await a.delegations()).received)).toEqual([]);
     }
@@ -463,6 +472,7 @@ describe.skipIf(!haveServer)('the device and the server together', () => {
     const bSession = (await signedIn(B.email, B.password)).session;
     await aSession.accept((await parent.invite(child, 'guardian')).code);
     await bSession.accept((await parent.invite(child, 'guardian')).code);
+    await confirmAll(parent);
 
     const [forB] = await bSession.openReceived((await bSession.delegations()).received);
     const oldKey = forB.profileKey.slice();

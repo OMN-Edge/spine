@@ -114,12 +114,6 @@ export async function openPin(accountKey: Uint8Array, profileId: string, pin: st
   }
 }
 
-/** A profile key sealed to an account's public key with no sender: anyone can make one. Only for a grant made before keys were bound. */
-export async function sealProfileKeyTo(publicKeyB64: string, profileKey: Uint8Array): Promise<string> {
-  const s = await sodium();
-  return toB64(s, s.crypto_box_seal(profileKey, fromB64(s, publicKeyB64)));
-}
-
 /**
  * A profile key sealed to a delegate's public key and authenticated by the sender's private key (a box: nonce and ciphertext). The owner seals
  * a replaced key this way, and the delegate seals the first one to themselves this way, so that whoever opens it knows it was made by the one
@@ -136,17 +130,14 @@ export async function sealGrantKey(sender: UnlockedKeys, receiverPublicKey: Uint
 }
 
 /**
- * The profile key a grant holds for this account, or null if it was not made for it by one of `senders`. A grant whose keys are bound has
- * senders (the owner's key as the code gave it, and this account's own): only a box from one of them opens, and an anonymous sealed box is
- * refused, since a server can make that. A grant from before (no senders) is the anonymous sealed box it always was.
+ * The profile key a grant holds for this account, or null if it was not made for it by one of `senders`: the owner's key as the code gave it,
+ * and this account's own. Only a box from one of them opens. An anonymous sealed box is not accepted, since a server holds every public key and
+ * can make one, and with no senders nothing opens (S-39, S-41).
  */
 export async function openGrantKey(unlocked: UnlockedKeys, wrapped: string, senders: Uint8Array[]): Promise<Uint8Array | null> {
   const s = await sodium();
   let bytes: Uint8Array;
   try { bytes = fromB64(s, wrapped); } catch { return null; }
-  if (senders.length === 0) {
-    try { return s.crypto_box_seal_open(bytes, unlocked.publicKey, unlocked.privateKey); } catch { return null; }
-  }
   if (bytes.length <= s.crypto_box_NONCEBYTES) return null;
   const nonce = bytes.slice(0, s.crypto_box_NONCEBYTES);
   const boxed = bytes.slice(s.crypto_box_NONCEBYTES);
