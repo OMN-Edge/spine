@@ -20,7 +20,7 @@ export default defineConfig({
     expect: { requireAssertions: true },
     environment: 'node',
     // The tests run the routes the device runs: the first store a test opens holds records. `test:accounts` runs the server's own instead.
-    setupFiles: ['../core/src/testing/use-records-store.ts', './src/__tests__/helpers/use-providers.ts'],
+    setupFiles: ['./src/__tests__/helpers/own-data-dir.ts', '../core/src/testing/use-records-store.ts', './src/__tests__/helpers/use-providers.ts'],
     // Set here, not in test files: the store captures SPINE_DB_PATH at module load,
     // and ESM hoists imports above any top-level assignment a test makes. Tests
     // that set this themselves silently wrote to the real data/spine.db.
