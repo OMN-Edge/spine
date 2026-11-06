@@ -114,6 +114,11 @@ export function sharedRepository(q: Query, begin: Begin): SharedRepository {
       });
     },
 
+    async countUnchecked(now) {
+      const n = async (kind: string) => Number((await one<{ n: number }>(q, "SELECT COUNT(*) AS n FROM shared_bundles WHERE kind = $1 AND pass_check IS NULL AND revoked_at IS NULL AND (kind = 'card' OR expires_at > $2)", [kind, now]))!.n);
+      return { shares: await n('share'), cards: await n('card') };
+    },
+
     async usage(userId, now) {
       const row = (await one<{ bundles: number; bytes: number }>(q, "SELECT COUNT(*) AS bundles, COALESCE(SUM(size + blob_bytes), 0) AS bytes FROM shared_bundles WHERE user_id = $1 AND kind = 'share' AND revoked_at IS NULL AND expires_at > $2", [userId, now]))!;
       return { bundles: Number(row.bundles), bytes: Number(row.bytes) };

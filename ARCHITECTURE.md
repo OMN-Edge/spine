@@ -95,7 +95,7 @@ Five interfaces — store, LLM, parser, embedder, mailer — each defined by the
 
 **Second factor (optional, per user):** TOTP, so it too needs no external service. After a user enrols from the account page, the right password only starts a *pending* login (held in the session for five minutes), and a valid code or a recovery code completes it. Reset links do not bypass it. Details and residual risks: SECURITY.md **M-12**, **S-20**, **S-21**, **S-22**.
 
-Accounts come from the operator (`npm run cli -- create-user <email>`; also `set-password`, `reset-link`, `disable-2fa`, `delete-user`, `list-users`) or, if enabled, from open signup.
+Accounts come from the operator (`npm run cli -- create-user <email>`; also `set-password`, `reset-link`, `disable-2fa`, `delete-user`, `legacy`, `list-users`) or, if enabled, from open signup.
 
 ### People (profiles)
 

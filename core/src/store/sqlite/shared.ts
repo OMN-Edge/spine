@@ -84,6 +84,10 @@ export function sharedRepository(db: Database): SharedRepository {
       const r = get.get(id) as Record<string, unknown> | undefined;
       return r ? bundleOf(r) : null;
     },
+    async countUnchecked(now) {
+      const n = (kind: string) => (db.prepare("SELECT COUNT(*) AS n FROM shared_bundles WHERE kind = ? AND pass_check IS NULL AND revoked_at IS NULL AND (kind = 'card' OR expires_at > ?)").get(kind, now) as { n: number }).n;
+      return { shares: n('share'), cards: n('card') };
+    },
     async put(userId, bundle, now) {
       return putTx(userId, bundle, now);
     },

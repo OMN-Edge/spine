@@ -146,6 +146,7 @@ npm run cli -- reset-link you@example.com    # a one-time link to choose a new p
 npm run cli -- approve-user you@example.com  # an account waiting under SPINE_REGISTRATION=approval
 npm run cli -- disable-2fa you@example.com   # lost phone and recovery codes
 npm run cli -- delete-user you@example.com   # says what it would remove; add --yes to do it
+npm run cli -- legacy                        # what is left of the paths kept for older things (emergency cards and links with no key check, vaults with no reset verifier, unbound invitations); 0 on every line means the strict release can go out
 ```
 
 **Or let people sign up.** This needs a mail provider; the server refuses `open` registration without one. With [Brevo](https://www.brevo.com):

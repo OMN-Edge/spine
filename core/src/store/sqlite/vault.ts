@@ -100,6 +100,10 @@ export function vaultRepository(db: Database): VaultRepository {
       return updateKeys.run(k.kdf_salt, k.kdf_params, k.wrapped_by_master, k.wrapped_by_recovery, k.public_key, k.wrapped_private_key, now, userId).changes === 1;
     },
 
+    async countWithoutVerifier() {
+      return (db.prepare('SELECT COUNT(*) AS n FROM vault_keys WHERE reset_verifier IS NULL').get() as { n: number }).n;
+    },
+
     async setResetVerifier(userId, verifier) {
       return setVerifier.run(verifier, userId).changes === 1;
     },

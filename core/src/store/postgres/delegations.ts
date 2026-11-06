@@ -87,6 +87,13 @@ export function delegationRepository(q: Query, begin: Begin): DelegationReposito
     async setPin(ownerId, id, pin) {
       return (await changed(q, "UPDATE delegations SET delegate_pin = $1, updated_at = $2 WHERE owner_user_id = $3 AND id = $4 AND state IN ('active', 'paused')", [pin, new Date().toISOString(), owner(ownerId), id])) === 1;
     },
+    async countUnbound(now) {
+      const n = async (sql: string, params: unknown[]) => Number((await one<{ n: number }>(q, sql, params))!.n);
+      return {
+        invites: await n("SELECT COUNT(*) AS n FROM profile_invites WHERE state = 'offered' AND expires_at > $1 AND owner_blob IS NULL", [now]),
+        grants: await n("SELECT COUNT(*) AS n FROM delegations WHERE state IN ('active', 'paused') AND owner_pin IS NULL", []),
+      };
+    },
     async getFor(actingUserId, id) {
       const r = await one(q, `SELECT ${COLUMNS} FROM delegations WHERE id = $1 AND (owner_user_id = $2 OR delegate_user_id = $2)`, [id, owner(actingUserId)]);
       return r ? asGrant(r) : null;
