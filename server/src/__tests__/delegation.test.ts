@@ -212,7 +212,7 @@ describe('letting another account into a profile', () => {
 
       // A card the old owner published for the profile: nobody can take it over before the promotion, and only the person who took it after.
       const CARD = 'card-promoted-0000000000000000';
-      expect((await app.inject({ method: 'PUT', url: `/api/shared/${CARD}`, headers: { cookie: owner, 'content-type': 'application/octet-stream', 'x-spine-kind': 'card' }, payload: Buffer.from('a sealed card') })).statusCode).toBe(201);
+      expect((await app.inject({ method: 'PUT', url: `/api/shared/${CARD}`, headers: { cookie: owner, 'content-type': 'application/octet-stream', 'x-spine-pass-check': 'c'.repeat(43), 'x-spine-kind': 'card' }, payload: Buffer.from('a sealed card') })).statusCode).toBe(201);
       expect((await call('POST', `/api/shared/${CARD}/take`, teen.cookie)).statusCode).toBe(404);
 
       const moved = await call('POST', `/api/delegations/${asSelf}/promote`, teen.cookie, promoteBody(['object-c-0001'], [{ id: asGuardian }]));

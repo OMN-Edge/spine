@@ -7,7 +7,6 @@ import {
   generateRecoveryCode,
   generateSecret,
   hashRecoveryCode,
-  legacyHashRecoveryCode,
   hotp,
   matchTotp,
   normaliseCode,
@@ -182,8 +181,8 @@ describe('recovery codes', () => {
     expect(hash).toMatch(/^[0-9a-f]{64}$/);
     expect(hash).not.toContain('ABCDEFGHJK');
     expect(hash).toBe(await hashRecoveryCode('ABCDEFGHJK', 'user-1'));
-    // not the plain hash an earlier version stored, and not the same for another account
-    expect(hash).not.toBe(legacyHashRecoveryCode('ABCDEFGHJK'));
+    // not a plain hash of the code, and not the same for another account
+    expect(hash).not.toBe((await import('crypto')).createHash('sha256').update('ABCDEFGHJK').digest('hex'));
     expect(hash).not.toBe(await hashRecoveryCode('ABCDEFGHJK', 'user-2'));
   });
 });

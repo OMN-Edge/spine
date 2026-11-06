@@ -105,11 +105,13 @@ describe('a reset that replaces the keys, on a vault with a verifier', () => {
   });
 });
 
-describe('a reset on a vault that has no verifier yet, or that starts over', () => {
-  it('still works with the link alone, for a vault made before verifiers (a device adds one at its next unlock)', async () => {
+describe('a reset on a vault that has no verifier, or that starts over', () => {
+  it('is refused with the link alone, for a vault with no verifier: it has no key to prove the kit against', async () => {
     await store().vault.putKeys(OWNER_ID, asRecord(fakeVaultKeys()), new Date().toISOString());
     const token = await issueUserToken(OWNER_ID, 'reset', 60_000);
-    expect((await post('/api/auth/reset', { token, auth_value: fakeAuthValue(), keys: fakeVaultKeys() })).statusCode).toBe(200);
+    const res = await post('/api/auth/reset', { token, auth_value: fakeAuthValue(), keys: fakeVaultKeys() });
+    expect(res.statusCode).toBe(401);
+    expect(res.json()).toMatchObject({ code: 'recovery_proof_required' });
   });
 
   it('starting over without the kit needs no signature, and the new vault takes the new verifier', async () => {
@@ -130,22 +132,5 @@ describe('the verifier', () => {
     const verifier = signer().verifier;
     expect((await call(cookie, 'PUT', '/api/vault/keys', { auth_value: fakeAuthValue(), keys: { ...fakeVaultKeys(), reset_verifier: verifier } })).statusCode).toBe(200);
     expect((await call(cookie, 'GET', '/api/vault/keys')).json()).toMatchObject({ reset_verifier: verifier });
-  });
-
-  it('is added by a signed-in device to a vault that has none, once', async () => {
-    const cookie = await loginAs(app, OWNER_EMAIL);
-    await store().vault.putKeys(OWNER_ID, asRecord(fakeVaultKeys()), new Date().toISOString());
-    const first = signer().verifier;
-    expect((await call(cookie, 'PUT', '/api/vault/reset-verifier', { reset_verifier: first })).statusCode).toBe(200);
-    expect((await store().vault.getKeys(OWNER_ID))?.reset_verifier).toBe(first);
-    expect((await call(cookie, 'PUT', '/api/vault/reset-verifier', { reset_verifier: signer().verifier })).statusCode).toBe(409);
-    expect((await store().vault.getKeys(OWNER_ID))?.reset_verifier).toBe(first);
-  });
-
-  it('is refused in a shape that is not a public key, and without a session', async () => {
-    const cookie = await loginAs(app, OWNER_EMAIL);
-    await store().vault.putKeys(OWNER_ID, asRecord(fakeVaultKeys()), new Date().toISOString());
-    expect((await call(cookie, 'PUT', '/api/vault/reset-verifier', { reset_verifier: 'short' })).statusCode).toBe(400);
-    expect((await app.inject({ method: 'PUT', url: '/api/vault/reset-verifier', payload: { reset_verifier: signer().verifier } })).statusCode).toBe(401);
   });
 });

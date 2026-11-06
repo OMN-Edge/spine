@@ -40,10 +40,6 @@ export function vaultRepository(q: Query, begin: Begin): VaultRepository {
       return Number((await one<{ n: number }>(q, 'SELECT COUNT(*) AS n FROM vault_keys WHERE reset_verifier IS NULL', []))!.n);
     },
 
-    async setResetVerifier(userId, verifier) {
-      return (await changed(q, 'UPDATE vault_keys SET reset_verifier = $1 WHERE user_id = $2 AND reset_verifier IS NULL', [verifier, userId])) === 1;
-    },
-
     async list(userId, since) {
       return (await many(q, `SELECT ${COLUMNS} FROM vault_objects WHERE user_id = $1 AND seq > $2 ORDER BY seq`, [userId, since])).map(asMeta);
     },

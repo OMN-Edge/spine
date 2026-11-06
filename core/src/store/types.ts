@@ -1502,8 +1502,6 @@ export interface VaultRepository {
   putKeys(userId: string, keys: VaultKeys, now: string): Promise<boolean>;
   /** The same account key under new wrappings (a new master password, a new recovery kit). Objects are untouched. The verifier is not changed here. */
   replaceKeys(userId: string, keys: VaultKeys, now: string): Promise<boolean>;
-  /** Adds the reset verifier to a vault that has none; false when it has one or there is no vault. A verifier is never replaced, only made again with the vault. */
-  setResetVerifier(userId: string, verifier: string): Promise<boolean>;
   /** Everything changed after `since`, deletions included, oldest change first. */
   list(userId: string, since: number): Promise<VaultObjectMeta[]>;
   get(userId: string, id: string): Promise<VaultObjectMeta | null>;

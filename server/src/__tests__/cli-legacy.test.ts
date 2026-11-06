@@ -44,7 +44,10 @@ describe('the report of what is left of the paths for older things', () => {
   it('exits 0 and says the strict release can go out when none is left', async () => {
     await store().shared.put(userId, { id: 'share-legacy-aaaaaaaaaaaaaaaa', expiresAt: soon(), requireApproval: false, size: 1, blobs: 0, blobBytes: 0, passCheck: check('c') }, new Date().toISOString());
     await store().shared.put(userId, { id: 'card-legacy-aaaaaaaaaaaaaaaaaa', expiresAt: '9999-12-31T00:00:00.000Z', requireApproval: false, size: 1, blobs: 0, blobBytes: 0, kind: 'card', passCheck: check('d') }, new Date().toISOString());
-    await store().vault.setResetVerifier(userId, check('v'));
+    // a vault with a verifier is made with one: the strict release has no way to add one afterwards
+    await store().vault.erase(userId);
+    const keys = fakeVaultKeys();
+    await store().vault.putKeys(userId, { ...keys, kdf_params: JSON.stringify(keys.kdf_params), reset_verifier: check('v') }, new Date().toISOString());
     await store().delegations.cancelInvite(userId, check('i'));
     const { code, out } = await cli();
     expect(out).toMatch(/nothing counted is left/);

@@ -6,6 +6,8 @@ import { OWNER_EMAIL, OWNER_ID, createTestUser } from './helpers/seed.js';
 import { fakeAuthValue, fakeVaultKeys } from 'spine-core/testing/vault.js';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { issueUserToken } from '../accounts.js';
+import { generateKeyPairSync, sign } from 'crypto';
+import { resetMessage } from '../reset-proof.js';
 import { resolveDataDir } from 'spine-core/config.js';
 
 /** Where the object store, being files here, puts an account's objects. */
@@ -252,12 +254,16 @@ describe('a reset with a vault', () => {
   });
 
   it('re-wraps the same account key under a new master key and keeps the objects', async () => {
-    await setUp();
+    // The vault has a reset verifier, and the reset is signed for it by the device that opened the kit (S-38).
+    const pair = generateKeyPairSync('ed25519');
+    const verifier = pair.publicKey.export({ format: 'der', type: 'spki' }).subarray(-32).toString('base64url');
+    await call('PUT', '/api/vault/keys', { auth_value: fakeAuthValue(), keys: { ...fakeVaultKeys(), reset_verifier: verifier } });
     await put('object-0001', Buffer.from('a'));
     const token = await issueUserToken(OWNER_ID, 'reset', 60_000);
     const auth_value = fakeAuthValue();
     const keys = fakeVaultKeys();
-    expect((await post('/api/auth/reset', { token, auth_value, keys })).statusCode).toBe(200);
+    const proof = sign(null, Buffer.from(resetMessage(token, auth_value, keys, keys.kdf_params as never)), pair.privateKey).toString('base64url');
+    expect((await post('/api/auth/reset', { token, auth_value, keys, proof })).statusCode).toBe(200);
     expect((await getAccountsStore().vault.getKeys(OWNER_ID))?.wrapped_by_master).toBe(keys.wrapped_by_master);
     expect((await getAccountsStore().vault.list(OWNER_ID, 0)).map(o => o.id)).toEqual(['object-0001']);
     expect((await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: OWNER_EMAIL, password: auth_value } })).statusCode).toBe(200);

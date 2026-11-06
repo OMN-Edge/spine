@@ -10,6 +10,8 @@ import { getAccountsStore } from 'spine-core/store/index.js';
 import { issueUserToken } from '../accounts.js';
 import { resetMailer, type MailMessage, type Mailer } from '../mail/index.js';
 import { base32Decode, hotp, stepAt } from '../totp.js';
+import { generateKeyPairSync, sign, type KeyObject } from 'crypto';
+import { resetMessage } from '../reset-proof.js';
 
 /**
  * SECURITY.md S-38. A reset link is the mailbox's word, and a reset replaces the vault's keys, so an account with a second factor asks
@@ -54,11 +56,18 @@ async function withSecondFactor() {
   return { secret, recovery: (enable.json() as { recovery_codes: string[] }).recovery_codes };
 }
 
+// A vault has a reset verifier, and a reset that replaces its keys is signed for it (S-38): the tests here are about the second factor, so they sign.
+let signer: KeyObject;
 const withVault = async () => {
+  const pair = generateKeyPairSync('ed25519');
+  signer = pair.privateKey;
+  const verifier = pair.publicKey.export({ format: 'der', type: 'spki' }).subarray(-32).toString('base64url');
   const keys = fakeVaultKeys();
-  await owner().vault.putKeys(OWNER_ID, { ...keys, kdf_params: JSON.stringify(keys.kdf_params) }, new Date().toISOString());
+  await owner().vault.putKeys(OWNER_ID, { ...keys, kdf_params: JSON.stringify(keys.kdf_params), reset_verifier: verifier }, new Date().toISOString());
   return keys;
 };
+const proofFor = (token: string, authValue: string, keys: ReturnType<typeof fakeVaultKeys>) =>
+  sign(null, Buffer.from(resetMessage(token, authValue, keys, keys.kdf_params as never)), signer).toString('base64url');
 
 describe('a reset link on an account with a second factor', () => {
   it('says that a code is needed, to whoever holds the link', async () => {
@@ -112,7 +121,8 @@ describe('a reset link on an account with a second factor', () => {
     await withVault();
     const token = await issueUserToken(OWNER_ID, 'reset', 60_000);
     const mine = fakeVaultKeys();
-    const res = await post('/api/auth/reset', { token, auth_value: fakeAuthValue(), keys: mine, code: codeFor(secret) });
+    const auth_value = fakeAuthValue();
+    const res = await post('/api/auth/reset', { token, auth_value, keys: mine, code: codeFor(secret), proof: proofFor(token, auth_value, mine) });
     expect(res.statusCode).toBe(200);
     expect((await owner().vault.getKeys(OWNER_ID))?.wrapped_by_master).toBe(mine.wrapped_by_master);
     await vi.waitFor(() => expect(sent).toHaveLength(1));
@@ -124,7 +134,9 @@ describe('a reset link on an account with a second factor', () => {
     const { recovery } = await withSecondFactor();
     await withVault();
     const token = await issueUserToken(OWNER_ID, 'reset', 60_000);
-    const res = await post('/api/auth/reset', { token, auth_value: fakeAuthValue(), keys: fakeVaultKeys(), code: recovery[0] });
+    const next = fakeVaultKeys();
+    const auth_value = fakeAuthValue();
+    const res = await post('/api/auth/reset', { token, auth_value, keys: next, code: recovery[0], proof: proofFor(token, auth_value, next) });
     expect(res.statusCode).toBe(200);
   });
 
@@ -146,7 +158,8 @@ describe('a reset link on an account without a second factor', () => {
     await withVault();
     const token = await issueUserToken(OWNER_ID, 'reset', 60_000);
     const mine = fakeVaultKeys();
-    const res = await post('/api/auth/reset', { token, auth_value: fakeAuthValue(), keys: mine });
+    const auth_value = fakeAuthValue();
+    const res = await post('/api/auth/reset', { token, auth_value, keys: mine, proof: proofFor(token, auth_value, mine) });
     expect(res.statusCode).toBe(200);
     expect((await owner().vault.getKeys(OWNER_ID))?.wrapped_by_master).toBe(mine.wrapped_by_master);
     await vi.waitFor(() => expect(sent).toHaveLength(1));

@@ -33,7 +33,7 @@ export async function ownAccountRoutes(app: FastifyInstance) {
 
   // Whether an emailed link may recover the account (SECURITY.md S-38). On unless the owner turns it off. Off, no recovery mail is sent and a
   // link cannot start the records over or replace the keys without the recovery kit's signature, so it can only be turned off once the vault has
-  // the verifier that signature is checked against (a device adds it when the records are opened): off before that would leave the kit with nothing to prove.
+  // the verifier that signature is checked against: off before that would leave the kit with nothing to prove.
   app.put<{ Body: { enabled?: unknown } }>('/api/account/email-recovery', { preHandler: [requireAuth, requireRecentAuth, app.rateLimit({ max: 10, timeWindow: '10 minutes' })] }, async (req, reply) => {
     const enabled = req.body?.enabled;
     if (typeof enabled !== 'boolean') return reply.status(400).send({ error: 'enabled must be true or false' });
@@ -41,7 +41,7 @@ export async function ownAccountRoutes(app: FastifyInstance) {
     const user = await store.users.findById(req.userId);
     if (!user) return reply.status(401).send({ error: 'not authenticated' });
     if (!enabled && !(await store.vault.getKeys(req.userId))?.reset_verifier) {
-      return reply.status(409).send({ error: 'open your records on this device first, so they can be recovered with the recovery kit alone', code: 'verifier_missing' });
+      return reply.status(409).send({ error: 'this vault has no reset verifier, so it cannot be recovered with the recovery kit alone', code: 'verifier_missing' });
     }
     await store.users.setEmailRecovery(req.userId, enabled);
     mailAfter(req, user.id, securityChangeMail(user.email, enabled ? 'Recovery of your account by email was turned on' : 'Recovery of your account by email was turned off', new Date().toISOString()), 'email recovery setting');

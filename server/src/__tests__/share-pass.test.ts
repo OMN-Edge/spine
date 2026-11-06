@@ -28,7 +28,7 @@ beforeEach(async () => {
 afterEach(async () => { await app.close(); process.env = { ...saved }; });
 
 const publish = (share: string, headers: Record<string, string> = {}, cookie = owner) =>
-  app.inject({ method: 'PUT', url: `/api/shared/${share}`, headers: { cookie, 'content-type': 'application/octet-stream', 'x-spine-expires': inHours(24), ...headers }, payload: randomBytes(100) });
+  app.inject({ method: 'PUT', url: `/api/shared/${share}`, headers: { cookie, 'content-type': 'application/octet-stream', 'x-spine-pass-check': check(), 'x-spine-expires': inHours(24), ...headers }, payload: randomBytes(100) });
 const ask = (share: string, payload?: unknown) => app.inject({ method: 'POST', url: `/api/shared/${share}/relay-token`, payload: payload as object | undefined });
 
 describe('the pass for a share’s model calls', () => {
@@ -54,16 +54,19 @@ describe('the pass for a share’s model calls', () => {
     expect((await ask(share, { check: mine })).statusCode).toBe(200);
   });
 
-  it('keeps the value when the copy is sent again without one, and takes a new one when it comes', async () => {
+  it('takes a new value when the copy is sent again with one, and refuses a copy sent with none', async () => {
     const share = id();
     const first = check();
     await publish(share, { 'x-spine-pass-check': first });
-    await publish(share);
-    expect((await ask(share, { check: first })).statusCode).toBe(200);
     const second = check();
     await publish(share, { 'x-spine-pass-check': second });
     expect((await ask(share, { check: first })).statusCode).toBe(403);
     expect((await ask(share, { check: second })).statusCode).toBe(200);
+    // none at all is refused: a copy made before the check is made again, which sends one
+    const bare = await app.inject({ method: 'PUT', url: `/api/shared/${share}`, headers: { cookie: owner, 'content-type': 'application/octet-stream', 'x-spine-expires': inHours(24) }, payload: randomBytes(100) });
+    expect(bare.statusCode).toBe(400);
+    const card = await app.inject({ method: 'PUT', url: `/api/shared/${id()}`, headers: { cookie: owner, 'content-type': 'application/octet-stream', 'x-spine-kind': 'card' }, payload: randomBytes(100) });
+    expect(card.statusCode).toBe(400);
   });
 
   it('refuses a value that is not in the shape the device makes', async () => {

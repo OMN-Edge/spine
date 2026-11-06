@@ -6,7 +6,7 @@ import type { SealedCache } from './sealed-cache.js';
 import { checkKdfAnswer, type KdfAnswer } from './kdf-trust.js';
 import {
   createAccountKeys, rewrapObjectKey, deriveFromPassword, lock, newId, newProfileKey, openObject, openObjectNow, openProfileKey, openProfileRecord, sealObject, sealProfileRecord,
-  resetVerifierOf, unlockWithMaster, unlockWithPasskey, type KdfParams, type UnlockedKeys, type VaultKeyPayload,
+  unlockWithMaster, unlockWithPasskey, type KdfParams, type UnlockedKeys, type VaultKeyPayload,
 } from './keys.js';
 import { fromInviteCode, helloFor, inviteKeyFromBlob, makeInvite, openGrantKey, openInvite, openPin, readHello, sealGrantKey, sealPin } from './delegation.js';
 
@@ -150,20 +150,6 @@ export class VaultSession {
     const payload = keys ?? (await fetchKeys(f));
     const unlocked = await unlockWithMaster(masterKey, payload);
     return new VaultSession(unlocked, payload, f);
-  }
-
-  /**
-   * A vault made before reset verifiers has none (SECURITY.md S-38): the first device that opens it adds the one its account key makes, so
-   * a reset by link must be signed for it from then on. Best effort and silent: a refusal (the password was not typed lately, as after a
-   * passkey sign-in) is tried again at the next unlock, and a vault that has one is left alone.
-   */
-  async ensureResetVerifier(): Promise<void> {
-    if (this.keys.reset_verifier) return;
-    try {
-      const reset_verifier = await resetVerifierOf(this.unlocked.accountKey);
-      const res = await this.f('/api/vault/reset-verifier', { ...json({ reset_verifier }), method: 'PUT' });
-      if (res.ok) this.keys = { ...this.keys, reset_verifier };
-    } catch { /* tried again at the next unlock */ }
   }
 
   /** The same step with a passkey's PRF output (`passkey-prf.ts`) in place of the master key. */

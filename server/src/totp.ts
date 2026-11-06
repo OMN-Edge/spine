@@ -187,8 +187,3 @@ export async function hashRecoveryCode(normalised: string, userId: string): Prom
     scrypt(normalised, `spine/recovery-code/v1:${userId}`, 32, { N: 2 ** 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 }, (err, key) => (err ? reject(err) : resolve(key.toString('hex'))));
   });
 }
-
-/** How a code was stored before it was stored slowly: still accepted, once, from a code made then, until the codes are made again. */
-export function legacyHashRecoveryCode(normalised: string): string {
-  return createHash('sha256').update(normalised).digest('hex');
-}

@@ -5,7 +5,6 @@ import {
   decryptSecret,
   generateRecoveryCode,
   hashRecoveryCode,
-  legacyHashRecoveryCode,
   matchTotp,
   normaliseCode,
   normaliseRecoveryCode,
@@ -41,9 +40,7 @@ export async function checkSecondFactor(user: Pick<UserRecord, 'id'>, input: str
 
   const code = normaliseRecoveryCode(input);
   if (!code) return false;
-  const at = new Date(now).toISOString();
-  // The slow hash, and the plain one an earlier version stored, so a code made then still works (once) until the codes are made again.
-  const used = (await store.users.useRecoveryCode(user.id, await hashRecoveryCode(code, user.id), at)) || (await store.users.useRecoveryCode(user.id, legacyHashRecoveryCode(code), at));
+  const used = await store.users.useRecoveryCode(user.id, await hashRecoveryCode(code, user.id), new Date(now).toISOString());
   if (used) logger.warn('recovery code used', { userId: user.id });
   return used;
 }

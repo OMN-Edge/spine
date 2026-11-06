@@ -56,7 +56,7 @@ describe('the reserve of free space', () => {
     process.env.SPINE_MIN_FREE_MB = '100';
     disk.free = () => 50 * MB;
     const share = randomBytes(16).toString('base64url');
-    const copy = (id: string, extra: Record<string, string> = {}) => app.inject({ method: 'PUT', url: `/api/shared/${id}`, payload: randomBytes(100), headers: { cookie, 'content-type': 'application/octet-stream', 'x-spine-expires': new Date(Date.now() + 3_600_000).toISOString(), ...extra } });
+    const copy = (id: string, extra: Record<string, string> = {}) => app.inject({ method: 'PUT', url: `/api/shared/${id}`, payload: randomBytes(100), headers: { cookie, 'content-type': 'application/octet-stream', 'x-spine-pass-check': 'c'.repeat(43), 'x-spine-expires': new Date(Date.now() + 3_600_000).toISOString(), ...extra } });
     expect((await copy(share)).json()).toMatchObject({ code: 'storage_low' });
     expect((await copy(randomBytes(16).toString('base64url'), { 'x-spine-kind': 'card' })).statusCode).toBe(507);
     disk.free = () => 500 * MB;
