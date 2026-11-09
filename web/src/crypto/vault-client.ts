@@ -38,7 +38,7 @@ function readRecord(plain: Uint8Array): Omit<ProfileSummary, 'id'> {
 
 /** What `GET /api/delegations` answers (SECURITY.md M-49). */
 export interface Delegations {
-  owned: Array<{ id: string; profile_id: string; delegate_email: string; delegate_public_key: string | null; role: 'guardian' | 'viewer' | 'self'; state: 'pending' | 'active' | 'paused' | 'revoked'; created_at: string; delegate_hello: string | null; owner_blob: string | null; delegate_pin: string | null; bound: boolean }>;
+  owned: Array<{ id: string; profile_id: string; delegate_email: string; delegate_public_key: string | null; role: 'guardian' | 'viewer' | 'self'; state: 'pending' | 'active' | 'paused' | 'revoked'; created_at: string; delegate_hello: string | null; owner_blob: string | null; delegate_pin: string | null }>;
   invites: Array<{ id: string; profile_id: string; role: 'guardian' | 'viewer' | 'self'; expires_at: string }>;
   received: Array<{ id: string; owner_email: string; owner_public_key: string | null; profile_id: string; role: 'guardian' | 'viewer' | 'self'; state: 'pending' | 'active' | 'paused' | 'revoked'; wrapped_key: string | null; owner_pin: string | null; delegate_pinned: boolean; others: Array<{ id: string; role: 'guardian' | 'viewer' | 'self'; state: 'pending' | 'active' | 'paused' | 'revoked'; delegate_email: string; delegate_public_key: string | null }> }>;
 }

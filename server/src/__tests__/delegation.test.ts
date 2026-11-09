@@ -41,14 +41,23 @@ describe('letting another account into a profile', () => {
 
   const put = (who: string, id: string, kind: string, profile: string, text: string, base = 0, url = '/api/vault/objects') =>
     app.inject({ method: 'PUT', url: `${url}/${id}`, headers: { cookie: who, 'content-type': 'application/octet-stream', 'x-spine-kind': kind, 'x-spine-profile': profile, 'x-spine-wrapped-key': K('k'), 'x-spine-base-seq': String(base) }, payload: Buffer.from(text) });
+  /** The delegate completes a grant (the hello and the pin of the owner's key always come with the key) and the owner confirms the code, which pins and starts it. */
+  const BINDING = { hello: K('h'), owner_pin: K('p') };
+  const complete = async (who: string, grant: string, key: string, ownerCookie = owner) => {
+    const done = await call('PUT', `/api/delegations/${grant}/key`, who, { wrapped_key: key, ...BINDING });
+    if (done.statusCode !== 200) return done;
+    expect((await call('PUT', `/api/delegations/${grant}/pin`, ownerCookie, { pin: K('n') })).statusCode).toBe(200);
+    expect((await call('POST', `/api/delegations/${grant}/state`, ownerCookie, { state: 'active' })).statusCode).toBe(200);
+    return done;
+  };
   const call = (method: 'GET' | 'POST' | 'PUT' | 'DELETE', url: string, who: string, payload?: unknown) => app.inject({ method, url, headers: { cookie: who }, payload: payload as object | undefined });
-  const invite = (role = 'guardian', id = INVITE_ID, proof = PROOF, who = owner) => call('POST', '/api/delegations/invites', who, { id, profile_id: PROFILE, role, wrapped: WRAPPED, proof_hash: hex(proof) });
+  const invite = (role = 'guardian', id = INVITE_ID, proof = PROOF, who = owner) => call('POST', '/api/delegations/invites', who, { id, profile_id: PROFILE, role, wrapped: WRAPPED, proof_hash: hex(proof), owner_blob: K('o') });
   let grantId = '';
 
   it('is made by the owner, for a profile that is theirs, and shows to no one else', async () => {
-    expect((await call('POST', '/api/delegations/invites', owner, { id: INVITE_ID, profile_id: 'profile-nope-0000', role: 'guardian', wrapped: WRAPPED, proof_hash: hex(PROOF) })).statusCode).toBe(404);
-    expect((await call('POST', '/api/delegations/invites', owner, { id: 'short', profile_id: PROFILE, role: 'guardian', wrapped: WRAPPED, proof_hash: hex(PROOF) })).statusCode).toBe(400);
-    expect((await call('POST', '/api/delegations/invites', owner, { id: INVITE_ID, profile_id: PROFILE, role: 'owner', wrapped: WRAPPED, proof_hash: hex(PROOF) })).statusCode).toBe(400);
+    expect((await call('POST', '/api/delegations/invites', owner, { id: INVITE_ID, profile_id: 'profile-nope-0000', role: 'guardian', wrapped: WRAPPED, proof_hash: hex(PROOF), owner_blob: K('o') })).statusCode).toBe(404);
+    expect((await call('POST', '/api/delegations/invites', owner, { id: 'short', profile_id: PROFILE, role: 'guardian', wrapped: WRAPPED, proof_hash: hex(PROOF), owner_blob: K('o') })).statusCode).toBe(400);
+    expect((await call('POST', '/api/delegations/invites', owner, { id: INVITE_ID, profile_id: PROFILE, role: 'owner', wrapped: WRAPPED, proof_hash: hex(PROOF), owner_blob: K('o') })).statusCode).toBe(400);
     expect((await invite()).statusCode).toBe(201);
     expect((await call('GET', '/api/delegations', owner)).json().invites).toHaveLength(1);
     expect((await call('GET', '/api/delegations', guest)).json().invites).toEqual([]);
@@ -105,11 +114,11 @@ describe('letting another account into a profile', () => {
 
   it('opens nothing until the one let in has sealed the key to their own', async () => {
     expect((await call('GET', `/api/delegated/${grantId}/objects`, guest)).statusCode).toBe(404);
-    expect((await call('PUT', `/api/delegations/${grantId}/key`, owner, { wrapped_key: K('d') })).statusCode).toBe(404); // not the owner's to complete
+    expect((await call('PUT', `/api/delegations/${grantId}/key`, owner, { wrapped_key: K('d'), ...BINDING })).statusCode).toBe(404); // not the owner's to complete
     expect((await call('PUT', `/api/delegations/${grantId}/key`, guest, { wrapped_key: 'short' })).statusCode).toBe(400);
-    expect((await call('PUT', `/api/delegations/${grantId}/key`, guest, { wrapped_key: K('d') })).statusCode).toBe(200);
+    expect((await complete(guest, grantId, K('d'))).statusCode).toBe(200);
     const seen = (await call('GET', '/api/delegations', guest)).json();
-    expect(seen.received).toEqual([{ id: grantId, owner_email: 'owner@spine.test', owner_public_key: null, profile_id: PROFILE, role: 'guardian', state: 'active', wrapped_key: K('d'), owner_pin: null, delegate_pinned: false, others: [] }]);
+    expect(seen.received).toEqual([{ id: grantId, owner_email: 'owner@spine.test', owner_public_key: null, profile_id: PROFILE, role: 'guardian', state: 'active', wrapped_key: K('d'), owner_pin: K('p'), delegate_pinned: true, others: [] }]);
     expect((await call('GET', '/api/delegations', owner)).json().owned).toMatchObject([{ id: grantId, delegate_email: 'guest@spine.test', role: 'guardian', state: 'active' }]);
   });
 
@@ -150,7 +159,7 @@ describe('letting another account into a profile', () => {
     const viewer = await createTestUser('viewer@spine.test');
     const cookie = await loginAs(app, viewer.email, viewer.password);
     const claimed = (await call('POST', '/api/delegations/claim', cookie, { id: 'v'.repeat(43), proof: 'r'.repeat(43) })).json();
-    await call('PUT', `/api/delegations/${claimed.grant.id}/key`, cookie, { wrapped_key: K('e') });
+    await complete(cookie, claimed.grant.id, K('e'));
     expect((await call('GET', `/api/delegated/${claimed.grant.id}/objects/object-a-0001`, cookie)).statusCode).toBe(200);
     const refused = await put(cookie, 'object-v-0001', 'bundle', PROFILE, 'no', 0, `/api/delegated/${claimed.grant.id}/objects`);
     expect(refused.statusCode).toBe(403);
@@ -169,7 +178,7 @@ describe('letting another account into a profile', () => {
     const cookie = await loginAs(app, teen.email, teen.password);
     const claimed = (await call('POST', '/api/delegations/claim', cookie, { id: 's'.repeat(43), proof: 'o'.repeat(43) })).json();
     expect(claimed.grant.role).toBe('self');
-    await call('PUT', `/api/delegations/${claimed.grant.id}/key`, cookie, { wrapped_key: K('s') });
+    await complete(cookie, claimed.grant.id, K('s'));
     expect((await put(cookie, 'object-t-0001', 'bundle', PROFILE, 'the person’s own note', 0, `/api/delegated/${claimed.grant.id}/objects`)).statusCode).toBe(200);
     expect((await put(cookie, 'object-t-0002', 'profile', PROFILE, 'their own record', 0, `/api/delegated/${claimed.grant.id}/objects`)).statusCode).toBe(403);
     // The person can give the access up themselves.
@@ -192,10 +201,10 @@ describe('letting another account into a profile', () => {
       await put(owner, 'object-c-0001', 'bundle', child, 'a child’s note');
       const guardian = await makeVault('promo-guardian@spine.test');
       const teen = await makeVault('promo-teen@spine.test');
-      const invite2 = (role: string, id: string, proof: string) => call('POST', '/api/delegations/invites', owner, { id, profile_id: child, role, wrapped: WRAPPED, proof_hash: hex(proof) });
+      const invite2 = (role: string, id: string, proof: string) => call('POST', '/api/delegations/invites', owner, { id, profile_id: child, role, wrapped: WRAPPED, proof_hash: hex(proof), owner_blob: K('o') });
       const accept = async (who: { cookie: string }, id: string, proof: string) => {
         const g = (await call('POST', '/api/delegations/claim', who.cookie, { id, proof })).json().grant.id as string;
-        await call('PUT', `/api/delegations/${g}/key`, who.cookie, { wrapped_key: K('d') });
+        await complete(who.cookie, g, K('d'));
         return g;
       };
       await invite2('guardian', 'a1'.repeat(21) + 'a', 'a'.repeat(43));
@@ -262,9 +271,9 @@ describe('letting another account into a profile', () => {
       await put(freeCookie, 'profile-own-0001', 'profile', 'profile-own-0001', 'my own'); // the one person a free plan keeps
       const profile = 'profile-dddd-0004';
       await put(family.cookie, profile, 'profile', profile, 'a teenager’s record');
-      await call('POST', '/api/delegations/invites', family.cookie, { id: 'c1'.repeat(21) + 'c', profile_id: profile, role: 'self', wrapped: WRAPPED, proof_hash: hex('c'.repeat(43)) }); // the trial may
+      await call('POST', '/api/delegations/invites', family.cookie, { id: 'c1'.repeat(21) + 'c', profile_id: profile, role: 'self', wrapped: WRAPPED, proof_hash: hex('c'.repeat(43)), owner_blob: K('o') }); // the trial may
       const g = (await call('POST', '/api/delegations/claim', freeCookie, { id: 'c1'.repeat(21) + 'c', proof: 'c'.repeat(43) })).json().grant.id as string;
-      await call('PUT', `/api/delegations/${g}/key`, freeCookie, { wrapped_key: K('d') });
+      await complete(freeCookie, g, K('d'), family.cookie);
       expect((await call('POST', `/api/delegations/${g}/promote`, freeCookie, promoteBody([], []))).statusCode).toBe(200);
       expect((await call('GET', `/api/vault/objects/${profile}`, freeCookie)).statusCode).toBe(200);
     });
@@ -301,7 +310,7 @@ describe('letting another account into a profile', () => {
     const second = await createTestUser('second@spine.test');
     const cookie = await loginAs(app, second.email, second.password);
     const g = (await call('POST', '/api/delegations/claim', cookie, { id: 'k'.repeat(43), proof: 'z'.repeat(43) })).json().grant.id;
-    await call('PUT', `/api/delegations/${g}/key`, cookie, { wrapped_key: K('1') });
+    await complete(cookie, g, K('1'));
     const live = (await call('GET', '/api/vault/objects', owner)).json().objects.filter((o: { profile_id: string; kind: string; deleted: boolean }) => o.profile_id === PROFILE && o.kind !== 'profile' && !o.deleted).map((o: { id: string }) => o.id);
     const ok = await call('POST', `/api/vault/profiles/${PROFILE}/rotate`, owner, { profile_wrapped: K('n'), profile_body: Buffer.from('the profile record, again').toString('base64url'), objects: live.map((id: string) => ({ id, wrapped_key: K('m') })), grants: [{ id: g, wrapped_key: K('2') }] });
     expect(ok.statusCode).toBe(200);
@@ -324,7 +333,7 @@ describe('letting another account into a profile', () => {
     const cookie = await loginAs(app, free.email, free.password);
     await app.inject({ method: 'PUT', url: '/api/vault/keys', headers: { cookie }, payload: { auth_value: fakeAuthValue(), keys: fakeVaultKeys() } });
     await put(cookie, 'profile-free-0001', 'profile', 'profile-free-0001', 'mine');
-    const refused = await call('POST', '/api/delegations/invites', cookie, { id: 'f'.repeat(43), profile_id: 'profile-free-0001', role: 'guardian', wrapped: WRAPPED, proof_hash: hex(PROOF) });
+    const refused = await call('POST', '/api/delegations/invites', cookie, { id: 'f'.repeat(43), profile_id: 'profile-free-0001', role: 'guardian', wrapped: WRAPPED, proof_hash: hex(PROOF), owner_blob: K('o') });
     expect(refused.statusCode).toBe(402);
     expect(refused.json().code).toBe('plan_required');
   });
@@ -341,12 +350,12 @@ describe('letting another account into a profile', () => {
     const child = 'profile-leave-0007';
     await put(leaver.cookie, child, 'profile', child, 'a child’s record');
     await put(leaver.cookie, 'object-leave-0001', 'bundle', child, 'a child’s note');
-    const make = (id: string, proof: string) => call('POST', '/api/delegations/invites', leaver.cookie, { id, profile_id: child, role: 'guardian', wrapped: WRAPPED, proof_hash: hex(proof) });
+    const make = (id: string, proof: string) => call('POST', '/api/delegations/invites', leaver.cookie, { id, profile_id: child, role: 'guardian', wrapped: WRAPPED, proof_hash: hex(proof), owner_blob: K('o') });
     expect((await make('l1'.repeat(21) + 'l', 'l'.repeat(43))).statusCode).toBe(201);
     expect((await make('m1'.repeat(21) + 'm', 'm'.repeat(43))).statusCode).toBe(201); // never used
     const claimed = await call('POST', '/api/delegations/claim', coGuardian.cookie, { id: 'l1'.repeat(21) + 'l', proof: 'l'.repeat(43) });
     const grant = claimed.json().grant.id as string;
-    expect((await call('PUT', `/api/delegations/${grant}/key`, coGuardian.cookie, { wrapped_key: K('d') })).statusCode).toBe(200);
+    expect((await complete(coGuardian.cookie, grant, K('d'), leaver.cookie)).statusCode).toBe(200);
     expect((await call('GET', `/api/delegated/${grant}/objects`, coGuardian.cookie)).statusCode).toBe(200);
     expect((await call('GET', '/api/delegations', coGuardian.cookie)).json().received).toHaveLength(1);
 

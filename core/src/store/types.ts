@@ -934,7 +934,7 @@ export interface DelegationRepository {
    * the hello and the pin of the owner's key; false if it is not theirs or not pending. A bound grant starts `paused`: the owner confirms the
    * code the delegate's key makes, which pins it and resumes the grant (SECURITY.md S-39); one with no binding starts `active`, as it did.
    */
-  complete(delegateId: string, id: string, wrappedKey: string, now: string, binding?: { hello: string; ownerPin: string } | null): Promise<boolean>;
+  complete(delegateId: string, id: string, wrappedKey: string, now: string, binding: { hello: string; ownerPin: string }): Promise<boolean>;
   /** The owner's: records the delegate's key as this device verified it (`DelegationRecord.delegate_pin`); false if it is not the owner's live grant. */
   setPin(ownerId: string, id: string, pin: string): Promise<boolean>;
   /** Unexpired invitations with no binding, and live grants with none (S-39, S-41): what a device already refuses and the server still takes. */

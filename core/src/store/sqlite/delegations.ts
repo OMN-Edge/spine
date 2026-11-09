@@ -100,7 +100,7 @@ export function delegationRepository(db: Database): DelegationRepository {
     async claim(delegateId, id, proofHash, now, grantId) { return claimTx(owner(delegateId), id, proofHash, now, grantId); },
     async peek(delegateId, id, proofHash, now) { return (peek.get(id, proofHash, now, owner(delegateId)) as { owner_user_id: string; role: DelegationRecord['role']; expires_at: string } | undefined) ?? null; },
     // A grant whose keys are bound waits, paused, until the owner has confirmed the code the delegate's key makes (S-39); one from a device that does not bind is live as it was.
-    async complete(delegateId, id, wrappedKey, now, binding) { return complete.run(wrappedKey, binding?.hello ?? null, binding?.ownerPin ?? null, binding ? 'paused' : 'active', now, id, owner(delegateId)).changes === 1; },
+    async complete(delegateId, id, wrappedKey, now, binding) { return complete.run(wrappedKey, binding.hello, binding.ownerPin, 'paused', now, id, owner(delegateId)).changes === 1; },
     async setPin(ownerId, id, pin) { return setPin.run(pin, new Date().toISOString(), owner(ownerId), id).changes === 1; },
     async countUnbound(now) {
       const invites = (db.prepare("SELECT COUNT(*) AS n FROM profile_invites WHERE state = 'offered' AND expires_at > ? AND owner_blob IS NULL").get(now) as { n: number }).n;

@@ -82,7 +82,7 @@ export function delegationRepository(q: Query, begin: Begin): DelegationReposito
       return one<{ owner_user_id: string; role: DelegationRecord['role']; expires_at: string }>(q, "SELECT owner_user_id, role, expires_at FROM profile_invites WHERE id = $1 AND proof_hash = $2 AND state = 'offered' AND expires_at > $3 AND owner_user_id <> $4", [id, proofHash, now, owner(delegateId)]);
     },
     async complete(delegateId, id, wrappedKey, now, binding) {
-      return (await changed(q, "UPDATE delegations SET wrapped_key = $1, delegate_hello = $2, owner_pin = $3, state = $4, updated_at = $5 WHERE id = $6 AND delegate_user_id = $7 AND state = 'pending'", [wrappedKey, binding?.hello ?? null, binding?.ownerPin ?? null, binding ? 'paused' : 'active', now, id, owner(delegateId)])) === 1;
+      return (await changed(q, "UPDATE delegations SET wrapped_key = $1, delegate_hello = $2, owner_pin = $3, state = $4, updated_at = $5 WHERE id = $6 AND delegate_user_id = $7 AND state = 'pending'", [wrappedKey, binding.hello, binding.ownerPin, 'paused', now, id, owner(delegateId)])) === 1;
     },
     async setPin(ownerId, id, pin) {
       return (await changed(q, "UPDATE delegations SET delegate_pin = $1, updated_at = $2 WHERE owner_user_id = $3 AND id = $4 AND state IN ('active', 'paused')", [pin, new Date().toISOString(), owner(ownerId), id])) === 1;
