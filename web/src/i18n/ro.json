@@ -1066,6 +1066,8 @@
  "The certificates in the file lead to an authority this server trusts": "Certificatele din fișier duc la o autoritate în care acest server are încredere",
  "Another device made changes": "Un alt dispozitiv a făcut modificări",
  "They are already here. Reload to see them.": "Sunt deja aici. Reîncărcați pentru a le vedea.",
+ "These records are older than the last time this device opened them: something saved since may be missing. If you restored a backup, that is expected.": "Aceste înregistrări sunt mai vechi decât ultima dată când acest dispozitiv le-a deschis: ce s-a salvat de atunci poate lipsi. Dacă ați restaurat o copie de siguranță, este normal.",
+ "This is expected": "Este normal",
  "Your latest changes are not saved yet. Spine keeps trying, so keep this page open.": "Ultimele dumneavoastră modificări nu au fost încă salvate. Spine continuă să încerce, așa că păstrați această pagină deschisă.",
  "Some of your latest changes are not saved yet. If you sign out now, they will be lost.": "Unele dintre ultimele dumneavoastră modificări nu au fost încă salvate. Dacă vă deconectați acum, ele se vor pierde.",
  "Keep this page open": "Păstrați pagina deschisă",

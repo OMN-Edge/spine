@@ -3,7 +3,7 @@ import { LocalApp, type InjectRequest, type InjectResponse } from './local-app';
 import { openDeviceStore } from './device-store';
 import { browserTools } from './native';
 import { useNativeTools } from 'spine-core/native-tools';
-import { Persistence, indexIdFor, type ObjectStore } from './persist';
+import { Persistence, indexIdFor, type Freshness, type ObjectStore } from './persist';
 import type { SaveState } from './protocol';
 export type { SaveState };
 import { memory, browserFiles } from './shims/fs';
@@ -57,6 +57,8 @@ export interface Core {
   /** Saves now what has changed. Throws if the vault did not take it. */
   flush(): Promise<void>;
   saveState(): Promise<SaveState>;
+  /** The vault showed an earlier state than this device last saw and the person said that is expected. */
+  acceptOlder(): Promise<void>;
   /** Stops saving and lets go of everything held in memory. Anything not saved is gone: use `close`. */
   lock(): void;
   /**
@@ -68,7 +70,7 @@ export interface Core {
   store: Store;
 }
 
-export async function startCore(vault?: { objects: ObjectStore; profileId: string }, hooks: { onConflict?: () => void; onChanged?: () => void; onSaveState?: (state: SaveState) => void; onPeople?: () => void } = {}, options: { shares?: boolean } = {}): Promise<Core> {
+export async function startCore(vault?: { objects: ObjectStore; profileId: string; freshness?: Freshness | null }, hooks: { onConflict?: () => void; onChanged?: () => void; onSaveState?: (state: SaveState) => void; onPeople?: () => void } = {}, options: { shares?: boolean } = {}): Promise<Core> {
   await hashingReady();
   useNativeTools(browserTools);
   useDigests(browserDigests);
@@ -87,7 +89,7 @@ export async function startCore(vault?: { objects: ObjectStore; profileId: strin
     });
   }
 
-  const persistence = vault && new Persistence(vault.objects, vault.profileId, indexIdFor(vault.profileId), newId, { changes: store.changes, files: store.files, userId: DEVICE_USER });
+  const persistence = vault && new Persistence(vault.objects, vault.profileId, indexIdFor(vault.profileId), newId, { changes: store.changes, files: store.files, userId: DEVICE_USER }, vault.freshness ?? null);
   if (persistence) {
     persistence.onChanged = () => { hooks.onChanged?.(); followRecords(); };
     persistence.onPeople = () => hooks.onPeople?.();
@@ -120,11 +122,11 @@ export async function startCore(vault?: { objects: ObjectStore; profileId: strin
   const hasUnsent = async () => !!persistence && (await store.changes.pending() || persistence.waiting || memory.changes().written.length > 0 || memory.changes().removed.length > 0);
   let saveError: string | null = null;
   let announced = '';
-  const saveState = async (): Promise<SaveState> => ({ unsaved: (await hasUnsent()) || saveError !== null, error: saveError });
+  const saveState = async (): Promise<SaveState> => ({ unsaved: (await hasUnsent()) || saveError !== null, error: saveError, older: !!persistence?.older });
   /** Tells the page when the state changes (not on every look). */
   const announce = async () => {
     const state = await saveState();
-    const key = `${state.unsaved}|${state.error ?? ''}`;
+    const key = `${state.unsaved}|${state.error ?? ''}|${state.older}`;
     if (key === announced) return;
     announced = key;
     hooks.onSaveState?.(state);
@@ -188,6 +190,7 @@ export async function startCore(vault?: { objects: ObjectStore; profileId: strin
     store,
     flush,
     saveState,
+    acceptOlder: async () => { await persistence?.acceptOlder(); await announce(); },
     lock,
     async close(force = false) {
       try { await flush(); } catch { /* said by saveState below */ }

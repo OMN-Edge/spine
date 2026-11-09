@@ -110,22 +110,22 @@ describe('the core, saving to and loading from the vault', () => {
 
   it('says when a save fails, keeps the records marked as changed, and clears it once the vault has them', async () => {
     const { core, state, states } = await offlineable('profile-dddddddd');
-    expect(await core.saveState()).toEqual({ unsaved: false, error: null });
+    expect(await core.saveState()).toEqual({ unsaved: false, error: null, older: false });
     await seedDocument({ userId: 'device', sourceFileId: await seedSourceFile({ userId: 'device', status: 'done' }), withPage: false, tags: ['cardio'] });
     expect((await core.saveState()).unsaved).toBe(true);
 
     state.offline = true;
     await expect(core.flush()).rejects.toThrow('offline');
-    expect(await core.saveState()).toEqual({ unsaved: true, error: 'offline' });
-    expect(states.at(-1)).toEqual({ unsaved: true, error: 'offline' });
+    expect(await core.saveState()).toEqual({ unsaved: true, error: 'offline', older: false });
+    expect(states.at(-1)).toEqual({ unsaved: true, error: 'offline', older: false });
     // still failing: still marked, not forgotten
     await expect(core.flush()).rejects.toThrow('offline');
     expect((await core.saveState()).unsaved).toBe(true);
 
     state.offline = false;
     await core.flush();
-    expect(await core.saveState()).toEqual({ unsaved: false, error: null });
-    expect(states.at(-1)).toEqual({ unsaved: false, error: null });
+    expect(await core.saveState()).toEqual({ unsaved: false, error: null, older: false });
+    expect(states.at(-1)).toEqual({ unsaved: false, error: null, older: false });
     core.lock();
   });
 

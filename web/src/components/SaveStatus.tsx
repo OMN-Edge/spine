@@ -22,6 +22,18 @@ export default function SaveStatus() {
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
   }, [state.unsaved]);
+  const [accepting, setAccepting] = useState(false);
+  const accept = async () => { setAccepting(true); try { await device.acceptOlder(); } catch { /* the state says it again */ } finally { setAccepting(false); } };
+  if (state.older) {
+    return (
+      <div role="alert" className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+        <p>{t('These records are older than the last time this device opened them: something saved since may be missing. If you restored a backup, that is expected.')}</p>
+        <div className="mt-3">
+          <button type="button" disabled={accepting} onClick={() => void accept()} className="rounded-lg bg-amber-600 px-3 py-1.5 font-medium text-white hover:bg-amber-700 disabled:opacity-60">{t('This is expected')}</button>
+        </div>
+      </div>
+    );
+  }
   if (!state.error) return null;
   const retry = async () => { setTrying(true); try { await device.save(); } catch { /* the state says it again */ } finally { setTrying(false); } };
   return (

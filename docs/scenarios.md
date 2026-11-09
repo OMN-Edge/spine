@@ -637,6 +637,7 @@ The owner signs in on a second device with the master password (or a passkey) an
 
 - Two devices that change different things at the same moment end with both changes. The newest change to a row wins; a deletion is a change.
 - A device that saved is told that another made changes, and offers a reload; pages do not refresh themselves.
+- A device that opens a vault whose newest object is older than the newest it saw last time (the operator restored a backup, or a server serves an earlier state) says so above the records and asks the person to confirm that is expected; it asks again at each opening until they do (SECURITY.md S-43). Status: `persist.test.ts` checks the layer; the banner is not driven by a browser check.
 - A tag or doctor made on two devices with the same name becomes one. Starter tags are the same on every device.
 - After 10 segments a device folds them into a small part (and after six such parts, writes a snapshot of everything), so a device that was away catches up from them.
 - After a reload the records come back from the copy kept on the device and the server is asked only for what is new; signing out removes the copy.

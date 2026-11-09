@@ -18,7 +18,7 @@ class CoreWorker {
   private waiting = new Map<number, { resolve: (m: Extract<FromWorker, { ok: true }>) => void; reject: (e: Error) => void }>();
   private ready = false;
   /** Whether what the person did is all in the vault; changes are announced on the window as `SAVE_STATE_CHANGED`. */
-  saveState: SaveState = { unsaved: false, error: null };
+  saveState: SaveState = { unsaved: false, error: null, older: false };
 
   private ensure(): Worker {
     if (this.worker) return this.worker;
@@ -123,7 +123,7 @@ class CoreWorker {
     this.worker?.terminate();
     this.worker = null;
     this.ready = false;
-    this.saveState = { unsaved: false, error: null };
+    this.saveState = { unsaved: false, error: null, older: false };
     window.dispatchEvent(new Event(SAVE_STATE_CHANGED));
   }
 
@@ -159,6 +159,11 @@ class CoreWorker {
   /** Tries to save now; throws if the vault did not take it. */
   async save(): Promise<void> {
     await this.send({ type: 'save' });
+  }
+
+  /** The vault showed an earlier state than this device last saw (a restore, say) and the person says that is expected. */
+  async acceptOlder(): Promise<void> {
+    await this.send({ type: 'acceptOlder' });
   }
 
   isOpen = () => this.ready;

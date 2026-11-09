@@ -15,6 +15,8 @@ export type ToWorker =
   /** Look again at the keys and the people the account may open (after a profile's key was replaced, or access was given or taken). */
   | { id: number; type: 'reloadKeys' }
   /** Saves what is open, then opens another person's records. Refused with code `unsaved` unless `force`. */
+  /** The earlier state of the vault is what was expected (a restore): remember it, and stop saying so. */
+  | { id: number; type: 'acceptOlder' }
   | { id: number; type: 'switchProfile'; profileId: string; force?: boolean; dropEmpty?: boolean }
   | { id: number; type: 'request'; method: string; url: string; headers: Record<string, string>; body?: string; parts?: Part[] }
   | { id: number; type: 'startShare'; shareId: string; key: string }
@@ -32,7 +34,8 @@ export type Trace = { id: 0; trace: string };
  * Whether what the person did is all in the vault. `error` is set from a save that failed until one succeeds; the core keeps trying on
  * its own, and the page says so, so nobody works on believing it is saved when it is not.
  */
-export interface SaveState { unsaved: boolean; error: string | null }
+/** `older`: the vault shows an earlier state than this device last saw, and the person has not said that is expected (SECURITY.md S-43). */
+export interface SaveState { unsaved: boolean; error: string | null; older: boolean }
 export type FromWorker =
   | Trace
   /** Another device saved first: this one has changes it could not save and has stopped trying (SECURITY.md M-34). */

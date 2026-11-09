@@ -83,12 +83,25 @@ function bytesByTable(changes: Change[]): Record<string, number> {
 }
 
 /** The name the profile's index (the one object written over) is kept under. */
+/**
+ * The highest sequence number of this profile's vault that this device has seen, kept on the device and surviving sign-out (SECURITY.md S-43).
+ * Sequence numbers only rise, so a vault whose highest is lower than the mark is an earlier state: a restore from a backup, or a server
+ * serving old objects and hiding newer ones. Best effort: where the browser keeps nothing there is no mark and no check.
+ */
+export interface Freshness { get(): Promise<number>; set(seq: number): Promise<void> }
+
+/** What the mark remembered and what the vault now shows, when the vault is the older. */
+export interface OlderState { remembered: number; found: number }
+
 export const indexIdFor = (profileId: string): string => `ix-${profileId}`;
 
 export class Persistence {
   private index: IndexV2 = { v: 2, snapshot: [], covers: [] };
   private indexSeq = 0;
   private seen = 0;
+  /** The mark as last read or written, and whether the vault showed less than it (until the person says that is expected). */
+  private mark = 0;
+  older: OlderState | null = null;
   private busy: Promise<void> = Promise.resolve();
   /** Segments this device has applied or written and that no snapshot has folded yet, with their sequence numbers. */
   private open = new Map<string, number>();
@@ -117,6 +130,7 @@ export class Persistence {
     private readonly indexId: string,
     private readonly newId: () => Promise<string>,
     private readonly records: Records,
+    private readonly freshness: Freshness | null = null,
   ) {}
 
   private async hash(data: Uint8Array): Promise<string> {
@@ -185,6 +199,7 @@ export class Persistence {
     const snapshot = { ...this.loaded, ms: Math.round(performance.now() - t0) };
     this.loaded = { bytes: 0, objects: 0 };
     const listed = await this.store.list(0);
+    await this.checkFreshness(listed.objects.reduce((high, o) => Math.max(high, o.seq), 0));
     for (const change of await this.pullSegments(listed.objects)) collected.push(change);
     const segments = { ...this.loaded, ms: Math.round(performance.now() - t0) - snapshot.ms };
     const t1 = performance.now();
@@ -200,6 +215,22 @@ export class Persistence {
     memory.useLoader(path => this.fill(path));
     this.tidy = this.open.size >= TIDY_AFTER;
     return { empty: !got && collected.length === 0 };
+  }
+
+  /** Compares the vault's highest sequence with the mark: lower is an earlier state, said to the person; otherwise the mark rises to it. */
+  private async checkFreshness(high: number): Promise<void> {
+    if (!this.freshness || this.older) return;
+    if (this.mark === 0) this.mark = await this.freshness.get().catch(() => 0);
+    if (high < this.mark) { this.older = { remembered: this.mark, found: high }; return; }
+    if (high > this.mark) { this.mark = high; await this.freshness.set(high).catch(() => undefined); }
+  }
+
+  /** The person said the earlier state is expected (a restore): it becomes the mark, and the check goes on from there. */
+  async acceptOlder(): Promise<void> {
+    if (!this.older || !this.freshness) return;
+    this.mark = this.older.found;
+    this.older = null;
+    await this.freshness.set(this.mark).catch(() => undefined);
   }
 
   /** Segments of this profile that are not folded into the snapshot and not already held; their changes, opened. */
@@ -329,6 +360,7 @@ export class Persistence {
       }
     }
     for (const change of await this.pullSegments(objects)) incoming.push(change);
+    await this.checkFreshness(this.seen);
     if (incoming.length > 0) {
       // A change is applied outside any transaction; if a request is in the middle of one, the next save tries again.
       const n = await this.records.changes.apply(incoming);

@@ -87,6 +87,6 @@ describe('what the page is told about saving', () => {
     await device.unlock(new Uint8Array(32));
     FakeWorker.last.say({ id: 0, save: { unsaved: true, error: 'offline' } });
     await device.lock();
-    expect(device.saveState).toEqual({ unsaved: false, error: null });
+    expect(device.saveState).toEqual({ unsaved: false, error: null, older: false });
   });
 });
