@@ -52,6 +52,7 @@ Every environment variable, read from `.env` (copy `.env.example`; `./install.sh
 | `SPINE_HOST` | Interface Fastify binds (default `127.0.0.1` — nginx is the only public listener) |
 | `SPINE_BACKUP_DIR` | Snapshot + vault mirror target (default beside `data/`; set it to removable or network storage to survive media loss) |
 | `SPINE_BACKUP_KEEP` | Snapshots to retain (default `7`) |
+| `SPINE_BACKUP_TRASH_DAYS` | Days an object the vault removed stays in the backup, in `vault-removed/` (default `7`; `0` drops it at once); an account's are removed when it is deleted |
 | `SPINE_SESSION_IDLE_HOURS`, `SPINE_SESSION_DAYS` | A sign-in ends after this long unused (24) or this long in all (14 days); a bad value gives the default (SECURITY.md **M-27**) |
 | `SPINE_SKIP_AUDIT` | `1` lets `install.sh -b` build despite a high or critical dependency advisory (offline builds); default is to stop (**S-32**) |
 

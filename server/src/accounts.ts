@@ -1,3 +1,4 @@
+import { removeFromBackup } from './backup.js';
 import { removeAllObjects } from './vault-files.js';
 import { removeShare } from './shared-files.js';
 import fs from 'fs';
@@ -179,7 +180,7 @@ export async function wipeAccount(userId: string, fresh: { authValue: string; ke
 
 /** The sealed vault, the backup's copy and then the live one, so no ciphertext of the account is left; then the sealed shares' files. */
 async function removeFiles(userId: string): Promise<void> {
-  fs.rmSync(path.join(resolveBackupDir(), 'vault', userId), { recursive: true, force: true });
+  removeFromBackup(userId, resolveBackupDir());
   await removeAllObjects(userId);
   for (const id of await getAccountsStore().shared.eraseFor(userId)) await removeShare(id);
 }
