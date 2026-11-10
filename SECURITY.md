@@ -159,12 +159,12 @@ Verified present. Rows about records, parsing, ingestion, search, chat and the s
 | Signup, verification, forgot and reset limited per source and per address; identical answers for known and unknown addresses | `routes/accounts.ts`, `rate-limit.ts` |
 | Verification and reset tokens: hashed at rest, single-use by one atomic update, in the URL fragment, spent by POST | `accounts.ts`, `store/sqlite/users.ts`, `web/src/auth.ts` |
 | An unverified account never gets a session | `routes/auth.ts`, `routes/middleware.ts` |
-| With two-factor on, the right password starts only a pending login; `login/second-factor` is the only other place a session is issued, and a test fails if another route assigns one | `routes/auth.ts`, `__tests__/second-factor.test.ts` |
+| With two-factor on, the right password starts only a pending login; the second step, a passkey (both factors at once) and a device let in by one that is signed in (`enrolment.ts`) are the only other places a session is issued, and a test fails if another route file calls `startSession` | `routes/auth.ts`, `__tests__/second-factor.test.ts` |
 | TOTP: a used code cannot be replayed (one atomic `UPDATE`), wrong guesses are limited per source and per user, the seed is encrypted with the user id bound in, recovery codes are stored with a slow salted hash and single-use (**S-42**) | `totp.ts`, `second-factor.ts`, `store/sqlite/users.ts` |
 | Turning two-factor off or regenerating codes needs the password and a current code; enabling or disabling ends the user's other sessions | `routes/totp.ts` |
 | Mail has no attachment field, no clinical wording, and a required sender; failures never log the message | `mail/`, `accounts.ts` |
 | Open signup without a mailer refuses to start | `config.ts` |
-| Page images leave only through `readPage`, which only the `multimodal` and `hybrid` parsers call, and those need `SPINE_MULTIMODAL_ENABLED` as well; `hybrid` never sends a native-text page | `parser/`, `config.ts` |
+| Page images leave only through `readPage`, which only the `multimodal` and `hybrid` parsers call, and those need `SPINE_MULTIMODAL_ENABLED` as well; the cropped stamps of a signature (`readStamps`, never a whole page) go only with that switch too; `hybrid` never sends a native-text page | `parser/`, `config.ts` |
 | The server logs the model settings a device is told to use; each page logs its route in the browser's console | `index.ts`, `parser/adapters/` |
 | "Read page with AI" needs the operator switch and the caller's own upload or page, takes at most 200 pages, runs one reading per upload at a time, and names the count and provider before sending | `routes/source-files.ts`, `ingestion/ai-reading.ts`, `web/src/components/AiReading.tsx` |
 | Local OCR on the device is Tesseract.js with packs that ship with the web app, so `hybrid` cannot quietly send more pages away because a program is missing | `web/src/core/native/ocr.ts`, `parser/ocr.ts` |
@@ -173,9 +173,9 @@ Verified present. Rows about records, parsing, ingestion, search, chat and the s
 | No static mount over `DATA_DIR` | `index.ts` |
 | A share is a sealed copy named by a random id; the key that opens it is in the address after the `#` (or wrapped to an approved browser), so neither the server nor its logs can open it. There is no share token to store or hash (**M-36**) | `routes/shared.ts`, `web/src/core/share/` |
 | Share entry route serves the app shell, never JSON | `routes/public-share.ts` |
-| Share expiry bounded 1–30 days, default 7; revocation deletes the sealed copy, and an ended or unknown link answers as ended | `routes/share.ts`, `routes/public-share.ts` |
+| Share expiry from one hour to 30 days (the server refuses more than 31), default 7 days; revocation deletes the sealed copy, and an ended or unknown link answers as ended | `routes/share.ts`, `routes/public-share.ts` |
 | A scope that cannot be fully resolved is rejected at creation, and serves nothing if found stored | `share-scope.ts`, `routes/public-share.ts` |
-| The server records that a share was opened, when and from which country, before the key is of any use; what a recipient reads inside the copy is not logged (**M-36**) | `routes/shared.ts`, `geo.ts` |
+| The server records that a share was opened, when and from which country, on the word of a page that shows it holds the key (a value only the key makes, **S-54**; the server never has the key); what a recipient reads inside the copy is not logged (**M-36**) | `routes/shared.ts`, `geo.ts` |
 | A share link shows page images only if the owner ticked `include_scans` for it (default off); a recipient can open only a document the link's scope resolves to, and see only a page of such a document that is not hidden, with one 404 for everything else; responses are `no-store`. The recipient's routes run in the recipient's browser, so they are not a control against that reader: counts and limits live at the server (`routes/shared.ts`) and the relay | `routes/public-share.ts`, `__tests__/public-share-detail.test.ts` |
 | A share link can let its recipient ask questions (`share_links.allow_chat`, default off, and `SPINE_CHAT` must be on): limited in code to `listForShare(link)` (search, tests, series and documents; no care chain tool), a recipient's own prompt, nothing stored; the model calls it causes are counted against the share at the relay (`SPINE_RELAY_SHARE_DAILY_CALLS`, default 200 a day, apart from every account), and the pass is issued at most 30 a minute per source | `chat/agent.ts` (`Scope`), `chat/retrieval.ts`, `routes/public-share.ts`, `server/src/relay/relay.ts`, `__tests__/share-chat.test.ts`, `__tests__/relay.test.ts` |
 | A share link can require the owner's approval (`share_links.require_approval`, default off): the visitor's browser makes a key pair and asks; the server holds the request (10 a minute per source, 10 an hour per link, 5 waiting at once); the owner's device answers by wrapping the share key to that browser's key, so nothing opens without it (**M-19**, **M-36**) | `routes/shared.ts`, `web/src/core/share/`, `routes/share.ts`, `__tests__/shared.test.ts` |
@@ -186,10 +186,10 @@ Verified present. Rows about records, parsing, ingestion, search, chat and the s
 | Digital signatures are read and checked on the device (WebCrypto): the bytes must match, and with trust anchors the chain must reach one (**S-23**); the certificate's serial number is not kept | `ingestion/signatures.ts`, `ingestion/signatures-cms.ts` |
 | Search text is quoted into a full-text query and a result's excerpt is drawn as text with highlight marks, never as HTML | `search-query.ts`, `web/src/pages/Search.tsx` |
 | Every LLM response validated against a schema before it reaches the database | `llm/types.ts`, `llm/chat-llm.ts` |
-| Startup refuses an unknown LLM provider, an unstated Vertex endpoint/region, or a stray Google API key | `llm/index.ts`, `llm/adapters/vertex.ts` |
+| The relay's startup refuses an unknown LLM provider, an unstated Vertex endpoint/region, or a stray Google API key | `llm/index.ts`, `llm/adapters/vertex.ts` |
 | Startup refuses a database of an older shape, saying whether it is safe to delete | `store/sqlite/connection.ts` |
 | Daily `VACUUM INTO` snapshot of the accounts database + a mirror of the vault's sealed objects, retention 7 | `backup.ts`, `systemd/spine-backup.timer` |
-| When the device's core starts it fails over any upload left mid-flight | `ingestion/pipeline.ts`, `web/src/core/boot.ts`, `web/src/core/boot.test.ts` |
+| When the device's core starts it reads again, from its file in the vault, any upload left mid-flight, and fails a restore or an upload whose file never reached the vault | `ingestion/pipeline.ts`, `web/src/core/boot.ts`, `web/src/core/boot.test.ts` |
 
 ### Host
 
@@ -197,7 +197,7 @@ Verified present. Rows about records, parsing, ingestion, search, chat and the s
 |---|---|
 | `NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`, `ReadWritePaths=data/` (and the backup target for the backup and the web service, which removes a deleted account's copy there; the relay's count) | every unit |
 | `PrivateTmp`: temporary files are not in a shared `/tmp` | `spine-web.service` |
-| Services run as the invoking user, not root | both units |
+| Services run as the invoking user, not root | all three units |
 
 ## Known gaps
 
