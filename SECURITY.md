@@ -146,7 +146,7 @@ Verified present. Rows about records, parsing, ingestion, search, chat and the s
 | Passwords that are common, patterned, or made of the address are refused | `passwords.ts`, `__tests__/password-policy.test.ts` |
 | A daily allowance of model calls per account and per share link, counted by the relay before a call reaches the provider | `server/src/relay/relay.ts`, `__tests__/relay.test.ts` |
 | Every route refuses an unauthenticated request unless on a short allow-list; a test fails otherwise | `__tests__/isolation.test.ts` |
-| Every statement on a user-owned table filters by `user_id`; none runs without an acting user | `store/sqlite/` |
+| Every statement on a user-owned table filters by `user_id` or follows a check of the row's owner in the same method (a share's update by its id, after the row is read and its owner compared); the ones that do neither are the exceptions named in `store/types.ts` (**M-1**) and three counts (one the operator's command makes, the startup count that refuses an old database, the count of founding prices) | `store/sqlite/` |
 | A record that is not the caller's answers 404, the same as one that does not exist | `routes/` |
 | A create naming another user's record throws and inserts nothing | `store/sqlite/` |
 | Search is filtered by owner by joining back to `documents.user_id` | `store/sqlite/documents.ts` |
