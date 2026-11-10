@@ -79,7 +79,7 @@ Five. The third arrives with multi-user and is the one a routine change can brea
 2. **Proxy → Fastify.** Fastify trusts `X-Forwarded-*` only from the loopback proxy (`trust-proxy.ts`) and nginx overwrites `X-Forwarded-For` with the peer it saw, so a client cannot choose the address the rate limits key on (SECURITY.md **S-31**); Fastify must still never be directly reachable — otherwise those headers are attacker-controlled. It binds `127.0.0.1` unless `SPINE_HOST` overrides it (`config.ts`).
 3. **User A ↔ User B.** Two accounts of the same instance. Neither may read, modify, or enumerate the other's records. Records are on each owner's device and the server holds them only sealed under keys it does not have, so the server cannot cross this line by a bug; what it can still get wrong is the vault's and the shares' per-account access (`isolation.test.ts`). The store-layer scoping below still holds on the device and in the tests that run the whole app — see [Multi-user model](#multi-user-model).
 4. **Owner vs. share reader.** A share is a sealed copy of a subset of *one* owner's documents; whoever holds its key can open that copy and nothing else.
-5. **Host → third parties.** The only egress: the inference provider, and the mail provider for account links. See [Egress](#egress-what-leaves-the-host).
+5. **Host → third parties.** The egress: the inference provider (through the relay), the mail provider for account messages, and, only where the operator turns them on, the payment provider (a plan, a checkout and a portal, never a card or a record) and a Google Cloud Storage bucket for the sealed bytes; the country file is fetched from GitHub and sends nothing of an account. See [Egress](#egress-what-leaves-the-host).
 
 There is no parser service: PDF text is read on the device by PDF.js in the core's Web Worker (`ingestion/pdf-text.ts`, `web/src/core/native/`), and the server parses no file, so there is no second listener to protect. The Python sidecar that did this before ([docs/sidecar.md](docs/sidecar.md)) was loopback-bound with no authentication and read any path it was given; that exposure is gone with it.
 
@@ -198,6 +198,9 @@ Every row marked "configured provider" is a call the owner's device makes to the
 | Sorting a mixed upload (the owner confirms; chat card or the upload's report) | the **text read from the pages** of that one upload, a page or so each, to judge each candidate group (at most 60 calls, groups of at most 8 pages); where embeddings are on, the pages' text to the embedder. Never an image | configured provider |
 | Parsing (text layer) | nothing — local | — |
 | Account mail (verification, reset, a sign-in from a new browser, a changed security setting, a share waiting for approval) | recipient address, a link, the time of the event. **Never document content** | configured mail provider |
+| Plan, checkout and portal (`SPINE_BILLING=on`) | the price asked for, the account's random id as custom data, and a customer and subscription id for the portal; never a card, never a record (the person gives Paddle their own details on its checkout) | Paddle |
+| Sealed bytes (`SPINE_OBJECTS=gcs`) | the vault's and the shares' sealed objects, under keys of their own naming; nothing readable | the operator's Google Cloud Storage bucket |
+| The country file (daily, before the backup) | nothing of an account: a download of a public file | GitHub (ip-location-db's release) |
 
 Residency is a property of the endpoint. For Vertex that means the `eu` multi-region host and service-account credentials, never an API key. See SECURITY.md **P8**, **M-8** and [docs/deployment-gcp.md](docs/deployment-gcp.md).
 
