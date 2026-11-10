@@ -55,6 +55,7 @@ To work on the code: [docs/developing.md](docs/developing.md).
 
 - [ARCHITECTURE.md](ARCHITECTURE.md): where the code runs, trust boundaries, and the detail pages on interfaces, the pipeline and the data
 - [SECURITY.md](SECURITY.md): security principles, implemented controls, the open gaps and how to report a vulnerability
+- [docs/threats.md](docs/threats.md): what Spine protects against, how the 2026-11 review checked it and against which standards, in plain words
 - [docs/key-hierarchy.md](docs/key-hierarchy.md): the key hierarchy and trust boundaries, who can see what ([docs/crypto-design.md](docs/crypto-design.md) is the build plan)
 - [docs/requirements.md](docs/requirements.md): what it must do (the `FR-`, `TR-` and `CR-` IDs cited around the repository)
 - [docs/configuration.md](docs/configuration.md): every environment variable
