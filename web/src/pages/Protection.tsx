@@ -72,6 +72,7 @@ export default function Protection() {
         <P>{t('Spine is open source. Each build lists a fingerprint of every file it serves, so anyone can check that the app their browser received is the published one.')}</P>
         <p className="mt-6 flex flex-wrap gap-x-6 gap-y-2">
           <TextLink to="/encryption">{t('Encryption, in detail')}</TextLink>
+          <TextLink to="/security-review">{t('How it was checked')}</TextLink>
           <TextLink to="/trust">{t('How to check this app')}</TextLink>
           <TextLink to="/privacy">{t('Privacy notice')}</TextLink>
         </p>

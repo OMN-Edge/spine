@@ -66,6 +66,13 @@ export default function Landing() {
             <Point title={t('AI you can check')}>{t('Every value it reads links back to the page it came from. Anything it is unsure of is marked for you to check, and what you correct stays corrected.')}</Point>
             <Point title={t('Careful with what leaves')}>{t('To read and sort documents, their text is sent to an AI model through a relay that does not store or log it. Images of your pages are sent only where image reading has been switched on.')}</Point>
           </dl>
+          <div className="mt-12 rounded-2xl border border-accent/30 bg-accent/5 p-6 md:flex md:items-center md:justify-between md:gap-8">
+            <div className="max-w-2xl">
+              <h3 className="text-lg font-medium">{t('Checked, not just claimed')}</h3>
+              <p className="mt-2 leading-relaxed text-ink/75">{t('In November 2026 Spine was reviewed the way a security assessment is done, against the OWASP standards: 27 weaknesses were found and every one was fixed, each with a test. It was the project’s own review, not an independent audit, and the page says so.')}</p>
+            </div>
+            <p className="mt-4 shrink-0 md:mt-0"><TextLink to="/security-review">{t('How it was checked')}</TextLink></p>
+          </div>
           <p className="mt-10"><TextLink to="/protection">{t('How your records are protected, in full')}</TextLink></p>
         </div>
       </section>

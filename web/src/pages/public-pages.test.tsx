@@ -7,6 +7,7 @@ import HowItWorks from './HowItWorks';
 import Protection from './Protection';
 import Families from './Families';
 import Encryption from './Encryption';
+import SecurityReview from './SecurityReview';
 
 /**
  * The pages a visitor reads before an account: each opens on its own title inside the one header and footer, offers the demo as the
@@ -29,6 +30,7 @@ const PAGES = [
   { name: 'protection', page: <Protection />, path: '/protection', title: 'How your records are protected' },
   { name: 'families', page: <Families />, path: '/families', title: 'Spine for families' },
   { name: 'encryption', page: <Encryption />, path: '/encryption', title: 'Encryption, in detail' },
+  { name: 'the security review', page: <SecurityReview />, path: '/security-review', title: 'How Spine’s security was checked' },
 ];
 
 describe('the pages before an account', () => {
@@ -70,5 +72,13 @@ describe('the pages before an account', () => {
 
   it('says the relay sees what passes through it, and does not promise it cannot', () => {
     expect(text(render(<Protection />, '/protection'))).toContain('The relay does see the text while it passes through.');
+  });
+
+  it('says first that the review was the project’s own, not an independent audit, and links to it from the front page', () => {
+    const page = text(render(<SecurityReview />, '/security-review'));
+    expect(page.indexOf('It is not an independent audit')).toBeGreaterThan(-1);
+    expect(page.indexOf('It is not an independent audit')).toBeLessThan(page.indexOf('What it found'));
+    expect(page).toContain('no certificate is claimed');
+    expect(render(<Landing />, '/')).toContain('href="/security-review"');
   });
 });
