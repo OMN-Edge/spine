@@ -90,7 +90,7 @@ export function PublicPage({ options, children }: { options: PublicOptions; chil
           <nav aria-label={t('About Spine')} className="flex flex-col gap-2">
             {links.map(l => <Link key={l.to} to={l.to} className="hover:text-ink hover:underline">{l.label}</Link>)}
             <Link to="/encryption" className="hover:text-ink hover:underline">{t('Encryption, in detail')}</Link>
-            <Link to="/security-review" className="hover:text-ink hover:underline">{t('How it was checked')}</Link>
+            <Link to="/security-checks" className="hover:text-ink hover:underline">{t('Security in every release')}</Link>
           </nav>
           <nav aria-label={t('The rules')} className="flex flex-col gap-2">
             <Link to="/privacy" className="hover:text-ink hover:underline">{t('Privacy notice')}</Link>

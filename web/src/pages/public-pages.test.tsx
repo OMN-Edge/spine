@@ -7,7 +7,7 @@ import HowItWorks from './HowItWorks';
 import Protection from './Protection';
 import Families from './Families';
 import Encryption from './Encryption';
-import SecurityReview from './SecurityReview';
+import SecurityChecks from './SecurityChecks';
 
 /**
  * The pages a visitor reads before an account: each opens on its own title inside the one header and footer, offers the demo as the
@@ -30,7 +30,7 @@ const PAGES = [
   { name: 'protection', page: <Protection />, path: '/protection', title: 'How your records are protected' },
   { name: 'families', page: <Families />, path: '/families', title: 'Spine for families' },
   { name: 'encryption', page: <Encryption />, path: '/encryption', title: 'Encryption, in detail' },
-  { name: 'the security review', page: <SecurityReview />, path: '/security-review', title: 'How Spine’s security was checked' },
+  { name: 'security in every release', page: <SecurityChecks />, path: '/security-checks', title: 'Checked on every change, reviewed before every release' },
 ];
 
 describe('the pages before an account', () => {
@@ -74,11 +74,10 @@ describe('the pages before an account', () => {
     expect(text(render(<Protection />, '/protection'))).toContain('The relay does see the text while it passes through.');
   });
 
-  it('says first that the review was the project’s own, not an independent audit, and links to it from the front page', () => {
-    const page = text(render(<SecurityReview />, '/security-review'));
-    expect(page.indexOf('It is not an independent audit')).toBeGreaterThan(-1);
-    expect(page.indexOf('It is not an independent audit')).toBeLessThan(page.indexOf('The attacks it is built to resist'));
-    expect(page).toContain('no certificate is claimed');
-    expect(render(<Landing />, '/')).toContain('href="/security-review"');
+  it('names the attacks first, then the three stages every version goes through, and the front page links to it', () => {
+    const page = text(render(<SecurityChecks />, '/security-checks'));
+    for (const heading of ['The attacks it is built to resist', 'On every change', 'Before every release', 'At release']) expect(page).toContain(heading);
+    expect(page.indexOf('The attacks it is built to resist')).toBeLessThan(page.indexOf('On every change'));
+    expect(render(<Landing />, '/')).toContain('href="/security-checks"');
   });
 });

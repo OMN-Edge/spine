@@ -28,7 +28,7 @@ import { useProfiles } from './profiles';
 import ForDoctors from './pages/ForDoctors';
 import HowItWorks from './pages/HowItWorks';
 import Protection from './pages/Protection';
-import SecurityReview from './pages/SecurityReview';
+import SecurityChecks from './pages/SecurityChecks';
 import Families from './pages/Families';
 import Encryption from './pages/Encryption';
 import Trust from './pages/Trust';
@@ -347,7 +347,7 @@ export default function App() {
         <Route path="/for-doctors" element={<ForDoctors />} />
         <Route path="/how-it-works" element={<HowItWorks />} />
         <Route path="/protection" element={<Protection />} />
-        <Route path="/security-review" element={<SecurityReview />} />
+        <Route path="/security-checks" element={<SecurityChecks />} />
         <Route path="/families" element={<Families />} />
         <Route path="/encryption" element={<Encryption />} />
         <Route path="/pair" element={<NotInDemo><Pair /></NotInDemo>} />

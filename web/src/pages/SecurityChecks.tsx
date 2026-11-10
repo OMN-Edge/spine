@@ -1,12 +1,13 @@
 import type { ReactNode } from 'react';
 import { useI18n } from '../i18n';
-import { Actions, P, PageIntro, PublicPage, Section, TextLink, usePublicOptions } from '../components/PublicPage';
+import { Actions, PageIntro, PublicPage, Section, TextLink, usePublicOptions } from '../components/PublicPage';
 
 /**
- * How Spine's security was checked, in the shape of an assessment report: who checked it, the named attacks Spine is built to resist
- * (each with its CWE or OWASP reference and what stops it), the method, the standards, and what it does not protect against. It is
- * docs/threats.md for a reader who is not an engineer; every line is a control SECURITY.md describes. It claims no audit
- * and no certificate, and says so first. /source and /security are nginx redirects to the repository.
+ * How Spine is kept secure as it changes: the named attacks it is built to resist (each with its CWE or OWASP reference and what stops
+ * it), the automated checks on every change (.github/workflows/ci.yml), the review before every release (docs/releasing.md), what a
+ * release carries (release.yml), the standards, and what it does not protect against. It is docs/threats.md for a reader who is not an
+ * engineer; every line is a control SECURITY.md describes or a step those files run. /source and /security are nginx redirects to the
+ * repository.
  */
 const External = ({ href, children }: { href: string; children: ReactNode }) => (
   <a href={href} target="_blank" rel="noopener noreferrer" className="text-accent underline decoration-accent/35 underline-offset-4 hover:decoration-accent">{children}</a>
@@ -33,19 +34,47 @@ function Group({ title, attacks }: { title: string; attacks: Attack[] }) {
   );
 }
 
-export default function SecurityReview() {
+function Stage({ n, title, lead, items }: { n: number; title: string; lead: string; items: Array<[string, string]> }) {
+  return (
+    <div className="rounded-2xl border border-ink/10 p-6">
+      <div className="flex items-baseline gap-3">
+        <span className="font-display text-3xl leading-none text-accent">{n}</span>
+        <h3 className="text-xl font-medium">{title}</h3>
+      </div>
+      <p className="mt-2 leading-relaxed text-ink/70">{lead}</p>
+      <ul className="mt-4 space-y-3">
+        {items.map(([name, body]) => (
+          <li key={name} className="leading-relaxed text-ink/80"><span className="font-medium text-ink">{name}.</span> {body}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+export default function SecurityChecks() {
   const { t } = useI18n();
   const options = usePublicOptions();
 
-  const steps: Array<[string, string]> = [
-    [t('Scope'), t('The whole code (the server, the app that runs in your browser, the relay for AI calls, installation) and the running service.')],
-    [t('Threat model'), t('What is protected, who might attack it, and every place where data passes from one party to another: fourteen of them, each with what must hold there.')],
-    [t('Checked against a standard'), t('Area by area: cryptography, sign-in and sessions, who may see what, files, the web page, configuration, abuse, the supply chain, the AI features.')],
-    [t('Tested'), t('About 180 checks, each with its own verdict. Where an attack looked possible, it was written as an automated test and run against the code.')],
-    [t('The live service'), t('What is really deployed: encryption of the connection, open ports, file permissions, how the services run, and a restore of the latest backup.')],
-    [t('Rated'), t('High, Medium or Low, by what an attacker could gain and how hard it is to reach.')],
-    [t('Tested on every change'), t('Every fix, and the protections the code holds, have automated tests that fail if the protection is taken away; they run on every change. The settings of the web server and the host were checked on the running service.')],
-    [t('Reported'), t('This page, and the full record in the code. The security documents were then checked against the code, and about seventy statements that no longer matched it were corrected.')],
+  const everyChange: Array<[string, string]> = [
+    [t('Security tests'), t('A second user tries every route, and sign-in, sessions, sharing, the encryption and the assistant each have tests that fail if a protection is taken away.')],
+    [t('Dependency audit'), t('A known serious vulnerability in any package stops the build.')],
+    [t('Secret scanning'), t('The whole history of the code is searched for keys and passwords.')],
+    [t('Static analysis'), t('The code is scanned for unsafe patterns.')],
+    [t('Real browsers'), t('The whole app runs in Chrome against a real server, and the server’s files are searched for any record that could be read.')],
+    [t('Reproducible build'), t('The app is built twice, and the two must come out identical.')],
+  ];
+  const beforeRelease: Array<[string, string]> = [
+    [t('What changed'), t('Every route, setting, table, dependency and path out of the service the release adds or changes.')],
+    [t('Threat model'), t('Anything new to protect, anyone new who might attack it, and every new place where data passes from one party to another.')],
+    [t('Checked against the standards'), t('Each area the change touches, against the OWASP checklists, with a verdict written down for each.')],
+    [t('Fixed with a test'), t('Whatever the review turns up is fixed before the release, with a test that fails without the fix.')],
+    [t('Documents kept true'), t('What the security documents, the privacy notice and the screens say is checked against the code.')],
+    [t('The live service'), t('After it is deployed: the encryption of the connection, open ports, file permissions and backups, checked on the running service.')],
+  ];
+  const atRelease: Array<[string, string]> = [
+    [t('Built in the open'), t('A release is built by GitHub from the published code, not on anyone’s own computer, and every check runs again first.')],
+    [t('Signed'), t('Its files carry a signed record of the exact code they were built from.')],
+    [t('Verifiable'), t('Anyone can compare the app a site serves with the published release, file by file.')],
   ];
 
   const groups: Array<[string, Attack[]]> = [
@@ -98,16 +127,9 @@ export default function SecurityReview() {
 
   return (
     <PublicPage options={options}>
-      <PageIntro title={t('How Spine’s security was checked')}>
-        {t('Before you trust a service with medical records, ask three things: secure against what, checked how, and by whom. Here are the answers, in the order a security assessment report gives them.')}
+      <PageIntro title={t('Checked on every change, reviewed before every release')}>
+        {t('Security is not a check Spine passes once a year. It is part of how Spine is built and shipped, what the industry calls a secure development lifecycle: automated security checks on every change, a security review before every release, and a release anyone can verify.')}
       </PageIntro>
-
-      <div className="mx-auto max-w-6xl px-4 pt-2 sm:px-6">
-        <div className="max-w-3xl rounded-2xl border border-accent/30 bg-accent/5 p-6">
-          <h2 className="text-lg font-medium">{t('Who checked it')}</h2>
-          <p className="mt-2 leading-relaxed text-ink/80">{t('The project itself, in November 2026, following the method an independent security assessment uses. It is not an independent audit: no outside firm has tested Spine yet, and no certificate is claimed. Everything below can be checked in the open code and its tests.')}</p>
-        </div>
-      </div>
 
       <Section title={t('The attacks it is built to resist')} lead={t('Named as security professionals name them, each with its reference in the Common Weakness Enumeration (CWE) or the OWASP lists, and what stops it.')} wide>
         <div className="grid gap-4 lg:grid-cols-2">
@@ -115,23 +137,17 @@ export default function SecurityReview() {
         </div>
       </Section>
 
-      <Section title={t('The method')} lead={t('The steps any professional assessment follows, and what was done at each.')} wide>
-        <ol className="grid gap-4 md:grid-cols-2">
-          {steps.map(([title, body], i) => (
-            <li key={title} className="flex gap-4 rounded-2xl border border-ink/10 p-5">
-              <span className="font-display text-2xl leading-none text-accent">{i + 1}</span>
-              <div>
-                <h3 className="font-medium">{title}</h3>
-                <p className="mt-1 leading-relaxed text-ink/75">{body}</p>
-              </div>
-            </li>
-          ))}
-        </ol>
+      <Section title={t('How it stays that way')} lead={t('Three stages every version of Spine goes through.')} wide>
+        <div className="grid gap-4 lg:grid-cols-3">
+          <Stage n={1} title={t('On every change')} lead={t('Automated, on every proposed change and every change to the main code.')} items={everyChange} />
+          <Stage n={2} title={t('Before every release')} lead={t('A security review of everything that changed since the last release. No release is made without it.')} items={beforeRelease} />
+          <Stage n={3} title={t('At release')} lead={t('What a release carries, so you do not have to take it on trust.')} items={atRelease} />
+        </div>
       </Section>
 
       <Section title={t('The standards')} lead={t('Published by OWASP, the open community that sets the reference for web application security.')}>
         <ul className="space-y-4">
-          <li><strong>{t('Application Security Verification Standard 5.0')}</strong>: {t('the checklist of security requirements for web applications. Its chapters set the areas of the review. Its requirements were not gone through one by one, so no level is claimed.')}</li>
+          <li><strong>{t('Application Security Verification Standard 5.0')}</strong>: {t('the checklist of security requirements for web applications. A release review goes through its chapters for every area a change touches. Its requirements are not all checked one by one, so no level is claimed.')}</li>
           <li><strong>{t('Top 10:2025')}</strong>: {t('the ten most common kinds of web application risk.')}</li>
           <li><strong>{t('Top 10 for LLM Applications 2025')}</strong>: {t('the same for software that uses AI models: hidden instructions in documents, an AI given too much power, costs that run away.')}</li>
           <li><strong>{t('Web Security Testing Guide 4.2')}</strong>: {t('how to test each area.')}</li>
@@ -153,9 +169,8 @@ export default function SecurityReview() {
         </div>
       </section>
 
-      <Section title={t('What comes next')}>
-        <P>{t('An outside firm brings what a project cannot give itself: people with no stake in the result. For Spine that means a penetration test of a running service, a review of the encryption by a specialist, and a retest, ending in a letter that says what was tested and what remained. Its report will be published here.')}</P>
-        <p className="mt-6 flex flex-wrap gap-x-6 gap-y-2">
+      <Section title={t('See for yourself')}>
+        <p className="flex flex-wrap gap-x-6 gap-y-2">
           <External href="/security">{t('The full security record')}</External>
           <External href="/source">{t('Open the code')}</External>
           <TextLink to="/protection">{t('How your records are protected')}</TextLink>

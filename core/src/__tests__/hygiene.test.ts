@@ -72,8 +72,9 @@ describe('screen text', () => {
   "Your records are locked on this device with a key made from your master password. The server keeps them only in that locked form and cannot open them.",
   "The key that opens a link is in the address itself, after the # sign, which a browser never sends to the server. So only someone who has the whole link can read it.",
   "Some things need an AI model: reading a document, translating it, finding the documents connected to it, and answering questions here. For those, the text goes to the AI model this server uses (and, when this server reads scans with AI, the picture of a scanned page), through a relay that does not store or log it.",
-  // The security review page (SecurityReview.tsx): each checked against SECURITY.md M-34 to M-37, S-37, S-39, S-42, P8 and S-24.
-  "Every fix, and the protections the code holds, have automated tests that fail if the protection is taken away; they run on every change. The settings of the web server and the host were checked on the running service.",
+  // The page on security in every release (SecurityChecks.tsx): each checked against SECURITY.md M-34 to M-37, S-37, S-39, S-42, P8,
+  // S-24, the CI workflow (check:app looks through the server's files for record text) and the release workflow.
+  "The whole app runs in Chrome against a real server, and the server’s files are searched for any record that could be read.",
   "Records are encrypted with keys the server never has, and passwords and recovery codes are stored with slow, salted hashes.",
   "Key substitution by a dishonest server",
   "Keys between people travel through a one-time code, so the server cannot slip in a key of its own.",
@@ -81,7 +82,6 @@ describe('screen text', () => {
   "Every query takes values as data, never as code, and the server runs no program on your files.",
   "Server-side request forgery (SSRF)",
   "The server never fetches an address a user supplies.",
-  "The whole code (the server, the app that runs in your browser, the relay for AI calls, installation) and the running service.",
 ]);
   it('says "the server" only where it was checked to be the server', () => {
     const english = Object.keys(JSON.parse(read('web/src/i18n/ro.json')) as Record<string, string>);

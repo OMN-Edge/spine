@@ -1,27 +1,22 @@
-# What Spine protects against, and how it was checked
+# What Spine protects against, and how it is checked
 
-Spine keeps medical records, so the question a person should ask before trusting it is not "is it secure?" but "secure against what, checked how, and by whom?". This page answers the three in that order, in the form an independent security assessment report takes: the method and the standards first, then each threat with what stops it and the test that shows it, then the named attacks it resists, then what Spine does not protect against. The engineering detail behind every line is in [SECURITY.md](../SECURITY.md), under the IDs given here.
+Spine keeps medical records, so the question to ask before trusting it is not "is it secure?" but "secure against what, and checked how?". This page answers both: the threats and the attacks Spine is built to resist, each with what stops it and where that is checked, and how that is kept true as the code changes. The engineering detail behind every line is in [SECURITY.md](../SECURITY.md), under the IDs given here.
 
-> **Who checked it.** The November 2026 review was done by the project itself, following the method below. **It is not an independent audit**: no outside firm has tested Spine, and no certificate is claimed. An independent assessment is the next step (see the end of this page); until then, treat every statement here as the project's own, checkable in the open code and its tests.
+## How it is checked
 
-## How the review was done
+Security is part of how Spine is built and released, what the industry calls a secure software development lifecycle: automated checks on every change, a security review before every release, and a release that anyone can verify.
 
-A professional application security assessment follows the same steps whoever runs it: agree the scope, model the threats, verify the controls against a published standard, test what is found, rate it, fix it, test again and report. This review followed them.
-
-| Step | What a professional assessment does | What was done here |
+| Stage | What happens | Where |
 | --- | --- | --- |
-| 1. Scope | Agree what is in and out | The whole repository (server, the device's core, the relay, the web app, install and deployment files) and the live instance; out of scope: the model providers' and the mail provider's own systems |
-| 2. Threat model | List what is protected, who might attack it, and where data crosses from one party to another | 6 assets, 5 adversaries, 14 trust boundaries (for example "account A to account B", "owner to share recipient", "device to relay", "operator to vault"), each with what must hold there |
-| 3. Verification against a standard | Go area by area through a checklist so no area is skipped | Thirteen passes over the code, one area at a time (cryptography and the vault, share scope, the assistant and the relay, sign-in and sessions, authorisation, uploads and the file readers, the web page, secrets and logging, abuse and availability, the supply chain, the host's setup), each control mapped to its [OWASP ASVS 5.0](https://github.com/OWASP/ASVS) chapter and its CWE, and the model and agent features read against the [OWASP Top 10 for LLM Applications 2025](https://genai.owasp.org/llm-top-10/) |
-| 4. Manual review and testing | Read the code that enforces each control, try to break it, run automated scanners | Every route, key, crossing and documented claim (about 180 units) was given a verdict of its own; where an attack looked possible it was written as an automated test, run before and after the change; dependency audit, secret scanning (gitleaks) and static analysis (semgrep) ran in CI |
-| 5. The live system | Look at what is actually deployed, not only the code | The running instance: TLS versions and ciphers from outside, open ports, file permissions, how the services run, free space, and a restore of the newest backup onto a copy (`scripts/host-report.sh`) |
-| 6. Rating | Rate each risk by impact and how hard it is to reach | High, Medium or Low, with a confidence score; only a complete path from an attacker to harm counted |
-| 7. Fix and retest | Fix, then show the fix works | Every fix came with a test that fails without it, written before the fix |
-| 8. Report | Say what was found, fixed and left, and check that the documents tell the truth | This page and SECURITY.md; SECURITY.md (sentence by sentence) and the documents beside it were then checked against the code, and about seventy statements that no longer matched it were corrected |
+| On every change | The test suites, including the security tests named on this page; the dependency audit (a high or critical advisory fails it); secret scanning of the whole history (gitleaks); static analysis (semgrep); the device's code and the whole app in real Chrome against a real server and relay, with a search of the server's files for readable record text; the web app built twice and compared | `.github/workflows/ci.yml`, `scripts/check.sh` |
+| Before every release | A security review of what changed since the last release: the threat model updated (what is protected, who might attack it, where data crosses from one party to another; 14 trust boundaries today), each area the change touches checked against the enforcement checklist of SECURITY.md and the matching OWASP ASVS chapter with a verdict for each, what it finds fixed with a test that fails without the fix, the documents the change touches read against the code, and the running service checked after the deploy (`scripts/host-report.sh`) | [releasing.md](releasing.md) |
+| At release | Built by GitHub from a tagged commit of `main`, after every check runs again; its files and their hashes carry a signed attestation of that commit; a deployed site can be compared with it file by file | `.github/workflows/release.yml`, [verify-build.md](verify-build.md) |
 
-The standards it was measured against, and what each is:
+The first full review, of the whole code and the live instance, was made in November 2026 with the method each release review now follows.
 
-- **OWASP Application Security Verification Standard (ASVS) 5.0.0** (May 2025): the industry's checklist of security requirements for web applications, in 17 chapters and three levels. Its chapters set the areas of the review. The review did not go through all of its requirements one by one, so **no ASVS level is claimed**.
+The standards it is measured against:
+
+- **OWASP Application Security Verification Standard (ASVS) 5.0.0** (May 2025): the industry's checklist of security requirements for web applications, in 17 chapters and three levels. A release review goes through its chapters for the areas a change touches. Its requirements are not all checked one by one, so **no ASVS level is claimed**.
 - **OWASP Top 10:2025**: the ten most common kinds of web application risk. Each threat below names the category it falls under.
 - **OWASP Top 10 for LLM Applications 2025**: the same for software that uses AI models (prompt injection, excessive agency, unbounded consumption).
 - **OWASP Web Security Testing Guide (WSTG) 4.2**: how to test each area; the attacks written as tests follow it.
@@ -189,8 +184,6 @@ Stated plainly, because a security claim is only as honest as its limits:
 - **The model provider.** It sees the plaintext of each AI call while it runs it; the relay does not store or log it, but it does see it.
 - **The operator with full control of the host.** Spine is self-hosted, so whoever runs the machine can stop it, delete it or replace it; they cannot read the records on the disk.
 
-## What an independent assessment would add
-
-An outside firm brings what a project cannot give itself: people with no stake in the result and a fresh view of the design. For Spine that means a penetration test of a running instance against the OWASP Web Security Testing Guide, a review of the cryptographic design by a specialist, and a retest, ending in a letter that says what was tested and what remained. When that is done its report will be published here. Until then, everything on this page can be checked by anyone: the code, the tests and [SECURITY.md](../SECURITY.md) are open.
+## Reporting a flaw
 
 To report a vulnerability, see [SECURITY.md](../SECURITY.md#reporting-a-vulnerability).
