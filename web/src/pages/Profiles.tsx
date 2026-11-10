@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { visitorCode } from 'spine-core/share-code';
+import { sodium, toB64 } from '../crypto/sodium';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { device, UnsavedChangesError } from '../core/client';
@@ -33,6 +35,8 @@ export default function Profiles() {
   const [invitation, setInvitation] = useState<{ ownerEmail: string; role: 'guardian' | 'viewer' | 'self'; expiresAt: string } | 'invalid' | null>(null);
   const [typed, setTyped] = useState('');
   const [joined, setJoined] = useState(recentlyJoined());
+  // Invitations this account accepted whose owner has not yet confirmed the code its key makes: the code is read to them (SECURITY.md S-39).
+  const [waitingFor, setWaitingFor] = useState<Array<{ owner: string; code: string; grantId: string; role: 'guardian' | 'viewer' | 'self' }>>([]);
   const [tookOver, setTookOver] = useState(recentlyTookOver());
   const [editing, setEditing] = useState<{ id: string; name: string; born: string } | null>(null);
 
@@ -41,7 +45,38 @@ export default function Profiles() {
   useEffect(() => {
     void vaultState.session()?.loadProfiles().catch(() => undefined);
     if (device.isOpen()) void device.reloadKeys().catch(() => undefined);
+    const session = vaultState.session();
+    if (!session) return;
+    void (async () => {
+      const mine = await visitorCode(toB64(await sodium(), session.unlocked.publicKey));
+      const held = (await session.delegations()).received.filter(g => g.state === 'paused' && !!g.owner_pin && !g.delegate_pinned);
+      setWaitingFor(held.map(g => ({ owner: g.owner_email, code: mine, grantId: g.id, role: g.role })));
+    })().catch(() => undefined);
   }, []);
+
+  // While an owner has not yet confirmed the code, the page asks now and then; once they have, the records open as they do for an invitation accepted at once.
+  useEffect(() => {
+    if (waitingFor.length === 0) return;
+    const timer = window.setInterval(() => {
+      void (async () => {
+        const session = vaultState.session();
+        if (!session) return;
+        const received = (await session.delegations()).received;
+        const started = waitingFor.filter(w => received.some(g => g.id === w.grantId && g.state === 'active'));
+        if (started.length === 0) return;
+        setWaitingFor(w => w.filter(x => !started.some(s => s.grantId === x.grantId)));
+        for (const w of started) {
+          rememberJoined(w.owner);
+          await device.reloadKeys();
+          await openPerson(`grant:${w.grantId}`, false, w.role === 'self');
+          await refresh();
+          setJoined(w.owner);
+        }
+      })().catch(() => undefined);
+    }, 3000);
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waitingFor]);
 
   // Who the invitation is from and what it allows, before the person decides. Looking changes nothing.
   useEffect(() => {
@@ -74,6 +109,12 @@ export default function Profiles() {
       const accepted = await session.accept(read.code);
       forgetInvite();
       setPending('');
+      if (accepted.waiting) {
+        // The owner confirms the code this account's key makes before the access starts: nothing to open yet.
+        setWaitingFor(w => [...w, { owner: accepted.ownerEmail, code: accepted.code, grantId: accepted.grantId, role: accepted.role }]);
+        await refresh();
+        return;
+      }
       rememberJoined(accepted.ownerEmail); // before the keys are reloaded: the page is drawn again then, and starts from this
       await device.reloadKeys();
       // Someone joining their own records does not need the empty ones the account started with: those go as the records open.
@@ -201,8 +242,14 @@ export default function Profiles() {
           )}
         </section>
       )}
+      {waitingFor.map((w, i) => (
+        <section key={`${w.owner}-${i}`} className="mb-4 rounded-xl border border-gray-200 bg-white p-4" aria-live="polite">
+          <p className="text-sm text-gray-800">{t('Read this code to {owner}. Your access starts when they confirm it is the same as the one on their screen.', { owner: w.owner })}</p>
+          <p className="mt-2 font-mono text-lg tracking-widest text-gray-900" data-testid="grant-own-code">{w.code}</p>
+        </section>
+      ))}
       {joined && current?.shared && <Notice kind="ok">{current.name === joined ? t('You are now in the records {owner} shared with you. Switch between people from the menu at the top of the page.', { owner: joined }) : t('You are now in {name}’s records, shared by {owner}. Switch between people from the menu at the top of the page.', { name: current.name, owner: joined })}</Notice>}
-      {tookOver && <Notice kind="ok">{t('These records are yours now. Everyone who looked after them is paused until you let them back in: you decide below, one by one.')}</Notice>}
+      {tookOver && <Notice kind="ok">{t('These records are yours now. The person who kept them before is paused until you let them back in, and anyone else who looked after them has to be invited again by you.')}</Notice>}
 
       <ul className="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100">
         {people.profiles.map(p => (
@@ -228,7 +275,7 @@ export default function Profiles() {
             {p.shared?.role === 'self' && isAdult(p.born) && (
               <div className="mt-2 text-sm bg-brand-50 rounded-lg px-3 py-2 text-brand-900">
                 <p className="font-medium">{t('You are 18: these records can be yours.')}</p>
-                <p className="mt-1 text-xs">{t('Taking them over moves them into your own account, under a new key that only your account opens. Everyone who looked after you, {owner} included, is paused until you let them back in, one by one. This cannot be undone.', { owner: p.shared.owner })}</p>
+                <p className="mt-1 text-xs">{t('Taking them over moves them into your own account, under a new key that only your account opens. {owner} is paused until you let them back in, and anyone else who looked after you has to be invited again. This cannot be undone.', { owner: p.shared.owner })}</p>
                 {taking === p.id
                   ? <button disabled={busy} className="mt-2 rounded-full bg-brand-600 px-3 py-1 text-white" onClick={() => void takeOver(p.id)}>{t('Yes, take them over')}</button>
                   : <button className="mt-2 underline" onClick={() => setTaking(p.id)}>{t('Take over my records')}</button>}

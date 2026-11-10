@@ -62,7 +62,9 @@ export function waitlistRepository(db: Database): WaitlistRepository {
   const add = db.prepare('INSERT OR IGNORE INTO waitlist (email, created_at, source) VALUES (?, ?, ?)');
   const list = db.prepare('SELECT email, created_at, source FROM waitlist ORDER BY created_at, email');
   const remove = db.prepare('DELETE FROM waitlist WHERE email = ?');
+  const count = db.prepare('SELECT COUNT(*) AS n FROM waitlist');
   return {
+    async count() { return (count.get() as { n: number }).n; },
     async add(email, at, source) { return add.run(email, at, source).changes === 1; },
     async list() { return list.all() as Array<{ email: string; created_at: string; source: string | null }>; },
     async remove(email) { return remove.run(email).changes === 1; },

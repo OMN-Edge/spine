@@ -22,8 +22,11 @@ import {
 import { hashUserToken } from '../user-tokens.js';
 import { windowLimiter, type WindowLimit } from '../rate-limit.js';
 import { loadInstanceKind, loadRegistrationMode, type InstanceKind, type RegistrationMode } from '../config.js';
-import { AUTH_VALUE, parseVaultKeys } from '../vault-keys.js';
+import { AUTH_VALUE, parseKdfParams, parseVaultKeys } from '../vault-keys.js';
+import { resetMessage, verifyResetProof } from '../reset-proof.js';
 import { removeAllObjects } from '../vault-files.js';
+import { checkSecondFactor, hasSecondFactor } from '../second-factor.js';
+import { mailAfter, securityChangeMail } from '../notify.js';
 
 /**
  * Signup, address verification and password recovery (SECURITY.md M-6, M-11).
@@ -39,10 +42,18 @@ export interface AccountRouteOptions {
   instance?: InstanceKind;
   perSource?: { max: number; timeWindow: string | number };
   perAddress?: WindowLimit;
+  /** Mails the instance sends an hour to addresses that are not its signed-in accounts (a sign-up's, a resend, a reset), all sources together; default `SPINE_MAIL_MAX_PER_HOUR` or 120 (S-51). */
+  mailPerHour?: number;
+  /** New sign-ups an hour, all sources together; default `SPINE_SIGNUPS_MAX_PER_HOUR` or 60 (S-51). */
+  signupsPerHour?: number;
+  /** Attempts at one reset link in ten minutes, wrong second-factor codes included. */
+  resetCodeAttempts?: number;
 }
 
 const DEFAULT_PER_SOURCE = { max: 10, timeWindow: '10 minutes' };
 const DEFAULT_PER_ADDRESS: WindowLimit = { max: 3, windowMs: 60 * 60 * 1000 };
+const RESET_CODE_ATTEMPTS = 5;
+const RESET_CODE_WINDOW_MS = 10 * 60 * 1000;
 
 /** The answer for every request that names an address, whether or not it has an account. */
 const GENERIC = {
@@ -84,6 +95,13 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
     'too many requests for this address, try again later',
   );
 
+  // In all, as login has: each source and each address is limited, but a spread of them made the instance send mail to as many strangers as
+  // there were sources, at its provider's cost and reputation, and take as many sign-ups (S-51). The per-source limit runs first.
+  const hour = 60 * 60 * 1000;
+  const whole = (raw: string | undefined, fallback: number) => (Number.isInteger(Number(raw)) && Number(raw) > 0 && (raw ?? '').trim() !== '' ? Number(raw) : fallback);
+  const mailCap = windowLimiter({ max: opts.mailPerHour ?? whole(process.env.SPINE_MAIL_MAX_PER_HOUR, 120), windowMs: hour }, () => 'instance', 'too many requests just now, try again later');
+  const signupCap = windowLimiter({ max: opts.signupsPerHour ?? whole(process.env.SPINE_SIGNUPS_MAX_PER_HOUR, 60), windowMs: hour }, () => 'instance', 'too many sign-ups just now, try again later');
+
   /**
    * After the response, so how long the mail provider takes does not depend on
    * whether the address exists. A failure is logged; the user's recourse is to
@@ -106,7 +124,7 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
   if (registration === 'open' || registration === 'approval') {
     app.post<{ Body: { email?: string; password?: string; auth_value?: string; keys?: unknown; consent_health_data?: unknown; accept_terms?: unknown; ref?: unknown } }>(
       '/api/auth/register',
-      { preHandler: [perSource, perAddress] },
+      { preHandler: [perSource, perAddress, mailCap, signupCap] },
       async (req, reply) => {
         const { email, password, consent_health_data: health, accept_terms: terms } = req.body ?? {};
         // With a vault the device sends the value it derived from the password, and the keys it made; the server never sees the password.
@@ -189,7 +207,7 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
 
   app.post<{ Body: { email?: string } }>(
     '/api/auth/resend-verification',
-    { preHandler: [perSource, perAddress] },
+    { preHandler: [perSource, perAddress, mailCap] },
     async (req, reply) => {
       const address = normaliseEmail(String(req.body?.email ?? ''));
       const user = isPlausibleEmail(address) ? await getAccountsStore().users.findByEmail(address) : null;
@@ -204,7 +222,7 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
 
   app.post<{ Body: { email?: string } }>(
     '/api/auth/forgot',
-    { preHandler: [perSource, perAddress] },
+    { preHandler: [perSource, perAddress, mailCap] },
     async (req, reply) => {
       // Without a mailer there is nothing to send; the operator issues the link.
       if (!getMailer().enabled) {
@@ -214,7 +232,8 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
       const address = normaliseEmail(String(req.body?.email ?? ''));
       const user = isPlausibleEmail(address) ? await getAccountsStore().users.findByEmail(address) : null;
 
-      if (user) {
+      // An owner who turned off recovery by email gets no mail, and the same answer as anyone (S-38).
+      if (user && user.email_recovery !== 0) {
         const token = await issueUserToken(user.id, 'reset', RESET_TTL_MS);
         sendLater(req, user.id, resetMail(user.email, resetLink(token)), 'reset');
       }
@@ -234,16 +253,29 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
       const userId = await store.users.peekToken(hashUserToken(token), 'reset', new Date().toISOString());
       if (!userId) return reply.status(400).send(INVALID_LINK);
       const k = await store.vault.getKeys(userId);
-      if (!k) return reply.send({ vault: false });
-      return reply.send({ vault: true, wrapped_by_recovery: k.wrapped_by_recovery, public_key: k.public_key, wrapped_private_key: k.wrapped_private_key, kdf_params: JSON.parse(k.kdf_params) });
+      // Whether the reset will ask for a code, so the page can ask before the person has made new keys.
+      const second_factor = await hasSecondFactor(userId);
+      const email_recovery = (await store.users.findById(userId))?.email_recovery !== 0;
+      if (!k) return reply.send({ vault: false, second_factor, email_recovery });
+      return reply.send({ vault: true, second_factor, email_recovery, wrapped_by_recovery: k.wrapped_by_recovery, public_key: k.public_key, wrapped_private_key: k.wrapped_private_key, kdf_params: JSON.parse(k.kdf_params) });
     },
   );
 
   // `erase` is the person's choice to go on without the kit: the sealed records could never be opened again, so they are removed and the
   // account starts with an empty vault. Without it, `keys` must hold the same account key the recovery kit opened.
-  app.post<{ Body: { token?: string; password?: string; auth_value?: string; keys?: unknown; erase?: unknown } }>(
+  // A reset replaces the keys the records open with, and the link is only the mailbox's word, so an account with a second factor is asked for
+  // it here too (S-38). A code is a few digits: attempts are counted per link, so holding the link is not a way to try them all.
+  const perLink = windowLimiter(
+    { max: opts.resetCodeAttempts ?? RESET_CODE_ATTEMPTS, windowMs: RESET_CODE_WINDOW_MS },
+    (req: FastifyRequest) => {
+      const token = (req.body as { token?: unknown } | undefined)?.token;
+      return typeof token === 'string' && token ? hashUserToken(token) : null;
+    },
+    'too many attempts, try again later',
+  );
+  app.post<{ Body: { token?: string; password?: string; auth_value?: string; keys?: unknown; erase?: unknown; code?: unknown; proof?: unknown } }>(
     '/api/auth/reset',
-    { preHandler: [perSource] },
+    { preHandler: [perSource, perLink] },
     async (req, reply) => {
       const { token, password } = req.body ?? {};
       if (typeof token !== 'string' || !token) return reply.status(400).send(INVALID_LINK);
@@ -262,6 +294,38 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
         const owner = await store.users.peekToken(hashUserToken(token), 'reset', new Date().toISOString());
         // A password this server knows would sit beside keys it cannot open: an account with a vault is reset with a vault's keys.
         if (owner && (await store.vault.getKeys(owner))) return reply.status(400).send({ error: 'this account has a vault: reset it from the page, with your recovery kit' });
+      }
+
+      // Whose link it is, without spending it: what follows is checked first, so a refusal leaves it good for the owner.
+      const holder = await store.users.peekToken(hashUserToken(token), 'reset', new Date().toISOString());
+
+      // The owner turned off recovery by email: a link cannot start the records over. It can still carry a reset signed with the recovery kit,
+      // which is checked below (S-38).
+      if (holder && req.body?.erase === true && (await store.users.findById(holder))?.email_recovery === 0) {
+        return reply.status(403).send({ error: 'recovery by email is turned off for this account', code: 'email_recovery_off' });
+      }
+
+      // The second factor. A code is spent when it is right (a step or a recovery code is used once), and the check is after what could fail on
+      // shape, so a bad request does not use one up.
+      if (holder && (await hasSecondFactor(holder))) {
+        const code = req.body?.code;
+        if (typeof code !== 'string' || !code || code.length > 64) return reply.status(401).send({ error: 'a code from your authenticator or a recovery code is needed', code: 'second_factor_required' });
+        if (!(await checkSecondFactor({ id: holder }, code))) {
+          req.log.warn({ ip: req.ip, userId: holder }, 'failed second factor on a reset');
+          return reply.status(401).send({ error: 'incorrect code', code: 'second_factor_required' });
+        }
+      }
+
+      // The recovery kit, before the link is spent. The link is the mailbox's word and the server cannot open what the kit opens, so a vault with a
+      // verifier is replaced only by a request signed for it, over this link and these keys (S-38). Starting over without the kit cannot be
+      // signed for and is not asked to (an owner who wants it refused turns off recovery by email, above); a vault from before verifiers has none to check until a device adds it.
+      if (holder && keys && req.body?.erase !== true) {
+        const verifier = (await store.vault.getKeys(holder))?.reset_verifier;
+        const params = parseKdfParams(keys.kdf_params);
+        if (verifier && !(params && verifyResetProof(verifier, resetMessage(token, req.body?.auth_value as string, keys, params), req.body?.proof))) {
+          req.log.warn({ ip: req.ip, userId: holder }, 'reset without the recovery kit refused');
+          return reply.status(401).send({ error: 'this reset needs your recovery kit', code: 'recovery_proof_required' });
+        }
       }
 
       const now = new Date().toISOString();
@@ -286,6 +350,13 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
       await store.users.markVerified(userId, now);
       await store.users.invalidateTokens(userId, 'reset');
       await store.sessions.revokeExcept(userId, null);
+
+      // Said to the address, so a reset the owner did not make is seen (S-38); what the reset did, never anything about the records.
+      const owner = await store.users.findById(userId);
+      if (owner) {
+        const what = keys && req.body?.erase === true ? 'Your password was reset with a link sent to this address, and your records were erased' : 'Your password was reset with a link sent to this address';
+        mailAfter(req, userId, securityChangeMail(owner.email, what, now), 'reset');
+      }
 
       req.log.info({ userId, erased: req.body?.erase === true }, 'password reset by link');
       return reply.send({ ok: true });

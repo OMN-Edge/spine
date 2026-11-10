@@ -80,6 +80,7 @@ export const vaultState = {
     try {
       session = await VaultSession.open(pendingMaster);
       pendingMaster = null;
+      void session.ensureResetVerifier();
       return 'open';
     } catch (err) {
       if ((err as { code?: string }).code === 'no_vault') return 'no_vault';
@@ -127,6 +128,7 @@ export const vaultState = {
     const t3 = performance.now();
     await session?.close();
     session = opened;
+    void session.ensureResetVerifier();
     if (!device.isOpen()) await device.unlock(forDevice, keys, rememberedProfile(email));
     // Where the time went, for whoever is finding out why opening is slow: milliseconds, never a key or a record.
     console.debug('[unlock]', { prefetched: !!ahead, kdfMs: Math.round(t1 - t0), deriveMs: Math.round(t2 - t1), keysMs: Math.round(t3 - t2), openMs: Math.round(performance.now() - t3), totalMs: Math.round(performance.now() - t0) });
@@ -138,6 +140,7 @@ export const vaultState = {
     const opened = await VaultSession.openWithPasskey({ ...unlock, prf: unlock.prf.slice() });
     await session?.close();
     session = opened;
+    void session.ensureResetVerifier();
     if (!device.isOpen()) await device.unlockWithPasskey({ credentialId: unlock.credentialId, wrapped: unlock.wrapped, prf: unlock.prf.slice() }, rememberedProfile(email));
     return session;
   },

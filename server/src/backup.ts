@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readdirSync, statSync, copyFileSync, rmSync, utimesSync } from 'fs';
+import { privateByDefault, keepPrivate } from './permissions.js';
+import { existsSync, mkdirSync, readdirSync, statSync, copyFileSync, renameSync, rmSync, utimesSync } from 'fs';
 import path from 'path';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { loadStoreConfig, resolveBackupDir, resolveDataDir } from 'spine-core/config.js';
@@ -41,6 +42,8 @@ export interface BackupOptions {
   database?: boolean;
   /** False when the sealed objects are not files on this machine (a bucket): the bucket's own versioning or soft delete is their backup. Default true. */
   files?: boolean;
+  /** Days an object the vault removed stays in the backup, in `vault-removed/<day>/` (default 7, or `SPINE_BACKUP_TRASH_DAYS`); 0 drops it at once, as the mirror used to (SECURITY.md S-60). */
+  trashDays?: number;
 }
 
 export interface BackupResult {
@@ -65,18 +68,21 @@ function timestamp(now: Date): string {
  * An object is overwritten under the same id when it changes, so size
  * alone cannot say it is current: a different size or an older modification time copies
  * it again, and the copy keeps the source's time so the next run can tell. Inside a
- * user's directory the mirror also drops what the source no longer has, because a deleted
- * object should not survive in the backup; a user's whole directory is removed only by
- * `deleteAccount`, so an empty or missing `data/vault` can never empty the backup.
+ * user's directory the mirror also takes out of `to` what the source no longer has, but does not
+ * throw it away at once: whatever removed it (a bug, a mistake, a reset that starts over) would
+ * otherwise be copied into the backup at the next run and nothing could be restored. It moves
+ * to `removed/<user>/` for `trashDays` (`pruneRemoved` ends that), and `removeFromBackup` takes
+ * an account's out at once when the account is deleted. A user's whole directory is removed only
+ * by `deleteAccount`, so an empty or missing `data/vault` can never empty the backup.
  */
-function mirrorVault(from: string, to: string): number {
+function mirrorVault(from: string, to: string, removed: string | null): number {
   if (!existsSync(from)) return 0;
   let copied = 0;
   for (const user of readdirSync(from, { withFileTypes: true })) {
     if (!user.isDirectory()) continue;
     const sourceDir = path.join(from, user.name);
     const targetDir = path.join(to, user.name);
-    mkdirSync(targetDir, { recursive: true });
+    mkdirSync(targetDir, { recursive: true, mode: 0o700 });
 
     const held = new Set<string>();
     for (const entry of readdirSync(sourceDir, { withFileTypes: true })) {
@@ -98,10 +104,43 @@ function mirrorVault(from: string, to: string): number {
       copied += 1;
     }
     for (const entry of readdirSync(targetDir, { withFileTypes: true })) {
-      if (entry.isFile() && !held.has(entry.name)) rmSync(path.join(targetDir, entry.name), { force: true });
+      if (!entry.isFile() || held.has(entry.name)) continue;
+      const gone = path.join(targetDir, entry.name);
+      if (removed === null) { rmSync(gone, { force: true }); continue; }
+      mkdirSync(path.join(removed, user.name), { recursive: true, mode: 0o700 });
+      renameSync(gone, path.join(removed, user.name, entry.name));
     }
   }
   return copied;
+}
+
+const DAY_MS = 86_400_000;
+
+function trashDaysFromEnvironment(): number {
+  const raw = process.env.SPINE_BACKUP_TRASH_DAYS;
+  const days = raw === undefined || raw === '' ? 7 : Number(raw);
+  return Number.isInteger(days) && days >= 0 ? days : 7;
+}
+const REMOVED = 'vault-removed';
+const dayOf = (now: Date) => now.toISOString().slice(0, 10);
+
+/** Ends the stay of what the mirror took out of the backup: a dated folder is dropped when `days` have passed since its day. */
+function pruneRemoved(backupDir: string, now: Date, days: number): void {
+  const root = path.join(backupDir, REMOVED);
+  if (!existsSync(root)) return;
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !/^\d{4}-\d{2}-\d{2}$/.test(entry.name)) continue;
+    if ((Date.parse(dayOf(now)) - Date.parse(entry.name)) / DAY_MS >= days) rmSync(path.join(root, entry.name), { recursive: true, force: true });
+  }
+  if (readdirSync(root).length === 0) rmSync(root, { recursive: true, force: true });
+}
+
+/** An account's ciphertext in the backup, the mirror's and what it removed, gone at once: a deletion leaves no copy (SECURITY.md S-60). */
+export function removeFromBackup(userId: string, backupDir: string = resolveBackupDir()): void {
+  rmSync(path.join(backupDir, 'vault', userId), { recursive: true, force: true });
+  const root = path.join(backupDir, REMOVED);
+  if (!existsSync(root)) return;
+  for (const day of readdirSync(root)) rmSync(path.join(root, day, userId), { recursive: true, force: true });
 }
 
 function pruneSnapshots(backupDir: string, keep: number): string[] {
@@ -122,8 +161,9 @@ export async function runBackup({
   now = new Date(),
   database = true,
   files = true,
+  trashDays,
 }: BackupOptions): Promise<BackupResult> {
-  mkdirSync(backupDir, { recursive: true });
+  mkdirSync(backupDir, { recursive: true, mode: 0o700 });
 
   const snapshot = database ? path.join(backupDir, `${SNAPSHOT_PREFIX}${timestamp(now)}${SNAPSHOT_SUFFIX}`) : null;
   if (snapshot && existsSync(snapshot)) rmSync(snapshot); // VACUUM INTO refuses an existing file
@@ -134,13 +174,16 @@ export async function runBackup({
 
   // After the snapshot, never before: an object's file is written before its row, so files
   // copied now are at least as new as the rows just snapshotted.
-  const vaultCopied = files ? mirrorVault(path.join(dataDir, 'vault'), path.join(backupDir, 'vault')) : 0;
+  const days = trashDays ?? trashDaysFromEnvironment();
+  const vaultCopied = files ? mirrorVault(path.join(dataDir, 'vault'), path.join(backupDir, 'vault'), days > 0 ? path.join(backupDir, REMOVED, dayOf(now)) : null) : 0;
+  if (files) pruneRemoved(backupDir, now, days);
 
   return { snapshot, vaultCopied, snapshotsPruned: pruneSnapshots(backupDir, keep) };
 }
 
 /** CLI entry point: `node dist/backup.js`, run by spine-backup.service. */
 async function main(): Promise<void> {
+  privateByDefault();
   useAccountsStore();
   const dataDir = resolveDataDir();
   const backupDir = resolveBackupDir();
@@ -151,6 +194,8 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  const closed = keepPrivate([dataDir, backupDir]);
+  if (closed.length > 0) console.log(`backup: closed to other users: ${closed.join(', ')}`);
   const result = await runBackup({ dataDir, backupDir, keep, database: loadStoreConfig().adapter === 'sqlite', files: objects().kind === 'filesystem' });
   console.log(
     `backup: ${result.snapshot ?? 'database left to its host'}, ` +

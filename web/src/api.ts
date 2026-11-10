@@ -1,6 +1,7 @@
 import { askForPassword } from './reauth';
 import { credentialFor, deriveKey, vaultState } from './crypto/vault-state';
 import { prepareSignIn, type PasskeyUnlock } from './crypto/vault-client';
+import { rememberKdf } from './crypto/kdf-trust';
 import { getWithPrf, prfSupported } from './crypto/passkey-prf';
 import { checkPasswordPolicy } from './crypto/password-policy';
 import { rewrapForPassword, wrapForPasskey, type KdfParams, type VaultKeyPayload } from './crypto/keys';
@@ -463,6 +464,8 @@ export interface ShareRequest {
   user_agent: string | null;
   requested_at: string;
   decided_at: string | null;
+  /** The code the visitor's key makes, shown on the visitor's screen too; the owner compares them before approving (SECURITY.md S-40). Null if the device does not hold the key. */
+  code: string | null;
 }
 
 /** What has happened to a link since it was made. `detail` is JSON: for `changed`, `{ changes: [{ field, from, to }] }`. */
@@ -743,7 +746,7 @@ export const api = {
     /** Either signed in, or the password was right and a second factor is still needed. */
     login: async (email: string, password: string) => {
       // The password never leaves the device: what is sent in its place is derived from it (docs/crypto-design.md).
-      const { credential, masterKey } = await prepareSignIn(email, password, undefined, deriveKey);
+      const { credential, masterKey, kdf } = await prepareSignIn(email, password, undefined, deriveKey);
       vaultState.setEmail(email);
       try {
         const result = await req<{ ok?: boolean; email?: string; second_factor_required?: boolean }>('/api/auth/login', {
@@ -751,6 +754,8 @@ export const api = {
           body: JSON.stringify({ email, password: credential }),
         });
         vaultState.stashMaster(masterKey);
+        // The server accepted what was derived: this address has a vault at this cost, and a later answer is held to that (S-37).
+        rememberKdf(email, kdf);
         return result;
       } catch (err) {
         vaultState.stashMaster(null);
@@ -766,8 +771,20 @@ export const api = {
       await clearSealedCache();
       return req('/api/auth/logout', { method: 'POST' });
     },
-    me: () => req<{ authenticated: boolean; email: string; second_factor_enabled?: boolean; vault?: boolean; consent_needed?: { health: boolean; terms: boolean } }>('/api/auth/me'),
+    me: () => req<{ authenticated: boolean; email: string; second_factor_enabled?: boolean; email_recovery?: boolean; vault?: boolean; consent_needed?: { health: boolean; terms: boolean } }>('/api/auth/me'),
     options: () => req<AuthOptions>('/api/auth/options'),
+    /** Whether an emailed link may recover the account. Turning it off needs the vault's verifier, which a device adds when the records are opened (SECURITY.md S-38). */
+    setEmailRecovery: async (enabled: boolean) => {
+      const send = () => put<{ ok: boolean; email_recovery: boolean }>('/api/account/email-recovery', { enabled });
+      try {
+        return await send();
+      } catch (err) {
+        if (!(err instanceof ApiError) || err.code !== 'verifier_missing') throw err;
+        // A vault from before verifiers has none yet: the open one adds it (the password was just typed), and the request is made again.
+        await vaultState.session()?.ensureResetVerifier();
+        return send();
+      }
+    },
     /** The keys are made on the device; the server gets the derived credential and the sealed keys, never the password. */
     register: (email: string, account: { authValue: string; keys: VaultKeyPayload }, consent: { health_data: boolean; terms: boolean }, ref?: string) =>
       post<{ ok: boolean; message: string; pending?: boolean }>('/api/auth/register', { email, auth_value: account.authValue, keys: account.keys, consent_health_data: consent.health_data, accept_terms: consent.terms, ref }),
@@ -776,7 +793,7 @@ export const api = {
     rewrap: (change: { authValue?: string; keys: VaultKeyPayload }) => post<{ ok: boolean }>('/api/vault/keys/rewrap', { auth_value: change.authValue, keys: change.keys }),
     /** What a reset link is for: the recovery-wrapped key, to open with the kit. */
     resetKeys: (token: string) =>
-      post<{ vault: false } | { vault: true; wrapped_by_recovery: string; public_key: string; wrapped_private_key: string; kdf_params: KdfParams }>('/api/auth/reset/keys', { token }),
+      post<{ vault: false; second_factor: boolean; email_recovery: boolean } | { vault: true; second_factor: boolean; email_recovery: boolean; wrapped_by_recovery: string; public_key: string; wrapped_private_key: string; kdf_params: KdfParams }>('/api/auth/reset/keys', { token }),
     /** Passkeys: sign in with the device; manage them from the account page. */
     passkeys: {
       supported: () => typeof window !== 'undefined' && !!window.PublicKeyCredential,
@@ -812,10 +829,12 @@ export const api = {
     resendVerification: (email: string) =>
       post<{ ok: boolean; message: string }>('/api/auth/resend-verification', { email }),
     forgot: (email: string) => post<{ ok: boolean; message: string }>('/api/auth/forgot', { email }),
-    reset: (token: string, password: string) =>
-      post<{ ok: boolean }>('/api/auth/reset', { token, password }),
-    resetVault: (token: string, change: { authValue: string; keys: VaultKeyPayload }, erase = false) =>
-      post<{ ok: boolean }>('/api/auth/reset', { token, auth_value: change.authValue, keys: change.keys, erase: erase || undefined }),
+    /** `code` is a second-factor code, for an account that has one (S-38). */
+    reset: (token: string, password: string, code?: string) =>
+      post<{ ok: boolean }>('/api/auth/reset', { token, password, code: code || undefined }),
+    /** `proof` is the signature a reset by the recovery kit carries (`resetProof`); starting over (`erase`) has none to give. */
+    resetVault: (token: string, change: { authValue: string; keys: VaultKeyPayload }, erase = false, code?: string, proof?: string) =>
+      post<{ ok: boolean }>('/api/auth/reset', { token, auth_value: change.authValue, keys: change.keys, erase: erase || undefined, code: code || undefined, proof }),
     /** A new master password: the same keys sealed under a new master key, here, so the records stay readable. */
     changePassword: async (current: string, next: string) => {
       const session = await vaultState.unlock(current);

@@ -31,6 +31,16 @@ export function relayAllowances(env: NodeJS.ProcessEnv = process.env) {
   };
 }
 
+/**
+ * The secrets only the server uses (the session secret, the mail key, the payment provider's key and webhook secret). The relay parses requests
+ * from every pass holder and calls vendor libraries; none of these is its to hold (SECURITY.md S-62). Their names, never their values, for the
+ * ones that are set here.
+ */
+export const SERVER_ONLY_SECRETS = ['SESSION_SECRET', 'BREVO_API_KEY', 'PADDLE_API_KEY', 'PADDLE_WEBHOOK_SECRET'] as const;
+export function serverSecretsHeld(env: NodeJS.ProcessEnv = process.env): string[] {
+  return SERVER_ONLY_SECRETS.filter(name => (env[name] ?? '').trim() !== '');
+}
+
 export function serveRelay(): void {
   const need = (name: string): string => {
     const v = (process.env[name] ?? '').trim();
@@ -61,6 +71,8 @@ export function serveRelay(): void {
   // passes on whether they are on).
   const embeddings = loadEmbeddingConfig();
   const allowances = relayAllowances();
+  const held = serverSecretsHeld();
+  if (held.length > 0) console.warn(JSON.stringify({ time: new Date().toISOString(), event: 'relay holds secrets that are the server\'s', names: held, fix: 'unset them for this process (systemd UnsetEnvironment, compose environment) or give the relay an environment of its own' }));
   // Residency has to be observable (SECURITY.md P8, M-8): say once where the calls go, and what a day allows. No content and no credential in it.
   console.log(JSON.stringify({
     time: new Date().toISOString(), event: 'relay ready', provider: llm.provider, model: llm.model, endpoint: llm.endpoint ?? null, region: llm.region ?? null,
@@ -81,6 +93,7 @@ export function serveRelay(): void {
     // Plans, when the instance has them (SPINE_BILLING=on); the relay reads the same accounts store the server does.
     gate: billingOn() ? createRelayGate(getAccountsStore) : undefined,
     maxBodyBytes: 32 * 1024 * 1024,
+    maxShareBodyBytes: count(process.env.SPINE_RELAY_SHARE_MAX_KB, 512) * 1024,
     clients,
     embedder: getEmbedder,
     // One line a call, and never a word of what it carried.

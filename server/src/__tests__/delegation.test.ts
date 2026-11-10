@@ -76,6 +76,17 @@ describe('letting another account into a profile', () => {
     expect(mails.some(m => m.to === 'owner@spine.test' && /accepted your invitation/.test(m.text))).toBe(true);
   });
 
+
+  // SECURITY.md S-63 and P12: no method of the repository answers a grant without the account that is asking, so a route written without the check
+  // that follows cannot hand back another account's grant, which holds a sealed profile key.
+  it('is found by the account that owns it or holds it, and by no other', async () => {
+    const repo = getAccountsStore().delegations;
+    expect((await repo.getFor(OWNER_ID, grantId))?.id).toBe(grantId);
+    expect((await repo.getFor(guestId, grantId))?.id).toBe(grantId);
+    const stranger = await createTestUser(`stranger-${grantId.slice(0, 6)}@spine.test`);
+    expect(await repo.getFor(stranger.id, grantId)).toBeNull();
+    expect('get' in repo).toBe(false);
+  });
   it('can be cancelled by the owner while it waits, and then opens nothing', async () => {
     const id = 'x'.repeat(43);
     expect((await invite('guardian', id)).statusCode).toBe(201);
@@ -98,7 +109,7 @@ describe('letting another account into a profile', () => {
     expect((await call('PUT', `/api/delegations/${grantId}/key`, guest, { wrapped_key: 'short' })).statusCode).toBe(400);
     expect((await call('PUT', `/api/delegations/${grantId}/key`, guest, { wrapped_key: K('d') })).statusCode).toBe(200);
     const seen = (await call('GET', '/api/delegations', guest)).json();
-    expect(seen.received).toEqual([{ id: grantId, owner_email: 'owner@spine.test', owner_public_key: null, profile_id: PROFILE, role: 'guardian', state: 'active', wrapped_key: K('d'), others: [] }]);
+    expect(seen.received).toEqual([{ id: grantId, owner_email: 'owner@spine.test', owner_public_key: null, profile_id: PROFILE, role: 'guardian', state: 'active', wrapped_key: K('d'), owner_pin: null, delegate_pinned: false, others: [] }]);
     expect((await call('GET', '/api/delegations', owner)).json().owned).toMatchObject([{ id: grantId, delegate_email: 'guest@spine.test', role: 'guardian', state: 'active' }]);
   });
 

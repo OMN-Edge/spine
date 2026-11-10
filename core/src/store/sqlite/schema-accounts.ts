@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS users (
   -- 0 for an account that signed up under SPINE_REGISTRATION=approval and has not been approved by the administrator: it never gets a
   -- session. Every other account (the operator's, a self-registered one in open mode, all from before) is 1.
   approved INTEGER NOT NULL DEFAULT 1,
+  email_recovery INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL,
   -- Consent to process health data (GDPR Art. 9(2)(a)) and acceptance of the terms: separate acts, each with the version of the
   -- text that was shown. NULL until given; an account without them is held at the consent screen (CR-GDPR-01).
@@ -148,6 +149,7 @@ CREATE TABLE IF NOT EXISTS vault_keys (
   wrapped_by_recovery TEXT NOT NULL, -- the account key, sealed under the recovery key
   public_key TEXT NOT NULL,          -- X25519, base64url
   wrapped_private_key TEXT NOT NULL, -- sealed under the account key
+  reset_verifier TEXT,               -- Ed25519 public key made from the account key: a reset must be signed for it (S-38); null before a device adds it
   seq INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -185,7 +187,8 @@ CREATE TABLE IF NOT EXISTS shared_bundles (
   revoked_at TEXT,
   kind TEXT NOT NULL DEFAULT 'share', -- 'share' | 'card' (an emergency card, with no end)
   reviewed_at TEXT, -- a card: when its owner last sent it or said it is still right
-  reminded_at TEXT -- a card: when the yearly reminder was last sent
+  reminded_at TEXT, -- a card: when the yearly reminder was last sent
+  pass_check TEXT -- a value only the share's key makes: what a recipient's browser shows to get the pass for its model calls (S-48); null for a copy made before it
 );
 
 CREATE TABLE IF NOT EXISTS shared_requests (
@@ -275,7 +278,8 @@ CREATE TABLE IF NOT EXISTS profile_invites (
   proof_hash TEXT NOT NULL,
   created_at TEXT NOT NULL,
   expires_at TEXT NOT NULL,
-  state TEXT NOT NULL DEFAULT 'offered'
+  state TEXT NOT NULL DEFAULT 'offered',
+  owner_blob TEXT   -- the invitation's key sealed under the owner's account key, so the owner's devices can open the delegate's hello later (S-39)
 );
 CREATE INDEX IF NOT EXISTS idx_profile_invites_owner ON profile_invites(owner_user_id);
 
@@ -288,7 +292,12 @@ CREATE TABLE IF NOT EXISTS delegations (
   wrapped_key TEXT,
   state TEXT NOT NULL DEFAULT 'pending',
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  -- Each side's key bound to the other through the invitation code, never through the server (S-39, S-41); sealed on a device, opaque here.
+  delegate_hello TEXT,
+  owner_blob TEXT,
+  delegate_pin TEXT,
+  owner_pin TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_delegations_owner ON delegations(owner_user_id);
 CREATE INDEX IF NOT EXISTS idx_delegations_delegate ON delegations(delegate_user_id);

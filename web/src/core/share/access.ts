@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { reader, readingShare } from '../client';
-import { newVisitorKeys, unwrapShareKey } from './keys';
+import { newVisitorKeys, sharePassCheck, unwrapShareKey } from './keys';
+import { visitorCode } from 'spine-core/share-code';
 
 /** Where the recipient's page stands with a link: found out from the server, then, with the key, opened in the page's own core. */
 export type ShareAccess = 'checking' | 'gone' | 'needed' | 'pending' | 'denied' | 'open' | 'broken';
@@ -25,15 +26,17 @@ function takeKeyFromAddress(): string | null {
   return /^[A-Za-z0-9_-]{43}$/.test(hash) ? hash : null;
 }
 
-export function useShareAccess(shareId: string | undefined): { state: ShareAccess; ask: (note: string) => Promise<void>; error: string } {
+export function useShareAccess(shareId: string | undefined): { state: ShareAccess; ask: (note: string) => Promise<void>; error: string; code: string } {
   const [state, setState] = useState<ShareAccess>('checking');
   const [error, setError] = useState('');
+  // The code this browser's key makes, which the visitor reads to the owner so the owner can tell the request is theirs (SECURITY.md S-40).
+  const [code, setCode] = useState('');
   const live = useRef(true);
 
   const open = useCallback(async (id: string, key: string) => {
     try {
       await reader.openShare(id, key);
-      readingShare(id);
+      readingShare(id, await sharePassCheck(key, id));
       remember(keyName(id), key);
       if (live.current) setState('open');
     } catch (err) {
@@ -48,6 +51,7 @@ export function useShareAccess(shareId: string | undefined): { state: ShareAcces
     const stored = recall(requestName(id));
     if (!stored) return;
     const request = JSON.parse(stored) as { rid: string; publicKey: string; privateKey: string };
+    void visitorCode(request.publicKey).then(c => { if (live.current) setCode(c); });
     for (;;) {
       if (!live.current) return;
       const res = await fetch(`/api/shared/${encodeURIComponent(id)}/access-request/${encodeURIComponent(request.rid)}`);
@@ -95,6 +99,7 @@ export function useShareAccess(shareId: string | undefined): { state: ShareAcces
     const body = (await res.json().catch(() => ({}))) as { request_id?: string; error?: string };
     if (!res.ok || !body.request_id) { setError(body.error ?? 'Could not send the request'); return; }
     remember(requestName(shareId), JSON.stringify({ rid: body.request_id, ...keys }));
+    setCode(await visitorCode(keys.publicKey));
     setState('pending');
     void poll(shareId);
   }, [shareId, poll]);
@@ -122,5 +127,5 @@ export function useShareAccess(shareId: string | undefined): { state: ShareAcces
     return () => { stopped = true; window.clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); };
   }, [state, shareId]);
 
-  return { state, ask, error };
+  return { state, ask, error, code };
 }

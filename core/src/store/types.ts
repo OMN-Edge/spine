@@ -159,6 +159,8 @@ export interface UserRecord {
   email_verified_at: string | null;
   /** 0 until the administrator approves an account that signed up under `SPINE_REGISTRATION=approval`; such an account has no session. */
   approved: number;
+  /** 1 unless the owner turned off recovery by email: then no recovery mail is sent and a link alone cannot start the records over (SECURITY.md S-38). */
+  email_recovery: number;
   created_at: string;
   health_consent_at: string | null;
   health_consent_version: string | null;
@@ -227,6 +229,8 @@ export interface UserRepository {
   markVerified(id: string, at: string): Promise<void>;
   /** Approves an account that was waiting, and confirms its address if it was not (the administrator vouches for it). False if it was not waiting. */
   approve(id: string, at: string): Promise<boolean>;
+  /** The owner's choice whether an emailed link may recover the account (`UserRecord.email_recovery`). */
+  setEmailRecovery(id: string, on: boolean): Promise<void>;
   createToken(token: NewUserToken): Promise<void>;
   /**
    * Spends a token and returns whose it was, or null if it is unknown, the wrong
@@ -898,13 +902,24 @@ export interface DelegationRecord {
   state: DelegationState;
   created_at: string;
   updated_at: string;
+  /**
+   * What binds each side's key to the other through the invitation code, never through the server (SECURITY.md S-39, S-41). All of it is sealed
+   * on a device and opaque here; null for a grant made before it existed.
+   * `delegate_hello`: the delegate's public key sealed under the key the code makes. `owner_blob`: that invitation key sealed under the owner's
+   * account key, so any of the owner's devices can open the hello later. `delegate_pin`: the delegate's key as the owner verified it, sealed under
+   * the owner's account key. `owner_pin`: the owner's key (as the code carried it) sealed under the delegate's account key.
+   */
+  delegate_hello: string | null;
+  owner_blob: string | null;
+  delegate_pin: string | null;
+  owner_pin: string | null;
 }
 
 export interface DelegationInvite { id: string; profile_id: string; role: DelegationRole; expires_at: string }
 
 export interface DelegationRepository {
   /** The owner's: leaves an invitation for a profile. `proofHash` is what the claimant must show the hash of. */
-  invite(ownerId: string, invite: { id: string; profileId: string; role: DelegationRole; wrapped: string; proofHash: string; now: string; expiresAt: string }): Promise<void>;
+  invite(ownerId: string, invite: { id: string; profileId: string; role: DelegationRole; wrapped: string; proofHash: string; ownerBlob?: string | null; now: string; expiresAt: string }): Promise<void>;
   invites(ownerId: string, now: string): Promise<DelegationInvite[]>;
   cancelInvite(ownerId: string, id: string): Promise<boolean>;
   /**
@@ -914,10 +929,18 @@ export interface DelegationRepository {
   claim(delegateId: string, id: string, proofHash: string, now: string, grantId: string): Promise<{ grant: DelegationRecord; wrapped: string } | null>;
   /** The delegate's, before claiming: who an invitation is from and what it lets them do, under the same conditions as `claim`; it changes nothing. */
   peek(delegateId: string, id: string, proofHash: string, now: string): Promise<{ owner_user_id: string; role: DelegationRole; expires_at: string } | null>;
-  /** The delegate completes a pending grant with the profile key sealed to their own key; false if it is not theirs or not pending. */
-  complete(delegateId: string, id: string, wrappedKey: string, now: string): Promise<boolean>;
-  /** One grant, by its id; the caller checks whose it is (the owner's, or the delegate's, with `delegateId`). */
-  get(id: string): Promise<DelegationRecord | null>;
+  /**
+   * The delegate completes a pending grant with the profile key sealed to their own key, and, from a device that binds keys through the code,
+   * the hello and the pin of the owner's key; false if it is not theirs or not pending. A bound grant starts `paused`: the owner confirms the
+   * code the delegate's key makes, which pins it and resumes the grant (SECURITY.md S-39); one with no binding starts `active`, as it did.
+   */
+  complete(delegateId: string, id: string, wrappedKey: string, now: string, binding?: { hello: string; ownerPin: string } | null): Promise<boolean>;
+  /** The owner's: records the delegate's key as this device verified it (`DelegationRecord.delegate_pin`); false if it is not the owner's live grant. */
+  setPin(ownerId: string, id: string, pin: string): Promise<boolean>;
+  /** Unexpired invitations with no binding, and live grants with none (S-39, S-41): what a device already refuses and the server still takes. */
+  countUnbound(now: string): Promise<{ invites: number; grants: number }>;
+  /** One grant, by its id, only for the account that owns it or holds it; any other account's is not found. It holds a sealed profile key, so there is no lookup without the acting account (SECURITY.md S-63, P12). */
+  getFor(actingUserId: string, id: string): Promise<DelegationRecord | null>;
   /** Grants of the owner's profiles, with the delegate's address and public key (to seal a replaced profile key to them). */
   ownedBy(ownerId: string): Promise<Array<DelegationRecord & { delegate_email: string; delegate_public_key: string | null }>>;
   /**
@@ -932,8 +955,9 @@ export interface DelegationRepository {
   /**
    * Promotion at eighteen (CR-FAM-02, SECURITY.md **M-51**): the person the profile is of (the `self` grant's delegate) takes it into a vault of
    * their own, in one step. Every live object moves from the owner's vault to theirs with its data key sealed under the new profile key (the
-   * new profile record likewise); the owner's rows become tombstones; every other grant of the profile moves to the new owner, paused, with
-   * the new key sealed to its holder; the owner it came from gets a grant of their own (`former.grantId`), a guardian's, paused, with the new
+   * new profile record likewise); the owner's rows become tombstones; every other grant of the profile moves to the new owner and ends (`wrappedKey` null), because the new owner
+   * has no way to know their keys and they never met, so they are invited again, or, given a key, is paused holding it (the one the old owner's
+   * pin of the new owner makes authentic); the owner it came from gets a grant of their own (`former.grantId`), a guardian's, paused, with the new
    * key sealed to them, so the new owner decides whether they come back; the old `self` grant ends; invitations for the profile are cancelled. `before` receives what is to move
    * and runs once the step is known to be possible and before anything changes (it copies the sealed files across), so its failure changes
    * nothing. Not subject to the plan's limits on people or size: nothing is refused because of what a plan holds. Null if it is not possible
@@ -942,7 +966,7 @@ export interface DelegationRepository {
    */
   promote(
     delegateId: string, grantId: string,
-    update: { profileWrapped: string; profileSize: number; objects: Array<{ id: string; wrappedKey: string }>; grants: Array<{ id: string; wrappedKey: string }>; former: { grantId: string; wrappedKey: string } },
+    update: { profileWrapped: string; profileSize: number; objects: Array<{ id: string; wrappedKey: string }>; grants: Array<{ id: string; wrappedKey: string | null }>; former: { grantId: string; wrappedKey: string } },
     now: string, before: (move: { fromUserId: string; profileId: string; objectIds: string[] }) => Promise<void>,
   ): Promise<{ seq: number; fromUserId: string; objectIds: string[] } | null | 'no_vault'>;
   /** The owner's, after a profile key rotates: the new sealed key for each remaining grant of the profile. */
@@ -961,6 +985,8 @@ export interface WaitlistRepository {
   /** False if the address was already on it. */
   add(email: string, at: string, source: string | null): Promise<boolean>;
   list(): Promise<Array<{ email: string; created_at: string; source: string | null }>>;
+  /** How many addresses it holds, for the ceiling on it. */
+  count(): Promise<number>;
   remove(email: string): Promise<boolean>;
 }
 
@@ -1430,10 +1456,16 @@ export interface VaultKeys {
   wrapped_by_recovery: string;
   public_key: string;
   wrapped_private_key: string;
+  /**
+   * An Ed25519 public key the device derives from the account key: the lock a reset must be signed for, so that holding the recovery kit is
+   * what the server checks, not only the mailbox (SECURITY.md S-38). Absent on a vault made before it existed, until a device adds it.
+   */
+  reset_verifier?: string | null;
 }
 
 /** The keys again with the counters the server keeps. */
 export interface VaultKeysRecord extends VaultKeys {
+  reset_verifier: string | null;
   user_id: string;
   seq: number;
   created_at: string;
@@ -1468,8 +1500,10 @@ export interface VaultRepository {
   getKeys(userId: string): Promise<VaultKeysRecord | null>;
   /** Only when the account has none; false otherwise. */
   putKeys(userId: string, keys: VaultKeys, now: string): Promise<boolean>;
-  /** The same account key under new wrappings (a new master password, a new recovery kit). Objects are untouched. */
+  /** The same account key under new wrappings (a new master password, a new recovery kit). Objects are untouched. The verifier is not changed here. */
   replaceKeys(userId: string, keys: VaultKeys, now: string): Promise<boolean>;
+  /** Adds the reset verifier to a vault that has none; false when it has one or there is no vault. A verifier is never replaced, only made again with the vault. */
+  setResetVerifier(userId: string, verifier: string): Promise<boolean>;
   /** Everything changed after `since`, deletions included, oldest change first. */
   list(userId: string, since: number): Promise<VaultObjectMeta[]>;
   get(userId: string, id: string): Promise<VaultObjectMeta | null>;
@@ -1487,6 +1521,8 @@ export interface VaultRepository {
   rotateProfile(userId: string, profileId: string, update: { profileWrapped: string; profileSize: number; objects: Array<{ id: string; wrappedKey: string }> }, now: string, before: () => Promise<void>): Promise<{ seq: number } | null>;
   /** Removes the vault and every object row; the ids, so the caller can delete the files. */
   erase(userId: string): Promise<string[]>;
+  /** How many vaults have no reset verifier yet (SECURITY.md S-38): the operator's report of what is left of the paths kept for older ones. */
+  countWithoutVerifier(): Promise<number>;
 }
 
 /** A link's sealed copy, as the server knows it: when it ends, whether it needs approval, how big it is. Nothing of what is in it. */
@@ -1500,6 +1536,8 @@ export interface SharedBundle {
   blobs: number;
   blobBytes: number;
   revokedAt: string | null;
+  /** What a recipient's browser must show to get the pass for its model calls: a value only the share's key makes, sent with the copy (S-48). Null for a copy made before it. */
+  passCheck: string | null;
   /** `share`: a copy of chosen records with an end time. `card`: an emergency card (one for each person the account keeps records for), with no end (its own switch is the owner's). */
   kind: 'share' | 'card';
 }
@@ -1531,8 +1569,10 @@ export interface SharedOpen {
 export interface SharedRepository {
   /** Public: by the id in the link. Revoked and expired ones are returned as they are; the caller decides. */
   get(id: string): Promise<SharedBundle | null>;
+  /** Live shares and cards with no key check stored (S-48, S-54): the ones made before it, which the routes still let through. */
+  countUnchecked(now: string): Promise<{ shares: number; cards: number }>;
   /** The owner's: makes the row, or replaces its metadata when the same owner publishes again; 'taken' if the id is someone else's. */
-  put(userId: string, bundle: { id: string; expiresAt: string; requireApproval: boolean; size: number; blobs: number; blobBytes: number; kind?: 'share' | 'card' }, now: string): Promise<'ok' | 'taken' | 'revoked' | 'too_many_cards'>;
+  put(userId: string, bundle: { id: string; expiresAt: string; requireApproval: boolean; size: number; blobs: number; blobBytes: number; kind?: 'share' | 'card'; passCheck?: string | null }, now: string): Promise<'ok' | 'taken' | 'revoked' | 'too_many_cards'>;
   /** The owner says the card is still right (or sends it again): the year for the yearly reminder starts over. False if it is not theirs, not a card, or off. */
   touchCard(userId: string, id: string, now: string): Promise<boolean>;
   /** Live cards last reviewed before one date and not reminded since another: whom to remind. */

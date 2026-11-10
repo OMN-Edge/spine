@@ -62,7 +62,7 @@ describe('the relay', () => {
       chat: { invoke: (_: unknown, options: { signal: AbortSignal }) => new Promise((_resolve, reject) => options.signal.addEventListener('abort', () => reject(new Error('aborted')))) } as never,
     };
     const handle = createRelay({
-      secret: SECRET, allowedOrigin: 'https://app.example', get dailyCalls() { return limit; }, get dailySharedCalls() { return sharedLimit; }, get dailyDemoCalls() { return demoLimit; }, get dailyDemoTotalCalls() { return demoTotal; }, maxBodyBytes: 2000, usage: usageRepository(openDatabase(':memory:', openNative, undefined, 'accounts')),
+      secret: SECRET, allowedOrigin: 'https://app.example', get dailyCalls() { return limit; }, get dailySharedCalls() { return sharedLimit; }, get dailyDemoCalls() { return demoLimit; }, get dailyDemoTotalCalls() { return demoTotal; }, maxBodyBytes: 2000, maxShareBodyBytes: 600, usage: usageRepository(openDatabase(':memory:', openNative, undefined, 'accounts')),
       clients: model => (model === undefined || model === MODEL ? clients : null),
       embedder: () => ({ enabled: true, id: 'test:3', dims: 3, embed: async texts => texts.map(() => Float32Array.from([1, 0, 0])) }),
       log: l => logs.push(l), now: () => clock,
@@ -170,7 +170,7 @@ describe('the relay', () => {
     expect(calls).toHaveLength(3);
     // Accounts and shares are not touched by it.
     expect((await call('user-1')).status).toBe(200);
-    expect((await call('share:s1')).status).toBe(200);
+    expect((await post('/v1/task/agent', { messages: messages('x') }, mint('share:s1'))).status).toBe(200);
     // And it starts again the next day.
     clock += 24 * 60 * 60 * 1000;
     expect((await call('demo:addressC')).status).toBe(200);
@@ -188,12 +188,56 @@ describe('the relay', () => {
   it('gives a share its own, smaller allowance, apart from every account', async () => {
     limit = 5;
     sharedLimit = 1;
-    const call = (subject: string) => post(TASK, { messages: messages('x') }, mint(subject));
+    const call = (subject: string) => post(subject.startsWith('share:') ? '/v1/task/agent' : TASK, { messages: messages('x') }, mint(subject));
     expect((await call('share:s1')).status).toBe(200);
     expect((await call('share:s1')).status).toBe(429);
     expect((await call('share:s2')).status).toBe(200);
     expect((await call('a')).status).toBe(200);
     expect((await call('a')).status).toBe(200);
+  });
+
+  it('lets a share’s pass make only the calls a recipient makes: reading, translating, asking and searching', async () => {
+    sharedLimit = 50;
+    const pass = mint('share:s1');
+    for (const task of ['continuation', 'extraction', 'page', 'pageThinking', 'stamps', 'linking', 'grouping']) {
+      const res = await post(`/v1/task/${task}`, { messages: messages('x') }, pass);
+      expect(res.status, task).toBe(403);
+      expect(await res.json(), task).toMatchObject({ code: 'task_not_for_share' });
+    }
+    // nothing ran, and the refused calls did not use the share's allowance
+    expect(calls).toHaveLength(0);
+    sharedLimit = 1;
+    expect((await post('/v1/task/agent', { messages: messages('x') }, mint('share:s9'))).status).toBe(200);
+    expect((await post('/v1/task/translation', { messages: messages('x') }, mint('share:s8'))).status).toBe(422);
+    expect((await post('/v1/embed', { texts: ['a'], kind: 'query' }, mint('share:s7'))).status).toBe(200);
+    // an account's pass is not limited this way
+    expect((await post(TASK, { messages: messages('x') }, mint('user-1'))).status).toBe(200);
+  });
+
+  // SECURITY.md S-49. A count of calls is not a bound on what they cost when the size of a call is free, and a pass of the demo or a share ran
+  // any task. A demo reads uploads and nothing else; a share's calls are small; each is refused before it is counted.
+  it('lets a demo’s pass read uploads and nothing else', async () => {
+    demoLimit = 50; demoTotal = 50;
+    const pass = mint('demo:addressA');
+    for (const path of ['/v1/task/agent', '/v1/task/chat', '/v1/task/translation', '/v1/task/linking', '/v1/embed']) {
+      const res = await post(path, path === '/v1/embed' ? { texts: ['a'], kind: 'query' } : { messages: messages('x') }, pass);
+      expect(res.status, path).toBe(403);
+      expect(await res.json(), path).toMatchObject({ code: 'task_not_for_demo' });
+    }
+    for (const task of ['continuation', 'extraction', 'page', 'stamps', 'grouping']) expect((await post(`/v1/task/${task}`, { messages: messages('x') }, pass)).status, task).not.toBe(403);
+    expect(calls.map(c => c.task)).not.toContain('agent');
+  });
+
+  it('refuses a request over the size a share’s calls need, before it is counted, and takes one under it', async () => {
+    sharedLimit = 1;
+    const big = await post('/v1/task/agent', { messages: messages('x'.repeat(700)) }, mint('share:s1'));
+    expect(big.status).toBe(413);
+    expect(await big.json()).toMatchObject({ code: 'too_large' });
+    // not counted: the one call the share has is still there
+    expect((await post('/v1/task/agent', { messages: messages('x') }, mint('share:s1'))).status).toBe(200);
+    expect((await post('/v1/task/agent', { messages: messages('x') }, mint('share:s1'))).status).toBe(429);
+    // an account may send what the relay's own limit allows
+    expect((await post(TASK, { messages: messages('x'.repeat(1200)) }, mint('user-1'))).status).toBe(200);
   });
 
   it('counts each user’s calls apart, and starts again the next day', async () => {

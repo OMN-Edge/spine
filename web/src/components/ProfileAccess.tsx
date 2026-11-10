@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { Delegations } from '../crypto/vault-client';
+import { VaultSession, type Delegations } from '../crypto/vault-client';
 import { showInviteCode } from '../crypto/delegation';
 import { vaultState } from '../crypto/vault-state';
 import { device } from '../core/client';
@@ -26,12 +26,29 @@ export default function ProfileAccess({ person }: { person: Person }) {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const session = vaultState.session();
+  // The code each waiting person's key makes, to compare with the one they read out (SECURITY.md S-39).
+  const [codes, setCodes] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     if (!session) return;
     try { setData(await session.delegations()); } catch { setError(t('Could not load who is let in')); }
   }, [session, t]);
   useEffect(() => { void load(); }, [load]);
+  // Someone who accepts an invitation appears here, waiting for the code to be confirmed, without the page being opened again.
+  useEffect(() => {
+    const timer = window.setInterval(() => { void load(); }, 5000);
+    return () => window.clearInterval(timer);
+  }, [load]);
+  useEffect(() => {
+    if (!session || !data) return;
+    let live = true;
+    void (async () => {
+      const found: Record<string, string> = {};
+      for (const g of data.owned) if (g.profile_id === profileId && VaultSession.needsConfirmation(g)) { const c = await session.pendingCode(g); if (c) found[g.id] = c; }
+      if (live) setCodes(found);
+    })();
+    return () => { live = false; };
+  }, [session, data, profileId]);
 
   const run = async (work: () => Promise<unknown>, failed: string) => {
     setError(''); setBusy(true);
@@ -49,7 +66,20 @@ export default function ProfileAccess({ person }: { person: Person }) {
       <h3 className="font-medium text-gray-800">{name === 'Me' ? t('Who else can open your records') : t('Who else can open {name}’s records', { name })}</h3>
       {mine.length === 0 && waiting.length === 0 && <p className="text-gray-500 mt-1">{t('No one else.')}</p>}
       <ul className="mt-1 divide-y divide-gray-100">
-        {mine.map(g => (
+        {mine.map(g => VaultSession.needsConfirmation(g) ? (
+          <li key={g.id} className="py-1.5">
+            <span className="text-gray-800 break-words">{g.delegate_email} · {g.role === 'self' ? t('has an account of their own') : g.role === 'guardian' ? t('can change them') : t('can only read them')}</span>
+            <div className="mt-1 rounded-lg bg-gray-50 border border-gray-200 p-2">
+              <p className="text-xs text-gray-500">{t('Code')}</p>
+              <p className="font-mono text-base tracking-widest text-gray-900" data-testid="grant-code">{codes[g.id] ?? '…'}</p>
+              <p className="text-xs text-gray-500 mt-1">{t('Ask {email} for the code on their screen. Their access starts when you say it is the same.', { email: g.delegate_email })}</p>
+              <span className="mt-2 flex gap-4">
+                <button disabled={busy || !codes[g.id]} className="text-brand-600 hover:underline" onClick={() => void run(async () => { await session.confirmGrant(g); await device.reloadKeys(); }, t('Could not change this'))}>{t('It is the same')}</button>
+                <button disabled={busy} className="text-red-600 hover:underline" onClick={() => void run(async () => { await session.revoke(g.id); await device.reloadKeys(); }, t('Could not end this'))}>{t('It is not the same')}</button>
+              </span>
+            </div>
+          </li>
+        ) : (
           <li key={g.id} className="py-1.5 flex items-center justify-between gap-2">
             <span className="text-gray-800 min-w-0 break-words">{g.delegate_email} · {g.role === 'self' ? t('has an account of their own') : g.role === 'guardian' ? t('can change them') : t('can only read them')}{g.state === 'paused' && ` · ${t('paused')}`}</span>
             <span className="shrink-0 flex gap-3">

@@ -39,7 +39,7 @@ function fromShare(url: string): string {
 export default function PublicShareView() {
   const { id: shareId } = useParams<{ id: string }>();
   const { t } = useI18n();
-  const { state, ask, error } = useShareAccess(shareId);
+  const { state, ask, error, code } = useShareAccess(shareId);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -70,7 +70,18 @@ export default function PublicShareView() {
             {error && <p className="text-xs text-red-600 mt-3" role="alert">{t('Could not send the request')}</p>}
           </>
         )}
-        {state === 'pending' && <p className="text-gray-500 text-sm" role="status">{t('Your request was sent. Keep this page open: it opens when the owner approves.')}</p>}
+        {state === 'pending' && (
+          <>
+            <p className="text-gray-500 text-sm" role="status">{t('Your request was sent. Keep this page open: it opens when the owner approves.')}</p>
+            {code && (
+              <div className="mt-4">
+                <p className="text-xs text-gray-500">{t('Your code')}</p>
+                <p className="font-mono text-lg tracking-widest text-gray-900" data-testid="visitor-code">{code}</p>
+                <p className="text-xs text-gray-500 mt-1">{t('Read it to the person who shared this link, so they can check that the request is yours.')}</p>
+              </div>
+            )}
+          </>
+        )}
         {state === 'denied' && <p className="text-gray-500 text-sm" role="alert">{t('The owner did not approve this request.')}</p>}
         <div className="mt-6 flex items-center justify-center gap-2"><LanguageSwitcher opens="right" /><ThemeSwitcher /></div>
       </div>

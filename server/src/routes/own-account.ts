@@ -31,6 +31,24 @@ export async function ownAccountRoutes(app: FastifyInstance) {
     return reply.send({ ok: true });
   });
 
+  // Whether an emailed link may recover the account (SECURITY.md S-38). On unless the owner turns it off. Off, no recovery mail is sent and a
+  // link cannot start the records over or replace the keys without the recovery kit's signature, so it can only be turned off once the vault has
+  // the verifier that signature is checked against (a device adds it when the records are opened): off before that would leave the kit with nothing to prove.
+  app.put<{ Body: { enabled?: unknown } }>('/api/account/email-recovery', { preHandler: [requireAuth, requireRecentAuth, app.rateLimit({ max: 10, timeWindow: '10 minutes' })] }, async (req, reply) => {
+    const enabled = req.body?.enabled;
+    if (typeof enabled !== 'boolean') return reply.status(400).send({ error: 'enabled must be true or false' });
+    const store = getAccountsStore();
+    const user = await store.users.findById(req.userId);
+    if (!user) return reply.status(401).send({ error: 'not authenticated' });
+    if (!enabled && !(await store.vault.getKeys(req.userId))?.reset_verifier) {
+      return reply.status(409).send({ error: 'open your records on this device first, so they can be recovered with the recovery kit alone', code: 'verifier_missing' });
+    }
+    await store.users.setEmailRecovery(req.userId, enabled);
+    mailAfter(req, user.id, securityChangeMail(user.email, enabled ? 'Recovery of your account by email was turned on' : 'Recovery of your account by email was turned off', new Date().toISOString()), 'email recovery setting');
+    req.log.info({ userId: req.userId, enabled }, 'email recovery setting changed');
+    return reply.send({ ok: true, email_recovery: enabled });
+  });
+
   // Leaving (GDPR Art. 17, FR-EXP-02): the account, its records and the files, at once. Asks for the password again and for the
   // address typed out, so a stolen session cookie cannot do it in one request and a slip of the finger cannot do it at all.
   app.post<{ Body: { confirm?: unknown } }>('/api/account/delete', { preHandler: [requireAuth, requireRecentAuth] }, async (req, reply) => {

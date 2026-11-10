@@ -5,7 +5,7 @@ import type { ShareHost } from 'spine-core/share-host';
 import { carryTranslations } from 'spine-core/translation';
 import { sodium } from '../../crypto/sodium';
 import { uprightJpeg } from '../native/image-ops';
-import { newShareKey, sealPart, wrapShareKey } from './keys';
+import { newShareKey, sealPart, sharePassCheck, wrapShareKey } from './keys';
 
 /**
  * Where a page's image is inside a share's file system: the name is its sealed file's name at the server. A copy made before images had
@@ -74,8 +74,9 @@ export function createShareHost(deps: { store: () => Store; mail: () => boolean 
 
       const at = `/api/shared/${encodeURIComponent(link.id)}`;
       const sealed = await sealPart(key, link.id, 'records', new TextEncoder().encode(JSON.stringify({ v: 1, owner: userId, changes })));
+      const passCheck = await sharePassCheck(key, link.id);
       const sendRecords = () => call('PUT', at, {
-        headers: { 'content-type': 'application/octet-stream', 'x-spine-expires': new Date(link.expires_at).toISOString(), 'x-spine-approval': link.require_approval ? '1' : '0', 'x-spine-keep-images': '1' },
+        headers: { 'content-type': 'application/octet-stream', 'x-spine-expires': new Date(link.expires_at).toISOString(), 'x-spine-approval': link.require_approval ? '1' : '0', 'x-spine-keep-images': '1', 'x-spine-pass-check': passCheck },
         body: sealed as BodyInit,
       });
       // The images the server holds already (none for a new link): only the others are sent.
@@ -150,7 +151,7 @@ export function createShareHost(deps: { store: () => Store; mail: () => boolean 
       const cardKey = key ?? (await newShareKey());
       // Sealed under a key of its own that only the owner's device and the address it hands out hold; the server stores bytes it cannot open.
       const sealed = await sealPart(cardKey, cardId, 'card', new TextEncoder().encode(content));
-      await call('PUT', `/api/shared/${encodeURIComponent(cardId)}`, { headers: { 'content-type': 'application/octet-stream', 'x-spine-kind': 'card' }, body: sealed as BodyInit });
+      await call('PUT', `/api/shared/${encodeURIComponent(cardId)}`, { headers: { 'content-type': 'application/octet-stream', 'x-spine-kind': 'card', 'x-spine-pass-check': await sharePassCheck(cardKey, cardId) }, body: sealed as BodyInit });
       return { id: cardId, key: cardKey };
     },
 

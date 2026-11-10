@@ -15,6 +15,16 @@ export async function newShareKey(): Promise<string> {
   return toB64(s, s.randombytes_buf(32));
 }
 
+/**
+ * What a recipient's browser shows the server to get the pass for its model calls (SECURITY.md S-48): a hash of the share's id under the share's
+ * key. The owner's device sends it with the copy; the server keeps it and compares. A share's id is in every address, in logs and in tables, so it
+ * proves nothing; this does, and says nothing of the key.
+ */
+export async function sharePassCheck(keyB64: string, shareId: string): Promise<string> {
+  const s = await sodium();
+  return toB64(s, s.crypto_generichash(32, s.from_string(`spine/v1/share/${shareId}/pass`), fromB64(s, keyB64)));
+}
+
 export async function sealPart(keyB64: string, shareId: string, part: string, plaintext: Uint8Array): Promise<Uint8Array> {
   const s = await sodium();
   return seal(fromB64(s, keyB64), plaintext, context(shareId, part));

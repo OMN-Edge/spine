@@ -67,7 +67,7 @@ spine/
 │       ├── passwords.ts    # argon2id hash/verify, policy, email normalisation
 │       ├── totp.ts         # RFC 6238 codes, secret encryption at rest, recovery codes (pure; no store)
 │       ├── second-factor.ts # checkSecondFactor(): joins totp.ts to the store; atomic spend
-│       ├── cli.ts          # operator commands: create-user, set-password, reset-link, disable-2fa, delete-user, list-users
+│       ├── cli.ts          # operator commands: create-user, set-password, reset-link, disable-2fa, delete-user, legacy, list-users
 │       ├── trust-proxy.ts  # the only addresses whose X-Forwarded-For is believed (loopback); limiters key on req.ip
 │       ├── notify.ts       # account mail (new browser, password or 2FA change); never records
 │       ├── passkeys.ts, trust-anchors.ts, vault-keys.ts, backup.ts  # WebAuthn, the signature trust anchors, the vault's keys, the VACUUM INTO snapshot + vault mirror run by spine-backup.timer
@@ -115,6 +115,7 @@ cd server && npm run cli -- reset-link you@example.com       # one-time link; wo
 cd server && npm run cli -- approve-user you@example.com      # an account waiting under SPINE_REGISTRATION=approval; list-users marks it
 cd server && npm run cli -- disable-2fa you@example.com      # lost phone and recovery codes
 cd server && npm run cli -- delete-user you@example.com      # shows what it would remove; --yes to do it
+cd server && npm run cli -- legacy                          # what is left of the paths kept for things made before the 2026-11 review's fixes; exit 0 when none
 cd server && npm run cli -- list-users
 
 # Install and build (npm workspaces: one install at the root; core is built first because server and web use it)
@@ -130,6 +131,9 @@ npm run test:coverage -w spine-server
 
 # The checks CI runs (tests, typecheck, dependency audit, gitleaks, semgrep): needs `brew install gitleaks semgrep` for `scan`
 ./scripts/check.sh [server|web|scan|all]
+
+# What a running host looks like (modes, ports, units, space, a restore drill; reads only): on the host, or `outside <domain>` for TLS and headers
+./scripts/host-report.sh [inside | outside <host>...]
 ```
 
 ## Architecture

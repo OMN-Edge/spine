@@ -58,6 +58,18 @@ function addColumnsInPlace(db: Database): void {
   const passkeys = columnsOf(db, 'user_passkeys');
   if (passkeys.length > 0 && !passkeys.includes('wrapped_key')) db.exec('ALTER TABLE user_passkeys ADD COLUMN wrapped_key TEXT');
 
+  // The lock a reset must be signed for (S-38): a vault made before it has none until a device adds it.
+  const vaultKeys = columnsOf(db, 'vault_keys');
+  if (vaultKeys.length > 0 && !vaultKeys.includes('reset_verifier')) db.exec('ALTER TABLE vault_keys ADD COLUMN reset_verifier TEXT');
+
+  // Each side's key bound to the other through the invitation code (S-39, S-41): grants and invitations from before have none.
+  const invites = columnsOf(db, 'profile_invites');
+  if (invites.length > 0 && !invites.includes('owner_blob')) db.exec('ALTER TABLE profile_invites ADD COLUMN owner_blob TEXT');
+  const grants = columnsOf(db, 'delegations');
+  for (const column of ['delegate_hello', 'owner_blob', 'delegate_pin', 'owner_pin']) {
+    if (grants.length > 0 && !grants.includes(column)) db.exec(`ALTER TABLE delegations ADD COLUMN ${column} TEXT`);
+  }
+
   const pages = columnsOf(db, 'pages');
   if (pages.length > 0 && !pages.includes('hidden')) {
     db.transaction(() => {
@@ -87,6 +99,8 @@ function addColumnsInPlace(db: Database): void {
 
   // Whether the administrator has approved the account (SPINE_REGISTRATION=approval). Every account from before is.
   if (accounts.length > 0 && !accounts.includes('approved')) db.exec('ALTER TABLE users ADD COLUMN approved INTEGER NOT NULL DEFAULT 1');
+  // Whether an emailed link may recover the account (S-38): on for every account from before.
+  if (accounts.length > 0 && !accounts.includes('email_recovery')) db.exec('ALTER TABLE users ADD COLUMN email_recovery INTEGER NOT NULL DEFAULT 1');
 
   // The emergency card is a sealed bundle of its own kind; every earlier bundle is a share.
   const bundles = columnsOf(db, 'shared_bundles');
@@ -94,6 +108,7 @@ function addColumnsInPlace(db: Database): void {
   // When a card was last reviewed and last reminded about (the yearly reminder). Null for every earlier bundle.
   if (bundles.length > 0 && !bundles.includes('reviewed_at')) db.exec('ALTER TABLE shared_bundles ADD COLUMN reviewed_at TEXT');
   if (bundles.length > 0 && !bundles.includes('reminded_at')) db.exec('ALTER TABLE shared_bundles ADD COLUMN reminded_at TEXT');
+  if (bundles.length > 0 && !bundles.includes('pass_check')) db.exec('ALTER TABLE shared_bundles ADD COLUMN pass_check TEXT');
 
   // What a subscription is to (Premium, or the family plan). Every earlier one is Premium.
   const subscriptions = columnsOf(db, 'subscriptions');

@@ -366,6 +366,24 @@ describe('recovery codes at sign-in', () => {
     expect(await getAccountsStore().users.useRecoveryCode(OWNER_ID, recovery[0], new Date().toISOString())).toBe(false);
   });
 
+  it('are not stored as the plain hash of the code, which a graphics card would find (S-42)', async () => {
+    const { recovery } = await enrol();
+    const { createHash } = await import('crypto');
+    const plain = createHash('sha256').update(recovery[0].replace('-', '')).digest('hex');
+    expect(await getAccountsStore().users.useRecoveryCode(OWNER_ID, plain, new Date().toISOString())).toBe(false);
+  });
+
+  it('made before they were stored slowly still work, once, and are spent like any other', async () => {
+    const { secret } = await enrol();
+    const { createHash } = await import('crypto');
+    const old = 'ABCDEFGHJK';
+    await getAccountsStore().users.replaceRecoveryCodes(OWNER_ID, [createHash('sha256').update(old).digest('hex')]);
+    const user = (await getAccountsStore().users.findById(OWNER_ID))!;
+    expect(await checkSecondFactor(user, 'abcde-fghjk')).toBe(true);
+    expect(await checkSecondFactor(user, old)).toBe(false);
+    expect(secret).toBeTruthy();
+  });
+
   it('still work if SESSION_SECRET changed and the authenticator no longer can (S-21)', async () => {
     const { secret, recovery } = await enrol();
     advanceSteps(1);
@@ -489,9 +507,12 @@ describe('changing it', () => {
 
 describe('other ways in do not skip it', () => {
   it('a reset link sets a password and leaves the second factor in force', async () => {
-    await enrol();
-    const token = await issueUserToken(OWNER_ID, 'reset', 60_000);
-    const reset = await post('/api/auth/reset', { token, password: 'a-brand-new-password-1' });
+    const { secret } = await enrol();
+    const token = await issueUserToken(OWNER_ID, 'reset', 10 * 60_000);
+    // The link alone is not enough for an account that has a second factor (S-38); the code that enrolled is spent, so wait for the next.
+    expect((await post('/api/auth/reset', { token, password: 'a-brand-new-password-1' })).statusCode).toBe(401);
+    advanceSteps(2);
+    const reset = await post('/api/auth/reset', { token, password: 'a-brand-new-password-1', code: codeFor(secret) });
     expect(reset.statusCode).toBe(200);
     // Any response may carry a session cookie; what matters is that it is not a login.
     expect((await get('/api/auth/me', cookieOf(reset))).statusCode).toBe(401);

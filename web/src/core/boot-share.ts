@@ -12,7 +12,7 @@ import { deviceSettings } from './native/settings';
 import { resetStore } from 'spine-core/store/index';
 import type { Change } from 'spine-core/store/types';
 import { publicShareRoutes } from 'spine-core/routes/public-share';
-import { openPart, openPartNow } from './share/keys';
+import { openPart, openPartNow, sharePassCheck } from './share/keys';
 import { useTokenUrl } from './native/relay-auth';
 import { useRelayHooks } from 'spine-core/llm/adapters/relay';
 import { relayFetch, relayToken } from './native/relay-auth';
@@ -53,7 +53,7 @@ export async function startShareCore(shareId: string, key: string): Promise<Shar
   });
 
   // Model calls (translating, a question) go through the relay with a pass for this share alone.
-  useTokenUrl(`/api/shared/${id}/relay-token`, 'POST');
+  useTokenUrl(`/api/shared/${id}/relay-token`, 'POST', { check: await sharePassCheck(key, shareId) });
   const config = (await (await fetch(`/api/shared/${id}/config`)).json().catch(() => ({ env: {} }))) as { env: Record<string, string> };
   Object.assign(deviceSettings, config.env);
   useRelayHooks({ tokenProvider: relayToken, fetchImpl: relayFetch });

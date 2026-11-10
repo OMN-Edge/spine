@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useI18n } from '../i18n';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { ThemeSwitcher } from '../components/ThemeSwitcher';
-import { openPart } from '../core/share/keys';
+import { openPart, sharePassCheck } from '../core/share/keys';
 import { DETAIL_LABELS } from '../detailLabels';
 import { normaliseCard, cardIsEmpty, type CardContent } from 'spine-core/emergency';
 
@@ -45,7 +45,7 @@ export default function CardView({ id }: { id: string }) {
         if (!live) return;
         setCard(normaliseCard(JSON.parse(new TextDecoder().decode(plain))));
         // Said once the card is open; the owner is told when and from which country, never from which address.
-        void fetch(`/api/shared/${encodeURIComponent(id)}/opened`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }).catch(() => undefined);
+        void sharePassCheck(key, id).then(check => fetch(`/api/shared/${encodeURIComponent(id)}/opened`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ check }) })).catch(() => undefined);
       } catch {
         if (live) setState('locked');
       }

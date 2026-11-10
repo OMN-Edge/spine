@@ -213,6 +213,8 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions = 
       authenticated: true,
       email: user.email,
       second_factor_enabled: await hasSecondFactor(user.id),
+      // Whether an emailed link may recover the account; the owner can turn it off (SECURITY.md S-38).
+      email_recovery: user.email_recovery !== 0,
       // Whether the account has a vault. One that has none is asked to make it before anything else (docs/crypto-design.md).
       vault: (await getAccountsStore().vault.getKeys(user.id)) !== null,
       // What this account still has to agree to before the app shows anything (CR-GDPR-01). Nothing once it has.

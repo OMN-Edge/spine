@@ -65,12 +65,22 @@ The owner asks for a reset. With a mailer they get a link by email; without one,
 - Asking for a reset looks the same whether or not the address has an account.
 - The link works once, and carries its token in the part of the URL the server never sees (the fragment, which a browser does not send).
 - A new password signs out the owner's other sessions.
+- An account with two-factor on is asked for a code from its authenticator, or a recovery code, with the new password; a wrong code leaves the link good, and five attempts at a link in ten minutes stop it. The owner is mailed that a reset was made, and when it erased the records.
 - The mail has no document content and no clinical words.
 - For an account with a vault the page asks for the **recovery kit** and a new password: the kit opens the account key on the device, which is sealed again under the new password, and the records stay readable. A mistyped kit is caught by its check characters; a kit from another account does not open this one.
 - Without the kit the page says that the records cannot be opened by anyone, and offers to start empty: every stored object is erased, and a new vault and a new kit are made. Nothing is erased before the person has ticked that they understand.
-- The link alone never gives access to records: the server holds only the key sealed under the kit.
+- With recovery by email turned off (1.2a) no link is mailed, and the page does not offer to start empty.
+- The link alone never gives access to records: the server holds only the key sealed under the kit. Nor does it replace the keys: the page signs the reset with a key the kit opens, and the server refuses a reset of a vault that has a verifier without that signature.
 
-Status: auto (`accounts`, `mail`, `cli`, `vault`, and `web/src/e2e/vault.e2e.test.ts` for the kit and the erase path).
+Status: auto (`accounts`, `mail`, `cli`, `vault`, `reset-second-factor`, and `web/src/e2e/vault.e2e.test.ts` for the kit and the erase path).
+
+### 1.2a Turn off recovery by email
+- The account page has Recovery by email, on for every account, with one line saying what it does now and a button to turn it off or on again. Changing it asks for the password if it was not typed lately, and mails the owner.
+- Off, no recovery mail is sent, and asking for one gets the same answer as for any address. A link, even one the operator issued with `reset-link`, resets only with the recovery kit; it cannot start the records over, and the page says that only the kit can reset the account.
+- It can be turned off only when the records have been opened on a device, so that the kit can always reset the account; otherwise the page asks to open them first.
+- Turned on again, recovery works as in 1.2.
+
+Status: auto (`email-recovery`); screen: hand.
 
 ### 1.3 Turn on two-factor
 The owner scans a QR code, confirms one code, and saves ten recovery codes.
@@ -184,6 +194,7 @@ The owner drops a 40-page scan on the Upload page. It was a stack of letters, re
 - When it finishes, the upload is listed under the documents it became, each with a title (the one printed on it, else a short generated one), never the file name.
 - A page numbered "1 / 1" after one numbered "3 / 3" starts a new document; a page numbered "2 / 3" continues the one before.
 - If the model cannot be reached, the upload is marked as failed with the reason; the original file is kept and nothing is half-written.
+- A PDF of more than 500 pages is refused before any page is drawn, and the upload says to split it and add the parts. A page declared to be very large is drawn smaller, to at most 25 million pixels, not refused; the device's memory is not the file's to spend. In a real browser: `check:browser` draws a 575-byte file that names a page of 5000 by 5000 points, and a file of 501 pages.
 - Every document starts **unreviewed**, and the upload starts with its grouping **unconfirmed** (see 2.5): its documents are listed on the Upload page but are not yet in the timeline, search, shares or trends.
 
 Status: auto (`pipeline`, `continuation`, `upload`, `grouping-confirmation`).
@@ -246,7 +257,7 @@ The owner opens an upload's **Pages and grouping**. Pages 11 and 12 belong with 
 - Afterwards the screen says whether the reading worked. If it fails for a document, the grouping stands and Done tries that one again.
 - Values, doctors and fields move with the pages they were read from.
 - Any page can be **dragged** to another place: before another page of its document (to reorder), into another document, or into the strip between documents to become a document of its own. The page keeps what was read from it (its fields and results go with it), pages are numbered again in their new order, and the documents it leaves and joins go back to review and wait for Done. A page that was moved shows a small asterisk, and hovering says where it is in the file. A document left with no pages is folded into where its last page went.
-- **Hide** under a page sets that page aside, and **Hide document** sets a whole document aside, however many pages it has. A hidden page is kept (with its image and text) but is left out of the document's view, search and the next reading. A document with every page hidden is left out of the timeline, search, review, share links, a doctor's list and the trends; on this screen it is dimmed with a banner and a **Show all pages** button, and the upload's card on the Upload page counts it ("1 hidden") so it can be opened and brought back.
+- **Hide** under a page sets that page aside, and **Hide document** sets a whole document aside, however many pages it has. A hidden page is kept (with its image and text) but is left out of the document's view, search and the next reading, and, until the document has been read again without it, the document is left out of the links that share it, because its summary may still say what the page said. A document with every page hidden is left out of the timeline, search, review, share links, a doctor's list and the trends; on this screen it is dimmed with a banner and a **Show all pages** button, and the upload's card on the Upload page counts it ("1 hidden") so it can be opened and brought back.
 - Done skips a document with every page hidden, since there is nothing to read; it does not call that a failure.
 
 Status: auto (`regroup`, `structured`, `page-hiding`, `grouping-confirmation`); screens: hand.
@@ -570,22 +581,25 @@ Status: auto (`share`, `public-share-scoped`, `public-share-detail`).
 When making a link the owner ticks **Ask me before anyone opens it**. Whoever opens the link must ask, and the owner approves or denies from their own account; only the browser they approve can read it.
 
 - The recipient opens the link and sees "Approval needed", an optional "Who are you?" line, and **Ask for access**. Asking makes a key pair in that browser, kept in its session storage for as long as the tab is open, and sends the owner one email (when a mailer exists), which says only that someone is waiting and carries a link to the request. It names no document, label or note.
+- The visitor's page shows a short code made from the browser's key, to read to the owner; the owner's request shows the code its key makes, and **Approve** waits until the owner has asked for the visitor's code and ticked that it is the same, so a request made up by someone else's key is told apart from the visitor's.
 - The owner opens that link (signing in first, and coming back to it), sees when and from which country the request came (the address itself is not kept), with the recipient's own words marked as unverified, and presses **Approve** or **Deny**. Following the link never approves anything; only the button does. Waiting requests are also at the top of the Share links page and on the link's page; with no mailer set up that is the only place the owner is told, and creating the link says so.
 - Until approved the browser has no key, so there is nothing to open: the copy on the server is sealed and the page says approval is needed. The owner's device answers an approval by wrapping the share key to that browser's key, and the recipient's page waits and opens by itself.
 - The approval is for that link and that browser: its key opens no other link, a second browser asks on its own, and closing the tab means asking again. The owner can withdraw it later. At most five requests wait on a link at once, and asking is rate limited.
 - Approving on a link that has been revoked or has expired is refused. A request that is not the owner's is "not found".
 
-Status: auto (`shared`, `share-manage`).
+Status: auto (`shared`, `share-manage`, `share-code`, `share-host`); in a real browser: `check:app` (the visitor's code, the same code on the owner's side, Approve waiting for the tick).
 
 ### 7.3 Let the recipient ask questions
-When making a link the owner ticks **Let the recipient ask questions**. The recipient's page then has an **Ask** button; they type a question and the assistant answers from the shared documents.
+When making a link the owner ticks **Let the recipient ask questions**, which asks for the password again if it was not typed lately, as scans do, and says that the copy then also holds the text of every shared page as printed, with names and numbers. The form says too that the notes the owner wrote on the shared documents go with the link, with or without questions. The recipient's page then has an **Ask** button; they type a question and the assistant answers from the shared documents.
 
 - It answers only from the documents the link shares, and tells the recipient nothing about the rest of the archive however it is asked, including by asking it to ignore the limits. It does not know the care chain between documents, and it cannot change anything.
 - It knows the asker is a recipient and not the patient: it speaks of "the patient". The label the owner gave the link is context for it (a purpose, a name), not an instruction.
 - The answer streams and cites the shared documents, each linking to that document in the recipient's page. Nothing the recipient asks is stored by Spine (the relay keeps no content): closing or reloading the page clears it. Each question sends their words and parts of the shared documents, including the owner's notes on them, to the model provider, and the form says so.
 - It is limited by the relay's daily count of model calls for the share, and off unless the owner ticked it (and `SPINE_CHAT` is not `off`).
+- A recipient's page notes that the link was opened only by showing the same value (a link's id alone writes nothing into the owner's record of who read it), and a link keeps at most a thousand openings waiting to be collected.
+- The pass a recipient's browser uses for these calls is given only to a browser that holds the link's key, so a link's id alone, which is in the address and in logs, gets none, and a link that waits for approval gives none until the browser is approved. The pass runs only what a recipient does (translating, asking, searching): it cannot start a reading of a file.
 
-Status: auto (`share-chat`); live (`recipient-chat.it.ts`: answers from the shared document and cites it, nothing from the rest of the archive however it is asked, purpose as context, cannot change anything, streams).
+Status: auto (`share-chat`, `share-pass`); live (`recipient-chat.it.ts`: answers from the shared document and cites it, nothing from the rest of the archive however it is asked, purpose as context, cannot change anything, streams).
 
 ### 7.4 See and change a link after it was made
 **Manage** on a link opens its page: what it allows now, what it shares now, who has read it, who asked, and its history.
@@ -623,6 +637,7 @@ The owner signs in on a second device with the master password (or a passkey) an
 
 - Two devices that change different things at the same moment end with both changes. The newest change to a row wins; a deletion is a change.
 - A device that saved is told that another made changes, and offers a reload; pages do not refresh themselves.
+- A device that opens a vault whose newest object is older than the newest it saw last time (the operator restored a backup, or a server serves an earlier state) says so above the records and asks the person to confirm that is expected; it asks again at each opening until they do (SECURITY.md S-43). Status: `persist.test.ts` checks the layer; the banner is not driven by a browser check.
 - A tag or doctor made on two devices with the same name becomes one. Starter tags are the same on every device.
 - After 10 segments a device folds them into a small part (and after six such parts, writes a snapshot of everything), so a device that was away catches up from them.
 - After a reload the records come back from the copy kept on the device and the server is asked only for what is new; signing out removes the copy.
@@ -919,7 +934,7 @@ Under each of the account's own people, the page of people says who else can ope
 
 - The link (`/invite#<code>`) says the person has been invited before any sign-in, and the code waits through signing in or making an account, in that tab only. The code is not shown. A wrong, used or expired code says it cannot be used; Decline forgets it. The owner can cancel an invitation that is waiting, and pause or resume access.
 - Someone let in as a reader sees the owner's records and nothing else of the owner's. What they change is not kept: the vault refuses it, and the page says that their latest changes are not saved yet. The page does not stop them trying.
-- After accepting, the person is in the list, marked "Shared by" the owner and with what they may do. Accepting opens other records, and the page is drawn again, so the message is kept for the tab for a minute and shown by the new page.
+- After accepting, the person's page shows a short code made from their key, to read to the owner; the owner's list shows the code that key makes beside their address, and nothing starts until the owner has asked for theirs and said it is the same ("It is the same", or "It is not the same", which ends it). The owner's list refreshes by itself, and the person's page opens the records when the owner has confirmed. A person invited by an older version, or whose binding a server took away, is not let in at all: they are invited again. Then the person is in the list, marked "Shared by" the owner and with what they may do. Accepting opens other records, and the page is drawn again, so the message is kept for the tab for a minute and shown by the new page.
 - Ending access (password asked again) gives the records a new key and signs the owner out of their other devices; the person let in stops reaching them at once, and what they already read stays with them. Leaving is the person's own call.
 
 Status: auto (`delegation`, `vault.e2e`: the crypto, the server, the preview, the lock-out and cancelling an invitation that waits); real browser (`check:app`): the code and the cancelling, then a second account following the link, signing in, the note that an invitation waits and nothing opened on its own, the invitation naming the owner and the role with no code shown, accepting as a reader, the message that it worked, the owner's records open, a refused change, and the same code refused a second time.
@@ -937,11 +952,11 @@ Status: auto (`vault.e2e`); real browser (`check:app`).
 Status: auto (`family`, `delegation`); real browser: a child with a birth date, refused without a real one (`check:app`).
 
 ### 15.4 Becoming eighteen
-A child's profile with a birth date shows a note to the guardian once the child is eighteen: the records should be theirs, and the way is to let them in as themselves. The young adult, who has joined with the code, sees "You are 18: these records can be yours", reads what taking them over does, and confirms; their password is asked again. The records are moved into their own account under a new key and are simply theirs (no longer "kept by" anyone; empty records the account started with are removed, as when joining), and everyone who looked after them, **the former owner included**, is listed under them as paused: each can be resumed or ended. The former owner's account no longer has the records until let back in, and is mailed; a device of theirs that had them open notices within a minute, opens the account's own records instead, and says why. Once let back in, the former owner finds them listed as shared by the young adult. A share link the former owner made stays theirs, and **an emergency card published before the promotion becomes the new owner's**: the printed code keeps working and the new owner can replace it or turn it off.
+A child's profile with a birth date shows a note to the guardian once the child is eighteen: the records should be theirs, and the way is to let them in as themselves. The young adult, who has joined with the code, sees "You are 18: these records can be yours", reads what taking them over does, and confirms; their password is asked again. The records are moved into their own account under a new key and are simply theirs (no longer "kept by" anyone; empty records the account started with are removed, as when joining), and the former owner is listed under them as paused, to be resumed or ended, while everyone else who looked after them loses access and is invited again by the young adult, if they want them to have it: nothing else can tell their key from a stranger's. The former owner's account no longer has the records until let back in, and is mailed; a device of theirs that had them open notices within a minute, opens the account's own records instead, and says why. Once let back in, the former owner finds them listed as shared by the young adult. A share link the former owner made stays theirs, and **an emergency card published before the promotion becomes the new owner's**: the printed code keeps working and the new owner can replace it or turn it off.
 
 - It cannot be undone, and only the young adult can do it, not a guardian. Nothing is refused for what a plan holds.
 
-Status: auto (`delegation`, `vault.e2e`: three accounts, the move, the new key, the paused guardians, the former owner among them, and their resuming with real keys; `persist`: a device notices a person removed); real browser (`check:app`): a child of eighteen invited as themselves, a new account accepting, the empty records gone, the take-over, the former owner listed as paused, the former owner's device letting go of the records it had open and saying why, and the former owner let back in and seeing them as shared by the young adult.
+Status: auto (`delegation`, `vault.e2e`: three accounts, the move, the new key, the other guardian's access ending, the former owner paused and let back in with real keys; `persist`: a device notices a person removed); real browser (`check:app`): a child of eighteen invited as themselves, a new account accepting, the empty records gone, the take-over, the former owner listed as paused, the former owner's device letting go of the records it had open and saying why, and the former owner let back in and seeing them as shared by the young adult.
 
 ### 15.5 The account that looks after a child is deleted
 The person who keeps a child's records deletes their account (the password again, and the address typed out). Everything goes with it, as for any account: its records, its files, and the access it gave. A co-guardian or a teenager who was let in loses the child from their list at once and can open nothing; an invitation still waiting opens nothing. What they already read stays with them.

@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import { sameOriginOnly } from '../../same-origin.js';
 import fastifyCookie from '@fastify/cookie';
 import fastifySession from '@fastify/session';
 import fastifyMultipart from '@fastify/multipart';
@@ -98,6 +99,7 @@ export async function buildTestApp(options: TestAppOptions = {}) {
     }
   });
   routesOf.set(app, routes);
+  app.addHook('onRequest', sameOriginOnly);
   await app.register(fastifyCookie);
   await app.register(fastifySession, {
     secret: process.env.SESSION_SECRET,

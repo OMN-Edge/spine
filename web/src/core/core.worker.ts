@@ -3,6 +3,7 @@ import type { UploadPart } from 'spine-core/http';
 import './shims/globals';
 import { Buffer } from 'buffer';
 import { startCore, type Core } from './boot';
+import { openFreshness } from '../crypto/freshness';
 import { startShareCore, type ShareCore } from './boot-share';
 import { applyRelayConfig, relayFetch, relayToken, useTokenUrl } from './native/relay-auth';
 import { useRelayHooks } from 'spine-core/llm/adapters/relay';
@@ -110,6 +111,7 @@ async function openProfile(profileId: string, listed: NonNullable<typeof cachedL
   let first: typeof listed | null = listed;
   core = await startCore({
     profileId: records,
+    freshness: await openFreshness(records),
     objects: {
       put: (kind, id, data, seq) => s.put(records, kind, id, data, seq),
       get: (id, kind) => s.get(id, kind),
@@ -215,6 +217,10 @@ self.onmessage = async (event: MessageEvent<ToWorker>) => {
       const id = await session.createProfile(name, extra);
       knownProfiles = [...knownProfiles.filter(p => !p.shared), { id, name, ...extra }, ...knownProfiles.filter(p => p.shared)];
       reply({ id: m.id, ok: true, body: new TextEncoder().encode(JSON.stringify({ id })).buffer as ArrayBuffer });
+    } else if (m.type === 'acceptOlder') {
+      if (!core) throw Object.assign(new Error('the vault is locked'), { status: 423, code: 'locked' });
+      if ('acceptOlder' in core) await core.acceptOlder();
+      reply({ id: m.id, ok: true });
     } else if (m.type === 'switchProfile') {
       if (!session || !core) throw Object.assign(new Error('the vault is locked'), { status: 423, code: 'locked' });
       if (m.profileId !== currentProfile && !knownProfiles.some(p => p.id === m.profileId)) throw Object.assign(new Error('not one of this account’s people'), { status: 404 });

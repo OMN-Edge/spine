@@ -193,14 +193,15 @@ export function sessionLimits(env: NodeJS.ProcessEnv = process.env): SessionLimi
 
 /**
  * What one account may keep in its vault (ciphertext, so a count of bytes and nothing else): `SPINE_VAULT_MAX_MB` for the whole
- * account (default 5120) and `SPINE_VAULT_MAX_OBJECT_MB` for one object (default 100). A bad value gives the default.
+ * account (default 5120) `SPINE_VAULT_MAX_OBJECT_MB` for one object (default 100) and `SPINE_VAULT_MAX_OBJECTS` for how many an account holds (default 50,000; the quota counts bytes, so without it a million one-byte objects fit). A bad value gives the default.
  */
-export function vaultLimits(env: NodeJS.ProcessEnv = process.env): { accountBytes: number; objectBytes: number } {
+export function vaultLimits(env: NodeJS.ProcessEnv = process.env): { accountBytes: number; objectBytes: number; objects: number } {
   const mb = (raw: string | undefined, fallback: number) => {
     const n = Number(raw);
     return Number.isFinite(n) && n >= 1 ? Math.floor(n) * 1024 * 1024 : fallback * 1024 * 1024;
   };
-  return { accountBytes: mb(env.SPINE_VAULT_MAX_MB, 5120), objectBytes: mb(env.SPINE_VAULT_MAX_OBJECT_MB, 100) };
+  const objects = Number(env.SPINE_VAULT_MAX_OBJECTS);
+  return { accountBytes: mb(env.SPINE_VAULT_MAX_MB, 5120), objectBytes: mb(env.SPINE_VAULT_MAX_OBJECT_MB, 100), objects: Number.isInteger(objects) && objects >= 1 ? objects : 50_000 };
 }
 
 /**

@@ -24,8 +24,10 @@ const blobKey = (id: string, name: string): string => {
 export const writeBundle = (id: string, bytes: Buffer): Promise<void> => objects().put(keyOf(id, 'db'), bytes);
 export const writeBlob = (id: string, name: string, bytes: Buffer): Promise<void> => objects().put(blobKey(id, name), bytes);
 
-export const readBundle = (id: string): Promise<Buffer | null> => objects().get(keyOf(id, 'db'));
 export const readBlob = (id: string, name: string): Promise<Buffer | null> => objects().get(blobKey(id, name));
+/** The sealed copy and a page image as streams with their sizes, for reads that do not hold them whole (S-58). */
+export const streamBundle = (id: string) => objects().stream(keyOf(id, 'db'));
+export const streamBlob = (id: string, name: string) => objects().stream(blobKey(id, name));
 export const removeBlob = (id: string, name: string): Promise<void> => objects().remove(blobKey(id, name));
 
 /** The names of the page images a share holds now. */

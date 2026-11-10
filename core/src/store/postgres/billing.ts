@@ -50,6 +50,7 @@ export function metricsRepository(q: Query): MetricsRepository {
 
 export function waitlistRepository(q: Query): WaitlistRepository {
   return {
+    async count() { return Number((await one<{ n: number }>(q, 'SELECT COUNT(*) AS n FROM waitlist', []))!.n); },
     async add(email, at, source) { return (await changed(q, 'INSERT INTO waitlist (email, created_at, source) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING', [email, at, source])) === 1; },
     async list() { return many<{ email: string; created_at: string; source: string | null }>(q, 'SELECT email, created_at, source FROM waitlist ORDER BY created_at, email'); },
     async remove(email) { return (await changed(q, 'DELETE FROM waitlist WHERE lower(email) = lower($1)', [email])) === 1; },

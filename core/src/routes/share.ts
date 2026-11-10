@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getStore, type ShareLinkPatch } from '../store/index.js';
 import { REAUTH_REQUIRED, recentlyAuthenticated, requireAuth } from './middleware.js';
 import { isSupportedLanguage, SUPPORTED_LANGUAGES } from '../languages.js';
+import { visitorCode } from '../share-code.js';
 import { warmTranslations } from '../translation.js';
 import { ownerCanBeMailed, shareHost } from '../share-host.js';
 import { logger } from '../logger.js';
@@ -63,6 +64,12 @@ async function pullEvents(userId: string): Promise<void> {
 }
 
 /** The link as `listForShare` reads it, for the documents it shares now. */
+/** The code a request's key makes, or null if the device does not hold the key. */
+async function codeOfRequest(userId: string, requestId: string): Promise<string | null> {
+  const key = await getStore().shareLinks.requestKey(userId, requestId);
+  return key ? visitorCode(key) : null;
+}
+
 async function sharedDocumentIds(userId: string, link: { id: string; scope: string; scope_value: string | null; expires_at: string; include_scans: boolean; language: string | null; require_approval: boolean; allow_chat: boolean }): Promise<string[]> {
   const docs = await getStore().documents.listForShare({
     id: link.id, userId, scope: link.scope as ResolvedScope['scope'], scopeValue: link.scope_value, expiresAt: link.expires_at,
@@ -131,6 +138,8 @@ export async function shareRoutes(app: HttpApp) {
     if (include_scans && !recentlyAuthenticated(req)) return reply.status(403).send(REAUTH_REQUIRED);
     if (typeof require_approval !== 'boolean') return reply.status(400).send({ error: 'require_approval must be true or false' });
     if (typeof allow_chat !== 'boolean') return reply.status(400).send({ error: 'allow_chat must be true or false' });
+    // Letting the recipient ask puts the text of every shared page in the copy, with the names and numbers a scan shows too (S-47).
+    if (allow_chat && !recentlyAuthenticated(req)) return reply.status(403).send(REAUTH_REQUIRED);
     if (language !== null && !isSupportedLanguage(language)) return reply.status(400).send({ error: `language must be one of ${SUPPORTED_LANGUAGES.join(', ')}, or left out` });
 
     // P2 and M-5: see `checkScope`.
@@ -185,14 +194,17 @@ export async function shareRoutes(app: HttpApp) {
   // cannot approve anything.
   app.get('/api/share-requests', async (req, reply) => {
     await pullEvents(req.userId);
-    return reply.header('Cache-Control', 'no-store').send(await getStore().shareLinks.listRequests(req.userId, new Date().toISOString()));
+    const store = getStore();
+    // Each with the code its key makes, which the owner compares with the one on the visitor's screen before approving (S-40).
+    const requests = await Promise.all((await store.shareLinks.listRequests(req.userId, new Date().toISOString())).map(async r => ({ ...r, code: await codeOfRequest(req.userId, r.id) })));
+    return reply.header('Cache-Control', 'no-store').send(requests);
   });
 
   app.get<{ Params: { id: string } }>('/api/share-requests/:id', async (req, reply) => {
     await pullEvents(req.userId);
     const found = await getStore().shareLinks.getRequest(req.userId, req.params.id, new Date().toISOString());
     if (!found) return reply.status(404).send({ error: 'not found' });
-    return reply.header('Cache-Control', 'no-store').send(found);
+    return reply.header('Cache-Control', 'no-store').send({ ...found, code: await codeOfRequest(req.userId, found.id) });
   });
 
   app.post<{ Params: { id: string }; Body: { decision?: unknown } }>('/api/share-requests/:id/decision', async (req, reply) => {
@@ -256,7 +268,7 @@ export async function shareRoutes(app: HttpApp) {
     const unknown = Object.keys(body).filter(k => !PATCHABLE.includes(k));
     if (unknown.length > 0) return reply.status(400).send({ error: `unknown field(s): ${unknown.join(', ')}` });
 
-    if (body.include_scans === true && !recentlyAuthenticated(req)) return reply.status(403).send(REAUTH_REQUIRED);
+    if ((body.include_scans === true || body.allow_chat === true) && !recentlyAuthenticated(req)) return reply.status(403).send(REAUTH_REQUIRED);
 
     const patch: ShareLinkPatch = {};
     if (body.label !== undefined) {

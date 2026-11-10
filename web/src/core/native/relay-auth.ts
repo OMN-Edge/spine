@@ -14,11 +14,13 @@ let pass: { token: string; expiresAt: number } | null = null;
 /** Where passes come from: the Spine server, at the page's own address (a worker needs it written out; tests may set it). */
 export let tokenUrl = '/api/relay/token';
 let tokenMethod = 'GET';
-export const useTokenUrl = (url: string, method = 'GET') => { tokenUrl = url; tokenMethod = method; pass = null; };
+let tokenBody: unknown;
+/** `body` is what the server asks to see with the request: a recipient's value that only the share's key makes (SECURITY.md S-48). */
+export const useTokenUrl = (url: string, method = 'GET', body?: unknown) => { tokenUrl = url; tokenMethod = method; tokenBody = body; pass = null; };
 
 export async function relayToken(): Promise<string> {
   if (pass && pass.expiresAt - Date.now() > 60_000) return pass.token;
-  const res = await fetch(tokenUrl, { method: tokenMethod });
+  const res = await fetch(tokenUrl, tokenBody === undefined ? { method: tokenMethod } : { method: tokenMethod, headers: { 'content-type': 'application/json' }, body: JSON.stringify(tokenBody) });
   if (!res.ok) throw Object.assign(new Error('could not get a pass for the model service'), { status: res.status });
   const body = (await res.json()) as { token: string; expires_at: number };
   pass = { token: body.token, expiresAt: body.expires_at };

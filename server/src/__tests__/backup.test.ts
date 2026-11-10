@@ -6,7 +6,7 @@ import Database from 'better-sqlite3';
 import { buildTestApp } from './helpers/app.js';
 import { OWNER_ID } from './helpers/seed.js';
 import { getStore } from 'spine-core/store/index.js';
-import { runBackup } from '../backup.js';
+import { removeFromBackup, runBackup } from '../backup.js';
 
 /** P11: spine.db and data/vault/ must be restorable. */
 
@@ -87,19 +87,58 @@ describe('runBackup — vault mirror', () => {
     expect(readFileSync(mirrored('u1', 'obj-aaaaaaaa'), 'utf8')).toBe('revision-2');
   });
 
-  it('drops an object the vault deleted, but never empties the backup because the vault is missing', async () => {
+  const removedAt = (day: string, user: string, id: string) => path.join(backupDir, 'vault-removed', day, user, id);
+
+  // SECURITY.md S-60: the mirror used to drop what the vault no longer had at once, so whatever deleted records (a bug, a mistake, a reset that
+  // starts over) was copied into the backup at the next run and nothing could be restored. A removed object waits a week in a dated folder.
+  it('keeps an object the vault deleted for a week in a dated folder, out of the mirror, and never empties the backup because the vault is missing', async () => {
     seedVault('u1', 'obj-aaaaaaaa', 'one');
     seedVault('u1', 'obj-cccccccc', 'two');
-    await runBackup({ dataDir, backupDir, keep: 7 });
+    const monday = new Date('2026-11-02T03:00:00Z');
+    await runBackup({ dataDir, backupDir, keep: 7, now: monday });
 
     rmSync(path.join(dataDir, 'vault', 'u1', 'obj-cccccccc'));
-    await runBackup({ dataDir, backupDir, keep: 7 });
+    await runBackup({ dataDir, backupDir, keep: 7, now: new Date('2026-11-03T03:00:00Z') });
     expect(existsSync(mirrored('u1', 'obj-cccccccc'))).toBe(false);
+    expect(readFileSync(removedAt('2026-11-03', 'u1', 'obj-cccccccc'), 'utf8')).toBe('two');
     expect(existsSync(mirrored('u1', 'obj-aaaaaaaa'))).toBe(true);
 
     rmSync(path.join(dataDir, 'vault'), { recursive: true });
-    await runBackup({ dataDir, backupDir, keep: 7 });
+    await runBackup({ dataDir, backupDir, keep: 7, now: new Date('2026-11-04T03:00:00Z') });
     expect(existsSync(mirrored('u1', 'obj-aaaaaaaa'))).toBe(true);
+  });
+
+  it('drops what was removed when its week has passed, and not before', async () => {
+    seedVault('u1', 'obj-dddddddd', 'gone');
+    await runBackup({ dataDir, backupDir, keep: 7, now: new Date('2026-11-02T03:00:00Z') });
+    rmSync(path.join(dataDir, 'vault', 'u1', 'obj-dddddddd'));
+    await runBackup({ dataDir, backupDir, keep: 7, now: new Date('2026-11-03T03:00:00Z') });
+    await runBackup({ dataDir, backupDir, keep: 7, now: new Date('2026-11-09T03:00:00Z') }); // six days on
+    expect(existsSync(removedAt('2026-11-03', 'u1', 'obj-dddddddd'))).toBe(true);
+    await runBackup({ dataDir, backupDir, keep: 7, now: new Date('2026-11-10T03:00:00Z') }); // seven days on
+    expect(existsSync(path.join(backupDir, 'vault-removed', '2026-11-03'))).toBe(false);
+  });
+
+  it('keeps the removed objects for as long as the operator says, and not at all with 0', async () => {
+    seedVault('u1', 'obj-eeeeeeee', 'one');
+    await runBackup({ dataDir, backupDir, keep: 7, now: new Date('2026-11-02T03:00:00Z'), trashDays: 0 });
+    rmSync(path.join(dataDir, 'vault', 'u1', 'obj-eeeeeeee'));
+    await runBackup({ dataDir, backupDir, keep: 7, now: new Date('2026-11-03T03:00:00Z'), trashDays: 0 });
+    expect(existsSync(path.join(backupDir, 'vault-removed'))).toBe(false);
+    expect(existsSync(mirrored('u1', 'obj-eeeeeeee'))).toBe(false);
+  });
+
+  it('is emptied of an account at once when the account is deleted, the removed objects too', async () => {
+    seedVault('u1', 'obj-ffffffff', 'one');
+    seedVault('u2', 'obj-gggggggg', 'two');
+    await runBackup({ dataDir, backupDir, keep: 7, now: new Date('2026-11-02T03:00:00Z') });
+    rmSync(path.join(dataDir, 'vault', 'u1', 'obj-ffffffff'));
+    rmSync(path.join(dataDir, 'vault', 'u2', 'obj-gggggggg'));
+    await runBackup({ dataDir, backupDir, keep: 7, now: new Date('2026-11-03T03:00:00Z') });
+    removeFromBackup('u1', backupDir);
+    expect(existsSync(path.join(backupDir, 'vault', 'u1'))).toBe(false);
+    expect(existsSync(removedAt('2026-11-03', 'u1', 'obj-ffffffff'))).toBe(false);
+    expect(readFileSync(removedAt('2026-11-03', 'u2', 'obj-gggggggg'), 'utf8')).toBe('two'); // another account's stay
   });
 
   it('leaves a write in flight alone and does not copy data/shares', async () => {

@@ -88,7 +88,7 @@ export async function totpRoutes(app: FastifyInstance, opts: TotpRouteOptions = 
     }
     if (step === null) return reply.status(400).send({ error: 'incorrect code' });
 
-    const { codes, hashes } = newRecoveryCodes();
+    const { codes, hashes } = await newRecoveryCodes(req.userId);
     const authVersion = await store.users.enableTotp(req.userId, step, hashes, new Date().toISOString());
     if (authVersion === null) return reply.status(409).send({ error: 'two-factor is already on' });
 
@@ -124,7 +124,7 @@ export async function totpRoutes(app: FastifyInstance, opts: TotpRouteOptions = 
       const user = await proofOr401(req, reply);
       if (!user) return;
 
-      const { codes, hashes } = newRecoveryCodes();
+      const { codes, hashes } = await newRecoveryCodes(user.id);
       await getAccountsStore().users.replaceRecoveryCodes(user.id, hashes);
       req.log.info({ userId: user.id }, 'recovery codes regenerated');
       return reply.send({ ok: true, recovery_codes: codes });

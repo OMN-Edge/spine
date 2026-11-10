@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { Persistence, type ObjectStore, type ObjectMeta } from './persist';
+import { Persistence, type Freshness, type ObjectStore, type ObjectMeta } from './persist';
 import { observeServerClock, resetServerClock } from 'spine-core/store/sync';
 import { memory } from './shims/fs';
 import fs from './shims/fs';
@@ -52,10 +52,10 @@ let n = 0;
 const newId = async () => `id-${++n}-xxxxxxxx`;
 
 /** One device: a store of its own over its own database, and the layer that saves it. */
-async function device(store: ObjectStore): Promise<{ db: Store; p: Persistence; changed: number[] }> {
+async function device(store: ObjectStore, freshness: Freshness | null = null): Promise<{ db: Store; p: Persistence; changed: number[] }> {
   const db = openDeviceStore();
   await db.users.create({ id: USER, email: 'device@local', passwordHash: 'x', createdAt: 'now', verifiedAt: 'now', consent: undefined, starterTags: false });
-  const p = new Persistence(store, PROFILE, `ix-${PROFILE}`, newId, { changes: db.changes, files: db.files, userId: USER });
+  const p = new Persistence(store, PROFILE, `ix-${PROFILE}`, newId, { changes: db.changes, files: db.files, userId: USER }, freshness);
   const changed: number[] = [];
   p.onChanged = () => changed.push(1);
   return { db, p, changed };
@@ -392,5 +392,64 @@ describe('what the device keeps in the vault', () => {
     for (const o of objects.values()) if (o.kind === 'bundle') o.data[0] ^= 1;
     const b = await device(store);
     await expect(b.p.load()).rejects.toThrow();
+  });
+});
+
+/** SECURITY.md S-43: a device remembers how far the vault had got, so an earlier state is said, not shown as if it were the latest. */
+describe('noticing an earlier state of the vault', () => {
+  beforeEach(() => { memory.clear(); n = 0; });
+  const mark = () => { let seq = 0; const port: Freshness & { value(): number } = { get: async () => seq, set: async v => { seq = v; }, value: () => seq }; return port; };
+
+  async function twoSaves(store: ObjectStore, freshness: Freshness) {
+    const a = await device(store, freshness);
+    await a.p.load();
+    await addDoc(a.db, 'd1', 'allergy to penicillin');
+    await a.p.save();
+    await addDoc(a.db, 'd2', 'a new medicine');
+    await a.p.save();
+  }
+
+  it('remembers the highest sequence it saw, and says nothing while the vault is at or past it', async () => {
+    const { store, objects } = fakeVault();
+    const kept = mark();
+    await twoSaves(store, kept);
+    const again = await device(store, kept);
+    await again.p.load();
+    expect(again.p.older).toBeNull();
+    expect(kept.value()).toBe(Math.max(...[...objects.values()].map(o => o.seq)));
+  });
+
+  it('says when the vault is behind the mark (a server that serves an earlier state, a restore), keeps the mark, and asks again until told', async () => {
+    const { store, objects } = fakeVault();
+    const kept = mark();
+    await twoSaves(store, kept);
+    const high = kept.value();
+    // the newest segment is gone, as after a restore from yesterday's backup
+    const newest = [...objects.entries()].sort((x, y) => y[1].seq - x[1].seq)[0]!;
+    objects.delete(newest[0]);
+
+    const b = await device(store, kept);
+    await b.p.load();
+    expect(b.p.older).toEqual({ remembered: high, found: high - 1 });
+    expect(kept.value()).toBe(high);
+    const c = await device(store, kept);
+    await c.p.load();
+    expect(c.p.older).not.toBeNull();
+
+    await c.p.acceptOlder();
+    expect(c.p.older).toBeNull();
+    expect(kept.value()).toBe(high - 1);
+    const d = await device(store, kept);
+    await d.p.load();
+    expect(d.p.older).toBeNull();
+  });
+
+  it('says nothing where the browser keeps no mark', async () => {
+    const { store, objects } = fakeVault();
+    await twoSaves(store, mark());
+    objects.delete([...objects.entries()].sort((x, y) => y[1].seq - x[1].seq)[0]![0]);
+    const b = await device(store, null);
+    await b.p.load();
+    expect(b.p.older).toBeNull();
   });
 });

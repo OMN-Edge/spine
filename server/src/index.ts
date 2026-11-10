@@ -2,6 +2,7 @@ import { objects } from './objects/index.js';
 import { sessionRoutes } from './routes/sessions.js';
 import { trustedProxies } from './trust-proxy.js';
 import Fastify from 'fastify';
+import { sameOriginOnly } from './same-origin.js';
 import fastifyCookie from '@fastify/cookie';
 import fastifySession from '@fastify/session';
 import { sessionPersistence } from './session-store.js';
@@ -26,10 +27,13 @@ import { demoRelayRoutes } from './routes/demo-relay.js';
 import { trustAnchorRoutes } from './routes/trust-anchors.js';
 import { remindCardReviews, sharedRoutes, shareShellRoutes, sweepShares } from './routes/shared.js';
 import { sweepSessions } from './sessions.js';
+import { sweepUnverified } from './accounts.js';
 import { decorateAuth } from 'spine-core/routes/middleware.js';
 import { getAccountsStore } from 'spine-core/store/index.js';
-import { ConfigError } from 'spine-core/config.js';
-import { loadConfig, sessionLimits, type Config } from './config.js';
+import { ConfigError, resolveBackupDir, resolveDataDir } from 'spine-core/config.js';
+import { keepPrivate, privateByDefault } from './permissions.js';
+import { disk, quotaWarning } from './disk-space.js';
+import { loadConfig, loadRegistrationMode, sessionLimits, vaultLimits, type Config } from './config.js';
 import { useLogger } from 'spine-core/logger.js';
 import { useAccountsStore } from './store.js';
 import { useSessionAuth } from './session-auth.js';
@@ -55,8 +59,16 @@ useAccountsStore();
 useSessionAuth();
 
 const config = loadConfigOrExit();
+// What this process makes is for its own user alone, and the directories that hold the data and its backups are closed to everyone else, whatever
+// mode earlier files were made with (SECURITY.md S-61).
+privateByDefault();
+const closed = keepPrivate([resolveDataDir(), resolveBackupDir()]);
+if (closed.length > 0) console.log(`closed to other users: ${closed.join(', ')}`);
 // A bad SPINE_OBJECTS stops the process here and not at the first upload.
 try { objects(); } catch (err) { console.error(err instanceof Error ? err.message : String(err)); process.exit(1); }
+// With open registration anyone can make accounts: say at start if the disk could not hold a handful of them at the quota (SECURITY.md S-56).
+const roomWarning = loadRegistrationMode() === 'open' ? quotaWarning(disk.free(), vaultLimits().accountBytes) : null;
+if (roomWarning) console.warn(`warning: ${roomWarning}`);
 
 const app = Fastify({
   logger: true,
@@ -84,6 +96,8 @@ app.log.info(
   'model settings given to devices',
 );
 
+// A request that changes something must come from the app's own origin (SECURITY.md S-50).
+app.addHook('onRequest', sameOriginOnly);
 await app.register(fastifyCookie);
 await app.register(fastifySession, {
   secret: config.sessionSecret,
@@ -177,5 +191,10 @@ setInterval(() => void remind(), 60 * 60 * 1000).unref();
 const sweepSignIns = () => sweepSessions().catch(err => app.log.error({ err: err instanceof Error ? err.message : String(err) }, 'removing ended sign-ins failed'));
 await sweepSignIns();
 setInterval(() => void sweepSignIns(), 60 * 60 * 1000).unref();
+
+// Accounts whose address was never confirmed end after a week, so open registration does not fill the table with rows nobody will use (S-51).
+const sweepUnconfirmed = () => sweepUnverified().catch(err => app.log.error({ err: err instanceof Error ? err.message : String(err) }, 'removing unconfirmed accounts failed'));
+await sweepUnconfirmed();
+setInterval(() => void sweepUnconfirmed(), 60 * 60 * 1000).unref();
 
 await app.listen({ port: config.port, host: config.host });

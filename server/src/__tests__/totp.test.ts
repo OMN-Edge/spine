@@ -7,6 +7,7 @@ import {
   generateRecoveryCode,
   generateSecret,
   hashRecoveryCode,
+  legacyHashRecoveryCode,
   hotp,
   matchTotp,
   normaliseCode,
@@ -176,10 +177,13 @@ describe('recovery codes', () => {
     expect(normaliseRecoveryCode('123456')).toBeNull(); // an authenticator code is not one
   });
 
-  it('are stored as a hash that does not reveal them', () => {
-    const hash = hashRecoveryCode('ABCDEFGHJK');
+  it('are stored as a slow, salted hash that does not reveal them (S-42: 50 bits of a fast hash fall to a graphics card in a day)', async () => {
+    const hash = await hashRecoveryCode('ABCDEFGHJK', 'user-1');
     expect(hash).toMatch(/^[0-9a-f]{64}$/);
     expect(hash).not.toContain('ABCDEFGHJK');
-    expect(hash).toBe(hashRecoveryCode('ABCDEFGHJK'));
+    expect(hash).toBe(await hashRecoveryCode('ABCDEFGHJK', 'user-1'));
+    // not the plain hash an earlier version stored, and not the same for another account
+    expect(hash).not.toBe(legacyHashRecoveryCode('ABCDEFGHJK'));
+    expect(hash).not.toBe(await hashRecoveryCode('ABCDEFGHJK', 'user-2'));
   });
 });

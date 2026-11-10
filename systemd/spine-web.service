@@ -16,6 +16,8 @@ Environment=DATA_DIR=SPINE_DIR/data
 Restart=on-failure
 RestartSec=5s
 NoNewPrivileges=true
+# What it makes (the database, the snapshots, every sealed object) is for its own user alone
+UMask=0077
 ProtectSystem=strict
 ProtectHome=true
 # The archive, and the backup (SPINE_BACKUP_DIR, written in by install.sh -s): deleting an account removes the backup's copy of its vault,

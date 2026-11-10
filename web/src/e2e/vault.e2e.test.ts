@@ -2,10 +2,11 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import type { AddressInfo } from 'net';
-import { createAccountKeys, resetWithRecovery, type KdfParams } from '../crypto/keys.js';
+import { createAccountKeys, resetProof, resetWithRecovery, type KdfParams } from '../crypto/keys.js';
 import { readRecoveryKey, writeRecoveryKey } from '../crypto/recovery-kit.js';
 import { ConflictError, VaultSession, fetchKeys, prepareSignIn } from '../crypto/vault-client.js';
-import { newInviteCode } from '../crypto/delegation.js';
+import { newInviteCode, openGrantKey, sealGrantKey } from '../crypto/delegation.js';
+import { toB64, fromB64, sodium } from '../crypto/sodium.js';
 import { openObject } from '../crypto/keys.js';
 import { OpenError } from '../crypto/seal.js';
 import type { SealedCache, SealedObject } from '../crypto/sealed-cache.js';
@@ -19,6 +20,9 @@ const haveServer = ['../../../node_modules', '../../../server/node_modules'].som
 const FAST: KdfParams = { alg: 'argon2id13', ops: 2, memKiB: 19456 };
 const EMAIL = 'person@example.com';
 const PASSWORD = 'a long and private master password';
+
+/** The owner asks each person for the code their key makes and it is the same: the grants that wait start (SECURITY.md S-39). */
+const confirmAll = async (owner: VaultSession) => { for (const g of (await owner.delegations()).owned) if (VaultSession.needsConfirmation(g)) await owner.confirmGrant(g); };
 
 // Skipped where only the web's dependencies are installed; in CI that would hide the one test of the device against the real server.
 if (!haveServer && process.env.CI) throw new Error('the server is not installed, so the device-and-server test would be skipped and still look green');
@@ -224,7 +228,10 @@ describe.skipIf(!haveServer)('the device and the server together', () => {
     const read = await readRecoveryKey(recoveryKit);
     if (!read.ok) throw new Error('the kit did not read back');
     const reset = await resetWithRecovery(read.key, stored, 'a new and different master password', FAST);
-    expect((await post(f, '/api/auth/reset', { token, auth_value: reset.authValue, keys: reset.keys })).status).toBe(200);
+    // The link alone does not replace the keys of a vault that has a verifier; the kit's signature does (SECURITY.md S-38).
+    expect((await post(f, '/api/auth/reset', { token, auth_value: reset.authValue, keys: reset.keys })).status).toBe(401);
+    const proof = await resetProof(reset.unlocked.accountKey, token, reset.authValue, reset.keys);
+    expect((await post(f, '/api/auth/reset', { token, auth_value: reset.authValue, keys: reset.keys, proof })).status).toBe(200);
 
     const g = browser();
     expect((await signIn(g, PASSWORD)).res.status).toBe(401);
@@ -276,6 +283,10 @@ describe.skipIf(!haveServer)('the device and the server together', () => {
     const { code } = await owner.invite(profile, 'guardian');
     await expect(guest.accept(await newInviteCode())).rejects.toMatchObject({ status: 404 });
     const accepted = await guest.accept(code);
+    expect(accepted.waiting).toBe(true);
+    expect((await owner.delegations()).owned.filter(g => VaultSession.needsConfirmation(g))).toHaveLength(1);
+    expect(await guest.openReceived((await guest.delegations()).received)).toEqual([]); // nothing opens until the owner has confirmed the code
+    await confirmAll(owner);
     expect(accepted).toMatchObject({ ownerEmail: 'person@example.com', role: 'guardian' });
     await expect(guest.accept(code)).rejects.toMatchObject({ status: 404 }); // spent
 
@@ -304,7 +315,7 @@ describe.skipIf(!haveServer)('the device and the server together', () => {
     await guest.close();
   });
 
-  it('hands a profile to the person it is of at eighteen: it moves to their vault under a new key, and the guardians wait to be let back in', async () => {
+  it('hands a profile to the person it is of at eighteen: it moves to their vault under a new key, the others’ access ends, and the old owner waits to be let back in', async () => {
     const signedIn = async (email: string, password: string) => {
       const f = browser();
       const prepared = await prepareSignIn(email, password, f);
@@ -331,6 +342,7 @@ describe.skipIf(!haveServer)('the device and the server together', () => {
     const coparent = (await signedIn(OTHER.email, OTHER.password)).session;
     await teen.accept((await parent.invite(child, 'self')).code);
     await coparent.accept((await parent.invite(child, 'guardian')).code);
+    await confirmAll(parent);
 
     // The teenager takes the records over.
     const [entry] = await teen.openReceived((await teen.delegations()).received);
@@ -351,24 +363,88 @@ describe.skipIf(!haveServer)('the device and the server together', () => {
     const sealedBody = new Uint8Array(await (await (await signedIn(TEEN.email, TEEN.password)).f('/api/vault/objects/bundle-child-0001')).arrayBuffer());
     await expect(openObject(held, 'bundle', 'bundle-child-0001', sealedBody, mine.wrapped_key)).rejects.toBeInstanceOf(OpenError);
 
-    // The other parent waits: paused, and let back in only if the teenager chooses, with the new key sealed to them already.
-    const waiting = (await coparent.delegations()).received;
-    expect(waiting.map(g => g.state)).toEqual(['paused']);
-    expect(await coparent.openReceived(waiting)).toEqual([]); // paused opens nothing
+    // The other parent's access ends: the teenager never met them and has no way to know their key, so a key sealed to what the server lists
+    // for them would be the server's to take (S-39). They are invited again, which carries each side's key through a code.
+    expect((await coparent.delegations()).received).toEqual([]);
+    expect(await coparent.openReceived((await coparent.delegations()).received)).toEqual([]);
     const owned = (await teen.delegations()).owned;
-    expect(owned).toMatchObject([{ delegate_email: 'coparent@example.com', role: 'guardian', state: 'paused' }, { delegate_email: 'parent@example.com', role: 'guardian', state: 'paused' }]);
-    await teen.setGrantState(owned[0].id, 'active');
-    const [back] = await coparent.openReceived((await coparent.delegations()).received);
-    const view = VaultSession.delegated(coparent, back.grant.id, child, back.profileKey);
-    expect(new TextDecoder().decode((await view.get('bundle-child-0001', 'bundle')).plaintext)).toBe('vaccinations, 2012 to 2020');
+    expect(owned).toMatchObject([{ delegate_email: 'parent@example.com', role: 'guardian', state: 'paused' }]);
 
-    // The parent who owned them waits the same way, and is let back in with the new key sealed to their own account at the take-over.
+    // The parent who owned them waits, paused, and is let back in with the new key sealed to them at the take-over, by the teenager's key, which
+    // the parent pinned through the code when the teenager was let in.
     expect(await parent.openReceived((await parent.delegations()).received)).toEqual([]);
-    await teen.setGrantState(owned[1].id, 'active');
+    await teen.setGrantState(owned[0].id, 'active');
     const [again] = await parent.openReceived((await parent.delegations()).received);
     expect(again.grant).toMatchObject({ owner_email: 'teen@example.com', role: 'guardian' });
     expect(new TextDecoder().decode((await VaultSession.delegated(parent, again.grant.id, child, again.profileKey).get('bundle-child-0001', 'bundle')).plaintext)).toBe('vaccinations, 2012 to 2020');
     for (const s of [parent, teen, coparent]) await s.close();
+  });
+
+  // SECURITY.md S-39 and S-41: each side's key is bound to the other's through the invitation code. A server that lists a key of its own for a
+  // person is not believed when a key is sealed for them, and a grant it makes, as a sealed box or as a box from a key of its own, opens nothing.
+  it('is not misled by a key the server lists for a person, or by a grant it makes: both sides hold the other’s key as the code gave it', async () => {
+    const signedIn = async (email: string, password: string) => {
+      const f = browser();
+      const prepared = await prepareSignIn(email, password, f);
+      expect((await post(f, '/api/auth/login', { email, password: prepared.credential })).status).toBe(200);
+      return { f, session: await VaultSession.open(prepared.masterKey!, f) };
+    };
+    const makeAccount = async (email: string, password: string) => {
+      const made = await createAccountKeys(password, FAST);
+      const f = browser();
+      expect((await post(f, '/api/auth/register', { email, auth_value: made.authValue, keys: made.keys, consent_health_data: true, accept_terms: true })).status).toBe(200);
+      await store.getStore().users.markVerified((await store.getStore().users.findByEmail(email))!.id, new Date().toISOString());
+    };
+    const PARENT = { email: 'bound-parent@example.com', password: 'the bound parent’s master password' };
+    const A = { email: 'bound-a@example.com', password: 'the first guardian’s master password' };
+    const B = { email: 'bound-b@example.com', password: 'the second guardian’s master password' };
+    for (const a of [PARENT, A, B]) await makeAccount(a.email, a.password);
+    const parent = (await signedIn(PARENT.email, PARENT.password)).session;
+    const child = await parent.createProfile('Robin', { kind: 'child', born: '2015-03-02' });
+    await parent.put(child, 'bundle', 'bundle-bound-0001', new TextEncoder().encode('asthma, inhaler as needed'));
+    const a = (await signedIn(A.email, A.password)).session;
+    const b = (await signedIn(B.email, B.password)).session;
+    await a.accept((await parent.invite(child, 'guardian')).code);
+    await b.accept((await parent.invite(child, 'guardian')).code);
+    await confirmAll(parent);
+
+    // The server lists a key of its own for the first guardian.
+    const attacker = await createAccountKeys('the attacker’s master password', FAST);
+    const accounts = store.getAccountsStore();
+    const aId = (await store.getStore().users.findByEmail(A.email))!.id;
+    const real = (await accounts.vault.getKeys(aId))!;
+    await accounts.vault.replaceKeys(aId, { kdf_salt: real.kdf_salt, kdf_params: real.kdf_params, wrapped_by_master: real.wrapped_by_master, wrapped_by_recovery: real.wrapped_by_recovery, public_key: attacker.keys.public_key, wrapped_private_key: real.wrapped_private_key }, new Date().toISOString());
+    const listed = (await parent.delegations()).owned.find(g => g.delegate_email === A.email)!;
+    expect(listed.delegate_public_key).toBe(attacker.keys.public_key);
+
+    // Another person is let out, which seals a new profile key to everyone left: the first guardian still gets it, and the attacker's key cannot open it.
+    const [forB] = await b.openReceived((await b.delegations()).received);
+    await parent.revoke(forB.grant.id);
+    const after = (await parent.delegations()).owned.find(g => g.delegate_email === A.email)!;
+    expect(after.delegate_public_key).toBe(attacker.keys.public_key); // the server still says so
+    const sealedFor = (await accounts.delegations.getFor(aId, after.id))!.wrapped_key!;
+    const [forA] = await a.openReceived((await a.delegations()).received);
+    expect(new TextDecoder().decode((await VaultSession.delegated(a, forA.grant.id, child, forA.profileKey).get('bundle-bound-0001', 'bundle')).plaintext)).toBe('asthma, inhaler as needed');
+    expect(await openGrantKey(attacker.unlocked, sealedFor, [attacker.unlocked.publicKey])).toBeNull();
+
+    // A second device of the owner, which has only the account's keys, finds the guardian's key as the code gave it and seals to that too.
+    const parentAgain = (await signedIn(PARENT.email, PARENT.password)).session;
+    const [second] = (await parentAgain.delegations()).owned.filter(g => g.delegate_email === A.email);
+    expect(second.delegate_pin).not.toBeNull(); // pinned by the first device
+    await parentAgain.loadProfiles();
+    await parentAgain.rotateProfile(child);
+    const [again] = await a.openReceived((await a.delegations()).received);
+    expect(Buffer.from(again.profileKey).equals(Buffer.from(forA.profileKey))).toBe(false); // a new key, still opened by the real guardian
+
+    // The server makes a grant of its own for the first guardian: a sealed box to their real key, and a box from a key of its own. Neither opens.
+    const s = await sodium();
+    const falseKey = s.randombytes_buf(32);
+    const aPublic = real.public_key; // the guardian's own key, as it was before the server listed another
+    for (const forged of [toB64(s, s.crypto_box_seal(falseKey, fromB64(s, aPublic))), await sealGrantKey(attacker.unlocked, fromB64(s, aPublic), falseKey)]) {
+      await accounts.delegations.rewrap((await store.getStore().users.findByEmail(PARENT.email))!.id, child, [{ id: after.id, wrappedKey: forged }], new Date().toISOString());
+      expect(await a.openReceived((await a.delegations()).received)).toEqual([]);
+    }
+    for (const x of [parent, parentAgain, a, b]) await x.close();
   });
 
   it('keeps a second person let in reading after the first is let out, with the profile’s new key, while the first and the old key open nothing', async () => {
@@ -396,6 +472,7 @@ describe.skipIf(!haveServer)('the device and the server together', () => {
     const bSession = (await signedIn(B.email, B.password)).session;
     await aSession.accept((await parent.invite(child, 'guardian')).code);
     await bSession.accept((await parent.invite(child, 'guardian')).code);
+    await confirmAll(parent);
 
     const [forB] = await bSession.openReceived((await bSession.delegations()).received);
     const oldKey = forB.profileKey.slice();

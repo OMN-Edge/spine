@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS users (
   auth_version INTEGER NOT NULL DEFAULT 0,
   email_verified_at TEXT,
   approved INTEGER NOT NULL DEFAULT 1,
+  email_recovery INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL,
   health_consent_at TEXT,
   health_consent_version TEXT,
@@ -117,10 +118,13 @@ CREATE TABLE IF NOT EXISTS vault_keys (
   wrapped_by_recovery TEXT NOT NULL,
   public_key TEXT NOT NULL,
   wrapped_private_key TEXT NOT NULL,
+  reset_verifier TEXT,
   seq BIGINT NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+ALTER TABLE vault_keys ADD COLUMN IF NOT EXISTS reset_verifier TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_recovery INTEGER NOT NULL DEFAULT 1;
 
 CREATE TABLE IF NOT EXISTS vault_objects (
   user_id TEXT NOT NULL REFERENCES users(id),
@@ -154,6 +158,7 @@ CREATE TABLE IF NOT EXISTS shared_bundles (
 ALTER TABLE shared_bundles ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'share';
 ALTER TABLE shared_bundles ADD COLUMN IF NOT EXISTS reviewed_at TEXT;
 ALTER TABLE shared_bundles ADD COLUMN IF NOT EXISTS reminded_at TEXT;
+ALTER TABLE shared_bundles ADD COLUMN IF NOT EXISTS pass_check TEXT;
 
 CREATE TABLE IF NOT EXISTS shared_requests (
   id TEXT PRIMARY KEY,
@@ -261,4 +266,10 @@ CREATE TABLE IF NOT EXISTS delegations (
 );
 CREATE INDEX IF NOT EXISTS idx_delegations_owner ON delegations(owner_user_id);
 CREATE INDEX IF NOT EXISTS idx_delegations_delegate ON delegations(delegate_user_id);
+-- Each side's key bound to the other through the invitation code, never through the server (S-39, S-41): sealed on a device, opaque here.
+ALTER TABLE profile_invites ADD COLUMN IF NOT EXISTS owner_blob TEXT;
+ALTER TABLE delegations ADD COLUMN IF NOT EXISTS delegate_hello TEXT;
+ALTER TABLE delegations ADD COLUMN IF NOT EXISTS owner_blob TEXT;
+ALTER TABLE delegations ADD COLUMN IF NOT EXISTS delegate_pin TEXT;
+ALTER TABLE delegations ADD COLUMN IF NOT EXISTS owner_pin TEXT;
 `;

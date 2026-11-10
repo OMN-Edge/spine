@@ -1,3 +1,4 @@
+import { removeFromBackup } from './backup.js';
 import { removeAllObjects } from './vault-files.js';
 import { removeShare } from './shared-files.js';
 import fs from 'fs';
@@ -179,7 +180,24 @@ export async function wipeAccount(userId: string, fresh: { authValue: string; ke
 
 /** The sealed vault, the backup's copy and then the live one, so no ciphertext of the account is left; then the sealed shares' files. */
 async function removeFiles(userId: string): Promise<void> {
-  fs.rmSync(path.join(resolveBackupDir(), 'vault', userId), { recursive: true, force: true });
+  removeFromBackup(userId, resolveBackupDir());
   await removeAllObjects(userId);
   for (const id of await getAccountsStore().shared.eraseFor(userId)) await removeShare(id);
+}
+
+/**
+ * Accounts whose address was never confirmed end after a week (SECURITY.md S-51): open registration made a row for each sign-up, and a spread of
+ * addresses filled the table with rows nobody would ever use. An account waiting for the operator's approval is not one of them, and neither is
+ * one the operator made, which is confirmed at creation. Returns how many ended.
+ */
+export async function sweepUnverified(now = new Date(), days = 7): Promise<number> {
+  const cutoff = new Date(now.getTime() - days * 86_400_000).toISOString();
+  let ended = 0;
+  for (const user of await getAccountsStore().users.list()) {
+    if (user.email_verified_at === null && user.approved !== 0 && user.created_at < cutoff) {
+      await deleteAccount(user.id);
+      ended++;
+    }
+  }
+  return ended;
 }

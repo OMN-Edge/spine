@@ -1,6 +1,9 @@
 # The official release: a pushed tag `vX.Y.Z` runs every check, builds the web app from that exact commit, and publishes `hashes.txt` and the build with a
 # signed attestation (GitHub's artifact attestations, Sigstore) saying "these files were built from this commit by this workflow".
 # Personal deploys do not use this: `./install.sh -b` on the machine, which shows `-dirty` if the tree was not clean (docs/verify-build.md).
+#
+# Two jobs, so that what installs dependencies and runs the build cannot sign (SECURITY.md S-59): `build` can only read, and hands over the files and a
+# list of their hashes; `release` installs nothing, checks the files are the ones listed, and then holds the right to sign and publish.
 name: release
 on:
   push:
@@ -12,17 +15,15 @@ permissions:
 jobs:
   checks:
     uses: ./.github/workflows/ci.yml
-  release:
+  build:
     needs: checks
     runs-on: ubuntu-latest
     permissions:
-      contents: write       # the release
-      id-token: write       # the attestation is signed with this run's identity
-      attestations: write
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with: { fetch-depth: 0 }
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with: { node-version: 22 }
       - name: The tag is on main
         run: git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "::error::$GITHUB_REF_NAME is not a commit of main"; exit 1; }
@@ -39,17 +40,42 @@ jobs:
           ! grep -rlq "${GITHUB_SHA}-dirty" web/dist/assets || { echo "::error::the build says dirty"; exit 1; }
       - name: Pack
         run: |
+          mkdir release
           # sorted, owner and times fixed: the same tree packs to the same bytes
-          tar --sort=name --owner=0 --group=0 --numeric-owner --mtime=@0 -cf - -C web/dist . | gzip -n > "spine-web-$GITHUB_REF_NAME.tar.gz"
-          cp web/dist/hashes.txt hashes.txt
-      - uses: actions/attest-build-provenance@v2
+          tar --sort=name --owner=0 --group=0 --numeric-owner --mtime=@0 -cf - -C web/dist . | gzip -n > "release/spine-web-$GITHUB_REF_NAME.tar.gz"
+          cp web/dist/hashes.txt release/hashes.txt
+          (cd release && sha256sum hashes.txt "spine-web-$GITHUB_REF_NAME.tar.gz" > files.sha256)
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-files
+          path: release/
+          if-no-files-found: error
+          retention-days: 1
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write       # the release
+      id-token: write       # the attestation is signed with this run's identity
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-files
+          path: release
+      - name: The files are the ones the build made
+        working-directory: release
+        run: |
+          [ "$(ls | sort | tr '\n' ' ')" = "files.sha256 hashes.txt spine-web-$GITHUB_REF_NAME.tar.gz " ] || { echo "::error::the build handed over other files than the list names"; ls; exit 1; }
+          sha256sum -c files.sha256
+      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
         with:
           subject-path: |
-            hashes.txt
-            spine-web-${{ github.ref_name }}.tar.gz
+            release/hashes.txt
+            release/spine-web-${{ github.ref_name }}.tar.gz
       - name: Publish
         env: { GH_TOKEN: '${{ github.token }}' }
         # 0.x is before the first production release, and a version with a - is a candidate: both are marked as pre-releases.
         run: |
           case "$GITHUB_REF_NAME" in v0.*|*-*) pre=--prerelease ;; *) pre= ;; esac
-          gh release create "$GITHUB_REF_NAME" hashes.txt "spine-web-$GITHUB_REF_NAME.tar.gz" --title "$GITHUB_REF_NAME" --generate-notes --verify-tag $pre
+          gh release create "$GITHUB_REF_NAME" release/hashes.txt "release/spine-web-$GITHUB_REF_NAME.tar.gz" --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes --verify-tag $pre

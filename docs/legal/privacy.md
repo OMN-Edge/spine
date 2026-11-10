@@ -47,7 +47,7 @@ We use no advertising or tracking cookies and nothing from third parties. The br
 
 ## How long, and how safe
 
-Records stay until you delete them or your account. Deleting the account removes your keys, your encrypted objects, your shares and the copy of your encrypted objects in our backups; the daily backups of the accounts database made before that still hold your account's row until they are replaced, which is a matter of days. Sign-in records are kept as described above, and server logs for as long as needed for security and no longer than twelve months.
+Records stay until you delete them or your account. An encrypted object you delete stays in our backups for seven days before it goes, so that a mistake or a fault can be put right. Deleting the account removes your keys, your encrypted objects, your shares and every copy of your encrypted objects in our backups at once; the daily backups of the accounts database made before that still hold your account's row until they are replaced, which is a matter of days. Sign-in records are kept as described above, and server logs for as long as needed for security and no longer than twelve months.
 
 Your device encrypts your records before they leave it; the connection is encrypted; your password is never sent to us; sign-ins can be protected with a second factor or a passkey; share links expire and can be revoked, and a copy is encrypted under a key that is only in the link.
 

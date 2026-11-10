@@ -11,6 +11,7 @@ const bundleOf = (r: Record<string, unknown>): SharedBundle => ({
   blobs: r.blobs as number,
   blobBytes: r.blob_bytes as number,
   revokedAt: (r.revoked_at as string | null) ?? null,
+  passCheck: (r.pass_check as string | null) ?? null,
   kind: r.kind === 'card' ? 'card' : 'share',
 });
 
@@ -26,17 +27,20 @@ const requestOf = (r: Record<string, unknown>): SharedRequest => ({
   decidedAt: (r.decided_at as string | null) ?? null,
 });
 
+/** Openings kept for a share until its owner's device collects them: past this a request is not written down, so the record cannot be filled (S-54). */
+export const MAX_PENDING_OPENS = 1000;
+
 /** Live emergency cards an account may have: one for each person it keeps records for. */
 export const MAX_CARDS = 10;
 
-const BUNDLE = 'id, user_id, created_at, expires_at, require_approval, size, blobs, blob_bytes, revoked_at, kind';
+const BUNDLE = 'id, user_id, created_at, expires_at, require_approval, size, blobs, blob_bytes, revoked_at, kind, pass_check';
 const REQUEST = 'id, bundle_id, visitor_key, status, wrapped_key, note, country, requested_at, decided_at';
 
 export function sharedRepository(db: Database): SharedRepository {
   const get = db.prepare(`SELECT ${BUNDLE} FROM shared_bundles WHERE id = ?`);
-  const insert = db.prepare('INSERT INTO shared_bundles (id, user_id, created_at, expires_at, require_approval, size, blobs, blob_bytes, kind, reviewed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+  const insert = db.prepare('INSERT INTO shared_bundles (id, user_id, created_at, expires_at, require_approval, size, blobs, blob_bytes, kind, reviewed_at, pass_check) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
   const cards = db.prepare("SELECT COUNT(*) AS n FROM shared_bundles WHERE user_id = ? AND kind = 'card' AND revoked_at IS NULL");
-  const replace = db.prepare('UPDATE shared_bundles SET expires_at = ?, require_approval = ?, size = ?, blobs = ?, blob_bytes = ? WHERE id = ? AND user_id = ?');
+  const replace = db.prepare('UPDATE shared_bundles SET expires_at = ?, require_approval = ?, size = ?, blobs = ?, blob_bytes = ?, pass_check = COALESCE(?, pass_check) WHERE id = ? AND user_id = ?');
   const usage = db.prepare("SELECT COUNT(*) AS bundles, COALESCE(SUM(size + blob_bytes), 0) AS bytes FROM shared_bundles WHERE user_id = ? AND kind = 'share' AND revoked_at IS NULL AND expires_at > ?");
   const dropKeys = db.prepare("UPDATE shared_requests SET wrapped_key = NULL WHERE bundle_id = ?");
   const waiting = db.prepare("SELECT COUNT(*) AS n FROM shared_requests WHERE bundle_id = ? AND status = 'pending'");
@@ -47,14 +51,14 @@ export function sharedRepository(db: Database): SharedRepository {
     if (!have) {
       // A card for each person the account keeps records for, and no more than a plan could have people.
       if (b.kind === 'card' && (cards.get(userId) as { n: number }).n >= MAX_CARDS) return 'too_many_cards' as const;
-      insert.run(b.id, userId, now, b.expiresAt, b.requireApproval ? 1 : 0, b.size, b.blobs, b.blobBytes, b.kind ?? 'share', b.kind === 'card' ? now : null);
+      insert.run(b.id, userId, now, b.expiresAt, b.requireApproval ? 1 : 0, b.size, b.blobs, b.blobBytes, b.kind ?? 'share', b.kind === 'card' ? now : null, b.passCheck ?? null);
       return 'ok' as const;
     }
     if (have.user_id !== userId) return 'taken' as const;
     if (have.revoked_at) return 'revoked' as const;
     // Sending a card again is looking at it: the year for the reminder starts over.
     if (have.kind === 'card') db.prepare('UPDATE shared_bundles SET reviewed_at = ?, reminded_at = NULL WHERE id = ?').run(now, b.id);
-    replace.run(b.expiresAt, b.requireApproval ? 1 : 0, b.size, b.blobs, b.blobBytes, b.id, userId);
+    replace.run(b.expiresAt, b.requireApproval ? 1 : 0, b.size, b.blobs, b.blobBytes, b.passCheck ?? null, b.id, userId);
     return 'ok' as const;
   });
 
@@ -79,6 +83,10 @@ export function sharedRepository(db: Database): SharedRepository {
     async get(id) {
       const r = get.get(id) as Record<string, unknown> | undefined;
       return r ? bundleOf(r) : null;
+    },
+    async countUnchecked(now) {
+      const n = (kind: string) => (db.prepare("SELECT COUNT(*) AS n FROM shared_bundles WHERE kind = ? AND pass_check IS NULL AND revoked_at IS NULL AND (kind = 'card' OR expires_at > ?)").get(kind, now) as { n: number }).n;
+      return { shares: n('share'), cards: n('card') };
     },
     async put(userId, bundle, now) {
       return putTx(userId, bundle, now);
@@ -165,6 +173,7 @@ export function sharedRepository(db: Database): SharedRepository {
     async logOpen(bundleId, at, country, documentId, countView) {
       const owner = (get.get(bundleId) as Record<string, unknown> | undefined)?.user_id as string | undefined;
       if (!owner) return;
+      if ((db.prepare('SELECT COUNT(*) AS n FROM shared_opens WHERE bundle_id = ?').get(bundleId) as { n: number }).n >= MAX_PENDING_OPENS) return;
       db.prepare('INSERT INTO shared_opens (bundle_id, user_id, at, country, document_id, count_view) VALUES (?, ?, ?, ?, ?, ?)').run(bundleId, owner, at, country, documentId, countView ? 1 : 0);
     },
     async pendingOpens(userId, limit) {

@@ -2,24 +2,29 @@ import type { Database } from './driver.js';
 import { owner } from '../owner.js';
 import type { DelegationInvite, DelegationRecord, DelegationRepository } from '../types.js';
 
-const COLUMNS = 'id, owner_user_id, profile_id, delegate_user_id, role, wrapped_key, state, created_at, updated_at';
+const COLUMNS = 'id, owner_user_id, profile_id, delegate_user_id, role, wrapped_key, state, created_at, updated_at, delegate_hello, owner_blob, delegate_pin, owner_pin';
 const asGrant = (r: Record<string, unknown>): DelegationRecord => ({
   id: r.id as string, owner_user_id: r.owner_user_id as string, profile_id: r.profile_id as string, delegate_user_id: r.delegate_user_id as string,
   role: r.role as DelegationRecord['role'], wrapped_key: (r.wrapped_key as string | null) ?? null, state: r.state as DelegationRecord['state'],
   created_at: r.created_at as string, updated_at: r.updated_at as string,
+  delegate_hello: (r.delegate_hello as string | null) ?? null, owner_blob: (r.owner_blob as string | null) ?? null,
+  delegate_pin: (r.delegate_pin as string | null) ?? null, owner_pin: (r.owner_pin as string | null) ?? null,
 });
 
 /** Every statement names the acting account, as the owner or as the delegate (SECURITY.md P12); `get` is the route's own check. */
 export function delegationRepository(db: Database): DelegationRepository {
-  const insertInvite = db.prepare('INSERT INTO profile_invites (id, owner_user_id, profile_id, role, wrapped, proof_hash, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+  const insertInvite = db.prepare('INSERT INTO profile_invites (id, owner_user_id, profile_id, role, wrapped, proof_hash, created_at, expires_at, owner_blob) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
   const invites = db.prepare("SELECT id, profile_id, role, expires_at FROM profile_invites WHERE owner_user_id = ? AND state = 'offered' AND expires_at > ? ORDER BY created_at");
   const cancel = db.prepare("DELETE FROM profile_invites WHERE owner_user_id = ? AND id = ? AND state = 'offered'");
   // Spent by one statement that also checks the proof, the end and the state: two claims cannot both succeed.
-  const spend = db.prepare("UPDATE profile_invites SET state = 'used' WHERE id = ? AND proof_hash = ? AND state = 'offered' AND expires_at > ? AND owner_user_id <> ? RETURNING owner_user_id, profile_id, role, wrapped");
+  const spend = db.prepare("UPDATE profile_invites SET state = 'used' WHERE id = ? AND proof_hash = ? AND state = 'offered' AND expires_at > ? AND owner_user_id <> ? RETURNING owner_user_id, profile_id, role, wrapped, owner_blob");
   const peek = db.prepare("SELECT owner_user_id, role, expires_at FROM profile_invites WHERE id = ? AND proof_hash = ? AND state = 'offered' AND expires_at > ? AND owner_user_id <> ?");
-  const insertGrant = db.prepare("INSERT INTO delegations (id, owner_user_id, profile_id, delegate_user_id, role, state, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)");
+  const insertGrant = db.prepare("INSERT INTO delegations (id, owner_user_id, profile_id, delegate_user_id, role, state, created_at, updated_at, owner_blob) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)");
+  // Inside this file only: the steps that already hold the id and have checked whose it is.
   const grant = db.prepare(`SELECT ${COLUMNS} FROM delegations WHERE id = ?`);
-  const complete = db.prepare("UPDATE delegations SET wrapped_key = ?, state = 'active', updated_at = ? WHERE id = ? AND delegate_user_id = ? AND state = 'pending'");
+  const grantFor = db.prepare(`SELECT ${COLUMNS} FROM delegations WHERE id = ? AND (owner_user_id = ? OR delegate_user_id = ?)`);
+  const complete = db.prepare("UPDATE delegations SET wrapped_key = ?, delegate_hello = ?, owner_pin = ?, state = ?, updated_at = ? WHERE id = ? AND delegate_user_id = ? AND state = 'pending'");
+  const setPin = db.prepare("UPDATE delegations SET delegate_pin = ?, updated_at = ? WHERE owner_user_id = ? AND id = ? AND state IN ('active', 'paused')");
   const owned = db.prepare(`SELECT ${COLUMNS.split(', ').map(c => `d.${c}`).join(', ')}, u.email AS delegate_email, k.public_key AS delegate_public_key FROM delegations d JOIN users u ON u.id = d.delegate_user_id LEFT JOIN vault_keys k ON k.user_id = d.delegate_user_id WHERE d.owner_user_id = ? AND d.state NOT IN ('revoked', 'promoted') ORDER BY d.created_at`);
   const othersOf = db.prepare(`SELECT d.id, d.role, d.state, u.email AS delegate_email, k.public_key AS delegate_public_key FROM delegations d JOIN users u ON u.id = d.delegate_user_id LEFT JOIN vault_keys k ON k.user_id = d.delegate_user_id WHERE d.owner_user_id = ? AND d.profile_id = ? AND d.id <> ? AND d.state IN ('active', 'paused') ORDER BY d.created_at`);
   const madeTo = db.prepare(`SELECT ${COLUMNS.split(', ').map(c => `d.${c}`).join(', ')}, u.email AS owner_email, k.public_key AS owner_public_key FROM delegations d JOIN users u ON u.id = d.owner_user_id LEFT JOIN vault_keys k ON k.user_id = d.owner_user_id WHERE d.delegate_user_id = ? AND d.state IN ('active', 'paused') ORDER BY d.created_at`);
@@ -27,9 +32,9 @@ export function delegationRepository(db: Database): DelegationRepository {
   const leave = db.prepare("UPDATE delegations SET state = 'revoked', wrapped_key = NULL, updated_at = ? WHERE delegate_user_id = ? AND id = ? AND state NOT IN ('revoked', 'promoted')");
   const rewrap = db.prepare("UPDATE delegations SET wrapped_key = ?, updated_at = ? WHERE owner_user_id = ? AND profile_id = ? AND id = ? AND state IN ('active', 'paused')");
   const claimTx = db.transaction((delegateId: string, id: string, proofHash: string, now: string, grantId: string) => {
-    const spent = spend.get(id, proofHash, now, delegateId) as { owner_user_id: string; profile_id: string; role: DelegationRecord['role']; wrapped: string } | undefined;
+    const spent = spend.get(id, proofHash, now, delegateId) as { owner_user_id: string; profile_id: string; role: DelegationRecord['role']; wrapped: string; owner_blob: string | null } | undefined;
     if (!spent) return null;
-    insertGrant.run(grantId, spent.owner_user_id, spent.profile_id, delegateId, spent.role, now, now);
+    insertGrant.run(grantId, spent.owner_user_id, spent.profile_id, delegateId, spent.role, now, now, spent.owner_blob);
     return { grant: asGrant(grant.get(grantId) as Record<string, unknown>), wrapped: spent.wrapped };
   });
   // Promotion at eighteen: see the interface. Everything that changes is in one transaction; what can be checked is checked first.
@@ -63,11 +68,17 @@ export function delegationRepository(db: Database): DelegationRepository {
     copy.run(delegateId, seq, u.profileSize, u.profileWrapped, now, ok.from, ok.profileId);
     tombstone.run(bump(ok.from), now, ok.from, ok.profileId);
     // The profile is the delegate's now, with everyone else who had it paused until they choose, each holding the new key sealed to them.
+    // Another person's grant is theirs only by a key the new owner could vouch for, and the new owner has none for them: it ends, and they are
+    // invited again (S-39). One given a key (a caller that can vouch) is paused holding it.
     const pause = db.prepare("UPDATE delegations SET owner_user_id = ?, state = 'paused', wrapped_key = ?, updated_at = ? WHERE id = ? AND owner_user_id = ?");
-    for (const x of u.grants) pause.run(delegateId, x.wrappedKey, now, x.id, ok.from);
+    const end = db.prepare("UPDATE delegations SET owner_user_id = ?, state = 'revoked', wrapped_key = NULL, updated_at = ? WHERE id = ? AND owner_user_id = ?");
+    for (const x of u.grants) { if (x.wrappedKey === null) end.run(delegateId, now, x.id, ok.from); else pause.run(delegateId, x.wrappedKey, now, x.id, ok.from); }
     // The owner it came from is one of the people who looked after the person: paused like the rest, theirs to be let back in.
-    db.prepare("INSERT INTO delegations (id, owner_user_id, profile_id, delegate_user_id, role, wrapped_key, state, created_at, updated_at) VALUES (?, ?, ?, ?, 'guardian', ?, 'paused', ?, ?)")
-      .run(u.former.grantId, delegateId, ok.profileId, ok.from, u.former.wrappedKey, now, now);
+    // Each side already holds the other's key as the code gave it, sealed under its own account key: the old grant's pins change places, so the
+    // former owner can tell the new owner's key and the new owner the former's.
+    const old = grant.get(grantId) as Record<string, unknown>;
+    db.prepare("INSERT INTO delegations (id, owner_user_id, profile_id, delegate_user_id, role, wrapped_key, state, created_at, updated_at, delegate_pin, owner_pin) VALUES (?, ?, ?, ?, 'guardian', ?, 'paused', ?, ?, ?, ?)")
+      .run(u.former.grantId, delegateId, ok.profileId, ok.from, u.former.wrappedKey, now, now, (old.owner_pin as string | null) ?? null, (old.delegate_pin as string | null) ?? null);
     db.prepare("UPDATE delegations SET state = 'promoted', wrapped_key = NULL, updated_at = ? WHERE id = ?").run(now, grantId);
     db.prepare('DELETE FROM profile_invites WHERE owner_user_id = ? AND profile_id = ?').run(ok.from, ok.profileId);
     return { seq, fromUserId: ok.from, objectIds: ok.live };
@@ -83,13 +94,20 @@ export function delegationRepository(db: Database): DelegationRepository {
       if (!done) throw new Error('the vault changed during the promotion');
       return done;
     },
-    async invite(ownerId, i) { insertInvite.run(i.id, owner(ownerId), i.profileId, i.role, i.wrapped, i.proofHash, i.now, i.expiresAt); },
+    async invite(ownerId, i) { insertInvite.run(i.id, owner(ownerId), i.profileId, i.role, i.wrapped, i.proofHash, i.now, i.expiresAt, i.ownerBlob ?? null); },
     async invites(ownerId, now) { return invites.all(owner(ownerId), now) as DelegationInvite[]; },
     async cancelInvite(ownerId, id) { return cancel.run(owner(ownerId), id).changes === 1; },
     async claim(delegateId, id, proofHash, now, grantId) { return claimTx(owner(delegateId), id, proofHash, now, grantId); },
     async peek(delegateId, id, proofHash, now) { return (peek.get(id, proofHash, now, owner(delegateId)) as { owner_user_id: string; role: DelegationRecord['role']; expires_at: string } | undefined) ?? null; },
-    async complete(delegateId, id, wrappedKey, now) { return complete.run(wrappedKey, now, id, owner(delegateId)).changes === 1; },
-    async get(id) { const r = grant.get(id) as Record<string, unknown> | undefined; return r ? asGrant(r) : null; },
+    // A grant whose keys are bound waits, paused, until the owner has confirmed the code the delegate's key makes (S-39); one from a device that does not bind is live as it was.
+    async complete(delegateId, id, wrappedKey, now, binding) { return complete.run(wrappedKey, binding?.hello ?? null, binding?.ownerPin ?? null, binding ? 'paused' : 'active', now, id, owner(delegateId)).changes === 1; },
+    async setPin(ownerId, id, pin) { return setPin.run(pin, new Date().toISOString(), owner(ownerId), id).changes === 1; },
+    async countUnbound(now) {
+      const invites = (db.prepare("SELECT COUNT(*) AS n FROM profile_invites WHERE state = 'offered' AND expires_at > ? AND owner_blob IS NULL").get(now) as { n: number }).n;
+      const grants = (db.prepare("SELECT COUNT(*) AS n FROM delegations WHERE state IN ('active', 'paused') AND owner_pin IS NULL").get() as { n: number }).n;
+      return { invites, grants };
+    },
+    async getFor(actingUserId, id) { const r = grantFor.get(id, owner(actingUserId), owner(actingUserId)) as Record<string, unknown> | undefined; return r ? asGrant(r) : null; },
     async ownedBy(ownerId) { return (owned.all(owner(ownerId)) as Array<Record<string, unknown>>).map(r => ({ ...asGrant(r), delegate_email: r.delegate_email as string, delegate_public_key: (r.delegate_public_key as string | null) ?? null })); },
     async madeTo(delegateId) {
       return (madeTo.all(owner(delegateId)) as Array<Record<string, unknown>>).map(r => {
