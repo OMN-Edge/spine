@@ -22,7 +22,6 @@ import {
  *   npm run cli -- disable-2fa <email>
  *   npm run cli -- approve-user <email>
  *   npm run cli -- delete-user <email> [--yes]
- *   npm run cli -- legacy
  *   npm run cli -- grant-plan <email> [--days=N] [--plan=premium|family]
  *   npm run cli -- revoke-plan <email>
  *   npm run cli -- waitlist
@@ -54,7 +53,6 @@ const USAGE = `usage:
   waitlist-remove <email>
   metrics [--days=N]
   delete-user <email> [--yes]
-  legacy
   list-users
   check-embeddings`;
 
@@ -175,26 +173,6 @@ export async function runCli(args: string[], io: CliIo): Promise<number> {
       await store.users.disableTotp(user.id);
       io.out(`two-factor turned off for ${email}; their sessions are signed out`);
       return 0;
-    }
-
-    // What is left of the paths kept for things made before the fixes of the 2026-11-04 review (SECURITY.md S-38, S-39, S-41, S-42, S-48, S-54): when
-    // every count is 0, the strict release that removes them can be deployed without locking anything out. Exit 0 then, 1 while something is left.
-    case 'legacy': {
-      const now = new Date().toISOString();
-      const unchecked = await store.shared.countUnchecked(now);
-      const unbound = await store.delegations.countUnbound(now);
-      const counts: Array<[string, number, string]> = [
-        ['live share links with no key check', unchecked.shares, 'they end within 31 days, or are revoked and made again'],
-        ['live emergency cards with no key check', unchecked.cards, 'the owner saves each card again, which adds it'],
-        ['vaults with no reset verifier', await store.vault.countWithoutVerifier(), 'each is added when its owner next opens the records with the password'],
-        ['invitations waiting with no binding', unbound.invites, 'they end within 7 days, or are cancelled and made again'],
-        ['live grants with no binding', unbound.grants, 'a device does not open them; the person is invited again'],
-      ];
-      for (const [what, n, how] of counts) io.out(`${n}\t${what}${n > 0 ? ` (${how})` : ''}`);
-      io.out('?\trecovery codes made before they were stored slowly: cannot be counted; they are replaced when their owner makes new ones (two-factor settings)');
-      const left = counts.reduce((sum, c) => sum + c[1], 0);
-      io.out(left === 0 ? 'nothing counted is left; the strict release can go out once the recovery codes are replaced' : `${left} left: not yet`);
-      return left === 0 ? 0 : 1;
     }
 
     case 'delete-user': {

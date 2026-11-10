@@ -36,10 +36,6 @@ export function vaultRepository(q: Query, begin: Begin): VaultRepository {
         WHERE user_id = $8`, [k.kdf_salt, k.kdf_params, k.wrapped_by_master, k.wrapped_by_recovery, k.public_key, k.wrapped_private_key, now, userId])) === 1;
     },
 
-    async countWithoutVerifier() {
-      return Number((await one<{ n: number }>(q, 'SELECT COUNT(*) AS n FROM vault_keys WHERE reset_verifier IS NULL', []))!.n);
-    },
-
     async list(userId, since) {
       return (await many(q, `SELECT ${COLUMNS} FROM vault_objects WHERE user_id = $1 AND seq > $2 ORDER BY seq`, [userId, since])).map(asMeta);
     },

@@ -77,7 +77,6 @@ inside() {
   fi
 
   section "the accounts"
-  sh_run "cd server && npm run --silent cli -- legacy; echo exit \$?"
   sh_run "cd server && npm run --silent cli -- list-users | wc -l"
 
   section "nginx"

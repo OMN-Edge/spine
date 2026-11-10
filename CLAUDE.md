@@ -68,7 +68,7 @@ spine/
 │       ├── passwords.ts    # argon2id hash/verify, policy, email normalisation
 │       ├── totp.ts         # RFC 6238 codes, secret encryption at rest, recovery codes (pure; no store)
 │       ├── second-factor.ts # checkSecondFactor(): joins totp.ts to the store; atomic spend
-│       ├── cli.ts          # operator commands: create-user, set-password, reset-link, disable-2fa, delete-user, legacy, list-users
+│       ├── cli.ts          # operator commands: create-user, set-password, reset-link, disable-2fa, delete-user, list-users
 │       ├── trust-proxy.ts  # the only addresses whose X-Forwarded-For is believed (loopback); limiters key on req.ip
 │       ├── disk-space.ts, permissions.ts  # the free-space reserve a sealed write must leave (`SPINE_MIN_FREE_MB`, S-56); the modes data and backups are made with and the start-up check that the data directory is closed (S-61)
 │       ├── read-budget.ts, read-slots.ts  # bytes of a share one source may read an hour, and reads of sealed objects one account may have open at once (S-57, S-58)
@@ -119,7 +119,6 @@ cd server && npm run cli -- reset-link you@example.com       # one-time link; wo
 cd server && npm run cli -- approve-user you@example.com      # an account waiting under SPINE_REGISTRATION=approval; list-users marks it
 cd server && npm run cli -- disable-2fa you@example.com      # lost phone and recovery codes
 cd server && npm run cli -- delete-user you@example.com      # shows what it would remove; --yes to do it
-cd server && npm run cli -- legacy                          # what is left of the paths kept for things made before the 2026-11 review's fixes; exit 0 when none
 cd server && npm run cli -- list-users
 
 # Install and build (npm workspaces: one install at the root; core is built first because server and web use it)
