@@ -33,10 +33,20 @@ inside() {
   run stat -c '%a %U:%G %n' . "$data" "$data"/* .env relay.env
   if [ -n "$bk" ]; then echo "backup dir: $bk"; sh_run "stat -c '%a %U:%G %n' '$bk' '$bk'/* | head -30"; fi
 
+  section "anything in the data and backup folders that others could read (none expected)"
+  sh_run "find '$data' ${bk:+'$bk'} -perm /077 2>/dev/null | head -20; echo \"(\$(find '$data' ${bk:+'$bk'} -perm /077 2>/dev/null | wc -l) found)\""
+
   section "listening ports and firewall"
   sh_run "ss -tln"
   sh_run "sudo -n ufw status verbose || echo 'ufw: not available without a password'"
   sh_run "sudo -n iptables -S 2>&1 | head -30"
+
+  sh_run "sudo -n ss -tlnp 2>&1 | awk '{print \$1, \$4, \$6}' | head -20"
+  sh_run "sudo -n sshd -T 2>&1 | grep -E 'passwordauthentication|permitrootlogin|pubkeyauthentication|^port '"
+
+  section "who runs what on the machine (the other applications beside this one)"
+  sh_run "ps -eo user:20,comm --no-headers | sort | uniq -c | sort -rn | head -15"
+  sh_run "free -h"
 
   section "the services as systemd runs them"
   sh_run "systemctl show spine-web spine-relay spine-backup -p Id,User,UMask,NoNewPrivileges,ProtectSystem,ProtectHome,PrivateTmp,MemoryMax,RequiresMountsFor,Restart"
