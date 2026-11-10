@@ -42,6 +42,7 @@ spine/
 │       ├── emergency.ts    # the emergency card: what is on it (zod), cardText() for the offline code; routes/emergency.ts edits and publishes it through the share host
 │       ├── tags.ts         # STARTER_TAGS and cleanTag(): what a tag is and a new account starts with
 │       ├── share-scope.ts  # the only place a share-link scope is validated or resolved
+│       ├── share-code.ts   # the eight characters made from a visitor's key that the owner and the visitor compare before an approval (S-40)
 │       ├── llm/            # LLM interface: types.ts, prompts.ts, chat-llm.ts, budget.ts (daily call allowance), index.ts (registry), adapters/
 │       ├── store/          # store interface: types.ts (interfaces), index.ts (registry), sync.ts (the rules for syncing devices, any store), slice-policy.ts (what a share copy holds), visibility.ts (which documents are shown), ids.ts, owner.ts, sqlite/ (records and accounts; browser.ts is the one file the device imports), postgres/ (the server's accounts only, over a pool the host registers with `usePool`: `pool.ts` is the port, `query.ts` the helpers and transaction type, `store.ts` the assembly and `schema-accounts.ts` the tables, with one file for each group of repositories: `users.ts`, `small.ts` (sessions, usage, enrolments), `vault.ts`, `shared.ts`, `billing.ts`, `delegations.ts`, `maintenance.ts`)
 │       ├── archive/        # export.ts (a document or the whole archive as a zip), import.ts (Spine export or plain zip), import-file.ts (restore one file, no model), manifest.ts (zod schema, fingerprint), zip-read.ts, pdf-pages.ts
@@ -69,6 +70,9 @@ spine/
 │       ├── second-factor.ts # checkSecondFactor(): joins totp.ts to the store; atomic spend
 │       ├── cli.ts          # operator commands: create-user, set-password, reset-link, disable-2fa, delete-user, legacy, list-users
 │       ├── trust-proxy.ts  # the only addresses whose X-Forwarded-For is believed (loopback); limiters key on req.ip
+│       ├── disk-space.ts, permissions.ts  # the free-space reserve a sealed write must leave (`SPINE_MIN_FREE_MB`, S-56); the modes data and backups are made with and the start-up check that the data directory is closed (S-61)
+│       ├── read-budget.ts, read-slots.ts  # bytes of a share one source may read an hour, and reads of sealed objects one account may have open at once (S-57, S-58)
+│       ├── same-origin.ts, reset-proof.ts # a request that changes something must come from the app's own origin (S-50); the signature a reset must carry, checked against the vault's verifier (S-38)
 │       ├── notify.ts       # account mail (new browser, password or 2FA change); never records
 │       ├── passkeys.ts, trust-anchors.ts, vault-keys.ts, backup.ts  # WebAuthn, the signature trust anchors, the vault's keys, the VACUUM INTO snapshot + vault mirror run by spine-backup.timer
 │       ├── relay/          # the relay service: token.ts (the pass), relay.ts (checks, runs the task through the configured provider adapter, stores nothing), serve.ts (reads the settings and listens), main.ts (`node dist/relay/main.js`: registers the store and the vendors, then serves)

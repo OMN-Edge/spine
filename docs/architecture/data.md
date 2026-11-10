@@ -22,7 +22,7 @@ Two schema files: `schema-accounts.ts` (the server's database, and the device's 
 - `users` — id, email (unique, case-insensitive), argon2id hash, `auth_version`, `email_verified_at`, created_at.
 - `user_tokens` — verification and reset links (hashed, single use).
 - `user_totp` — one row per user who has started enrolling: the encrypted secret, `confirmed_at` (NULL until the first code is accepted; the factor only applies once it is set) and `last_step` (replay guard).
-- `user_recovery_codes` — sha256 of each code, `used_at`.
+- `user_recovery_codes` — a slow salted hash of each code (scrypt, the account's id as salt, SECURITY.md **S-42**), `used_at`.
 - `source_files` — one row per upload. `status`: `pending | processing | done | error`.
 - `documents` — one *logical* document: a page range within a source file. The unit that gets shared. `title` is the document's own printed title, or one extraction generated when it has none; the owner can edit it, and the UI names documents by it, never by the upload's file name (falling back to type and provider when it is empty).
 - `pages` — one per rasterized page, with parser elements and the absolute `image_path`.
