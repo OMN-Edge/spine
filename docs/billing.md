@@ -51,7 +51,7 @@ The relay applies the plans and needs only `SPINE_BILLING=on` and the store (it 
 | `POST /api/billing/checkout` | signed in | Starts a purchase for `{ interval, plan }` at the provider and answers where to send the person; refused for an account that already has a plan |
 | `POST /api/billing/portal` | signed in, with a Paddle subscription | Opens the provider's page for the card, invoices, switching and cancelling |
 | `POST /api/billing/webhook` | the provider only | Its signed messages; anything not signed correctly is refused |
-| `POST /api/waitlist` | anyone | An address to be told when Spine opens; the same answer whether or not it was there; five a minute per source |
+| `POST /api/waitlist` | anyone | An address to be told when Spine opens; the same answer whether or not it was there; five a minute per source, 200 an hour from all sources together, and at most `SPINE_WAITLIST_MAX` (20,000) on the list |
 
 ## Checking it
 
