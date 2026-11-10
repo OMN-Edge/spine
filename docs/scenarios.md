@@ -644,7 +644,7 @@ The owner signs in on a second device with the master password (or a passkey) an
 - On the unlock screen the page does not freeze while the password is turned into a key, and what the server is asked for before the password is typed is not asked again afterwards.
 - The page's scripts are not asked about again at a reload: only the page itself is.
 - A vault of a kind this version does not know is refused with a message and left untouched.
-- Not covered: network failures mid-save, large vaults, a device whose clock is wrong (it can win edits it should not).
+- Not covered: network failures mid-save, large vaults, a clock that steps while the device cannot reach the vault (changes are stamped on the server's clock, so a wrong clock alone does not win edits, but a write can be stamped late by the time since it was made).
 
 Status: auto (`changes`, `ids`; web `persist`, `boot`); in real browsers: `check:app` (two contexts on one account, each removes a different tag, both end with both removals).
 
@@ -679,7 +679,7 @@ The operator creates and looks after accounts without a mail provider.
 Status: auto (`cli`, `accounts`, `isolation`).
 
 ### 9.3 Back up and restore
-- A daily snapshot of the accounts database and a copy of the sealed vault objects are made; the snapshot is never a plain file copy of a live database. Shares are not backed up on purpose.
+- A daily snapshot of the accounts database and a copy of the sealed vault objects are made; the snapshot is never a plain file copy of a live database. An object the vault removed stays in the backup for a week (`vault-removed/`), so a mistake or a fault can be put right; deleting an account removes its copy at once. Shares are not backed up on purpose.
 - A restore from the snapshot and the vault copy brings back every account and its sealed records, which open only with the owner's master password or recovery kit.
 
 Status: auto for making the snapshot (`backup`).
