@@ -24,6 +24,8 @@ Environment=SPINE_RELAY_ORIGIN=https://SPINE_DOMAIN
 Environment=SPINE_DB_PATH=SPINE_DIR/relay-data/relay.db
 Restart=on-failure
 RestartSec=5s
+# What it makes (the daily count's database) is readable by its own user alone (SECURITY.md S-61)
+UMask=0077
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true

@@ -42,3 +42,13 @@ describe.skipIf(process.platform === 'win32')('who can read what the server keep
     expect(mode(file)).toBe(0o644);
   });
 });
+
+/** The units are text that no process reads in a test, so a unit that forgets the umask is found here (S-61; the relay was missed the first time). */
+describe('the systemd units that make files', () => {
+  const root = path.resolve(import.meta.dirname, '../../..');
+  for (const name of ['spine-web', 'spine-relay', 'spine-backup']) {
+    it(`${name} makes them for its own user alone`, () => {
+      expect(fs.readFileSync(path.join(root, 'systemd', `${name}.service`), 'utf8')).toMatch(/^UMask=0077$/m);
+    });
+  }
+});
