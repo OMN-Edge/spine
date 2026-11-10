@@ -72,14 +72,16 @@ describe('screen text', () => {
   "Your records are locked on this device with a key made from your master password. The server keeps them only in that locked form and cannot open them.",
   "The key that opens a link is in the address itself, after the # sign, which a browser never sends to the server. So only someone who has the whole link can read it.",
   "Some things need an AI model: reading a document, translating it, finding the documents connected to it, and answering questions here. For those, the text goes to the AI model this server uses (and, when this server reads scans with AI, the picture of a scanned page), through a relay that does not store or log it.",
-  // The security review page (SecurityReview.tsx): each checked against SECURITY.md M-34 to M-37, S-37, S-39, S-40 and M-36.
+  // The security review page (SecurityReview.tsx): each checked against SECURITY.md M-34 to M-37, S-37, S-39, S-42, P8 and S-24.
+  "Every fix, and the protections the code holds, have automated tests that fail if the protection is taken away; they run on every change. The settings of the web server and the host were checked on the running service.",
+  "Records are encrypted with keys the server never has, and passwords and recovery codes are stored with slow, salted hashes.",
+  "Key substitution by a dishonest server",
+  "Keys between people travel through a one-time code, so the server cannot slip in a key of its own.",
+  "Your device refuses key settings weaker than a fixed floor or than it saw before, whatever the server says.",
+  "Every query takes values as data, never as code, and the server runs no program on your files.",
+  "Server-side request forgery (SSRF)",
+  "The server never fetches an address a user supplies.",
   "The whole code (the server, the app that runs in your browser, the relay for AI calls, installation) and the running service.",
-  "Someone gets hold of the server or its backups",
-  "Your records are sealed on your device under keys made from your password. The server never receives the password and holds no record it can read.",
-  "A dishonest server tries to get your keys",
-  "Your device checks what the server tells it instead of obeying it, keys between people travel through a one-time code, and you compare a short code before you let anyone in.",
-  "A link opens a sealed copy of only what you chose, its key never reaches the server, it ends when you say, and it can require your approval of each browser.",
-  "The two rated High: a server that lied about an account could have made your device send it your password, or a key made easy to guess; and a password-reset link alone could have replaced your keys. Your device now checks such answers itself, and a reset needs your second step and your recovery kit, and you are told.",
 ]);
   it('says "the server" only where it was checked to be the server', () => {
     const english = Object.keys(JSON.parse(read('web/src/i18n/ro.json')) as Record<string, string>);

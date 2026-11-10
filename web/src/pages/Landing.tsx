@@ -69,7 +69,7 @@ export default function Landing() {
           <div className="mt-12 rounded-2xl border border-accent/30 bg-accent/5 p-6 md:flex md:items-center md:justify-between md:gap-8">
             <div className="max-w-2xl">
               <h3 className="text-lg font-medium">{t('Checked, not just claimed')}</h3>
-              <p className="mt-2 leading-relaxed text-ink/75">{t('In November 2026 Spine was reviewed the way a security assessment is done, against the OWASP standards: 27 weaknesses were found and every one was fixed, each with a test. It was the project’s own review, not an independent audit, and the page says so.')}</p>
+              <p className="mt-2 leading-relaxed text-ink/75">{t('Reviewed in November 2026 the way a security assessment is done, against the OWASP standards, for the attacks that matter to medical records: man-in-the-middle, account takeover, cross-site scripting, insecure direct object references, prompt injection and more. It was the project’s own review, not an independent audit, and the page says so.')}</p>
             </div>
             <p className="mt-4 shrink-0 md:mt-0"><TextLink to="/security-review">{t('How it was checked')}</TextLink></p>
           </div>

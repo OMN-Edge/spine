@@ -77,7 +77,7 @@ describe('the pages before an account', () => {
   it('says first that the review was the project’s own, not an independent audit, and links to it from the front page', () => {
     const page = text(render(<SecurityReview />, '/security-review'));
     expect(page.indexOf('It is not an independent audit')).toBeGreaterThan(-1);
-    expect(page.indexOf('It is not an independent audit')).toBeLessThan(page.indexOf('What it found'));
+    expect(page.indexOf('It is not an independent audit')).toBeLessThan(page.indexOf('The attacks it is built to resist'));
     expect(page).toContain('no certificate is claimed');
     expect(render(<Landing />, '/')).toContain('href="/security-review"');
   });

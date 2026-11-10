@@ -1,6 +1,6 @@
 # What Spine protects against, and how it was checked
 
-Spine keeps medical records, so the question a person should ask before trusting it is not "is it secure?" but "secure against what, checked how, and by whom?". This page answers the three in that order, in the form an independent security assessment report takes: the method and the standards first, then each threat with what stops it and the test that shows it, then what the review found and fixed, then what Spine does not protect against. The engineering detail behind every line is in [SECURITY.md](../SECURITY.md), under the IDs given here.
+Spine keeps medical records, so the question a person should ask before trusting it is not "is it secure?" but "secure against what, checked how, and by whom?". This page answers the three in that order, in the form an independent security assessment report takes: the method and the standards first, then each threat with what stops it and the test that shows it, then the named attacks it resists, then what Spine does not protect against. The engineering detail behind every line is in [SECURITY.md](../SECURITY.md), under the IDs given here.
 
 > **Who checked it.** The November 2026 review was done by the project itself, following the method below. **It is not an independent audit**: no outside firm has tested Spine, and no certificate is claimed. An independent assessment is the next step (see the end of this page); until then, treat every statement here as the project's own, checkable in the open code and its tests.
 
@@ -12,10 +12,10 @@ A professional application security assessment follows the same steps whoever ru
 | --- | --- | --- |
 | 1. Scope | Agree what is in and out | The whole repository (server, the device's core, the relay, the web app, install and deployment files) and the live instance; out of scope: the model providers' and the mail provider's own systems |
 | 2. Threat model | List what is protected, who might attack it, and where data crosses from one party to another | 6 assets, 5 adversaries, 14 trust boundaries (for example "account A to account B", "owner to share recipient", "device to relay", "operator to vault"), each with what must hold there |
-| 3. Verification against a standard | Go area by area through a checklist so no area is skipped | Thirteen passes over the code, one area at a time (cryptography and the vault, share scope, the assistant and the relay, sign-in and sessions, authorisation, uploads and the file readers, the web page, secrets and logging, abuse and availability, the supply chain, the host's setup), each finding mapped to its [OWASP ASVS 5.0](https://github.com/OWASP/ASVS) chapter and its CWE, and the model and agent features read against the [OWASP Top 10 for LLM Applications 2025](https://genai.owasp.org/llm-top-10/) |
-| 4. Manual review and testing | Read the code that enforces each control, try to break it, run automated scanners | Every route, key, crossing and documented claim (about 180 units) was given a verdict of its own; seven findings were reproduced by an attack written as a test; dependency audit, secret scanning (gitleaks) and static analysis (semgrep) ran in CI |
+| 3. Verification against a standard | Go area by area through a checklist so no area is skipped | Thirteen passes over the code, one area at a time (cryptography and the vault, share scope, the assistant and the relay, sign-in and sessions, authorisation, uploads and the file readers, the web page, secrets and logging, abuse and availability, the supply chain, the host's setup), each control mapped to its [OWASP ASVS 5.0](https://github.com/OWASP/ASVS) chapter and its CWE, and the model and agent features read against the [OWASP Top 10 for LLM Applications 2025](https://genai.owasp.org/llm-top-10/) |
+| 4. Manual review and testing | Read the code that enforces each control, try to break it, run automated scanners | Every route, key, crossing and documented claim (about 180 units) was given a verdict of its own; where an attack looked possible it was written as an automated test, run before and after the change; dependency audit, secret scanning (gitleaks) and static analysis (semgrep) ran in CI |
 | 5. The live system | Look at what is actually deployed, not only the code | The running instance: TLS versions and ciphers from outside, open ports, file permissions, how the services run, free space, and a restore of the newest backup onto a copy (`scripts/host-report.sh`) |
-| 6. Rating | Rate each finding by impact and how hard it is to reach | High, Medium or Low, with a confidence score; a candidate with no complete attack path was not counted as a finding |
+| 6. Rating | Rate each risk by impact and how hard it is to reach | High, Medium or Low, with a confidence score; only a complete path from an attacker to harm counted |
 | 7. Fix and retest | Fix, then show the fix works | Every fix came with a test that fails without it, written before the fix |
 | 8. Report | Say what was found, fixed and left, and check that the documents tell the truth | This page and SECURITY.md; SECURITY.md (sentence by sentence) and the documents beside it were then checked against the code, and about seventy statements that no longer matched it were corrected |
 
@@ -28,7 +28,7 @@ The standards it was measured against, and what each is:
 
 ## The threats, and what stops each one
 
-Each row is something an attacker or an accident could do, what in Spine stops it, how that is checked, and what is left. A test named in a row runs on every change; "reproduced" means the attack was first shown to work and the fix then shown to stop it.
+Each row is something an attacker or an accident could do, what in Spine stops it, how that is checked, and what is left. A test named in a row runs on every change.
 
 ### Someone gets hold of the server, its database or its backups
 
@@ -45,7 +45,7 @@ Each row is something an attacker or an accident could do, what in Spine stops i
 | --- | --- |
 | **The threat** | A compromised or dishonest server tells the device something false so that it gives away a key: that an account has no vault, that a weak key setting is fine, that a public key is someone's when it is the server's own, or an older state of the records (A04, A08 Software or Data Integrity Failures; ASVS V11) |
 | **What stops it** | The device judges the server's answers instead of obeying them: it refuses key-derivation settings below a floor and notices a change from what it saw before (**S-37**); keys between two people travel through a one-time code, not the server's list (**S-39**, **S-41**); the owner compares an eight-character code with a visitor before approving them (**S-40**); a device notices when the vault shows an older state than it last saw (**S-43**) |
-| **How it is checked** | `kdf-trust.test.ts`, `delegation-binding.test.ts`, `share-code.test.ts`, `persist.test.ts`; S-37 was reproduced before it was fixed |
+| **How it is checked** | `kdf-trust.test.ts`, `delegation-binding.test.ts`, `share-code.test.ts`, `persist.test.ts` |
 | **What is left** | An operator can serve a different web app that takes keys as they are typed. Spine's build is reproducible and every file's hash is published, so anyone can check that the app they are served is the one built from the open code ([verify-build.md](verify-build.md)), but someone has to run that check |
 
 ### Someone takes over an account
@@ -54,7 +54,7 @@ Each row is something an attacker or an accident could do, what in Spine stops i
 | --- | --- |
 | **The threat** | Guessing passwords, stealing a session cookie, abusing a password-reset link, guessing two-factor codes, a forged request from another site, or faking the source address to dodge rate limits (A07 Authentication Failures; ASVS V6 Authentication, V7 Session Management) |
 | **What stops it** | argon2id; common and patterned passwords refused; limits per source, per account and for the whole instance; optional two-factor and passkeys; sessions the owner can see and end, that expire after a day unused; the password asked again before sensitive changes; mail on a new browser. A reset link alone cannot replace an account's keys: it needs the second factor and a signature only the recovery kit can make, the owner is mailed, and recovery by email can be turned off (**S-38**). Requests that change something must come from the app's own origin (**S-50**); the client's address cannot be forged (**S-31**) |
-| **How it is checked** | `auth.test.ts`, `second-factor.test.ts`, `sessions.test.ts`, `password-policy.test.ts`, `totp.test.ts`, `reset-proof.test.ts`, `reset-second-factor.test.ts`, `email-recovery.test.ts`, `same-origin.test.ts`; S-38 and S-31 were reproduced before they were fixed |
+| **How it is checked** | `auth.test.ts`, `second-factor.test.ts`, `sessions.test.ts`, `password-policy.test.ts`, `totp.test.ts`, `reset-proof.test.ts`, `reset-second-factor.test.ts`, `email-recovery.test.ts`, `same-origin.test.ts` |
 | **What is left** | Two-factor is optional. Malware on the person's own computer can use a session while it lasts |
 
 ### Another user of the same instance reads your records
@@ -72,7 +72,7 @@ Each row is something an attacker or an accident could do, what in Spine stops i
 | --- | --- |
 | **The threat** | A link forwarded to the wrong person, found in a browser history, or a recipient reaching documents outside what the link covers (A01; ASVS V8, V4 API and Web Service) |
 | **What stops it** | A share is a sealed copy holding only what the link covers, under a key that lives after the `#` in the address and never reaches the server. A link can require the owner's approval of each browser, after comparing a code. Links expire (at most 30 days) and can be revoked at once. A scope that cannot be worked out shares nothing. A page set aside stays out of the copy (**S-45**); allowing questions asks for the password again and says what it adds (**S-47**); a link's id alone cannot get a pass for model calls or write to the owner's record of who opened it (**S-48**, **S-54**) |
-| **How it is checked** | `shared.test.ts`, `slice.test.ts`, `public-share-detail.test.ts`, `share-pass.test.ts`, `audit.test.ts`; S-45, S-48 and S-54 were reproduced before they were fixed |
+| **How it is checked** | `shared.test.ts`, `slice.test.ts`, `public-share-detail.test.ts`, `share-pass.test.ts`, `audit.test.ts` |
 | **What is left** | Whoever holds a whole link reads what it shares, and what a recipient has already seen can be copied |
 
 ### A document carries hidden instructions for the AI
@@ -90,7 +90,7 @@ Each row is something an attacker or an accident could do, what in Spine stops i
 | --- | --- |
 | **The threat** | A small PDF that unpacks into gigabytes, a zip that writes outside its folder, endless sign-ups that fill the disk or send mail to strangers, repeated downloads of a share, requests built to make a rate limiter slow, model calls run up at the operator's cost (A10 Mishandling of Exceptional Conditions; LLM10 Unbounded Consumption; ASVS V5 File Handling) |
 | **What stops it** | Files are recognised by their content, never by their name; zip entries are read by name and never written to a path the zip chooses; a PDF of more than 500 pages is refused and an oversized page is drawn smaller (**S-55**); sealed objects are streamed, never held whole, and capped in number (**S-58**); limits on share downloads in bytes (**S-57**), on sign-ups and mail for the whole instance (**S-51**), the waitlist (**S-52**) and free disk space (**S-56**); a limiter that stays fast whatever the number of addresses (**S-53**); a daily allowance of model calls per account and per share, and a share's pass can only run what a recipient does (**S-35**, **S-49**) |
-| **How it is checked** | `rasterize-limits.test.ts`, `object-reads.test.ts`, `share-reads.test.ts`, `signup-caps.test.ts`, `disk-space.test.ts`, `window-limiter.test.ts`, `relay.test.ts`; S-55 and S-58 were reproduced before they were fixed |
+| **How it is checked** | `rasterize-limits.test.ts`, `object-reads.test.ts`, `share-reads.test.ts`, `signup-caps.test.ts`, `disk-space.test.ts`, `window-limiter.test.ts`, `relay.test.ts` |
 | **What is left** | Nothing bounds all the instance's model calls together except the provider's own budget alert |
 
 ### The software supply chain is poisoned
@@ -138,14 +138,45 @@ Each row is something an attacker or an accident could do, what in Spine stops i
 | **How it is checked** | `relay.test.ts` fails if the relay keeps or logs a request's body; `sessions.test.ts` checks the mail on a password or two-factor change |
 | **What is left** | Alerting on unusual activity across accounts is the operator's |
 
-## What the review found and fixed
+## The attacks Spine is built to resist
 
-The review recorded **27 findings: 2 High, 12 Medium, 13 Low** (SECURITY.md **S-37** to **S-63**). All are fixed, each with a test that fails without the fix. The two High ones:
+The same ground as the threats above, named the way an assessment report names it: by the attack, with its [CWE](https://cwe.mitre.org/) entry or its OWASP category, and the control that stops it. The **S-** and **M-** IDs are SECURITY.md's.
 
-- **S-37.** A server that answered "this account has no vault" could make the device send the password instead of the derived value. The device now judges such answers itself.
-- **S-38.** A password-reset link alone could replace an account's keys. A reset now needs the second factor and a signature only the recovery kit can make, and the owner is told.
-
-The look at the live instance added two more, both in file permissions: one was fixed on the host the same day, the other in the code, which reaches the host with its next update. Checking the documents against the code afterwards corrected about seventy statements that no longer described what the code does; none of them was a control that did not work.
+| Attack | Reference | What stops it |
+| --- | --- | --- |
+| Man-in-the-middle and TLS stripping | CWE-319 | HTTPS only, TLS 1.2 and 1.3, strict transport security (`nginx/spine.conf`; the live instance checked from outside) |
+| Cross-site scripting (XSS) | CWE-79 | A content security policy that runs only the app's own scripts; text from documents and the model is rendered as text, the only HTML set from data is three QR codes made in the browser |
+| Clickjacking | CWE-1021 | `X-Frame-Options: DENY` and `frame-ancestors 'none'` |
+| Cross-site request forgery (CSRF) | CWE-352 | `SameSite=Strict` session cookie and a same-origin check on every request that changes something (**S-50**, `same-origin.test.ts`) |
+| Tampered app code | CWE-494 | Subresource integrity on the page's scripts and styles, and a published hash of every file of a reproducible build (**M-40**) |
+| Credential stuffing and password spraying | CWE-307 | argon2id, limits per source and for the whole instance, common and patterned passwords refused (`auth.test.ts`, `password-policy.test.ts`) |
+| Account enumeration | CWE-204 | Identical answers and timing for known and unknown addresses at sign-in, sign-up and reset (**M-3**, **M-6**) |
+| Two-factor brute force and code replay | CWE-307, CWE-294 | Five attempts per account in ten minutes, the pending sign-in dropped after five, the last accepted step stored (`second-factor.test.ts`, `totp.test.ts`) |
+| Session hijacking and session fixation | CWE-613, CWE-384 | `HttpOnly`, `Secure` cookies, a new session id at sign-in, 24 hours idle and 14 days in all, sign-ins listed and ended by the owner (`sessions.test.ts`) |
+| Password-reset takeover and reset poisoning | CWE-640 | Single-use links in the fragment, built from `SPINE_DOMAIN`, and a reset that replaces keys needs the second factor and a signature only the recovery kit makes (**S-38**, `reset-proof.test.ts`, `reset-second-factor.test.ts`) |
+| Rate-limit evasion by IP spoofing | CWE-348 | Only the local proxy's forwarded address is believed, and nginx overwrites the header (**S-31**, `auth.test.ts`) |
+| Insecure direct object reference (IDOR) | CWE-639 | Every store method takes the acting user; a second user tries every route (**P12**, `isolation.test.ts`) |
+| Share-link overreach | CWE-285 | A share is a sealed copy of only what its scope resolves to, and a scope that cannot be resolved shares nothing (**P2**, `slice.test.ts`, `public-share-detail.test.ts`) |
+| Approval spoofing | CWE-290 | A code made from the visitor's key is compared before approval, for a share and for a person let in (**S-40**, `share-code.test.ts`, `delegation-binding.test.ts`) |
+| Offline cracking of a stolen database | CWE-916 | Records sealed under keys the server never has; the server's credential hash is argon2id and recovery codes scrypt (**M-34**, **S-42**) |
+| Key substitution by a dishonest server | CWE-322 | Keys between accounts are bound through a one-time code, not the server's list of public keys (**S-39**, **S-41**) |
+| Downgrade attack | CWE-757 | The device holds the key-derivation settings to a floor and to what it saw before (**S-37**, `kdf-trust.test.ts`) |
+| Ciphertext swapping | CWE-345 | Authenticated encryption with each object's id and kind bound in as associated data (**M-34**) |
+| Rollback to an older state | noticed, not prevented | The device keeps the highest vault sequence it has seen and says when it is shown less (**S-43**, `persist.test.ts`) |
+| SQL injection and command injection | CWE-89, CWE-78 | Every statement is prepared with parameters, search text is quoted, column names come from a fixed list; the server runs no program on an uploaded file |
+| Path traversal and Zip Slip | CWE-22 | Zip entries read by name and never extracted to a path the archive gives (**M-14**) |
+| Decompression bombs and image bombs | CWE-409 | Caps on entry and total size, 500 pages a PDF, 25 million pixels a page and 120 million a photo (**S-55**, `rasterize-limits.test.ts`) |
+| Server-side request forgery (SSRF) | CWE-918 | The server fetches no address a user supplies |
+| Prompt injection | OWASP LLM01 | Read-only tools, proposals the person confirms, a recipient's agent held to the link in code (**M-18**, **M-20**, **M-21**, `chat-actions.test.ts`, `share-chat.test.ts`) |
+| Data exfiltration through AI output | OWASP LLM05 | No image or arbitrary link rendered from model output; the content security policy allows only Spine and its relay (**M-18**) |
+| Denial of service and denial of wallet | CWE-400, OWASP LLM10 | Caps on uploads, reads, shares, sign-ups, disk and model calls (**S-49**, **S-51**, **S-56** to **S-58**, `relay.test.ts`, `object-reads.test.ts`) |
+| Email bombing | CWE-770 | Mail limited per address and for the instance (**S-51**, `signup-caps.test.ts`) |
+| Algorithmic complexity attack | CWE-407 | A per-key limiter that stays fast however many keys it holds (**S-53**, `window-limiter.test.ts`) |
+| Compromised dependency | CWE-1395 | One lockfile, `npm ci`, a build that stops on high and critical advisories (**S-32**) |
+| Poisoned build pipeline | CWE-829 | Actions pinned by commit, a signing job that installs nothing (**S-59**, `workflows.test.ts`) |
+| Hard-coded and default secrets | CWE-798 | gitleaks on every change; startup refuses a missing, short or published secret (**P3**) |
+| Sensitive data in logs | CWE-532 | No record content or password in any log line; the relay keeps no body (`relay.test.ts`) |
+| Loose file permissions | CWE-732 | `UMask=0077` in every unit and owner-only modes in code (**S-61**, `permissions.test.ts`) |
 
 ## What Spine does not protect against
 
@@ -160,6 +191,6 @@ Stated plainly, because a security claim is only as honest as its limits:
 
 ## What an independent assessment would add
 
-An outside firm brings what a project cannot give itself: people with no stake in the result and a fresh view of the design. For Spine that means a penetration test of a running instance against the OWASP Web Security Testing Guide, a review of the cryptographic design by a specialist, and a retest of the findings, ending in a letter that says what was tested and what remained. When that is done its report will be published here. Until then, everything on this page can be checked by anyone: the code, the tests and [SECURITY.md](../SECURITY.md) are open.
+An outside firm brings what a project cannot give itself: people with no stake in the result and a fresh view of the design. For Spine that means a penetration test of a running instance against the OWASP Web Security Testing Guide, a review of the cryptographic design by a specialist, and a retest, ending in a letter that says what was tested and what remained. When that is done its report will be published here. Until then, everything on this page can be checked by anyone: the code, the tests and [SECURITY.md](../SECURITY.md) are open.
 
 To report a vulnerability, see [SECURITY.md](../SECURITY.md#reporting-a-vulnerability).
