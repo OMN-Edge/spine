@@ -227,7 +227,7 @@ The owner photographs a letter and uploads the picture.
 
 - The page says, before the upload, that a photo is sent to the model provider (named) to be read.
 - The photo is read by the model directly; local OCR is not tried first.
-- A photo taken sideways (the phone's orientation flag) is shown and read upright, and a very large photo is reduced before it is sent. The original is kept as it was.
+- A photo taken sideways (the phone's orientation flag) is shown and read upright, and a very large photo is reduced before it is sent. The original is kept as it was. A photo that declares more than 120 million pixels is refused rather than decoded.
 - It becomes a one-page upload with the usual title, details and review.
 - With image reading off, the owner is told the photo needs it, and nothing leaves the machine.
 
