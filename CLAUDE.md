@@ -131,6 +131,9 @@ npm run test:coverage -w spine-server
 
 # The checks CI runs (tests, typecheck, dependency audit, gitleaks, semgrep): needs `brew install gitleaks semgrep` for `scan`
 ./scripts/check.sh [server|web|scan|all]
+
+# What a running host looks like (modes, ports, units, space, a restore drill; reads only): on the host, or `outside <domain>` for TLS and headers
+./scripts/host-report.sh [inside | outside <host>...]
 ```
 
 ## Architecture
