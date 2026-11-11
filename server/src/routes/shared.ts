@@ -21,10 +21,12 @@ import { issueToken } from '../relay/token.js';
 import { relaySettings, relayEnv } from './relay.js';
 import { windowLimiter } from '../rate-limit.js';
 import { logger } from 'spine-core/logger.js';
-import { chargeLink, linksUsedUp } from '../billing/links.js';
+import { chargeLink, linksRefuse } from '../billing/links.js';
 
 /** What a link answers when its owner's plan has used up the month's views or bytes. */
 const LINK_LIMIT = { error: 'this link has reached its limit for the month; it opens again next month', code: 'link_limit' } as const;
+/** What it answers past a hidden fair-use ceiling: neutral, and with no number or time. */
+const LINK_PAUSED = { error: 'this link is not available just now', code: 'fair_use' } as const;
 
 /** What a failure of something done after the answer, with nobody waiting on it, leaves: a line, with the reason and no content. */
 const later = (what: string) => (err: unknown) => logger.warn(`${what} failed`, { error: err instanceof Error ? err.message : String(err) });
@@ -312,7 +314,7 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
   // ── The public ───────────────────────────────────────────────────────────────────────────────────────────────────────────
 
   // The plan's views and bytes for a month (billing/links.ts): past them a link stays live and refuses its readers until the next month; a card never.
-  const limited = async (bundle: { kind: string; userId: string }) => bundle.kind === 'share' && (await linksUsedUp(bundle.userId));
+  const limited = async (bundle: { kind: string; userId: string }) => (bundle.kind === 'share' ? await linksRefuse(bundle.userId) : null);
 
   const read = { config: { rateLimit: opts.readPerSource ?? { max: 60, timeWindow: '1 minute' } } };
 
@@ -327,7 +329,8 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     const bundle = await live(req.params.id);
     if (!bundle) return reply.status(404).send({ error: 'not found' });
     if (bundle === 'ended') return reply.status(410).send({ error: 'this link is no longer active', ended: true });
-    if (await limited(bundle)) return reply.status(429).send(LINK_LIMIT);
+    const refused = await limited(bundle);
+    if (refused) return reply.status(429).send(refused === 'plan' ? LINK_LIMIT : LINK_PAUSED);
     return sendSealed(req, reply, `bundle:${bundle.id}`, () => streamBundle(bundle.id), bundle.kind === 'share' ? { userId: bundle.userId, view: true } : undefined);
   });
 
@@ -335,7 +338,8 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     const bundle = await live(req.params.id);
     const name = req.params.n;
     if (!bundle || bundle === 'ended' || !BLOB_NAME.test(name)) return reply.status(bundle === 'ended' ? 410 : 404).send({ error: bundle === 'ended' ? 'this link is no longer active' : 'not found' });
-    if (await limited(bundle)) return reply.status(429).send(LINK_LIMIT);
+    const refused = await limited(bundle);
+    if (refused) return reply.status(429).send(refused === 'plan' ? LINK_LIMIT : LINK_PAUSED);
     return sendSealed(req, reply, `blob:${bundle.id}`, () => streamBlob(bundle.id, name), bundle.kind === 'share' ? { userId: bundle.userId, view: false } : undefined);
   });
 

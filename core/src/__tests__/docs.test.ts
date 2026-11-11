@@ -25,6 +25,7 @@ const read = (f: string) => fs.readFileSync(path.join(repo, f), 'utf8');
 /** Named in a document on purpose and not in the code. */
 const ABSENT_ON_PURPOSE = new Set([
   'manifest.json', // inside an export zip
+  'fair-use.json', // the operator's file of fair-use ceilings, in the data directory: it is theirs, not the repository's
   'hashes.txt', '/hashes.txt', // made by the web build (web/scripts/seal-build.mjs) and served with the app
   '/.well-known/security.txt', // served by nginx, from nginx/
   'connection.js', // a file of @langchain/google-common, cited as the reason for a control

@@ -3,6 +3,7 @@ import { normaliseLicenseCode } from '../doctors.js';
 import { getStore, type NewExtractedField, type NewMeasurement, type PageSummary, type Store } from '../store/index.js';
 import { normaliseMeasurements } from './measurements.js';
 import { extractFields } from './extraction.js';
+import { proposeReminders } from '../reminders/index.js';
 import { groundSnippet } from './grounding.js';
 import { EXTRACTION_FALLBACK } from '../llm/types.js';
 import { modelWait } from '../llm/availability.js';
@@ -74,6 +75,7 @@ export function mergeExtractions(extractions: ExtractionResult[]): ExtractionRes
   return {
     ...extractions[0],
     suggested_tags: [...new Set(extractions.flatMap(e => e.suggested_tags))],
+    follow_ups: [...new Map(extractions.flatMap(e => e.follow_ups ?? []).map(f => [f.text, f] as const)).values()],
     fields,
   };
 }
@@ -212,6 +214,8 @@ export async function storeReading(tx: Store, userId: string, documentId: string
     const id = await tx.doctors.upsert(userId, { name: doctor.name, specialty: doctor.specialty, clinic: reading.extraction.provider, licenseCode: doctor.code }, now);
     if (id) await tx.doctors.link(userId, documentId, id, doctor.role, 'text', normaliseLicenseCode(doctor.code));
   }
+  // A follow-up the document asks for, as a reminder for the owner to confirm (`reminders/index.ts`): proposed, never made on its own.
+  await proposeReminders(tx, userId, documentId, reading.extraction);
 }
 
 /**

@@ -40,12 +40,14 @@ export default function Pricing() {
               <h2 className="text-base font-semibold text-gray-900 pt-2">{t('Premium')} · {t('{year} a year or {month} a month', { year: money(prices.premium.year), month: money(prices.premium.month) })}</h2>
               <ul className="list-disc pl-5 space-y-1">
                 <li>{t('AI reading within fair use: about 40 pages a month')}</li>
-                <li>{t('Questions about your records, and translation of your documents, as often as you need within fair use')}</li>
+                <li>{t('Questions about your records and translation of your documents: no monthly limit for normal use')}</li>
                 <li>{t('5 GB of storage')}</li>
                 <li>{t('Translation of your documents and of what a doctor opens')}</li>
                 <li>{t('Questions about your records, connections between documents, and related documents')}</li>
-                <li>{t('As many share links as you need, and approving visitors before they see one')}</li>
+                <li>{t('Share links, and approving visitors before they see one: no monthly limit for normal use')}</li>
               </ul>
+
+              <p className="text-xs text-gray-500">{t('We may slow or pause automated or abusive use. This never affects normal use of your own records.')}</p>
 
               {pricing.family && (
                 <>

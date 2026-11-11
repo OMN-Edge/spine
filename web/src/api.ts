@@ -652,6 +652,20 @@ export type FamilyView =
   | { enabled: true; role: 'member'; organizer_email: string; profiles: { used: number; limit: number }; cooldown_days: number }
   | { enabled: true; role: 'organizer'; seats: { used: number; limit: number }; members: Array<{ id: string; email: string; joined_at: string }>; invites: Array<{ id: string; created_at: string; expires_at: string }>; profiles: { used: number; limit: number }; invite_days: number; cooldown_days: number };
 
+/** A follow-up a document asks for: proposed from what it says, a reminder once the owner confirms its date and words. */
+export interface Reminder {
+  id: string;
+  document_id: string;
+  document_title: string | null;
+  document_date: string | null;
+  text: string;
+  due_on: string;
+  status: 'proposed' | 'confirmed' | 'dismissed' | 'done';
+  on_page: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface EmergencyView {
   card: import('spine-core/emergency').CardContent;
   updated_at: string | null;
@@ -1139,6 +1153,12 @@ export const api = {
     state: () => req<{ loaded: boolean; processing: boolean }>('/api/demo'),
     load: (language: 'en' | 'ro') => post<{ loaded: boolean; processing: boolean }>('/api/demo', { language }),
     remove: () => del<{ removed: boolean }>('/api/demo'),
+  },
+
+  reminders: {
+    list: () => req<{ reminders: Reminder[]; max: number }>('/api/reminders'),
+    update: (id: string, change: { status?: Reminder['status']; text?: string; due_on?: string }) => put<Reminder>(`/api/reminders/${encodeURIComponent(id)}`, change),
+    remove: (id: string) => del<{ ok: boolean }>(`/api/reminders/${encodeURIComponent(id)}`),
   },
 
   episodes: {

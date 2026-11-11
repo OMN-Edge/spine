@@ -4,8 +4,8 @@ import { newVisitorKeys, sharePassCheck, unwrapShareKey } from './keys';
 import { visitorCode } from 'spine-core/share-code';
 
 /** Where the recipient's page stands with a link: found out from the server, then, with the key, opened in the page's own core. */
-/** `limit`: the owner's plan has used up the month's views or bytes of its links (the link opens again next month). */
-export type ShareAccess = 'checking' | 'gone' | 'needed' | 'pending' | 'denied' | 'open' | 'broken' | 'limit';
+/** `limit`: the owner's plan has used up the month's views or bytes of its links (the link opens again next month). `paused`: a fair-use ceiling, said without a reason or a time. */
+export type ShareAccess = 'checking' | 'gone' | 'needed' | 'pending' | 'denied' | 'open' | 'broken' | 'limit' | 'paused';
 
 
 const keyName = (id: string) => `spine-share-key:${id}`;
@@ -43,7 +43,7 @@ export function useShareAccess(shareId: string | undefined): { state: ShareAcces
     } catch (err) {
       remember(keyName(id), null);
       const status = (err as { status?: number }).status;
-      if (live.current) setState(status === 410 || status === 404 ? 'gone' : status === 429 ? 'limit' : 'broken');
+      if (live.current) setState(status === 410 || status === 404 ? 'gone' : status === 429 ? ((err as { code?: string }).code === 'fair_use' ? 'paused' : 'limit') : 'broken');
     }
   }, []);
 

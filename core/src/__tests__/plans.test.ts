@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { COUNTS, FAIR_USE_MESSAGES, FAIR_USE_TRANSLATED_PAGES, IMPORT_PAGES, PAGE, PAST_DUE_GRACE_DAYS, PLANS, TASK_METER, TRANSLATED_PAGE, meterKey, SEAT_COOLDOWN_DAYS, SEAT_INVITES_WAITING, SEAT_INVITE_DAYS, entitlementsOf, planOf, subscriptionEntitles, taskCost, trialEnd, usagePeriod } from '../billing/plans.js';
+import { readFileSync } from 'node:fs';
+import { COUNTS, IMPORT_PAGES, PAGE, PAST_DUE_GRACE_DAYS, PLANS, TASK_METER, TRANSLATED_PAGE, meterKey, SEAT_COOLDOWN_DAYS, SEAT_INVITES_WAITING, SEAT_INVITE_DAYS, entitlementsOf, planOf, subscriptionEntitles, taskCost, trialEnd, usagePeriod } from '../billing/plans.js';
 import type { SubscriptionRecord } from '../store/types.js';
 
 const DAY = 86_400_000;
@@ -59,7 +60,7 @@ describe('the family plan', () => {
     expect(family).toMatchObject({ plan: 'family', profiles: 6, delegation: true, translation: true, chat: true, vaultBytes: 25 * 1024 ** 3, liveShares: null });
     // The pool is twice Premium's, and each account is held to Premium's.
     expect(family.allowance).toMatchObject({ pages: 80, import: 2 * IMPORT_PAGES, messages: Infinity, translated: Infinity });
-    expect(family.memberCap).toMatchObject({ pages: 40, import: IMPORT_PAGES, messages: Infinity, translated: Infinity, chat: Infinity, translation: Infinity });
+    expect(family.memberCap).toMatchObject({ pages: 40, import: IMPORT_PAGES, messages: Infinity, translated: Infinity });
     // Only the free plan limits links, views and traffic.
     expect(family).toMatchObject({ linkViews: Infinity, linkBytes: Infinity });
     const premium = entitlementsOf(created(400), sub({ current_period_end: new Date(now.getTime() + 30 * DAY).toISOString() }), now);
@@ -104,10 +105,12 @@ describe('the meters', () => {
     expect(meterKey('import', free, now, true)).toBe('pool:once:import');
   });
 
-  it('give Premium the pages of the plan table, a fair-use ceiling no use of an archive meets, and Free no questions and no translation', () => {
-    expect(PLANS.premium.allowance).toMatchObject({ pages: 40, import: IMPORT_PAGES, chat: FAIR_USE_MESSAGES * 800, translation: FAIR_USE_TRANSLATED_PAGES * TRANSLATED_PAGE, reading: 40 * PAGE * 2 });
+  it('give Premium the pages of the plan table, no ceiling of any kind in what a browser is sent, and Free no questions and no translation', () => {
+    expect(PLANS.premium.allowance).toMatchObject({ pages: 40, import: IMPORT_PAGES, messages: Infinity, translated: Infinity, reading: Infinity, chat: Infinity, translation: Infinity });
     expect(PLANS.free).toMatchObject({ chat: false, translation: false });
-    expect(PLANS.free.allowance).toMatchObject({ pages: 10, chat: 0, translation: 0 });
+    expect(PLANS.free.allowance).toMatchObject({ pages: 10, messages: 0, translated: 0 });
+    // The hidden fair-use ceilings are the server's configuration (`server/src/billing/fair-use.ts`); none is in what the browser bundles.
+    expect(readFileSync(new URL('../billing/plans.ts', import.meta.url), 'utf8')).not.toMatch(/CEILING|FAIR_USE|BACKSTOP/);
   });
 });
 

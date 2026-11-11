@@ -63,6 +63,10 @@ export function sourceFileRepository(db: Database): SourceFileRepository {
       AND (from_document_id IN (SELECT id FROM documents WHERE source_file_id = ? AND user_id = ?)
         OR to_document_id IN (SELECT id FROM documents WHERE source_file_id = ? AND user_id = ?))
   `);
+  const deleteReminders = db.prepare(`
+    DELETE FROM reminders WHERE user_id = ?
+      AND document_id IN (SELECT id FROM documents WHERE source_file_id = ? AND user_id = ?)
+  `);
   const deleteRemoved = db.prepare(`
     DELETE FROM removed_readings WHERE user_id = ?
       AND document_id IN (SELECT id FROM documents WHERE source_file_id = ? AND user_id = ?)
@@ -78,6 +82,7 @@ export function sourceFileRepository(db: Database): SourceFileRepository {
     deleteTranslations.run(userId, id, userId);
     deleteEmbeddings.run(userId, id, userId);
     deleteLinks.run(userId, id, userId, id, userId);
+    deleteReminders.run(userId, id, userId);
     deleteRemoved.run(userId, id, userId);
     deletePlan.run(id, userId);
     const removed = deleteDocuments.run(id, userId).changes;

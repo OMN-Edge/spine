@@ -1,4 +1,4 @@
-import type { AccountsStore } from 'spine-core/store/types.js';
+import type { AccountsStore, SubscriptionRecord } from 'spine-core/store/types.js';
 import { entitlementsOf, type Entitlements } from 'spine-core/billing/plans.js';
 
 /**
@@ -12,6 +12,8 @@ export interface Standing {
   holder: string;
   /** `organizer`: pays for a plan with seats; `member`: holds a seat in another's plan; `none`: neither. */
   seat: 'organizer' | 'member' | 'none';
+  /** The subscription the plan is from (the organizer's, for a member), which says when the billing year began; null on the trial and the free plan. */
+  subscription: SubscriptionRecord | null;
 }
 
 export async function standingOf(store: AccountsStore, userId: string, now: Date): Promise<Standing | null> {
@@ -21,10 +23,12 @@ export async function standingOf(store: AccountsStore, userId: string, now: Date
   if (membership) {
     const organizer = await store.users.findById(membership.organizer_id);
     if (organizer) {
-      const shared = entitlementsOf(organizer, await store.billing.get(organizer.id), now);
-      if (shared.plan === 'family') return { entitlements: shared, holder: organizer.id, seat: 'member' };
+      const sub = await store.billing.get(organizer.id);
+      const shared = entitlementsOf(organizer, sub, now);
+      if (shared.plan === 'family') return { entitlements: shared, holder: organizer.id, seat: 'member', subscription: sub };
     }
   }
-  const own = entitlementsOf(user, await store.billing.get(userId), now);
-  return { entitlements: own, holder: userId, seat: own.seats > 1 ? 'organizer' : 'none' };
+  const ownSub = await store.billing.get(userId);
+  const own = entitlementsOf(user, ownSub, now);
+  return { entitlements: own, holder: userId, seat: own.seats > 1 ? 'organizer' : 'none', subscription: ownSub };
 }

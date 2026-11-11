@@ -891,6 +891,11 @@ On a paid plan the Upload page offers "I am importing an archive: read it from m
 
 Status: auto (`billing`: an import drawn from the allowance, then the month, ignored where there is none; `family`: the pool and an account's part; `plans`: the key that is not forgotten); `ImportAllowance` is not covered by a test of its own.
 
+### 13.2f An account reaches a hidden ceiling
+Nobody who uses an archive as it is meant to be used meets one, and none is ever shown: not on the account page, in a message or on the pricing page. An account that does (an automated or hostile one) has that one action refused with "This account has reached its fair-use limit. Contact support." while everything else it does goes on as before, and the same model answers at every volume; a question or translation already begun is finished. A share link past one says only "This link is not available just now. Try again later." The ceilings are monthly (the burst guard) and yearly (over the billing year of an annual subscription, otherwise the last twelve months), and a household's are counted together. The operator changes them in a file without a release, is told by mail and in the log when an account passes about 15 euros of AI cost in a month or 80% of a ceiling, and reads what each account used with `npm run cli -- usage`.
+
+Status: auto (`fair-use`: the file and a changed value, the refusal and what still works, the monthly and yearly windows, a billing year and its renewal, a household, links, that nothing is shown, the cost counted, the alerts and the report).
+
 ### 13.3 Hear when it opens
 While accounts cannot be made, the front page can ask for an address and says what it is kept for. The operator reads the list with `waitlist` and writes once.
 
@@ -1006,6 +1011,23 @@ Status: auto (`delegation`: the grants that remain; `vault.e2e`: two guardians, 
 
 ---
 
+## 16. Follow-up reminders
+
+### 16.1 A document says to come back
+When a document says, in so many words, to come back or repeat something ("control peste 3 luni", "repeat in March 2027"), reading it proposes a reminder, and "Reminders" in the More menu shows it under "To confirm": the words as the document has them (editable), a date worked out from the document's date (editable), and the document it comes from. Nothing is inferred: a recommendation with no time given, a guideline, a result proposes nothing, and a date already behind the person is not proposed. "Set the reminder" confirms it with the words and date as they are then; "Not needed" dismisses it for good, even if the document is read again; a document read again proposes nothing twice. A confirmed reminder is under "Coming up" with "Mark done" and "Delete"; done ones are kept below, and a document's deletion takes its reminders with it. Every plan has them, the free plan too.
+
+Status: auto (`reminders`: proposing, the dates, confirming, refusing what is not a date or words, deletion with the document; `continuation`: the reading of a follow-up and a reading that leaves it out); real browser (`check:app`: a document that says to come back is proposed, confirmed, marked done, and the server is told).
+
+### 16.2 The day it is due
+On the day, the owner is mailed a line: "A reminder you set in Spine is due. Sign in to see it. This message does not say what it is about." (several on one day: "3 reminders in Spine are due"), once for the day and never with a word of what for. Whoever looks after the person, a guardian or the person themselves with an account of their own, is mailed too; someone who can only read is not, and neither is an account that is no longer let in. A reminder moved to another day is mailed on the new one, and one told again with the same date is not mailed again. If the mail cannot be sent it is tried again at the next hour; where the instance has no mailer nothing is sent and nothing is lost. A profile taken over at eighteen takes its reminders to the person, and the old owner is not mailed about them.
+
+Status: auto (`reminder-dates`: the day and not before, once, a moved date, a failed mail and none at all, a guardian and a viewer, and the account that owns the dates; `delegation`: the take-over at eighteen).
+
+### 16.3 What the server is told
+For each confirmed reminder whose document is still there, the server is told an id, a day and which person it is of, and never the words; a change, a done or a deleted reminder, a document set aside or deleted, all reach it within half a minute, and at most 500 reminders are kept for an account.
+
+Status: auto (`reminders`: what is told and when, a host that fails, none where there is no host; `reminder-dates`: replacing a profile's dates and the limit).
+
 ## Gaps found while writing this
 
 Found by checking each scenario against the code.
@@ -1017,4 +1039,4 @@ Still open:
 
 ## Not covered yet
 
-Things people will reasonably ask for that no scenario above promises: other photo formats such as WebP where the browser cannot draw them, signed exports (an imported export is believed; SECURITY.md S-26), reminders for follow-ups the documents mention, sharing a chart, and merging two uploads' history. Add a scenario when one is wanted.
+Things people will reasonably ask for that no scenario above promises: other photo formats such as WebP where the browser cannot draw them, signed exports (an imported export is believed; SECURITY.md S-26), reminders on the device itself rather than by mail, sharing a chart, and merging two uploads' history. Add a scenario when one is wanted.

@@ -18,6 +18,7 @@ import DocumentPage from './pages/DocumentPage';
 import Search from './pages/Search';
 import Trends from './pages/Trends';
 import Episodes from './pages/Episodes';
+import Reminders from './pages/Reminders';
 import Scan from './pages/Scan';
 import Pricing from './pages/Pricing';
 import Emergency from './pages/Emergency';
@@ -372,6 +373,7 @@ export default function App() {
         <Route path="/review/:id" element={<ReviewRedirect />} />
         <Route path="/trends" element={<PrivateRoute><Trends /></PrivateRoute>} />
         <Route path="/episodes" element={<PrivateRoute><Episodes /></PrivateRoute>} />
+        <Route path="/reminders" element={<PrivateRoute inDemo={false}><Reminders /></PrivateRoute>} />
         <Route path="/scan" element={<PrivateRoute inDemo={false}><Scan /></PrivateRoute>} />
         <Route path="/doctors" element={<PrivateRoute><Doctors /></PrivateRoute>} />
         <Route path="/library" element={<PrivateRoute><Library /></PrivateRoute>} />

@@ -10,6 +10,7 @@ import { ThemeSwitcher } from './ThemeSwitcher';
 /** The pages that are not in the bar itself: what was read, gathered, and the card for an emergency. */
 export const MORE_LINKS = [
   { to: '/episodes', label: msg('Episodes') },
+  { to: '/reminders', label: msg('Reminders') },
   { to: '/trends', label: msg('Trends') },
   { to: '/doctors', label: msg('Doctors') },
   { to: '/library', label: msg('Library') },

@@ -224,8 +224,13 @@ describe('letting another account into a profile', () => {
       expect((await app.inject({ method: 'PUT', url: `/api/shared/${CARD}`, headers: { cookie: owner, 'content-type': 'application/octet-stream', 'x-spine-pass-check': 'c'.repeat(43), 'x-spine-kind': 'card' }, payload: Buffer.from('a sealed card') })).statusCode).toBe(201);
       expect((await call('POST', `/api/shared/${CARD}/take`, teen.cookie)).statusCode).toBe(404);
 
+      // The dates of the child's reminders are the owner's until the promotion (SECURITY.md M-53): they are mailed to whoever looks after the child.
+      expect(await getAccountsStore().reminderDates.replace(OWNER_ID, child, [{ id: 'reminder-promoted-01', dueOn: '2031-01-01' }], 500)).toBe('ok');
       const moved = await call('POST', `/api/delegations/${asSelf}/promote`, teen.cookie, promoteBody(['object-c-0001'], [{ id: asGuardian }]));
       expect(moved.statusCode).toBe(200);
+      // After it they are the person's own, and the old owner is not mailed about them.
+      expect(await getAccountsStore().reminderDates.count(teen.id)).toBe(1);
+      expect(await getAccountsStore().reminderDates.replace(OWNER_ID, child, [], 500)).toBe('ok');
       expect((await call('GET', '/api/delegations', owner)).json().owned.some((g: { id: string }) => g.id === asSelf)).toBe(false); // a promoted grant is not the old owner's to see
       expect((await call('POST', `/api/delegations/${asSelf}/revoke`, owner)).statusCode).toBe(404);
       expect((await call('POST', `/api/shared/${CARD}/take`, guardian.cookie)).statusCode).toBe(404); // not the person

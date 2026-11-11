@@ -252,6 +252,18 @@ CREATE TABLE IF NOT EXISTS ai_usage (
   PRIMARY KEY (user_id, period)
 );
 
+-- The dates of the follow-up reminders an account's devices have told it (SECURITY.md M-53): an id and a day for each, and which profile it is of, never
+-- the words, which stay sealed in the records. It is how the server knows whom to mail on the day, and it mails without saying what it is about.
+CREATE TABLE IF NOT EXISTS reminder_dues (
+  user_id TEXT NOT NULL REFERENCES users(id),
+  id TEXT NOT NULL,
+  profile_id TEXT NOT NULL,
+  due_on TEXT NOT NULL,
+  mailed_on TEXT, -- when the mail for it was sent (or claimed): null until then
+  PRIMARY KEY (user_id, id)
+);
+CREATE INDEX IF NOT EXISTS idx_reminder_dues_due ON reminder_dues(due_on);
+
 -- Random ids of the chat questions an account asked lately (the device makes one for each question and sends it with every call of it), so a question
 -- is counted once however many calls it takes; kept two days. Only a random id, never a word of the question.
 CREATE TABLE IF NOT EXISTS ai_seen (

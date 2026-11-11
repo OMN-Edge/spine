@@ -121,7 +121,7 @@ describe('seats in a shared plan', () => {
       expect(await gate.admit(member.id, 'extraction')).toMatchObject({ code: 'allowance_used' });
       expect(await gate.admit(payer.id, 'extraction')).toBeNull();
       // Questions and translation are not capped for an account: only added pages are.
-      await store().usage.aiAdd(member.id, `${month}:messages`, 100_000);
+      await store().usage.aiAdd(member.id, `${month}:messages`, 1_000);
       expect(await gate.admit(member.id, 'agent', { work: 'question-dddd-0004' })).toBeNull();
       expect(await gate.admit(member.id, 'translation', { work: 'translation-dddd-4', pages: 50 })).toBeNull();
       // The pool itself is the plan’s: when its pages are used up nobody adds more, whatever their own meter says.

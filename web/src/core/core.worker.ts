@@ -124,6 +124,13 @@ async function openProfile(profileId: string, listed: NonNullable<typeof cachedL
     onChanged: () => (self as unknown as Worker).postMessage({ id: 0, changed: true } satisfies FromWorker),
     onSaveState: state => (self as unknown as Worker).postMessage({ id: 0, save: state } satisfies FromWorker),
     onPeople: () => void peopleChanged().catch(err => console.warn('the list of people could not be read again:', (err as Error)?.message)),
+  }, {
+    // The dates of this person's reminders go to the server for the day's mail: through the account's own route, or a guardian's through the grant (a viewer's do not).
+    reminders: view && knownProfiles.find(p => p.id === profileId)?.shared?.role === 'viewer' ? undefined : async items => {
+      const url = view ? `/api/delegated/${encodeURIComponent(profileId.replace(/^grant:/, ''))}/reminder-dates` : '/api/reminder-dates';
+      const res = await fetch(url, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...(view ? {} : { profile: records }), items: items.map(i => ({ id: i.id, due_on: i.dueOn })) }) });
+      if (!res.ok) throw new Error(`the dates of the reminders were not taken (${res.status})`);
+    },
   });
 }
 

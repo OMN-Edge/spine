@@ -78,6 +78,7 @@ export interface AccountsStore {
   waitlist: WaitlistRepository;
   delegations: DelegationRepository;
   family: FamilyRepository;
+  reminderDates: ReminderDateRepository;
 
   /**
    * Ingestion writes a document, its tags and its fields together; a partial
@@ -136,6 +137,7 @@ export interface RecordsStore {
   regroupPlans: RegroupPlanRepository;
   guide: GuideRepository;
   emergency: EmergencyRepository;
+  reminders: ReminderRepository;
   matchDecisions: MatchDecisionRepository;
   changes: ChangeLog;
   files: FileRegistryRepository;
@@ -906,6 +908,19 @@ export interface FamilyRepository {
   leave(userId: string, now: string): Promise<boolean>;
 }
 
+/**
+ * The dates of the follow-up reminders an account's devices have told the server (SECURITY.md **M-53**): an id and a day for each, with the profile it is
+ * of. Never the words. The server mails the account, and whoever looks after the profile, on the day, without saying what it is about.
+ */
+export interface ReminderDateRepository {
+  /**
+   * Makes the dates held for one profile of the account these: a date not named is dropped, a changed one is mailed again. `max` bounds all the
+   * account holds; past it nothing is changed and `too_many` is answered.
+   */
+  replace(userId: string, profileId: string, items: Array<{ id: string; dueOn: string }>, max: number): Promise<'ok' | 'too_many'>;
+  count(userId: string): Promise<number>;
+}
+
 export interface BillingRepository {
   get(userId: string): Promise<SubscriptionRecord | null>;
   /** The provider's side (a webhook) names a subscription or a customer, not a user: the fifth and sixth lookups with no acting user (SECURITY.md **M-45**). */
@@ -1037,8 +1052,10 @@ export interface UsageRepository {
   spend(userId: string, day: string, limit: number): Promise<number | null>;
   /** AI processing the account has used under a key (`billing/plans.ts`: `meterKey`: a meter's, and a plan's pool under the account that pays), in thousandths of a page. */
   aiUsed(userId: string, period: string): Promise<number>;
-  /** Adds what a finished call cost; answers the new total. Keys of the account's that are of an earlier month are forgotten. */
+  /** Adds what a finished call cost; answers the new total. Keys of the account's that are more than thirteen months old are forgotten (a yearly ceiling sums the twelve months behind it). */
   aiAdd(userId: string, period: string, amount: number): Promise<number>;
+  /** The sum of an account's counts under several keys (the months of a window), 0 for any it has none under. */
+  aiUsedMany(userId: string, periods: string[]): Promise<number>;
   /** Whether the account has already been counted for this random id (a chat question), without counting it. */
   seen(userId: string, key: string): Promise<boolean>;
   /** Notes the id at `at` and answers whether it is new (true) or was there already; ids older than two days are forgotten. Atomic. */
@@ -1271,6 +1288,31 @@ export interface EmergencyCardRow {
 
 export interface EmergencyScan { id: string; at: string; country: string | null }
 
+/** A reminder: a follow-up a document asks for, as the document words it, and when. */
+export interface ReminderRow {
+  id: string;
+  document_id: string;
+  text: string;
+  due_on: string;
+  /** `proposed` until the owner confirms its date and words; `dismissed` is never proposed again; `done` is kept for the record. */
+  status: 'proposed' | 'confirmed' | 'dismissed' | 'done';
+  on_page: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReminderRepository {
+  list(userId: string): Promise<ReminderRow[]>;
+  get(userId: string, id: string): Promise<ReminderRow | null>;
+  /** Proposes reminders for a document. One with the same words is left as it is, whatever became of it, so a document read again proposes nothing twice. Answers how many were new. */
+  propose(userId: string, documentId: string, items: Array<{ id: string; text: string; dueOn: string; sourcePage: number | null }>, now: string): Promise<number>;
+  /** Changes the words, the date or the state; answers the row, or null when there is none. */
+  update(userId: string, id: string, changes: { text?: string; dueOn?: string; status?: ReminderRow['status'] }, now: string): Promise<ReminderRow | null>;
+  remove(userId: string, id: string): Promise<boolean>;
+  /** The confirmed ones whose document is still shown: what the server is told (a date, never the words). */
+  confirmed(userId: string): Promise<Array<{ id: string; due_on: string }>>;
+}
+
 export interface EmergencyRepository {
   get(userId: string): Promise<EmergencyCardRow | null>;
   /** Saves what is written on the card; the published id and key are kept. */
@@ -1462,6 +1504,13 @@ export interface MaintenanceRepository {
   failStalledSourceFiles(keep?: string[]): Promise<number>;
   /** Startup: the uploads, grouping confirmed and not set aside, that still hold a document never read (`needs_reading`): their reading goes on. */
   uploadsWithUnreadDocuments(): Promise<Array<{ id: string; user_id: string }>>;
+  /**
+   * The reminders due on or before `today` and not mailed yet, marked mailed at `at` in the same step, as who to mail and how many each: the account, and
+   * every account let in to the profile as a guardian or as the person themselves (a viewer is not mailed). Run by the process itself.
+   */
+  claimDueReminders(today: string, at: string): Promise<Array<{ recipient: string; n: number }>>;
+  /** Takes back a claim (a mail could not be sent), so the next run tries again. */
+  releaseReminders(at: string): Promise<number>;
   /** Every account's sign-in rows (browser, address) started before the first cutoff or idle since the second, so one that is never signed in again does not keep them (privacy notice). */
   pruneSessions(startedBefore: string, idleSince: string, devicesFirstSeenBefore?: string, cookiesExpiredBefore?: string): Promise<number>;
 }

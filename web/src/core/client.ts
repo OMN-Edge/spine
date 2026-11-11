@@ -265,7 +265,7 @@ export const deviceFetch = (url: string, init?: RequestInit) => device.fetch(url
  * ciphertext and metadata). What a recipient reads of a share (`/api/share/<id>/...`) is answered by the reader's core; every other
  * `/api` call is the owner's core.
  */
-const SERVER_SIDE = /^\/(api\/(auth|account|admin|legal|vault|shared|enrol|delegations|delegated|relay|demo-relay)\/|api\/(billing|pricing|family|waitlist|delegations|trust-anchors)(\/|\?|$)|share\/)/;
+const SERVER_SIDE = /^\/(api\/(auth|account|admin|legal|vault|shared|enrol|delegations|delegated|relay|demo-relay)\/|api\/(billing|pricing|family|reminder-dates|waitlist|delegations|trust-anchors)(\/|\?|$)|share\/)/;
 
 /** Whether a request goes to the server rather than to one of the cores. Every route the server registers must (`routing.test.ts`). */
 export const goesToServer = (url: string): boolean => SERVER_SIDE.test(url) || !url.startsWith('/api/');

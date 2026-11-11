@@ -7,6 +7,7 @@ import { maintenanceRepository } from './maintenance.js';
 import { sharedRepository } from './shared.js';
 import { delegationRepository } from './delegations.js';
 import { familyRepository } from './family.js';
+import { reminderDateRepository } from './reminder-dates.js';
 import { cookieSessionRepository, enrolmentRepository, sessionRepository, usageRepository } from './small.js';
 import { userRepository } from './users.js';
 import { vaultRepository } from './vault.js';
@@ -79,6 +80,7 @@ function accountsOver(q: Query, begin: Begin): Omit<AccountsStore, 'close'> {
     waitlist: waitlistRepository(q),
     delegations: delegationRepository(q, begin),
     family: familyRepository(q, begin),
+    reminderDates: reminderDateRepository(q, begin),
     transaction: fn => begin((tq, nested) => fn({ ...accountsOver(tq, nested), async close() {} })),
   };
 }

@@ -78,7 +78,7 @@ export const PAGE_NAMES: Record<string, string> = {
 
 /** The pages the assistant knows only as "other", named for the "Looking at" line by their address. */
 const OTHER_PAGE_NAMES: Record<string, string> = {
-  episodes: msg('Episodes'), emergency: msg('Emergency card'), profiles: msg('People'), scan: msg('Scan'), 'share-links': msg('Share links'), 'share-requests': msg('Share links'),
+  episodes: msg('Episodes'), reminders: msg('Reminders'), emergency: msg('Emergency card'), profiles: msg('People'), scan: msg('Scan'), 'share-links': msg('Share links'), 'share-requests': msg('Share links'),
 };
 
 /** What the "Looking at" line calls the page: its screen name, or for one the assistant calls "other", the name its address gives. */

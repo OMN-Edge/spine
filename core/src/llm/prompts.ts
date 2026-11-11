@@ -279,6 +279,7 @@ Return ONLY valid JSON (no markdown):
   "ai_summary": "2-3 sentence summary of what this document contains, restating what it says in the document's own language (the same as the title), not translated. Say nothing the document does not say: no interpretation, no judgement of a result, no significance, cause or advice",
   "suggested_tags": ["a few lower-case tags; use these when one fits: ${tags.map(t => JSON.stringify(t)).join(', ')}. Add a new one (one or two words) only when none of them does"],
   "doctors": [{"name": "name as printed, without Dr./Prof./Conf. titles", "specialty": "e.g. cardiology, or null", "code": "the professional code printed with their signature, e.g. X12345, or null", "role": "author | prescriber | referrer | other"}],
+  "follow_ups": [{"text": "the instruction as the document words it, in its own language, e.g. \"control peste 3 luni\"", "after_months": 3 or null, "on_date": "YYYY-MM-DD or null", "source_snippet": "the exact phrase from the document text", "page_number": 4}],
   "fields": [
     {
       "label": "use the labels from the guide for this type when they apply, otherwise a short lowercase label",
@@ -320,5 +321,6 @@ Rules:
 - When a field lists several things (tests, vaccines, medicines), list every one the document gives, as printed
 - "confidence" is how sure you are that the value is exactly what is printed: 0.9 or more for clear print, below 0.7 for handwriting, a faded, blurred or cut-off line, or a character you could take for another (1 or 7, 0 or 6). Do not give every value the same score
 - Do not extract the patient's personal identifiers (national ID number, patient code, phone number, age)
-- Use [] for doctors, fields or measurements that the document does not have`;
+- follow_ups holds only an explicit instruction in the document to come back, repeat a test or be seen again ("control peste 3 luni", "revine in martie 2027", "repeat in 6 weeks"), with the interval in whole months as after_months when it gives one (6 weeks is 2 months, a year is 12) or the date as on_date when it gives one. Never infer one from guidelines, results or what is usual; a recommendation with no time given is not a follow-up
+- Use [] for doctors, follow_ups, fields or measurements that the document does not have`;
 }

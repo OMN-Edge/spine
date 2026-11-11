@@ -41,10 +41,11 @@ export const PRICES = {
  *
  * **Only adding is limited**: the pages read (what puts a document in the archive), the archive import and the storage. Using what is in the archive is
  * not: a person who has added a document can ask about it and have it translated, for themselves or for a doctor abroad, as often as they need,
- * so `messages` and `translated` are counted (the account page shows them) and have no allowance. Behind every count a cost meter for each kind of
- * work (`reading`, `chat`, `translation`, in thousandths of one page of reading, the unit of `taskCost`) is a hidden ceiling, high enough that
- * no use of an archive meets it and low enough that an app that does not tell the truth about what it sends, or a loop, cannot make a plan pay
- * for more than a multiple of what it was priced for.
+ * so `messages` and `translated` are counted (the account page shows them) and have no allowance. Behind them are hidden fair-use ceilings, high
+ * enough that no use of an archive meets them and low enough that an abuse of an account, or an app that does not tell the truth about what it
+ * sends, cannot make a plan pay for more than a bounded amount; they are not here, and not in what a browser is sent: the server holds them in its
+ * configuration (`server/src/billing/fair-use.ts`). The cost meters (`reading`, `chat`, `translation`, in thousandths of one page of reading, the unit
+ * of `taskCost`) are what they are counted in.
  */
 export type Count = 'pages' | 'messages' | 'translated' | 'import';
 export type Backstop = 'reading' | 'chat' | 'translation';
@@ -54,13 +55,9 @@ export const COUNTS: readonly Count[] = ['pages', 'messages', 'translated', 'imp
 export type Allowances = Record<Meter, number>;
 /** No allowance: the meter only counts. */
 export const UNLIMITED = Number.POSITIVE_INFINITY;
-/** What one page of reading, one message of chat and one translated page cost in the cost unit: how the hidden ceilings are made. */
+/** What one page of reading, one message of chat and one translated page cost in the cost unit: how a ceiling in messages or pages is counted in cost. */
 export const CHAT_MESSAGE = 800;
 export const TRANSLATED_PAGE = 630;
-/** The hidden ceilings: reading at twice what the pages allowed would cost, and, for use, a month of messages and translated pages no archive needs. */
-export const READING_BACKSTOP = 2;
-export const FAIR_USE_MESSAGES = 600;
-export const FAIR_USE_TRANSLATED_PAGES = 800;
 
 export interface Entitlements {
   plan: PlanId;
@@ -77,7 +74,7 @@ export interface Entitlements {
   /**
    * Times a month the share links of the account are opened (one is one fetch of a link's sealed copy), and bytes a month those links send to their
    * readers. Only the free plan limits them: on a paid plan a link is for whoever needs to read it, a doctor abroad included, and these are only
-   * counted, behind a hidden ceiling (`LINK_VIEWS_CEILING`, `LINK_BYTES_CEILING`). Past a limit the links stay live and open again at the next month;
+   * counted, behind a hidden ceiling the server holds. Past a limit the links stay live and open again at the next month;
    * an emergency card is never counted or stopped.
    */
   linkViews: number;
@@ -106,9 +103,6 @@ export interface Entitlements {
 }
 
 const GB = 1024 ** 3;
-/** The hidden ceilings on what share links send in a month, for plans that do not limit it: far above any use, there only against an abuse of a link. */
-export const LINK_VIEWS_CEILING = 5000;
-export const LINK_BYTES_CEILING = 50 * GB;
 
 /**
  * The one-off allowance for reading an archive (`import`): extra pages of reading, once for the life of the account (not by the month), used
@@ -116,33 +110,30 @@ export const LINK_BYTES_CEILING = 50 * GB;
  */
 export const IMPORT_PAGES = 250;
 
-/** Allowances from the counts a plan limits; the hidden ceilings are made from them and from the fair use of what is not limited. */
-const allowances = (c: { pages: number; import: number }, fair: { messages: number; translated: number }): Allowances => ({
-  // Using what has been added has no allowance where the plan includes it at all (the free plan does not: it has no questions and no translation).
-  pages: c.pages, import: c.import, messages: fair.messages > 0 ? UNLIMITED : 0, translated: fair.translated > 0 ? UNLIMITED : 0,
-  reading: c.pages * PAGE * READING_BACKSTOP,
-  chat: fair.messages * CHAT_MESSAGE,
-  translation: fair.translated * TRANSLATED_PAGE,
+/**
+ * Allowances from what a plan limits: the pages and the import. Using what was added (`messages`, `translated`) has none where the plan includes it at all (the
+ * free plan does not), and the cost meters have none here: their ceilings are the server's to hold.
+ */
+const allowances = (c: { pages: number; import: number }, uses: boolean): Allowances => ({
+  pages: c.pages, import: c.import, messages: uses ? UNLIMITED : 0, translated: uses ? UNLIMITED : 0,
+  reading: UNLIMITED, chat: UNLIMITED, translation: UNLIMITED,
 });
-const NONE = { messages: 0, translated: 0 };
-const FAIR = { messages: FAIR_USE_MESSAGES, translated: FAIR_USE_TRANSLATED_PAGES };
-const twiceFair = { messages: FAIR.messages * 2, translated: FAIR.translated * 2 };
 /** The Premium plan's allowances: also what one account of a plan with seats may add of the plan's (use is the plan's, not the account's). */
-const PREMIUM_ALLOWANCE = allowances({ pages: 40, import: IMPORT_PAGES }, FAIR);
-const FAMILY_ACCOUNT: Allowances = { ...PREMIUM_ALLOWANCE, chat: UNLIMITED, translation: UNLIMITED };
+const PREMIUM_ALLOWANCE = allowances({ pages: 40, import: IMPORT_PAGES }, true);
+const FAMILY_ACCOUNT: Allowances = PREMIUM_ALLOWANCE;
 
 /**
  * The limits of each plan: "fair use" on the pricing page and in the plan's words. Raising one later is a gift; lowering one is not.
  */
 export const PLANS: Record<PlanId, Omit<Entitlements, 'plan'>> = {
   // The trial has Premium's limits, with pages as one total for the whole trial.
-  trial: { allowance: allowances({ pages: 150, import: 0 }, FAIR), memberCap: null, aiPeriod: 'trial', vaultBytes: 5 * GB, liveShares: null, linkViews: UNLIMITED, linkBytes: UNLIMITED, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 6, documents: null, seats: 1, delegation: true },
-  free: { allowance: allowances({ pages: 10, import: 0 }, NONE), memberCap: null, aiPeriod: 'month', vaultBytes: GB, liveShares: 1, linkViews: 20, linkBytes: GB, translation: false, chat: false, linking: false, related: false, approvalMode: false, profiles: 1, documents: 50, seats: 1, delegation: false },
+  trial: { allowance: allowances({ pages: 150, import: 0 }, true), memberCap: null, aiPeriod: 'trial', vaultBytes: 5 * GB, liveShares: null, linkViews: UNLIMITED, linkBytes: UNLIMITED, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 6, documents: null, seats: 1, delegation: true },
+  free: { allowance: allowances({ pages: 10, import: 0 }, false), memberCap: null, aiPeriod: 'month', vaultBytes: GB, liveShares: 1, linkViews: 20, linkBytes: GB, translation: false, chat: false, linking: false, related: false, approvalMode: false, profiles: 1, documents: 50, seats: 1, delegation: false },
   premium: { allowance: PREMIUM_ALLOWANCE, memberCap: null, aiPeriod: 'month', vaultBytes: 5 * GB, liveShares: null, linkViews: UNLIMITED, linkBytes: UNLIMITED, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 1, documents: null, seats: 1, delegation: false },
   // Premium for up to six people, who may be children and may have accounts of their own: six accounts at most (the seats), six people in
   // all (each account's own included), and one pool for the lot (twice Premium's pages and 25 GB of storage, shared), with each account held
   // to Premium's pages. A larger plan would be another entry here.
-  family: { allowance: allowances({ pages: 80, import: 2 * IMPORT_PAGES }, twiceFair), memberCap: FAMILY_ACCOUNT, aiPeriod: 'month', vaultBytes: 25 * GB, liveShares: null, linkViews: UNLIMITED, linkBytes: UNLIMITED, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 6, documents: null, seats: 6, delegation: true },
+  family: { allowance: allowances({ pages: 80, import: 2 * IMPORT_PAGES }, true), memberCap: FAMILY_ACCOUNT, aiPeriod: 'month', vaultBytes: 25 * GB, liveShares: null, linkViews: UNLIMITED, linkBytes: UNLIMITED, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 6, documents: null, seats: 6, delegation: true },
 };
 
 const addMonths = (iso: string, months: number): Date => {

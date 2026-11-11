@@ -55,6 +55,8 @@ export function delegationRepository(q: Query, begin: Begin): DelegationReposito
         await run("INSERT INTO delegations (id, owner_user_id, profile_id, delegate_user_id, role, wrapped_key, state, created_at, updated_at, delegate_pin, owner_pin) VALUES ($1, $2, $3, $4, 'guardian', $5, 'paused', $6, $6, $7, $8)",
           [update.former.grantId, id, profileId, from, update.former.wrappedKey, now, (g.owner_pin as string | null) ?? null, (g.delegate_pin as string | null) ?? null]);
         await run("UPDATE delegations SET state = 'promoted', wrapped_key = NULL, updated_at = $1 WHERE id = $2", [now, grantId]);
+        // The reminders of the profile go with it: their dates are the new owner's to be mailed (SECURITY.md M-53).
+        await run('UPDATE reminder_dues SET user_id = $1 WHERE user_id = $2 AND profile_id = $3', [id, from, profileId]);
         await run('DELETE FROM profile_invites WHERE owner_user_id = $1 AND profile_id = $2', [from, profileId]);
         return { seq, fromUserId: from, objectIds: live };
       });

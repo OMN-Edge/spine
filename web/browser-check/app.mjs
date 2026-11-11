@@ -1250,6 +1250,29 @@ try {
     await waitFor('Chest X-ray');
   }
 
+  // Follow-up reminders (SECURITY.md M-53): the uploaded document says to come back, so a reminder is proposed; the owner confirms it with its date
+  // and words, and the server is told the date and nothing else.
+  {
+    await click('Timeline');
+    await p.click('nav button[aria-haspopup=menu]:not([title]):not([aria-label])');
+    await (await p.waitForFunction(() => [...document.querySelectorAll('[role=menu] a')].find(a => a.getAttribute('href') === '/reminders'))).asElement().click();
+    // The headings are drawn in capitals by the page's style, which is what the text of the page says; the words of a reminder are in a field.
+    const said = async (what, ms = 20000) => { for (let t = 0; t < ms; t += 250) { if ((await text()).toLowerCase().includes(what.toLowerCase())) return true; await wait(250); } return false; };
+    const proposed = await said('To confirm');
+    if (!proposed) console.log('     the reminders page says:', (await text()).replace(/\s+/g, ' ').slice(0, 900), '| at', await p.evaluate(() => location.pathname));
+    check(proposed, 'a document that says to come back is proposed as a reminder, to confirm');
+    check((await p.evaluate(() => [...document.querySelectorAll('input')].map(i => i.value))).includes('control peste 10 ani'), 'with the words the document gives, to edit');
+    await click('Set the reminder');
+    check(await said('Coming up') && (await text()).includes('Due '), 'confirming sets it, with its date');
+    let told = false;
+    for (let t = 0; t < 40000 && !told; t += 500) { told = asked.some(u => u === '/api/reminder-dates'); if (!told) await wait(500); }
+    check(told, 'and the server is told the date, in a request of its own');
+    await click('Mark done');
+    await wait(1500);
+    check(!(await text()).includes('Mark done') || (await text()).toLowerCase().includes('done'), 'a reminder can be marked done');
+    await click('Timeline');
+  }
+
   // SPINE_CHECK_SHOTS=<directory> keeps a picture of the card at each step, for looking at (never part of a normal run).
   const shot = async (page, name) => {
     if (!process.env.SPINE_CHECK_SHOTS) return;

@@ -102,7 +102,7 @@ describe('code', () => {
   // a function that must run at start and has no caller is exactly this (resumeStalledJobs was one for a long time). Each one below is
   // on purpose: a helper for tests, or an entry point for tests that wait for the work.
   const TEST_ONLY = new Set([
-    'resetEmbedder', 'resetAiReadings', 'resetChatLlm', 'resetParser', 'resetRegroupJobs', 'resetServerClock', 'resetMailer', // between tests
+    'resetEmbedder', 'resetAiReadings', 'resetChatLlm', 'resetParser', 'resetRegroupJobs', 'resetServerClock', 'resetMailer', 'resetFairUse', 'resetWatch', // between tests
     'settleLinking', 'settleSync', 'readUpload', // the same work as the started one, waiting for it
     'createStore', 'hasStoreFactory', 'currentClockOffset', 'useNodeTools', 'asPlugin', 'SLICE_BUILT', 'SLICE_NEVER', 'isListed', // test setup and contract suites
     'base32Decode', 'newRecoveryKey', // pure helpers with their own tests

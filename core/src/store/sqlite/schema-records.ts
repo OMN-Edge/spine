@@ -395,6 +395,22 @@ CREATE TABLE IF NOT EXISTS emergency_scans (
   country TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_emergency_scans_user ON emergency_scans(user_id, at);
+-- Follow-up reminders (src/reminders/): an explicit instruction in a document to come back ("control peste 3 luni"), proposed when it is read and a
+-- reminder only once the owner confirms its date and words. Kept with the records, so every device shows the same ones; never in a share. The words are
+-- the document's, restated, and stay sealed here: the server is told only a date (SECURITY.md M-53).
+CREATE TABLE IF NOT EXISTS reminders (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  document_id TEXT NOT NULL REFERENCES documents(id),
+  text TEXT NOT NULL,
+  due_on TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'proposed', -- 'proposed' | 'confirmed' | 'dismissed' | 'done'
+  on_page INTEGER, -- the page of the document that says it
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE (user_id, document_id, text)
+);
+CREATE INDEX IF NOT EXISTS idx_reminders_user ON reminders(user_id, status, due_on);
 CREATE INDEX IF NOT EXISTS idx_chat_conversations_user ON chat_conversations(user_id, updated_at);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation ON chat_messages(conversation_id, seq);
 

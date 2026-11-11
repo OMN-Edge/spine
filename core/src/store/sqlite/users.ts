@@ -150,6 +150,7 @@ export function userRepository(db: Database): UserRepository {
     'model_usage',
     'ai_usage',
     'ai_seen',
+    'reminder_dues',
     'subscriptions',
     'user_devices',
     'user_tokens',

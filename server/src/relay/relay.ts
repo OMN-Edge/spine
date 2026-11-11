@@ -230,8 +230,10 @@ export function createRelay(config: RelayConfig) {
 
     const payload = await body(req, bodyLimit(who.userId));
     if (!payload) return reply(res, 413, 'too large');
+    // What was written back, for the estimate of what the call cost (the relay keeps no content, so a count of bytes is what it has).
+    const wrote = req.socket.bytesWritten;
     const ok = isEmbed ? await runEmbed(res, payload, started) : await runTask(task as LlmTask, req, res, payload, started);
-    if (ok) await config.gate?.settle(who.userId, relayTask, payload.length, call).catch(() => log({ task: relayTask, note: 'the call could not be charged to the plan' }));
+    if (ok) await config.gate?.settle(who.userId, relayTask, payload.length, { ...call, outBytes: req.socket.bytesWritten - wrote }).catch(() => log({ task: relayTask, note: 'the call could not be charged to the plan' }));
   };
 }
 

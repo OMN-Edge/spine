@@ -80,6 +80,8 @@ export function delegationRepository(db: Database): DelegationRepository {
     db.prepare("INSERT INTO delegations (id, owner_user_id, profile_id, delegate_user_id, role, wrapped_key, state, created_at, updated_at, delegate_pin, owner_pin) VALUES (?, ?, ?, ?, 'guardian', ?, 'paused', ?, ?, ?, ?)")
       .run(u.former.grantId, delegateId, ok.profileId, ok.from, u.former.wrappedKey, now, now, (old.owner_pin as string | null) ?? null, (old.delegate_pin as string | null) ?? null);
     db.prepare("UPDATE delegations SET state = 'promoted', wrapped_key = NULL, updated_at = ? WHERE id = ?").run(now, grantId);
+    // The reminders of the profile go with it: their dates are the new owner's to be mailed (SECURITY.md M-53).
+    db.prepare('UPDATE reminder_dues SET user_id = ? WHERE user_id = ? AND profile_id = ?').run(delegateId, ok.from, ok.profileId);
     db.prepare('DELETE FROM profile_invites WHERE owner_user_id = ? AND profile_id = ?').run(ok.from, ok.profileId);
     return { seq, fromUserId: ok.from, objectIds: ok.live };
   });

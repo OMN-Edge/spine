@@ -29,7 +29,11 @@ export async function startShareCore(shareId: string, key: string): Promise<Shar
   const id = encodeURIComponent(shareId);
 
   const bundle = await fetch(`/api/shared/${id}/bundle`);
-  if (!bundle.ok) throw Object.assign(new Error(bundle.status === 410 ? 'this link is no longer active' : bundle.status === 429 ? 'this link has reached its limit for the month' : 'this link could not be opened'), { status: bundle.status });
+  if (!bundle.ok) {
+    // A link past the plan's limit (the free plan's) says so; one past a fair-use ceiling is only said to be unavailable, with no reason and no time.
+    const { code } = (await bundle.json().catch(() => ({}))) as { code?: string };
+    throw Object.assign(new Error(bundle.status === 410 ? 'this link is no longer active' : bundle.status === 429 ? 'this link is not available just now' : 'this link could not be opened'), { status: bundle.status, code });
+  }
   // A wrong key is the same failure as a changed copy: it does not open.
   const copy = JSON.parse(new TextDecoder().decode(await openPart(key, shareId, 'records', new Uint8Array(await bundle.arrayBuffer())))) as { v: number; owner: string; changes: Change[] };
   if (copy.v !== 1) throw new Error('this link was made by a newer version of Spine');

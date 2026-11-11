@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import { getAccountsStore } from 'spine-core/store/index.js';
-import { LINK_VIEWS_CEILING, linkKey, PLANS } from 'spine-core/billing/plans.js';
+import { linkKey, PLANS } from 'spine-core/billing/plans.js';
+import { fairUseOf } from '../billing/fair-use.js';
 import { buildTestApp, loginAs } from './helpers/app.js';
 import { createTestUser } from './helpers/seed.js';
 import { fakeAuthValue, fakeVaultKeys } from 'spine-core/testing/vault.js';
@@ -83,8 +84,11 @@ describe('the views and bytes of share links', () => {
     await store().usage.aiAdd(paid.id, linkKey('egress', new Date()), 10 * PLANS.free.linkBytes);
     expect((await open('aaaaaaaaaaaaaaaaaaaaaaa6')).statusCode).toBe(200);
     // Only at the hidden ceiling does it refuse.
-    await store().usage.aiAdd(paid.id, linkKey('views', new Date()), LINK_VIEWS_CEILING);
-    expect((await open('aaaaaaaaaaaaaaaaaaaaaaa6')).statusCode).toBe(429);
+    await store().usage.aiAdd(paid.id, linkKey('views', new Date()), fairUseOf('premium').monthly.linkViews);
+    const paused = await open('aaaaaaaaaaaaaaaaaaaaaaa6');
+    expect(paused.statusCode).toBe(429);
+    // Said without a reason, a number or a time: it is not the plan’s limit, and nothing is named.
+    expect(paused.json()).toEqual({ error: 'this link is not available just now', code: 'fair_use' });
     // And where there are no plans there is no limit at all.
     process.env = { ...saved };
     const owner = await account();
@@ -107,7 +111,7 @@ describe('the views and bytes of share links', () => {
     // The plan does not limit views, so a hundred more change nothing; the ceiling of a plan with seats is twice a single plan’s.
     await store().usage.aiAdd(payer.id, linkKey('views', new Date(), true), 100);
     expect((await open('aaaaaaaaaaaaaaaaaaaaaaa5')).statusCode).toBe(200);
-    await store().usage.aiAdd(payer.id, linkKey('views', new Date(), true), 2 * LINK_VIEWS_CEILING);
+    await store().usage.aiAdd(payer.id, linkKey('views', new Date(), true), fairUseOf('family').monthly.linkViews);
     expect((await open('aaaaaaaaaaaaaaaaaaaaaaa5')).statusCode).toBe(429);
   });
 

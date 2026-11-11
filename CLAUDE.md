@@ -39,6 +39,8 @@ spine/
 │       ├── episodes/       # index.ts: proposing episodes from the data (no model), scheduleEpisodes()
 │       ├── linking/        # index.ts: candidates (no model), the judge, links as proposals, the chain
 │       ├── billing/plans.ts # the plans, what each includes (seats and people among it), entitlementsOf() and taskCost(): the one place a limit is written (the server enforces, the account page shows)
+│       ├── reminders/index.ts, reminder-host.ts # follow-up reminders: proposing them from what a document says, their dates, and the port the device tells them to the server through (the words never go); routes/reminders.ts confirms them
+│       ├── plan-limits.ts  # what a plan limits that only the app can count (documents), told to the core by the page
 │       ├── emergency.ts    # the emergency card: what is on it (zod), cardText() for the offline code; routes/emergency.ts edits and publishes it through the share host
 │       ├── tags.ts         # STARTER_TAGS and cleanTag(): what a tag is and a new account starts with
 │       ├── share-scope.ts  # the only place a share-link scope is validated or resolved
@@ -60,7 +62,7 @@ spine/
 │       ├── mail/           # mailer interface: types.ts, index.ts (registry), adapters/{none,brevo}.ts
 │       ├── native/         # the Node versions of the tools the shared code asks for (poppler, Tesseract, sharp, pdfkit, yauzl, yazl, maxmind): for the tests that run the whole app on Node; none is used in production
 │       ├── objects/        # the object store the sealed bytes go to: types.ts (the port), filesystem.ts and gcs.ts (the adapters), index.ts (SPINE_OBJECTS; `useObjects` is called by `useAccountsStore`); vault-files.ts and shared-files.ts build the keys
-│       ├── billing/        # config.ts (SPINE_BILLING and Paddle's settings), paddle.ts (signature check, checkout, portal), entitlements.ts (an account's limits for the routes), seat.ts (what an account has and whose plan it is: its own, or the plan whose seat it holds), gate.ts (what the relay asks before and after a call)
+│       ├── billing/        # config.ts (SPINE_BILLING and Paddle's settings), paddle.ts (signature check, checkout, portal), entitlements.ts (an account's limits for the routes), seat.ts (what an account has and whose plan it is: its own, or the plan whose seat it holds), fair-use.ts (the hidden ceilings, the operator's file), window.ts, cost.ts, watch.ts (the twelve months a yearly ceiling counts over, what an account's AI use cost, and who is told), links.ts, gate.ts (what the relay asks before and after a call)
 │       ├── geo.ts          # the country a share was opened from (maxmind, reading data/geoip/country.mmdb or SPINE_GEOIP_DB; looked at again every minute): the one native library the production server uses
 │       ├── geoip-update.ts # downloads that file (ip-location-db "user-country", public domain) and checks it before it replaces the one in use; best effort, always ends well; run by install.sh -s and daily before the backup
 │       ├── providers.ts    # registers the model providers the relay service runs; llm/adapters/ (anthropic, vertex) and embedding/adapters/ (vertex) hold them
@@ -76,7 +78,7 @@ spine/
 │       ├── notify.ts       # account mail (new browser, password or 2FA change); never records
 │       ├── passkeys.ts, trust-anchors.ts, vault-keys.ts, backup.ts  # WebAuthn, the signature trust anchors, the vault's keys, the VACUUM INTO snapshot + vault mirror run by spine-backup.timer
 │       ├── relay/          # the relay service: token.ts (the pass), relay.ts (checks, runs the task through the configured provider adapter, stores nothing), serve.ts (reads the settings and listens), main.ts (`node dist/relay/main.js`: registers the store and the vendors, then serves)
-│       ├── routes/         # auth.ts (login + second step), accounts.ts, totp.ts, passkeys.ts, enrolment.ts (a device let in by one that is signed in), sessions.ts, own-account.ts, vault.ts, shared.ts, family.ts (accounts that share one plan, each holding a seat), relay.ts, trust-anchors.ts
+│       ├── routes/         # auth.ts (login + second step), accounts.ts, totp.ts, passkeys.ts, enrolment.ts (a device let in by one that is signed in), sessions.ts, own-account.ts, vault.ts, shared.ts, family.ts (accounts that share one plan, each holding a seat), reminders.ts (the dates of follow-up reminders, and the mail on the day), relay.ts, trust-anchors.ts
 │       ├── testing/        # stand-in.ts (a model for tests) and stand-in-relay.ts (the relay's entry point with it, for check:app): in no build
 │       └── __tests__/      # Vitest tests that drive the composed app, plus helpers/app.ts (buildTestApp) and helpers/seed.ts
 ├── web/                    # React + Vite + Tailwind
@@ -120,6 +122,7 @@ cd server && npm run cli -- approve-user you@example.com      # an account waiti
 cd server && npm run cli -- disable-2fa you@example.com      # lost phone and recovery codes
 cd server && npm run cli -- delete-user you@example.com      # shows what it would remove; --yes to do it
 cd server && npm run cli -- list-users
+cd server && npm run cli -- usage [--month=YYYY-MM] [--top=N]  # what each account used (AI cost estimate, questions, translation, links, storage) and how near the hidden ceilings
 
 # Install and build (npm workspaces: one install at the root; core is built first because server and web use it)
 npm ci && npm run build

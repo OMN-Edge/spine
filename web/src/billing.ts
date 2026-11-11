@@ -55,6 +55,7 @@ export function planRefusal(err: unknown): string | null {
   if (/another live share is not part of the account.s plan/i.test(text)) return PLAN_TEXT.shares;
   if (/approving visitors is not part of the account.s plan/i.test(text)) return PLAN_TEXT.approval;
   if (/the plan.s people are all taken/i.test(text)) return PLAN_TEXT.peopleTaken;
+  if (/fair-use limit/i.test(text)) return PLAN_TEXT.fairUse;
   if (/another document is not part of the account.s plan/i.test(text)) return PLAN_TEXT.documents;
   if (/another person is not part of the account.s plan/i.test(text)) return PLAN_TEXT.people;
   if (/not part of the account.s plan|answered 402/i.test(text)) return PLAN_TEXT.feature;
@@ -66,6 +67,7 @@ const PLAN_TEXT = {
   shares: msg('Your plan has one share link at a time. Revoke it, or upgrade on your account page for more.'),
   approval: msg('Approving visitors before they see a link is part of the paid plan. See your account page.'),
   people: msg('Your plan keeps the records of one person. A plan for the family adds more; see your account page.'),
+  fairUse: msg('This account has reached its fair-use limit. Contact support.'),
   documents: msg('Your plan keeps up to 50 documents, and that many are kept. Premium has no limit on how many; see your account page.'),
   peopleTaken: msg('Every person your plan holds is taken, across all the accounts that share it. Remove one, or ask the account that pays about a larger plan.'),
   feature: msg('This is not part of your plan. See the plans on your account page.'),

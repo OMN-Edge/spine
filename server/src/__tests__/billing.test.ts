@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
 import { createHmac } from 'node:crypto';
 import { getAccountsStore } from 'spine-core/store/index.js';
-import { PAGE, PLANS, TRIAL_MONTHS } from 'spine-core/billing/plans.js';
+import { CHAT_MESSAGE, PAGE, PLANS, TRANSLATED_PAGE, TRIAL_MONTHS } from 'spine-core/billing/plans.js';
+import { fairUseOf } from '../billing/fair-use.js';
 import { buildTestApp, loginAs, loginSession } from './helpers/app.js';
 import { createTestUser, OWNER_ID, TEST_PASSWORD } from './helpers/seed.js';
 import { billingOn, loadBillingConfig } from '../billing/config.js';
@@ -314,17 +315,17 @@ describe('plans and payment', () => {
       expect(await store.usage.aiUsed(user.id, `${month}:translation`)).toBe(330);
     });
 
-    it('stops a kind of work only at the ceiling no use of an archive reaches, and says so as it says any plan limit', async () => {
+    it('stops a kind of work only at the ceiling no use of an archive reaches, and says so neutrally, with no number', async () => {
       const user = await createTestUser('gate-ceiling@spine.test');
       const month = new Date().toISOString().slice(0, 7);
       const store = getAccountsStore();
-      await store.usage.aiAdd(user.id, `${month}:chat`, PLANS.premium.allowance.chat);
-      expect(await gate().admit(user.id, 'chat')).toMatchObject({ code: 'allowance_used' });
-      expect(await gate().admit(user.id, 'agent')).toMatchObject({ code: 'allowance_used' });
+      await store.usage.aiAdd(user.id, `${month}:chat`, fairUseOf('premium').monthly.messages * CHAT_MESSAGE);
+      expect(await gate().admit(user.id, 'chat')).toMatchObject({ code: 'fair_use', error: 'This account has reached its fair-use limit, contact support' });
+      expect(await gate().admit(user.id, 'agent')).toMatchObject({ code: 'fair_use', error: 'This account has reached its fair-use limit, contact support' });
       expect(await gate().admit(user.id, 'extraction')).toBeNull();
       expect(await gate().admit(user.id, 'translation')).toBeNull();
-      await store.usage.aiAdd(user.id, `${month}:translation`, PLANS.premium.allowance.translation);
-      expect(await gate().admit(user.id, 'translation')).toMatchObject({ code: 'allowance_used' });
+      await store.usage.aiAdd(user.id, `${month}:translation`, fairUseOf('premium').monthly.translatedPages * TRANSLATED_PAGE);
+      expect(await gate().admit(user.id, 'translation')).toMatchObject({ code: 'fair_use', error: 'This account has reached its fair-use limit, contact support' });
       expect(await gate().admit(user.id, 'extraction')).toBeNull();
     });
 
@@ -339,7 +340,7 @@ describe('plans and payment', () => {
       await gate().settle(user.id, 'chat', 1000);
       expect(await store.usage.aiUsed(user.id, `${month}:messages`)).toBe(3);
       // However many have been asked, the next is let through: using what has been added is counted and not limited.
-      await store.usage.aiAdd(user.id, `${month}:messages`, 100_000);
+      await store.usage.aiAdd(user.id, `${month}:messages`, 1_000);
       expect(await gate().admit(user.id, 'agent', { work: 'question-bbbb-0002' })).toBeNull();
       expect(await gate().admit(user.id, 'chat')).toBeNull();
     });
@@ -353,15 +354,15 @@ describe('plans and payment', () => {
       expect(await store.usage.aiUsed(user.id, `${month}:translated`)).toBe(4);
       await gate().settle(user.id, 'translation', 2048, { work: 'translation-bbbb-2', pages: 4 });
       expect(await store.usage.aiUsed(user.id, `${month}:translated`)).toBe(8);
-      await store.usage.aiAdd(user.id, `${month}:translated`, 1_000_000);
+      await store.usage.aiAdd(user.id, `${month}:translated`, 1_000);
       expect(await gate().admit(user.id, 'translation', { work: 'translation-cccc-3', pages: 400 })).toBeNull();
     });
 
     it('holds a device that never tells the truth about what it sends to the cost ceiling behind the counts', async () => {
       const user = await createTestUser('gate-backstop@spine.test');
       const month = new Date().toISOString().slice(0, 7);
-      await getAccountsStore().usage.aiAdd(user.id, `${month}:chat`, PLANS.premium.allowance.chat);
-      expect(await gate().admit(user.id, 'agent', { work: 'question-cccc-0003' })).toMatchObject({ code: 'allowance_used' });
+      await getAccountsStore().usage.aiAdd(user.id, `${month}:chat`, fairUseOf('premium').monthly.messages * CHAT_MESSAGE);
+      expect(await gate().admit(user.id, 'agent', { work: 'question-cccc-0003' })).toMatchObject({ code: 'fair_use' });
     });
 
     it('draws an import’s pages from the one-off allowance while it lasts, then from the month, and ignores the word where there is none', async () => {

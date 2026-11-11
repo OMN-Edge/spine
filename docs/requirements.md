@@ -85,10 +85,10 @@ One constraint shapes the AI path: the client cannot hold Spine's model API key,
 
 | ID | Requirement | Priority | Release |
 | --- | --- | --- | --- |
-| FR-REM-01 | Detect follow-up instructions written explicitly in a document ("control peste 3 luni") and propose a reminder; nothing is inferred from guidelines or results | Should | Later |
-| FR-REM-02 | The user confirms date and wording before the reminder exists; it links to the source page | Should | Later |
-| FR-REM-03 | Wording reports the document, not advice: "Your report from Dr. Example, 12 May, says: control in 3 months" | Should | Later |
-| FR-REM-04 | Delivered as local notifications on the device, with no medical content on the lock screen | Should | Later |
+| FR-REM-01 | Detect follow-up instructions written explicitly in a document ("control peste 3 luni") and propose a reminder; nothing is inferred from guidelines or results | Should | Launch | Built (**M-53**) |
+| FR-REM-02 | The user confirms date and wording before the reminder exists; it links to the source document | Should | Launch | Built (**M-53**) |
+| FR-REM-03 | Wording reports the document, not advice: the words are the document's, restated, and the owner's to edit | Should | Launch | Built (**M-53**) |
+| FR-REM-04 | Delivered by a mail on the day to the owner and to whoever looks after the person, saying that a reminder is due and nothing of what it is about, on every plan; local notifications on the device are not built | Should | Launch | Built (**M-53**) |
 
 ### Sharing with doctors
 
@@ -296,7 +296,7 @@ What each feature, current and planned, must satisfy in law, with the source. GD
 | CR-FAM-03 | Lawyer review of a minor's rights over their own medical data, including whether some records may be hidden from guardians before 18 | Law 46/2003 (patient rights: the legal representative's consent, and the patient's involvement as far as they can understand); Order 386/2004; Civil Code | Teen access | Future |
 | CR-DEL-01 | Delegating a profile to another account is a disclosure the owner chooses; the delegate's rights and the owner's right to revoke are stated, and each grant is logged | GDPR Art. 6, 9(2)(a), 26 if roles are joint | Delegation | Future |
 | CR-EMG-01 | The emergency card is data the owner chooses to expose without approval: consent for that exposure is explicit, a scan is logged and notified, and the offline QR (data in the code) warns that anyone who sees the code reads the card | GDPR Art. 9(2)(a), 25, 32 | Emergency card | Built (the owner turns it on after being told who can read it; the lawyer confirms the consent wording) |
-| CR-REM-01 | Reminders restate the document, hold no medical text on the lock screen and are the owner's to switch off | GDPR Art. 5(1)(c); MDCG 2019-11 | Reminders | Future |
+| CR-REM-01 | Reminders restate the document, hold no medical text on the lock screen and are the owner's to switch off | GDPR Art. 5(1)(c); MDCG 2019-11 | Reminders | Built (**M-53**) |
 | CR-PAY-01 | A paid tier: price, renewal and cancellation shown before purchase, 14-day withdrawal right and digital-content rules, a processor agreement with the payment provider | Consumer Rights Directive 2011/83; Digital Content Directive (EU) 2019/770; GDPR Art. 28 | Subscription | Draft (pricing page, terms and privacy notice say it; the agreement with Paddle is the operator's to sign) |
 | CR-MOB-01 | Store listings and privacy forms match the privacy notice and the intended purpose | Store policies; GDPR Art. 13; MDR Art. 7 | Mobile apps | Future |
 | CR-ENC-01 | An attested confidential-computing relay (so the relay could be said not to see content) is a security measure to be described in the notice and the DPIA when it replaces the current relay | GDPR Art. 25, 32, 35 | Relay | Future |

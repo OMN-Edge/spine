@@ -246,6 +246,17 @@ export const extractionSchema = z.object({
       role: z.enum(DOCTOR_ROLES),
     }),
   ).default([]),
+  // Explicit instructions to come back or repeat something ("control peste 3 luni", "repeat in March 2027"), never inferred. Absent, or not as
+  // asked, means none: a reminder that cannot be read must not cost the rest of the document.
+  follow_ups: z.array(
+    z.object({
+      text: z.string(),
+      after_months: z.number().int().min(1).max(120).nullish(),
+      on_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
+      source_snippet: z.string().nullish(),
+      page_number: z.number().int().positive().nullish(),
+    }),
+  ).default([]).catch([]),
   fields: z.array(
     z.object({
       label: z.string(),

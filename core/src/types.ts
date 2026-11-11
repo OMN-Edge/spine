@@ -152,6 +152,8 @@ export interface ExtractionResult {
   suggested_tags: string[];
   /** Everyone named on the document in a clinical role, without titles. */
   doctors: Array<{ name: string; specialty: string | null; code?: string | null; role: DoctorRole }>;
+  /** Explicit instructions to come back or repeat something, as the document says them (never inferred); a reminder is proposed from each. */
+  follow_ups?: Array<{ text: string; after_months?: number | null; on_date?: string | null; source_snippet?: string | null; page_number?: number | null }>;
   fields: Array<{
     label: string;
     value: string;

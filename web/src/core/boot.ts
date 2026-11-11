@@ -12,6 +12,8 @@ import { useSettings } from 'spine-core/config';
 import { deviceSettings } from './native/settings';
 import { createShareHost } from './share/host';
 import { useShareHost } from 'spine-core/share-host';
+import { useReminderHost } from 'spine-core/reminder-host';
+import { forgetTold, syncReminders } from 'spine-core/reminders/index';
 import { relayMail } from './native/relay-auth';
 import { newId } from '../crypto/keys';
 import { STARTER_TAGS } from 'spine-core/tags';
@@ -37,6 +39,7 @@ import { demoRoutes } from 'spine-core/routes/demo';
 import { chatRoutes } from 'spine-core/routes/chat';
 import { guideRoutes } from 'spine-core/routes/guide';
 import { emergencyRoutes } from 'spine-core/routes/emergency';
+import { reminderRoutes } from 'spine-core/routes/reminders';
 import { shareRoutes } from 'spine-core/routes/share';
 
 /**
@@ -70,7 +73,7 @@ export interface Core {
   store: Store;
 }
 
-export async function startCore(vault?: { objects: ObjectStore; profileId: string; freshness?: Freshness | null }, hooks: { onConflict?: () => void; onChanged?: () => void; onSaveState?: (state: SaveState) => void; onPeople?: () => void } = {}, options: { shares?: boolean } = {}): Promise<Core> {
+export async function startCore(vault?: { objects: ObjectStore; profileId: string; freshness?: Freshness | null }, hooks: { onConflict?: () => void; onChanged?: () => void; onSaveState?: (state: SaveState) => void; onPeople?: () => void } = {}, options: { shares?: boolean; /** Tells the server the dates of the confirmed reminders of these records, and nothing else (SECURITY.md M-53). */ reminders?: (items: Array<{ id: string; dueOn: string }>) => Promise<void> } = {}): Promise<Core> {
   await hashingReady();
   useNativeTools(browserTools);
   useDigests(browserDigests);
@@ -99,13 +102,19 @@ export async function startCore(vault?: { objects: ObjectStore; profileId: strin
   // Links are sealed here and sent to the server (docs/crypto-design.md, stage 4). The demo has no account to send them for: with no host,
   // every owner share route answers 503.
   useShareHost(options.shares === false ? null : createShareHost({ store: () => store, mail: relayMail }));
+  // The dates of the reminders go to the server, so it can mail the person on the day; the words never do. Tried at once and every half minute: it sends
+  // only when what it holds changed (`reminders/index.ts`), so a reminder confirmed, moved, done or lost with its document reaches the server soon after.
+  useReminderHost(options.reminders ? { replace: options.reminders } : null);
+  forgetTold();
+  const remindTimer = options.reminders ? setInterval(() => void syncReminders(DEVICE_USER), 30_000) : null;
+  if (options.reminders) void syncReminders(DEVICE_USER);
 
   const local = new LocalApp();
   decorateAuth(local);
   // One person, and the password was just typed to open the vault: nothing here asks for it again.
   useRequestAuth({ user: () => store.users.findById(DEVICE_USER), recent: () => true });
   // Each file as a plugin, so its hooks are its own, as on Fastify.
-  for (const routes of [tagRoutes, doctorRoutes, trendRoutes, episodeRoutes, documentRoutes, sourceFileRoutes, exportRoutes, similarityRoutes, linkRoutes, demoRoutes, chatRoutes, guideRoutes, emergencyRoutes, shareRoutes]) {
+  for (const routes of [tagRoutes, doctorRoutes, trendRoutes, episodeRoutes, documentRoutes, sourceFileRoutes, exportRoutes, similarityRoutes, linkRoutes, demoRoutes, chatRoutes, guideRoutes, emergencyRoutes, reminderRoutes, shareRoutes]) {
     await local.register(routes);
   }
 
@@ -180,6 +189,8 @@ export async function startCore(vault?: { objects: ObjectStore; profileId: strin
     if (timer) clearInterval(timer);
     if (following) clearTimeout(following);
     useShareHost(null);
+    useReminderHost(null);
+    if (remindTimer) clearInterval(remindTimer);
     useRequestAuth(null);
     memory.useLoader(null);
     memory.clear();
