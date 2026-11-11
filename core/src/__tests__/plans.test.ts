@@ -55,12 +55,12 @@ describe('what a plan includes', () => {
 });
 
 describe('the family plan', () => {
-  it('is Premium for six people, who may be children, with accounts of their own, and three times the reading', () => {
+  it('is Premium for six people, who may be children, with accounts of their own, and twice the reading', () => {
     const family = entitlementsOf(created(400), sub({ plan: 'family', current_period_end: new Date(now.getTime() + 30 * DAY).toISOString() }), now);
     expect(family).toMatchObject({ plan: 'family', profiles: 6, delegation: true, translation: true, chat: true, vaultBytes: 25 * 1024 ** 3, liveShares: null });
     // The pool is twice Premium's, and each account is held to Premium's.
-    expect(family.allowance).toMatchObject({ pages: 80, import: 2 * IMPORT_PAGES, messages: Infinity, translated: Infinity });
-    expect(family.memberCap).toMatchObject({ pages: 40, import: IMPORT_PAGES, messages: Infinity, translated: Infinity });
+    expect(family.allowance).toMatchObject({ pages: 60, import: 2 * IMPORT_PAGES, messages: Infinity, translated: Infinity });
+    expect(family.memberCap).toMatchObject({ pages: 30, import: IMPORT_PAGES, messages: Infinity, translated: Infinity });
     // Only the free plan limits links, views and traffic.
     expect(family).toMatchObject({ linkViews: Infinity, linkBytes: Infinity });
     const premium = entitlementsOf(created(400), sub({ current_period_end: new Date(now.getTime() + 30 * DAY).toISOString() }), now);
@@ -106,7 +106,7 @@ describe('the meters', () => {
   });
 
   it('give Premium the pages of the plan table, no ceiling of any kind in what a browser is sent, and Free no questions and no translation', () => {
-    expect(PLANS.premium.allowance).toMatchObject({ pages: 40, import: IMPORT_PAGES, messages: Infinity, translated: Infinity, reading: Infinity, chat: Infinity, translation: Infinity });
+    expect(PLANS.premium.allowance).toMatchObject({ pages: 30, import: IMPORT_PAGES, messages: Infinity, translated: Infinity, reading: Infinity, chat: Infinity, translation: Infinity });
     expect(PLANS.free).toMatchObject({ chat: false, translation: false });
     expect(PLANS.free.allowance).toMatchObject({ pages: 10, messages: 0, translated: 0 });
     // The hidden fair-use ceilings are the server's configuration (`server/src/billing/fair-use.ts`); none is in what the browser bundles.

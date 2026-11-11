@@ -619,7 +619,7 @@ const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, 
 export interface Prices { premium: { year: number; month: number }; founding: { year: number }; family: { year: number; month: number }; currency: string }
 export interface Pricing { enabled: boolean; prices?: Prices; founding_left?: number; /** The family plan is sold here. */ family?: boolean }
 /** One meter of the plan: pages for reading, messages for chat, pages for translation. `own_*` only on a plan whose seats are shared. */
-export interface MeterView { used: number; /** Null where only adding is limited and using is only counted. */ allowance: number | null; own_used?: number; own_cap?: number }
+export interface MeterView { used: number; /** What each month adds where unused pages carry over (the plan allowance is then what can be added by the end of this month). */ monthly?: number; /** Null where only adding is limited and using is only counted. */ allowance: number | null; own_used?: number; own_cap?: number }
 /** What the account page shows of the plan (the server's `GET /api/billing`). */
 export interface BillingView {
   enabled: boolean;
@@ -630,6 +630,8 @@ export interface BillingView {
   /** What the AI has done, in three meters: each in its own unit, the plan's (a pool on a plan with seats), and an account's own against its cap there. */
   /** What the plan lets the share links send in a month: times opened, and bytes (with what the owner's own devices read). */
   links?: { views: { used: number; allowance: number | null }; bytes: { used: number; allowance: number | null } };
+  /** What the account has done in all, its own (never a pool's): pages read for it, questions answered, pages translated. */
+  totals?: { pages: number; messages: number; translated: number };
   ai?: { period: 'trial' | 'month'; reading: MeterView; chat: MeterView; translation: MeterView; /** Extra pages for reading an archive, once for the life of the account. */ import: MeterView };
   vault?: { used_bytes: number; limit_bytes: number };
   /** `limit` is null where the plan does not limit how many are live. */

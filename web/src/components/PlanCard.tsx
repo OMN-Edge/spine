@@ -4,6 +4,7 @@ import { api } from '../api';
 import { formatBytes, useBilling } from '../billing';
 import { useI18n } from '../i18n';
 import { buttonClass, Notice } from './AuthCard';
+import ArchiveProgress from './ArchiveProgress';
 
 /** The account's plan: what it is, what has been used, and the ways to change it. Shows nothing on an instance with no plans. */
 export default function PlanCard() {
@@ -60,20 +61,21 @@ export default function PlanCard() {
         {ai && ai.reading.allowance !== null && (
           <li className={reading.nearly ? 'text-amber-700' : undefined}>
             {ai.reading.own_cap !== undefined
-              ? t('Shared with your household: {left} of {allowance} pages left to add documents {when}', { left: reading.left, allowance: ai.reading.allowance, when: ai.period === 'month' ? t('this month') : t('in the trial') })
-              : t('{left} of {allowance} pages left to add documents {when}', { left: reading.left, allowance: ai.reading.allowance, when: ai.period === 'month' ? t('this month') : t('in the trial') })}
+              ? t('Shared with your household: you can add {left} pages {when}', { left: reading.left, when: ai.period === 'month' ? t('this month') : t('in the trial') })
+              : t('You can add {left} pages {when}', { left: reading.left, when: ai.period === 'month' ? t('this month') : t('in the trial') })}
             {ai.reading.own_cap !== undefined && reading.ownNearly && ` · ${t('your part: {left} of {cap} left', { left: Math.max(0, ai.reading.own_cap - (ai.reading.own_used ?? 0)), cap: ai.reading.own_cap })}`}
-            {reading.nearly && ` · ${t('You can add more next month, or upgrade.')}`}
+            {ai.reading.monthly !== undefined && <span className="block text-xs text-gray-500">{t('{n} more every month; what you do not use is kept for up to three months.', { n: ai.reading.monthly })}</span>}
+            {reading.nearly && <span className="block text-xs">{t('You can add more next month, or upgrade.')}</span>}
             {bar(ai.reading.used, ai.reading.allowance)}
           </li>
         )}
-        {ai && (ai.import.allowance ?? 0) > 0 && ai.import.used < (ai.import.allowance ?? 0) && <li>{t('One-off archive import: {left} pages left', { left: (ai.import.allowance ?? 0) - ai.import.used })}</li>}
         {vault && <li>{t('Storage: {used} of {limit} used', { used: formatBytes(vault.used_bytes), limit: formatBytes(vault.limit_bytes) })}{bar(vault.used_bytes, vault.limit_bytes)}</li>}
         {billing.people && <li>{t('People: up to {n}', { n: billing.people.limit })}</li>}
         {/* Share links are limited only on the free plan; on a paid plan nothing about them is a limit to show. */}
         {billing.links && billing.links.views.allowance !== null && <li>{t('Share link views: {used} of {allowance}', { used: billing.links.views.used, allowance: billing.links.views.allowance })} {t('this month')}</li>}
         {shares && shares.limit !== null && <li>{t('Share links: {live} live of {limit}', { live: shares.live, limit: shares.limit })}</li>}
       </ul>
+      <ArchiveProgress />
 
       {error && <Notice kind="error">{error}</Notice>}
       {plan !== 'premium' && plan !== 'family' && family && prices && (

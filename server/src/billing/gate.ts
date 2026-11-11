@@ -5,6 +5,8 @@ import { fairUseOf, type FairUse } from './fair-use.js';
 import { windowMonths } from './window.js';
 import { FAMILY_OF, costKey, microEuros, tokenKey } from './cost.js';
 import { watchAccount } from './watch.js';
+import { pagesAllowed } from './carry.js';
+import { totalKey } from './totals.js';
 
 /** What is said when a hidden ceiling stops an action: neutral, and never with a number. */
 export const FAIR_USE_MESSAGE = 'This account has reached its fair-use limit, contact support';
@@ -50,19 +52,22 @@ interface Counter { user: string; key: string; limit: number; hidden: boolean }
 /** The cost a ceiling in messages or pages comes to, in the cost unit, and a plan's own page allowance's. */
 function limitOf(e: Entitlements, fair: FairUse, meter: Meter, account: boolean): number {
   const m = fair.monthly;
-  if (meter === 'reading') return (account && e.memberCap ? e.memberCap.pages : e.allowance.pages) * PAGE * m.readingMultiple;
+  if (meter === 'reading') return (account && e.memberCap ? e.memberCap.pages : e.allowance.pages) * PAGE * m.readingMultiple * Math.max(1, e.carryMonths);
   if (meter === 'chat') return account && e.memberCap ? Infinity : m.messages * CHAT_MESSAGE;
   if (meter === 'translation') return account && e.memberCap ? Infinity : m.translatedPages * TRANSLATED_PAGE;
   return account && e.memberCap ? e.memberCap[meter] : e.allowance[meter];
 }
 
-/** The keys a call is counted under, and what each may hold: the account's own meter, and the plan's pool where the plan has seats. */
-function countersOf(e: Entitlements, fair: FairUse, meter: Meter, userId: string, holder: string, now: Date): Counter[] {
+/** The keys a call is counted under, and what each may hold: the account's own meter, and the plan's pool where the plan has seats. The pages carry from month to month (`billing/carry.ts`). */
+async function countersOf(store: AccountsStore, e: Entitlements, fair: FairUse, meter: Meter, userId: string, holder: string, now: Date): Promise<Counter[]> {
   const hidden = meter === 'reading' || meter === 'chat' || meter === 'translation';
-  if (!e.memberCap) return [{ user: userId, key: meterKey(meter, e, now), limit: limitOf(e, fair, meter, false), hidden }];
+  const limit = async (account: boolean, user: string): Promise<number> => (meter === 'pages'
+    ? pagesAllowed(store, user, e, account && e.memberCap ? e.memberCap.pages : e.allowance.pages, now, !account && !!e.memberCap)
+    : limitOf(e, fair, meter, account));
+  if (!e.memberCap) return [{ user: userId, key: meterKey(meter, e, now), limit: await limit(false, userId), hidden }];
   return [
-    { user: userId, key: meterKey(meter, e, now), limit: limitOf(e, fair, meter, true), hidden },
-    { user: holder, key: meterKey(meter, e, now, true), limit: limitOf(e, fair, meter, false), hidden },
+    { user: userId, key: meterKey(meter, e, now), limit: await limit(true, userId), hidden },
+    { user: holder, key: meterKey(meter, e, now, true), limit: await limit(false, holder), hidden },
   ];
 }
 
@@ -93,12 +98,12 @@ export function createRelayGate(store: () => AccountsStore, now: () => Date = ()
   const workKey = (work: string): string => `w:${work}:${now().toISOString().slice(0, 13)}`;
   const hasRoom = async (c: Counter): Promise<boolean> => (await store().usage.aiUsed(c.user, c.key)) < c.limit;
   const add = async (e: Entitlements, fair: FairUse, meter: Meter, userId: string, holder: string, amount: number) => {
-    for (const c of countersOf(e, fair, meter, userId, holder, now())) await store().usage.aiAdd(c.user, c.key, amount);
+    for (const c of await countersOf(store(), e, fair, meter, userId, holder, now())) await store().usage.aiAdd(c.user, c.key, amount);
   };
   const used = { status: 402, error: 'the plan’s AI processing is used up', code: 'allowance_used' } as const;
   const fairUseRefusal = { status: 402, error: FAIR_USE_MESSAGE, code: 'fair_use' } as const;
   const roomIn = async (e: Entitlements, fair: FairUse, meter: Meter, userId: string, holder: string): Promise<Refusal | null> => {
-    for (const c of countersOf(e, fair, meter, userId, holder, now())) if (!(await hasRoom(c))) return c.hidden ? fairUseRefusal : used;
+    for (const c of await countersOf(store(), e, fair, meter, userId, holder, now())) if (!(await hasRoom(c))) return c.hidden ? fairUseRefusal : used;
     return null;
   };
 
@@ -153,11 +158,17 @@ export function createRelayGate(store: () => AccountsStore, now: () => Date = ()
       if (count === 'pages') {
         // An import's pages are charged to the import allowance while it has room, and to the month's pages when it has not.
         const importing = !!call.bulk && e.allowance.import > 0 && !(await roomIn(e, fair, 'import', who.userId, standing.holder));
-        await add(e, fair, importing ? 'import' : 'pages', who.userId, standing.holder, pagesOf(task, call, requestBytes));
+        const read = pagesOf(task, call, requestBytes);
+        await add(e, fair, importing ? 'import' : 'pages', who.userId, standing.holder, read);
+        await store().usage.aiAdd(who.userId, totalKey('pages'), read);
       } else if (count === 'translated' || count === 'messages') {
         // Counted once for a piece of work however many calls it takes: the first call of an id counts, the others do not; no id, every call.
         const first = !call.work || (await store().usage.see(who.userId, workKey(call.work), now().toISOString()));
-        if (first) await add(e, fair, count, who.userId, standing.holder, count === 'messages' ? 1 : pagesOf(task, call, requestBytes));
+        if (first) {
+          const n = count === 'messages' ? 1 : pagesOf(task, call, requestBytes);
+          await add(e, fair, count, who.userId, standing.holder, n);
+          await store().usage.aiAdd(who.userId, totalKey(count), n);
+        }
       }
       // What the call cost, as an estimate, by kind of work: the numbers the plans' prices are to be checked against, and what the operator is told by.
       const month = now().toISOString().slice(0, 7);

@@ -67,6 +67,8 @@ export interface Entitlements {
   memberCap: Allowances | null;
   /** `trial`: reading once, for the whole trial; `month`: a calendar month (UTC). Chat and translation are always by the month. */
   aiPeriod: 'trial' | 'month';
+  /** How many months of the page allowance can be kept: what a month does not use carries into the next, up to this many months' worth (`billing/carry.ts`). One: nothing carries. */
+  carryMonths: number;
   /** Bytes of sealed objects an account may keep (on a plan with seats, all its accounts together), or null for the instance's own ceiling (`vaultLimits`); never above that ceiling. */
   vaultBytes: number | null;
   /** Share links live at once (on a plan with seats, all its accounts together), or null for the instance's own ceiling (`sharedLimits`). Only the free plan limits it. */
@@ -109,6 +111,8 @@ const GB = 1024 ** 3;
  * when the person says they are importing (the Upload page).
  */
 export const IMPORT_PAGES = 250;
+/** A paid plan keeps what a month does not use for this many months' worth of its allowance: a person who adds nothing for two months can add three months' worth in the third. */
+export const CARRY_MONTHS = 3;
 
 /**
  * Allowances from what a plan limits: the pages and the import. Using what was added (`messages`, `translated`) has none where the plan includes it at all (the
@@ -119,7 +123,7 @@ const allowances = (c: { pages: number; import: number }, uses: boolean): Allowa
   reading: UNLIMITED, chat: UNLIMITED, translation: UNLIMITED,
 });
 /** The Premium plan's allowances: also what one account of a plan with seats may add of the plan's (use is the plan's, not the account's). */
-const PREMIUM_ALLOWANCE = allowances({ pages: 40, import: IMPORT_PAGES }, true);
+const PREMIUM_ALLOWANCE = allowances({ pages: 30, import: IMPORT_PAGES }, true);
 const FAMILY_ACCOUNT: Allowances = PREMIUM_ALLOWANCE;
 
 /**
@@ -127,13 +131,13 @@ const FAMILY_ACCOUNT: Allowances = PREMIUM_ALLOWANCE;
  */
 export const PLANS: Record<PlanId, Omit<Entitlements, 'plan'>> = {
   // The trial has Premium's limits, with pages as one total for the whole trial.
-  trial: { allowance: allowances({ pages: 150, import: 0 }, true), memberCap: null, aiPeriod: 'trial', vaultBytes: 5 * GB, liveShares: null, linkViews: UNLIMITED, linkBytes: UNLIMITED, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 6, documents: null, seats: 1, delegation: true },
-  free: { allowance: allowances({ pages: 10, import: 0 }, false), memberCap: null, aiPeriod: 'month', vaultBytes: GB, liveShares: 1, linkViews: 20, linkBytes: GB, translation: false, chat: false, linking: false, related: false, approvalMode: false, profiles: 1, documents: 50, seats: 1, delegation: false },
-  premium: { allowance: PREMIUM_ALLOWANCE, memberCap: null, aiPeriod: 'month', vaultBytes: 5 * GB, liveShares: null, linkViews: UNLIMITED, linkBytes: UNLIMITED, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 1, documents: null, seats: 1, delegation: false },
+  trial: { allowance: allowances({ pages: 150, import: 0 }, true), memberCap: null, aiPeriod: 'trial', carryMonths: 1, vaultBytes: 5 * GB, liveShares: null, linkViews: UNLIMITED, linkBytes: UNLIMITED, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 6, documents: null, seats: 1, delegation: true },
+  free: { allowance: allowances({ pages: 10, import: 0 }, false), memberCap: null, aiPeriod: 'month', carryMonths: 1, vaultBytes: GB, liveShares: 1, linkViews: 20, linkBytes: GB, translation: false, chat: false, linking: false, related: false, approvalMode: false, profiles: 1, documents: 50, seats: 1, delegation: false },
+  premium: { allowance: PREMIUM_ALLOWANCE, memberCap: null, aiPeriod: 'month', carryMonths: CARRY_MONTHS, vaultBytes: 5 * GB, liveShares: null, linkViews: UNLIMITED, linkBytes: UNLIMITED, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 1, documents: null, seats: 1, delegation: false },
   // Premium for up to six people, who may be children and may have accounts of their own: six accounts at most (the seats), six people in
   // all (each account's own included), and one pool for the lot (twice Premium's pages and 25 GB of storage, shared), with each account held
   // to Premium's pages. A larger plan would be another entry here.
-  family: { allowance: allowances({ pages: 80, import: 2 * IMPORT_PAGES }, true), memberCap: FAMILY_ACCOUNT, aiPeriod: 'month', vaultBytes: 25 * GB, liveShares: null, linkViews: UNLIMITED, linkBytes: UNLIMITED, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 6, documents: null, seats: 6, delegation: true },
+  family: { allowance: allowances({ pages: 60, import: 2 * IMPORT_PAGES }, true), memberCap: FAMILY_ACCOUNT, aiPeriod: 'month', carryMonths: CARRY_MONTHS, vaultBytes: 25 * GB, liveShares: null, linkViews: UNLIMITED, linkBytes: UNLIMITED, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 6, documents: null, seats: 6, delegation: true },
 };
 
 const addMonths = (iso: string, months: number): Date => {

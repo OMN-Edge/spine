@@ -39,7 +39,7 @@ export default function Pricing() {
 
               <h2 className="text-base font-semibold text-gray-900 pt-2">{t('Premium')} · {t('{year} a year or {month} a month', { year: money(prices.premium.year), month: money(prices.premium.month) })}</h2>
               <ul className="list-disc pl-5 space-y-1">
-                <li>{t('AI reading within fair use: about 40 pages a month')}</li>
+                <li>{t('AI reading within fair use: about 30 pages a month, and what you do not use is kept for up to three months')}</li>
                 <li>{t('Questions about your records and translation of your documents: no monthly limit for normal use')}</li>
                 <li>{t('5 GB of storage')}</li>
                 <li>{t('Translation of your documents and of what a doctor opens')}</li>

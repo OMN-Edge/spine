@@ -7,6 +7,8 @@ import type { SubscriptionRecord } from 'spine-core/store/types.js';
 import { loadBillingConfig } from '../billing/config.js';
 import { applySubscriptionEvent, createCheckout, parseEvent, planOfItems, portalUrl, userOf, verifySignature, type PaddleEvent } from '../billing/paddle.js';
 import { vaultBytesFor, liveSharesFor } from '../billing/entitlements.js';
+import { pagesAllowed } from '../billing/carry.js';
+import { TOTALS, totalKey } from '../billing/totals.js';
 import { standingOf } from '../billing/seat.js';
 
 const day = (now = new Date()) => now.toISOString().slice(0, 10);
@@ -52,14 +54,20 @@ export async function billingRoutes(app: FastifyInstance) {
       const own = await store.usage.aiUsed(req.userId, meterKey(meter, e, now));
       const plan = pooled ? await store.usage.aiUsed(standing.holder, meterKey(meter, e, now, true)) : own;
       const cap = e.memberCap ? finite(e.memberCap[meter]) : null;
+      // The pages carry from month to month on a paid plan: the allowance is what can be added by the end of this month, and `monthly` what each month adds.
+      const carries = meter === 'pages' && e.carryMonths > 1 && e.aiPeriod === 'month';
+      const allowance = carries ? await pagesAllowed(store, pooled ? standing.holder : req.userId, e, e.allowance.pages, now, pooled) : finite(e.allowance[meter]);
+      const ownCap = carries && e.memberCap ? await pagesAllowed(store, req.userId, e, e.memberCap.pages, now, false) : cap;
       return {
         used: plan,
-        allowance: finite(e.allowance[meter]),
-        ...(cap !== null ? { own_used: own, own_cap: cap } : {}),
+        allowance,
+        ...(carries ? { monthly: e.allowance.pages } : {}),
+        ...(ownCap !== null ? { own_used: own, own_cap: ownCap } : {}),
       };
     };
     // What links send, and what the owner's own devices read: the plan's views and bytes of the month (billing/links.ts).
     const linkUse = async (what: 'views' | 'egress') => store.usage.aiUsed(pooled ? standing.holder : req.userId, linkKey(what, now, pooled));
+    const totals = Object.fromEntries(await Promise.all(TOTALS.map(async c => [c, await store.usage.aiUsed(req.userId, totalKey(c))] as const)));
     const [meters, vault, shares, vaultLimit, sharesLimit, held, pool, linkViews, linkBytes] = await Promise.all([
       Promise.all(COUNTS.map(async m => [m, await read(m)] as const)).then(Object.fromEntries),
       store.vault.usage(req.userId),
@@ -82,6 +90,8 @@ export async function billingRoutes(app: FastifyInstance) {
       // Reading is by the month (the trial's, once); chat and translation are always by the month.
       // What a person sees counted: pages read, questions asked, pages translated, and the archive import. Only adding has an allowance; using is counted.
       ai: { period: e.aiPeriod, reading: meters.pages, chat: meters.messages, translation: meters.translated, import: meters.import },
+      // What this account has done in all (never the pool's): pages read for it, questions answered, pages translated.
+      totals: totals,
       // Only the free plan limits them: null is no limit, only counted.
       links: { views: { used: linkViews, allowance: finite(e.linkViews) }, bytes: { used: linkBytes, allowance: finite(e.linkBytes) } },
       // On a plan with seats storage and links are the plan's, over all its accounts: what is shown is the plan's, not this account's share of it.
