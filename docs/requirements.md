@@ -126,6 +126,7 @@ One constraint shapes the AI path: the client cannot hold Spine's model API key,
 | FR-BIL-03 | The first 500 paying accounts keep the yearly founding price for as long as the subscription runs | Should | Launch |
 | FR-BIL-04 | A self-hosted or private instance has no plans and no limits but its own | Must | Launch |
 | FR-BIL-05 | A family plan for up to six people, sold only where the operator has named its prices; Premium and the family plan are told apart by the prices of the subscription | Should | Launch |
+| FR-BIL-06 | A plan with seats can be shared by up to six accounts, the one that pays and five invited by a link that works once; each has the plan's features, the six people of the plan are counted over them all, and they share its AI reading; a seat gives the one who pays no access to what a member keeps, either can end it, and nothing is deleted when it ends | Should | Launch | Built (**M-52**) |
 | FR-GRW-01 | The loops in the marketing plan can be counted without identifying anyone: sign-ups from a shared page or a doctor's page, shared pages opened, checkouts started; a waitlist holds an address and a day | Should | Launch |
 
 ### Reintroduced after the first scope was cut
@@ -143,7 +144,7 @@ The cuts of 2026-10-23 are being undone in this order, each with its documents (
 | FR-EMG-04 | An optional code that holds the card as plain text, readable with no signal, said plainly to be readable by anyone who sees it and to hold only what fits | Should | Launch | Built |
 | FR-PRF-02 | Another account can be let into one profile, as a guardian (reads and writes) or a viewer (reads), by an invitation code that works for someone with no account yet; the owner can pause, resume and end it, and ending it replaces the profile's key | Must | Launch | Built (**M-49**) |
 | FR-PRF-03 | The account's people are listed and chosen on a page of their own; opening one saves the first and starts the screens over on the other's records, with no second password; the choice is remembered on the device | Must | Launch | Built |
-| FR-PRF-04 | How many people an account can keep follows its plan (trial six, free one, Premium one; the family plan more); a record is never removed because a plan ended | Must | Launch | Built |
+| FR-PRF-04 | How many people an account can keep follows its plan (trial six, free one, Premium one; the family plan six in all, over every account that shares it); a record is never removed because a plan ended | Must | Launch | Built |
 | FR-EMG-06 | A person may keep official details (identification and health insurance numbers, a card number, organ donor, their own) with the card and choose one by one to put on it; none is on it unless chosen | Should | Launch | Built (**M-47**) |
 | FR-EMG-07 | The card can be printed at the size of a bank card, front and back, with the code on the back | Should | Launch | Built (**M-47**) |
 | FR-PRF-05 | The owner can correct a person's name and a child's birth date | Must | Launch | Built (**M-48**, **M-50**) |

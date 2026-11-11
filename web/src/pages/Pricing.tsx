@@ -50,6 +50,7 @@ export default function Pricing() {
                   <h2 className="text-base font-semibold text-gray-900 pt-2">{t('Family')} · {t('{year} a year or {month} a month', { year: money(prices.family.year), month: money(prices.family.month) })}</h2>
                   <ul className="list-disc pl-5 space-y-1">
                     <li>{t('Everything in Premium, for up to six people')}</li>
+                    <li>{t('Up to six accounts can share the plan, each with its own records and its own password')}</li>
                     <li>{t('Records for children, kept by their guardians, with other guardians let in')}</li>
                     <li>{t('A teenager from sixteen can have an account of their own, and at eighteen the records can become theirs')}</li>
                   </ul>

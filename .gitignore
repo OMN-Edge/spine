@@ -26,3 +26,6 @@ project-*.json
 
 # Scratch comparisons of model readings: real records, never committed.
 compare*.txt
+
+# security review ledger: working notes, kept local
+docs/security-review.md

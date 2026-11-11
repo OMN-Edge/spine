@@ -38,13 +38,13 @@ spine/
 │       ├── chat/           # agent.ts (the LangGraph agent and its read-only tools), screen.ts (what is on screen, resolved), index.ts (askQuestion; the fixed-pipeline fallback), retrieval.ts (keywords, fused search)
 │       ├── episodes/       # index.ts: proposing episodes from the data (no model), scheduleEpisodes()
 │       ├── linking/        # index.ts: candidates (no model), the judge, links as proposals, the chain
-│       ├── billing/plans.ts # the plans, what each includes, entitlementsOf() and taskCost(): the one place a limit is written (the server enforces, the account page shows)
+│       ├── billing/plans.ts # the plans, what each includes (seats and people among it), entitlementsOf() and taskCost(): the one place a limit is written (the server enforces, the account page shows)
 │       ├── emergency.ts    # the emergency card: what is on it (zod), cardText() for the offline code; routes/emergency.ts edits and publishes it through the share host
 │       ├── tags.ts         # STARTER_TAGS and cleanTag(): what a tag is and a new account starts with
 │       ├── share-scope.ts  # the only place a share-link scope is validated or resolved
 │       ├── share-code.ts   # the eight characters made from a visitor's key that the owner and the visitor compare before an approval (S-40)
 │       ├── llm/            # LLM interface: types.ts, prompts.ts, chat-llm.ts, budget.ts (daily call allowance), index.ts (registry), adapters/
-│       ├── store/          # store interface: types.ts (interfaces), index.ts (registry), sync.ts (the rules for syncing devices, any store), slice-policy.ts (what a share copy holds), visibility.ts (which documents are shown), ids.ts, owner.ts, sqlite/ (records and accounts; browser.ts is the one file the device imports), postgres/ (the server's accounts only, over a pool the host registers with `usePool`: `pool.ts` is the port, `query.ts` the helpers and transaction type, `store.ts` the assembly and `schema-accounts.ts` the tables, with one file for each group of repositories: `users.ts`, `small.ts` (sessions, usage, enrolments), `vault.ts`, `shared.ts`, `billing.ts`, `delegations.ts`, `maintenance.ts`)
+│       ├── store/          # store interface: types.ts (interfaces), index.ts (registry), sync.ts (the rules for syncing devices, any store), slice-policy.ts (what a share copy holds), visibility.ts (which documents are shown), ids.ts, owner.ts, sqlite/ (records and accounts; browser.ts is the one file the device imports), postgres/ (the server's accounts only, over a pool the host registers with `usePool`: `pool.ts` is the port, `query.ts` the helpers and transaction type, `store.ts` the assembly and `schema-accounts.ts` the tables, with one file for each group of repositories: `users.ts`, `small.ts` (sessions, usage, enrolments), `vault.ts`, `shared.ts`, `billing.ts`, `delegations.ts`, `family.ts`, `maintenance.ts`)
 │       ├── archive/        # export.ts (a document or the whole archive as a zip), import.ts (Spine export or plain zip), import-file.ts (restore one file, no model), manifest.ts (zod schema, fingerprint), zip-read.ts, pdf-pages.ts
 │       ├── ingestion/      # accept-upload.ts, jobs.ts, pipeline.ts, extraction.ts, continuation.ts, grounding.ts, rasterize.ts, pdf-text.ts (the PDF text layer, PDF.js)
 │       ├── routes/         # the records routes (documents.ts, source-files.ts, share.ts, public-share.ts, tags.ts, trends.ts, doctors.ts, ...) and middleware.ts; the device's LocalApp registers these
@@ -60,7 +60,7 @@ spine/
 │       ├── mail/           # mailer interface: types.ts, index.ts (registry), adapters/{none,brevo}.ts
 │       ├── native/         # the Node versions of the tools the shared code asks for (poppler, Tesseract, sharp, pdfkit, yauzl, yazl, maxmind): for the tests that run the whole app on Node; none is used in production
 │       ├── objects/        # the object store the sealed bytes go to: types.ts (the port), filesystem.ts and gcs.ts (the adapters), index.ts (SPINE_OBJECTS; `useObjects` is called by `useAccountsStore`); vault-files.ts and shared-files.ts build the keys
-│       ├── billing/        # config.ts (SPINE_BILLING and Paddle's settings), paddle.ts (signature check, checkout, portal), entitlements.ts (an account's limits for the routes), gate.ts (what the relay asks before and after a call)
+│       ├── billing/        # config.ts (SPINE_BILLING and Paddle's settings), paddle.ts (signature check, checkout, portal), entitlements.ts (an account's limits for the routes), seat.ts (what an account has and whose plan it is: its own, or the plan whose seat it holds), gate.ts (what the relay asks before and after a call)
 │       ├── geo.ts          # the country a share was opened from (maxmind, reading data/geoip/country.mmdb or SPINE_GEOIP_DB; looked at again every minute): the one native library the production server uses
 │       ├── geoip-update.ts # downloads that file (ip-location-db "user-country", public domain) and checks it before it replaces the one in use; best effort, always ends well; run by install.sh -s and daily before the backup
 │       ├── providers.ts    # registers the model providers the relay service runs; llm/adapters/ (anthropic, vertex) and embedding/adapters/ (vertex) hold them
@@ -76,7 +76,7 @@ spine/
 │       ├── notify.ts       # account mail (new browser, password or 2FA change); never records
 │       ├── passkeys.ts, trust-anchors.ts, vault-keys.ts, backup.ts  # WebAuthn, the signature trust anchors, the vault's keys, the VACUUM INTO snapshot + vault mirror run by spine-backup.timer
 │       ├── relay/          # the relay service: token.ts (the pass), relay.ts (checks, runs the task through the configured provider adapter, stores nothing), serve.ts (reads the settings and listens), main.ts (`node dist/relay/main.js`: registers the store and the vendors, then serves)
-│       ├── routes/         # auth.ts (login + second step), accounts.ts, totp.ts, passkeys.ts, enrolment.ts (a device let in by one that is signed in), sessions.ts, own-account.ts, vault.ts, shared.ts, relay.ts, trust-anchors.ts
+│       ├── routes/         # auth.ts (login + second step), accounts.ts, totp.ts, passkeys.ts, enrolment.ts (a device let in by one that is signed in), sessions.ts, own-account.ts, vault.ts, shared.ts, family.ts (accounts that share one plan, each holding a seat), relay.ts, trust-anchors.ts
 │       ├── testing/        # stand-in.ts (a model for tests) and stand-in-relay.ts (the relay's entry point with it, for check:app): in no build
 │       └── __tests__/      # Vitest tests that drive the composed app, plus helpers/app.ts (buildTestApp) and helpers/seed.ts
 ├── web/                    # React + Vite + Tailwind

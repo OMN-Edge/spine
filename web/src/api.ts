@@ -630,10 +630,20 @@ export interface BillingView {
   shares?: { live: number; limit: number };
   features?: { translation: boolean; chat: boolean; linking: boolean; related: boolean; approval_mode: boolean; delegation: boolean };
   people?: { limit: number };
+  /** `organizer` pays for a plan others hold seats in; `member` holds a seat in another's plan. */
+  seat?: 'organizer' | 'member' | 'none';
+  seats?: { limit: number };
   family?: boolean;
   prices?: Prices;
   founding_left?: number;
 }
+
+/** The accounts that share one plan (the server's `GET /api/family`). */
+export type FamilyView =
+  | { enabled: false }
+  | { enabled: true; role: 'none'; profiles: { used: number; limit: number } }
+  | { enabled: true; role: 'member'; organizer_email: string; profiles: { used: number; limit: number }; cooldown_days: number }
+  | { enabled: true; role: 'organizer'; seats: { used: number; limit: number }; members: Array<{ id: string; email: string; joined_at: string }>; invites: Array<{ id: string; created_at: string; expires_at: string }>; profiles: { used: number; limit: number }; invite_days: number; cooldown_days: number };
 
 export interface EmergencyView {
   card: import('spine-core/emergency').CardContent;
@@ -666,6 +676,15 @@ export const api = {
     /** Where to send the person to pay: the provider's checkout, on a page of its own. */
     checkout: (interval: 'month' | 'year', plan: 'premium' | 'family' = 'premium') => post<{ url: string }>('/api/billing/checkout', { interval, plan }),
     portal: () => post<{ url: string }>('/api/billing/portal', {}),
+  },
+  family: {
+    get: () => req<FamilyView>('/api/family'),
+    invite: () => post<{ id: string; secret: string; expires_at: string }>('/api/family/invites', {}),
+    cancelInvite: (id: string) => del<{ ok: true }>(`/api/family/invites/${encodeURIComponent(id)}`),
+    remove: (memberId: string) => del<{ ok: true }>(`/api/family/members/${encodeURIComponent(memberId)}`),
+    preview: (id: string, secret: string) => post<{ organizer_email: string; expires_at: string; cooldown_days: number }>('/api/family/preview', { id, secret }),
+    join: (id: string, secret: string) => post<{ ok: true }>('/api/family/join', { id, secret }),
+    leave: () => post<{ ok: true }>('/api/family/leave', {}),
   },
   /** Asking to be told when Spine opens. The answer is the same whether or not the address was already there. */
   waitlist: (email: string, source?: string) => post<{ ok: boolean }>('/api/waitlist', { email, source }),

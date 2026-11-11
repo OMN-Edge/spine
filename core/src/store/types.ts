@@ -77,6 +77,7 @@ export interface AccountsStore {
   metrics: MetricsRepository;
   waitlist: WaitlistRepository;
   delegations: DelegationRepository;
+  family: FamilyRepository;
 
   /**
    * Ingestion writes a document, its tags and its fields together; a partial
@@ -864,6 +865,41 @@ export interface SubscriptionRecord {
   /** The subscription will end at `current_period_end` rather than renew. */
   cancel_scheduled: boolean;
   updated_at: string;
+}
+
+/**
+ * The accounts that share one subscription (SECURITY.md **M-52**). The account that pays is the organizer; every other account holds a
+ * seat by accepting an invitation. Nothing here is a record, a key or a card: the server learns which accounts belong together and how many
+ * profiles they hold (the number, which it already sees as the kind of each sealed object), and an organizer is told nothing of what a
+ * member keeps. Every method names the acting account first: the organizer for what is the plan's, the member for what is their own.
+ */
+export interface FamilyMember { id: string; email: string; joined_at: string }
+export interface FamilyInvite { id: string; created_at: string; expires_at: string }
+/** Why an invitation could not be accepted. `invalid` covers a wrong, spent or expired code and an invitation from oneself. */
+export type SeatRefusal = 'invalid' | 'already_member' | 'is_organizer' | 'cooldown' | 'full';
+export interface FamilyRepository {
+  /** The seat the account holds in someone else's plan, or null. */
+  membership(userId: string): Promise<{ organizer_id: string; joined_at: string } | null>;
+  /** The accounts that hold a seat in the organizer's plan, the organizer not counted. */
+  members(organizerId: string): Promise<FamilyMember[]>;
+  /** Profiles held now by the organizer and every member: sealed objects of the kind `profile` not deleted. A number, nothing more. */
+  profilesHeld(organizerId: string): Promise<number>;
+  invites(organizerId: string, now: string): Promise<FamilyInvite[]>;
+  /** Leaves an invitation: an id and a hash of the secret that goes with it, which is told to the invited person and never kept. */
+  invite(organizerId: string, invite: { id: string; secretHash: string; now: string; expiresAt: string }): Promise<void>;
+  cancelInvite(organizerId: string, id: string): Promise<boolean>;
+  /** Who an invitation is from, for the person who holds its secret; changes nothing. */
+  peek(userId: string, id: string, secretHash: string, now: string): Promise<{ organizer_id: string; expires_at: string } | null>;
+  /**
+   * Takes a seat with the invitation, in one step that checks everything first and spends it last: the secret, the end, a seat left (`seats`
+   * counts the organizer), the account not already holding one or paying for a plan others share, and the wait after leaving another plan
+   * (`cooldownDays`; coming back to the same plan is not held). The account's own invitations to others end with it.
+   */
+  join(userId: string, id: string, secretHash: string, now: string, rules: { seats: number; cooldownDays: number }): Promise<{ organizer_id: string } | SeatRefusal>;
+  /** The organizer ends a member's seat. */
+  remove(organizerId: string, memberId: string, now: string): Promise<boolean>;
+  /** A member gives their seat up. */
+  leave(userId: string, now: string): Promise<boolean>;
 }
 
 export interface BillingRepository {

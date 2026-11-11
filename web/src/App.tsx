@@ -23,7 +23,9 @@ import Pricing from './pages/Pricing';
 import Emergency from './pages/Emergency';
 import Profiles from './pages/Profiles';
 import Invite from './pages/Invite';
+import Family from './pages/Family';
 import { pendingInvite } from './invite';
+import { pendingSeatInvite } from './seat';
 import { useProfiles } from './profiles';
 import ForDoctors from './pages/ForDoctors';
 import HowItWorks from './pages/HowItWorks';
@@ -217,6 +219,11 @@ function Layout({ children }: { children: React.ReactNode }) {
           {t('You have an invitation waiting.')} <Link to="/profiles#invitations" className="underline">{t('Open it')}</Link>
         </div>
       )}
+      {!demo && pendingSeatInvite() && location.pathname !== '/account' && (
+        <div className="bg-brand-50 border-b border-brand-100 px-4 sm:px-6 py-2 text-sm text-brand-800">
+          {t('You have an invitation to a shared plan waiting.')} <Link to="/account#shared" className="underline">{t('Open it')}</Link>
+        </div>
+      )}
       {gone !== null && (
         <div role="status" className="bg-amber-50 border-b border-amber-100 px-4 sm:px-6 py-2 text-sm text-amber-900 flex items-center justify-between gap-3">
           <span>{gone ? t('{name} took over their own records, so they are no longer in this account. Your access is paused until they let you back in.', { name: gone }) : t('These records were taken over by the person they are of, so they are no longer in this account. Your access is paused until they let you back in.')}</span>
@@ -368,6 +375,7 @@ export default function App() {
         <Route path="/doctors/:id" element={<PrivateRoute><DoctorPage /></PrivateRoute>} />
         <Route path="/search" element={<PrivateRoute><Search /></PrivateRoute>} />
         <Route path="/invite" element={<Invite />} />
+        <Route path="/family" element={<Family />} />
         <Route path="/profiles" element={<PrivateRoute inDemo={false}><Profiles /></PrivateRoute>} />
         <Route path="/emergency" element={<PrivateRoute inDemo={false}><Emergency /></PrivateRoute>} />
         <Route path="/share" element={<PrivateRoute inDemo={false}><ShareLinks /></PrivateRoute>} />

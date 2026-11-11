@@ -178,6 +178,10 @@ export function userRepository(q: Query, begin: Begin): UserRepository {
         // Grants and invitations name the account as the owner or as the delegate, not as `user_id`.
         await run('DELETE FROM delegations WHERE owner_user_id = $1 OR delegate_user_id = $1', [id]);
         await run('DELETE FROM profile_invites WHERE owner_user_id = $1', [id]);
+        // A seat is held or shared by the account (SECURITY.md M-52).
+        await run('DELETE FROM family_members WHERE member_id = $1 OR organizer_id = $1', [id]);
+        await run('DELETE FROM family_invites WHERE organizer_id = $1', [id]);
+        await run('DELETE FROM family_left WHERE member_id = $1 OR organizer_id = $1', [id]);
         await run('DELETE FROM users WHERE id = $1', [id]);
       });
     },

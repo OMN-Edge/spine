@@ -4,6 +4,8 @@ Spine is versioned `0.x` until its first production release: anything may change
 
 ## Unreleased
 
+- The privacy notice names the accounts that share a plan and what is kept about them, so its version is raised (`HEALTH_CONSENT_VERSION`) and every account is asked to agree to the new text at its next sign-in.
+- Accounts can share a plan (M-52): on the family plan the account that pays invites up to five others with a link that works once, each holds a seat with the plan's features, they share its six people (each account's own included) and its 12,000 pages, and either side can end a seat. A seat gives the one who pays no access to what a member keeps, and nothing is deleted when one ends; the account page has a "Shared plan" card for it. A larger plan would be one more entry in `core/src/billing/plans.ts`.
 - When the master password was accepted and the records still do not open, the screen says which part failed (the vault could not be reached, or the records could not be loaded on this device) instead of asking for the password again, and offers Try again and a short report to copy for support. Records whose pages had been put in another order could not be opened again on any device since 30 October; fixed, with nothing to repair.
 - Review in the Get started list leads to the first upload waiting for its grouping, scrolled into view, while one is waiting.
 - A share link is made and opened faster, and a reader is no longer left with pages the server lacks; the first refresh of an existing link sends its pages again, once, as JPEG.

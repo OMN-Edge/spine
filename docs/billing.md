@@ -10,9 +10,11 @@ How an instance sells Spine, and how an operator sets it up. **Off by default**:
 | Free | €0 | One person's records, storage up to 1 GB, the timeline, search, export, the emergency card, one live share link without translation, about 30 pages of AI reading a month |
 | Premium | €39 a year or €3.99 a month | One person's records, reading within fair use (4000 pages a month), translation, questions, connections and related documents, any number of share links, approval mode |
 | Founding member | €29 a year | The yearly Premium for the first 500 paying accounts, kept for as long as the subscription runs |
-| Family | €79 a year or €7.99 a month | Premium for up to six people, with child profiles, other accounts let in, teenagers' own accounts and promotion at eighteen; reading within fair use of 12,000 pages a month for them all. Sold only where both its prices are named |
+| Family | €79 a year or €7.99 a month | Premium for up to six people, with child profiles, other accounts let in, teenagers' own accounts and promotion at eighteen; up to six accounts can hold a seat in the plan (the one that pays and five invited), and the six people, each account's own included, and the reading within fair use of 12,000 pages a month are the plan's, for them all. Sold only where both its prices are named |
 
 `core/src/billing/plans.ts` is the one place these are written: the relay, the routes and the account page all ask it, and the pricing page shows what the server tells it. The amounts must match the prices created at the payment provider. Nothing is ever deleted when a plan ends: the records stay and export; what changes is what an account may add and use. The family plan is sold only when `SPINE_PADDLE_PRICE_FAMILY_YEAR` and `SPINE_PADDLE_PRICE_FAMILY_MONTH` are set. Changing from Premium to the family plan, or back, is done in Paddle's customer portal (a subscription to a price of the other plan is the other plan: the webhook reads it from the prices), not by a second checkout.
+
+**Seats.** One subscription is one account's, the organizer's. The organizer invites other accounts from the account page (`POST /api/family/invites`); each link works once, for a week, and whoever opens it first while signed in takes the seat, so it is sent to the person only. A member has the plan's features, its people (six in all) and its allowance, which is counted under the account that pays (`server/src/billing/seat.ts`, `server/src/billing/gate.ts`). The subscription stays one price at quantity one in Paddle: a seat is not bought, and a household that needs more than six accounts takes a second family plan or, later, a larger plan, which is another entry in `PLANS`. When the organizer's plan ends, members have their own plan again and keep their seat for if it returns; nothing is deleted. `GET /api/family` and the routes under `/api/family/` answer 404 where there are no plans.
 
 An account's plan is worked out, never stored: a running subscription gives Premium; otherwise the trial counts from the day the account was made; otherwise Free (`entitlementsOf`). A cancelled subscription keeps Premium to the end of what was paid for, and a late payment keeps it a few days (`PAST_DUE_GRACE_DAYS`) while the provider tries again.
 
@@ -47,9 +49,14 @@ The relay applies the plans and needs only `SPINE_BILLING=on` and the store (it 
 | Route | Who | What |
 | --- | --- | --- |
 | `GET /api/pricing` | anyone | The prices, whether the family plan is sold, and the founding places left; `{ enabled: false }` where there are no plans |
-| `GET /api/billing` | signed in | The account's plan, what it has used (AI reading, storage, share links), what it includes, and whether it can manage billing |
+| `GET /api/billing` | signed in | The account's plan, what it has used (AI reading, storage, share links), what it includes, whether it can manage billing, and whether it pays for a plan others hold a seat in or holds a seat in another's (`seat`); a seat's plan and allowance are the organizer's |
 | `POST /api/billing/checkout` | signed in | Starts a purchase for `{ interval, plan }` at the provider and answers where to send the person; refused for an account that already has a plan |
 | `POST /api/billing/portal` | signed in, with a Paddle subscription | Opens the provider's page for the card, invoices, switching and cancelling |
+| `GET /api/family` | signed in | Whose plan this is: for the organizer the seats, the accounts that hold them, the invitations waiting and how many people the plan holds; for a member the organizer and the same count |
+| `POST /api/family/invites`, `DELETE /api/family/invites/:id` | the organizer (a recently typed password to make one) | Makes an invitation (its secret is in the answer once) or takes one back |
+| `DELETE /api/family/members/:id` | the organizer (a recently typed password) | Ends a member's seat; the member is mailed |
+| `POST /api/family/preview`, `POST /api/family/join` | signed in, holding the secret | Who an invitation is from; takes the seat |
+| `POST /api/family/leave` | a member | Gives the seat up |
 | `POST /api/billing/webhook` | the provider only | Its signed messages; anything not signed correctly is refused |
 | `POST /api/waitlist` | anyone | An address to be told when Spine opens; the same answer whether or not it was there; five a minute per source, 200 an hour from all sources together, and at most `SPINE_WAITLIST_MAX` (20,000) on the list |
 

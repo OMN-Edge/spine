@@ -133,6 +133,7 @@ export async function buildTestApp(options: TestAppOptions = {}) {
   const { delegationRoutes } = await import('../../routes/delegation.js');
   const { relayRoutes } = await import('../../routes/relay.js');
   const { billingRoutes } = await import('../../routes/billing.js');
+  const { familyRoutes } = await import('../../routes/family.js');
   const { waitlistRoutes } = await import('../../routes/waitlist.js');
   const { sharedRoutes } = await import('../../routes/shared.js');
   const { demoRelayRoutes } = await import('../../routes/demo-relay.js');
@@ -178,6 +179,7 @@ export async function buildTestApp(options: TestAppOptions = {}) {
   await app.register(delegationRoutes, { claimsPerSource: 1000, promotionsPerSource: 1000, instanceWide: 100000 });
   await app.register(relayRoutes);
   await app.register(billingRoutes);
+  await app.register(familyRoutes, { perSource: 1000, instanceWide: 100000 });
   await app.register(waitlistRoutes, { perSource: { max: 1000, timeWindow: '1 minute' }, ...options.waitlist });
   await app.register(demoRelayRoutes, options.demoRelay ?? {});
   await app.register(sharedRoutes, { requestPerSource: { max: 1000, timeWindow: '1 minute' }, requestPerLink: { max: 1000, windowMs: 60 * 1000 }, readPerSource: { max: 100000, timeWindow: '1 minute' }, ...options.shared });

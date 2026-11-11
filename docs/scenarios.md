@@ -875,6 +875,11 @@ Where it is sold, the account page offers "Family for €79 a year" or "€7.99 
 
 Status: auto (`billing`, `plans`).
 
+### 13.2c Sharing the family plan
+On the family plan the account page has a "Shared plan" card: "Seats: 1 of 6", "People in the plan: 1 of 6" and "Invite an account". Inviting shows a link once, with how long it lasts, and a copy button; the card then lists the invitation as waiting until a date, with "Cancel". The person who opens the link is sent to sign in or make an account, then to their account page, where the card says who offered the seat, what it gives them and what it shows the one who pays (that they hold a seat and how many people the plan has, nothing they keep), and the wait before another plan's seat; "Take the seat" gives their account the family plan's features. The one who pays then lists them with the day they joined, and "Remove" asks again ("Their records stay with them") before ending the seat; the member is mailed and has their own plan again. A member's card says whose plan it is and offers "Give up this seat", which says what happens first. Where all six seats are taken the card says so and offers no invitation. A member adds people on the page of people up to the plan's six in all, counting every account's own person; once six are held the next is refused with the plan's words, whichever account asks. When the plan ends, members have their own plan again and keep what they made, and adding is what is held back.
+
+Status: auto (`family`: the invitation, the seats, the allowance counted under the one who pays, the people over every account, leaving, removing, the wait, a plan that ends, deleting an account; on all four stores), `routing`; real browser (`check:app`): the card, an invitation followed by a second account and taking the seat.
+
 ### 13.3 Hear when it opens
 While accounts cannot be made, the front page can ask for an address and says what it is kept for. The operator reads the list with `waitlist` and writes once.
 
@@ -924,7 +929,7 @@ Status: auto (`emergency` in core: the text and its limit).
 ### 15.1 Keep a child's or a parent's records apart
 The top bar always says whose records are open, on every screen size; its menu lists the people the account keeps records for or was let into, opens another, and leads to "Add or manage people". The account page leads there too ("See and add people"). Adding one starts empty records with a key of their own; opening one saves the current person and shows the other's records, with no master password asked again. Each has their own documents, search, share links and emergency card; nothing of one person shows in another's screens.
 
-- A plan with room for one person says so and points to the account page; the trial has room for six. A person already made stays when a plan ends.
+- A plan with room for one person says so and points to the account page; the trial has room for six. The family plan has room for six in all, counted over every account that holds a seat in it (each account's own person included): when they are all taken, adding another is refused for whichever account asks, with the plan's words, and removing a person frees a place for any of them. A person already made stays when a plan ends.
 - If something could not be saved, opening another person asks first.
 
 Status: auto (`billing`, `crypto`); real browser (`check:app`: add a person, their records start empty, the menu in the top bar lists both and leads to the page of people, back to the first).
@@ -964,8 +969,9 @@ The person who keeps a child's records deletes their account (the password again
 - The delete screen says it: "If you have let other people into the records of someone you look after, they lose access to them when this account is deleted."
 - The only way records pass from one account to another is the young adult taking them over at eighteen (scenario 15.4). A co-guardian cannot keep them once the owner has deleted the account.
 - The accounts that were let in are not deleted; they only lose what was shared into them.
+- An account that pays for a shared plan is told too: "If other accounts hold a seat in your plan, their seats end when this account is deleted." They are not deleted either: each has a plan of its own again and keeps what it made (scenario 13.2c).
 
-Status: auto (`delegation`: a co-guardian and a waiting invitation, through the route that deletes an account); real browser (`check:app`: the sentence on the delete screen).
+Status: auto (`delegation`: a co-guardian and a waiting invitation, through the route that deletes an account; `family`: the seats of a deleted member and of a deleted payer); real browser (`check:app`: the sentence on the delete screen, and the one a payer of a shared plan sees).
 
 ### 15.6 A child turns eighteen without an account of their own
 The guardian's list shows, on the child's row, "{name} is now 18, and these records should be theirs. Let them in as themselves, below." Nothing else changes: the guardian keeps the records and can go on changing them, the offer "Is this person, with an account of their own" is there (it is offered from sixteen), and what happens next is scenario 15.4 once the young adult has joined. Until they join, nothing moves and nobody is asked.

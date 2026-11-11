@@ -2,11 +2,12 @@ import type { FastifyInstance } from 'fastify';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { requireAuth } from 'spine-core/routes/middleware.js';
 import { logger } from 'spine-core/logger.js';
-import { FOUNDING_LIMIT, PAGE, PRICES, entitlementsOf, subscriptionEntitles, trialEnd, usagePeriod } from 'spine-core/billing/plans.js';
+import { FOUNDING_LIMIT, PAGE, PRICES, subscriptionEntitles, trialEnd, usagePeriod } from 'spine-core/billing/plans.js';
 import type { SubscriptionRecord } from 'spine-core/store/types.js';
 import { loadBillingConfig } from '../billing/config.js';
 import { applySubscriptionEvent, createCheckout, parseEvent, planOfItems, portalUrl, userOf, verifySignature, type PaddleEvent } from '../billing/paddle.js';
 import { vaultBytesFor, liveSharesFor } from '../billing/entitlements.js';
+import { standingOf } from '../billing/seat.js';
 
 const day = (now = new Date()) => now.toISOString().slice(0, 10);
 
@@ -40,9 +41,11 @@ export async function billingRoutes(app: FastifyInstance) {
     if (!user) return reply.status(401).send({ error: 'not authenticated' });
     const now = new Date();
     const sub = await store.billing.get(req.userId);
-    const e = entitlementsOf(user, sub, now);
+    // A seat in another's plan has that plan, and its allowance is the plan's, counted under the account that pays (SECURITY.md M-52).
+    const standing = (await standingOf(store, req.userId, now))!;
+    const e = standing.entitlements;
     const [aiUsed, vault, shares, vaultLimit, sharesLimit, held] = await Promise.all([
-      store.usage.aiUsed(req.userId, usagePeriod(e, now)),
+      store.usage.aiUsed(standing.holder, usagePeriod(e, now)),
       store.vault.usage(req.userId),
       store.shared.usage(req.userId, now.toISOString()),
       vaultBytesFor(req.userId),
@@ -52,6 +55,7 @@ export async function billingRoutes(app: FastifyInstance) {
     return reply.header('Cache-Control', 'no-store').send({
       enabled: true,
       plan: e.plan,
+      seat: standing.seat,
       trial_ends_at: e.plan === 'trial' ? trialEnd(user.created_at) : null,
       subscription: sub && subscriptionEntitles(sub, now)
         ? { status: sub.status, interval: sub.interval, founding: sub.founding, ends_at: sub.cancel_scheduled ? sub.current_period_end : null, renews_at: sub.cancel_scheduled ? null : sub.current_period_end, provider: sub.provider }
@@ -62,6 +66,7 @@ export async function billingRoutes(app: FastifyInstance) {
       shares: { live: shares.bundles, limit: sharesLimit },
       features: { translation: e.translation, chat: e.chat, linking: e.linking, related: e.related, approval_mode: e.approvalMode, delegation: e.delegation },
       people: { limit: e.profiles },
+      seats: { limit: e.seats },
       prices: PRICES,
       family: !!config.family,
       founding_left: Math.max(0, FOUNDING_LIMIT - held),

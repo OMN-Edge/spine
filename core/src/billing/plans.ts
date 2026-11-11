@@ -18,6 +18,12 @@ export const TRIAL_MONTHS = 6;
 export const FOUNDING_LIMIT = 500;
 /** A payment that failed leaves the account its plan this long (Paddle retries and reminds meanwhile). */
 export const PAST_DUE_GRACE_DAYS = 7;
+/** An account that left a family (or was removed) cannot take a seat in another for this long, so seats cannot be passed around; coming back to the same family is allowed. */
+export const SEAT_COOLDOWN_DAYS = 30;
+/** How long an invitation to a seat can be accepted. */
+export const SEAT_INVITE_DAYS = 7;
+/** Invitations that may wait at once. */
+export const SEAT_INVITES_WAITING = 10;
 
 export const PRICES = {
   premium: { year: 39, month: 3.99 },
@@ -46,8 +52,13 @@ export interface Entitlements {
   related: boolean;
   /** A share link that waits for the owner to approve a visitor. */
   approvalMode: boolean;
-  /** People (profiles) whose records the account keeps apart: one's own, a child's, a parent's. */
+  /**
+   * People (profiles) whose records are kept apart: one's own, a child's, a parent's. On a plan with seats this is the plan's total across
+   * every account that holds a seat, each account's own profile included.
+   */
   profiles: number;
+  /** Accounts that may share the plan, the one that pays included (a seat is an account, never a profile). */
+  seats: number;
   /** Letting another account into a profile (a co-guardian, a parent's records). */
   delegation: boolean;
 }
@@ -55,12 +66,13 @@ export interface Entitlements {
 const GB = 1024 ** 3;
 
 export const PLANS: Record<PlanId, Omit<Entitlements, 'plan'>> = {
-  trial: { aiAllowance: 150 * PAGE, aiPeriod: 'trial', vaultBytes: null, liveShares: null, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 6, delegation: true },
-  free: { aiAllowance: 30 * PAGE, aiPeriod: 'month', vaultBytes: GB, liveShares: 1, translation: false, chat: false, linking: false, related: false, approvalMode: false, profiles: 1, delegation: false },
+  trial: { aiAllowance: 150 * PAGE, aiPeriod: 'trial', vaultBytes: null, liveShares: null, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 6, seats: 1, delegation: true },
+  free: { aiAllowance: 30 * PAGE, aiPeriod: 'month', vaultBytes: GB, liveShares: 1, translation: false, chat: false, linking: false, related: false, approvalMode: false, profiles: 1, seats: 1, delegation: false },
   // "Unlimited (fair use)": a ceiling no ordinary use meets and a stuck loop does.
-  premium: { aiAllowance: 4000 * PAGE, aiPeriod: 'month', vaultBytes: null, liveShares: null, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 1, delegation: false },
-  // Premium for up to six people, who may be children and may have accounts of their own: the allowance is shared by all of them.
-  family: { aiAllowance: 12000 * PAGE, aiPeriod: 'month', vaultBytes: null, liveShares: null, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 6, delegation: true },
+  premium: { aiAllowance: 4000 * PAGE, aiPeriod: 'month', vaultBytes: null, liveShares: null, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 1, seats: 1, delegation: false },
+  // Premium for up to six people, who may be children and may have accounts of their own: six accounts at most (the seats), six people in
+  // all (each account's own included), and one allowance for the lot. A larger plan would be another entry here.
+  family: { aiAllowance: 12000 * PAGE, aiPeriod: 'month', vaultBytes: null, liveShares: null, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 6, seats: 6, delegation: true },
 };
 
 const addMonths = (iso: string, months: number): Date => {

@@ -1,7 +1,9 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { vaultLimits } from '../config.js';
-import { accountEntitlements, vaultBytesFor } from '../billing/entitlements.js';
+import { vaultBytesFor } from '../billing/entitlements.js';
+import { standingOf } from '../billing/seat.js';
+import { loadBillingConfig } from '../billing/config.js';
 import { hashPassword, normaliseEmail } from '../passwords.js';
 import { AUTH_VALUE, DEFAULT_KDF, parseKdfParams, parseVaultKeys, pretendSalt, sealed } from '../vault-keys.js';
 import { OBJECT_ID, readObject, removeObject, streamObject, writeObject } from '../vault-files.js';
@@ -182,11 +184,12 @@ export async function putObject(req: ObjectReq, reply: FastifyReply, ownerId: st
     if (existing && existing.profile_id !== only.profileId) return reply.status(404).send({ error: 'not found' });
   }
   // Another person's records (a profile) is part of the plan: a new one is refused past what it allows (billing off: no limit but the instance's).
+  // On a plan with seats the limit is the plan's, over every account that holds one (SECURITY.md M-52); the server counts objects of the kind.
   if (kind === 'profile' && base === '0') {
-    const plan = await accountEntitlements(ownerId);
-    if (plan) {
-      const have = (await store.vault.list(ownerId, 0)).filter(o => o.kind === 'profile' && !o.deleted && o.id !== id).length;
-      if (have >= plan.profiles) return reply.status(402).send({ error: 'another person is not part of the account’s plan', code: 'plan_required' });
+    const standing = loadBillingConfig().enabled ? await standingOf(store, ownerId, new Date()) : null;
+    if (standing) {
+      // Only a new one (base 0) is asked: a replaced profile is not another person.
+      if ((await store.family.profilesHeld(standing.holder)) >= standing.entitlements.profiles) return reply.status(402).send({ error: standing.seat === 'none' ? 'another person is not part of the account’s plan' : 'the plan’s people are all taken', code: 'plan_required' });
     }
   }
   // The disk is the whole instance's: while writing this would leave less than the reserve, it waits (S-56).

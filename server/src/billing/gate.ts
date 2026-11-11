@@ -1,11 +1,14 @@
 import type { AccountsStore } from 'spine-core/store/types.js';
-import { entitlementsOf, taskCost, TASK_FEATURE, usagePeriod, type RelayTask } from 'spine-core/billing/plans.js';
+import { standingOf } from './seat.js';
+import { taskCost, TASK_FEATURE, usagePeriod, type RelayTask } from 'spine-core/billing/plans.js';
 
 export interface Refusal { status: number; error: string; code: 'plan_required' | 'allowance_used' }
 
 /**
  * What the relay asks before it runs a task and tells after (`relay.ts`): whether the account's plan includes it and has allowance left,
  * and what the call cost. The relay sees the request, so the cost is measured, not claimed. Off, the relay has no gate and nothing here runs.
+ *
+ * A seat in another account's plan uses that plan's allowance, counted under the account that pays (`seat.ts`).
  *
  * A call is checked before and charged after it succeeds, so a failed call costs nothing; several in flight at once can each pass the check
  * and overshoot an allowance by a few calls, which is bounded by the relay's own daily count and is the right way round for the person.
@@ -30,23 +33,22 @@ export function createRelayGate(store: () => AccountsStore, now: () => Date = ()
     async admit(subject, task) {
       const who = await ownerOf(subject);
       if (!who) return null;
-      const user = await store().users.findById(who.userId);
-      if (!user) return null;
-      const e = entitlementsOf(user, await store().billing.get(who.userId), now());
+      const standing = await standingOf(store(), who.userId, now());
+      if (!standing) return null;
+      const e = standing.entitlements;
       const feature = TASK_FEATURE[task];
       if (feature && !e[feature]) return { status: 402, error: 'this is not part of the account’s plan', code: 'plan_required' };
       if (who.share) return null;
-      if ((await store().usage.aiUsed(who.userId, usagePeriod(e, now()))) >= e.aiAllowance) return { status: 402, error: 'the plan’s AI processing is used up', code: 'allowance_used' };
+      if ((await store().usage.aiUsed(standing.holder, usagePeriod(e, now()))) >= e.aiAllowance) return { status: 402, error: 'the plan’s AI processing is used up', code: 'allowance_used' };
       return null;
     },
 
     async settle(subject, task, requestBytes) {
       const who = await ownerOf(subject);
       if (!who || who.share) return;
-      const user = await store().users.findById(who.userId);
-      if (!user) return;
-      const e = entitlementsOf(user, await store().billing.get(who.userId), now());
-      await store().usage.aiAdd(who.userId, usagePeriod(e, now()), taskCost(task, requestBytes));
+      const standing = await standingOf(store(), who.userId, now());
+      if (!standing) return;
+      await store().usage.aiAdd(standing.holder, usagePeriod(standing.entitlements, now()), taskCost(task, requestBytes));
     },
   };
 }

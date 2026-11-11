@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { PAGE, PAST_DUE_GRACE_DAYS, entitlementsOf, planOf, subscriptionEntitles, taskCost, trialEnd, usagePeriod } from '../billing/plans.js';
+import { PAGE, PAST_DUE_GRACE_DAYS, PLANS, SEAT_COOLDOWN_DAYS, SEAT_INVITES_WAITING, SEAT_INVITE_DAYS, entitlementsOf, planOf, subscriptionEntitles, taskCost, trialEnd, usagePeriod } from '../billing/plans.js';
 import type { SubscriptionRecord } from '../store/types.js';
 
 const DAY = 86_400_000;
@@ -61,6 +61,17 @@ describe('the family plan', () => {
     expect(premium).toMatchObject({ plan: 'premium', profiles: 1, delegation: false });
     // Ending a family subscription goes the way every one does.
     expect(planOf(created(400), sub({ plan: 'family', status: 'canceled', current_period_end: new Date(now.getTime() - DAY).toISOString() }), now)).toBe('free');
+  });
+
+  // Seats are accounts, people are profiles: the plan holds six of each, and only a plan whose seats are more than one can be shared.
+  it('has six seats and six people in all, and the plans that are not shared have one seat', () => {
+    expect(PLANS.family).toMatchObject({ seats: 6, profiles: 6 });
+    for (const plan of ['trial', 'free', 'premium'] as const) expect(PLANS[plan].seats, plan).toBe(1);
+    expect(entitlementsOf(created(400), sub({ plan: 'family', current_period_end: new Date(now.getTime() + 30 * DAY).toISOString() }), now).seats).toBe(6);
+  });
+
+  it('holds an invitation for a week, a wait of a month after a seat is given up, and ten invitations waiting', () => {
+    expect([SEAT_INVITE_DAYS, SEAT_COOLDOWN_DAYS, SEAT_INVITES_WAITING]).toEqual([7, 30, 10]);
   });
 });
 

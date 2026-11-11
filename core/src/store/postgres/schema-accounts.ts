@@ -272,4 +272,30 @@ ALTER TABLE delegations ADD COLUMN IF NOT EXISTS delegate_hello TEXT;
 ALTER TABLE delegations ADD COLUMN IF NOT EXISTS owner_blob TEXT;
 ALTER TABLE delegations ADD COLUMN IF NOT EXISTS delegate_pin TEXT;
 ALTER TABLE delegations ADD COLUMN IF NOT EXISTS owner_pin TEXT;
+
+-- Accounts that share one subscription (SECURITY.md M-52). The organizer is the account that pays and is not listed; a member is listed once, so an
+-- account holds one seat. An invitation holds the hash of a secret the organizer tells the invited person; nothing here is a record or a key.
+CREATE TABLE IF NOT EXISTS family_members (
+  member_id TEXT PRIMARY KEY REFERENCES users(id),
+  organizer_id TEXT NOT NULL REFERENCES users(id),
+  joined_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_family_members_organizer ON family_members(organizer_id);
+
+CREATE TABLE IF NOT EXISTS family_invites (
+  id TEXT PRIMARY KEY,
+  organizer_id TEXT NOT NULL REFERENCES users(id),
+  secret_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  state TEXT NOT NULL DEFAULT 'offered'
+);
+CREATE INDEX IF NOT EXISTS idx_family_invites_organizer ON family_invites(organizer_id);
+
+-- When an account last gave up a seat and in whose plan: the wait before it can take one in another (the same plan is not held).
+CREATE TABLE IF NOT EXISTS family_left (
+  member_id TEXT PRIMARY KEY REFERENCES users(id),
+  organizer_id TEXT NOT NULL,
+  left_at TEXT NOT NULL
+);
 `;
