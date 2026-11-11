@@ -53,7 +53,8 @@ describe('what the model is sent', () => {
   it('is not cut at any size under the window, even for a long document', async () => {
     const pages = Array.from({ length: 60 }, (_, i) => page(i + 1, 'x'.repeat(3000))); // 180,000 characters
     expect(chunkPages(pages, 300_000)).toHaveLength(1);
-    expect(chunkPages(pages, 300_000)[0].length).toBeGreaterThan(180_000);
+    expect(chunkPages(pages, 300_000)[0].text.length).toBeGreaterThan(180_000);
+    expect(chunkPages(pages, 300_000)[0].pages).toBe(60);
   });
 });
 
@@ -85,7 +86,8 @@ describe('where a field lands', () => {
 describe('a document longer than the context window', () => {
   it('is split at page boundaries into chunks that each fit, with no page lost or repeated', () => {
     const pages = Array.from({ length: 10 }, (_, i) => page(i + 1, 'x'.repeat(1000)));
-    const chunks = chunkPages(pages, 3500);
+    const chunks = chunkPages(pages, 3500).map(c => c.text);
+    expect(chunkPages(pages, 3500).reduce((n, c) => n + c.pages, 0)).toBe(10);
 
     for (const chunk of chunks) expect(chunk.length).toBeLessThanOrEqual(3500);
     expect(chunks.length).toBeGreaterThan(1);
@@ -94,7 +96,7 @@ describe('a document longer than the context window', () => {
   });
 
   it('cuts a single page that is itself larger than the window, and only that', () => {
-    const chunks = chunkPages([page(1, 'x'.repeat(50)), page(2, 'y'.repeat(10_000)), page(3, 'z'.repeat(50))], 1000);
+    const chunks = chunkPages([page(1, 'x'.repeat(50)), page(2, 'y'.repeat(10_000)), page(3, 'z'.repeat(50))], 1000).map(c => c.text);
     expect(chunks.every(c => c.length <= 1000)).toBe(true);
     expect(chunks.join('')).toContain('x'.repeat(50));
     expect(chunks.join('')).toContain('z'.repeat(50));

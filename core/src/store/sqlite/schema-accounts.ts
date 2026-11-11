@@ -252,6 +252,27 @@ CREATE TABLE IF NOT EXISTS ai_usage (
   PRIMARY KEY (user_id, period)
 );
 
+-- The dates of the follow-up reminders an account's devices have told it (SECURITY.md M-53): an id and a day for each, and which profile it is of, never
+-- the words, which stay sealed in the records. It is how the server knows whom to mail on the day, and it mails without saying what it is about.
+CREATE TABLE IF NOT EXISTS reminder_dues (
+  user_id TEXT NOT NULL REFERENCES users(id),
+  id TEXT NOT NULL,
+  profile_id TEXT NOT NULL,
+  due_on TEXT NOT NULL,
+  mailed_on TEXT, -- when the mail for it was sent (or claimed): null until then
+  PRIMARY KEY (user_id, id)
+);
+CREATE INDEX IF NOT EXISTS idx_reminder_dues_due ON reminder_dues(due_on);
+
+-- Random ids of the chat questions an account asked lately (the device makes one for each question and sends it with every call of it), so a question
+-- is counted once however many calls it takes; kept two days. Only a random id, never a word of the question.
+CREATE TABLE IF NOT EXISTS ai_seen (
+  user_id TEXT NOT NULL,
+  key TEXT NOT NULL,
+  at TEXT NOT NULL,
+  PRIMARY KEY (user_id, key)
+);
+
 -- Whether the loops in the marketing plan work: a sign-up that came from a shared page, a share opened. A number a day under a name, never who.
 CREATE TABLE IF NOT EXISTS metrics (
   name TEXT NOT NULL,
@@ -301,4 +322,30 @@ CREATE TABLE IF NOT EXISTS delegations (
 );
 CREATE INDEX IF NOT EXISTS idx_delegations_owner ON delegations(owner_user_id);
 CREATE INDEX IF NOT EXISTS idx_delegations_delegate ON delegations(delegate_user_id);
+
+-- Accounts that share one subscription (SECURITY.md M-52). The organizer is the account that pays and is not listed; a member is listed once, so an
+-- account holds one seat. An invitation holds the hash of a secret the organizer tells the invited person; nothing here is a record or a key.
+CREATE TABLE IF NOT EXISTS family_members (
+  member_id TEXT PRIMARY KEY REFERENCES users(id),
+  organizer_id TEXT NOT NULL REFERENCES users(id),
+  joined_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_family_members_organizer ON family_members(organizer_id);
+
+CREATE TABLE IF NOT EXISTS family_invites (
+  id TEXT PRIMARY KEY,
+  organizer_id TEXT NOT NULL REFERENCES users(id),
+  secret_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  state TEXT NOT NULL DEFAULT 'offered'
+);
+CREATE INDEX IF NOT EXISTS idx_family_invites_organizer ON family_invites(organizer_id);
+
+-- When an account last gave up a seat and in whose plan: the wait before it can take one in another (the same plan is not held).
+CREATE TABLE IF NOT EXISTS family_left (
+  member_id TEXT PRIMARY KEY REFERENCES users(id),
+  organizer_id TEXT NOT NULL,
+  left_at TEXT NOT NULL
+);
 `;

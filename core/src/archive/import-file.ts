@@ -1,3 +1,4 @@
+import { requireDocumentRoom } from '../plan-limits.js';
 import { v4 as uuidv4 } from 'uuid';
 import { getStore } from '../store/index.js';
 import { rasterizePdf } from '../ingestion/rasterize.js';
@@ -82,6 +83,8 @@ async function restore(
       for (const page of file.pages) if (page.hidden) await tx.pages.setHidden(userId, idBySource.get(page.source_page)!, true);
 
       const now = new Date().toISOString();
+      // A file restored must fit the plan's limit on documents as a whole (`plan-limits.ts`), so one that does not leaves none behind.
+      await requireDocumentRoom(userId, file.documents.length);
       for (const [index, d] of file.documents.entries()) {
         const docId = uuidv4();
         documentIds.push(setAside.has(index) ? null : docId);

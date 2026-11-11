@@ -91,7 +91,8 @@ const headline = (doc: Document): string =>
 export async function askQuestion(userId: string, question: string, history: ChatTurn[], screen: ScreenContext | null = null, progress: ChatProgress = {}): Promise<ChatReply | null> {
   // The agent decides what to look up; the fixed pipeline below is the fallback for a model that cannot use tools, for
   // and for an agent that fails.
-  const model = getChatLlm().agentModel?.() ?? null;
+  // Every call of this question carries one random id, so the plan counts it as one message however many calls the assistant makes.
+  const model = getChatLlm().agentModel?.(crypto.randomUUID()) ?? null;
   // It runs on an empty archive too: the question may be about Spine itself (explain_spine), which a new person asks first.
   if (model) {
     try {

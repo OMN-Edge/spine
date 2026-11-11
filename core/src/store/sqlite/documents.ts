@@ -49,6 +49,7 @@ export function documentRepository(db: Database): DocumentRepository {
   const dropEmbeddings = db.prepare('DELETE FROM document_embeddings WHERE document_id = ? AND user_id = ?');
   const dropLinks = db.prepare('DELETE FROM document_links WHERE (from_document_id = ? OR to_document_id = ?) AND user_id = ?');
   const dropRemoved = db.prepare('DELETE FROM removed_readings WHERE document_id = ? AND user_id = ?');
+  const dropReminders = db.prepare('DELETE FROM reminders WHERE document_id = ? AND user_id = ?');
   const readEdited = db.prepare('SELECT owner_edited FROM documents WHERE id = ? AND user_id = ?');
   const writeEdited = db.prepare('UPDATE documents SET owner_edited = ? WHERE id = ? AND user_id = ?');
   const remove = db.prepare('DELETE FROM documents WHERE id = ? AND user_id = ?');
@@ -229,6 +230,7 @@ export function documentRepository(db: Database): DocumentRepository {
       dropEmbeddings.run(id, uid);
       dropLinks.run(id, id, uid);
       dropRemoved.run(id, uid);
+      dropReminders.run(id, uid); // a reminder is a document's
       remove.run(id, uid);
     },
 
@@ -263,6 +265,11 @@ export function documentRepository(db: Database): DocumentRepository {
 
     async renameProvider(userId, from, to) {
       return renameProviderStmt.run(to, owner(userId), from).changes;
+    },
+
+    async count(userId) {
+      // Every document of the person, not only those shown: the plan counts what is kept (a set-aside or unread one is kept too).
+      return (db.prepare('SELECT COUNT(*) AS n FROM documents WHERE user_id = ?').get(owner(userId)) as { n: number }).n;
     },
 
     async listShownByIds(userId, ids) {

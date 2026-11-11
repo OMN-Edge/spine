@@ -1,3 +1,4 @@
+import { requireDocumentRoom } from '../plan-limits.js';
 import { getStore } from '../store/index.js';
 import type { PageGroup } from './move-page.js';
 
@@ -117,6 +118,9 @@ export async function applyRegroup(userId: string, sourceFileId: string, named: 
     const plan = planRegroup(current, named, newId);
     const originOf = new Map(current.flatMap(g => g.pageIds.map(id => [id, g.documentId] as const)));
     const created = plan.groups.filter(g => g.isNew).map(g => g.documentId);
+
+    // The documents it makes, less the ones it removes, must fit the plan's limit (`plan-limits.ts`).
+    await requireDocumentRoom(userId, created.length - plan.deleted.length);
 
     // New documents, with the tags of the documents their pages came from until they are read.
     for (const g of plan.groups.filter(x => x.isNew)) {

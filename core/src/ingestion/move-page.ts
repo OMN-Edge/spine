@@ -1,3 +1,4 @@
+import { requireDocumentRoom } from '../plan-limits.js';
 import { getStore } from '../store/index.js';
 
 /**
@@ -115,6 +116,7 @@ export async function movePage(userId: string, pageId: string, target: MoveTarge
     const plan = planMove(groups, pageId, target, newDocumentId);
     if (!plan.changed) return { moved: false, touched: [], deleted: [], created: null };
 
+    if (plan.created) await requireDocumentRoom(userId, plan.emptied ? 0 : 1);
     if (plan.created) await tx.documents.create(userId, { id: plan.created, sourceFileId, pageStart: 1, pageEnd: 1, docType: 'other' });
 
     // What was read from the page goes with it.

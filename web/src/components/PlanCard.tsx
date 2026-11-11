@@ -4,6 +4,7 @@ import { api } from '../api';
 import { formatBytes, useBilling } from '../billing';
 import { useI18n } from '../i18n';
 import { buttonClass, Notice } from './AuthCard';
+import ArchiveProgress from './ArchiveProgress';
 
 /** The account's plan: what it is, what has been used, and the ways to change it. Shows nothing on an instance with no plans. */
 export default function PlanCard() {
@@ -30,7 +31,16 @@ export default function PlanCard() {
   const sub = subscription;
   const name = plan === 'family' ? t('Family') : plan === 'premium' ? t('Premium') : plan === 'trial' ? t('Free trial') : t('Free');
   const money = (n: number) => `€${n}`;
-
+  // Only adding has an allowance (the pages read); using is not limited, so questions, translation and link traffic are not shown here (the "Your archive" section says what was done).
+  const bar = (used: number, of: number) => (
+    <span className="block h-1.5 mt-1 rounded bg-gray-100" role="presentation"><span className="block h-1.5 rounded bg-brand-500" style={{ width: `${of > 0 ? Math.min(100, Math.round((used / of) * 100)) : 0}%` }} /></span>
+  );
+  const r = ai?.reading;
+  const reading = {
+    left: r && r.allowance !== null ? Math.max(0, r.allowance - r.used) : 0,
+    nearly: !!r && r.allowance !== null && r.allowance > 0 && Math.max(r.used / r.allowance, r.own_cap ? (r.own_used ?? 0) / r.own_cap : 0) >= 0.8,
+    ownNearly: !!r && !!r.own_cap && (r.own_used ?? 0) / r.own_cap >= 0.8,
+  };
   return (
     <section className="bg-white border border-gray-200 rounded-xl p-5 mt-6">
       <h2 className="font-medium text-gray-900 mb-1">{t('Your plan')}: {name}</h2>
@@ -47,12 +57,25 @@ export default function PlanCard() {
         </p>
       )}
 
-      <ul className="text-sm text-gray-700 space-y-1 mb-4">
-        {ai && <li>{t('AI reading: {used} of {allowance} pages', { used: ai.used, allowance: ai.allowance })} {ai.period === 'month' ? t('this month') : t('in the trial')}</li>}
-        {vault && <li>{t('Storage: {used} of {limit}', { used: formatBytes(vault.used_bytes), limit: formatBytes(vault.limit_bytes) })}</li>}
+      <ul className="text-sm text-gray-700 space-y-3 mb-4">
+        {ai && ai.reading.allowance !== null && (
+          <li className={reading.nearly ? 'text-amber-700' : undefined}>
+            {ai.reading.own_cap !== undefined
+              ? t('Shared with your household: you can add {left} pages {when}', { left: reading.left, when: ai.period === 'month' ? t('this month') : t('in the trial') })
+              : t('You can add {left} pages {when}', { left: reading.left, when: ai.period === 'month' ? t('this month') : t('in the trial') })}
+            {ai.reading.own_cap !== undefined && reading.ownNearly && ` · ${t('your part: {left} of {cap} left', { left: Math.max(0, ai.reading.own_cap - (ai.reading.own_used ?? 0)), cap: ai.reading.own_cap })}`}
+            {ai.reading.monthly !== undefined && <span className="block text-xs text-gray-500">{t('{n} more every month; what you do not use is kept for up to three months.', { n: ai.reading.monthly })}</span>}
+            {reading.nearly && <span className="block text-xs">{t('You can add more next month, or upgrade.')}</span>}
+            {bar(ai.reading.used, ai.reading.allowance)}
+          </li>
+        )}
+        {vault && <li>{t('Storage: {used} of {limit} used', { used: formatBytes(vault.used_bytes), limit: formatBytes(vault.limit_bytes) })}{bar(vault.used_bytes, vault.limit_bytes)}</li>}
         {billing.people && <li>{t('People: up to {n}', { n: billing.people.limit })}</li>}
-        {shares && <li>{t('Share links: {live} live of {limit}', { live: shares.live, limit: shares.limit })}</li>}
+        {/* Share links are limited only on the free plan; on a paid plan nothing about them is a limit to show. */}
+        {billing.links && billing.links.views.allowance !== null && <li>{t('Share link views: {used} of {allowance}', { used: billing.links.views.used, allowance: billing.links.views.allowance })} {t('this month')}</li>}
+        {shares && shares.limit !== null && <li>{t('Share links: {live} live of {limit}', { live: shares.live, limit: shares.limit })}</li>}
       </ul>
+      <ArchiveProgress />
 
       {error && <Notice kind="error">{error}</Notice>}
       {plan !== 'premium' && plan !== 'family' && family && prices && (

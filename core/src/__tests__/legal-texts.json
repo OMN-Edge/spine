@@ -1,12 +1,12 @@
 {
   "versions": {
-    "HEALTH": "2026-11-10",
+    "HEALTH": "2026-11-11",
     "TERMS": "2026-11-09"
   },
   "texts": {
     "privacy": {
       "consent": "HEALTH",
-      "sha256": "b85a02c68f41ec836840250833cfdb088ebd4a48e9379236d137d0b85fd688d1"
+      "sha256": "a1ec84bfe57a6a3e80ff7935aac67f49d54bda86742f12175a76ceeb702927a9"
     },
     "purpose": {
       "consent": "HEALTH",

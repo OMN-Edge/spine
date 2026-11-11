@@ -46,12 +46,12 @@ export default function PublicShareView() {
   if (!shareId) return null;
   if (state === 'open') return <SharedContent shareId={shareId} />;
   if (state === 'checking') return <div className="min-h-screen flex items-center justify-center text-gray-400">{t('Loading…')}</div>;
-  if (state === 'gone' || state === 'broken') {
+  if (state === 'gone' || state === 'broken' || state === 'limit' || state === 'paused') {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center max-w-sm">
           <p className="text-gray-900 font-medium mb-2">{t('Link unavailable')}</p>
-          <p className="text-gray-500 text-sm">{state === 'gone' ? t('This link is no longer active.') : t('This address is incomplete or damaged. Ask the person who shared it for the whole link.')}</p>
+          <p className="text-gray-500 text-sm">{state === 'gone' ? t('This link is no longer active.') : state === 'limit' ? t('This link has reached its limit for this month. It opens again next month.') : state === 'paused' ? t('This link is not available just now. Try again later.') : t('This address is incomplete or damaged. Ask the person who shared it for the whole link.')}</p>
         </div>
       </div>
     );

@@ -618,6 +618,8 @@ const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, 
 
 export interface Prices { premium: { year: number; month: number }; founding: { year: number }; family: { year: number; month: number }; currency: string }
 export interface Pricing { enabled: boolean; prices?: Prices; founding_left?: number; /** The family plan is sold here. */ family?: boolean }
+/** One meter of the plan: pages for reading, messages for chat, pages for translation. `own_*` only on a plan whose seats are shared. */
+export interface MeterView { used: number; /** What each month adds where unused pages carry over (the plan allowance is then what can be added by the end of this month). */ monthly?: number; /** Null where only adding is limited and using is only counted. */ allowance: number | null; own_used?: number; own_cap?: number }
 /** What the account page shows of the plan (the server's `GET /api/billing`). */
 export interface BillingView {
   enabled: boolean;
@@ -625,14 +627,45 @@ export interface BillingView {
   trial_ends_at?: string | null;
   subscription?: { status: string; interval: 'month' | 'year' | null; founding: boolean; ends_at: string | null; renews_at: string | null; provider: 'paddle' | 'operator' } | null;
   can_manage?: boolean;
-  ai?: { used: number; allowance: number; period: 'trial' | 'month' };
+  /** What the AI has done, in three meters: each in its own unit, the plan's (a pool on a plan with seats), and an account's own against its cap there. */
+  /** What the plan lets the share links send in a month: times opened, and bytes (with what the owner's own devices read). */
+  links?: { views: { used: number; allowance: number | null }; bytes: { used: number; allowance: number | null } };
+  /** What the account has done in all, its own (never a pool's): pages read for it, questions answered, pages translated. */
+  totals?: { pages: number; messages: number; translated: number };
+  ai?: { period: 'trial' | 'month'; reading: MeterView; chat: MeterView; translation: MeterView; /** Extra pages for reading an archive, once for the life of the account. */ import: MeterView };
   vault?: { used_bytes: number; limit_bytes: number };
-  shares?: { live: number; limit: number };
+  /** `limit` is null where the plan does not limit how many are live. */
+  shares?: { live: number; limit: number | null };
   features?: { translation: boolean; chat: boolean; linking: boolean; related: boolean; approval_mode: boolean; delegation: boolean };
   people?: { limit: number };
+  limits?: { documents: number | null };
+  /** `organizer` pays for a plan others hold seats in; `member` holds a seat in another's plan. */
+  seat?: 'organizer' | 'member' | 'none';
+  seats?: { limit: number };
   family?: boolean;
   prices?: Prices;
   founding_left?: number;
+}
+
+/** The accounts that share one plan (the server's `GET /api/family`). */
+export type FamilyView =
+  | { enabled: false }
+  | { enabled: true; role: 'none'; profiles: { used: number; limit: number } }
+  | { enabled: true; role: 'member'; organizer_email: string; profiles: { used: number; limit: number }; cooldown_days: number }
+  | { enabled: true; role: 'organizer'; seats: { used: number; limit: number }; members: Array<{ id: string; email: string; joined_at: string }>; invites: Array<{ id: string; created_at: string; expires_at: string }>; profiles: { used: number; limit: number }; invite_days: number; cooldown_days: number };
+
+/** A follow-up a document asks for: proposed from what it says, a reminder once the owner confirms its date and words. */
+export interface Reminder {
+  id: string;
+  document_id: string;
+  document_title: string | null;
+  document_date: string | null;
+  text: string;
+  due_on: string;
+  status: 'proposed' | 'confirmed' | 'dismissed' | 'done';
+  on_page: number | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface EmergencyView {
@@ -666,6 +699,15 @@ export const api = {
     /** Where to send the person to pay: the provider's checkout, on a page of its own. */
     checkout: (interval: 'month' | 'year', plan: 'premium' | 'family' = 'premium') => post<{ url: string }>('/api/billing/checkout', { interval, plan }),
     portal: () => post<{ url: string }>('/api/billing/portal', {}),
+  },
+  family: {
+    get: () => req<FamilyView>('/api/family'),
+    invite: () => post<{ id: string; secret: string; expires_at: string }>('/api/family/invites', {}),
+    cancelInvite: (id: string) => del<{ ok: true }>(`/api/family/invites/${encodeURIComponent(id)}`),
+    remove: (memberId: string) => del<{ ok: true }>(`/api/family/members/${encodeURIComponent(memberId)}`),
+    preview: (id: string, secret: string) => post<{ organizer_email: string; expires_at: string; cooldown_days: number }>('/api/family/preview', { id, secret }),
+    join: (id: string, secret: string) => post<{ ok: true }>('/api/family/join', { id, secret }),
+    leave: () => post<{ ok: true }>('/api/family/leave', {}),
   },
   /** Asking to be told when Spine opens. The answer is the same whether or not the address was already there. */
   waitlist: (email: string, source?: string) => post<{ ok: boolean }>('/api/waitlist', { email, source }),
@@ -1113,6 +1155,12 @@ export const api = {
     state: () => req<{ loaded: boolean; processing: boolean }>('/api/demo'),
     load: (language: 'en' | 'ro') => post<{ loaded: boolean; processing: boolean }>('/api/demo', { language }),
     remove: () => del<{ removed: boolean }>('/api/demo'),
+  },
+
+  reminders: {
+    list: () => req<{ reminders: Reminder[]; max: number }>('/api/reminders'),
+    update: (id: string, change: { status?: Reminder['status']; text?: string; due_on?: string }) => put<Reminder>(`/api/reminders/${encodeURIComponent(id)}`, change),
+    remove: (id: string) => del<{ ok: boolean }>(`/api/reminders/${encodeURIComponent(id)}`),
   },
 
   episodes: {

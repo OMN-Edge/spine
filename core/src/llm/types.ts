@@ -4,6 +4,13 @@ import type { BaseChatModel } from '@langchain/core/language_models/chat_models'
 import type { TaskClients, TaskSpecs } from './tasks.js';
 
 /**
+ * What the device tells the relay about a call, for the plan's counts (`billing/gate.ts`): `work` is a random id it gives every call of one piece of
+ * work (a chat question, a document's translation into a language), so the plan counts the work once; `pages` is how many pages the call reads or
+ * translates. Neither is a word of what is sent, and the relay does not log them.
+ */
+export interface CallMeta { work?: string; pages?: number }
+
+/**
  * The LLM interface. Stateless, single-turn calls — no chaining, no agent loop,
  * no tool use, no multi-turn state (docs/architecture/interfaces.md) — with one exception: `agentModel()` hands the
  * chat agent (`chat/agent.ts`) the model itself, to bind its read-only tools to. What looks like a chain
@@ -19,7 +26,8 @@ export interface ChatLlm {
   /** Structured metadata for one logical document. */
   /** `knownTests`: canonical test names already in the archive, so the same test is named the same way. */
   /** `ownerNotes`: what the owner wrote on the document, as context (never as a source of values). */
-  extractFields(documentText: string, knownTests?: string[], knownTags?: string[], ownerNotes?: string | null): Promise<ExtractionResult>;
+  /** `pages`: how many pages the text covers, which the plan counts (`CallMeta`). */
+  extractFields(documentText: string, knownTests?: string[], knownTags?: string[], ownerNotes?: string | null, pages?: number): Promise<ExtractionResult>;
   /**
    * Read one page image: the text on it and where. **This is the only call that
    * sends an image off the host** (SECURITY.md M-7), so it is reached only through
@@ -40,7 +48,8 @@ export interface ChatLlm {
    * provider, like extraction (SECURITY.md P8). Null if the answer could not be used. The caller reconciles
    * what came back with what it sent, by id.
    */
-  translate(bundle: TranslationBundle, target: string, source: string | null): Promise<TranslationBundle | null>;
+  /** `meta`: the work this call is part of and how many pages it translates, for the plan's counts. */
+  translate(bundle: TranslationBundle, target: string, source: string | null, meta?: CallMeta): Promise<TranslationBundle | null>;
   /**
    * Which of these candidate documents the target is linked to: one requested the other, one follows up the other, or
    * they are one episode. Summary cards only, never pages (SECURITY.md P8); the cards are data, not instructions.
@@ -63,7 +72,7 @@ export interface ChatLlm {
    * The chat model itself, for an agent that binds tools to it (`chat/agent.ts`). Provider-neutral: LangChain's own base class.
    * Null where the implementation cannot offer one (a test double), and the caller then answers without tools.
    */
-  agentModel(): BaseChatModel | null;
+  agentModel(work?: string): BaseChatModel | null;
 }
 
 /** A record as the chat model sees it. The label is the caller's ("D1"), not a database id. */
@@ -237,6 +246,17 @@ export const extractionSchema = z.object({
       role: z.enum(DOCTOR_ROLES),
     }),
   ).default([]),
+  // Explicit instructions to come back or repeat something ("control peste 3 luni", "repeat in March 2027"), never inferred. Absent, or not as
+  // asked, means none: a reminder that cannot be read must not cost the rest of the document.
+  follow_ups: z.array(
+    z.object({
+      text: z.string(),
+      after_months: z.number().int().min(1).max(120).nullish(),
+      on_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
+      source_snippet: z.string().nullish(),
+      page_number: z.number().int().positive().nullish(),
+    }),
+  ).default([]).catch([]),
   fields: z.array(
     z.object({
       label: z.string(),

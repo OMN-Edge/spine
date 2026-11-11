@@ -1,3 +1,4 @@
+import { formatReport, usageReport } from './usage-report.js';
 import { pathToFileURL } from 'url';
 import { v4 as uuidv4 } from 'uuid';
 import { getAccountsStore } from 'spine-core/store/index.js';
@@ -28,6 +29,7 @@ import {
  *   npm run cli -- waitlist-remove <email>
  *   npm run cli -- metrics [--days=N]
  *   npm run cli -- list-users
+ *   npm run cli -- usage [--month=YYYY-MM] [--top=N]   what each account really used, and how near the hidden ceilings (estimates, numbers only)
  *   npm run check-embeddings      (with relay.env too: the embedding provider's settings are the relay's)
  *
  * Without --password-stdin a password is generated and printed once. It is never
@@ -54,6 +56,7 @@ const USAGE = `usage:
   metrics [--days=N]
   delete-user <email> [--yes]
   list-users
+  usage [--month=YYYY-MM] [--top=N]
   check-embeddings`;
 
 async function choosePassword(flags: string[], io: CliIo): Promise<{ password: string; generated: boolean }> {
@@ -269,6 +272,13 @@ export async function runCli(args: string[], io: CliIo): Promise<number> {
       return 0;
     }
 
+    case 'usage': {
+      const month = flags.find(f => f.startsWith('--month='))?.slice('--month='.length) ?? new Date().toISOString().slice(0, 7);
+      if (!/^\d{4}-\d{2}$/.test(month)) { io.err('--month must be YYYY-MM'); return 2; }
+      const top = Number(flags.find(f => f.startsWith('--top='))?.slice('--top='.length) ?? 20);
+      for (const line of formatReport(await usageReport(store, month), month, Number.isInteger(top) && top > 0 ? top : 20)) io.out(line);
+      return 0;
+    }
     case 'list-users': {
       const users = await store.users.list();
       if (users.length === 0) io.out('no accounts');

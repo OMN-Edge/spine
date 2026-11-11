@@ -854,10 +854,11 @@ Status: auto (`chat-agent`, `chat-actions`, `share-chat`); live (`chat-qa.it.ts`
 Only where the operator has set `SPINE_BILLING=on` (`docs/billing.md`). Everywhere else none of this exists and nothing limits an account but the instance's own ceilings.
 
 ### 13.1 Try everything, then keep the free plan
-A new account has six months of everything, with 150 pages of AI reading in all. The account page says which plan it is on and what is used (reading, storage, share links).
+A new account has six months of everything, with 150 pages of AI reading in all. The account page says which plan it is on and what is used: the pages read against the plan's allowance (the trial's are one total), the questions asked and the pages translated this month (counted, with no allowance), storage and share links. A pages line turns amber and says "almost used up" from 80%.
 
-- When the trial ends the account is on the free plan: the records, timeline, search and export are unchanged, one share link can be live, and translation, questions, connections and approving visitors are refused with words that point to the account page. Reading continues up to about 30 pages a month. Nothing is deleted; storage over the free limit stays, and adding more waits until it is under.
-- When the 150 pages are used, an upload's reading says so in words (the plan's AI reading is used up); the other features, such as the assistant, stop and may show their ordinary failure message, which does not yet say why.
+- On the free plan the account keeps up to fifty documents: an upload past that is refused before the file is kept, with words that point to the account page, and so is making more by splitting or regrouping; nothing is deleted, and removing documents makes room.
+- When the trial ends the account is on the free plan: the records, timeline, search and export are unchanged, one share link can be live, and translation, questions, connections and approving visitors are refused with words that point to the account page. Reading continues up to 10 pages a month. Nothing is deleted; storage over the free limit stays, and adding more waits until it is under.
+- When the pages are used up (the trial's 150, a month's 10, or what a paid plan has kept), an upload's reading says so in words (the plan's AI reading is used up) and waits; nothing already added is affected: questions about it and its translation go on as often as needed, for the owner and for a doctor opening a link, because only adding is limited. A smaller call around reading (a summary, a link, an embedding) is not a page and is never stopped by the pages.
 
 Status: auto (`billing`).
 
@@ -874,6 +875,31 @@ Status: auto (`billing`, `growth`, `routing`); by hand in Paddle's sandbox as `d
 Where it is sold, the account page offers "Family for €79 a year" or "€7.99 a month" beside Premium, and the pricing page says what it adds: up to six people, children's records kept by their guardians, other accounts let in, a teenager's own account from sixteen, and the records becoming theirs at eighteen. The account then shows "Family" and "People: up to 6". Moving between Premium and the family plan is done in the payment provider's portal; the plan follows the prices of the subscription.
 
 Status: auto (`billing`, `plans`).
+
+### 13.2c Sharing the family plan
+On the family plan the account page has a "Shared plan" card: "Seats: 1 of 6", "People in the plan: 1 of 6" and "Invite an account". Inviting shows a link once, with how long it lasts, and a copy button; the card then lists the invitation as waiting until a date, with "Cancel". The person who opens the link is sent to sign in or make an account, then to their account page, where the card says who offered the seat, what it gives them and what it shows the one who pays (that they hold a seat and how many people the plan has, nothing they keep), and the wait before another plan's seat; "Take the seat" gives their account the family plan's features. The one who pays then lists them with the day they joined, and "Remove" asks again ("Their records stay with them") before ending the seat; the member is mailed and has their own plan again. A member's card says whose plan it is and offers "Give up this seat", which says what happens first. Where all six seats are taken the card says so and offers no invitation. The plan card shows the plan's pool for each meter, and an account's own part of it against the cap of Premium's amount ("your part: 12 of 30 left"); storage and share links are the plan's over every account, the same on both sides. When one account has used its own part of the pages it is stopped there while the others go on, and when the pool's pages are used up nobody adds more; questions and translation are the plan's to use, for every account. A member adds people on the page of people up to the plan's six in all, counting every account's own person; once six are held the next is refused with the plan's words, whichever account asks. When the plan ends, members have their own plan again and keep what they made, and adding is what is held back.
+
+Status: auto (`family`: the invitation, the seats, the allowance counted under the one who pays, the people over every account, leaving, removing, the wait, a plan that ends, deleting an account; on all four stores), `routing`; real browser (`check:app`): the card, an invitation followed by a second account and taking the seat.
+
+### 13.2d A free link reaches its limit for the month
+Each time someone opens a share link, the owner's plan counts one view and the bytes the link sent, with the bytes the owner's own devices read counted in the same pool. On a paid plan the plan card shows nothing about links, because nothing about them is limited: a link is for whoever needs to read it, a doctor abroad included, and nothing about them is shown on the plan card. On the free plan, with one live link, 20 views and 1 GB a month, the page shows "Share link views: 12 of 20 this month", a line turns amber from 80%, and when the month's views or bytes are used up the link stays live but its readers see "Link unavailable: This link has reached its limit for this month. It opens again next month." until the first of the next month; the owner can still open every record, and an emergency card is never stopped. On a shared plan the counts are the plan's, for every account's links together. A question to the assistant counts as one message whatever number of steps it takes, and a document's translation counts its pages once per language: the account page says "Questions asked: 4 this month" and "Pages translated: 12 this month", with no allowance, so a person who needs to ask more, or to have a whole history translated for a doctor abroad, is never stopped from doing it.
+
+Status: auto (`links`: counting, the refusal on the free plan and its month, bytes, no limit on a paid plan short of the ceiling, the pool of a shared plan, the owner's own reads; `billing`: a question and a translation counted once and never refused for want of an allowance, the hidden ceiling, a device that sends no id), `plans`; `PublicShareView` (the viewer's message at a limit).
+
+### 13.2e Reading an archive from the one-off allowance
+On a paid plan the Upload page offers "I am importing an archive: read it from my one-off import allowance (250 pages left)". Ticking it makes the reading of the uploads that follow draw from that allowance, not from the month's, until it is used; the account page shows "Archive import, once: 40 of 250 pages". It is off again when the page is left, and when the allowance is used up the choice is gone and reading goes to the month. What is not used stays for a later archive. A family's is a pool of 500 pages, and each account may use 250 of it.
+
+Status: auto (`billing`: an import drawn from the allowance, then the month, ignored where there is none; `family`: the pool and an account's part; `plans`: the key that is not forgotten); `ImportAllowance` is not covered by a test of its own.
+
+### 13.2g The account page says what is left to add, and what was done
+The plan card shows only what is limited, in plain words: "You can add 28 pages this month" with, under it, "30 more every month; what you do not use is kept for up to three months" (so after an idle month 58, after two 88, never more than 90) and a thin bar that turns amber from 80% and says "You can add more next month, or upgrade", the one-off archive import while it is unused ("250 pages left"), and storage ("1 MB of 5 GB used"); on a shared plan the household's pages first and "your part: 12 of 30 left" when a member is near their own part. It does not show questions, translated pages or share link traffic, because none of them is limited. At the bottom of the plan card, small tiles say what Spine has done for the account in all, as things done and never against a limit: "412 pages read for you so far", "38 questions answered about your records so far" and "96 pages translated so far", only the ones that are not zero. They are the account's own, so a member of a household does not see another's, and they only grow.
+
+Status: auto (`web` build and the browser check that opens the account page).
+
+### 13.2f An account reaches a hidden ceiling
+Nobody who uses an archive as it is meant to be used meets one, and none is ever shown: not on the account page, in a message or on the pricing page. An account that does (an automated or hostile one) has that one action refused with "This account has reached its fair-use limit. Contact support." while everything else it does goes on as before, and the same model answers at every volume; a question or translation already begun is finished. A share link past one says only "This link is not available just now. Try again later." The ceilings are monthly (the burst guard) and yearly (over the billing year of an annual subscription, otherwise the last twelve months), and a household's are counted together. The operator changes them in a file without a release, is told by mail and in the log when an account passes about 15 euros of AI cost in a month or 80% of a ceiling, and reads what each account used with `npm run cli -- usage`.
+
+Status: auto (`fair-use`: the file and a changed value, the refusal and what still works, the monthly and yearly windows, a billing year and its renewal, a household, links, that nothing is shown, the cost counted, the alerts and the report).
 
 ### 13.3 Hear when it opens
 While accounts cannot be made, the front page can ask for an address and says what it is kept for. The operator reads the list with `waitlist` and writes once.
@@ -924,7 +950,7 @@ Status: auto (`emergency` in core: the text and its limit).
 ### 15.1 Keep a child's or a parent's records apart
 The top bar always says whose records are open, on every screen size; its menu lists the people the account keeps records for or was let into, opens another, and leads to "Add or manage people". The account page leads there too ("See and add people"). Adding one starts empty records with a key of their own; opening one saves the current person and shows the other's records, with no master password asked again. Each has their own documents, search, share links and emergency card; nothing of one person shows in another's screens.
 
-- A plan with room for one person says so and points to the account page; the trial has room for six. A person already made stays when a plan ends.
+- A plan with room for one person says so and points to the account page; the trial has room for six. The family plan has room for six in all, counted over every account that holds a seat in it (each account's own person included): when they are all taken, adding another is refused for whichever account asks, with the plan's words, and removing a person frees a place for any of them. A person already made stays when a plan ends.
 - If something could not be saved, opening another person asks first.
 
 Status: auto (`billing`, `crypto`); real browser (`check:app`: add a person, their records start empty, the menu in the top bar lists both and leads to the page of people, back to the first).
@@ -964,8 +990,9 @@ The person who keeps a child's records deletes their account (the password again
 - The delete screen says it: "If you have let other people into the records of someone you look after, they lose access to them when this account is deleted."
 - The only way records pass from one account to another is the young adult taking them over at eighteen (scenario 15.4). A co-guardian cannot keep them once the owner has deleted the account.
 - The accounts that were let in are not deleted; they only lose what was shared into them.
+- An account that pays for a shared plan is told too: "If other accounts hold a seat in your plan, their seats end when this account is deleted." They are not deleted either: each has a plan of its own again and keeps what it made (scenario 13.2c).
 
-Status: auto (`delegation`: a co-guardian and a waiting invitation, through the route that deletes an account); real browser (`check:app`: the sentence on the delete screen).
+Status: auto (`delegation`: a co-guardian and a waiting invitation, through the route that deletes an account; `family`: the seats of a deleted member and of a deleted payer); real browser (`check:app`: the sentence on the delete screen, and the one a payer of a shared plan sees).
 
 ### 15.6 A child turns eighteen without an account of their own
 The guardian's list shows, on the child's row, "{name} is now 18, and these records should be theirs. Let them in as themselves, below." Nothing else changes: the guardian keeps the records and can go on changing them, the offer "Is this person, with an account of their own" is there (it is offered from sixteen), and what happens next is scenario 15.4 once the young adult has joined. Until they join, nothing moves and nobody is asked.
@@ -989,6 +1016,23 @@ Status: auto (`delegation`: the grants that remain; `vault.e2e`: two guardians, 
 
 ---
 
+## 16. Follow-up reminders
+
+### 16.1 A document says to come back
+When a document says, in so many words, to come back or repeat something ("control peste 3 luni", "repeat in March 2027"), reading it proposes a reminder, and "Reminders" in the More menu shows it under "To confirm": the words as the document has them (editable), a date worked out from the document's date (editable), and the document it comes from. Nothing is inferred: a recommendation with no time given, a guideline, a result proposes nothing, and a date already behind the person is not proposed. "Set the reminder" confirms it with the words and date as they are then; "Not needed" dismisses it for good, even if the document is read again; a document read again proposes nothing twice. A confirmed reminder is under "Coming up" with "Mark done" and "Delete"; done ones are kept below, and a document's deletion takes its reminders with it. Every plan has them, the free plan too.
+
+Status: auto (`reminders`: proposing, the dates, confirming, refusing what is not a date or words, deletion with the document; `continuation`: the reading of a follow-up and a reading that leaves it out); real browser (`check:app`: a document that says to come back is proposed, confirmed, marked done, and the server is told).
+
+### 16.2 The day it is due
+On the day, the owner is mailed a line: "A reminder you set in Spine is due. Sign in to see it. This message does not say what it is about." (several on one day: "3 reminders in Spine are due"), once for the day and never with a word of what for. Whoever looks after the person, a guardian or the person themselves with an account of their own, is mailed too; someone who can only read is not, and neither is an account that is no longer let in. A reminder moved to another day is mailed on the new one, and one told again with the same date is not mailed again. If the mail cannot be sent it is tried again at the next hour; where the instance has no mailer nothing is sent and nothing is lost. A profile taken over at eighteen takes its reminders to the person, and the old owner is not mailed about them.
+
+Status: auto (`reminder-dates`: the day and not before, once, a moved date, a failed mail and none at all, a guardian and a viewer, and the account that owns the dates; `delegation`: the take-over at eighteen).
+
+### 16.3 What the server is told
+For each confirmed reminder whose document is still there, the server is told an id, a day and which person it is of, and never the words; a change, a done or a deleted reminder, a document set aside or deleted, all reach it within half a minute, and at most 500 reminders are kept for an account.
+
+Status: auto (`reminders`: what is told and when, a host that fails, none where there is no host; `reminder-dates`: replacing a profile's dates and the limit).
+
 ## Gaps found while writing this
 
 Found by checking each scenario against the code.
@@ -1000,4 +1044,4 @@ Still open:
 
 ## Not covered yet
 
-Things people will reasonably ask for that no scenario above promises: other photo formats such as WebP where the browser cannot draw them, signed exports (an imported export is believed; SECURITY.md S-26), reminders for follow-ups the documents mention, sharing a chart, and merging two uploads' history. Add a scenario when one is wanted.
+Things people will reasonably ask for that no scenario above promises: other photo formats such as WebP where the browser cannot draw them, signed exports (an imported export is believed; SECURITY.md S-26), reminders on the device itself rather than by mail, sharing a chart, and merging two uploads' history. Add a scenario when one is wanted.

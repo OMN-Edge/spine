@@ -3,12 +3,12 @@ import { changed, many, one, type Begin, type Query } from './query.js';
 
 /** The account tables a user owns, children before parents (foreign keys). */
 const OWNED_TABLES = [
-  'shared_requests', 'shared_opens', 'shared_bundles', 'user_sessions', 'cookie_sessions', 'model_usage', 'ai_usage', 'subscriptions', 'user_devices', 'user_tokens',
+  'shared_requests', 'shared_opens', 'shared_bundles', 'user_sessions', 'cookie_sessions', 'model_usage', 'ai_usage', 'ai_seen', 'reminder_dues', 'subscriptions', 'user_devices', 'user_tokens',
   'user_passkeys', 'device_enrolments', 'vault_objects', 'vault_keys', 'user_recovery_codes', 'user_totp',
 ];
 
 /** What a wipe removes: all of the above but the account, how it signs in, its plan and what it used (sqlite/users.ts says the same). */
-const WIPED_TABLES = ['shared_requests', 'shared_opens', 'shared_bundles', 'user_sessions', 'cookie_sessions', 'user_tokens', 'device_enrolments', 'vault_objects', 'vault_keys'];
+const WIPED_TABLES = ['reminder_dues', 'shared_requests', 'shared_opens', 'shared_bundles', 'user_sessions', 'cookie_sessions', 'user_tokens', 'device_enrolments', 'vault_objects', 'vault_keys'];
 
 const asPasskey = (r: Record<string, unknown>): PasskeyRecord => ({
   id: r.id as string, user_id: r.user_id as string, public_key: r.public_key as string, counter: Number(r.counter),
@@ -178,6 +178,10 @@ export function userRepository(q: Query, begin: Begin): UserRepository {
         // Grants and invitations name the account as the owner or as the delegate, not as `user_id`.
         await run('DELETE FROM delegations WHERE owner_user_id = $1 OR delegate_user_id = $1', [id]);
         await run('DELETE FROM profile_invites WHERE owner_user_id = $1', [id]);
+        // A seat is held or shared by the account (SECURITY.md M-52).
+        await run('DELETE FROM family_members WHERE member_id = $1 OR organizer_id = $1', [id]);
+        await run('DELETE FROM family_invites WHERE organizer_id = $1', [id]);
+        await run('DELETE FROM family_left WHERE member_id = $1 OR organizer_id = $1', [id]);
         await run('DELETE FROM users WHERE id = $1', [id]);
       });
     },

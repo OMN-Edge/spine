@@ -299,10 +299,12 @@ export async function translateDocument(
     const full = (async (): Promise<TranslatedDocument | null> => {
       try {
         const llm = getChatLlm();
+        // Every call of this translation carries one id and the document's page count, so the plan counts the pages once, however many calls it takes.
+        const meta = { work: crypto.randomUUID(), pages: Math.max(1, document.page_end - document.page_start + 1) };
         let fromName = document.language ? (LANGUAGE_NAMES[document.language as SupportedLanguage] ?? document.language) : null;
         const ask = async (bundle: TranslationBundle): Promise<TranslationBundle | null> => {
           const parts = pieces(bundle);
-          const answers = await mapLimit(parts, llmConcurrency(), part => translatePiece(part, b => llm.translate(b, LANGUAGE_NAMES[language], fromName)));
+          const answers = await mapLimit(parts, llmConcurrency(), part => translatePiece(part, b => llm.translate(b, LANGUAGE_NAMES[language], fromName, meta)));
           // A piece nothing could be got from is left out: what it held is asked for once more, then shown in the original.
           const results = answers.filter((a): a is TranslationBundle => !!a);
           if (results.length === 0) return null;

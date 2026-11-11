@@ -8,6 +8,7 @@ import Sessions from '../components/Sessions';
 import YourData from '../components/YourData';
 import AdminAccounts from '../components/AdminAccounts';
 import PlanCard from '../components/PlanCard';
+import SeatsCard from '../components/SeatsCard';
 import Passkeys from '../components/Passkeys';
 import AddDevice from '../components/AddDevice';
 import RecoveryKitSettings from '../components/RecoveryKitSettings';
@@ -64,6 +65,7 @@ export default function Account() {
 
         <h2 id="plan" className={`${heading} !mt-0`}>{t('Plan and people')}</h2>
         <PlanCard />
+        <SeatsCard />
         <section className="bg-white border border-gray-200 rounded-xl p-5 mt-6">
           <h3 className="font-medium text-gray-900 mb-1">{t('People')}</h3>
           <p className="text-sm text-gray-500 mb-3">{t('Keep the records of someone you look after, such as a child or a parent, apart from your own.')}</p>

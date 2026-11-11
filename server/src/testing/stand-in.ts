@@ -24,8 +24,10 @@ export function valueFor(schema: any, depth = 0, key = ''): unknown { // eslint-
     case 'string': return key === 'doc_date' || String(schema.pattern ?? '').includes('d{4}-') ? '2026-01-15' : 'sample';
     case 'number': case 'integer': return 0;
     case 'boolean': return false;
-    case 'array': return [];
-    case 'object': return Object.fromEntries((schema.required ?? Object.keys(schema.properties ?? {})).map((k: string) => [k, valueFor(schema.properties?.[k], depth + 1, k)]));
+    // A document that says to come back in ten years, so the reminders flow can be seen end to end (the date is far enough never to be past).
+    case 'array': return key === 'follow_ups' ? [{ text: 'control peste 10 ani', after_months: 120, on_date: null, source_snippet: 'sample', page_number: 1 }] : [];
+    // `follow_ups` has a default, so a schema does not list it as required; it is asked for by name so the reminders flow can be seen end to end.
+    case 'object': return Object.fromEntries([...new Set([...(schema.required ?? Object.keys(schema.properties ?? {})), ...(schema.properties?.follow_ups ? ['follow_ups'] : [])])].map((k: string) => [k, valueFor(schema.properties?.[k], depth + 1, k)]));
     default: return null;
   }
 }

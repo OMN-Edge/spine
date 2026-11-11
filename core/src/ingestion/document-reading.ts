@@ -3,6 +3,7 @@ import { normaliseLicenseCode } from '../doctors.js';
 import { getStore, type NewExtractedField, type NewMeasurement, type PageSummary, type Store } from '../store/index.js';
 import { normaliseMeasurements } from './measurements.js';
 import { extractFields } from './extraction.js';
+import { proposeReminders } from '../reminders/index.js';
 import { groundSnippet } from './grounding.js';
 import { EXTRACTION_FALLBACK } from '../llm/types.js';
 import { modelWait } from '../llm/availability.js';
@@ -32,15 +33,16 @@ function pageBlock(page: PageSummary, budget: number): string {
 }
 
 /** The document's pages in order, packed into chunks that each fit the window. One chunk for nearly every document. */
-export function chunkPages(pages: PageSummary[], budget: number): string[] {
-  const chunks: string[] = [];
+/** The chunks a document is read in, each with how many pages it holds, which the plan counts as pages read (`CallMeta`). */
+export function chunkPages(pages: PageSummary[], budget: number): Array<{ text: string; pages: number }> {
+  const chunks: Array<{ text: string; pages: number }> = [];
   let current: string[] = [];
   let size = 0;
   for (const page of pages) {
     const block = pageBlock(page, budget);
     const added = current.length === 0 ? block.length : block.length + 2; // the blank line between pages
     if (current.length > 0 && size + added > budget) {
-      chunks.push(current.join('\n\n'));
+      chunks.push({ text: current.join('\n\n'), pages: current.length });
       current = [block];
       size = block.length;
     } else {
@@ -48,7 +50,7 @@ export function chunkPages(pages: PageSummary[], budget: number): string[] {
       size += added;
     }
   }
-  if (current.length > 0) chunks.push(current.join('\n\n'));
+  if (current.length > 0) chunks.push({ text: current.join('\n\n'), pages: current.length });
   return chunks;
 }
 
@@ -73,6 +75,7 @@ export function mergeExtractions(extractions: ExtractionResult[]): ExtractionRes
   return {
     ...extractions[0],
     suggested_tags: [...new Set(extractions.flatMap(e => e.suggested_tags))],
+    follow_ups: [...new Map(extractions.flatMap(e => e.follow_ups ?? []).map(f => [f.text, f] as const)).values()],
     fields,
   };
 }
@@ -125,7 +128,7 @@ export async function readDocument(
   const knownTags = (await store.tags.listFor(userId)).map(t => t.name);
   // What the owner wrote on this document helps a new reading, and is kept through it.
   const ownerNotes = (await store.documents.findFor(userId, documentId))?.user_notes ?? null;
-  for (const text of chunkPages(pages, llmContextChars())) extractions.push(await extractFields(text, knownTests, model, knownTags, ownerNotes));
+  for (const chunk of chunkPages(pages, llmContextChars())) extractions.push(await extractFields(chunk.text, knownTests, model, knownTags, ownerNotes, chunk.pages));
   const extraction = mergeExtractions(extractions);
 
   // Where on its page a supporting phrase is, as a box; null when it cannot be pinned down.
@@ -211,6 +214,8 @@ export async function storeReading(tx: Store, userId: string, documentId: string
     const id = await tx.doctors.upsert(userId, { name: doctor.name, specialty: doctor.specialty, clinic: reading.extraction.provider, licenseCode: doctor.code }, now);
     if (id) await tx.doctors.link(userId, documentId, id, doctor.role, 'text', normaliseLicenseCode(doctor.code));
   }
+  // A follow-up the document asks for, as a reminder for the owner to confirm (`reminders/index.ts`): proposed, never made on its own.
+  await proposeReminders(tx, userId, documentId, reading.extraction);
 }
 
 /**

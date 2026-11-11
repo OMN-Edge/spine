@@ -17,6 +17,8 @@ import { accountRoutes } from './routes/accounts.js';
 import { waitlistRoutes } from './routes/waitlist.js';
 import { delegationRoutes } from './routes/delegation.js';
 import { billingRoutes } from './routes/billing.js';
+import { familyRoutes } from './routes/family.js';
+import { reminderRoutes, remindDue } from './routes/reminders.js';
 import { ownAccountRoutes } from './routes/own-account.js';
 import { adminRoutes } from './routes/admin.js';
 import { passkeyRoutes } from './routes/passkeys.js';
@@ -127,6 +129,8 @@ await app.register(sessionRoutes);
 await app.register(accountRoutes, { registration: config.registration, instance: config.instance });
 await app.register(ownAccountRoutes);
 await app.register(billingRoutes);
+await app.register(familyRoutes);
+await app.register(reminderRoutes);
 await app.register(waitlistRoutes);
 await app.register(adminRoutes);
 await app.register(passkeyRoutes);
@@ -187,6 +191,10 @@ setInterval(() => void sweep(), 60 * 60 * 1000).unref();
 const remind = () => remindCardReviews().catch(err => app.log.error({ err: err instanceof Error ? err.message : String(err) }, 'reminding about cards failed'));
 await remind();
 setInterval(() => void remind(), 60 * 60 * 1000).unref();
+// Follow-up reminders that are due: whoever they are for is mailed (a line, no medical content), at start and hourly.
+const remindReminders = () => remindDue().catch(err => app.log.error({ err: err instanceof Error ? err.message : String(err) }, 'mailing due reminders failed'));
+await remindReminders();
+setInterval(() => void remindReminders(), 60 * 60 * 1000).unref();
 // Ended sign-ins (browser and address) are deleted for every account the same way, so none outlives its 14 days because its owner never came back.
 const sweepSignIns = () => sweepSessions().catch(err => app.log.error({ err: err instanceof Error ? err.message : String(err) }, 'removing ended sign-ins failed'));
 await sweepSignIns();

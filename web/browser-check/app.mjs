@@ -59,6 +59,9 @@ const env = {
   SPINE_RELAY_URL: relay.url, SPINE_RELAY_SECRET: RELAY_SECRET,
   SPINE_DOMAIN: `localhost:${front}`, // where passkeys belong: the address the browser uses
   SPINE_DEMO_UPLOADS: 'on', // a visitor may read a few files of their own in the demo (SECURITY.md M-39)
+  // Plans on, with invented settings for the payment provider (no checkout is started here), so the account page shows a plan and the seats of a shared one (M-52).
+  SPINE_BILLING: 'on', PADDLE_ENVIRONMENT: 'sandbox', PADDLE_API_KEY: 'pdl_app_check', PADDLE_WEBHOOK_SECRET: 'whsec_app_check', SPINE_CHECKOUT_URL: 'http://localhost:1/',
+  SPINE_PADDLE_PRICE_YEAR: 'pri_year', SPINE_PADDLE_PRICE_MONTH: 'pri_month', SPINE_PADDLE_PRICE_FOUNDING: 'pri_founding', SPINE_PADDLE_PRICE_FAMILY_YEAR: 'pri_family_year', SPINE_PADDLE_PRICE_FAMILY_MONTH: 'pri_family_month',
 };
 // An invented two-page file with a text layer.
 const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'spine-app-check-files-')); // not in the server's data directory: that is searched below
@@ -86,6 +89,8 @@ for (const [name, count] of [['demo-long.pdf', 7], ['demo-two.pdf', 1], ['demo-t
   fs.writeFileSync(demoFiles.at(-1), await doc.save());
 }
 const made = execFileSync('node', ['dist/cli.js', 'create-user', 'check@example.com'], { cwd: path.join(root, 'server'), env, encoding: 'utf8' });
+// The account that pays has the family plan, granted by the operator as the CLI does.
+execFileSync('node', ['dist/cli.js', 'grant-plan', 'check@example.com', '--plan=family', '--days=30'], { cwd: path.join(root, 'server'), env, encoding: 'utf8' });
 const keeperPassword = execFileSync('node', ['dist/cli.js', 'create-user', 'keeper@example.com'], { cwd: path.join(root, 'server'), env, encoding: 'utf8' }).match(/password \(shown once\): (\S+)/)[1];
 const password = made.match(/password \(shown once\): (\S+)/)[1];
 const guestPassword = execFileSync('node', ['dist/cli.js', 'create-user', 'guest@example.com'], { cwd: path.join(root, 'server'), env, encoding: 'utf8' }).match(/password \(shown once\): (\S+)/)[1];
@@ -1243,6 +1248,106 @@ try {
     await waitFor('Chest X-ray');
     await click('Timeline');
     await waitFor('Chest X-ray');
+  }
+
+  // Follow-up reminders (SECURITY.md M-53): the uploaded document says to come back, so a reminder is proposed; the owner confirms it with its date
+  // and words, and the server is told the date and nothing else.
+  {
+    await click('Timeline');
+    await p.click('nav button[aria-haspopup=menu]:not([title]):not([aria-label])');
+    await (await p.waitForFunction(() => [...document.querySelectorAll('[role=menu] a')].find(a => a.getAttribute('href') === '/reminders'))).asElement().click();
+    // The headings are drawn in capitals by the page's style, which is what the text of the page says; the words of a reminder are in a field.
+    const said = async (what, ms = 20000) => { for (let t = 0; t < ms; t += 250) { if ((await text()).toLowerCase().includes(what.toLowerCase())) return true; await wait(250); } return false; };
+    const proposed = await said('To confirm');
+    if (!proposed) console.log('     the reminders page says:', (await text()).replace(/\s+/g, ' ').slice(0, 900), '| at', await p.evaluate(() => location.pathname));
+    check(proposed, 'a document that says to come back is proposed as a reminder, to confirm');
+    check((await p.evaluate(() => [...document.querySelectorAll('input')].map(i => i.value))).includes('control peste 10 ani'), 'with the words the document gives, to edit');
+    await click('Set the reminder');
+    check(await said('Coming up') && (await text()).includes('Due '), 'confirming sets it, with its date');
+    let told = false;
+    for (let t = 0; t < 40000 && !told; t += 500) { told = asked.some(u => u === '/api/reminder-dates'); if (!told) await wait(500); }
+    check(told, 'and the server is told the date, in a request of its own');
+    await click('Mark done');
+    await wait(1500);
+    check(!(await text()).includes('Mark done') || (await text()).toLowerCase().includes('done'), 'a reminder can be marked done');
+    await click('Timeline');
+  }
+
+  // SPINE_CHECK_SHOTS=<directory> keeps a picture of the card at each step, for looking at (never part of a normal run).
+  const shot = async (page, name) => {
+    if (!process.env.SPINE_CHECK_SHOTS) return;
+    fs.mkdirSync(process.env.SPINE_CHECK_SHOTS, { recursive: true });
+    await wait(400);
+    const card = await page.$('#shared');
+    if (card) await card.evaluate(e => e.scrollIntoView({ block: 'center' }));
+    await page.screenshot({ path: path.join(process.env.SPINE_CHECK_SHOTS, `${name}.png`), fullPage: false });
+  };
+  // Accounts that share a plan (SECURITY.md M-52): the account that pays makes an invitation, a second account follows the link, signs in, is
+  // offered the seat and takes it, the one that pays sees it and can end it, and the member can give it up.
+  {
+    await click('Timeline');
+    await openAccount();
+    check(await waitFor('Shared plan', 20000), 'the account page of an account on the family plan has a card for sharing it');
+    check(/Seats: 1 of 6/.test(await text()) && /People in the plan: \d+ of 6/.test(await text()), 'and says how many seats and how many people the plan holds');
+    check((await text()).includes('A seat gives you no access to what they keep'), 'and that a seat gives the one who pays no access to what a member keeps');
+    check((await text()).includes('their seats end when this account is deleted'), 'and the delete screen of the one who pays says that deleting the account ends the seats');
+    await click('Invite an account');
+    check(await waitFor('Send this link to the person', 20000), 'inviting shows a link once');
+    const seatLink = await p.evaluate(() => document.querySelector('input[readonly]')?.value ?? '');
+    check(/\/family#[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}$/.test(seatLink), 'its secret is after the #, which a browser does not send');
+    check(/An invitation waits until/.test(await text()), 'and the invitation is listed as waiting');
+    await shot(p, '1-payer-invitation-made');
+    {
+      const sctx = await browser.createBrowserContext();
+      const q = await sctx.newPage();
+      const qErrors = [];
+      q.on('pageerror', e => qErrors.push(e.message));
+      const qText = () => q.evaluate(() => document.body.innerText);
+      const qWait = async (what, ms = 30000) => { for (let t = 0; t < ms; t += 250) { if ((await qText()).includes(what)) return true; await wait(250); } return false; };
+      const qClick = async label => { const h = await q.evaluateHandle(l => [...document.querySelectorAll('button,a')].find(e => e.offsetParent && e.innerText.trim().toLowerCase().startsWith(l.toLowerCase())), label); await h.asElement().click(); };
+      await q.goto(seatLink.replace(/^https?:\/\/[^/]+/, `http://localhost:${front}`), { waitUntil: 'networkidle0' });
+      check(await qWait('You have been invited to a shared plan', 15000), 'the link says the person has been invited, before any sign-in');
+      check(!asked.some(u => u.includes('/family') && u.includes('.')), 'and the secret was never in a request the browser made');
+      await qClick('Sign in');
+      await q.waitForSelector('input[type=email]', { visible: true });
+      // The account has its vault already, so its master password is what it signs in with.
+      await q.type('input[type=email]', 'guest@example.com'); await q.type('input[type=password]', GUEST_MASTER); await qClick('Sign in');
+      check(await qWait('Timeline', 40000), 'the second account signs in and its records open');
+      check(await qWait('You have an invitation to a shared plan waiting', 40000), 'once in, a note says an invitation to a shared plan is waiting');
+      await qClick('Open it');
+      check(await qWait('check@example.com has offered you a seat in their plan.', 20000), 'the offer says who it is from');
+      check((await qText()).includes('and nothing you keep'), 'and what the one who pays would and would not see');
+      await shot(q, '2-invited-account-offer');
+      await qClick('Take the seat');
+      check(await qWait('You hold a seat in the plan of check@example.com.', 20000), 'taking the seat works, and the card says whose plan it is');
+      check(await qWait('Your plan: Family', 20000), 'and the account has the family plan');
+      check(!(await qText()).includes('Take the seat'), 'and the offer is gone');
+      await shot(q, '3-member-has-the-seat');
+      // The one who pays sees the seat.
+      await click('Timeline');
+      await openAccount();
+      check(await waitFor('guest@example.com', 20000) && /Seats: 2 of 6/.test(await text()), 'the one who pays sees who holds a seat, and two seats of six taken');
+      // Ending a seat asks first, and says the records stay.
+      const inMemberRow = label => p.evaluate(l => [...document.querySelectorAll('#shared li')].find(li => li.innerText.includes('guest@example.com'))?.querySelectorAll('button').forEach(b => { if (b.innerText.trim() === l) b.click(); }), label);
+      await shot(p, '4-payer-with-a-member');
+      await inMemberRow('Remove');
+      check(await waitFor('Their records stay with them.', 10000), 'removing a member asks first and says their records stay with them');
+      await shot(p, '5-payer-asks-before-removing');
+      await inMemberRow('No');
+      check(/Seats: 2 of 6/.test(await text()), 'and declining changes nothing');
+      // The member gives it up.
+      await qClick('Give up this seat');
+      check(await qWait('Your records stay with you', 10000), 'giving a seat up says what happens first');
+      await qClick('Yes, give it up');
+      check(await qWait('Your plan: Free trial', 20000), 'and the account has its own plan again');
+      check(!(await qText()).includes('You hold a seat'), 'with no seat');
+      await click('Timeline');
+      await openAccount();
+      check(await waitFor('Seats: 1 of 6', 20000) && !(await text()).includes('guest@example.com'), 'the one who pays sees the seat free again');
+      check(qErrors.length === 0, `no errors on the second account's page${qErrors.length ? `: ${qErrors[0]}` : ''}`);
+      await sctx.close();
+    }
+    await click('Timeline');
   }
 
   // A passkey that opens the vault (the WebAuthn PRF extension), with Chrome's virtual authenticator standing in for the person's device.

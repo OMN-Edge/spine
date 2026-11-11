@@ -1,5 +1,5 @@
 import type { MaintenanceRepository } from '../types.js';
-import { changed, type Query } from './query.js';
+import { changed, many, type Query } from './query.js';
 
 /**
  * Boot-time operations across all rows, run by the process itself. No acting user (the third documented exception to P12's rule).
@@ -10,6 +10,21 @@ export function maintenanceRepository(q: Query): MaintenanceRepository {
   return {
     async snapshotTo() {
       throw new Error('a Postgres database is backed up by its host (managed backups, or pg_dump), not by a snapshot file');
+    },
+
+    async claimDueReminders(today, at) {
+      const rows = await many<{ recipient: string; n: number }>(q, `
+        WITH claimed AS (UPDATE reminder_dues SET mailed_on = $2 WHERE due_on <= $1 AND mailed_on IS NULL RETURNING user_id, profile_id)
+        SELECT recipient, COUNT(*) AS n FROM (
+          SELECT user_id AS recipient FROM claimed
+          UNION ALL
+          SELECT d.delegate_user_id AS recipient FROM claimed c JOIN delegations d ON d.owner_user_id = c.user_id AND d.profile_id = c.profile_id AND d.state = 'active' AND d.role IN ('guardian', 'self')
+        ) t GROUP BY recipient`, [today, at]);
+      return rows.map(r => ({ recipient: r.recipient, n: Number(r.n) }));
+    },
+
+    async releaseReminders(at) {
+      return changed(q, 'UPDATE reminder_dues SET mailed_on = NULL WHERE mailed_on = $1', [at]);
     },
 
     async pruneSessions(startedBefore, idleSince, devicesFirstSeenBefore, cookiesExpiredBefore) {

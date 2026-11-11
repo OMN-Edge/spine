@@ -1,5 +1,6 @@
 import type { CookieSessionRepository, EnrolmentClaim, EnrolmentOffer, EnrolmentRepository, SessionRecord, SessionRepository, UsageRepository } from '../types.js';
 import { owner } from '../owner.js';
+import { monthsBefore } from '../months.js';
 import { changed, many, one, type Query } from './query.js';
 
 const SESSION_COLUMNS = 'id, created_at, last_seen_at, user_agent, address';
@@ -49,15 +50,34 @@ export function usageRepository(q: Query): UsageRepository {
       return Number(row.calls);
     },
 
+    async seen(userId, key) {
+      return (await one(q, 'SELECT 1 AS yes FROM ai_seen WHERE user_id = $1 AND key = $2', [owner(userId), key])) !== null;
+    },
+
+    async see(userId, key, at) {
+      const id = owner(userId);
+      const fresh = (await changed(q, 'INSERT INTO ai_seen (user_id, key, at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING', [id, key, at])) === 1;
+      await q('DELETE FROM ai_seen WHERE user_id = $1 AND at < $2', [id, new Date(Date.parse(at) - 2 * 24 * 3600e3).toISOString()]);
+      return fresh;
+    },
+
     async aiUsed(userId, period) {
       return Number((await one<{ amount: number }>(q, 'SELECT amount FROM ai_usage WHERE user_id = $1 AND period = $2', [owner(userId), period]))?.amount ?? 0);
+    },
+
+    async aiUsedMany(userId, periods) {
+      if (periods.length === 0) return 0;
+      return Number((await one<{ n: number }>(q, 'SELECT COALESCE(SUM(amount), 0) AS n FROM ai_usage WHERE user_id = $1 AND period = ANY($2)', [owner(userId), periods]))!.n);
     },
 
     async aiAdd(userId, period, amount) {
       const id = owner(userId);
       const row = await one<{ amount: number }>(q, `INSERT INTO ai_usage (user_id, period, amount) VALUES ($1, $2, $3)
         ON CONFLICT (user_id, period) DO UPDATE SET amount = ai_usage.amount + excluded.amount RETURNING amount`, [id, period, Math.max(0, Math.round(amount))]);
-      if (period !== 'trial') await q(`DELETE FROM ai_usage WHERE user_id = $1 AND period <> $2 AND period <> 'trial'`, [id, period]);
+      // A count more than thirteen months old is forgotten, whichever meter or pool it was for (the key holds the month); the trial's total and a
+      // once-only allowance have no month and are kept. Thirteen, not twelve, so a yearly ceiling can sum the twelve months behind it.
+      const month = /\d{4}-\d{2}/.exec(period)?.[0];
+      if (month) await q(`DELETE FROM ai_usage WHERE user_id = $1 AND substring(period from '\\d{4}-\\d{2}') < $2`, [id, monthsBefore(month, 13)]);
       return Number(row!.amount);
     },
   };

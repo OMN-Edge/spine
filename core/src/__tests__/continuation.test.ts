@@ -197,7 +197,17 @@ describe('extractFields', () => {
   it('passes through a valid extraction', async () => {
     install([valid]);
     const result = await extractFields('document text');
-    expect(result).toEqual(valid);
+    // A document with no follow-up is read with none, and a reading that left the list out is not refused for it.
+    expect(result).toEqual({ ...valid, follow_ups: [] });
+  });
+
+  it('reads the follow-ups a document asks for, and loses nothing else when they are not as asked', async () => {
+    install([{ ...valid, follow_ups: [{ text: 'control peste 3 luni', after_months: 3, on_date: null, source_snippet: 'control peste 3 luni', page_number: 1 }] }]);
+    expect((await extractFields('x')).follow_ups).toEqual([{ text: 'control peste 3 luni', after_months: 3, on_date: null, source_snippet: 'control peste 3 luni', page_number: 1 }]);
+    install([{ ...valid, follow_ups: [{ text: 'control', after_months: 'soon' }] }]);
+    const lenient = await extractFields('x');
+    expect(lenient.follow_ups).toEqual([]);
+    expect(lenient.title).toBe(valid.title);
   });
 
   it('degrades to the fallback, with no title, when the title is missing', async () => {

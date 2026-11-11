@@ -77,6 +77,8 @@ export interface AccountsStore {
   metrics: MetricsRepository;
   waitlist: WaitlistRepository;
   delegations: DelegationRepository;
+  family: FamilyRepository;
+  reminderDates: ReminderDateRepository;
 
   /**
    * Ingestion writes a document, its tags and its fields together; a partial
@@ -135,6 +137,7 @@ export interface RecordsStore {
   regroupPlans: RegroupPlanRepository;
   guide: GuideRepository;
   emergency: EmergencyRepository;
+  reminders: ReminderRepository;
   matchDecisions: MatchDecisionRepository;
   changes: ChangeLog;
   files: FileRegistryRepository;
@@ -472,6 +475,8 @@ export interface DocumentRepository {
   renameProvider(userId: string, from: string, to: string | null): Promise<number>;
   /** Those of these documents that are the user's and shown (not set aside, grouping confirmed), in the order given. */
   listShownByIds(userId: string, ids: string[]): Promise<Document[]>;
+  /** How many documents the person keeps, set aside and waiting to be read included: what a plan's limit on documents counts. */
+  count(userId: string): Promise<number>;
   /** Which of these ids are the user's. For checking a share link names only their own. */
   ownedIds(userId: string, ids: string[]): Promise<string[]>;
   /** Resolved from the link and scoped by the link's owner — P12's exception. */
@@ -866,6 +871,56 @@ export interface SubscriptionRecord {
   updated_at: string;
 }
 
+/**
+ * The accounts that share one subscription (SECURITY.md **M-52**). The account that pays is the organizer; every other account holds a
+ * seat by accepting an invitation. Nothing here is a record, a key or a card: the server learns which accounts belong together and how many
+ * profiles they hold (the number, which it already sees as the kind of each sealed object), and an organizer is told nothing of what a
+ * member keeps. Every method names the acting account first: the organizer for what is the plan's, the member for what is their own.
+ */
+export interface FamilyMember { id: string; email: string; joined_at: string }
+export interface FamilyInvite { id: string; created_at: string; expires_at: string }
+/** Why an invitation could not be accepted. `invalid` covers a wrong, spent or expired code and an invitation from oneself. */
+export type SeatRefusal = 'invalid' | 'already_member' | 'is_organizer' | 'cooldown' | 'full';
+export interface FamilyRepository {
+  /** The seat the account holds in someone else's plan, or null. */
+  membership(userId: string): Promise<{ organizer_id: string; joined_at: string } | null>;
+  /** The accounts that hold a seat in the organizer's plan, the organizer not counted. */
+  members(organizerId: string): Promise<FamilyMember[]>;
+  /** Profiles held now by the organizer and every member: sealed objects of the kind `profile` not deleted. A number, nothing more. */
+  profilesHeld(organizerId: string): Promise<number>;
+  /** What the organizer and every member keep together, for the limits a plan with seats shares: bytes of sealed objects, and share links live at `now`. Two numbers. */
+  pool(organizerId: string, now: string): Promise<{ bytes: number; links: number }>;
+  invites(organizerId: string, now: string): Promise<FamilyInvite[]>;
+  /** Leaves an invitation: an id and a hash of the secret that goes with it, which is told to the invited person and never kept. */
+  invite(organizerId: string, invite: { id: string; secretHash: string; now: string; expiresAt: string }): Promise<void>;
+  cancelInvite(organizerId: string, id: string): Promise<boolean>;
+  /** Who an invitation is from, for the person who holds its secret; changes nothing. */
+  peek(userId: string, id: string, secretHash: string, now: string): Promise<{ organizer_id: string; expires_at: string } | null>;
+  /**
+   * Takes a seat with the invitation, in one step that checks everything first and spends it last: the secret, the end, a seat left (`seats`
+   * counts the organizer), the account not already holding one or paying for a plan others share, and the wait after leaving another plan
+   * (`cooldownDays`; coming back to the same plan is not held). The account's own invitations to others end with it.
+   */
+  join(userId: string, id: string, secretHash: string, now: string, rules: { seats: number; cooldownDays: number }): Promise<{ organizer_id: string } | SeatRefusal>;
+  /** The organizer ends a member's seat. */
+  remove(organizerId: string, memberId: string, now: string): Promise<boolean>;
+  /** A member gives their seat up. */
+  leave(userId: string, now: string): Promise<boolean>;
+}
+
+/**
+ * The dates of the follow-up reminders an account's devices have told the server (SECURITY.md **M-53**): an id and a day for each, with the profile it is
+ * of. Never the words. The server mails the account, and whoever looks after the profile, on the day, without saying what it is about.
+ */
+export interface ReminderDateRepository {
+  /**
+   * Makes the dates held for one profile of the account these: a date not named is dropped, a changed one is mailed again. `max` bounds all the
+   * account holds; past it nothing is changed and `too_many` is answered.
+   */
+  replace(userId: string, profileId: string, items: Array<{ id: string; dueOn: string }>, max: number): Promise<'ok' | 'too_many'>;
+  count(userId: string): Promise<number>;
+}
+
 export interface BillingRepository {
   get(userId: string): Promise<SubscriptionRecord | null>;
   /** The provider's side (a webhook) names a subscription or a customer, not a user: the fifth and sixth lookups with no acting user (SECURITY.md **M-45**). */
@@ -995,10 +1050,16 @@ export interface UsageRepository {
    * whole instance.
    */
   spend(userId: string, day: string, limit: number): Promise<number | null>;
-  /** AI processing the account has used in a period (`billing/plans.ts`: `usagePeriod`), in thousandths of a page. */
+  /** AI processing the account has used under a key (`billing/plans.ts`: `meterKey`: a meter's, and a plan's pool under the account that pays), in thousandths of a page. */
   aiUsed(userId: string, period: string): Promise<number>;
-  /** Adds what a finished call cost; answers the new total. Old periods of the account are forgotten. */
+  /** Adds what a finished call cost; answers the new total. Keys of the account's that are more than thirteen months old are forgotten (a yearly ceiling sums the twelve months behind it). */
   aiAdd(userId: string, period: string, amount: number): Promise<number>;
+  /** The sum of an account's counts under several keys (the months of a window), 0 for any it has none under. */
+  aiUsedMany(userId: string, periods: string[]): Promise<number>;
+  /** Whether the account has already been counted for this random id (a chat question), without counting it. */
+  seen(userId: string, key: string): Promise<boolean>;
+  /** Notes the id at `at` and answers whether it is new (true) or was there already; ids older than two days are forgotten. Atomic. */
+  see(userId: string, key: string, at: string): Promise<boolean>;
 }
 
 export interface TagWithCount { id: number; name: string; document_count: number }
@@ -1227,6 +1288,31 @@ export interface EmergencyCardRow {
 
 export interface EmergencyScan { id: string; at: string; country: string | null }
 
+/** A reminder: a follow-up a document asks for, as the document words it, and when. */
+export interface ReminderRow {
+  id: string;
+  document_id: string;
+  text: string;
+  due_on: string;
+  /** `proposed` until the owner confirms its date and words; `dismissed` is never proposed again; `done` is kept for the record. */
+  status: 'proposed' | 'confirmed' | 'dismissed' | 'done';
+  on_page: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReminderRepository {
+  list(userId: string): Promise<ReminderRow[]>;
+  get(userId: string, id: string): Promise<ReminderRow | null>;
+  /** Proposes reminders for a document. One with the same words is left as it is, whatever became of it, so a document read again proposes nothing twice. Answers how many were new. */
+  propose(userId: string, documentId: string, items: Array<{ id: string; text: string; dueOn: string; sourcePage: number | null }>, now: string): Promise<number>;
+  /** Changes the words, the date or the state; answers the row, or null when there is none. */
+  update(userId: string, id: string, changes: { text?: string; dueOn?: string; status?: ReminderRow['status'] }, now: string): Promise<ReminderRow | null>;
+  remove(userId: string, id: string): Promise<boolean>;
+  /** The confirmed ones whose document is still shown: what the server is told (a date, never the words). */
+  confirmed(userId: string): Promise<Array<{ id: string; due_on: string }>>;
+}
+
 export interface EmergencyRepository {
   get(userId: string): Promise<EmergencyCardRow | null>;
   /** Saves what is written on the card; the published id and key are kept. */
@@ -1418,6 +1504,13 @@ export interface MaintenanceRepository {
   failStalledSourceFiles(keep?: string[]): Promise<number>;
   /** Startup: the uploads, grouping confirmed and not set aside, that still hold a document never read (`needs_reading`): their reading goes on. */
   uploadsWithUnreadDocuments(): Promise<Array<{ id: string; user_id: string }>>;
+  /**
+   * The reminders due on or before `today` and not mailed yet, marked mailed at `at` in the same step, as who to mail and how many each: the account, and
+   * every account let in to the profile as a guardian or as the person themselves (a viewer is not mailed). Run by the process itself.
+   */
+  claimDueReminders(today: string, at: string): Promise<Array<{ recipient: string; n: number }>>;
+  /** Takes back a claim (a mail could not be sent), so the next run tries again. */
+  releaseReminders(at: string): Promise<number>;
   /** Every account's sign-in rows (browser, address) started before the first cutoff or idle since the second, so one that is never signed in again does not keep them (privacy notice). */
   pruneSessions(startedBefore: string, idleSince: string, devicesFirstSeenBefore?: string, cookiesExpiredBefore?: string): Promise<number>;
 }

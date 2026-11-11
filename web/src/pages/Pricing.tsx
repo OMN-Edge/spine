@@ -34,22 +34,28 @@ export default function Pricing() {
                 <li>{t('Your records, the timeline, search on your device, export and the emergency card')}</li>
                 <li>{t('1 GB of storage')}</li>
                 <li>{t('One live share link, without translation')}</li>
-                <li>{t('About 30 pages of AI reading a month')}</li>
+                <li>{t('About 10 pages of AI reading a month')}</li>
               </ul>
 
               <h2 className="text-base font-semibold text-gray-900 pt-2">{t('Premium')} · {t('{year} a year or {month} a month', { year: money(prices.premium.year), month: money(prices.premium.month) })}</h2>
               <ul className="list-disc pl-5 space-y-1">
-                <li>{t('AI reading without a monthly limit, within fair use')}</li>
+                <li>{t('AI reading within fair use: about 30 pages a month, and what you do not use is kept for up to three months')}</li>
+                <li>{t('Questions about your records and translation of your documents: no monthly limit for normal use')}</li>
+                <li>{t('5 GB of storage')}</li>
                 <li>{t('Translation of your documents and of what a doctor opens')}</li>
                 <li>{t('Questions about your records, connections between documents, and related documents')}</li>
-                <li>{t('Any number of share links, and approving visitors before they see one')}</li>
+                <li>{t('Share links, and approving visitors before they see one: no monthly limit for normal use')}</li>
               </ul>
+
+              <p className="text-xs text-gray-500">{t('We may slow or pause automated or abusive use. This never affects normal use of your own records.')}</p>
 
               {pricing.family && (
                 <>
                   <h2 className="text-base font-semibold text-gray-900 pt-2">{t('Family')} · {t('{year} a year or {month} a month', { year: money(prices.family.year), month: money(prices.family.month) })}</h2>
                   <ul className="list-disc pl-5 space-y-1">
                     <li>{t('Everything in Premium, for up to six people')}</li>
+                    <li>{t('Up to six accounts can share the plan, each with its own records and its own password')}</li>
+                    <li>{t('Shared by all of them: 25 GB of storage and twice Premium’s pages of reading, with each account held to Premium’s pages')}</li>
                     <li>{t('Records for children, kept by their guardians, with other guardians let in')}</li>
                     <li>{t('A teenager from sixteen can have an account of their own, and at eighteen the records can become theirs')}</li>
                   </ul>

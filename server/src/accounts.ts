@@ -115,6 +115,17 @@ export function cardReviewMail(to: string): MailMessage {
   };
 }
 
+/** A reminder is due. It says that and nothing of what it is for: no medical content ever goes by mail (SECURITY.md M-53). */
+export function remindersDueMail(to: string, n: number): MailMessage {
+  return {
+    to,
+    subject: n === 1 ? 'A reminder is due in Spine' : 'Reminders are due in Spine',
+    text:
+      `${n === 1 ? 'A reminder you set in Spine is due' : `${n} reminders in Spine are due`}.\n\n` +
+      `Sign in to see ${n === 1 ? 'it' : 'them'}. This message does not say what ${n === 1 ? 'it is' : 'they are'} about.\n`,
+  };
+}
+
 export function accessRequestMail(to: string, link: string, requestedAt: string, ip: string | null): MailMessage {
   return {
     to,

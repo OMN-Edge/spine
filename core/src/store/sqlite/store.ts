@@ -11,6 +11,9 @@ import { sourceFileRepository } from './source-files.js';
 import { guideRepository } from './guide.js';
 import { emergencyRepository } from './emergency.js';
 import { delegationRepository } from './delegations.js';
+import { reminderRepository } from './reminders.js';
+import { familyRepository } from './family.js';
+import { reminderDateRepository } from './reminder-dates.js';
 import { regroupPlanRepository } from './regroup-plans.js';
 import { sessionRepository } from './sessions.js';
 import { cookieSessionRepository } from './cookie-sessions.js';
@@ -90,6 +93,8 @@ function accountsOver(db: Database, depth: number): AccountsStore {
     metrics: metricsRepository(db),
     waitlist: waitlistRepository(db),
     delegations: delegationRepository(db),
+    family: familyRepository(db),
+    reminderDates: reminderDateRepository(db),
     transaction: fn => inTransaction(db, depth, () => accountsOver(db, depth + 1), fn),
     async close() {
       db.close();
@@ -115,6 +120,7 @@ function recordsOf(db: Database): Omit<RecordsStore, "slice"> {
     regroupPlans: regroupPlanRepository(db),
     guide: guideRepository(db),
     emergency: emergencyRepository(db),
+    reminders: reminderRepository(db),
     matchDecisions: matchDecisionRepository(db),
     changes: changeLog(db),
     files: fileRegistryRepository(db),

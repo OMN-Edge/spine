@@ -149,6 +149,8 @@ export function userRepository(db: Database): UserRepository {
     'cookie_sessions',
     'model_usage',
     'ai_usage',
+    'ai_seen',
+    'reminder_dues',
     'subscriptions',
     'user_devices',
     'user_tokens',
@@ -163,6 +165,10 @@ export function userRepository(db: Database): UserRepository {
   // Grants and invitations name the account as the owner or as the delegate, not as `user_id`.
   const deleteGrants = db.prepare('DELETE FROM delegations WHERE owner_user_id = ? OR delegate_user_id = ?');
   const deleteInvites = db.prepare('DELETE FROM profile_invites WHERE owner_user_id = ?');
+  // A seat is held or shared by the account (SECURITY.md M-52): its own row, the seats of those it shares with, its invitations, the wait after it left.
+  const deleteSeats = db.prepare('DELETE FROM family_members WHERE member_id = ? OR organizer_id = ?');
+  const deleteSeatInvites = db.prepare('DELETE FROM family_invites WHERE organizer_id = ?');
+  const deleteSeatLeft = db.prepare('DELETE FROM family_left WHERE member_id = ? OR organizer_id = ?');
   const deleteUser = db.prepare('DELETE FROM users WHERE id = ?');
   // What a wipe keeps: the account and how it signs in, its plan, and what it used (the counts are the plan's and the instance's).
   const KEPT_BY_WIPE = new Set(['model_usage', 'ai_usage', 'subscriptions', 'user_devices', 'user_passkeys', 'user_recovery_codes', 'user_totp']);
@@ -180,6 +186,9 @@ export function userRepository(db: Database): UserRepository {
     for (const statement of deleteFrom) statement.run(id);
     deleteGrants.run(id, id);
     deleteInvites.run(id);
+    deleteSeats.run(id, id);
+    deleteSeatInvites.run(id);
+    deleteSeatLeft.run(id, id);
     deleteUser.run(id);
   });
 

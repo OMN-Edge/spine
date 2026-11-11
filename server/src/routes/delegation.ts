@@ -11,6 +11,7 @@ import { endOtherSessions } from '../sessions.js';
 import { type SessionData } from '../session-auth.js';
 import { OBJECT_ID, readObject, removeObject, writeObject } from '../vault-files.js';
 import { sealed } from '../vault-keys.js';
+import { tellDates } from './reminders.js';
 import { deleteObject, getObject, listObjects, putObject, type ObjectReq, type ObjectScope } from './vault.js';
 
 /**
@@ -193,6 +194,14 @@ export async function delegationRoutes(app: FastifyInstance, opts: DelegationRou
     const s = await scopeOf(req);
     if (!s) return reply.status(404).send({ error: 'not found' });
     return deleteObject(req as unknown as ObjectReq, reply, s.ownerId, s.scope);
+  });
+
+  // A guardian's device, or the person's own, tells the dates of the reminders of that profile, which are the owner's to be mailed (SECURITY.md M-53).
+  app.put<{ Params: { grant: string }; Body: { items?: unknown } }>('/api/delegated/:grant/reminder-dates', { preHandler: gate }, async (req, reply) => {
+    const s = await scopeOf(req);
+    if (!s || !s.scope.write) return reply.status(404).send({ error: 'not found' });
+    const done = await tellDates(s.ownerId, s.scope.profileId, req.body);
+    return reply.status(done.status).header('Cache-Control', 'no-store').send(done.body);
   });
 
   // --- Promotion at eighteen ----------------------------------------------------------------------------------------------
