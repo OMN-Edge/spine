@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api, type MeterView } from '../api';
+import { api } from '../api';
 import { formatBytes, useBilling } from '../billing';
 import { useI18n } from '../i18n';
 import { buttonClass, Notice } from './AuthCard';
@@ -30,15 +30,15 @@ export default function PlanCard() {
   const sub = subscription;
   const name = plan === 'family' ? t('Family') : plan === 'premium' ? t('Premium') : plan === 'trial' ? t('Free trial') : t('Free');
   const money = (n: number) => `€${n}`;
-  // A meter's line: what the plan has used, on a shared plan what this account has used of its own part, and a note from 80% where there is an allowance.
-  // Only adding has one (pages); using (questions, translation) is counted and not limited.
-  const meterLine = (m: MeterView, text: string, when: string) => {
-    const nearly = m.allowance !== null && m.allowance > 0 && Math.max(m.used / m.allowance, m.own_cap ? (m.own_used ?? 0) / m.own_cap : 0) >= 0.8;
-    return (
-      <li className={nearly ? 'text-amber-700' : undefined}>
-        {text} {when}{m.own_cap !== undefined && ` · ${t('yours: {used} of {cap}', { used: m.own_used ?? 0, cap: m.own_cap })}`}{nearly && ` · ${t('almost used up')}`}
-      </li>
-    );
+  // Only adding has an allowance (the pages read); using is not limited, so questions, translation and link traffic are not shown here (the "Your archive" section says what was done).
+  const bar = (used: number, of: number) => (
+    <span className="block h-1.5 mt-1 rounded bg-gray-100" role="presentation"><span className="block h-1.5 rounded bg-brand-500" style={{ width: `${of > 0 ? Math.min(100, Math.round((used / of) * 100)) : 0}%` }} /></span>
+  );
+  const r = ai?.reading;
+  const reading = {
+    left: r && r.allowance !== null ? Math.max(0, r.allowance - r.used) : 0,
+    nearly: !!r && r.allowance !== null && r.allowance > 0 && Math.max(r.used / r.allowance, r.own_cap ? (r.own_used ?? 0) / r.own_cap : 0) >= 0.8,
+    ownNearly: !!r && !!r.own_cap && (r.own_used ?? 0) / r.own_cap >= 0.8,
   };
   return (
     <section className="bg-white border border-gray-200 rounded-xl p-5 mt-6">
@@ -56,20 +56,23 @@ export default function PlanCard() {
         </p>
       )}
 
-      <ul className="text-sm text-gray-700 space-y-1 mb-4">
-        {ai && meterLine(ai.reading, t('AI reading: {used} of {allowance} pages', { used: ai.reading.used, allowance: ai.reading.allowance ?? 0 }), ai.period === 'month' ? t('this month') : t('in the trial'))}
-        {ai && ai.chat.allowance !== 0 && meterLine(ai.chat, t('Questions asked: {n}', { n: ai.chat.used }), t('this month'))}
-        {ai && (ai.import.allowance ?? 0) > 0 && meterLine(ai.import, t('Archive import, once: {used} of {allowance} pages', { used: ai.import.used, allowance: ai.import.allowance ?? 0 }), '')}
-        {ai && ai.translation.allowance !== 0 && meterLine(ai.translation, t('Pages translated: {n}', { n: ai.translation.used }), t('this month'))}
-        {vault && <li>{t('Storage: {used} of {limit}', { used: formatBytes(vault.used_bytes), limit: formatBytes(vault.limit_bytes) })}</li>}
+      <ul className="text-sm text-gray-700 space-y-3 mb-4">
+        {ai && ai.reading.allowance !== null && (
+          <li className={reading.nearly ? 'text-amber-700' : undefined}>
+            {ai.reading.own_cap !== undefined
+              ? t('Shared with your household: {left} of {allowance} pages left to add documents {when}', { left: reading.left, allowance: ai.reading.allowance, when: ai.period === 'month' ? t('this month') : t('in the trial') })
+              : t('{left} of {allowance} pages left to add documents {when}', { left: reading.left, allowance: ai.reading.allowance, when: ai.period === 'month' ? t('this month') : t('in the trial') })}
+            {ai.reading.own_cap !== undefined && reading.ownNearly && ` · ${t('your part: {left} of {cap} left', { left: Math.max(0, ai.reading.own_cap - (ai.reading.own_used ?? 0)), cap: ai.reading.own_cap })}`}
+            {reading.nearly && ` · ${t('You can add more next month, or upgrade.')}`}
+            {bar(ai.reading.used, ai.reading.allowance)}
+          </li>
+        )}
+        {ai && (ai.import.allowance ?? 0) > 0 && ai.import.used < (ai.import.allowance ?? 0) && <li>{t('One-off archive import: {left} pages left', { left: (ai.import.allowance ?? 0) - ai.import.used })}</li>}
+        {vault && <li>{t('Storage: {used} of {limit} used', { used: formatBytes(vault.used_bytes), limit: formatBytes(vault.limit_bytes) })}{bar(vault.used_bytes, vault.limit_bytes)}</li>}
         {billing.people && <li>{t('People: up to {n}', { n: billing.people.limit })}</li>}
-        {billing.links && (billing.links.views.allowance === null
-          ? <li>{t('Share link views: {n}', { n: billing.links.views.used })} {t('this month')}</li>
-          : meterLine({ used: billing.links.views.used, allowance: billing.links.views.allowance }, t('Share link views: {used} of {allowance}', { used: billing.links.views.used, allowance: billing.links.views.allowance }), t('this month')))}
-        {billing.links && (billing.links.bytes.allowance === null
-          ? <li>{t('Share link traffic: {size}', { size: formatBytes(billing.links.bytes.used) })} {t('this month')}</li>
-          : meterLine({ used: billing.links.bytes.used, allowance: billing.links.bytes.allowance }, t('Share link traffic: {used} of {limit}', { used: formatBytes(billing.links.bytes.used), limit: formatBytes(billing.links.bytes.allowance) }), t('this month')))}
-        {shares && <li>{shares.limit === null ? t('Share links: {live} live', { live: shares.live }) : t('Share links: {live} live of {limit}', { live: shares.live, limit: shares.limit })}</li>}
+        {/* Share links are limited only on the free plan; on a paid plan nothing about them is a limit to show. */}
+        {billing.links && billing.links.views.allowance !== null && <li>{t('Share link views: {used} of {allowance}', { used: billing.links.views.used, allowance: billing.links.views.allowance })} {t('this month')}</li>}
+        {shares && shares.limit !== null && <li>{t('Share links: {live} live of {limit}', { live: shares.live, limit: shares.limit })}</li>}
       </ul>
 
       {error && <Notice kind="error">{error}</Notice>}

@@ -89,6 +89,8 @@ export function createRelayGate(store: () => AccountsStore, now: () => Date = ()
     return { userId: subject, share: false };
   };
 
+  /** The key a piece of work is remembered under: its id and the hour, so an id a dishonest device reuses is counted again each hour rather than never (the cost ceilings bound what is left). */
+  const workKey = (work: string): string => `w:${work}:${now().toISOString().slice(0, 13)}`;
   const hasRoom = async (c: Counter): Promise<boolean> => (await store().usage.aiUsed(c.user, c.key)) < c.limit;
   const add = async (e: Entitlements, fair: FairUse, meter: Meter, userId: string, holder: string, amount: number) => {
     for (const c of countersOf(e, fair, meter, userId, holder, now())) await store().usage.aiAdd(c.user, c.key, amount);
@@ -126,7 +128,7 @@ export function createRelayGate(store: () => AccountsStore, now: () => Date = ()
       }
       // The yearly ceiling on questions and translated pages, over the billing year or the last twelve months; a question or translation already begun is finished.
       if (count === 'messages' || count === 'translated') {
-        const begun = !!call.work && (await store().usage.seen(who.userId, `w:${call.work}`));
+        const begun = !!call.work && (await store().usage.seen(who.userId, workKey(call.work)));
         if (!begun) {
           const pooled = !!e.memberCap;
           const holder = pooled ? standing.holder : who.userId;
@@ -154,7 +156,7 @@ export function createRelayGate(store: () => AccountsStore, now: () => Date = ()
         await add(e, fair, importing ? 'import' : 'pages', who.userId, standing.holder, pagesOf(task, call, requestBytes));
       } else if (count === 'translated' || count === 'messages') {
         // Counted once for a piece of work however many calls it takes: the first call of an id counts, the others do not; no id, every call.
-        const first = !call.work || (await store().usage.see(who.userId, `w:${call.work}`, now().toISOString()));
+        const first = !call.work || (await store().usage.see(who.userId, workKey(call.work), now().toISOString()));
         if (first) await add(e, fair, count, who.userId, standing.holder, count === 'messages' ? 1 : pagesOf(task, call, requestBytes));
       }
       // What the call cost, as an estimate, by kind of work: the numbers the plans' prices are to be checked against, and what the operator is told by.

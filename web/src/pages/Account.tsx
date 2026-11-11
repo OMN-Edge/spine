@@ -9,6 +9,7 @@ import YourData from '../components/YourData';
 import AdminAccounts from '../components/AdminAccounts';
 import PlanCard from '../components/PlanCard';
 import SeatsCard from '../components/SeatsCard';
+import ArchiveProgress from '../components/ArchiveProgress';
 import Passkeys from '../components/Passkeys';
 import AddDevice from '../components/AddDevice';
 import RecoveryKitSettings from '../components/RecoveryKitSettings';
@@ -47,6 +48,7 @@ export default function Account() {
     { id: 'security', label: t('Sign-in and security') },
     { id: 'devices', label: t('Devices') },
     { id: 'data', label: t('Data and privacy') },
+    { id: 'archive', label: t('Your archive') },
   ];
   // Each card below keeps its own top margin, so a heading has none below it.
   const heading = 'text-xs font-medium uppercase tracking-wide text-gray-500 mt-10 scroll-mt-6';
@@ -98,6 +100,9 @@ export default function Account() {
 
         <h2 id="data" className={heading}>{t('Data and privacy')}</h2>
         <YourData />
+
+        <h2 id="archive" className={heading}>{t('Your archive')}</h2>
+        <ArchiveProgress />
       </div>
     </div>
   );
