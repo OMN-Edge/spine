@@ -12,6 +12,8 @@ export interface MailMessage {
   to: string;
   subject: string;
   text: string;
+  /** The same message laid out (mail/layout.ts). Optional: a mail without it goes as text alone. */
+  html?: string;
 }
 
 export interface Mailer {

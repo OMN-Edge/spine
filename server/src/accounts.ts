@@ -10,6 +10,7 @@ import type { VaultKeys } from 'spine-core/store/types.js';
 import { createUserToken, hashUserToken } from './user-tokens.js';
 import { hashPassword } from './passwords.js';
 import type { MailMessage } from './mail/index.js';
+import { composeMail } from './mail/layout.js';
 
 /**
  * How long a link works. Verification can sit in an inbox overnight; a reset is
@@ -59,33 +60,36 @@ export const signInLink = () => publicUrl('/login');
  * the sender is called is the operator's choice (SECURITY.md P8).
  */
 export function verificationMail(to: string, link: string): MailMessage {
-  return {
+  return composeMail({
     to,
     subject: 'Confirm your email address',
-    text:
-      `Confirm your email address to finish creating your account:\n\n${link}\n\n` +
-      `The link works once and expires in 24 hours. If you did not ask for this, ignore this message.\n`,
-  };
+    heading: 'Confirm your email address',
+    intro: ['Confirm your email address to finish creating your account:'],
+    action: { label: 'Confirm email address', url: link },
+    outro: ['The link works once and expires in 24 hours. If you did not ask for this, ignore this message.'],
+  });
 }
 
 /** Sent when the administrator approves an account (only when a mailer is set up). Neutral like the rest. */
 export function approvedMail(to: string, link: string): MailMessage {
-  return {
+  return composeMail({
     to,
     subject: 'Your account is ready',
-    text: `Your account has been approved. You can sign in now:\n\n${link}\n`,
-  };
+    heading: 'Your account is ready',
+    intro: ['Your account has been approved. You can sign in now:'],
+    action: { label: 'Sign in', url: link },
+  });
 }
 
 export function resetMail(to: string, link: string): MailMessage {
-  return {
+  return composeMail({
     to,
     subject: 'Reset your password',
-    text:
-      `Choose a new password:\n\n${link}\n\n` +
-      `The link works once and expires in one hour. If you did not ask for this, ignore this message ` +
-      `— your password has not changed.\n`,
-  };
+    heading: 'Reset your password',
+    intro: ['Choose a new password:'],
+    action: { label: 'Choose a new password', url: link },
+    outro: ['The link works once and expires in one hour. If you did not ask for this, ignore this message — your password has not changed.'],
+  });
 }
 
 /**
@@ -95,46 +99,50 @@ export function resetMail(to: string, link: string): MailMessage {
  */
 /** Said when someone opens the owner's card; the wording names no record, because the mail is the provider's to see (SECURITY.md P8). */
 export function cardOpenedMail(to: string, at: string, country: string | null): MailMessage {
-  return {
+  return composeMail({
     to,
     subject: 'Your Spine card was opened',
-    text:
-      `Your Spine card was opened at ${at} (UTC)${country ? `, from ${country}` : ''}.\n\n` +
-      `If you, or someone you showed it to, opened it, there is nothing to do. If not, sign in, open the card and turn it off.\n`,
-  };
+    heading: 'Your Spine card was opened',
+    intro: [`Your Spine card was opened at ${at} (UTC)${country ? `, from ${country}` : ''}.`],
+    action: { label: 'Open Spine', url: signInLink() },
+    outro: ['If you, or someone you showed it to, opened it, there is nothing to do. If not, sign in, open the card and turn it off.'],
+  });
 }
 
 /** Once a year, for a card not looked at: it names nothing that is on it, and the mail is the provider's to see (SECURITY.md P8). */
 export function cardReviewMail(to: string): MailMessage {
-  return {
+  return composeMail({
     to,
     subject: 'A reminder about your Spine card',
-    text:
-      `It has been a year since you last looked at your Spine card.\n\n` +
-      `Sign in, open the card and check that it is still right. If you do nothing it stays as it is, and we will write once more next year.\n`,
-  };
+    heading: 'Is your Spine card still right?',
+    intro: ['It has been a year since you last looked at your Spine card.'],
+    action: { label: 'Open Spine', url: signInLink() },
+    outro: ['Sign in, open the card and check that it is still right. If you do nothing it stays as it is, and we will write once more next year.'],
+  });
 }
 
 /** A reminder is due. It says that and nothing of what it is for: no medical content ever goes by mail (SECURITY.md M-53). */
 export function remindersDueMail(to: string, n: number): MailMessage {
-  return {
+  return composeMail({
     to,
     subject: n === 1 ? 'A reminder is due in Spine' : 'Reminders are due in Spine',
-    text:
-      `${n === 1 ? 'A reminder you set in Spine is due' : `${n} reminders in Spine are due`}.\n\n` +
-      `Sign in to see ${n === 1 ? 'it' : 'them'}. This message does not say what ${n === 1 ? 'it is' : 'they are'} about.\n`,
-  };
+    heading: n === 1 ? 'A reminder is due' : `${n} reminders are due`,
+    intro: [`${n === 1 ? 'A reminder you set in Spine is due' : `${n} reminders in Spine are due`}.`],
+    action: { label: n === 1 ? 'See the reminder' : 'See the reminders', url: signInLink() },
+    outro: [`Sign in to see ${n === 1 ? 'it' : 'them'}. This message does not say what ${n === 1 ? 'it is' : 'they are'} about.`],
+  });
 }
 
 export function accessRequestMail(to: string, link: string, requestedAt: string, ip: string | null): MailMessage {
-  return {
+  return composeMail({
     to,
     subject: 'Someone is waiting for your approval',
-    text:
-      `A link you shared was opened in a browser that is waiting for your approval:\n\n${link}\n\n` +
-      `Requested at ${requestedAt}${ip ? ` from ${ip}` : ''}.\n\n` +
-      `Sign in to approve or deny it. If you do not expect this, deny it, or revoke the link from the Share links page.\n`,
-  };
+    heading: 'Someone is waiting for your approval',
+    intro: ['A link you shared was opened in a browser that is waiting for your approval:'],
+    action: { label: 'Review the request', url: link },
+    details: [['Requested at', `${requestedAt}${ip ? ` from ${ip}` : ''}`]],
+    outro: ['Sign in to approve or deny it. If you do not expect this, deny it, or revoke the link from the Share links page.'],
+  });
 }
 
 export interface DeletedAccount {

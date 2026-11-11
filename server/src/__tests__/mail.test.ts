@@ -171,6 +171,6 @@ describe('the mail text', () => {
   it('carries the link and the address and nothing else of substance', () => {
     expect(messages[0].text).toContain('https://x.example/verify#t');
     expect(messages[1].text).toContain('https://x.example/reset#t');
-    expect(Object.keys(messages[0]).sort()).toEqual(['subject', 'text', 'to']);
+    expect(Object.keys(messages[0]).sort()).toEqual(['html', 'subject', 'text', 'to']);
   });
 });
