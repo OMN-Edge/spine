@@ -318,11 +318,12 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
 
       // The recovery kit, before the link is spent. The link is the mailbox's word and the server cannot open what the kit opens, so a vault with a
       // verifier is replaced only by a request signed for it, over this link and these keys (S-38). Starting over without the kit cannot be
-      // signed for and is not asked to (an owner who wants it refused turns off recovery by email, above); a vault from before verifiers has none to check until a device adds it.
+      // signed for and is not asked to (an owner who wants it refused turns off recovery by email, above); a vault with no verifier is refused here, since it has no key to prove the kit against.
       if (holder && keys && req.body?.erase !== true) {
         const verifier = (await store.vault.getKeys(holder))?.reset_verifier;
         const params = parseKdfParams(keys.kdf_params);
-        if (verifier && !(params && verifyResetProof(verifier, resetMessage(token, req.body?.auth_value as string, keys, params), req.body?.proof))) {
+        // A vault with no verifier (one from before them) is not reset by the link alone any more: it has no key to prove the kit against.
+        if (!verifier || !(params && verifyResetProof(verifier, resetMessage(token, req.body?.auth_value as string, keys, params), req.body?.proof))) {
           req.log.warn({ ip: req.ip, userId: holder }, 'reset without the recovery kit refused');
           return reply.status(401).send({ error: 'this reset needs your recovery kit', code: 'recovery_proof_required' });
         }

@@ -304,7 +304,7 @@ describe('plans and payment', () => {
   describe('sharing', () => {
     const put = (id: string, headers: Record<string, string>, who = cookie) => app.inject({
       method: 'PUT', url: `/api/shared/${id}`, payload: Buffer.from('sealed'),
-      headers: { cookie: who, 'content-type': 'application/octet-stream', 'x-spine-expires': new Date(Date.now() + 86400e3).toISOString(), ...headers },
+      headers: { cookie: who, 'content-type': 'application/octet-stream', 'x-spine-pass-check': 'c'.repeat(43), 'x-spine-expires': new Date(Date.now() + 86400e3).toISOString(), ...headers },
     });
 
     it('keeps visitor approval and a second live share to the paid plans', async () => {

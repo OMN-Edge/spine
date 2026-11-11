@@ -76,7 +76,8 @@ describe.skipIf(!haveServer)('the device and the server together', () => {
     const app = await server.buildTestApp({ accounts: { registration: 'open' } });
     await app.listen({ port: 0, host: '127.0.0.1' });
     base = `http://127.0.0.1:${(app.server.address() as AddressInfo).port}`;
-    close = () => app.close();
+    // A response a test left unread keeps its connection busy, and close() would wait for it: end every connection first.
+    close = () => { app.server.closeAllConnections(); return app.close(); };
   });
 
   afterAll(async () => {

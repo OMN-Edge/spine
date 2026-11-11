@@ -6,7 +6,7 @@ Fire-and-forget; the browser polls `GET /api/source-files/:id/status`. An upload
 
 ```
 upload  →  write original, sha256 checksum (per-user de-duplication)
-        →  rasterize            PDF.js on a canvas → PNG, 200 DPI, fonts a file embeds drawn as shapes (`disableFontFace`; as web fonts in the worker every letter came out as an empty box) (poppler's pdftoppm in the Node tests)
+        →  rasterize            PDF.js on a canvas → PNG, 200 DPI, fonts a file embeds drawn as shapes (`disableFontFace`; as web fonts in the worker every letter came out as an empty box); a PDF of more than 500 pages is refused before any page is drawn, and a page that would be over 25 million pixels at 200 DPI is drawn smaller, `web/src/core/native/rasterize-limits.ts`, SECURITY.md S-55 (poppler's pdftoppm in the Node tests)
         →  parse                parser interface; with `hybrid`, per page:
                                 text layer → local OCR → model
         →  detectContinuation   per adjacent page pair → document boundaries

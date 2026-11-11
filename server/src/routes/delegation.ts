@@ -51,7 +51,7 @@ export async function delegationRoutes(app: FastifyInstance, opts: DelegationRou
     async (req, reply) => {
       const { id, profile_id: profileId, role: rawRole, wrapped, proof_hash: proofHash, owner_blob: ownerBlob } = req.body ?? {};
       const role = roleOf(rawRole);
-      if (typeof id !== 'string' || !ID.test(id) || typeof profileId !== 'string' || !OBJECT_ID.test(profileId) || !role || !sealed(wrapped, 90, 200) || typeof proofHash !== 'string' || !HEX.test(proofHash) || (ownerBlob !== undefined && !sealed(ownerBlob, 40, 400))) {
+      if (typeof id !== 'string' || !ID.test(id) || typeof profileId !== 'string' || !OBJECT_ID.test(profileId) || !role || !sealed(wrapped, 90, 200) || typeof proofHash !== 'string' || !HEX.test(proofHash) || !sealed(ownerBlob, 40, 400)) {
         return reply.status(400).send({ error: 'the invitation is not what it should be' });
       }
       const plan = await accountEntitlements(req.userId);
@@ -66,7 +66,7 @@ export async function delegationRoutes(app: FastifyInstance, opts: DelegationRou
       if (role === 'self' && ((await repo().ownedBy(req.userId)).some(g => g.profile_id === profileId && g.role === 'self') || (await repo().invites(req.userId, now.toISOString())).some(i => i.profile_id === profileId && i.role === 'self'))) {
         return reply.status(409).send({ error: 'this person already has an account of their own, or an invitation for one is waiting', code: 'self_exists' });
       }
-      await repo().invite(req.userId, { id, profileId, role, wrapped, proofHash, ownerBlob: typeof ownerBlob === 'string' ? ownerBlob : null, now: now.toISOString(), expiresAt: new Date(now.getTime() + INVITE_MS).toISOString() });
+      await repo().invite(req.userId, { id, profileId, role, wrapped, proofHash, ownerBlob, now: now.toISOString(), expiresAt: new Date(now.getTime() + INVITE_MS).toISOString() });
       return reply.status(201).header('Cache-Control', 'no-store').send({ ok: true, expires_at: new Date(now.getTime() + INVITE_MS).toISOString() });
     },
   );
@@ -82,9 +82,8 @@ export async function delegationRoutes(app: FastifyInstance, opts: DelegationRou
     const now = new Date().toISOString();
     const [owned, invites, received] = await Promise.all([repo().ownedBy(req.userId), repo().invites(req.userId, now), repo().madeTo(req.userId)]);
     return reply.header('Cache-Control', 'no-store').send({
-      // What binds each side's key to the other through the code (S-39, S-41), all sealed on a device. `bound`: the delegate holds the owner's key,
-      // so a key the owner seals to them can be authenticated.
-      owned: owned.map(g => ({ id: g.id, profile_id: g.profile_id, delegate_email: g.delegate_email, delegate_public_key: g.delegate_public_key, role: g.role, state: g.state, created_at: g.created_at, delegate_hello: g.delegate_hello, owner_blob: g.owner_blob, delegate_pin: g.delegate_pin, bound: g.owner_pin !== null })),
+      // What binds each side's key to the other through the code (S-39, S-41), all sealed on a device.
+      owned: owned.map(g => ({ id: g.id, profile_id: g.profile_id, delegate_email: g.delegate_email, delegate_public_key: g.delegate_public_key, role: g.role, state: g.state, created_at: g.created_at, delegate_hello: g.delegate_hello, owner_blob: g.owner_blob, delegate_pin: g.delegate_pin })),
       invites,
       received: received.map(g => ({ id: g.id, owner_email: g.owner_email, owner_public_key: g.owner_public_key, profile_id: g.profile_id, role: g.role, state: g.state, wrapped_key: g.wrapped_key, owner_pin: g.owner_pin, delegate_pinned: g.delegate_pin !== null, others: g.others })),
     });
@@ -150,11 +149,10 @@ export async function delegationRoutes(app: FastifyInstance, opts: DelegationRou
 
   app.put<{ Params: { id: string }; Body: { wrapped_key?: unknown; hello?: unknown; owner_pin?: unknown } }>('/api/delegations/:id/key', { preHandler: [requireAuth, app.rateLimit({ max: 30, timeWindow: '10 minutes' })] }, async (req, reply) => {
     if (!sealed(req.body?.wrapped_key, 40, 400)) return reply.status(400).send({ error: 'the sealed key is not what it should be' });
-    // From a device that binds keys through the code: the hello (this account's key under the code's key) and the pin of the owner's key (S-39, S-41), together.
+    // The hello (this account's key under the code's key) and the pin of the owner's key (S-39, S-41), always: a grant with no binding is not made any more.
     const { hello, owner_pin: ownerPin } = req.body;
-    const binding = hello === undefined && ownerPin === undefined ? null : sealed(hello, 40, 400) && sealed(ownerPin, 40, 400) ? { hello, ownerPin } : undefined;
-    if (binding === undefined) return reply.status(400).send({ error: 'the sealed key is not what it should be' });
-    if (!(await repo().complete(req.userId, req.params.id, req.body.wrapped_key, new Date().toISOString(), binding))) return reply.status(404).send({ error: 'not found' });
+    if (!sealed(hello, 40, 400) || !sealed(ownerPin, 40, 400)) return reply.status(400).send({ error: 'the sealed key is not what it should be' });
+    if (!(await repo().complete(req.userId, req.params.id, req.body.wrapped_key, new Date().toISOString(), { hello, ownerPin }))) return reply.status(404).send({ error: 'not found' });
     return reply.send({ ok: true });
   });
 
@@ -220,6 +218,9 @@ export async function delegationRoutes(app: FastifyInstance, opts: DelegationRou
       const store = getAccountsStore();
       const grant = await repo().getFor(req.userId, req.params.id);
       if (!grant || grant.delegate_user_id !== req.userId) return reply.status(404).send({ error: 'not found' });
+      // The owner has to have confirmed this person's key through the code (which pins it) before they can take the profile over: a grant made by hand
+      // without the binding is live and would otherwise be promotable at once (S-44).
+      if (grant.delegate_pin === null) return reply.status(409).send({ error: 'the owner has not confirmed this person yet', code: 'not_confirmed' });
       const done = await repo().promote(req.userId, grant.id, { profileWrapped, profileSize: bytes.length, objects: objectList.map(o => ({ id: o.id as string, wrappedKey: o.wrapped_key as string })), grants: grantList.map(g => ({ id: g.id as string, wrappedKey: g.wrapped_key === null ? null : (g.wrapped_key as string) })), former: { grantId: randomUUID(), wrappedKey: formerKey } }, new Date().toISOString(),
         async move => {
           // The sealed files go across first; a failure here changes nothing at all.

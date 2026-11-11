@@ -32,7 +32,7 @@ describe('sealed shares on the server', () => {
   afterEach(() => { process.env = { ...saved, DATA_DIR: dir }; vi.useRealTimers(); });
 
   const publish = (share: string, bytes: Buffer, cookie = owner, headers: Record<string, string> = {}) =>
-    app.inject({ method: 'PUT', url: `/api/shared/${share}`, headers: { cookie, 'content-type': 'application/octet-stream', 'x-spine-expires': inHours(24), ...headers }, payload: bytes });
+    app.inject({ method: 'PUT', url: `/api/shared/${share}`, headers: { cookie, 'content-type': 'application/octet-stream', 'x-spine-pass-check': 'c'.repeat(43), 'x-spine-expires': inHours(24), ...headers }, payload: bytes });
   const get = (url: string, cookie?: string) => app.inject({ method: 'GET', url, headers: cookie ? { cookie } : {} });
   const post = (url: string, payload?: unknown, cookie?: string) => app.inject({ method: 'POST', url, headers: cookie ? { cookie } : {}, payload: payload as object | undefined });
 
@@ -194,9 +194,9 @@ describe('sealed shares on the server', () => {
     const share = id();
     await publish(share, randomBytes(10));
     const doc = 'a1b2c3d4-0000-4000-8000-000000000000';
-    expect((await post(`/api/shared/${share}/opened`, { document_id: doc })).statusCode).toBe(204);
-    expect((await post(`/api/shared/${share}/opened`, {})).statusCode).toBe(204);
-    expect((await post(`/api/shared/${share}/opened`, { document_id: 'a b/../c' })).statusCode).toBe(400);
+    expect((await post(`/api/shared/${share}/opened`, { document_id: doc, check: 'c'.repeat(43) })).statusCode).toBe(204);
+    expect((await post(`/api/shared/${share}/opened`, { check: 'c'.repeat(43) })).statusCode).toBe(204);
+    expect((await post(`/api/shared/${share}/opened`, { document_id: 'a b/../c', check: 'c'.repeat(43) })).statusCode).toBe(400);
     const { opens } = (await get('/api/shared/events', owner)).json<{ opens: Array<{ id: number; documentId: string | null; countView: boolean; country: string | null }> }>();
     expect(opens.filter(o => o.documentId === doc)).toHaveLength(1);
     expect(JSON.stringify(opens)).not.toMatch(/127\.0\.0\.1|"(ip|address)"/i);
@@ -220,21 +220,21 @@ describe('sealed shares on the server', () => {
   it('gives a recipient a short pass for model calls, never longer than the share, and none once it is revoked', async () => {
     const share = id();
     await publish(share, randomBytes(10), owner);
-    expect((await post(`/api/shared/${share}/relay-token`)).statusCode).toBe(503);
+    expect((await post(`/api/shared/${share}/relay-token`, { check: 'c'.repeat(43) })).statusCode).toBe(503);
     Object.assign(process.env, { SPINE_RELAY_URL: 'https://relay.example.run.app', SPINE_RELAY_SECRET: SECRET });
-    const res = (await post(`/api/shared/${share}/relay-token`)).json<{ token: string; expires_at: number }>();
+    const res = (await post(`/api/shared/${share}/relay-token`, { check: 'c'.repeat(43) })).json<{ token: string; expires_at: number }>();
     expect(verifyToken(SECRET, res.token)).toEqual({ userId: `share:${share}` });
     // Short, because the relay cannot ask whether the link was revoked: a pass handed out works until it ends.
     expect(res.expires_at - Date.now()).toBeLessThanOrEqual(2 * 60 * 1000);
 
     // Revoked: the page that asks for its next pass is refused one.
     expect((await app.inject({ method: 'DELETE', url: `/api/shared/${share}`, headers: { cookie: owner } })).statusCode).toBe(200);
-    expect((await post(`/api/shared/${share}/relay-token`)).statusCode).toBe(410);
+    expect((await post(`/api/shared/${share}/relay-token`, { check: 'c'.repeat(43) })).statusCode).toBe(410);
     expect((await app.inject({ method: 'GET', url: `/api/shared/${share}/meta` })).statusCode).toBe(410);
 
     const short = id();
     await publish(short, randomBytes(10), owner, { 'x-spine-expires': new Date(Date.now() + 90_000).toISOString() });
-    const brief = (await post(`/api/shared/${short}/relay-token`)).json<{ expires_at: number }>();
+    const brief = (await post(`/api/shared/${short}/relay-token`, { check: 'c'.repeat(43) })).json<{ expires_at: number }>();
     expect(brief.expires_at - Date.now()).toBeLessThanOrEqual(90_000);
   });
 

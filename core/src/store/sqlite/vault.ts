@@ -21,7 +21,6 @@ export function vaultRepository(db: Database): VaultRepository {
     INSERT OR IGNORE INTO vault_keys (user_id, kdf_salt, kdf_params, wrapped_by_master, wrapped_by_recovery, public_key, wrapped_private_key, reset_verifier, seq, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
   `);
-  const setVerifier = db.prepare('UPDATE vault_keys SET reset_verifier = ? WHERE user_id = ? AND reset_verifier IS NULL');
   const updateKeys = db.prepare(`
     UPDATE vault_keys SET kdf_salt = ?, kdf_params = ?, wrapped_by_master = ?, wrapped_by_recovery = ?, public_key = ?, wrapped_private_key = ?, updated_at = ?
     WHERE user_id = ?
@@ -98,14 +97,6 @@ export function vaultRepository(db: Database): VaultRepository {
 
     async replaceKeys(userId, k: VaultKeys, now) {
       return updateKeys.run(k.kdf_salt, k.kdf_params, k.wrapped_by_master, k.wrapped_by_recovery, k.public_key, k.wrapped_private_key, now, userId).changes === 1;
-    },
-
-    async countWithoutVerifier() {
-      return (db.prepare('SELECT COUNT(*) AS n FROM vault_keys WHERE reset_verifier IS NULL').get() as { n: number }).n;
-    },
-
-    async setResetVerifier(userId, verifier) {
-      return setVerifier.run(verifier, userId).changes === 1;
     },
 
     async list(userId, since) {

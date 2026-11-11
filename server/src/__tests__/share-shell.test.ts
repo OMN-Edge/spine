@@ -29,7 +29,7 @@ describe('GET /share/:id (server)', () => {
     const id = randomBytes(16).toString('base64url');
     const put = await seed.inject({
       method: 'PUT', url: `/api/shared/${id}`, payload: randomBytes(100),
-      headers: { cookie: owner, 'content-type': 'application/octet-stream', 'x-spine-expires': new Date(Date.now() + 3_600_000).toISOString() },
+      headers: { cookie: owner, 'content-type': 'application/octet-stream', 'x-spine-pass-check': 'c'.repeat(43), 'x-spine-expires': new Date(Date.now() + 3_600_000).toISOString() },
     });
     expect(put.statusCode).toBe(201);
 

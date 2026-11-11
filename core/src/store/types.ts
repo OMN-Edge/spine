@@ -934,11 +934,9 @@ export interface DelegationRepository {
    * the hello and the pin of the owner's key; false if it is not theirs or not pending. A bound grant starts `paused`: the owner confirms the
    * code the delegate's key makes, which pins it and resumes the grant (SECURITY.md S-39); one with no binding starts `active`, as it did.
    */
-  complete(delegateId: string, id: string, wrappedKey: string, now: string, binding?: { hello: string; ownerPin: string } | null): Promise<boolean>;
+  complete(delegateId: string, id: string, wrappedKey: string, now: string, binding: { hello: string; ownerPin: string }): Promise<boolean>;
   /** The owner's: records the delegate's key as this device verified it (`DelegationRecord.delegate_pin`); false if it is not the owner's live grant. */
   setPin(ownerId: string, id: string, pin: string): Promise<boolean>;
-  /** Unexpired invitations with no binding, and live grants with none (S-39, S-41): what a device already refuses and the server still takes. */
-  countUnbound(now: string): Promise<{ invites: number; grants: number }>;
   /** One grant, by its id, only for the account that owns it or holds it; any other account's is not found. It holds a sealed profile key, so there is no lookup without the acting account (SECURITY.md S-63, P12). */
   getFor(actingUserId: string, id: string): Promise<DelegationRecord | null>;
   /** Grants of the owner's profiles, with the delegate's address and public key (to seal a replaced profile key to them). */
@@ -1502,8 +1500,6 @@ export interface VaultRepository {
   putKeys(userId: string, keys: VaultKeys, now: string): Promise<boolean>;
   /** The same account key under new wrappings (a new master password, a new recovery kit). Objects are untouched. The verifier is not changed here. */
   replaceKeys(userId: string, keys: VaultKeys, now: string): Promise<boolean>;
-  /** Adds the reset verifier to a vault that has none; false when it has one or there is no vault. A verifier is never replaced, only made again with the vault. */
-  setResetVerifier(userId: string, verifier: string): Promise<boolean>;
   /** Everything changed after `since`, deletions included, oldest change first. */
   list(userId: string, since: number): Promise<VaultObjectMeta[]>;
   get(userId: string, id: string): Promise<VaultObjectMeta | null>;
@@ -1521,8 +1517,6 @@ export interface VaultRepository {
   rotateProfile(userId: string, profileId: string, update: { profileWrapped: string; profileSize: number; objects: Array<{ id: string; wrappedKey: string }> }, now: string, before: () => Promise<void>): Promise<{ seq: number } | null>;
   /** Removes the vault and every object row; the ids, so the caller can delete the files. */
   erase(userId: string): Promise<string[]>;
-  /** How many vaults have no reset verifier yet (SECURITY.md S-38): the operator's report of what is left of the paths kept for older ones. */
-  countWithoutVerifier(): Promise<number>;
 }
 
 /** A link's sealed copy, as the server knows it: when it ends, whether it needs approval, how big it is. Nothing of what is in it. */
@@ -1569,8 +1563,6 @@ export interface SharedOpen {
 export interface SharedRepository {
   /** Public: by the id in the link. Revoked and expired ones are returned as they are; the caller decides. */
   get(id: string): Promise<SharedBundle | null>;
-  /** Live shares and cards with no key check stored (S-48, S-54): the ones made before it, which the routes still let through. */
-  countUnchecked(now: string): Promise<{ shares: number; cards: number }>;
   /** The owner's: makes the row, or replaces its metadata when the same owner publishes again; 'taken' if the id is someone else's. */
   put(userId: string, bundle: { id: string; expiresAt: string; requireApproval: boolean; size: number; blobs: number; blobBytes: number; kind?: 'share' | 'card'; passCheck?: string | null }, now: string): Promise<'ok' | 'taken' | 'revoked' | 'too_many_cards'>;
   /** The owner says the card is still right (or sends it again): the year for the yearly reminder starts over. False if it is not theirs, not a card, or off. */

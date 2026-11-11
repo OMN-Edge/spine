@@ -41,12 +41,12 @@ describe('binding each side’s key through the invitation code', () => {
     expect((await invite('a', 'guardian', { owner_blob: K('o', 120) })).statusCode).toBe(201);
     const grant = await claim('guardian', 'a');
     // before the delegate completes, nothing is bound
-    expect((await call('GET', '/api/delegations', 'owner')).json().owned.find((g: { id: string }) => g.id === grant)).toMatchObject({ state: 'pending', delegate_hello: null, bound: false });
+    expect((await call('GET', '/api/delegations', 'owner')).json().owned.find((g: { id: string }) => g.id === grant)).toMatchObject({ state: 'pending', delegate_hello: null });
     expect((await call('PUT', `/api/delegations/${grant}/key`, 'guardian', { wrapped_key: K('d'), hello: K('h', 110), owner_pin: K('p', 110) })).statusCode).toBe(200);
 
     const owned = (await call('GET', '/api/delegations', 'owner')).json().owned.find((g: { id: string }) => g.id === grant);
     // it waits, paused, for the owner to confirm the code the delegate's key makes; a grant with no binding is live at once (below)
-    expect(owned).toMatchObject({ state: 'paused', delegate_hello: K('h', 110), owner_blob: K('o', 120), delegate_pin: null, bound: true });
+    expect(owned).toMatchObject({ state: 'paused', delegate_hello: K('h', 110), owner_blob: K('o', 120), delegate_pin: null });
     const received = (await call('GET', '/api/delegations', 'guardian')).json().received.find((g: { id: string }) => g.id === grant);
     expect(received).toMatchObject({ owner_pin: K('p', 110), delegate_pinned: false });
 
@@ -71,18 +71,31 @@ describe('binding each side’s key through the invitation code', () => {
     expect((await invite('c', 'viewer', { owner_blob: 'not sealed!' })).statusCode).toBe(400);
   });
 
-  it('leaves a grant from a device that does not bind keys unbound, and says so', async () => {
-    await invite('d', 'viewer');
+  it('refuses an invitation with no sealed key of the owner, and a completion with no binding, so a grant is never made without one', async () => {
+    expect((await invite('d', 'viewer')).statusCode).toBe(400);
+    await invite('d', 'viewer', { owner_blob: K('o', 120) });
     const grant = await claim('guardian', 'd');
-    await call('PUT', `/api/delegations/${grant}/key`, 'guardian', { wrapped_key: K('d') });
-    const owned = (await call('GET', '/api/delegations', 'owner')).json().owned.find((g: { id: string }) => g.id === grant);
-    expect(owned).toMatchObject({ state: 'active', delegate_hello: null, owner_blob: null, delegate_pin: null, bound: false });
+    expect((await call('PUT', `/api/delegations/${grant}/key`, 'guardian', { wrapped_key: K('d') })).statusCode).toBe(400);
+    expect((await call('GET', '/api/delegations', 'owner')).json().owned.find((g: { id: string }) => g.id === grant)).toMatchObject({ state: 'pending' });
   });
 
   describe('promotion at eighteen', () => {
     const promote = (who: string, grantId: string, grants: Array<{ id: string; wrapped_key: string | null }>) => call('POST', `/api/delegations/${grantId}/promote`, who, {
       profile_wrapped: K('p', 100), profile_body: Buffer.from('the profile record, taken over').toString('base64url'),
       objects: [{ id: 'object-bind-0001', wrapped_key: K('q') }], grants, former_wrapped_key: K('f'),
+    });
+
+    // S-44: a grant the owner has not confirmed through the code (no pin of the person's key) cannot be promoted, however it became live.
+    it('is refused for a person the owner has not confirmed, however the grant became live', async () => {
+      const other = 'profile-bind-0002';
+      await app.inject({ method: 'PUT', url: `/api/vault/objects/${other}`, headers: { cookie: people.owner.cookie, 'content-type': 'application/octet-stream', 'x-spine-kind': 'profile', 'x-spine-profile': other, 'x-spine-wrapped-key': K('k'), 'x-spine-base-seq': '0' }, payload: Buffer.from('another profile') });
+      expect((await call('POST', '/api/delegations/invites', 'owner', { id: code('g'), profile_id: other, role: 'self', wrapped: K('w'), proof_hash: hex(code('g')), owner_blob: K('o', 120) })).statusCode).toBe(201);
+      const grant = await claim('self', 'g');
+      await call('PUT', `/api/delegations/${grant}/key`, 'self', { wrapped_key: K('s'), hello: K('i', 110), owner_pin: K('m', 110) });
+      await call('POST', `/api/delegations/${grant}/state`, 'owner', { state: 'active' }); // live without the pin
+      const refused = await promote('self', grant, []);
+      expect(refused.statusCode).toBe(409);
+      expect(refused.json()).toMatchObject({ code: 'not_confirmed' });
     });
 
     it('ends the grants of the others, whose keys the new owner has no way to know, and hands each side the pin of the other', async () => {
@@ -116,7 +129,7 @@ describe('binding each side’s key through the invitation code', () => {
       const former = (await call('GET', '/api/delegations', 'owner')).json().received.find((g: { profile_id: string }) => g.profile_id === PROFILE);
       expect(former).toMatchObject({ role: 'guardian', state: 'paused', owner_pin: K('n', 110), delegate_pinned: true });
       const theirs = (await call('GET', '/api/delegations', 'self')).json().owned.find((g: { id: string }) => g.id === former.id);
-      expect(theirs).toMatchObject({ delegate_pin: K('m', 110), bound: true });
+      expect(theirs).toMatchObject({ delegate_pin: K('m', 110) });
     });
   });
 });

@@ -28,7 +28,7 @@ Calling an EU model endpoint from the client keeps Spine zero-knowledge, but the
 | Doctor's browser | Yes, scoped | Only the shared documents, until the link expires or is revoked |
 | Model endpoint | Yes, transient | The content of each AI call; retention set by contract |
 | Spine servers | No | Account email, ciphertext sizes, timestamps, share metadata |
-| Email provider | No | Notification that a share was requested; never medical content |
+| Email provider | No | That an account event happened (a sign-in from a new browser, a security change, a share waiting for approval, a card opened); never medical content |
 
 One constraint shapes the AI path: the client cannot hold Spine's model API key, so calls pass through a relay that holds it. A plain relay terminates TLS and sees plaintext, so the claim above is about what it stores and logs. A relay in an attested confidential-computing enclave, which the client verifies before sending anything, is the later step that would let the claim be stronger.
 
@@ -136,7 +136,7 @@ The cuts of 2026-10-23 are being undone in this order, each with its documents (
 | --- | --- | --- | --- | --- |
 | FR-FAM-01 | A child's profile is kept by a guardian under their account, with the child's birth date sealed in its record; other guardians can be let in | Must | Launch | Built (**M-50**) |
 | FR-FAM-02 | A child has an account of their own only from sixteen, when their guardian invites them; below sixteen the page does not offer it | Must | Launch | Built (**M-50**) |
-| FR-FAM-03 | At eighteen the person can take the profile into their own account in one step, under a new key; the guardians' access is paused, not ended, until the person chooses | Must | Launch | Built (**M-51**) |
+| FR-FAM-03 | At eighteen the person can take the profile into their own account in one step, under a new key; the access of the guardian who kept them is paused, not ended, until the person chooses, and every other guardian's access ends until the person invites them again | Must | Launch | Built (**M-51**) |
 | FR-EMG-01 | A card the owner writes of what someone helping them must know at once (allergies, conditions, medications, contacts, blood type, notes); only what is written is on it | Must | Launch | Built (**M-47**) |
 | FR-EMG-02 | The card opens from a QR code with no account and no approval, in the reader's language for everything but the owner's own words, and says what Spine is | Must | Launch | Built |
 | FR-EMG-03 | Every opening is logged (time and country, never an address) and the owner is mailed, at most once in fifteen minutes | Must | Launch | Built |

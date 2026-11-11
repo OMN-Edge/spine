@@ -82,11 +82,11 @@ export interface Store {
 interface DocumentRepository {
   listFor(userId: string, filter: DocumentFilter): Promise<Document[]>;
   findFor(userId: string, id: string): Promise<Document | null>;
-  listForShare(link: ResolvedShareLink): Promise<Document[]>;   // one of five exceptions
+  listForShare(link: ResolvedShareLink): Promise<Document[]>;   // one of nine exceptions
 }
 ```
 
-There is no `find(id)` without a user. **Five exceptions**, enumerated in `store/types.ts` so a sixth has to be argued for: `shareLinks.findLive`, `createRequest` and `listForShare` (scoped by the link's owner, resolved from the link's id); `logAccess` (how the owner's device records an open the server reported, **P7**); `shared.*` (the public side of a sealed share, scoped by its random id, answering only metadata and sealed bytes); `maintenance.*` (boot-time work: stalled jobs, ended sign-ins, `snapshotTo`); and `users.*` (the identity layer — login must find a user before there is an acting user).
+There is no `find(id)` without a user. **Nine exceptions**, enumerated in `store/types.ts` so a tenth has to be argued for: `shareLinks.findLive`, `createRequest` and `listForShare` (scoped by the link's owner, resolved from the link's id); `logAccess` (how the owner's device records an open the server reported, **P7**); `shared.*` (the public side of a sealed share, scoped by its random id, answering only metadata and sealed bytes); `maintenance.*` (boot-time work: stalled jobs, ended sign-ins, `snapshotTo`); `users.*` (the identity layer — login must find a user before there is an acting user); `enrolments.request` and `claim` (the unauthenticated side of letting a device in, scoped by the offer's id, **M-41**); `cookieSessions.*` (the cookie session's state, found by the digest of its random id); `billing.*` (the payment provider's lookups by its own ids and the count of founding prices, **M-45**); and `metrics.*` and `waitlist.*` (counts a day under a name, and addresses of people who are not accounts).
 
 What a method does with a record the caller does not own:
 

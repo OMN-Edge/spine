@@ -203,7 +203,7 @@ describe('the sealed card at the server', () => {
   });
   afterAll(() => resetMailer(null));
 
-  const putCard = (id: string, who = cookie, body = Buffer.from('sealed card')) => app.inject({ method: 'PUT', url: `/api/shared/${id}`, headers: { cookie: who, 'content-type': 'application/octet-stream', 'x-spine-kind': 'card' }, payload: body });
+  const putCard = (id: string, who = cookie, body = Buffer.from('sealed card')) => app.inject({ method: 'PUT', url: `/api/shared/${id}`, headers: { cookie: who, 'content-type': 'application/octet-stream', 'x-spine-pass-check': 'c'.repeat(43), 'x-spine-kind': 'card' }, payload: body });
   const ID_A = 'card-aaaaaaaaaaaaaaaaaaaaaaaa';
   const ID_B = 'card-bbbbbbbbbbbbbbbbbbbbbbbb';
 
@@ -237,7 +237,7 @@ describe('the sealed card at the server', () => {
 
   it('is counted and the owner told when it is opened, once in a while however often it is', async () => {
     mails.length = 0;
-    const open = () => app.inject({ method: 'POST', url: `/api/shared/${ID_A}/opened`, payload: {} });
+    const open = () => app.inject({ method: 'POST', url: `/api/shared/${ID_A}/opened`, payload: { check: 'c'.repeat(43) } });
     expect((await open()).statusCode).toBe(204);
     expect((await open()).statusCode).toBe(204);
     await vi.waitFor(() => expect(mails).toHaveLength(1));

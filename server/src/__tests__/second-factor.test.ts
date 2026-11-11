@@ -373,15 +373,13 @@ describe('recovery codes at sign-in', () => {
     expect(await getAccountsStore().users.useRecoveryCode(OWNER_ID, plain, new Date().toISOString())).toBe(false);
   });
 
-  it('made before they were stored slowly still work, once, and are spent like any other', async () => {
-    const { secret } = await enrol();
+  it('made before they were stored slowly no longer work: the plain hash of a code is not accepted', async () => {
+    await enrol();
     const { createHash } = await import('crypto');
     const old = 'ABCDEFGHJK';
     await getAccountsStore().users.replaceRecoveryCodes(OWNER_ID, [createHash('sha256').update(old).digest('hex')]);
     const user = (await getAccountsStore().users.findById(OWNER_ID))!;
-    expect(await checkSecondFactor(user, 'abcde-fghjk')).toBe(true);
-    expect(await checkSecondFactor(user, old)).toBe(false);
-    expect(secret).toBeTruthy();
+    expect(await checkSecondFactor(user, 'abcde-fghjk')).toBe(false);
   });
 
   it('still work if SESSION_SECRET changed and the authenticator no longer can (S-21)', async () => {

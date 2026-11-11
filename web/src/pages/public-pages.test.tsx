@@ -7,6 +7,7 @@ import HowItWorks from './HowItWorks';
 import Protection from './Protection';
 import Families from './Families';
 import Encryption from './Encryption';
+import SecurityChecks from './SecurityChecks';
 
 /**
  * The pages a visitor reads before an account: each opens on its own title inside the one header and footer, offers the demo as the
@@ -29,6 +30,7 @@ const PAGES = [
   { name: 'protection', page: <Protection />, path: '/protection', title: 'How your records are protected' },
   { name: 'families', page: <Families />, path: '/families', title: 'Spine for families' },
   { name: 'encryption', page: <Encryption />, path: '/encryption', title: 'Encryption, in detail' },
+  { name: 'security in every release', page: <SecurityChecks />, path: '/security-checks', title: 'Checked on every change, reviewed before every release' },
 ];
 
 describe('the pages before an account', () => {
@@ -70,5 +72,12 @@ describe('the pages before an account', () => {
 
   it('says the relay sees what passes through it, and does not promise it cannot', () => {
     expect(text(render(<Protection />, '/protection'))).toContain('The relay does see the text while it passes through.');
+  });
+
+  it('names the attacks first, then the three stages every version goes through, and the front page links to it', () => {
+    const page = text(render(<SecurityChecks />, '/security-checks'));
+    for (const heading of ['The attacks it is built to resist', 'On every change', 'Before every release', 'At release']) expect(page).toContain(heading);
+    expect(page.indexOf('The attacks it is built to resist')).toBeLessThan(page.indexOf('On every change'));
+    expect(render(<Landing />, '/')).toContain('href="/security-checks"');
   });
 });

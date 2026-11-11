@@ -21,7 +21,7 @@ beforeEach(async () => {
 afterEach(async () => { await app.close(); process.env = { ...saved }; });
 
 const id = () => randomBytes(16).toString('base64url');
-const publish = (share: string, bytes: Buffer) => app.inject({ method: 'PUT', url: `/api/shared/${share}`, payload: bytes, headers: { cookie, 'content-type': 'application/octet-stream', 'x-spine-expires': new Date(Date.now() + 3_600_000).toISOString() } });
+const publish = (share: string, bytes: Buffer) => app.inject({ method: 'PUT', url: `/api/shared/${share}`, payload: bytes, headers: { cookie, 'content-type': 'application/octet-stream', 'x-spine-pass-check': 'c'.repeat(43), 'x-spine-expires': new Date(Date.now() + 3_600_000).toISOString() } });
 const read = (share: string, ip: string) => app.inject({ method: 'GET', url: `/api/shared/${share}/bundle`, headers: { 'x-forwarded-for': ip } });
 
 describe('how much of a share one source may read in an hour', () => {

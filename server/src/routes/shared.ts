@@ -101,11 +101,11 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
   app.addContentTypeParser('application/octet-stream', { parseAs: 'buffer', bodyLimit: sharedLimits().partBytes }, (_req, body, done) => done(null, body));
 
   /**
-   * Whether a request shows what only the share's key makes (S-48, S-54). The id is in every address and in logs, so it proves nothing; a copy
-   * made before the value existed has none to check and ends within the month a share can last.
+   * Whether a request shows what only the share's key makes (S-48, S-54). The id is in every address and in logs, so it proves nothing. A copy
+   * with none stored (one made before it existed) is refused: it is made again, which sends one.
    */
   const showsKey = (bundle: { passCheck: string | null }, given: unknown): boolean => {
-    if (!bundle.passCheck) return true;
+    if (!bundle.passCheck) return false;
     const a = Buffer.from(typeof given === 'string' ? given : '');
     const b = Buffer.from(bundle.passCheck);
     return a.length === b.length && timingSafeEqual(a, b);
@@ -154,8 +154,8 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
       if (!SHARE_ID.test(id) || !Buffer.isBuffer(req.body) || req.body.length === 0 || req.body.length > CARD_MAX_BYTES) return reply.status(400).send({ error: 'an id and a sealed card of at most 64 KB are needed' });
       if (!(await spaceFor(req.body.length))) return reply.status(507).send({ error: 'the server is short of room just now; try again later', code: 'storage_low' });
       const cardCheck = req.headers['x-spine-pass-check'];
-      if (cardCheck !== undefined && (typeof cardCheck !== 'string' || !PASS_CHECK.test(cardCheck))) return reply.status(400).send({ error: 'the pass check is not in the expected form' });
-      const put = await getAccountsStore().shared.put(req.userId, { id, expiresAt: CARD_NO_END, requireApproval: false, size: req.body.length, blobs: 0, blobBytes: 0, kind: 'card', passCheck: cardCheck ?? null }, new Date().toISOString());
+      if (typeof cardCheck !== 'string' || !PASS_CHECK.test(cardCheck)) return reply.status(400).send({ error: 'the pass check is needed, in the expected form' });
+      const put = await getAccountsStore().shared.put(req.userId, { id, expiresAt: CARD_NO_END, requireApproval: false, size: req.body.length, blobs: 0, blobBytes: 0, kind: 'card', passCheck: cardCheck }, new Date().toISOString());
       if (put === 'too_many_cards') return reply.status(409).send({ error: 'too many cards are on; turn one off first', code: 'too_many_cards' });
       if (put !== 'ok') return reply.status(put === 'taken' ? 404 : 409).send({ error: put === 'taken' ? 'not found' : 'this card was turned off' });
       await writeBundle(id, req.body);
@@ -187,8 +187,8 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     // sends with the copy (S-48). A copy sent again without one keeps the value it has.
     if (!(await spaceFor(req.body.length))) return reply.status(507).send({ error: 'the server is short of room just now; try again later', code: 'storage_low' });
     const passCheck = req.headers['x-spine-pass-check'];
-    if (passCheck !== undefined && (typeof passCheck !== 'string' || !PASS_CHECK.test(passCheck))) return reply.status(400).send({ error: 'the pass check is not in the expected form' });
-    const put = await store.shared.put(req.userId, { id, expiresAt: expires, requireApproval, size: req.body.length, blobs: keep ? existing.blobs : 0, blobBytes: keep ? existing.blobBytes : 0, passCheck: passCheck ?? null }, new Date().toISOString());
+    if (typeof passCheck !== 'string' || !PASS_CHECK.test(passCheck)) return reply.status(400).send({ error: 'the pass check is needed, in the expected form' });
+    const put = await store.shared.put(req.userId, { id, expiresAt: expires, requireApproval, size: req.body.length, blobs: keep ? existing.blobs : 0, blobBytes: keep ? existing.blobBytes : 0, passCheck }, new Date().toISOString());
     if (put !== 'ok') return reply.status(put === 'taken' ? 404 : 409).send({ error: put === 'taken' ? 'not found' : 'this share was revoked' });
     if (!keep) await removeBlobs(id);
     await writeBundle(id, req.body);
@@ -411,8 +411,7 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
 
   // A pass for the model calls a recipient's browser makes while reading (translating, asking): good for the share's own time only,
   // counted against the share. Whoever holds the link may make them, as they may read what it shares: the id is in the address and in logs,
-  // so it is not enough, and the browser shows a value only the key makes (S-48). A copy made before the value existed has none to check
-  // and ends within the month a share can last.
+  // so it is not enough, and the browser shows a value only the key makes (S-48); a copy with none stored is refused.
   app.post<{ Params: { id: string }; Body: { check?: unknown } }>('/api/shared/:id/relay-token', { config: { rateLimit: opts.readPerSource ?? { max: 30, timeWindow: '1 minute' } } }, async (req, reply) => {
     const bundle = await live(req.params.id);
     if (!bundle || bundle === 'ended') return reply.status(bundle === 'ended' ? 410 : 404).send({ error: bundle === 'ended' ? 'this link is no longer active' : 'not found' });
