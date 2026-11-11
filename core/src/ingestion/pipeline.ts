@@ -1,3 +1,4 @@
+import { requireDocumentRoom } from '../plan-limits.js';
 import { v4 as uuidv4 } from 'uuid';
 import { getStore, getAccountsStore } from '../store/index.js';
 import { rasterizePdf } from './rasterize.js';
@@ -168,6 +169,8 @@ async function runPipeline(
     // several times. Until then a document has no title or details, only its pages.
     job.step = 'making documents';
     job.progress = 90;
+    // The documents this upload makes must fit the plan's limit; before the first is made, so an upload that does not fit leaves none behind.
+    await requireDocumentRoom(userId, documentRanges.length);
     for (const range of documentRanges) {
       await store.documents.create(userId, { id: uuidv4(), sourceFileId, pageStart: range.start, pageEnd: range.end, needsReading: true });
     }

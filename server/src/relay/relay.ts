@@ -186,7 +186,7 @@ export function createRelay(config: RelayConfig) {
     res.setHeader('access-control-allow-origin', config.allowedOrigin);
     res.setHeader('vary', 'origin');
     if (req.method === 'OPTIONS') {
-      res.writeHead(204, { 'access-control-allow-methods': 'POST', 'access-control-allow-headers': 'authorization, content-type', 'access-control-max-age': '600' });
+      res.writeHead(204, { 'access-control-allow-methods': 'POST', 'access-control-allow-headers': 'authorization, content-type, x-spine-work, x-spine-pages, x-spine-import', 'access-control-max-age': '600' });
       return void res.end();
     }
     if (req.method === 'GET' && req.url === '/healthz') return reply(res, 200, 'ok');
@@ -216,13 +216,22 @@ export function createRelay(config: RelayConfig) {
     const declared = Number(req.headers['content-length']);
     if (Number.isFinite(declared) && declared > bodyLimit(who.userId)) return refuse(413, 'too large', 'too_large');
     if (!(await spend(who.userId))) return refuse(429, 'the daily allowance of model calls is used up');
-    const refusal = await config.gate?.admit(who.userId, relayTask);
+    // What the device says about the call for the plan's counts (billing/gate.ts): a random id for the piece of work it belongs to, how many pages
+    // it covers, and that it is part of an archive import. Shapes are checked; none is logged.
+    const asked = String(req.headers['x-spine-work'] ?? '');
+    const pagesSaid = Number(req.headers['x-spine-pages']);
+    const call = {
+      work: /^[A-Za-z0-9_-]{8,64}$/.test(asked) ? asked : null,
+      pages: Number.isInteger(pagesSaid) && pagesSaid >= 1 && pagesSaid <= 1000 ? pagesSaid : null,
+      bulk: req.headers['x-spine-import'] === '1',
+    };
+    const refusal = await config.gate?.admit(who.userId, relayTask, call);
     if (refusal) return refuse(refusal.status, refusal.error, refusal.code);
 
     const payload = await body(req, bodyLimit(who.userId));
     if (!payload) return reply(res, 413, 'too large');
     const ok = isEmbed ? await runEmbed(res, payload, started) : await runTask(task as LlmTask, req, res, payload, started);
-    if (ok) await config.gate?.settle(who.userId, relayTask, payload.length).catch(() => log({ task: relayTask, note: 'the call could not be charged to the plan' }));
+    if (ok) await config.gate?.settle(who.userId, relayTask, payload.length, call).catch(() => log({ task: relayTask, note: 'the call could not be charged to the plan' }));
   };
 }
 

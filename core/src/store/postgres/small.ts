@@ -49,6 +49,17 @@ export function usageRepository(q: Query): UsageRepository {
       return Number(row.calls);
     },
 
+    async seen(userId, key) {
+      return (await one(q, 'SELECT 1 AS yes FROM ai_seen WHERE user_id = $1 AND key = $2', [owner(userId), key])) !== null;
+    },
+
+    async see(userId, key, at) {
+      const id = owner(userId);
+      const fresh = (await changed(q, 'INSERT INTO ai_seen (user_id, key, at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING', [id, key, at])) === 1;
+      await q('DELETE FROM ai_seen WHERE user_id = $1 AND at < $2', [id, new Date(Date.parse(at) - 2 * 24 * 3600e3).toISOString()]);
+      return fresh;
+    },
+
     async aiUsed(userId, period) {
       return Number((await one<{ amount: number }>(q, 'SELECT amount FROM ai_usage WHERE user_id = $1 AND period = $2', [owner(userId), period]))?.amount ?? 0);
     },
@@ -57,7 +68,9 @@ export function usageRepository(q: Query): UsageRepository {
       const id = owner(userId);
       const row = await one<{ amount: number }>(q, `INSERT INTO ai_usage (user_id, period, amount) VALUES ($1, $2, $3)
         ON CONFLICT (user_id, period) DO UPDATE SET amount = ai_usage.amount + excluded.amount RETURNING amount`, [id, period, Math.max(0, Math.round(amount))]);
-      if (period !== 'trial') await q(`DELETE FROM ai_usage WHERE user_id = $1 AND period <> $2 AND period <> 'trial'`, [id, period]);
+      // A period that is not this month is over, whichever meter or pool it was for (the key holds the month); the trial's is kept.
+      const month = /\d{4}-\d{2}/.exec(period)?.[0];
+      if (month) await q(`DELETE FROM ai_usage WHERE user_id = $1 AND position($2 in period) = 0 AND position('trial' in period) = 0 AND position('once:' in period) = 0`, [id, month]);
       return Number(row!.amount);
     },
   };

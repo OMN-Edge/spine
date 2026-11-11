@@ -10,10 +10,23 @@ export function usageRepository(db: Database): UsageRepository {
   const prune = db.prepare('DELETE FROM model_usage WHERE user_id = ? AND day < ?');
   const aiUsed = db.prepare('SELECT amount FROM ai_usage WHERE user_id = ? AND period = ?');
   const aiAdd = db.prepare('INSERT INTO ai_usage (user_id, period, amount) VALUES (?, ?, ?) ON CONFLICT (user_id, period) DO UPDATE SET amount = amount + excluded.amount');
-  // A period of the account's that is not this one is over: the trial's and each earlier month's.
-  const aiForget = db.prepare("DELETE FROM ai_usage WHERE user_id = ? AND period <> ? AND period <> 'trial'");
+  // A period of the account's that is not this month is over, whichever meter or pool it was for (the key holds the month): the trial's and a once-only allowance's are kept.
+  const aiForget = db.prepare("DELETE FROM ai_usage WHERE user_id = ? AND instr(period, ?) = 0 AND instr(period, 'trial') = 0 AND instr(period, 'once:') = 0");
+
+  const seenRow = db.prepare('SELECT 1 AS yes FROM ai_seen WHERE user_id = ? AND key = ?');
+  const see = db.prepare('INSERT OR IGNORE INTO ai_seen (user_id, key, at) VALUES (?, ?, ?)');
+  const forgetSeen = db.prepare('DELETE FROM ai_seen WHERE user_id = ? AND at < ?');
 
   return {
+    async seen(userId, key) { return seenRow.get(owner(userId), key) !== undefined; },
+
+    async see(userId, key, at) {
+      const id = owner(userId);
+      const fresh = see.run(id, key, at).changes === 1;
+      forgetSeen.run(id, new Date(Date.parse(at) - 2 * 24 * 3600e3).toISOString());
+      return fresh;
+    },
+
     async spend(userId, day, limit) {
       const id = owner(userId);
       if (limit <= 0) return null;
@@ -29,7 +42,8 @@ export function usageRepository(db: Database): UsageRepository {
     async aiAdd(userId, period, amount) {
       const id = owner(userId);
       aiAdd.run(id, period, Math.max(0, Math.round(amount)));
-      if (period !== 'trial') aiForget.run(id, period);
+      const month = /\d{4}-\d{2}/.exec(period)?.[0];
+      if (month) aiForget.run(id, month);
       return (aiUsed.get(id, period) as { amount: number }).amount;
     },
   };

@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { requireAuth } from 'spine-core/routes/middleware.js';
 import { logger } from 'spine-core/logger.js';
-import { FOUNDING_LIMIT, PAGE, PRICES, subscriptionEntitles, trialEnd, usagePeriod } from 'spine-core/billing/plans.js';
+import { COUNTS, FOUNDING_LIMIT, PRICES, linkKey, meterKey, subscriptionEntitles, trialEnd, type Count } from 'spine-core/billing/plans.js';
 import type { SubscriptionRecord } from 'spine-core/store/types.js';
 import { loadBillingConfig } from '../billing/config.js';
 import { applySubscriptionEvent, createCheckout, parseEvent, planOfItems, portalUrl, userOf, verifySignature, type PaddleEvent } from '../billing/paddle.js';
@@ -41,16 +41,34 @@ export async function billingRoutes(app: FastifyInstance) {
     if (!user) return reply.status(401).send({ error: 'not authenticated' });
     const now = new Date();
     const sub = await store.billing.get(req.userId);
-    // A seat in another's plan has that plan, and its allowance is the plan's, counted under the account that pays (SECURITY.md M-52).
+    // A seat in another's plan has that plan, and its allowances are the plan's, counted in a pool under the account that pays, with each account
+    // held to a cap of its own (SECURITY.md M-52).
     const standing = (await standingOf(store, req.userId, now))!;
     const e = standing.entitlements;
-    const [aiUsed, vault, shares, vaultLimit, sharesLimit, held] = await Promise.all([
-      store.usage.aiUsed(standing.holder, usagePeriod(e, now)),
+    const pooled = standing.seat !== 'none';
+    // A count a person sees: what the plan (or the account) has used, and the allowance, or none (null) where only adding is limited and using is not.
+    const finite = (n: number) => (Number.isFinite(n) ? n : null);
+    const read = async (meter: Count) => {
+      const own = await store.usage.aiUsed(req.userId, meterKey(meter, e, now));
+      const plan = pooled ? await store.usage.aiUsed(standing.holder, meterKey(meter, e, now, true)) : own;
+      const cap = e.memberCap ? finite(e.memberCap[meter]) : null;
+      return {
+        used: plan,
+        allowance: finite(e.allowance[meter]),
+        ...(cap !== null ? { own_used: own, own_cap: cap } : {}),
+      };
+    };
+    // What links send, and what the owner's own devices read: the plan's views and bytes of the month (billing/links.ts).
+    const linkUse = async (what: 'views' | 'egress') => store.usage.aiUsed(pooled ? standing.holder : req.userId, linkKey(what, now, pooled));
+    const [meters, vault, shares, vaultLimit, sharesLimit, held, pool, linkViews, linkBytes] = await Promise.all([
+      Promise.all(COUNTS.map(async m => [m, await read(m)] as const)).then(Object.fromEntries),
       store.vault.usage(req.userId),
       store.shared.usage(req.userId, now.toISOString()),
       vaultBytesFor(req.userId),
       liveSharesFor(req.userId),
       store.billing.foundingHeld(now.toISOString()),
+      pooled ? store.family.pool(standing.holder, now.toISOString()) : Promise.resolve(null),
+      linkUse('views'), linkUse('egress'),
     ]);
     return reply.header('Cache-Control', 'no-store').send({
       enabled: true,
@@ -61,11 +79,19 @@ export async function billingRoutes(app: FastifyInstance) {
         ? { status: sub.status, interval: sub.interval, founding: sub.founding, ends_at: sub.cancel_scheduled ? sub.current_period_end : null, renews_at: sub.cancel_scheduled ? null : sub.current_period_end, provider: sub.provider }
         : null,
       can_manage: !!sub?.customer_id && sub.provider === 'paddle',
-      ai: { used: Math.floor(aiUsed / PAGE), allowance: Math.floor(e.aiAllowance / PAGE), period: e.aiPeriod },
-      vault: { used_bytes: vault.bytes, limit_bytes: vaultLimit },
-      shares: { live: shares.bundles, limit: sharesLimit },
+      // Reading is by the month (the trial's, once); chat and translation are always by the month.
+      // What a person sees counted: pages read, questions asked, pages translated, and the archive import. Only adding has an allowance; using is counted.
+      ai: { period: e.aiPeriod, reading: meters.pages, chat: meters.messages, translation: meters.translated, import: meters.import },
+      // Only the free plan limits them: null is no limit, only counted.
+      links: { views: { used: linkViews, allowance: finite(e.linkViews) }, bytes: { used: linkBytes, allowance: finite(e.linkBytes) } },
+      // On a plan with seats storage and links are the plan's, over all its accounts: what is shown is the plan's, not this account's share of it.
+      vault: { used_bytes: pool ? pool.bytes : vault.bytes, limit_bytes: pooled ? Math.min(e.vaultBytes ?? vaultLimit, vaultLimit * standing.entitlements.seats) : vaultLimit },
+      // Only the free plan limits how many are live; null is no limit but the instance's.
+      shares: { live: pool ? pool.links : shares.bundles, limit: e.liveShares === null ? null : sharesLimit },
       features: { translation: e.translation, chat: e.chat, linking: e.linking, related: e.related, approval_mode: e.approvalMode, delegation: e.delegation },
       people: { limit: e.profiles },
+      // What the app holds itself to, because the server cannot count into sealed records (`core/src/plan-limits.ts`).
+      limits: { documents: e.documents },
       seats: { limit: e.seats },
       prices: PRICES,
       family: !!config.family,

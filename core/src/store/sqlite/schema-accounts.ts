@@ -252,6 +252,15 @@ CREATE TABLE IF NOT EXISTS ai_usage (
   PRIMARY KEY (user_id, period)
 );
 
+-- Random ids of the chat questions an account asked lately (the device makes one for each question and sends it with every call of it), so a question
+-- is counted once however many calls it takes; kept two days. Only a random id, never a word of the question.
+CREATE TABLE IF NOT EXISTS ai_seen (
+  user_id TEXT NOT NULL,
+  key TEXT NOT NULL,
+  at TEXT NOT NULL,
+  PRIMARY KEY (user_id, key)
+);
+
 -- Whether the loops in the marketing plan work: a sign-up that came from a shared page, a share opened. A number a day under a name, never who.
 CREATE TABLE IF NOT EXISTS metrics (
   name TEXT NOT NULL,

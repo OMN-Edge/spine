@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
 import { createHmac } from 'node:crypto';
 import { getAccountsStore } from 'spine-core/store/index.js';
-import { PAGE, TRIAL_MONTHS } from 'spine-core/billing/plans.js';
+import { PAGE, PLANS, TRIAL_MONTHS } from 'spine-core/billing/plans.js';
 import { buildTestApp, loginAs, loginSession } from './helpers/app.js';
 import { createTestUser, OWNER_ID, TEST_PASSWORD } from './helpers/seed.js';
 import { billingOn, loadBillingConfig } from '../billing/config.js';
@@ -76,7 +76,7 @@ describe('plans and payment', () => {
       on();
       expect((await get('/api/billing', {})).statusCode).toBe(401);
       const body = (await get('/api/billing')).json();
-      expect(body).toMatchObject({ enabled: true, plan: 'trial', subscription: null, can_manage: false, ai: { used: 0, allowance: 150, period: 'trial' }, founding_left: 500 });
+      expect(body).toMatchObject({ enabled: true, plan: 'trial', subscription: null, can_manage: false, ai: { period: 'trial', reading: { used: 0, allowance: 150 }, chat: { used: 0, allowance: null }, translation: { used: 0, allowance: null } }, links: { views: { used: 0, allowance: null }, bytes: { used: 0, allowance: null } }, founding_left: 500 });
       expect(body.trial_ends_at).toBeTruthy();
       expect((await get('/api/pricing', {})).json()).toMatchObject({ enabled: true, founding_left: 500, prices: { premium: { year: 39, month: 3.99 }, founding: { year: 29 } } });
     });
@@ -89,7 +89,7 @@ describe('plans and payment', () => {
       expect(await liveSharesFor(old.id)).toBe(1);
       expect(await vaultBytesFor(OWNER_ID)).toBeGreaterThan(1024 ** 3);
       const cookieOld = await loginAs(app, old.email, old.password);
-      expect((await get('/api/billing', { cookie: cookieOld })).json()).toMatchObject({ plan: 'free', ai: { allowance: 30, period: 'month' }, shares: { limit: 1 }, features: { translation: false } });
+      expect((await get('/api/billing', { cookie: cookieOld })).json()).toMatchObject({ plan: 'free', ai: { period: 'month', reading: { allowance: 10 }, chat: { allowance: 0 }, translation: { allowance: 0 } }, shares: { limit: 1 }, features: { translation: false } });
     });
   });
 
@@ -277,16 +277,133 @@ describe('plans and payment', () => {
       for (const task of ['translation', 'chat', 'agent', 'linking', 'embed'] as const) expect(await gate().admit(user.id, task), task).toMatchObject({ status: 402, code: 'plan_required' });
       expect(await gate().admit(user.id, 'extraction')).toBeNull();
       const month = new Date().toISOString().slice(0, 7);
-      await getAccountsStore().usage.aiAdd(user.id, month, 30 * PAGE);
+      await getAccountsStore().usage.aiAdd(user.id, `${month}:pages`, 10);
       expect(await gate().admit(user.id, 'extraction')).toMatchObject({ status: 402, code: 'allowance_used' });
     });
 
-    it('stops everything the AI does when the trial’s 150 pages are used, translation and questions too', async () => {
+    it('stops adding pages when the trial’s 150 are used, and never stops questions or translation for want of an allowance', async () => {
       const user = await createTestUser('gate-cap@spine.test');
-      await getAccountsStore().usage.aiAdd(user.id, 'trial', 150 * PAGE - 1);
+      await getAccountsStore().usage.aiAdd(user.id, 'trial:pages', 149);
       expect(await gate().admit(user.id, 'page')).toBeNull();
-      await getAccountsStore().usage.aiAdd(user.id, 'trial', 1);
-      for (const task of ['page', 'translation', 'chat'] as const) expect(await gate().admit(user.id, task), task).toMatchObject({ code: 'allowance_used' });
+      await getAccountsStore().usage.aiAdd(user.id, 'trial:pages', 1);
+      for (const task of ['page', 'extraction'] as const) expect(await gate().admit(user.id, task), task).toMatchObject({ code: 'allowance_used' });
+      // What is not a page is not counted as one: summaries, links and embeddings are not stopped by the pages, and using what is kept is not stopped.
+      for (const task of ['embed', 'linking', 'continuation', 'grouping', 'stamps', 'translation', 'chat', 'agent'] as const) expect(await gate().admit(user.id, task), task).toBeNull();
+    });
+
+    it('counts what is read, asked and translated apart, and what is not a page is not counted as one', async () => {
+      const user = await createTestUser('gate-meters@spine.test');
+      const month = new Date().toISOString().slice(0, 7);
+      const store = getAccountsStore();
+      const gate_ = gate();
+      // A page of a scan is one page; a document’s text is the pages the device says; summaries and the rest are no pages.
+      await gate_.settle(user.id, 'page', 0);
+      await gate_.settle(user.id, 'extraction', 10 * 1024, { pages: 3 });
+      await gate_.settle(user.id, 'embed', 100);
+      await gate_.settle(user.id, 'linking', 100);
+      await gate_.settle(user.id, 'continuation', 100);
+      expect(await store.usage.aiUsed(user.id, 'trial:pages')).toBe(4);
+      // With no word from the device, the pages are guessed from the size of the text, at least one.
+      await gate_.settle(user.id, 'extraction', 9001);
+      expect(await store.usage.aiUsed(user.id, 'trial:pages')).toBe(4 + 4);
+      // Each kind of call is also counted in the cost ceiling of its own kind.
+      expect(await store.usage.aiUsed(user.id, 'trial')).toBeGreaterThan(0);
+      await gate_.settle(user.id, 'agent', 8 * 1024);
+      expect(await store.usage.aiUsed(user.id, `${month}:chat`)).toBe(256);
+      await gate_.settle(user.id, 'translation', 2048);
+      expect(await store.usage.aiUsed(user.id, `${month}:translation`)).toBe(330);
+    });
+
+    it('stops a kind of work only at the ceiling no use of an archive reaches, and says so as it says any plan limit', async () => {
+      const user = await createTestUser('gate-ceiling@spine.test');
+      const month = new Date().toISOString().slice(0, 7);
+      const store = getAccountsStore();
+      await store.usage.aiAdd(user.id, `${month}:chat`, PLANS.premium.allowance.chat);
+      expect(await gate().admit(user.id, 'chat')).toMatchObject({ code: 'allowance_used' });
+      expect(await gate().admit(user.id, 'agent')).toMatchObject({ code: 'allowance_used' });
+      expect(await gate().admit(user.id, 'extraction')).toBeNull();
+      expect(await gate().admit(user.id, 'translation')).toBeNull();
+      await store.usage.aiAdd(user.id, `${month}:translation`, PLANS.premium.allowance.translation);
+      expect(await gate().admit(user.id, 'translation')).toMatchObject({ code: 'allowance_used' });
+      expect(await gate().admit(user.id, 'extraction')).toBeNull();
+    });
+
+    it('counts a chat question once however many calls it takes, and never refuses a question for want of an allowance', async () => {
+      const user = await createTestUser('gate-messages@spine.test');
+      const store = getAccountsStore();
+      const month = new Date().toISOString().slice(0, 7);
+      // Five calls of one question are one message; a call with no id is a message of its own.
+      for (let i = 0; i < 5; i++) { expect(await gate().admit(user.id, 'agent', { work: 'question-aaaa-0001' })).toBeNull(); await gate().settle(user.id, 'agent', 4096, { work: 'question-aaaa-0001' }); }
+      expect(await store.usage.aiUsed(user.id, `${month}:messages`)).toBe(1);
+      await gate().settle(user.id, 'chat', 1000);
+      await gate().settle(user.id, 'chat', 1000);
+      expect(await store.usage.aiUsed(user.id, `${month}:messages`)).toBe(3);
+      // However many have been asked, the next is let through: using what has been added is counted and not limited.
+      await store.usage.aiAdd(user.id, `${month}:messages`, 100_000);
+      expect(await gate().admit(user.id, 'agent', { work: 'question-bbbb-0002' })).toBeNull();
+      expect(await gate().admit(user.id, 'chat')).toBeNull();
+    });
+
+    it('counts a document’s translation once, its pages as the device says, and never refuses it for want of an allowance', async () => {
+      const user = await createTestUser('gate-translated@spine.test');
+      const store = getAccountsStore();
+      const month = new Date().toISOString().slice(0, 7);
+      // Three calls of one translation of a four-page document are four pages; another language is another translation.
+      for (let i = 0; i < 3; i++) await gate().settle(user.id, 'translation', 2048, { work: 'translation-aaaa-1', pages: 4 });
+      expect(await store.usage.aiUsed(user.id, `${month}:translated`)).toBe(4);
+      await gate().settle(user.id, 'translation', 2048, { work: 'translation-bbbb-2', pages: 4 });
+      expect(await store.usage.aiUsed(user.id, `${month}:translated`)).toBe(8);
+      await store.usage.aiAdd(user.id, `${month}:translated`, 1_000_000);
+      expect(await gate().admit(user.id, 'translation', { work: 'translation-cccc-3', pages: 400 })).toBeNull();
+    });
+
+    it('holds a device that never tells the truth about what it sends to the cost ceiling behind the counts', async () => {
+      const user = await createTestUser('gate-backstop@spine.test');
+      const month = new Date().toISOString().slice(0, 7);
+      await getAccountsStore().usage.aiAdd(user.id, `${month}:chat`, PLANS.premium.allowance.chat);
+      expect(await gate().admit(user.id, 'agent', { work: 'question-cccc-0003' })).toMatchObject({ code: 'allowance_used' });
+    });
+
+    it('draws an import’s pages from the one-off allowance while it lasts, then from the month, and ignores the word where there is none', async () => {
+      const store = getAccountsStore();
+      const month = new Date().toISOString().slice(0, 7);
+      const paid = await createTestUser('gate-import@spine.test', { createdAt: LONG_AGO });
+      await store.billing.put({ user_id: paid.id, provider: 'operator', customer_id: null, subscription_id: null, interval: 'year', plan: 'premium', status: 'active', founding: false, current_period_end: null, cancel_scheduled: false, updated_at: LONG_AGO });
+      // While it has room, an import’s pages are charged to the allowance, once for the life of the account, and not to the month.
+      await gate().settle(paid.id, 'extraction', 10 * 1024, { bulk: true, pages: 3 });
+      expect(await store.usage.aiUsed(paid.id, 'once:import')).toBe(3);
+      expect(await store.usage.aiUsed(paid.id, `${month}:pages`)).toBe(0);
+      // An ordinary upload is the month’s; chat is never an import.
+      await gate().settle(paid.id, 'extraction', 0, { pages: 2 });
+      await gate().settle(paid.id, 'agent', 0, { bulk: true });
+      expect(await store.usage.aiUsed(paid.id, `${month}:pages`)).toBe(2);
+      expect(await store.usage.aiUsed(paid.id, 'once:import')).toBe(3);
+      // The month’s pages used up, an import still reads while the allowance has room.
+      await store.usage.aiAdd(paid.id, `${month}:pages`, PLANS.premium.allowance.pages);
+      expect(await gate().admit(paid.id, 'extraction')).toMatchObject({ code: 'allowance_used' });
+      expect(await gate().admit(paid.id, 'extraction', { bulk: true })).toBeNull();
+      // The allowance used up, it is the month’s again.
+      await store.usage.aiAdd(paid.id, 'once:import', PLANS.premium.allowance.import);
+      expect(await gate().admit(paid.id, 'extraction', { bulk: true })).toMatchObject({ code: 'allowance_used' });
+      // The free plan and the trial have none: the word changes nothing there.
+      const free = await createTestUser('gate-import-free@spine.test', { createdAt: LONG_AGO });
+      await gate().settle(free.id, 'extraction', 0, { bulk: true, pages: 1 });
+      expect(await store.usage.aiUsed(free.id, 'once:import')).toBe(0);
+      expect(await store.usage.aiUsed(free.id, `${month}:pages`)).toBe(1);
+    });
+
+    it('forgets last month’s counts of every meter, and keeps this month’s and the trial’s', async () => {
+      const user = await createTestUser('gate-forget@spine.test');
+      const store = getAccountsStore();
+      await store.usage.aiAdd(user.id, 'trial', 5);
+      await store.usage.aiAdd(user.id, '2020-01', 7);
+      await store.usage.aiAdd(user.id, '2020-01:chat', 7);
+      await store.usage.aiAdd(user.id, 'pool:2020-01:translation', 7);
+      const month = new Date().toISOString().slice(0, 7);
+      await store.usage.aiAdd(user.id, `${month}:chat`, 3);
+      await store.usage.aiAdd(user.id, month, 4);
+      expect([await store.usage.aiUsed(user.id, '2020-01'), await store.usage.aiUsed(user.id, '2020-01:chat'), await store.usage.aiUsed(user.id, 'pool:2020-01:translation')]).toEqual([0, 0, 0]);
+      expect([await store.usage.aiUsed(user.id, 'trial'), await store.usage.aiUsed(user.id, `${month}:chat`), await store.usage.aiUsed(user.id, month)]).toEqual([5, 3, 4]);
     });
 
     it('asks a share’s recipient nothing but the owner’s plan, and lets the demo through to its own counts', async () => {
@@ -296,6 +413,7 @@ describe('plans and payment', () => {
       expect(await gate().admit('share:share-gate', 'extraction')).toBeNull();
       expect(await gate().admit('demo:abc', 'extraction')).toBeNull();
       await gate().settle('share:share-gate', 'translation', 5000);
+      await gate().settle('share:share-gate', 'chat', 5000);
       await gate().settle('demo:abc', 'extraction', 5000);
       expect(await getAccountsStore().usage.aiUsed(free.id, new Date().toISOString().slice(0, 7))).toBe(0);
     });

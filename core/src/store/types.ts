@@ -473,6 +473,8 @@ export interface DocumentRepository {
   renameProvider(userId: string, from: string, to: string | null): Promise<number>;
   /** Those of these documents that are the user's and shown (not set aside, grouping confirmed), in the order given. */
   listShownByIds(userId: string, ids: string[]): Promise<Document[]>;
+  /** How many documents the person keeps, set aside and waiting to be read included: what a plan's limit on documents counts. */
+  count(userId: string): Promise<number>;
   /** Which of these ids are the user's. For checking a share link names only their own. */
   ownedIds(userId: string, ids: string[]): Promise<string[]>;
   /** Resolved from the link and scoped by the link's owner — P12's exception. */
@@ -884,6 +886,8 @@ export interface FamilyRepository {
   members(organizerId: string): Promise<FamilyMember[]>;
   /** Profiles held now by the organizer and every member: sealed objects of the kind `profile` not deleted. A number, nothing more. */
   profilesHeld(organizerId: string): Promise<number>;
+  /** What the organizer and every member keep together, for the limits a plan with seats shares: bytes of sealed objects, and share links live at `now`. Two numbers. */
+  pool(organizerId: string, now: string): Promise<{ bytes: number; links: number }>;
   invites(organizerId: string, now: string): Promise<FamilyInvite[]>;
   /** Leaves an invitation: an id and a hash of the secret that goes with it, which is told to the invited person and never kept. */
   invite(organizerId: string, invite: { id: string; secretHash: string; now: string; expiresAt: string }): Promise<void>;
@@ -1031,10 +1035,14 @@ export interface UsageRepository {
    * whole instance.
    */
   spend(userId: string, day: string, limit: number): Promise<number | null>;
-  /** AI processing the account has used in a period (`billing/plans.ts`: `usagePeriod`), in thousandths of a page. */
+  /** AI processing the account has used under a key (`billing/plans.ts`: `meterKey`: a meter's, and a plan's pool under the account that pays), in thousandths of a page. */
   aiUsed(userId: string, period: string): Promise<number>;
-  /** Adds what a finished call cost; answers the new total. Old periods of the account are forgotten. */
+  /** Adds what a finished call cost; answers the new total. Keys of the account's that are of an earlier month are forgotten. */
   aiAdd(userId: string, period: string, amount: number): Promise<number>;
+  /** Whether the account has already been counted for this random id (a chat question), without counting it. */
+  seen(userId: string, key: string): Promise<boolean>;
+  /** Notes the id at `at` and answers whether it is new (true) or was there already; ids older than two days are forgotten. Atomic. */
+  see(userId: string, key: string, at: string): Promise<boolean>;
 }
 
 export interface TagWithCount { id: number; name: string; document_count: number }

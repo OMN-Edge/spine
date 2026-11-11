@@ -265,6 +265,11 @@ export function documentRepository(db: Database): DocumentRepository {
       return renameProviderStmt.run(to, owner(userId), from).changes;
     },
 
+    async count(userId) {
+      // Every document of the person, not only those shown: the plan counts what is kept (a set-aside or unread one is kept too).
+      return (db.prepare('SELECT COUNT(*) AS n FROM documents WHERE user_id = ?').get(owner(userId)) as { n: number }).n;
+    },
+
     async listShownByIds(userId, ids) {
       if (ids.length === 0) return [];
       const rows = db

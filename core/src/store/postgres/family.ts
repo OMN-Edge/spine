@@ -18,6 +18,12 @@ export function familyRepository(q: Query, begin: Begin): FamilyRepository {
       const r = await one<{ n: number }>(q, `SELECT COUNT(*) AS n FROM vault_objects WHERE kind = 'profile' AND deleted = 0 AND (user_id = $1 OR user_id IN (SELECT member_id FROM family_members WHERE organizer_id = $1))`, [owner(organizerId)]);
       return Number(r!.n);
     },
+    async pool(organizerId, now) {
+      const id = owner(organizerId);
+      const bytes = await one<{ n: number }>(q, `SELECT COALESCE(SUM(size), 0) AS n FROM vault_objects WHERE deleted = 0 AND (user_id = $1 OR user_id IN (SELECT member_id FROM family_members WHERE organizer_id = $1))`, [id]);
+      const links = await one<{ n: number }>(q, `SELECT COUNT(*) AS n FROM shared_bundles WHERE kind = 'share' AND revoked_at IS NULL AND expires_at > $2 AND (user_id = $1 OR user_id IN (SELECT member_id FROM family_members WHERE organizer_id = $1))`, [id, now]);
+      return { bytes: Number(bytes!.n), links: Number(links!.n) };
+    },
     async invites(organizerId, now) {
       return many<{ id: string; created_at: string; expires_at: string }>(q, "SELECT id, created_at, expires_at FROM family_invites WHERE organizer_id = $1 AND state = 'offered' AND expires_at > $2 ORDER BY created_at", [owner(organizerId), now]);
     },

@@ -12,6 +12,7 @@ import { TASK_SCHEMAS, type LlmTask, type TaskClients } from './tasks.js';
 import {
   CONTINUATION_FALLBACK,
   EXTRACTION_FALLBACK,
+  type CallMeta,
   type ChatLlm,
   type ChatLlmConfig,
   type ChatAnswer,
@@ -38,11 +39,13 @@ async function invokeValidated<T>(
   task: LlmTask,
   prompt: BaseLanguageModelInput,
   schema: z.ZodType<T>,
+  meta?: CallMeta,
 ): Promise<T | null> {
   let raw: unknown;
   for (let attempt = 1; ; attempt++) {
     try {
-      raw = await clients[task].invoke(prompt);
+      // What the plan counts about this call (`CallMeta`) goes with it as the call's own settings.
+      raw = await clients[task].invoke(prompt, meta ? { configurable: meta } : undefined);
       break;
     } catch (err) {
       // The model answered, but not with JSON that parses: a reply cut off at its token cap, say.
@@ -109,7 +112,7 @@ export function buildChatLlm(clients: TaskClients, config: ChatLlmConfig): ChatL
       return validated ?? CONTINUATION_FALLBACK;
     },
 
-    async extractFields(documentText, knownTests = [], knownTags = [], ownerNotes = null): Promise<ExtractionResult> {
+    async extractFields(documentText, knownTests = [], knownTags = [], ownerNotes = null, pages): Promise<ExtractionResult> {
       const validated = await invokeValidated(
         clients,
         config,
@@ -117,12 +120,13 @@ export function buildChatLlm(clients: TaskClients, config: ChatLlmConfig): ChatL
         'extraction',
         buildExtractionPrompt(documentText, knownTests, knownTags, ownerNotes),
         TASK_SCHEMAS.extraction,
+        pages ? { pages } : undefined,
       );
 
       return validated ?? EXTRACTION_FALLBACK;
     },
 
-    async translate(bundle, target, source): Promise<TranslationBundle | null> {
+    async translate(bundle, target, source, meta): Promise<TranslationBundle | null> {
       const validated = await invokeValidated(
         clients,
         config,
@@ -130,6 +134,7 @@ export function buildChatLlm(clients: TaskClients, config: ChatLlmConfig): ChatL
         'translation',
         buildTranslationPrompt(bundle, target, source),
         TASK_SCHEMAS.translation,
+        meta,
       );
       if (!validated) return null;
       return {
@@ -181,8 +186,10 @@ export function buildChatLlm(clients: TaskClients, config: ChatLlmConfig): ChatL
       return { answer: validated.answer.trim(), sources };
     },
 
-    agentModel() {
-      const model = clients.agent as unknown as BaseChatModel | undefined;
+    agentModel(work) {
+      const base = clients.agent as unknown as (BaseChatModel & { forWork?: (id: string) => BaseChatModel }) | undefined;
+      // The model for one question carries the question's id, so what the questions cost is counted by question and not by call.
+      const model = work && typeof base?.forWork === 'function' ? base.forWork(work) : base;
       // A model that cannot be given tools is no agent: the caller answers without them.
       return model && typeof (model as { bindTools?: unknown }).bindTools === 'function' ? model : null;
     },

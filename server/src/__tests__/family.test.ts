@@ -5,7 +5,7 @@ import { PAGE, PLANS, SEAT_COOLDOWN_DAYS } from 'spine-core/billing/plans.js';
 import { buildTestApp, loginAs } from './helpers/app.js';
 import { createTestUser } from './helpers/seed.js';
 import { createRelayGate } from '../billing/gate.js';
-import { accountEntitlements } from '../billing/entitlements.js';
+import { accountEntitlements, liveSharesFor, vaultBytesFor } from '../billing/entitlements.js';
 import { fakeAuthValue, fakeVaultKeys } from 'spine-core/testing/vault.js';
 
 const LONG_AGO = '2020-01-01T00:00:00.000Z';
@@ -90,7 +90,7 @@ describe('seats in a shared plan', () => {
   });
 
   describe('taking a seat', () => {
-    it('gives the plan: its features here, and the plan’s one allowance, counted under the account that pays', async () => {
+    it('gives the plan: its features here, and its allowances, counted in a pool under the account that pays and in the member’s own meter', async () => {
       on();
       const payer = await account('family');
       const member = await account();
@@ -102,12 +102,93 @@ describe('seats in a shared plan', () => {
       expect(await accountEntitlements(member.id)).toMatchObject({ plan: 'family', profiles: 6 });
       await gate.settle(member.id, 'extraction', 10 * 1024);
       const month = new Date().toISOString().slice(0, 7);
-      expect(await store().usage.aiUsed(payer.id, month)).toBe(100 + 125 * 10);
-      expect(await store().usage.aiUsed(member.id, month)).toBe(0);
-      // The allowance is the plan's, so what the payer used leaves less for the member.
-      await store().usage.aiAdd(payer.id, month, PLANS.family.aiAllowance);
+      // The plan's pool is the payer's, and the member's own meter is the member's; the payer’s own is untouched.
+      expect(await store().usage.aiUsed(payer.id, `pool:${month}`)).toBe(100 + 125 * 10);
+      expect(await store().usage.aiUsed(member.id, month)).toBe(100 + 125 * 10);
+      expect(await store().usage.aiUsed(payer.id, month)).toBe(0);
+    });
+
+    it('holds each account to Premium’s pages of the plan’s, so one cannot add the whole pool, and leaves using to the pool', async () => {
+      on();
+      const payer = await account('family');
+      const member = await account();
+      await join(payer, member);
+      const gate = createRelayGate(() => store());
+      const month = new Date().toISOString().slice(0, 7);
+      // The member adds all the pages one account may: they are stopped, and the payer and the pool have more.
+      await store().usage.aiAdd(member.id, `${month}:pages`, PLANS.premium.allowance.pages);
+      await store().usage.aiAdd(payer.id, `pool:${month}:pages`, PLANS.premium.allowance.pages);
       expect(await gate.admit(member.id, 'extraction')).toMatchObject({ code: 'allowance_used' });
+      expect(await gate.admit(payer.id, 'extraction')).toBeNull();
+      // Questions and translation are not capped for an account: only added pages are.
+      await store().usage.aiAdd(member.id, `${month}:messages`, 100_000);
+      expect(await gate.admit(member.id, 'agent', { work: 'question-dddd-0004' })).toBeNull();
+      expect(await gate.admit(member.id, 'translation', { work: 'translation-dddd-4', pages: 50 })).toBeNull();
+      // The pool itself is the plan’s: when its pages are used up nobody adds more, whatever their own meter says.
+      await store().usage.aiAdd(payer.id, `pool:${month}:pages`, PLANS.family.allowance.pages);
       expect(await gate.admit(payer.id, 'extraction')).toMatchObject({ code: 'allowance_used' });
+      // The payer’s own part is Premium’s too: the pool is not theirs to add alone.
+      const spent = await account('family');
+      await store().usage.aiAdd(spent.id, `${month}:pages`, PLANS.premium.allowance.pages);
+      expect(await gate.admit(spent.id, 'extraction')).toMatchObject({ code: 'allowance_used' });
+    });
+
+    it('shares the import allowance as a pool, with each account held to Premium’s part of it', async () => {
+      on();
+      const payer = await account('family');
+      const member = await account();
+      await join(payer, member);
+      const gate = createRelayGate(() => store());
+      const month = new Date().toISOString().slice(0, 7);
+      await gate.settle(member.id, 'extraction', 0, { bulk: true, pages: 5 });
+      expect(await store().usage.aiUsed(member.id, 'once:import')).toBe(5);
+      expect(await store().usage.aiUsed(payer.id, 'pool:once:import')).toBe(5);
+      // The member has used all that one account may: their pages go to the month, while the payer’s still have the pool.
+      await store().usage.aiAdd(member.id, 'once:import', PLANS.premium.allowance.import);
+      await gate.settle(member.id, 'extraction', 0, { bulk: true, pages: 2 });
+      expect(await store().usage.aiUsed(member.id, `${month}:pages`)).toBe(2);
+      await gate.settle(payer.id, 'extraction', 0, { bulk: true, pages: 3 });
+      expect(await store().usage.aiUsed(payer.id, 'once:import')).toBe(3);
+    });
+
+    it('counts a share’s translation in the owner’s own meter and in the plan’s pool', async () => {
+      on();
+      const payer = await account('family');
+      const member = await account();
+      await join(payer, member);
+      await store().shared.put(member.id, { id: 'share-seat-meter', expiresAt: '2999-01-01T00:00:00.000Z', requireApproval: false, size: 1, blobs: 0, blobBytes: 0 }, LONG_AGO);
+      const gate = createRelayGate(() => store());
+      const month = new Date().toISOString().slice(0, 7);
+      await gate.settle('share:share-seat-meter', 'translation', 2048);
+      expect(await store().usage.aiUsed(member.id, `${month}:translation`)).toBe(330);
+      expect(await store().usage.aiUsed(payer.id, `pool:${month}:translation`)).toBe(330);
+    });
+
+    it('shares storage over the accounts, and leaves share links to each: what one has left is what the others did not take', async () => {
+      on();
+      process.env.SPINE_VAULT_MAX_MB = '100000';
+      const payer = await account('family');
+      const member = await account();
+      await join(payer, member);
+      await keys(payer);
+      await keys(member);
+      await person(payer, 'profile-aaaa-0001');
+      await person(member, 'profile-bbbb-0002');
+      const bytes = (await store().vault.usage(payer.id)).bytes;
+      expect(bytes).toBeGreaterThan(0);
+      expect(await vaultBytesFor(member.id)).toBe(25 * 1024 ** 3 - bytes);
+      // Share links are not limited by the plan: an account has as many as the instance allows, whatever the others have.
+      for (const [owner, id] of [[payer.id, 'pool-link-1'], [payer.id, 'pool-link-2'], [payer.id, 'pool-link-3'], [member.id, 'pool-link-4'], [member.id, 'pool-link-5']] as const) {
+        await store().shared.put(owner, { id, expiresAt: '2999-01-01T00:00:00.000Z', requireApproval: false, size: 1, blobs: 0, blobBytes: 0 }, LONG_AGO);
+      }
+      expect(await liveSharesFor(member.id)).toBe(50);
+      expect(await liveSharesFor(payer.id)).toBe(50);
+      // The account page shows the plan’s storage, the same on both sides, and links with no limit.
+      for (const who of [payer, member]) expect((await call(who, 'GET', '/api/billing')).json()).toMatchObject({ vault: { used_bytes: bytes * 2, limit_bytes: 25 * 1024 ** 3 }, shares: { live: 5, limit: null } });
+      // An account that shares nothing has its own storage.
+      const alone = await account('premium');
+      expect(await liveSharesFor(alone.id)).toBe(50);
+      expect(await vaultBytesFor(alone.id)).toBe(5 * 1024 ** 3);
     });
 
     it('tells each side what it is, and the account page what the plan holds', async () => {

@@ -9,6 +9,8 @@ export function familyRepository(db: Database): FamilyRepository {
   const membership = db.prepare('SELECT organizer_id, joined_at FROM family_members WHERE member_id = ?');
   const members = db.prepare('SELECT m.member_id AS id, u.email AS email, m.joined_at AS joined_at FROM family_members m JOIN users u ON u.id = m.member_id WHERE m.organizer_id = ? ORDER BY m.joined_at, m.member_id');
   const held = db.prepare(`SELECT COUNT(*) AS n FROM vault_objects WHERE kind = 'profile' AND deleted = 0 AND (user_id = ? OR user_id IN (SELECT member_id FROM family_members WHERE organizer_id = ?))`);
+  const poolBytes = db.prepare('SELECT COALESCE(SUM(size), 0) AS n FROM vault_objects WHERE deleted = 0 AND (user_id = ? OR user_id IN (SELECT member_id FROM family_members WHERE organizer_id = ?))');
+  const poolLinks = db.prepare("SELECT COUNT(*) AS n FROM shared_bundles WHERE kind = 'share' AND revoked_at IS NULL AND expires_at > ? AND (user_id = ? OR user_id IN (SELECT member_id FROM family_members WHERE organizer_id = ?))");
   const invites = db.prepare("SELECT id, created_at, expires_at FROM family_invites WHERE organizer_id = ? AND state = 'offered' AND expires_at > ? ORDER BY created_at");
   const insertInvite = db.prepare('INSERT INTO family_invites (id, organizer_id, secret_hash, created_at, expires_at) VALUES (?, ?, ?, ?, ?)');
   const cancel = db.prepare("DELETE FROM family_invites WHERE organizer_id = ? AND id = ? AND state = 'offered'");
@@ -55,6 +57,10 @@ export function familyRepository(db: Database): FamilyRepository {
     async membership(userId) { return (membership.get(owner(userId)) as { organizer_id: string; joined_at: string } | undefined) ?? null; },
     async members(organizerId) { return members.all(owner(organizerId)) as Array<{ id: string; email: string; joined_at: string }>; },
     async profilesHeld(organizerId) { const id = owner(organizerId); return (held.get(id, id) as { n: number }).n; },
+    async pool(organizerId, now) {
+      const id = owner(organizerId);
+      return { bytes: Number((poolBytes.get(id, id) as { n: number }).n), links: Number((poolLinks.get(now, id, id) as { n: number }).n) };
+    },
     async invites(organizerId, now) { return invites.all(owner(organizerId), now) as Array<{ id: string; created_at: string; expires_at: string }>; },
     async invite(organizerId, i) { insertInvite.run(i.id, owner(organizerId), i.secretHash, i.now, i.expiresAt); },
     async cancelInvite(organizerId, id) { return cancel.run(owner(organizerId), id).changes === 1; },

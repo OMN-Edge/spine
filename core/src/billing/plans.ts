@@ -32,16 +32,58 @@ export const PRICES = {
   currency: 'EUR',
 } as const;
 
+/**
+ * What the AI does is counted in meters a person can read, each an exact count of its own: **pages** read (`pages`: the pages of the documents
+ * and images the model reads to make records, and nothing else), **messages** of chat (`messages`: a question is one, whatever number of steps the
+ * assistant takes), **translated pages** (`translated`: the pages of a document translated into a language, once, a share link's too) and the
+ * one-off pages for reading an archive (`import`). The model also makes smaller calls around them (the start and end of a document, stamps,
+ * summaries, links, embeddings); they are not pages and are not counted as pages.
+ *
+ * **Only adding is limited**: the pages read (what puts a document in the archive), the archive import and the storage. Using what is in the archive is
+ * not: a person who has added a document can ask about it and have it translated, for themselves or for a doctor abroad, as often as they need,
+ * so `messages` and `translated` are counted (the account page shows them) and have no allowance. Behind every count a cost meter for each kind of
+ * work (`reading`, `chat`, `translation`, in thousandths of one page of reading, the unit of `taskCost`) is a hidden ceiling, high enough that
+ * no use of an archive meets it and low enough that an app that does not tell the truth about what it sends, or a loop, cannot make a plan pay
+ * for more than a multiple of what it was priced for.
+ */
+export type Count = 'pages' | 'messages' | 'translated' | 'import';
+export type Backstop = 'reading' | 'chat' | 'translation';
+export type Meter = Count | Backstop;
+/** What a person sees counted, in this order. */
+export const COUNTS: readonly Count[] = ['pages', 'messages', 'translated', 'import'];
+export type Allowances = Record<Meter, number>;
+/** No allowance: the meter only counts. */
+export const UNLIMITED = Number.POSITIVE_INFINITY;
+/** What one page of reading, one message of chat and one translated page cost in the cost unit: how the hidden ceilings are made. */
+export const CHAT_MESSAGE = 800;
+export const TRANSLATED_PAGE = 630;
+/** The hidden ceilings: reading at twice what the pages allowed would cost, and, for use, a month of messages and translated pages no archive needs. */
+export const READING_BACKSTOP = 2;
+export const FAIR_USE_MESSAGES = 600;
+export const FAIR_USE_TRANSLATED_PAGES = 800;
+
 export interface Entitlements {
   plan: PlanId;
-  /** AI processing allowed in the period, in thousandths of a page. */
-  aiAllowance: number;
-  /** `trial`: once, for the whole trial; `month`: a calendar month (UTC). */
+  /** AI processing allowed in the period, for each meter. On a plan with seats this is the plan's, for every account that shares it. */
+  allowance: Allowances;
+  /** On a plan with seats: what one account of it may use of each meter, so that one cannot take the whole pool. Null: the allowance is the account's own. */
+  memberCap: Allowances | null;
+  /** `trial`: reading once, for the whole trial; `month`: a calendar month (UTC). Chat and translation are always by the month. */
   aiPeriod: 'trial' | 'month';
-  /** Bytes of sealed objects an account may keep, or null for the instance's own ceiling (`vaultLimits`). */
+  /** Bytes of sealed objects an account may keep (on a plan with seats, all its accounts together), or null for the instance's own ceiling (`vaultLimits`); never above that ceiling. */
   vaultBytes: number | null;
-  /** Share links live at once, or null for the instance's own ceiling (`sharedLimits`). */
+  /** Share links live at once (on a plan with seats, all its accounts together), or null for the instance's own ceiling (`sharedLimits`). Only the free plan limits it. */
   liveShares: number | null;
+  /**
+   * Times a month the share links of the account are opened (one is one fetch of a link's sealed copy), and bytes a month those links send to their
+   * readers. Only the free plan limits them: on a paid plan a link is for whoever needs to read it, a doctor abroad included, and these are only
+   * counted, behind a hidden ceiling (`LINK_VIEWS_CEILING`, `LINK_BYTES_CEILING`). Past a limit the links stay live and open again at the next month;
+   * an emergency card is never counted or stopped.
+   */
+  linkViews: number;
+  linkBytes: number;
+  /** Documents a person may keep, or null for no limit. Counted by the app, not the server, which cannot see into sealed records (`plan-limits.ts`). */
+  documents: number | null;
   /** Translating documents, for the owner and for a share's recipient. */
   translation: boolean;
   /** Asking questions of the records (the assistant), and a share's chat. */
@@ -64,15 +106,43 @@ export interface Entitlements {
 }
 
 const GB = 1024 ** 3;
+/** The hidden ceilings on what share links send in a month, for plans that do not limit it: far above any use, there only against an abuse of a link. */
+export const LINK_VIEWS_CEILING = 5000;
+export const LINK_BYTES_CEILING = 50 * GB;
 
+/**
+ * The one-off allowance for reading an archive (`import`): extra pages of reading, once for the life of the account (not by the month), used
+ * when the person says they are importing (the Upload page).
+ */
+export const IMPORT_PAGES = 250;
+
+/** Allowances from the counts a plan limits; the hidden ceilings are made from them and from the fair use of what is not limited. */
+const allowances = (c: { pages: number; import: number }, fair: { messages: number; translated: number }): Allowances => ({
+  // Using what has been added has no allowance where the plan includes it at all (the free plan does not: it has no questions and no translation).
+  pages: c.pages, import: c.import, messages: fair.messages > 0 ? UNLIMITED : 0, translated: fair.translated > 0 ? UNLIMITED : 0,
+  reading: c.pages * PAGE * READING_BACKSTOP,
+  chat: fair.messages * CHAT_MESSAGE,
+  translation: fair.translated * TRANSLATED_PAGE,
+});
+const NONE = { messages: 0, translated: 0 };
+const FAIR = { messages: FAIR_USE_MESSAGES, translated: FAIR_USE_TRANSLATED_PAGES };
+const twiceFair = { messages: FAIR.messages * 2, translated: FAIR.translated * 2 };
+/** The Premium plan's allowances: also what one account of a plan with seats may add of the plan's (use is the plan's, not the account's). */
+const PREMIUM_ALLOWANCE = allowances({ pages: 40, import: IMPORT_PAGES }, FAIR);
+const FAMILY_ACCOUNT: Allowances = { ...PREMIUM_ALLOWANCE, chat: UNLIMITED, translation: UNLIMITED };
+
+/**
+ * The limits of each plan: "fair use" on the pricing page and in the plan's words. Raising one later is a gift; lowering one is not.
+ */
 export const PLANS: Record<PlanId, Omit<Entitlements, 'plan'>> = {
-  trial: { aiAllowance: 150 * PAGE, aiPeriod: 'trial', vaultBytes: null, liveShares: null, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 6, seats: 1, delegation: true },
-  free: { aiAllowance: 30 * PAGE, aiPeriod: 'month', vaultBytes: GB, liveShares: 1, translation: false, chat: false, linking: false, related: false, approvalMode: false, profiles: 1, seats: 1, delegation: false },
-  // "Unlimited (fair use)": a ceiling no ordinary use meets and a stuck loop does.
-  premium: { aiAllowance: 4000 * PAGE, aiPeriod: 'month', vaultBytes: null, liveShares: null, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 1, seats: 1, delegation: false },
+  // The trial has Premium's limits, with pages as one total for the whole trial.
+  trial: { allowance: allowances({ pages: 150, import: 0 }, FAIR), memberCap: null, aiPeriod: 'trial', vaultBytes: 5 * GB, liveShares: null, linkViews: UNLIMITED, linkBytes: UNLIMITED, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 6, documents: null, seats: 1, delegation: true },
+  free: { allowance: allowances({ pages: 10, import: 0 }, NONE), memberCap: null, aiPeriod: 'month', vaultBytes: GB, liveShares: 1, linkViews: 20, linkBytes: GB, translation: false, chat: false, linking: false, related: false, approvalMode: false, profiles: 1, documents: 50, seats: 1, delegation: false },
+  premium: { allowance: PREMIUM_ALLOWANCE, memberCap: null, aiPeriod: 'month', vaultBytes: 5 * GB, liveShares: null, linkViews: UNLIMITED, linkBytes: UNLIMITED, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 1, documents: null, seats: 1, delegation: false },
   // Premium for up to six people, who may be children and may have accounts of their own: six accounts at most (the seats), six people in
-  // all (each account's own included), and one allowance for the lot. A larger plan would be another entry here.
-  family: { aiAllowance: 12000 * PAGE, aiPeriod: 'month', vaultBytes: null, liveShares: null, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 6, seats: 6, delegation: true },
+  // all (each account's own included), and one pool for the lot (twice Premium's pages and 25 GB of storage, shared), with each account held
+  // to Premium's pages. A larger plan would be another entry here.
+  family: { allowance: allowances({ pages: 80, import: 2 * IMPORT_PAGES }, twiceFair), memberCap: FAMILY_ACCOUNT, aiPeriod: 'month', vaultBytes: 25 * GB, liveShares: null, linkViews: UNLIMITED, linkBytes: UNLIMITED, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 6, documents: null, seats: 6, delegation: true },
 };
 
 const addMonths = (iso: string, months: number): Date => {
@@ -103,8 +173,23 @@ export function entitlementsOf(account: { created_at: string }, sub: Subscriptio
   return { plan, ...PLANS[plan] };
 }
 
-/** The key AI usage is counted under: the whole trial, or the calendar month. */
+/** The key reading is counted under: the whole trial, or the calendar month. */
 export const usagePeriod = (e: Pick<Entitlements, 'aiPeriod'>, now: Date): string => (e.aiPeriod === 'trial' ? 'trial' : now.toISOString().slice(0, 7));
+
+/** The key a month's link views or bytes are counted under (`ai_usage.period`); on a plan with seats the pool's, under the account that pays. */
+export const linkKey = (what: 'views' | 'egress', now: Date, pool = false): string => `${pool ? 'pool:' : ''}${now.toISOString().slice(0, 7)}:${what}`;
+
+/**
+ * The key a meter is counted under (`ai_usage.period`): the hidden cost ceiling of reading keeps the plain period it has always had (the
+ * trial's, or the month); every other meter is by the month with its name after it, except the pages of the trial, which are one total
+ * (`trial:pages`), and the import allowance, which is once (`once:import`, no month, so nothing forgets it). A plan's pool is the same key with
+ * `pool:` before it, under the account that pays.
+ */
+export const meterKey = (meter: Meter, e: Pick<Entitlements, 'aiPeriod'>, now: Date, pool = false): string => {
+  const month = now.toISOString().slice(0, 7);
+  const key = meter === 'reading' ? usagePeriod(e, now) : meter === 'pages' ? `${usagePeriod(e, now)}:pages` : meter === 'import' ? 'once:import' : `${month}:${meter}`;
+  return pool ? `pool:${key}` : key;
+};
 
 /** The tasks a relay runs, and the plan feature each needs (none: it is AI processing, which the allowance bounds). */
 export type RelayTask = 'continuation' | 'extraction' | 'page' | 'pageThinking' | 'stamps' | 'translation' | 'linking' | 'grouping' | 'chat' | 'agent' | 'embed';
@@ -114,10 +199,22 @@ export const TASK_FEATURE: Record<RelayTask, 'translation' | 'chat' | 'linking' 
   translation: 'translation', chat: 'chat', agent: 'chat', linking: 'linking', embed: 'related',
 };
 
+/** The hidden cost ceiling a task is counted against (every call is, whatever else counts it). */
+export const TASK_METER: Record<RelayTask, Backstop> = {
+  continuation: 'reading', extraction: 'reading', page: 'reading', pageThinking: 'reading', stamps: 'reading', grouping: 'reading', linking: 'reading', embed: 'reading',
+  translation: 'translation', chat: 'chat', agent: 'chat',
+};
+
 /**
- * What a call costs the allowance, in thousandths of a page: a fixed part and a part for each kilobyte of the request (the relay sees the
- * request, so the size is not a claim the device makes). **First guesses**: a page of reading is about two and a half thousand tokens in
- * and a thousand and a half out (`docs/billing.md`); replace these with figures from the provider's usage logs once there are any.
+ * What a call is, to the counts a person sees: pages for a call that reads them (a page of a scan is one, a document's text is as many as it
+ * has pages, said by the device and otherwise guessed from its size), translated pages for one that translates, and nothing for the rest.
+ */
+export const BYTES_PER_PAGE = { extraction: 3000, translation: 2048 } as const;
+
+/**
+ * What a call costs a meter, in thousandths of a page: a fixed part and a part for each kilobyte of the request (the relay sees the
+ * request, so the size is not a claim the device makes). One unit is a thousandth of the cost of reading one page. **First guesses**, in
+ * proportion to what the provider charges for what each task sends and returns; replace them with figures from the provider's usage logs.
  */
 const COST: Record<RelayTask, { base: number; perKb: number }> = {
   extraction: { base: 100, perKb: 125 },
@@ -127,9 +224,9 @@ const COST: Record<RelayTask, { base: number; perKb: number }> = {
   continuation: { base: 150, perKb: 0 },
   grouping: { base: 300, perKb: 0 },
   linking: { base: 300, perKb: 0 },
-  translation: { base: 100, perKb: 100 },
-  chat: { base: 50, perKb: 25 },
-  agent: { base: 50, perKb: 25 },
+  translation: { base: 30, perKb: 150 },
+  chat: { base: 80, perKb: 22 },
+  agent: { base: 80, perKb: 22 },
   embed: { base: 40, perKb: 0 },
 };
 

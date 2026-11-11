@@ -21,6 +21,10 @@ import { issueToken } from '../relay/token.js';
 import { relaySettings, relayEnv } from './relay.js';
 import { windowLimiter } from '../rate-limit.js';
 import { logger } from 'spine-core/logger.js';
+import { chargeLink, linksUsedUp } from '../billing/links.js';
+
+/** What a link answers when its owner's plan has used up the month's views or bytes. */
+const LINK_LIMIT = { error: 'this link has reached its limit for the month; it opens again next month', code: 'link_limit' } as const;
 
 /** What a failure of something done after the answer, with nobody waiting on it, leaves: a line, with the reason and no content. */
 const later = (what: string) => (err: unknown) => logger.warn(`${what} failed`, { error: err instanceof Error ? err.message : String(err) });
@@ -115,7 +119,7 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
    * Sends a sealed copy or page image as a stream (S-58), with no more reads of one share open at once from one source than that source may
    * have, so the copy is never held whole in memory however often it is asked for.
    */
-  const sendSealed = async (req: { ip?: string; log: { error: (o: unknown, m: string) => void } }, reply: import('fastify').FastifyReply, what: string, open: () => Promise<{ body: import('node:stream').Readable; size: number } | null>) => {
+  const sendSealed = async (req: { ip?: string; log: { error: (o: unknown, m: string) => void } }, reply: import('fastify').FastifyReply, what: string, open: () => Promise<{ body: import('node:stream').Readable; size: number } | null>, counted?: { userId: string; view: boolean }) => {
     const release = readSlots.take(`${what}:${req.ip ?? ''}`);
     if (!release) return reply.status(429).send({ error: 'too many reads are open at once; try again in a moment', code: 'too_many_reads' });
     let opened: Awaited<ReturnType<typeof open>>;
@@ -127,6 +131,8 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
       release();
       return reply.status(429).send({ error: 'this has been read a great deal from here; try again later', code: 'read_budget' });
     }
+    // What a link sends is counted against the owner's plan (`billing/links.ts`), as it starts: a read that is cut short still cost what it sent.
+    if (counted) await chargeLink(counted.userId, opened.size, counted.view).catch(() => undefined);
     opened.body.once('close', release);
     opened.body.on('error', err => req.log.error({ err }, 'a sealed copy could not be read to the end'));
     return reply.type('application/octet-stream').header('content-length', String(opened.size)).header('Cache-Control', 'no-store').header('X-Robots-Tag', 'noindex, nofollow').send(opened.body);
@@ -305,6 +311,9 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
 
   // ── The public ───────────────────────────────────────────────────────────────────────────────────────────────────────────
 
+  // The plan's views and bytes for a month (billing/links.ts): past them a link stays live and refuses its readers until the next month; a card never.
+  const limited = async (bundle: { kind: string; userId: string }) => bundle.kind === 'share' && (await linksUsedUp(bundle.userId));
+
   const read = { config: { rateLimit: opts.readPerSource ?? { max: 60, timeWindow: '1 minute' } } };
 
   app.get<{ Params: { id: string } }>('/api/shared/:id/meta', read, async (req, reply) => {
@@ -318,14 +327,16 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
     const bundle = await live(req.params.id);
     if (!bundle) return reply.status(404).send({ error: 'not found' });
     if (bundle === 'ended') return reply.status(410).send({ error: 'this link is no longer active', ended: true });
-    return sendSealed(req, reply, `bundle:${bundle.id}`, () => streamBundle(bundle.id));
+    if (await limited(bundle)) return reply.status(429).send(LINK_LIMIT);
+    return sendSealed(req, reply, `bundle:${bundle.id}`, () => streamBundle(bundle.id), bundle.kind === 'share' ? { userId: bundle.userId, view: true } : undefined);
   });
 
   app.get<{ Params: { id: string; n: string } }>('/api/shared/:id/blob/:n', { config: { rateLimit: opts.readPerSource ?? { max: 600, timeWindow: '1 minute' } } }, async (req, reply) => {
     const bundle = await live(req.params.id);
     const name = req.params.n;
     if (!bundle || bundle === 'ended' || !BLOB_NAME.test(name)) return reply.status(bundle === 'ended' ? 410 : 404).send({ error: bundle === 'ended' ? 'this link is no longer active' : 'not found' });
-    return sendSealed(req, reply, `blob:${bundle.id}`, () => streamBlob(bundle.id, name));
+    if (await limited(bundle)) return reply.status(429).send(LINK_LIMIT);
+    return sendSealed(req, reply, `blob:${bundle.id}`, () => streamBlob(bundle.id, name), bundle.kind === 'share' ? { userId: bundle.userId, view: false } : undefined);
   });
 
   // A browser asks to be let in. It sends its own public key; on approval the owner's device wraps the share key to it, so a leaked

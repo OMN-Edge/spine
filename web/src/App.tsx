@@ -25,6 +25,7 @@ import Profiles from './pages/Profiles';
 import Invite from './pages/Invite';
 import Family from './pages/Family';
 import { pendingInvite } from './invite';
+import { useDocumentLimit } from './billing';
 import { pendingSeatInvite } from './seat';
 import { useProfiles } from './profiles';
 import ForDoctors from './pages/ForDoctors';
@@ -87,6 +88,8 @@ function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const chat = useChat();
+  // The plan's limit on documents is held to by the core, which the server cannot tell by counting (`core/src/plan-limits.ts`).
+  useDocumentLimit(!demo);
   // Whose records are open, always shown, with the others to switch to and the page where people are added and let in.
   const { people } = useProfiles(!demo);
   // A person whose records were open was taken over by them (SECURITY.md M-51): another person is open now, and the page says why.

@@ -6,7 +6,7 @@ import { ChatGenerationChunk, type ChatResult } from '@langchain/core/outputs';
 import { convertToOpenAITool } from '@langchain/core/utils/function_calling';
 import type { StreamLine } from '../../relay/protocol.js';
 import type { TaskClients, TaskSpecs } from '../tasks.js';
-import { LlmBlockedError, LlmConfigError, type ChatLlmConfig } from '../types.js';
+import { LlmBlockedError, LlmConfigError, type CallMeta, type ChatLlmConfig } from '../types.js';
 import { ModelUnreachableError } from '../availability.js';
 
 /**
@@ -20,6 +20,13 @@ export interface RelayHooks { tokenProvider?: () => Promise<string>; fetchImpl?:
 let hooks: RelayHooks = {};
 export function useRelayHooks(next: RelayHooks): void { hooks = next; }
 
+/**
+ * Whether the person said they are importing an archive: every call then says so (`x-spine-import`), and the relay draws reading from the one-off
+ * import allowance while it lasts (billing/gate.ts). Off whenever a core starts, and only the Upload page turns it on.
+ */
+let importing = false;
+export function useImportMode(on: boolean): void { importing = on; }
+
 /** An error the relay answered with, said in the interface's terms. */
 async function refusal(res: Response): Promise<Error> {
   const body = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
@@ -27,12 +34,14 @@ async function refusal(res: Response): Promise<Error> {
   return Object.assign(new Error(`the model service answered ${res.status}${body.error ? `: ${body.error}` : ''}`), { status: res.status, code: body.code });
 }
 
-export async function postToRelay(endpoint: string, path: string, body: unknown, signal?: AbortSignal): Promise<Response> {
+export type { CallMeta };
+
+export async function postToRelay(endpoint: string, path: string, body: unknown, signal?: AbortSignal, meta: CallMeta = {}): Promise<Response> {
   const token = await hooks.tokenProvider?.();
   if (!token) throw new LlmConfigError('this device has no pass for the model service');
   const res = await (hooks.fetchImpl ?? fetch)(`https://${endpoint}${path}`, {
     method: 'POST',
-    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', ...(meta.work ? { 'x-spine-work': meta.work } : {}), ...(meta.pages ? { 'x-spine-pages': String(Math.max(1, Math.min(1000, Math.round(meta.pages)))) } : {}), ...(importing ? { 'x-spine-import': '1' } : {}) },
     body: JSON.stringify(body),
     signal,
   }).catch((err: unknown) => {
@@ -73,14 +82,16 @@ async function* chunksOf(body: ReadableStream<Uint8Array> | null): AsyncGenerato
 
 /** The chat model the agent graph binds tools to; each call is one request to the relay, and the model that answers is the relay's. */
 class RelayAgent extends BaseChatModel<AgentOptions> {
-  constructor(private readonly where: { endpoint: string; model: string }) { super({}); }
+  constructor(private readonly where: { endpoint: string; model: string }, private readonly work?: string) { super({}); }
   _llmType() { return 'spine-relay'; }
+  /** The same model for the calls of one chat question, which carry the question's id. */
+  forWork(work: string) { return new RelayAgent(this.where, work); }
   bindTools(tools: unknown[]) { return this.withConfig({ tools: tools.map(t => convertToOpenAITool(t as never)) } as never); }
 
   private request(messages: BaseMessage[], options: AgentOptions, stream: boolean) {
     return postToRelay(this.where.endpoint, '/v1/task/agent', {
       model: this.where.model, messages: mapChatMessagesToStoredMessages(messages), tools: options.tools, stream,
-    }, options.signal);
+    }, options.signal, { work: this.work });
   }
 
   async _generate(messages: BaseMessage[], options: this['ParsedCallOptions']): Promise<ChatResult> {
@@ -120,8 +131,8 @@ export function createRelayChat(config: ChatLlmConfig, tasks: TaskSpecs): TaskCl
   for (const task of Object.values(tasks)) {
     if (task.name === 'agent') { clients.agent = new RelayAgent({ endpoint, model: config.model }) as unknown as TaskClients['agent']; continue; }
     // The relay's adapter bound the schema and the token cap; the answer comes back parsed.
-    clients[task.name] = RunnableLambda.from(async (input: BaseLanguageModelInput, options?: { signal?: AbortSignal }) => {
-      const res = await postToRelay(endpoint, `/v1/task/${task.name}`, { model: config.model, messages: mapChatMessagesToStoredMessages(messagesOf(input)) }, options?.signal);
+    clients[task.name] = RunnableLambda.from(async (input: BaseLanguageModelInput, options?: { signal?: AbortSignal; configurable?: CallMeta }) => {
+      const res = await postToRelay(endpoint, `/v1/task/${task.name}`, { model: config.model, messages: mapChatMessagesToStoredMessages(messagesOf(input)) }, options?.signal, options?.configurable);
       return ((await res.json()) as { result: unknown }).result;
     });
   }

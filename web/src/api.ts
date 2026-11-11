@@ -618,6 +618,8 @@ const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, 
 
 export interface Prices { premium: { year: number; month: number }; founding: { year: number }; family: { year: number; month: number }; currency: string }
 export interface Pricing { enabled: boolean; prices?: Prices; founding_left?: number; /** The family plan is sold here. */ family?: boolean }
+/** One meter of the plan: pages for reading, messages for chat, pages for translation. `own_*` only on a plan whose seats are shared. */
+export interface MeterView { used: number; /** Null where only adding is limited and using is only counted. */ allowance: number | null; own_used?: number; own_cap?: number }
 /** What the account page shows of the plan (the server's `GET /api/billing`). */
 export interface BillingView {
   enabled: boolean;
@@ -625,11 +627,16 @@ export interface BillingView {
   trial_ends_at?: string | null;
   subscription?: { status: string; interval: 'month' | 'year' | null; founding: boolean; ends_at: string | null; renews_at: string | null; provider: 'paddle' | 'operator' } | null;
   can_manage?: boolean;
-  ai?: { used: number; allowance: number; period: 'trial' | 'month' };
+  /** What the AI has done, in three meters: each in its own unit, the plan's (a pool on a plan with seats), and an account's own against its cap there. */
+  /** What the plan lets the share links send in a month: times opened, and bytes (with what the owner's own devices read). */
+  links?: { views: { used: number; allowance: number | null }; bytes: { used: number; allowance: number | null } };
+  ai?: { period: 'trial' | 'month'; reading: MeterView; chat: MeterView; translation: MeterView; /** Extra pages for reading an archive, once for the life of the account. */ import: MeterView };
   vault?: { used_bytes: number; limit_bytes: number };
-  shares?: { live: number; limit: number };
+  /** `limit` is null where the plan does not limit how many are live. */
+  shares?: { live: number; limit: number | null };
   features?: { translation: boolean; chat: boolean; linking: boolean; related: boolean; approval_mode: boolean; delegation: boolean };
   people?: { limit: number };
+  limits?: { documents: number | null };
   /** `organizer` pays for a plan others hold seats in; `member` holds a seat in another's plan. */
   seat?: 'organizer' | 'member' | 'none';
   seats?: { limit: number };

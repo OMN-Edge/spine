@@ -3,6 +3,7 @@ import { getAccountsStore } from 'spine-core/store/index.js';
 import { vaultLimits } from '../config.js';
 import { vaultBytesFor } from '../billing/entitlements.js';
 import { standingOf } from '../billing/seat.js';
+import { chargeOwnRead } from '../billing/links.js';
 import { loadBillingConfig } from '../billing/config.js';
 import { hashPassword, normaliseEmail } from '../passwords.js';
 import { AUTH_VALUE, DEFAULT_KDF, parseKdfParams, parseVaultKeys, pretendSalt, sealed } from '../vault-keys.js';
@@ -148,6 +149,8 @@ export async function getObject(req: ObjectReq, reply: FastifyReply, ownerId: st
   let opened: Awaited<ReturnType<typeof streamObject>>;
   try { opened = await streamObject(ownerId, req.params.id); } catch (err) { release(); throw err; }
   if (!opened) { release(); return reply.status(404).send({ error: 'not found' }); }
+  // What the owner's own devices read is counted with what their links send (billing/links.ts), and never refused.
+  if (!only) void chargeOwnRead(ownerId, opened.size).catch(() => undefined);
   opened.body.once('close', release);
   opened.body.on('error', err => req.log.error({ err }, 'a sealed object could not be read to the end'));
   return reply

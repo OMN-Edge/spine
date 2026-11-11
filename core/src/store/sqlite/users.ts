@@ -149,6 +149,7 @@ export function userRepository(db: Database): UserRepository {
     'cookie_sessions',
     'model_usage',
     'ai_usage',
+    'ai_seen',
     'subscriptions',
     'user_devices',
     'user_tokens',

@@ -1,3 +1,4 @@
+import { requireDocumentRoom } from '../plan-limits.js';
 import { fileSystem } from '../files.js';
 import type { UploadPart } from '../http.js';
 import path from 'path';
@@ -46,6 +47,8 @@ export async function acceptParts(
       continue;
     }
     if (conversation === undefined) conversation = options.conversationFor ? await options.conversationFor(fields) : null;
+    // A plan with a limit on documents is held to before a file is kept or anything is spent on it (`plan-limits.ts`).
+    await requireDocumentRoom(userId, 1);
 
     const ext = path.extname(part.filename ?? '.pdf') || '.pdf';
     const { fileId, filePath } = newUploadPath(userId, ext);

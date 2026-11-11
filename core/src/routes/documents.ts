@@ -1,3 +1,4 @@
+import { requireDocumentRoom } from '../plan-limits.js';
 import { fileSystem } from '../files.js';
 import type { HttpApp } from '../http.js';
 import { v4 as uuidv4 } from 'uuid';
@@ -499,6 +500,7 @@ export async function documentRoutes(app: HttpApp) {
       // Shorten this document and make a new one for the tail. Fields go with their pages,
       // and the tail starts with this document's tags until it is read.
       const newId = uuidv4();
+      await requireDocumentRoom(req.userId, 1);
       const tags = await store.tags.namesForDocument(req.userId, id);
       await store.transaction(async tx => {
         await tx.documents.setPageEnd(req.userId, id, at_page - 1);

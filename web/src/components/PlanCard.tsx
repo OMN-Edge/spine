@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api } from '../api';
+import { api, type MeterView } from '../api';
 import { formatBytes, useBilling } from '../billing';
 import { useI18n } from '../i18n';
 import { buttonClass, Notice } from './AuthCard';
@@ -30,7 +30,16 @@ export default function PlanCard() {
   const sub = subscription;
   const name = plan === 'family' ? t('Family') : plan === 'premium' ? t('Premium') : plan === 'trial' ? t('Free trial') : t('Free');
   const money = (n: number) => `€${n}`;
-
+  // A meter's line: what the plan has used, on a shared plan what this account has used of its own part, and a note from 80% where there is an allowance.
+  // Only adding has one (pages); using (questions, translation) is counted and not limited.
+  const meterLine = (m: MeterView, text: string, when: string) => {
+    const nearly = m.allowance !== null && m.allowance > 0 && Math.max(m.used / m.allowance, m.own_cap ? (m.own_used ?? 0) / m.own_cap : 0) >= 0.8;
+    return (
+      <li className={nearly ? 'text-amber-700' : undefined}>
+        {text} {when}{m.own_cap !== undefined && ` · ${t('yours: {used} of {cap}', { used: m.own_used ?? 0, cap: m.own_cap })}`}{nearly && ` · ${t('almost used up')}`}
+      </li>
+    );
+  };
   return (
     <section className="bg-white border border-gray-200 rounded-xl p-5 mt-6">
       <h2 className="font-medium text-gray-900 mb-1">{t('Your plan')}: {name}</h2>
@@ -48,10 +57,19 @@ export default function PlanCard() {
       )}
 
       <ul className="text-sm text-gray-700 space-y-1 mb-4">
-        {ai && <li>{t('AI reading: {used} of {allowance} pages', { used: ai.used, allowance: ai.allowance })} {ai.period === 'month' ? t('this month') : t('in the trial')}</li>}
+        {ai && meterLine(ai.reading, t('AI reading: {used} of {allowance} pages', { used: ai.reading.used, allowance: ai.reading.allowance ?? 0 }), ai.period === 'month' ? t('this month') : t('in the trial'))}
+        {ai && ai.chat.allowance !== 0 && meterLine(ai.chat, t('Questions asked: {n}', { n: ai.chat.used }), t('this month'))}
+        {ai && (ai.import.allowance ?? 0) > 0 && meterLine(ai.import, t('Archive import, once: {used} of {allowance} pages', { used: ai.import.used, allowance: ai.import.allowance ?? 0 }), '')}
+        {ai && ai.translation.allowance !== 0 && meterLine(ai.translation, t('Pages translated: {n}', { n: ai.translation.used }), t('this month'))}
         {vault && <li>{t('Storage: {used} of {limit}', { used: formatBytes(vault.used_bytes), limit: formatBytes(vault.limit_bytes) })}</li>}
         {billing.people && <li>{t('People: up to {n}', { n: billing.people.limit })}</li>}
-        {shares && <li>{t('Share links: {live} live of {limit}', { live: shares.live, limit: shares.limit })}</li>}
+        {billing.links && (billing.links.views.allowance === null
+          ? <li>{t('Share link views: {n}', { n: billing.links.views.used })} {t('this month')}</li>
+          : meterLine({ used: billing.links.views.used, allowance: billing.links.views.allowance }, t('Share link views: {used} of {allowance}', { used: billing.links.views.used, allowance: billing.links.views.allowance }), t('this month')))}
+        {billing.links && (billing.links.bytes.allowance === null
+          ? <li>{t('Share link traffic: {size}', { size: formatBytes(billing.links.bytes.used) })} {t('this month')}</li>
+          : meterLine({ used: billing.links.bytes.used, allowance: billing.links.bytes.allowance }, t('Share link traffic: {used} of {limit}', { used: formatBytes(billing.links.bytes.used), limit: formatBytes(billing.links.bytes.allowance) }), t('this month')))}
+        {shares && <li>{shares.limit === null ? t('Share links: {live} live', { live: shares.live }) : t('Share links: {live} live of {limit}', { live: shares.live, limit: shares.limit })}</li>}
       </ul>
 
       {error && <Notice kind="error">{error}</Notice>}

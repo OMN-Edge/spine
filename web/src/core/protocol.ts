@@ -25,6 +25,10 @@ export type ToWorker =
   /** Saves, then lets go of everything. Refused with code `unsaved` if something could not be saved, unless the person chose to lose it (`force`). */
   | { id: number; type: 'lock'; force?: boolean }
   /** Save now. Fails if the vault did not take it. */
+  /** What the plan limits that only the app can count (`spine-core/plan-limits`): the limit on documents, or null for none. */
+  | { id: number; type: 'planLimits'; documents: number | null }
+  /** The person is importing an archive: reading calls say so, and are drawn from the plan's one-off import allowance while it lasts. */
+  | { id: number; type: 'importMode'; on: boolean }
   | { id: number; type: 'save' }
   /** The reader of a streamed reply went away: stop writing it. */
   | { id: number; type: 'abort'; target: number };

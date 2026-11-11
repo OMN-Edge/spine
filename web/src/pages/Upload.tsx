@@ -12,6 +12,7 @@ import { msg, useI18n } from '../i18n';
 import type { I18n } from '../i18n';
 import { useAuth } from '../auth';
 import GuideTip from '../components/GuideTip';
+import ImportAllowance from '../components/ImportAllowance';
 
 interface UploadResult {
   id?: string;
@@ -352,6 +353,7 @@ export default function Upload() {
   return (
     <div className="max-w-2xl mx-auto">
       <h1 className="mb-6 text-[1.75rem] leading-tight font-light tracking-tight text-gray-900">{t('Upload')}</h1>
+      <ImportAllowance />
 
       {demo && demoUploads && <DemoUploadNotice limits={demoUploads} used={ownUploads} agreed={demoAgreed} agree={agreeDemo} />}
       {!(demo && (!demoAgreed || (demoUploads && ownUploads >= demoUploads.uploads))) && (<>

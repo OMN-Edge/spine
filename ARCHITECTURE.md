@@ -115,7 +115,7 @@ A profile can be opened by another account (`routes/delegation.ts`, **M-49**): a
 
 ### Sharing a plan (seats)
 
-A subscription can be shared by accounts that each hold a seat (`routes/family.ts`, `billing/seat.ts`, **M-52**): the account that pays invites others with a link whose secret is only hashed on the server, and a member has the plan's features, its people (counted over every account that shares it) and its allowance (counted under the account that pays). It is not access: the server records which accounts belong together and nothing is sealed to the one who pays, so seeing a member's records still takes a grant for a profile (**M-49**), chosen by the member. The limits are in `core/src/billing/plans.ts`.
+A subscription can be shared by accounts that each hold a seat (`routes/family.ts`, `billing/seat.ts`, **M-52**): the account that pays invites others with a link whose secret is only hashed on the server, and a member has the plan's features, its people (counted over every account that shares it) and its allowances (counted in a pool under the account that pays, and in each account's own meter, which is held to Premium's amount). It is not access: the server records which accounts belong together and nothing is sealed to the one who pays, so seeing a member's records still takes a grant for a profile (**M-49**), chosen by the member. The limits are in `core/src/billing/plans.ts`.
 
 ### The emergency card
 
