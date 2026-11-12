@@ -85,7 +85,7 @@ Set once: `PROJECT_ID=your-project`, `REGION=europe-west4`, `ZONE=europe-west4-a
 - **Brevo:** the sending domain `spinevault.eu` with SPF, DKIM and DMARC records at the registrar, a verified sender `notices@spinevault.eu`, the API key. The mail's mark is served from `https://spinevault.eu/icons/`, so the site must be up for it to show.
 - **Vertex AI:** the settings of [relay.md](relay.md), "Before the first real user", and Claude, if used, enabled in Model Garden by an administrator.
 - **Paddle:** [billing.md](billing.md); uncomment the billing block of `.env` only when every value is there, and restart (`docker compose up -d`). **Before that, the relay must read the server's database:** with plans on it asks the accounts store what each account may do, and `compose.yaml` gives it a file of its own (`relay-data`, `SPINE_DB_PATH`), where no account exists. Give it the server's `data` volume and drop that variable, or put both on Postgres (`SPINE_STORE=postgres`); try a read of a document with a test account before the first customer.
-- **Addresses:** `security@spinevault.eu` (in `SECURITY.md` and `nginx/security.txt`, which only the nginx setup serves) and `privacy@spinevault.eu` (`SPINE_OPERATOR_CONTACT`) must exist before anyone writes to them.
+- **Addresses:** `security@spinevault.eu` (in `SECURITY.md`) and `privacy@spinevault.eu` (`SPINE_OPERATOR_CONTACT`, which `install.sh -n` also publishes in `security.txt`; the Compose proxy serves none) must exist before anyone writes to them.
 
 ## Updating
 
