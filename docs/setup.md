@@ -190,7 +190,7 @@ sudo ./install.sh -n
 
 The nginx version is the stable one the package's readme names; check it for a newer one.
 
-**Without it**, `sudo ./install.sh -n` installs the distribution's nginx and certbot if they are missing, adds the `main` log format the site config names (a file of its own in `/etc/nginx/conf.d/`), gets each certificate with `certbot certonly --standalone` (nginx stopped for the minute it takes; `SPINE_CERT_EMAIL` for expiry notices) unless it exists, and writes the site config, filling in the relay's address for the page's content security policy, the optional repository redirects and `security.txt`, which a plain copy of `nginx/spine.conf` would leave as placeholders.
+**Without it**, `sudo ./install.sh -n` installs the distribution's nginx and certbot if they are missing, adds the `main` log format the site config names (a file of its own in `/etc/nginx/conf.d/`), gets each certificate with `certbot certonly --standalone` (nginx stopped for the minute it takes; `SPINE_CERT_EMAIL` for expiry notices) unless it exists, and writes the site config, filling in the relay's address for the page's content security policy, the optional repository redirects, which a plain copy of `nginx/spine.conf` would leave as placeholders.
 
 With the relay on this machine (`SPINE_RELAY_DOMAIN` in `.env`), `-n` does the same for its name and writes `nginx/spine-relay.conf` as its site.
 

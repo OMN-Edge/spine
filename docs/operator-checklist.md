@@ -61,7 +61,7 @@ None of these can be seen from the code either.
 ## Keeping it up
 
 - [ ] **Update on a schedule.** `./install.sh -b` stops on a high or critical advisory; advisories published later are only found at the next build (SECURITY.md **S-32**). Take a backup before updating: there is no migration runner, and a database of an older shape is refused at startup.
-- [ ] **A way to be told of a vulnerability.** Set `SPINE_OPERATOR_CONTACT`: `install.sh -n` writes it as the `Contact:` of `/.well-known/security.txt` (an address or a link; without one there is no file) and renews the expiry yearly. Set `SPINE_REPO_URL` for the `/security` redirect (SECURITY.md, "Reporting a vulnerability").
+- [ ] **A way to be told of a vulnerability.** Set `SPINE_OPERATOR_CONTACT`: the server publishes it as the `Contact:` of `/.well-known/security.txt` (an address or a link; without one the file is a 404, since the standard requires a contact), behind nginx, Caddy or alone. Set `SPINE_REPO_URL` for the `/security` redirect (SECURITY.md, "Reporting a vulnerability").
 - [ ] **A breach plan.** [compliance/breach-procedure.md](compliance/breach-procedure.md): 72 hours to the supervisory authority when there is a risk to people, and the containment steps in SECURITY.md, "Operational response".
 - [ ] **Re-read this page** when you change provider, region, mailer or host.
 

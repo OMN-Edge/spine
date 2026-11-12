@@ -266,6 +266,10 @@ describe('plans and payment', () => {
   describe('what the relay asks before and after a call', () => {
     const gate = () => createRelayGate(() => getAccountsStore());
 
+    it('refuses an account its store does not hold, so a relay on a database of its own runs no call for free (S-64)', async () => {
+      for (const task of ['extraction', 'translation', 'chat'] as const) expect(await gate().admit('no-such-account', task), task).toMatchObject({ status: 402, code: 'plan_required' });
+    });
+
     it('lets a trial run everything, and counts what a call cost', async () => {
       const user = await createTestUser('gate-trial@spine.test');
       expect(await gate().admit(user.id, 'translation')).toBeNull();

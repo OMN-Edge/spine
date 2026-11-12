@@ -406,19 +406,6 @@ function setup_nginx() {
     sed -e '/SPINE_REPO_URL/d' -e "s|SPINE_RELAY_URL|${RELAY_URL}|g" -e "s/SPINE_DOMAIN/${DOMAIN}/g" "${SPINE_DIR}/nginx/spine.conf"
   fi | tee /etc/nginx/sites-available/spine > /dev/null
 
-  # security.txt (RFC 9116) expires after a year; running -n again renews it.
-  mkdir -p /var/www/spine
-  EXPIRES=$(date -u -d '+1 year' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v+1y +%Y-%m-%dT%H:%M:%SZ)
-  # The contact is this instance's operator's (SPINE_OPERATOR_CONTACT), never the project's; with none there is no file, since RFC 9116 requires one.
-  CONTACT=$(env_value SPINE_OPERATOR_CONTACT)
-  case "${CONTACT}" in *://*|mailto:*|'') ;; *@*) CONTACT="mailto:${CONTACT}" ;; esac
-  if [ -n "${CONTACT}" ]; then
-    sed -e "s/SPINE_DOMAIN/${DOMAIN}/g" -e "s/SPINE_EXPIRES/${EXPIRES}/g" -e "s|SPINE_SECURITY_CONTACT|${CONTACT}|g" "${SPINE_DIR}/nginx/security.txt" \
-      > /var/www/spine/security.txt
-  else
-    echo "SPINE_OPERATOR_CONTACT not set: no /.well-known/security.txt."
-    rm -f /var/www/spine/security.txt
-  fi
   ln -sf /etc/nginx/sites-available/spine /etc/nginx/sites-enabled/spine
 
   # The relay's site, when it runs here; removed when SPINE_RELAY_DOMAIN is no longer set

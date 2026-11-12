@@ -35,10 +35,12 @@ Set once: `PROJECT_ID=your-project`, `REGION=europe-west4`, `ZONE=europe-west4-a
      --member="serviceAccount:spine-vm@$PROJECT_ID.iam.gserviceaccount.com" --role=roles/aiplatform.user
    ```
 
-3. **The address, the firewall and the machine.** The firewall opens 80 and 443 only; ssh goes through `gcloud compute ssh`, which opens its own path.
+3. **The address, the firewall and the machine.** A new project's default network allows ssh (port 22) from anywhere, so remove that rule and let ssh in only through Google's identity-aware proxy (the account needs the IAP-secured Tunnel User role unless it owns the project); the web rule opens 80 and 443 only.
 
    ```bash
    gcloud compute addresses create spine-ip --region=$REGION
+   gcloud compute firewall-rules delete default-allow-ssh --quiet   # if the network is the default one
+   gcloud compute firewall-rules create spine-iap-ssh --allow=tcp:22 --source-ranges=35.235.240.0/20 --target-tags=spine-web
    gcloud compute firewall-rules create spine-web --allow=tcp:80,tcp:443 --target-tags=spine-web
    gcloud compute instances create spine --zone=$ZONE --machine-type=e2-medium \
      --image-family=debian-12 --image-project=debian-cloud --boot-disk-size=50GB --boot-disk-type=pd-balanced \
@@ -52,7 +54,7 @@ Set once: `PROJECT_ID=your-project`, `REGION=europe-west4`, `ZONE=europe-west4-a
 5. **Docker and the code on the machine.**
 
    ```bash
-   gcloud compute ssh spine --zone=$ZONE
+   gcloud compute ssh spine --zone=$ZONE --tunnel-through-iap
    curl -fsSL https://get.docker.com | sudo sh && sudo usermod -aG docker $USER   # then log out and in
    git clone https://github.com/OMN-Edge/spine.git && cd spine
    ```
@@ -80,12 +82,17 @@ Set once: `PROJECT_ID=your-project`, `REGION=europe-west4`, `ZONE=europe-west4-a
 
    A snapshot taken mid-write is crash-consistent, which a SQLite file in its own write-ahead log survives; the backup service's `VACUUM INTO` copy is the consistent one. Try a restore once from each before you rely on them (SECURITY.md, "Operational response").
 
+## What this setup gives up
+
+- **The relay's credential is reachable from the server's container.** On the Pi the provider's credential is in `relay.env`, which the server's process never gets (SECURITY.md **M-35**). Here the relay is Google's identity through the VM's metadata server, which every container on the machine can ask, so code running in the server's container could call Vertex as the VM's service account (the role allows models and nothing else, and Vertex's quotas bound the cost). To keep the separation, give the relay a key file mounted into its container alone (`GOOGLE_APPLICATION_CREDENTIALS` in `relay.env`, [relay.env.example](../relay.env.example)) and the VM no Vertex role; the price is a long-lived key on the disk (SECURITY.md **S-65**).
+- **Docker is installed by the vendor's script** (`curl | sh`). Read the script first, or use Docker's apt repository.
+
 ## Outside the machine
 
 - **Brevo:** the sending domain `spinevault.eu` with SPF, DKIM and DMARC records at the registrar, a verified sender `notices@spinevault.eu`, the API key. The mail's mark is served from `https://spinevault.eu/icons/`, so the site must be up for it to show.
 - **Vertex AI:** the settings of [relay.md](relay.md), "Before the first real user", and Claude, if used, enabled in Model Garden by an administrator.
-- **Paddle:** [billing.md](billing.md); uncomment the billing block of `.env` only when every value is there, and restart (`docker compose up -d`). **Before that, the relay must read the server's database:** with plans on it asks the accounts store what each account may do, and `compose.yaml` gives it a file of its own (`relay-data`, `SPINE_DB_PATH`), where no account exists. Give it the server's `data` volume and drop that variable, or put both on Postgres (`SPINE_STORE=postgres`); try a read of a document with a test account before the first customer.
-- **Addresses:** `security@spinevault.eu` (in `SECURITY.md`) and `privacy@spinevault.eu` (`SPINE_OPERATOR_CONTACT`, which `install.sh -n` also publishes in `security.txt`; the Compose proxy serves none) must exist before anyone writes to them.
+- **Paddle:** [billing.md](billing.md); uncomment the billing block of `.env` only when every value is there, and restart (`docker compose up -d`). **Before that, the relay must read the server's database:** with plans on it asks the accounts store what each account may do, and `compose.yaml` gives it a file of its own (`relay-data`, `SPINE_DB_PATH`), where no account exists, so every call would be refused (`plan_required`, SECURITY.md **S-64**). Give it the server's `data` volume and drop that variable, or put both on Postgres (`SPINE_STORE=postgres`); try a read of a document with a test account before the first customer.
+- **Addresses:** `security@spinevault.eu` (in `SECURITY.md`) and `privacy@spinevault.eu` (`SPINE_OPERATOR_CONTACT`, which the server also publishes at `/.well-known/security.txt`) must exist before anyone writes to them.
 
 ## Updating
 

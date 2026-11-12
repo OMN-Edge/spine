@@ -27,6 +27,7 @@ import { vaultRoutes } from './routes/vault.js';
 import { relayRoutes } from './routes/relay.js';
 import { demoRelayRoutes } from './routes/demo-relay.js';
 import { trustAnchorRoutes } from './routes/trust-anchors.js';
+import { securityTxtRoutes } from './routes/security-txt.js';
 import { remindCardReviews, sharedRoutes, shareShellRoutes, sweepShares } from './routes/shared.js';
 import { sweepSessions } from './sessions.js';
 import { sweepUnverified } from './accounts.js';
@@ -140,6 +141,7 @@ await app.register(delegationRoutes);
 await app.register(relayRoutes);
 await app.register(demoRelayRoutes);
 await app.register(trustAnchorRoutes);
+await app.register(securityTxtRoutes);
 await app.register(sharedRoutes);
 // The records are on the device (stage 5): the server registers no route that reads or writes one, and the routes the device's
 // core runs (documents, uploads, tags, chat, ...) are not served here. A recipient's address gets the app shell.
