@@ -13,7 +13,7 @@ It is written to be enforced: every principle is phrased so a change can be judg
 
 ## Reporting a vulnerability
 
-Email **alexandru@cocinda.net** with what you found, how to reproduce it, and which version or commit you ran. The same address is published at `/.well-known/security.txt` on a deployed instance ([RFC 9116](https://www.rfc-editor.org/rfc/rfc9116)). Please do not open a public issue for a vulnerability, and do not use a real person's records to demonstrate one: Spine holds medical data, so test against your own instance with invented records.
+Email **security@spinevault.eu** with what you found, how to reproduce it, and which version or commit you ran. The same address is published at `/.well-known/security.txt` on a deployed instance ([RFC 9116](https://www.rfc-editor.org/rfc/rfc9116)). Please do not open a public issue for a vulnerability, and do not use a real person's records to demonstrate one: Spine holds medical data, so test against your own instance with invented records.
 
 What to expect:
 
