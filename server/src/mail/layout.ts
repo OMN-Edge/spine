@@ -83,8 +83,8 @@ export function renderHtml(c: MailContent, lang: InterfaceLanguage = recipientLa
     : '';
   const action = c.action
     ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 12px;"><tr>` +
-      `<td class="btn" style="border-radius:8px;background:${ACCENT};">` +
-      `<a href="${escapeHtml(c.action.url)}" style="display:inline-block;padding:13px 26px;font:600 16px/1 ${SANS};color:#ffffff;text-decoration:none;border-radius:8px;">${escapeHtml(c.action.label)}</a>` +
+      `<td class="btn" style="border-radius:999px;background:${ACCENT};">` +
+      `<a href="${escapeHtml(c.action.url)}" style="display:inline-block;padding:13px 26px;font:500 16px/1 ${SANS};color:#ffffff;text-decoration:none;border-radius:999px;">${escapeHtml(c.action.label)}</a>` +
       `</td></tr></table>` +
       `<p class="muted" style="margin:0 0 24px;font:400 13px/1.5 ${SANS};color:${MUTED};word-break:break-all;">${escapeHtml(tm(lang, 'Or paste this address into your browser:'))}<br><a class="link" href="${escapeHtml(c.action.url)}" style="color:${ACCENT};">${escapeHtml(c.action.url)}</a></p>`
     : '';
