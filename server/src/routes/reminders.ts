@@ -55,7 +55,7 @@ export async function remindDue(now = new Date()): Promise<number> {
   for (const c of claimed) {
     const user = await store.users.findById(c.recipient);
     if (!user) continue;
-    await mailer.send(remindersDueMail(user.email, c.n)).then(() => { sent++; }, () => { failed = true; });
+    await mailer.send(remindersDueMail(user, c.n)).then(() => { sent++; }, () => { failed = true; });
   }
   if (failed) await store.maintenance.releaseReminders(at);
   return sent;

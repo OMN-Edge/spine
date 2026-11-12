@@ -36,7 +36,7 @@ export async function adminRoutes(app: FastifyInstance, opts: AdminRouteOptions 
     logger.info('an account was approved', { by: req.userId, userId: user.id });
     const mailer = getMailer();
     if (mailer.enabled) {
-      mailer.send(approvedMail(user.email, signInLink())).catch(err => logger.error('could not send the approval mail', { err: err instanceof Error ? err.message : String(err) }));
+      mailer.send(approvedMail(user, signInLink())).catch(err => logger.error('could not send the approval mail', { err: err instanceof Error ? err.message : String(err) }));
     }
     return reply.send({ ok: true });
   });

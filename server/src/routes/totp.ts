@@ -96,7 +96,7 @@ export async function totpRoutes(app: FastifyInstance, opts: TotpRouteOptions = 
     (req.session as SessionData).authVersion = authVersion;
     await endOtherSessions(req.userId, req.session as SessionData);
     const account = await store.users.findById(req.userId);
-    if (account) mailAfter(req, req.userId, securityChangeMail(account.email, 'Two-factor sign-in was turned on', new Date().toISOString()), 'two-factor change');
+    if (account) mailAfter(req, req.userId, securityChangeMail(account, 'twoFactorOn', new Date().toISOString()), 'two-factor change');
     req.log.info({ userId: req.userId }, 'two-factor enabled');
     return reply.send({ ok: true, recovery_codes: codes });
   });
@@ -111,7 +111,7 @@ export async function totpRoutes(app: FastifyInstance, opts: TotpRouteOptions = 
       const authVersion = await getAccountsStore().users.disableTotp(user.id);
       (req.session as SessionData).authVersion = authVersion;
       await endOtherSessions(user.id, req.session as SessionData);
-      mailAfter(req, user.id, securityChangeMail(user.email, 'Two-factor sign-in was turned off', new Date().toISOString()), 'two-factor change');
+      mailAfter(req, user.id, securityChangeMail(user, 'twoFactorOff', new Date().toISOString()), 'two-factor change');
       req.log.info({ userId: user.id }, 'two-factor disabled');
       return reply.send({ ok: true });
     },

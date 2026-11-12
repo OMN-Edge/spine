@@ -85,7 +85,7 @@ export async function familyRoutes(app: FastifyInstance, opts: FamilyRouteOption
     if (off()) return reply.status(404).send({ error: 'this instance has no plans' });
     const member = (await store().family.members(req.userId)).find(m => m.id === req.params.id);
     if (!member || !(await store().family.remove(req.userId, member.id, new Date().toISOString()))) return reply.status(404).send({ error: 'not found' });
-    mailAfter(req, member.id, securityChangeMail(member.email, 'Your seat in a shared plan was ended by the account that pays for it: your records are untouched and your account has its own plan again', new Date().toISOString()), 'seat removed');
+    mailAfter(req, member.id, securityChangeMail(member, 'seatRemoved', new Date().toISOString()), 'seat removed');
     return reply.send({ ok: true });
   });
 
@@ -118,7 +118,7 @@ export async function familyRoutes(app: FastifyInstance, opts: FamilyRouteOption
       return reply.status(409).send({ error: REFUSALS[result], code: result });
     }
     const [organizer, me] = await Promise.all([store().users.findById(result.organizer_id), store().users.findById(req.userId)]);
-    if (organizer) mailAfter(req, organizer.id, securityChangeMail(organizer.email, `${me?.email ?? 'An account'} accepted your invitation and holds a seat in your plan`, now.toISOString()), 'seat taken');
+    if (organizer) mailAfter(req, organizer.id, securityChangeMail(organizer, 'seatTaken', now.toISOString(), { email: me?.email ?? '—' }), 'seat taken');
     return reply.header('Cache-Control', 'no-store').send({ ok: true });
   });
 
@@ -128,7 +128,7 @@ export async function familyRoutes(app: FastifyInstance, opts: FamilyRouteOption
     const membership = await store().family.membership(req.userId);
     if (!membership || !(await store().family.leave(req.userId, new Date().toISOString()))) return reply.status(404).send({ error: 'there is no seat to give up' });
     const [organizer, me] = await Promise.all([store().users.findById(membership.organizer_id), store().users.findById(req.userId)]);
-    if (organizer) mailAfter(req, organizer.id, securityChangeMail(organizer.email, `${me?.email ?? 'An account'} gave up its seat in your plan`, new Date().toISOString()), 'seat left');
+    if (organizer) mailAfter(req, organizer.id, securityChangeMail(organizer, 'seatLeft', new Date().toISOString(), { email: me?.email ?? '—' }), 'seat left');
     return reply.send({ ok: true });
   });
 }

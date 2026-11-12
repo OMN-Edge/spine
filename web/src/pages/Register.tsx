@@ -9,7 +9,7 @@ import { prepareSignUp } from '../crypto/vault-client';
 import type { NewAccount } from '../crypto/keys';
 
 export default function Register() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   // Which of the loops brought the person here (a shared page, a card, an invitation): a count a day on the server, never who.
   const [params] = useSearchParams();
   const [email, setEmail] = useState('');
@@ -49,7 +49,7 @@ export default function Register() {
     setError('');
     setBusy(true);
     try {
-      const result = await api.auth.register(email, account, { health_data: health, terms }, params.get('ref') ?? undefined);
+      const result = await api.auth.register(email, account, { health_data: health, terms }, params.get('ref') ?? undefined, lang);
       setDone(result.pending ? t('Your account request is in. It can be used once the administrator has approved it.') : result.message);
       setAccount(null);
     } catch (err) {

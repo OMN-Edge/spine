@@ -8,6 +8,8 @@ export interface AuthContextValue {
   /** What the account still has to agree to before the app shows anything; null when it has agreed. */
   consentNeeded: { health: boolean; terms: boolean } | null | undefined;
   consentGiven: () => void;
+  /** The language the account is set to (its mail is written in it, and the screens and a new share link start in it), or null while none is. */
+  language: string | null;
   /** The account has no vault yet and is asked to make one. */
   vaultNeeded: boolean;
   vaultMade: () => void;
@@ -33,6 +35,7 @@ export const AuthContext = createContext<AuthContextValue>({
   setAuthenticated: () => {},
   consentNeeded: null,
   consentGiven: () => {},
+  language: null,
   vaultNeeded: false,
   vaultMade: () => {},
   deviceState: 'open',

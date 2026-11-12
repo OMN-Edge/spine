@@ -164,6 +164,8 @@ export interface UserRecord {
   approved: number;
   /** 1 unless the owner turned off recovery by email: then no recovery mail is sent and a link alone cannot start the records over (SECURITY.md S-38). */
   email_recovery: number;
+  /** The language the account's mail and screens start in (one of `SUPPORTED_LANGUAGES`), or null until one is chosen or taken from the browser at sign-up. */
+  language: string | null;
   created_at: string;
   health_consent_at: string | null;
   health_consent_version: string | null;
@@ -199,6 +201,8 @@ export interface NewUser {
   consent?: { healthVersion: string; termsVersion: string };
   /** False for the one person a device holds, whose tags come from the vault (a deleted starter tag must not come back on every unlock). Default true. */
   starterTags?: boolean;
+  /** The language at sign-up (the page's, else the browser's); absent leaves it unset. */
+  language?: string | null;
 }
 
 /** A user's TOTP enrolment. `confirmed_at` is null until a first code has been accepted. */
@@ -234,6 +238,8 @@ export interface UserRepository {
   approve(id: string, at: string): Promise<boolean>;
   /** The owner's choice whether an emailed link may recover the account (`UserRecord.email_recovery`). */
   setEmailRecovery(id: string, on: boolean): Promise<void>;
+  /** The account's language (the caller has checked it is a supported one); null clears it. */
+  setLanguage(id: string, language: string | null): Promise<void>;
   createToken(token: NewUserToken): Promise<void>;
   /**
    * Spends a token and returns whose it was, or null if it is unknown, the wrong

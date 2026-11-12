@@ -16,9 +16,9 @@ describe('the mail layout', () => {
   });
 
   it('escapes what a message is built from', () => {
-    const m = securityChangeMail('a@example.org', '<b>"x"</b> & co accepted your invitation', '2026-01-01T00:00:00Z');
+    const m = securityChangeMail('a@example.org', 'seatTaken', '2026-01-01T00:00:00Z', { email: '<b>"x"</b>&co@example.org' });
     expect(m.html).not.toContain('<b>');
-    expect(m.html).toContain('&lt;b&gt;&quot;x&quot;&lt;/b&gt; &amp; co');
+    expect(m.html).toContain('&lt;b&gt;&quot;x&quot;&lt;/b&gt;&amp;co@example.org');
     const c = composeMail({ to: 'a@example.org', subject: 's', heading: 'h', intro: ['i'], action: { label: 'go', url: 'https://x.example/?a=1&b="2"' } });
     expect(c.html).toContain('href="https://x.example/?a=1&amp;b=&quot;2&quot;"');
   });

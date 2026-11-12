@@ -18,3 +18,17 @@ describe('the language list', () => {
     expect(source('./LanguageSwitcher.tsx')).toContain("listClassName={opens === 'left' ? 'right-0 w-64' : 'left-0 w-64'}");
   });
 });
+
+describe('the account\'s language', () => {
+  it('is taken at load and on sign-in, and a choice is kept on the account except on a share link\'s page', () => {
+    const app = source('../App.tsx');
+    expect(app.match(/takeLanguage\(r\.language\)/g)).toHaveLength(2);
+    expect(app).toContain("if (window.location.pathname.startsWith('/share/')) return;");
+    expect(app).toContain('api.auth.setLanguage(language)');
+  });
+
+  it('is where a new share link starts, and what the sign-up sends', () => {
+    expect(source('../pages/ShareLinks.tsx')).toContain("language: accountLanguage ?? ''");
+    expect(source('../pages/Register.tsx')).toContain("params.get('ref') ?? undefined, lang)");
+  });
+});

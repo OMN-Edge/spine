@@ -1033,6 +1033,23 @@ For each confirmed reminder whose document is still there, the server is told an
 
 Status: auto (`reminders`: what is told and when, a host that fails, none where there is no host; `reminder-dates`: replacing a profile's dates and the limit).
 
+## 17. The account's language
+
+### 17.1 Choosing it
+At sign-up the account takes the language the page was in; the language switcher in the top bar, or the "Language" card on the Account page, changes it, and the change is kept on the account. Signed in on another device, the screens start in it, whatever that browser remembered. A language the screens are not written in (Italian, say) is a fine choice: the screens and the mail are in English, and documents are translated into it. A switcher on a share link's page does not change the account, even for the owner looking at their own link.
+
+Status: auto (`account-language`: unset by default, chosen, kept and cleared, refused when it is not a language, taken at sign-up and ignored when it is not one; `LanguageSwitcher`: the app keeps a choice on the account except on a share link's page and takes the account's language at load).
+
+### 17.2 Mail in the account's language
+Every message the server sends to an account (the confirmation of the address, a reset link, the approval, a new sign-in, a change of a security setting, a card opened, a share waiting for approval, a reminder due) is written in the account's language when the mail is written in it: Romanian, French and German, and English for the rest. The confirmation of an address is in the page's language, because the account has no other yet. The words of every language are checked to be there and to carry the same values as the English.
+
+Status: auto (`mail-i18n`: every message in every language, none missing, the forms of a plural, English for an account whose language mail is not written in; `account-language`: a reset link in German, a confirmation in Romanian).
+
+### 17.3 A new share link starts in it
+The language of a new share link, which the reader's page opens in unless they chose one there, starts as the account's, and the owner can leave it unset for the reader to choose. A document the owner opens is translated into the language the screens are in, which is the account's.
+
+Status: auto (`LanguageSwitcher`: the form starts in the account's language).
+
 ## Gaps found while writing this
 
 Found by checking each scenario against the code.

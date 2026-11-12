@@ -33,9 +33,9 @@ export function userRepository(q: Query, begin: Begin): UserRepository {
       const c = user.consent;
       // An account the server keeps has no records, so there are no starter tags to make.
       await q(
-        `INSERT INTO users (id, email, password_hash, created_at, email_verified_at, approved, health_consent_at, health_consent_version, terms_accepted_at, terms_version)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-        [user.id, user.email, user.passwordHash, user.createdAt, user.verifiedAt, user.approved === false ? 0 : 1, c ? user.createdAt : null, c?.healthVersion ?? null, c ? user.createdAt : null, c?.termsVersion ?? null],
+        `INSERT INTO users (id, email, password_hash, created_at, email_verified_at, approved, health_consent_at, health_consent_version, terms_accepted_at, terms_version, language)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        [user.id, user.email, user.passwordHash, user.createdAt, user.verifiedAt, user.approved === false ? 0 : 1, c ? user.createdAt : null, c?.healthVersion ?? null, c ? user.createdAt : null, c?.termsVersion ?? null, user.language ?? null],
       );
     },
 
@@ -64,6 +64,10 @@ export function userRepository(q: Query, begin: Begin): UserRepository {
 
     async setEmailRecovery(id, on) {
       await q('UPDATE users SET email_recovery = $1 WHERE id = $2', [on ? 1 : 0, id]);
+    },
+
+    async setLanguage(id, language) {
+      await q('UPDATE users SET language = $1 WHERE id = $2', [language, id]);
     },
 
     async approve(id, at) {

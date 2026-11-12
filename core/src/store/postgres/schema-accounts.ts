@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS users (
   email_verified_at TEXT,
   approved INTEGER NOT NULL DEFAULT 1,
   email_recovery INTEGER NOT NULL DEFAULT 1,
+  language TEXT,
   created_at TEXT NOT NULL,
   health_consent_at TEXT,
   health_consent_version TEXT,
@@ -125,6 +126,7 @@ CREATE TABLE IF NOT EXISTS vault_keys (
 );
 ALTER TABLE vault_keys ADD COLUMN IF NOT EXISTS reset_verifier TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email_recovery INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS language TEXT;
 
 CREATE TABLE IF NOT EXISTS vault_objects (
   user_id TEXT NOT NULL REFERENCES users(id),

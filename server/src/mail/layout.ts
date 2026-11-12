@@ -1,4 +1,6 @@
 import { publicUrl } from 'spine-core/config.js';
+import type { InterfaceLanguage } from 'spine-core/languages.js';
+import { tm, recipientEmail, recipientLanguage, type Recipient } from './i18n.js';
 import type { MailMessage } from './types.js';
 
 /**
@@ -8,7 +10,8 @@ import type { MailMessage } from './types.js';
  * The HTML is written for mail clients, not browsers: tables, inline styles, no script, no web font and no image but the mark (below). The dark theme is a `prefers-color-scheme` block for the clients that honour it; the others show the light one.
  */
 export interface MailContent {
-  to: string;
+  /** Who it is for; the account's language, if the mail is written in it, is the message's (i18n.ts). Every string below is already in it. */
+  to: Recipient;
   subject: string;
   /** The line an inbox shows beside the subject; hidden in the message itself. */
   preheader?: string;
@@ -67,7 +70,7 @@ function paragraph(text: string): string {
   return `<p class="ink" style="margin:0 0 16px;font:400 16px/1.6 ${SANS};color:${INK};">${escapeHtml(text)}</p>`;
 }
 
-export function renderHtml(c: MailContent): string {
+export function renderHtml(c: MailContent, lang: InterfaceLanguage = recipientLanguage(c.to)): string {
   const details = c.details?.length
     ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="rule" style="margin:4px 0 20px;border-top:1px solid ${LINE};">${c.details
         .map(
@@ -82,10 +85,10 @@ export function renderHtml(c: MailContent): string {
       `<td class="btn" style="border-radius:8px;background:${ACCENT};">` +
       `<a href="${escapeHtml(c.action.url)}" style="display:inline-block;padding:13px 26px;font:600 16px/1 ${SANS};color:#ffffff;text-decoration:none;border-radius:8px;">${escapeHtml(c.action.label)}</a>` +
       `</td></tr></table>` +
-      `<p class="muted" style="margin:0 0 24px;font:400 13px/1.5 ${SANS};color:${MUTED};word-break:break-all;">Or paste this address into your browser:<br><a class="link" href="${escapeHtml(c.action.url)}" style="color:${ACCENT};">${escapeHtml(c.action.url)}</a></p>`
+      `<p class="muted" style="margin:0 0 24px;font:400 13px/1.5 ${SANS};color:${MUTED};word-break:break-all;">${escapeHtml(tm(lang, 'Or paste this address into your browser:'))}<br><a class="link" href="${escapeHtml(c.action.url)}" style="color:${ACCENT};">${escapeHtml(c.action.url)}</a></p>`
     : '';
   return `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark"><title>${escapeHtml(c.subject)}</title><style>${STYLE}</style></head>
+<html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark"><title>${escapeHtml(c.subject)}</title><style>${STYLE}</style></head>
 <body class="bg" style="margin:0;padding:0;background:${PAPER};">
 <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${escapeHtml(c.preheader ?? c.intro[0] ?? '')}</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="bg" style="background:${PAPER};"><tr><td align="center" style="padding:32px 16px;">
@@ -97,7 +100,7 @@ export function renderHtml(c: MailContent): string {
 <h1 class="ink" style="margin:0 0 18px;font:600 24px/1.25 ${SERIF};letter-spacing:-0.01em;color:${INK};">${escapeHtml(c.heading)}</h1>
 ${c.intro.map(paragraph).join('\n')}${details}${action}${(c.outro ?? []).map(paragraph).join('\n')}
 </td></tr>
-<tr><td class="muted" style="padding:20px 8px 0;font:400 12px/1.6 ${SANS};color:${MUTED};text-align:center;">You are getting this because of something that happened to your Spine account.<br>Spine never puts what is in your records in an email.</td></tr>
+<tr><td class="muted" style="padding:20px 8px 0;font:400 12px/1.6 ${SANS};color:${MUTED};text-align:center;">${escapeHtml(tm(lang, 'You are getting this because of something that happened to your Spine account.'))}<br>${escapeHtml(tm(lang, 'Spine never puts what is in your records in an email.'))}</td></tr>
 </table></td></tr></table>
 </body></html>`;
 }
@@ -112,5 +115,5 @@ export function renderText(c: MailContent): string {
 }
 
 export function composeMail(c: MailContent): MailMessage {
-  return { to: c.to, subject: c.subject, text: renderText(c), html: renderHtml(c) };
+  return { to: recipientEmail(c.to), subject: c.subject, text: renderText(c), html: renderHtml(c) };
 }

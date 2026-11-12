@@ -134,7 +134,7 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions = 
       }
 
       const device = await startSession(req, reply, user.id, user.auth_version);
-      if (device === 'new') mailAfter(req, user.id, newSignInMail(user.email, new Date().toISOString()), 'new sign-in');
+      if (device === 'new') mailAfter(req, user.id, newSignInMail(user, new Date().toISOString()), 'new sign-in');
 
       req.log.info({ ip: req.ip, userId: user.id }, 'login succeeded');
       return reply.send({ ok: true, email: user.email });
@@ -192,7 +192,7 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions = 
 
       await req.session.regenerate();
       const device = await startSession(req, reply, user.id, user.auth_version);
-      if (device === 'new') mailAfter(req, user.id, newSignInMail(user.email, new Date().toISOString()), 'new sign-in');
+      if (device === 'new') mailAfter(req, user.id, newSignInMail(user, new Date().toISOString()), 'new sign-in');
 
       req.log.info({ ip: req.ip, userId: user.id }, 'login succeeded with second factor');
       return reply.send({ ok: true, email: user.email });
@@ -215,6 +215,8 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions = 
       second_factor_enabled: await hasSecondFactor(user.id),
       // Whether an emailed link may recover the account; the owner can turn it off (SECURITY.md S-38).
       email_recovery: user.email_recovery !== 0,
+      // The language the account's mail is written in and its screens start in; null until one is chosen.
+      language: user.language,
       // Whether the account has a vault. One that has none is asked to make it before anything else (docs/crypto-design.md).
       vault: (await getAccountsStore().vault.getKeys(user.id)) !== null,
       // What this account still has to agree to before the app shows anything (CR-GDPR-01). Nothing once it has.

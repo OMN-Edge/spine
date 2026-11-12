@@ -59,7 +59,7 @@ import ShareRouter from './pages/ShareRouter';
 import ShareRequestPage from './pages/ShareRequest';
 import ShareLinkDetail from './pages/ShareLinkDetail';
 import { Wordmark } from './components/Logo';
-import { msg, useI18n } from './i18n';
+import { isLanguage, msg, onLanguageChosen, useI18n } from './i18n';
 import { LanguageSwitcher } from './components/LanguageSwitcher';
 import { ThemeSwitcher } from './components/ThemeSwitcher';
 import { AccountMenu, MORE_LINKS, MoreMenu, ReviewBadge, useReviewCount } from './components/TopBarMenus';
@@ -274,8 +274,10 @@ function NotInDemo({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  const { t } = useI18n();
+  const { t, applyLang } = useI18n();
   const [authenticated, setAuthenticatedState] = useState(false);
+  // The language the account is set to: what its mail is written in, and where the screens and a new share link start.
+  const [accountLanguage, setAccountLanguage] = useState<string | null>(null);
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(true);
   // What this account still has to agree to; asked for whenever a sign-in happens.
@@ -311,24 +313,45 @@ export default function App() {
     if (value) vaultState.setEmail(who);
   };
 
+  // The account's language wins over what this browser remembered, so a second device starts in it too.
+  const takeLanguage = useCallback((language: string | null | undefined) => {
+    setAccountLanguage(language ?? null);
+    if (isLanguage(language)) applyLang(language);
+  }, [applyLang]);
+
   useEffect(() => {
     api.auth.me()
-      .then(r => setAuthenticated(r.authenticated, r.email))
+      .then(r => { setAuthenticated(r.authenticated, r.email); if (r.authenticated) takeLanguage(r.language); })
       .catch(() => {})
       .finally(() => setLoading(false));
+    // Once, at load: a later sign-in reads it with the consent check below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // What the person picks with the language switcher is kept on the account, so the mail follows it. Not on a page that is a share link's
+  // (the owner looking at their own link is a reader there), and not in the demo, which has no account.
+  useEffect(() => {
+    if (!authenticated || demo) return;
+    onLanguageChosen(language => {
+      if (window.location.pathname.startsWith('/share/')) return;
+      setAccountLanguage(language);
+      api.auth.setLanguage(language).catch(() => {});
+    });
+    return () => onLanguageChosen(null);
+  }, [authenticated, demo]);
 
   // Whenever someone is signed in, ask what they still have to agree to (a new account, or a text that changed).
   useEffect(() => {
     if (!authenticated) { setConsentNeeded(undefined); return; }
     api.auth.me()
       .then(r => {
+        takeLanguage(r.language);
         setConsentNeeded(r.consent_needed && (r.consent_needed.health || r.consent_needed.terms) ? r.consent_needed : null);
         const needed = r.vault === false;
         setVaultNeeded(needed);
       })
       .catch(() => {});
-  }, [authenticated]);
+  }, [authenticated, takeLanguage]);
 
   // The sign-in left the master key; once consent allows the request and there is a vault, open it with it.
   useEffect(() => {
@@ -341,7 +364,7 @@ export default function App() {
   if (loading) return <div className="min-h-screen flex items-center justify-center text-gray-400">{t('Loading…')}</div>;
 
   return (
-    <AuthContext.Provider value={{ authenticated, email, setAuthenticated, consentNeeded, consentGiven: () => setConsentNeeded(null), vaultNeeded, vaultMade: () => setVaultNeeded(false), deviceState, deviceOpened: () => setDeviceState('open'), demo, startDemo, leaveDemo, demoUploads, demoAgreed, agreeDemo: () => setDemoAgreed(true) }}>
+    <AuthContext.Provider value={{ authenticated, email, setAuthenticated, consentNeeded, consentGiven: () => setConsentNeeded(null), language: accountLanguage, vaultNeeded, vaultMade: () => setVaultNeeded(false), deviceState, deviceOpened: () => setDeviceState('open'), demo, startDemo, leaveDemo, demoUploads, demoAgreed, agreeDemo: () => setDemoAgreed(true) }}>
       {/* Chat asks the device's core, which answers 423 until the vault is open: asked sooner, the panel is switched off for good. */}
       <ChatProvider key={people} authenticated={(authenticated && deviceState === 'open') || demo}>
       <GuideProvider enabled={authenticated && deviceState === 'open' && !demo}>

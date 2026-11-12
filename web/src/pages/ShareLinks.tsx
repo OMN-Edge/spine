@@ -6,6 +6,7 @@ import { episodeName } from '../components/episode';
 import { useOnDataChanged } from '../dataChanged';
 import ShareRequestCard from '../components/ShareRequestCard';
 import { LANGUAGES, languageChoice, useI18n } from '../i18n';
+import { useAuth } from '../auth';
 import { Combobox } from '../components/Combobox';
 import GuideTip from '../components/GuideTip';
 import { languageName } from '../i18n/useTranslation';
@@ -96,7 +97,9 @@ export default function ShareLinks() {
   const [episodeIds, setEpisodeIds] = useState<string[]>([]);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
-  const [form, setForm] = useState({ label: '', expires_hours: 168, include_scans: false, language: '', require_approval: false, allow_chat: false });
+  // A new link starts in the account's language, if it has one; the owner can leave it unset for the reader to choose.
+  const { language: accountLanguage } = useAuth();
+  const [form, setForm] = useState({ label: '', expires_hours: 168, include_scans: false, language: accountLanguage ?? '', require_approval: false, allow_chat: false });
   const [tags, setTags] = useState<Array<{ id: number; name: string }>>([]);
   const [docs, setDocs] = useState<Document[] | null>(null);
   const [tagged, setTagged] = useState<number | null>(null);
