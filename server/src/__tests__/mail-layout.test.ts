@@ -1,14 +1,18 @@
+import { publicUrl } from 'spine-core/config.js';
 import { describe, expect, it } from 'vitest';
 import { composeMail } from '../mail/layout.js';
 import { accessRequestMail, remindersDueMail, resetMail } from '../accounts.js';
 import { securityChangeMail } from '../notify.js';
 
 describe('the mail layout', () => {
-  it('puts the link in both parts, as a button and as an address, and fetches nothing', () => {
+  it('puts the link in both parts, as a button and as an address, and fetches only the mark from its own origin', () => {
     const m = resetMail('a@example.org', 'https://x.example/reset#tok');
     expect(m.text).toContain('https://x.example/reset#tok');
     expect(m.html).toContain('href="https://x.example/reset#tok"');
-    expect(m.html).not.toMatch(/<img|<script|<link|url\(/i);
+    expect(m.html).not.toMatch(/<script|<link|url\(/i);
+    const srcs = [...m.html!.matchAll(/<img[^>]*src="([^"]+)"/g)].map(x => x[1]);
+    expect(srcs).toHaveLength(2);
+    for (const src of srcs) expect(src).toMatch(new RegExp(`^${publicUrl('/icons/').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}mail-mark(-dark)?\\.png$`));
   });
 
   it('escapes what a message is built from', () => {

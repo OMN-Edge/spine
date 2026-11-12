@@ -1,12 +1,11 @@
+import { publicUrl } from 'spine-core/config.js';
 import type { MailMessage } from './types.js';
 
 /**
  * What an account message says, once: `composeMail` makes the plain-text part and the HTML part from it, so the two cannot drift.
  * Nothing here carries medical content (SECURITY.md P8); the layout is the public pages' own paper, ink and teal (web/tailwind.config.js).
  *
- * The HTML is written for mail clients, not browsers: tables, inline styles, no script, no web font and **no image**. The mark is drawn
- * with four small boxes, so opening a message fetches nothing from this site (an image would tell it, and the mail provider, when it was
- * read). The dark theme is a `prefers-color-scheme` block for the clients that honour it; the others show the light one.
+ * The HTML is written for mail clients, not browsers: tables, inline styles, no script, no web font and no image but the mark (below). The dark theme is a `prefers-color-scheme` block for the clients that honour it; the others show the light one.
  */
 export interface MailContent {
   to: string;
@@ -37,10 +36,15 @@ export function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-/** The four vertebral bodies of the mark, top to bottom, each wider than the one above (web/src/components/Logo.tsx). */
-const MARK = [13, 14.66, 16.34, 18]
-  .map(w => `<div class="mark" style="width:${Math.round(w * 1.1)}px;height:5px;margin:0 auto 2px;border-radius:2px;background:${ACCENT};"></div>`)
-  .join('');
+/**
+ * The mark is the real logo (web/public/favicon.svg), as two small PNGs on this site's own origin, one in each theme's teal: a mail client
+ * strips inline SVG, so a picture is the only way to show it. Opening a message therefore asks this server for them, which it can see in its
+ * own log and nobody else can (a mail client that proxies images, as Gmail does, asks once and hides the reader's address).
+ * The dark one is shown only where `prefers-color-scheme` is honoured.
+ */
+const markImg = (file: string, extra: string, cls: string) =>
+  `<img class="${cls}" src="${escapeHtml(publicUrl(`/icons/${file}`))}" width="28" height="28" alt="" style="${extra || 'display:block;'}border:0;width:28px;height:28px;">`;
+const MARK = markImg('mail-mark.png', '', 'mk-l') + markImg('mail-mark-dark.png', 'display:none;max-height:0;overflow:hidden;mso-hide:all;', 'mk-d');
 
 const STYLE = `
   body { margin:0; padding:0; background:${PAPER}; }
@@ -51,7 +55,8 @@ const STYLE = `
     .ink { color:#eaf1f0 !important; }
     .muted { color:#a9bbba !important; }
     .rule { border-color:#2a3b3c !important; }
-    .mark { background:#6fd3c4 !important; }
+    .mk-l { display:none !important; }
+    .mk-d { display:block !important; max-height:none !important; }
     .btn { background:#6fd3c4 !important; }
     .btn a { color:#0c1415 !important; }
     a.link { color:#6fd3c4 !important; }
@@ -86,7 +91,7 @@ export function renderHtml(c: MailContent): string {
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="bg" style="background:${PAPER};"><tr><td align="center" style="padding:32px 16px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;">
 <tr><td style="padding:0 4px 20px;"><table role="presentation" cellpadding="0" cellspacing="0"><tr>
-<td valign="middle" style="padding-right:10px;"><div style="width:24px;">${MARK}</div></td>
+<td valign="middle" style="padding-right:10px;">${MARK}</td>
 <td valign="middle" class="ink" style="font:600 20px/1 ${SANS};letter-spacing:-0.01em;color:${INK};">Spine</td></tr></table></td></tr>
 <tr><td class="card" style="background:#ffffff;border:1px solid ${LINE};border-radius:12px;border-top:3px solid ${ACCENT};padding:32px 28px;">
 <h1 class="ink" style="margin:0 0 18px;font:600 24px/1.25 ${SERIF};letter-spacing:-0.01em;color:${INK};">${escapeHtml(c.heading)}</h1>
