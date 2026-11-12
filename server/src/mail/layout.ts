@@ -47,7 +47,8 @@ export function escapeHtml(s: string): string {
  */
 const markImg = (file: string, extra: string, cls: string) =>
   `<img class="${cls}" src="${escapeHtml(publicUrl(`/icons/${file}`))}" width="28" height="28" alt="" style="${extra || 'display:block;'}border:0;width:28px;height:28px;">`;
-const MARK = markImg('mail-mark.png', '', 'mk-l') + markImg('mail-mark-dark.png', 'display:none;max-height:0;overflow:hidden;mso-hide:all;', 'mk-d');
+// A function, not a constant: the address comes from the settings, which a process registers after its modules load (the CLI starts that way).
+const mark = () => markImg('mail-mark.png', '', 'mk-l') + markImg('mail-mark-dark.png', 'display:none;max-height:0;overflow:hidden;mso-hide:all;', 'mk-d');
 
 const STYLE = `
   body { margin:0; padding:0; background:${PAPER}; }
@@ -94,7 +95,7 @@ export function renderHtml(c: MailContent, lang: InterfaceLanguage = recipientLa
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="bg" style="background:${PAPER};"><tr><td align="center" style="padding:32px 16px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;">
 <tr><td style="padding:0 4px 20px;"><table role="presentation" cellpadding="0" cellspacing="0"><tr>
-<td valign="middle" style="padding-right:10px;">${MARK}</td>
+<td valign="middle" style="padding-right:10px;">${mark()}</td>
 <td valign="middle" class="ink" style="font:600 20px/1 ${SANS};letter-spacing:-0.01em;color:${INK};">Spine</td></tr></table></td></tr>
 <tr><td class="card" style="background:#ffffff;border:1px solid ${LINE};border-radius:12px;border-top:3px solid ${ACCENT};padding:32px 28px;">
 <h1 class="ink" style="margin:0 0 18px;font:600 24px/1.25 ${SERIF};letter-spacing:-0.01em;color:${INK};">${escapeHtml(c.heading)}</h1>
