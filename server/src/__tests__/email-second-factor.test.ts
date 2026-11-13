@@ -6,6 +6,8 @@ import { loadMailConfig } from '../config.js';
 import { emailCodeMatches, hashEmailCode } from '../email-code.js';
 import { base32Decode, hotp, stepAt } from '../totp.js';
 import { PENDING_LOGIN_MS, SECOND_FACTOR_ATTEMPTS } from '../routes/auth.js';
+import { getAccountsStore } from 'spine-core/store/index.js';
+import { runCli } from '../cli.js';
 
 /**
  * SECURITY.md S-20: with `SPINE_EMAIL_2FA=required` an account with no authenticator gets a code by mail after its password, and one with an
@@ -141,5 +143,124 @@ describe('the mailed code on its own', () => {
     expect(() => loadMailConfig({ ...base, SPINE_EMAIL_2FA: 'required' })).toThrow(/needs a mailer/);
     expect(() => loadMailConfig({ ...base, SPINE_EMAIL_2FA: 'yes' })).toThrow(/expected off or required/);
     expect(() => loadMailConfig({ ...base })).not.toThrow();
+  });
+});
+
+describe('chosen by the owner', () => {
+  const put = (url: string, cookie: string, payload: object = {}) => post(url, payload, cookie);
+  const get = (url: string, cookie: string) => app.inject({ method: 'GET', url, headers: { cookie } });
+  /** The two steps of turning it on, from a session that is already signed in. */
+  async function turnOn(cookie: string) {
+    sent.length = 0;
+    const start = await put('/api/auth/email-2fa/start', cookie, { password: TEST_PASSWORD });
+    expect(start.statusCode).toBe(200);
+    const enable = await put('/api/auth/email-2fa/enable', cookie, { code: codeIn(sent[0]) });
+    expect(enable.statusCode).toBe(200);
+    // The notice goes after the answer.
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const after = sent.slice(1);
+    sent.length = 0;
+    return after;
+  }
+
+  it('is turned on with the password and a code mailed to the address, after which sign-in asks for a code', async () => {
+    const cookie = await loginAs(app);
+    expect((await get('/api/auth/email-2fa', cookie)).json()).toEqual({ enabled: false, required: false, available: true });
+    expect((await get('/api/auth/me', cookie)).json()).toMatchObject({ second_factor: null, email_second_factor_required: false });
+    expect((await put('/api/auth/email-2fa/start', cookie, { password: 'wrong' })).statusCode).toBe(401);
+    expect(sent).toHaveLength(0);
+
+    await turnOn(cookie);
+    expect((await get('/api/auth/email-2fa', cookie)).json()).toMatchObject({ enabled: true });
+    expect((await get('/api/auth/me', cookie)).json()).toMatchObject({ second_factor: 'email', second_factor_enabled: false });
+
+    const { res, cookie: pending } = await passwordStep('10.0.0.3');
+    expect(res.json()).toEqual({ second_factor_required: true, method: 'email' });
+    expect((await post('/api/auth/login/second-factor', { code: codeIn(sent[0]) }, pending)).statusCode).toBe(200);
+  });
+
+  it('is not turned on by a code that is wrong, or that has waited too long', async () => {
+    const cookie = await loginAs(app);
+    await put('/api/auth/email-2fa/start', cookie, { password: TEST_PASSWORD });
+    const right = codeIn(sent[0]);
+    const wrong = right === '000000' ? '111111' : '000000';
+    for (let i = 1; i < SECOND_FACTOR_ATTEMPTS; i++) expect((await put('/api/auth/email-2fa/enable', cookie, { code: wrong })).statusCode).toBe(400);
+    expect((await put('/api/auth/email-2fa/enable', cookie, { code: wrong })).json()).toMatchObject({ code: 'code_expired' });
+    expect((await put('/api/auth/email-2fa/enable', cookie, { code: right })).json()).toMatchObject({ code: 'code_expired' });
+    expect((await get('/api/auth/email-2fa', cookie)).json()).toMatchObject({ enabled: false });
+
+    vi.useFakeTimers({ toFake: ['Date'] });
+    await put('/api/auth/email-2fa/start', cookie, { password: TEST_PASSWORD });
+    vi.setSystemTime(Date.now() + PENDING_LOGIN_MS + 1000);
+    expect((await put('/api/auth/email-2fa/enable', cookie, { code: codeIn(sent[sent.length - 1]) })).json()).toMatchObject({ code: 'code_expired' });
+  });
+
+  it('ends the other sessions, which were issued without it, and mails the owner', async () => {
+    const cookie = await loginAs(app);
+    const other = await loginAs(app);
+    const notices = await turnOn(cookie);
+    expect(await signedIn(other)).toBe(false);
+    expect(await signedIn(cookie)).toBe(true);
+    expect(notices.some(m => /Two-factor sign-in was turned on/.test(m.text))).toBe(true);
+  });
+
+  it('is refused while an authenticator is on, and the authenticator is asked for once one is enrolled', async () => {
+    const cookie = await loginAs(app);
+    await turnOn(cookie);
+    // An authenticator takes its place: it is the one asked for, and no code is mailed.
+    const setup = await put('/api/auth/totp/setup', cookie, { password: TEST_PASSWORD });
+    const { secret } = setup.json() as { secret: string };
+    expect((await put('/api/auth/totp/enable', cookie, { code: hotp(base32Decode(secret), stepAt(Date.now())) })).statusCode).toBe(200);
+    sent.length = 0;
+    expect((await passwordStep('10.0.0.4')).res.json()).toEqual({ second_factor_required: true, method: 'authenticator' });
+    expect(sent).toHaveLength(0);
+
+    // And it is not turned on beside one.
+    await getAccountsStore().users.setEmailSecondFactor((await getAccountsStore().users.findByEmail(OWNER_EMAIL))!.id, false);
+    const again = await put('/api/auth/email-2fa/start', cookie, { password: TEST_PASSWORD });
+    expect(again.json()).toMatchObject({ code: 'authenticator_on' });
+  });
+
+  it('is turned off with the password, and then sign-in asks for nothing more', async () => {
+    const cookie = await loginAs(app);
+    await turnOn(cookie);
+    expect((await put('/api/auth/email-2fa/disable', cookie, { password: 'wrong' })).statusCode).toBe(401);
+    expect((await put('/api/auth/email-2fa/disable', cookie, { password: TEST_PASSWORD })).statusCode).toBe(200);
+    expect((await passwordStep('10.0.0.5')).res.json()).toMatchObject({ ok: true });
+    expect((await put('/api/auth/email-2fa/disable', cookie, { password: TEST_PASSWORD })).json()).toMatchObject({ code: 'not_on' });
+  });
+
+  it('cannot be turned off where the operator requires it', async () => {
+    const cookie = await loginAs(app);
+    await turnOn(cookie);
+    vi.stubEnv('SPINE_EMAIL_2FA', 'required');
+    expect((await put('/api/auth/email-2fa/disable', cookie, { password: TEST_PASSWORD })).json()).toMatchObject({ code: 'required' });
+    expect((await get('/api/auth/email-2fa', cookie)).json()).toEqual({ enabled: true, required: true, available: true });
+    expect((await get('/api/auth/me', cookie)).json()).toMatchObject({ second_factor: 'email', email_second_factor_required: true });
+  });
+
+  it('is not offered when the service sends no mail', async () => {
+    const cookie = await loginAs(app);
+    resetMailer({ enabled: false, async send() { throw new Error('none'); } });
+    expect((await get('/api/auth/email-2fa', cookie)).json()).toMatchObject({ available: false });
+    expect((await put('/api/auth/email-2fa/start', cookie, { password: TEST_PASSWORD })).json()).toMatchObject({ code: 'no_mailer' });
+  });
+
+  it('limits the codes it sends', async () => {
+    const cookie = await loginAs(app);
+    const results: number[] = [];
+    for (let i = 0; i < 7; i++) results.push((await put('/api/auth/email-2fa/start', cookie, { password: TEST_PASSWORD })).statusCode);
+    expect(results.slice(0, 5)).toEqual([200, 200, 200, 200, 200]);
+    expect(results.slice(5)).toEqual([429, 429]);
+    expect(sent).toHaveLength(5);
+  });
+
+  it('is turned off by the operator for an account that lost its mailbox', async () => {
+    const cookie = await loginAs(app);
+    await turnOn(cookie);
+    const out: string[] = [];
+    expect(await runCli(['disable-2fa', OWNER_EMAIL], { out: l => out.push(l), err: l => out.push(l), readPassword: async () => '' })).toBe(0);
+    expect(out.join('\n')).toMatch(/turned off/);
+    expect((await passwordStep('10.0.0.6')).res.json()).toMatchObject({ ok: true });
   });
 });

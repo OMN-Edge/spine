@@ -164,6 +164,8 @@ export interface UserRecord {
   approved: number;
   /** 1 unless the owner turned off recovery by email: then no recovery mail is sent and a link alone cannot start the records over (SECURITY.md S-38). */
   email_recovery: number;
+  /** 1 when the owner turned on a code sent to the address as the second step (`SPINE_EMAIL_2FA`, SECURITY.md S-20); an authenticator, when there is one, is asked for instead. */
+  email_second_factor: number;
   /** The language the account's mail and screens start in (one of `SUPPORTED_LANGUAGES`), or null until one is chosen or taken from the browser at sign-up. */
   language: string | null;
   created_at: string;
@@ -238,6 +240,8 @@ export interface UserRepository {
   approve(id: string, at: string): Promise<boolean>;
   /** The owner's choice whether an emailed link may recover the account (`UserRecord.email_recovery`). */
   setEmailRecovery(id: string, on: boolean): Promise<void>;
+  /** The owner's choice of a code sent to the address as the second step (`UserRecord.email_second_factor`). */
+  setEmailSecondFactor(id: string, on: boolean): Promise<void>;
   /** The account's language (the caller has checked it is a supported one); null clears it. */
   setLanguage(id: string, language: string | null): Promise<void>;
   createToken(token: NewUserToken): Promise<void>;

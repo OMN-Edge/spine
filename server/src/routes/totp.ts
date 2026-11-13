@@ -2,11 +2,10 @@ import { endOtherSessions } from '../sessions.js';
 import { mailAfter, securityChangeMail } from '../notify.js';
 import type { FastifyInstance } from 'fastify';
 import { getAccountsStore } from 'spine-core/store/index.js';
-import { verifyPassword } from '../passwords.js';
 import { requireAuth } from 'spine-core/routes/middleware.js';
 import { type SessionData } from '../session-auth.js';
 import { windowLimiter } from '../rate-limit.js';
-import { checkSecondFactor, newRecoveryCodes } from '../second-factor.js';
+import { checkSecondFactor, newRecoveryCodes, passwordIsRight as passwordOk } from '../second-factor.js';
 import {
   base32Encode,
   decryptSecret,
@@ -47,13 +46,6 @@ export async function totpRoutes(app: FastifyInstance, opts: TotpRouteOptions = 
       recovery_codes_left: enabled ? await store.users.countRecoveryCodes(req.userId) : 0,
     });
   });
-
-  /** The password is checked again for anything that changes the factor. */
-  async function passwordOk(userId: string, password: unknown): Promise<boolean> {
-    if (typeof password !== 'string' || !password) return false;
-    const user = await getAccountsStore().users.findById(userId);
-    return !!user && (await verifyPassword(user.password_hash, password));
-  }
 
   // Step 1: a secret is made and shown. Nothing changes at login until step 2 succeeds.
   app.post<{ Body: { password?: string } }>('/api/auth/totp/setup', { preHandler: limiters }, async (req, reply) => {

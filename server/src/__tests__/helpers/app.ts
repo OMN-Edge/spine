@@ -117,6 +117,7 @@ export async function buildTestApp(options: TestAppOptions = {}) {
   const { authRoutes } = await import('../../routes/auth.js');
   const { accountRoutes } = await import('../../routes/accounts.js');
   const { totpRoutes } = await import('../../routes/totp.js');
+  const { emailSecondFactorRoutes } = await import('../../routes/email-second-factor.js');
   const { sessionRoutes } = await import('../../routes/sessions.js');
   const { documentRoutes } = await import('spine-core/routes/documents.js');
   const { sourceFileRoutes } = await import('spine-core/routes/source-files.js');
@@ -157,6 +158,7 @@ export async function buildTestApp(options: TestAppOptions = {}) {
     ...options.auth,
   });
   await app.register(totpRoutes, options.totp ?? {});
+  await app.register(emailSecondFactorRoutes);
   await app.register(sessionRoutes);
   await app.register(accountRoutes, {
     registration: 'operator',

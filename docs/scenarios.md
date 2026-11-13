@@ -92,6 +92,18 @@ The owner scans a QR code, confirms one code, and saves ten recovery codes.
 
 Status: auto (`totp`, `second-factor`).
 
+### 1.3a Turn on a code by email
+For an account with no authenticator app. The owner enters the password, is mailed a six-digit code, and types it back.
+
+- A wrong code does not turn it on, and five wrong ones end the attempt; a code left for more than five minutes is refused.
+- From then on the password alone does not sign in: the address is mailed a code, which works once and is refused after five wrong tries or five minutes.
+- The sign-ins already open on other browsers are ended, and the owner is mailed that two-factor was turned on.
+- An authenticator app, once enrolled, is asked for instead and no code is mailed; the code by email is not offered while one is on.
+- Turning it off takes the password. Where the operator sets `SPINE_EMAIL_2FA=required` every account with no authenticator is asked for the code and it cannot be turned off.
+- A lost mailbox is fixed by the operator (`disable-2fa`), not by the owner.
+
+Status: auto (`email-second-factor`).
+
 ### 1.4 Sign up
 Only where the operator has opened registration (it needs a mail provider). A person enters an email address and a password, and is sent a link.
 

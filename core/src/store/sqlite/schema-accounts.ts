@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS users (
   -- session. Every other account (the operator's, a self-registered one in open mode, all from before) is 1.
   approved INTEGER NOT NULL DEFAULT 1,
   email_recovery INTEGER NOT NULL DEFAULT 1,
+  email_second_factor INTEGER NOT NULL DEFAULT 0,
   -- A language code from SUPPORTED_LANGUAGES (core/src/languages.ts); NULL until chosen. The account's mail is written in it and the screens start in it.
   language TEXT,
   created_at TEXT NOT NULL,

@@ -14,6 +14,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { authRoutes } from './routes/auth.js';
 import { totpRoutes } from './routes/totp.js';
+import { emailSecondFactorRoutes } from './routes/email-second-factor.js';
 import { accountRoutes } from './routes/accounts.js';
 import { waitlistRoutes } from './routes/waitlist.js';
 import { delegationRoutes } from './routes/delegation.js';
@@ -140,6 +141,7 @@ decorateAuth(asHttp(app));
 // Register API routes
 await app.register(authRoutes);
 await app.register(totpRoutes);
+await app.register(emailSecondFactorRoutes);
 await app.register(sessionRoutes);
 await app.register(accountRoutes, { registration: config.registration, instance: config.instance });
 await app.register(ownAccountRoutes);

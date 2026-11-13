@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import { api } from '../api';
 import { buttonClass, inputClass, Notice } from './AuthCard';
 import { useI18n } from '../i18n';
+import EmailTwoFactor from './EmailTwoFactor';
 
 type Step =
   | { name: 'loading' }
@@ -26,6 +27,8 @@ export default function TwoFactor() {
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
+  // Whether a code by email is the second step meanwhile, which an authenticator app would replace.
+  const [emailOn, setEmailOn] = useState(false);
 
   const refresh = async () => {
     const status = await api.auth.totp.status();
@@ -88,16 +91,21 @@ export default function TwoFactor() {
 
   if (step.name === 'off') {
     return (
-      <form onSubmit={start} className={card}>
-        <h2 className="font-medium text-gray-900 mb-1">{t('Two-factor sign-in')}</h2>
-        <p className="text-sm text-gray-500 mb-4">
-          {t('Off. With it on, signing in also needs a code from an authenticator app on your phone, so a stolen password alone is not enough.')}
-        </p>
-        <input type="password" placeholder={t('Your password')} autoComplete="current-password"
-          value={password} onChange={e => setPassword(e.target.value)} className={inputClass} />
-        {error && <Notice kind="error">{error}</Notice>}
-        <button type="submit" className={buttonClass}>{t('Set up')}</button>
-      </form>
+      <>
+        <form onSubmit={start} className={card}>
+          <h2 className="font-medium text-gray-900 mb-1">{t('Two-factor sign-in')}</h2>
+          <p className="text-sm text-gray-500 mb-4">
+            {emailOn
+              ? t('No authenticator app is set up, so the code sent to your email address is asked for instead. An authenticator app would take its place.')
+              : t('Off. With it on, signing in also needs a code from an authenticator app on your phone, so a stolen password alone is not enough.')}
+          </p>
+          <input type="password" placeholder={t('Your password')} autoComplete="current-password"
+            value={password} onChange={e => setPassword(e.target.value)} className={inputClass} />
+          {error && <Notice kind="error">{error}</Notice>}
+          <button type="submit" className={buttonClass}>{t('Set up')}</button>
+        </form>
+        <EmailTwoFactor onState={setEmailOn} />
+      </>
     );
   }
 

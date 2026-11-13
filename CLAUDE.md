@@ -67,7 +67,7 @@ spine/
 │       ├── geoip-update.ts # downloads that file (ip-location-db "user-country", public domain) and checks it before it replaces the one in use; best effort, always ends well; run by install.sh -s and daily before the backup
 │       ├── providers.ts    # registers the model providers the relay service runs; llm/adapters/ (anthropic, vertex) and embedding/adapters/ (vertex) hold them
 │       ├── driver-native.ts, driver-pg.ts # the native SQLite driver and the `pg` pool, both registered by useAccountsStore(); the store config says which is opened
-│       ├── email-code.ts   # the second step by mail when SPINE_EMAIL_2FA=required: the six-digit code, its keyed hash in the pending login, the mail (S-20)
+│       ├── email-code.ts   # the second step by mail (chosen by the owner, or the floor under SPINE_EMAIL_2FA=required): the six-digit code, its keyed hash in the pending login, the mail (S-20); routes/email-second-factor.ts turns it on and off
 │       ├── passwords.ts    # argon2id hash/verify, policy, email normalisation
 │       ├── totp.ts         # RFC 6238 codes, secret encryption at rest, recovery codes (pure; no store)
 │       ├── second-factor.ts # checkSecondFactor(): joins totp.ts to the store; atomic spend

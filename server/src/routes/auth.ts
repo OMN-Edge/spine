@@ -10,9 +10,10 @@ import { authenticate, maySignIn, type SessionData } from '../session-auth.js';
 import { windowLimiter } from '../rate-limit.js';
 import { startSession } from '../sessions.js';
 import { mailAfter, newSignInMail } from '../notify.js';
-import { checkSecondFactor, hasSecondFactor } from '../second-factor.js';
+import { checkSecondFactor, hasSecondFactor, secondFactorMethod } from '../second-factor.js';
+import { emailSecondFactorRequired } from '../email-code.js';
 import { consentNeeded } from '../legal.js';
-import { emailCodeMatches, emailSecondFactorRequired, hashEmailCode, newEmailCode, signInCodeMail } from '../email-code.js';
+import { emailCodeMatches, hashEmailCode, newEmailCode, signInCodeMail } from '../email-code.js';
 import { getMailer } from '../mail/index.js';
 
 /**
@@ -125,7 +126,8 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions = 
 
       // The password alone is not enough for a user with a second factor (M-12). This
       // is the only place a session is issued, so it is the only place that checks.
-      if (await hasSecondFactor(user.id)) {
+      const method = await secondFactorMethod(user);
+      if (method === 'authenticator') {
         session.pending = {
           userId: user.id,
           authVersion: user.auth_version,
@@ -136,9 +138,9 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions = 
         return reply.send({ second_factor_required: true, method: 'authenticator' });
       }
 
-      // No authenticator, and the operator asks for a second step anyway: a code to the mailbox. An authenticator, when there is one, is what is
+      // No authenticator, and the account chose a code to the mailbox or the operator requires one. An authenticator, when there is one, is what is
       // asked for above, so enrolling one takes the place of this. Sent before the answer, because without it there is no way in.
-      if (emailSecondFactorRequired()) {
+      if (method === 'email') {
         const code = newEmailCode();
         try {
           await getMailer().send(signInCodeMail(user, code));
@@ -241,6 +243,9 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions = 
       authenticated: true,
       email: user.email,
       second_factor_enabled: await hasSecondFactor(user.id),
+      // What the second step is: the authenticator app, a code sent to the address, or none (S-20); and whether the operator requires the code.
+      second_factor: await secondFactorMethod(user),
+      email_second_factor_required: emailSecondFactorRequired(),
       // Whether an emailed link may recover the account; the owner can turn it off (SECURITY.md S-38).
       email_recovery: user.email_recovery !== 0,
       // The language the account's mail is written in and its screens start in; null until one is chosen.
