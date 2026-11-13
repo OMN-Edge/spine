@@ -19,7 +19,7 @@ docker compose exec web node dist/cli.js create-user you@example.com   # prints 
 | `backup` | `backup.js` once a day: a database snapshot and a mirror of the sealed vault; before it, `geoip-update.ts` refreshes the country file the share log reads | nothing |
 | `relay` | The relay for model calls (`relay.Dockerfile`, [relay.md](relay.md)), only with `COMPOSE_PROFILES=relay` in `.env`. It reads `.env` and `relay.env`, which holds the provider's key; the server never gets that file | the proxy only, at `SPINE_RELAY_DOMAIN` |
 
-Data lives in Docker volumes: `data` (the database and the files), `backups`, `relay-data` (the relay's daily count), `caddy-data` (certificates). `docker compose down` keeps them; `docker compose down -v` deletes them, records included.
+Data lives in Docker volumes: `data` (the database and the files, which the relay shares: it asks the database what an account may do), `backups`, `caddy-data` (certificates). `docker compose down` keeps them; `docker compose down -v` deletes them, records included.
 
 ## Operating it
 

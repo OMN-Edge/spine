@@ -26,4 +26,13 @@ describe('where the app may write, as installed', () => {
       expect(service(name), name).toMatch(/- backups:\/backups/);
     }
   });
+
+  it('in compose, the relay reads the same database as the server, so a plan is found where it is asked for (S-64)', () => {
+    const compose = file('compose.yaml');
+    const service = (name: string) => compose.split(/^ {2}(?=\S)/m).find(block => block.startsWith(`${name}:`)) ?? '';
+    expect(service('web')).toMatch(/- data:\/data/);
+    expect(service('relay')).toMatch(/- data:\/data/);
+    expect(service('relay')).toMatch(/SPINE_DB_PATH: \/data\/spine\.db/);
+    expect(compose).not.toMatch(/relay-data/);
+  });
 });
