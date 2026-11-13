@@ -42,11 +42,15 @@ export function hashLines(dir) {
   return listFiles(dir).filter(f => f !== HASHES_FILE).map(f => `${digest(fs.readFileSync(path.join(dir, f)), 'sha256', 'hex')}  ${f}`);
 }
 
-/** The built text files that name `root`, the folder the build ran in. */
+/**
+ * The built text files that name `root`, the folder the build ran in. Only as a whole name: in the container the folder is `/app`, which is also the
+ * start of `/apple-touch-icon.png`, and a longer name is not the folder.
+ */
 export function buildPathLeaks(dir, root) {
+  const names = new RegExp(`${root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![A-Za-z0-9_.-])`);
   return listFiles(dir)
     .filter(f => /\.(js|mjs|css|html|json|webmanifest|txt|svg)$/.test(f))
-    .filter(f => fs.readFileSync(path.join(dir, f), 'latin1').includes(root));
+    .filter(f => names.test(fs.readFileSync(path.join(dir, f), 'latin1')));
 }
 
 /** Seals `dir`; returns what is wrong (empty when sealed). */
