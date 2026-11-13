@@ -315,12 +315,22 @@ function install_relay() {
   local port
   port=$(relay_port)
 
+  # The relay opens the server's own database, so it may write where that is (data/); a Postgres database is reached over the network, and then
+  # the relay has a directory of its own and no way to the vault's files (SECURITY.md P9).
+  local relay_data="${SPINE_DIR}/data"
+  if [ "$(env_value SPINE_STORE)" = "postgres" ]; then
+    relay_data="${SPINE_DIR}/relay-data"
+    mkdir -p "${relay_data}"
+    chown -R "${SPINE_USER}:${SPINE_USER}" "${relay_data}"
+  fi
+
   echo "Installing the relay (127.0.0.1:${port})..."
   sed \
     -e "s|SPINE_DIR|${SPINE_DIR}|g" \
     -e "s|SPINE_USER|${SPINE_USER}|g" \
     -e "s|SPINE_DOMAIN|${domain}|g" \
     -e "s|RELAY_PORT_HERE|${port}|g" \
+    -e "s|RELAY_DATA_HERE|${relay_data}|g" \
     "${SPINE_DIR}/systemd/spine-relay.service" \
     > /etc/systemd/system/spine-relay.service
   echo "  installed /etc/systemd/system/spine-relay.service"

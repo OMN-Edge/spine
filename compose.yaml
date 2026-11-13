@@ -61,7 +61,9 @@ services:
       DATA_DIR: /data
       SPINE_DB_PATH: /data/spine.db
     volumes:
-      - data:/data
+      # The server's volume, so that its SQLite file is the one database. With SPINE_STORE=postgres the relay reaches the database over the
+      # network and needs no file: SPINE_RELAY_DATA=relay-data in .env gives it a volume of its own, and the vault's files are out of its reach.
+      - ${SPINE_RELAY_DATA:-data}:/data
     networks:
       spine: {}
 
@@ -95,4 +97,5 @@ networks:
 volumes:
   data:
   backups:
+  relay-data:
   caddy-data:

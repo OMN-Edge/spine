@@ -27,22 +27,25 @@ describe('where the app may write, as installed', () => {
     }
   });
 
-  it('in compose, the relay reads the same database as the server, so a plan is found where it is asked for (S-64)', () => {
+  it('in compose, the relay reads the same database as the server, unless the database is Postgres, when it has a volume of its own (S-64, P9)', () => {
     const compose = file('compose.yaml');
     const service = (name: string) => compose.split(/^ {2}(?=\S)/m).find(block => block.startsWith(`${name}:`)) ?? '';
     expect(service('web')).toMatch(/- data:\/data/);
-    expect(service('relay')).toMatch(/- data:\/data/);
+    expect(service('relay')).toMatch(/- \$\{SPINE_RELAY_DATA:-data\}:\/data/);
     expect(service('relay')).toMatch(/SPINE_DB_PATH: \/data\/spine\.db/);
-    expect(compose).not.toMatch(/relay-data/);
+    expect(compose).toMatch(/^ {2}relay-data:$/m);
   });
 
-  it('as a systemd unit, the relay opens the server\'s database and may write where it is (S-64)', () => {
+  it('as a systemd unit, the relay opens the server\'s database and may write where it is, or a directory of its own with Postgres (S-64, P9)', () => {
     const web = file('systemd/spine-web.service');
     const relay = file('systemd/spine-relay.service');
+    const install = file('install.sh');
     expect(web).toMatch(/^Environment=DATA_DIR=SPINE_DIR\/data$/m);
-    expect(relay).toMatch(/^Environment=DATA_DIR=SPINE_DIR\/data$/m);
-    expect(relay).toMatch(/^Environment=SPINE_DB_PATH=SPINE_DIR\/data\/spine\.db$/m);
-    expect(relay).toMatch(/^ReadWritePaths=SPINE_DIR\/data$/m);
-    expect(relay + file('install.sh')).not.toMatch(/relay-data/);
+    expect(relay).toMatch(/^Environment=DATA_DIR=RELAY_DATA_HERE$/m);
+    expect(relay).toMatch(/^Environment=SPINE_DB_PATH=RELAY_DATA_HERE\/spine\.db$/m);
+    expect(relay).toMatch(/^ReadWritePaths=RELAY_DATA_HERE$/m);
+    // install.sh -r names data/ for SQLite and relay-data/ for Postgres, and fills the placeholder in
+    expect(install).toMatch(/local relay_data="\$\{SPINE_DIR\}\/data"\n\s+if \[ "\$\(env_value SPINE_STORE\)" = "postgres" \]; then\n\s+relay_data="\$\{SPINE_DIR\}\/relay-data"/);
+    expect(install).toMatch(/s\|RELAY_DATA_HERE\|\$\{relay_data\}\|g/);
   });
 });
