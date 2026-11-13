@@ -55,8 +55,10 @@ export const EDGE_HEADER = 'x-spine-edge';
 const MIN_EDGE_SECRET = 32;
 
 /**
- * The secret the load balancer in front of the server adds as `X-Spine-Edge` (a custom request header of the backend service). It is what tells a request the
+ * The secret a load balancer in front of the server adds as `X-Spine-Edge` (a custom request header of the backend service). It is what tells a request the
  * platform forwarded from one a client sent to the port itself, which `SPINE_TRUSTED_HOPS` cannot (S-68): required with the hops, refused without them.
+ * The one exception is a Cloud Run service reached through its own front end (a domain mapping or its `run.app` address) with a single hop: Cloud Run sets
+ * `K_SERVICE` in the container, and nothing but Google's front end can reach the port, so there is no one to prove it against.
  */
 export function edgeSecret(env: NodeJS.ProcessEnv = process.env): string | null {
   const secret = (env.SPINE_EDGE_SECRET ?? '').trim();
@@ -65,7 +67,10 @@ export function edgeSecret(env: NodeJS.ProcessEnv = process.env): string | null 
     if (secret) throw new Error('SPINE_EDGE_SECRET is set without SPINE_TRUSTED_HOPS: the secret only proves a request came through the platform whose hops are counted');
     return null;
   }
-  if (!secret) throw new Error('SPINE_TRUSTED_HOPS needs SPINE_EDGE_SECRET, the value the load balancer adds as X-Spine-Edge, so that a request a client sent to the port itself cannot choose its own address (S-68)');
+  if (!secret) {
+    if (hops === '1' && (env.K_SERVICE ?? '').trim()) return null;
+    throw new Error('SPINE_TRUSTED_HOPS needs SPINE_EDGE_SECRET, the value the load balancer adds as X-Spine-Edge, so that a request a client sent to the port itself cannot choose its own address (S-68); only a Cloud Run service reached directly (K_SERVICE set) with one hop may go without');
+  }
   if (secret.length < MIN_EDGE_SECRET) throw new Error(`SPINE_EDGE_SECRET is ${secret.length} characters; it needs at least ${MIN_EDGE_SECRET} (openssl rand -base64 48)`);
   return secret;
 }

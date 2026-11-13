@@ -67,10 +67,10 @@ describe('where the app may write, as installed', () => {
       for (const [name, value] of [['SPINE_STORE', 'postgres'], ['SPINE_OBJECTS', 'gcs'], ['SPINE_LIMITS', 'store'], ['SPINE_JOBS', 'external'], ['SPINE_SERVER_HEADERS', 'on']]) {
         expect(app, name).toMatch(new RegExp(`name: ${name}, value: "?${value}"? `));
       }
-      expect(app).toMatch(/run\.googleapis\.com\/ingress: internal-and-cloud-load-balancing/);
+      // Reached through Cloud Run's own front end (a domain mapping), so the ingress is open and the hops are one: the platform is the only way to the port (S-68).
+      expect(app).toMatch(/run\.googleapis\.com\/ingress: all/);
+      expect(app).toMatch(/name: SPINE_TRUSTED_HOPS, value: "1"/);
       expect(app).toMatch(/path: \/healthz/);
-      // The hops are believed only for a request that carries the load balancer's secret (S-68): one setting without the other stops the server at start.
-      expect(app).toMatch(/name: SPINE_EDGE_SECRET, valueFrom: \{ secretKeyRef/);
     });
   });
 });

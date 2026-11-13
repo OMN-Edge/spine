@@ -8,7 +8,7 @@ metadata:
   labels:
     cloud.googleapis.com/location: europe-west4
   annotations:
-    run.googleapis.com/ingress: internal-and-cloud-load-balancing
+    run.googleapis.com/ingress: all
 spec:
   template:
     metadata:

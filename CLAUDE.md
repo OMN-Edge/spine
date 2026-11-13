@@ -72,7 +72,7 @@ spine/
 │       ├── totp.ts         # RFC 6238 codes, secret encryption at rest, recovery codes (pure; no store)
 │       ├── second-factor.ts # checkSecondFactor(): joins totp.ts to the store; atomic spend
 │       ├── cli.ts          # operator commands: create-user, set-password, reset-link, disable-2fa, delete-user, list-users
-│       ├── trust-proxy.ts  # the only addresses whose X-Forwarded-For is believed (loopback, SPINE_TRUSTED_PROXIES), or the platform's hops (SPINE_TRUSTED_HOPS, Cloud Run) of a request that carries the load balancer's SPINE_EDGE_SECRET; limiters key on req.ip
+│       ├── trust-proxy.ts  # the only addresses whose X-Forwarded-For is believed (loopback, SPINE_TRUSTED_PROXIES), or the platform's hops (SPINE_TRUSTED_HOPS, Cloud Run) (one hop on Cloud Run itself, or two behind a load balancer whose SPINE_EDGE_SECRET the request carries); limiters key on req.ip
 │       ├── headers.ts, limits.ts, jobs.ts, local-files.ts  # for a host with no proxy of ours and no disk (docs/deploy-cloud-run.md): the security headers the server sets (SPINE_SERVER_HEADERS), limits counted in the database for every instance (SPINE_LIMITS), the hourly work as `node dist/jobs.js` (SPINE_JOBS), and whether the process keeps a file at all
 │       ├── disk-space.ts, permissions.ts  # the free-space reserve a sealed write must leave (`SPINE_MIN_FREE_MB`, S-56); the modes data and backups are made with and the start-up check that the data directory is closed (S-61)
 │       ├── read-budget.ts, read-slots.ts  # bytes of a share one source may read an hour, and reads of sealed objects one account may have open at once (S-57, S-58)

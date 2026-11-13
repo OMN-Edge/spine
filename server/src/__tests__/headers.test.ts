@@ -140,4 +140,14 @@ describe('the platform’s proof (SPINE_EDGE_SECRET, S-68)', () => {
     expect(() => edgeSecret({ SPINE_EDGE_SECRET: EDGE })).toThrow(/without SPINE_TRUSTED_HOPS/);
     expect(() => trustProxySetting({ SPINE_TRUSTED_HOPS: '2' })).toThrow(/needs SPINE_EDGE_SECRET/);
   });
+
+  it('is not needed for a Cloud Run service reached directly with one hop, and only then', () => {
+    // K_SERVICE is set by Cloud Run in its containers; the platform's front end is the only way to the port there.
+    expect(edgeSecret({ SPINE_TRUSTED_HOPS: '1', K_SERVICE: 'spine' })).toBeNull();
+    expect(() => edgeSecret({ SPINE_TRUSTED_HOPS: '1' })).toThrow(/needs SPINE_EDGE_SECRET/);
+    expect(() => edgeSecret({ SPINE_TRUSTED_HOPS: '2', K_SERVICE: 'spine' })).toThrow(/needs SPINE_EDGE_SECRET/);
+    expect(() => edgeSecret({ SPINE_TRUSTED_HOPS: '1', K_SERVICE: '  ' })).toThrow(/needs SPINE_EDGE_SECRET/);
+    // With the secret it is checked as before, on Cloud Run or not.
+    expect(edgeSecret({ SPINE_TRUSTED_HOPS: '2', K_SERVICE: 'spine', SPINE_EDGE_SECRET: EDGE })).toBe(EDGE);
+  });
 });

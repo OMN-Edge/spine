@@ -3,10 +3,10 @@
 The server, the relay and the hourly work run as Cloud Run services and a job; the accounts are in Cloud SQL (Postgres) and the sealed bytes in a bucket. No instance holds anything: any can be replaced, and more added at any moment, which is what lets it grow without a person and be updated without downtime. The configuration is in [deploy/cloud-run/](../deploy/cloud-run/); for one machine with a disk, [deploy-gcp.md](deploy-gcp.md).
 
 ```
- browser ──► global load balancer ──► Cloud Run: spine ───┐            (the page, the accounts, the vault, shares)
- (TLS, apex domain, CDN for     │                         ├──► Cloud SQL (Postgres)   rows: accounts, sessions, limits
-  the hashed files, Cloud Armor)└──► Cloud Run: spine-relay ┤──► Cloud Storage bucket   sealed bytes: vault objects, shares
-                                          │               │
+ browser ──► Cloud Run's front end ──► Cloud Run: spine ───┐            (the page, the accounts, the vault, shares)
+ (TLS, the domain mappings,     │                          ├──► Cloud SQL (Postgres)   rows: accounts, sessions, limits
+  spreads requests over         └──► Cloud Run: spine-relay ┤──► Cloud Storage bucket   sealed bytes: vault objects, shares
+  the instances)                          │                │
                                           └──► Vertex AI (eu endpoint), as the relay's own service account
  Cloud Scheduler (hourly) ──► Cloud Run job: spine-jobs ──┘            (ended shares, reminders, ended sign-ins)
 ```
@@ -18,7 +18,7 @@ Each of these is a setting, off by default, so a machine with Caddy or nginx and
 | Setting | What it changes | Why an instance has to |
 |---|---|---|
 | `SPINE_SERVER_HEADERS=on` | The server sets the content security policy, HSTS, `X-Frame-Options`, `nosniff`, the referrer and permissions policies, the no-store on `/share/`, and refuses dot-files. | Here no proxy of ours is in front to do it. |
-| `SPINE_TRUSTED_HOPS=2` and `SPINE_EDGE_SECRET` | Takes the client's address from `X-Forwarded-For` by depth: the platform appends the address it saw, so what a client wrote earlier is ignored (2 behind the load balancer). The load balancer also adds the secret as `X-Spine-Edge`, and a request without it has its forwarding headers dropped before anything reads an address, so a client that reached the port some other way cannot choose its own (**S-68**). The server refuses to start with one setting and not the other. | The platform's front end has no address to name in `SPINE_TRUSTED_PROXIES`, and without this every visitor would be one address with one rate limit (SECURITY.md **S-31**). |
+| `SPINE_TRUSTED_HOPS=1` | Takes the client's address from `X-Forwarded-For` by depth: Cloud Run's front end appends the address it saw, so what a client wrote earlier is ignored. The server accepts it without `SPINE_EDGE_SECRET` only when `K_SERVICE` is set, which Cloud Run does, and the count is 1; behind a load balancer it is 2 and the secret is required ([When you outgrow it](#when-you-outgrow-it-a-load-balancer-in-front), **S-68**). | The platform's front end has no address to name in `SPINE_TRUSTED_PROXIES`, and without this every visitor would be one address with one rate limit (SECURITY.md **S-31**). |
 | `SPINE_LIMITS=store` | Every limit (sign-in, sign-up, recovery, shares, the per-address ones) is counted in the database, one count for all instances. | Counted in each instance, a limit that guards a password is N times weaker with N instances (**S-66**). |
 | `SPINE_JOBS=external` | The server starts no timer; `node dist/jobs.js` does the hourly work once, from a job. | An instance that scales to nothing, or is not given the processor between requests, does not keep time. Every pass is safe to run twice at once. |
 | `SPINE_STORE=postgres`, `SPINE_OBJECTS=gcs` | The rows are in Postgres and the bytes in a bucket; with both, the process writes no file, closes no directory and mirrors no backup (`local-files.ts`, held by a test). | State on an instance's disk is state a replacement does not have. |
@@ -84,11 +84,10 @@ A Google Cloud project with billing, `gcloud` signed in, and a domain whose reco
    mk() { printf %s "$2" | gcloud secrets create "$1" --data-file=-; }
    mk spine-session-secret "$(openssl rand -base64 48)"
    mk spine-relay-secret "$(openssl rand -base64 48)"
-   mk spine-edge-secret "$(openssl rand -base64 48)"   # the load balancer adds it to every request (step 9)
    mk spine-database-url "postgres://spine:PASSWORD@/spine?host=/cloudsql/$PROJECT_ID:$REGION:$INSTANCE"
    mk spine-brevo-key "..."                       # the mail provider's API key
    gcloud secrets create spine-fair-use --data-file=fair-use.json   # the hidden ceilings (docs/billing.md); an empty {} to use the built-in ones
-   for s in spine-session-secret spine-edge-secret spine-database-url spine-brevo-key spine-fair-use; do
+   for s in spine-session-secret spine-database-url spine-brevo-key spine-fair-use; do
      gcloud secrets add-iam-policy-binding $s --member=serviceAccount:$APP --role=roles/secretmanager.secretAccessor
    done
    for s in spine-relay-secret spine-database-url; do
@@ -107,7 +106,7 @@ A Google Cloud project with billing, `gcloud` signed in, and a domain whose reco
    gcloud run jobs replace deploy/cloud-run/jobs.job.yaml --region=$REGION
    ```
 
-   Both services take traffic from the load balancer only (`ingress: internal-and-cloud-load-balancing`), which is what makes the hop count safe: nothing can reach the port with a header of its own.
+   Both services take traffic from the internet through Cloud Run's own front end (`ingress: all`), which a domain mapping needs. That is what makes one hop safe: the container's port is reachable only through Google's front end, which writes the last entry of `X-Forwarded-For`, so nothing can reach it with a header of its own. The `run.app` addresses stay public too; the server tells search engines they are copies of the real site (`seo.ts`).
 
 8. **The hourly job.** Cloud Scheduler starts it with an identity that may run it and nothing else.
 
@@ -119,7 +118,15 @@ A Google Cloud project with billing, `gcloud` signed in, and a domain whose reco
      --oauth-service-account-email=spine-scheduler@$PROJECT_ID.iam.gserviceaccount.com
    ```
 
-9. **The load balancer, the certificate and the names.** A global external Application Load Balancer, with a serverless network endpoint group for each service, one URL map that sends `spinevault.eu` to the app and `relay.spinevault.eu` to the relay, a Google-managed certificate for both names, and a redirect from port 80. The apex domain is why it is a load balancer and not a domain mapping. Turn Cloud CDN on for the app's backend with the cache mode that follows the origin's headers (`USE_ORIGIN_HEADERS`): only the built files, which the server marks `public, max-age=31536000, immutable`, are then kept; the API and a share are never cached (`no-store`, or no header). Put Cloud Armor on both backends for a first line against floods. Give the app's backend service the secret as a custom request header, `gcloud compute backend-services update BACKEND --global --custom-request-header="X-Spine-Edge:$(gcloud secrets versions access latest --secret=spine-edge-secret)"`, so that every request it forwards carries the proof the server asks for. Then the DNS records for both names go to the load balancer's address. Follow Google's "Set up a global external Application Load Balancer with Cloud Run" for the commands; the choices above are the ones that matter to Spine.
+9. **The names.** Verify the domain with Google once (`gcloud domains verify spinevault.eu`), then map each name to its service and read the records the mapping asks for:
+
+   ```bash
+   gcloud beta run domain-mappings create --service=spine --domain=spinevault.eu --region=$REGION
+   gcloud beta run domain-mappings create --service=spine-relay --domain=relay.spinevault.eu --region=$REGION
+   gcloud beta run domain-mappings describe --domain=spinevault.eu --region=$REGION
+   ```
+
+   Set those records (A and AAAA for the bare name, a CNAME for the relay's) at the registrar. Google issues the certificates when they resolve, which can take a while. Domain mappings are limited to some regions (check `europe-west4` on Cloud Run's locations page) and are described by Google as a preview with more latency from some places than a load balancer; the way out of both is the load balancer below, which needs no change to the code.
 
 10. **Check it.**
 
@@ -133,7 +140,7 @@ A Google Cloud project with billing, `gcloud` signed in, and a domain whose reco
 
     The headers must be there, the job's last execution must have succeeded, and the relay's `relay ready` line must name `aiplatform.eu.rep.googleapis.com`.
 
-    **Confirm the client's address, once.** Make a request from your own connection and read its `remoteAddress` in the server's request log (`gcloud run services logs read spine --region=$REGION --limit=20`). It must be yours. If it is Google's, either the header is not reaching the server (the log then says a request reached the port without `X-Spine-Edge`) or the hop count is too small (every visitor would be one address with one limit); fix the header first, then raise the count by one and look again. Never go past the number that shows your own address, because a count that is too large believes an entry the client wrote. Then send the same request with an `X-Spine-Edge` and an `X-Forwarded-For` of your own making: the address in the log must still be yours.
+    **Confirm the client's address, once.** Make a request from your own connection and read its `remoteAddress` in the server's request log (`gcloud run services logs read spine --region=$REGION --limit=20`). It must be yours. If it is Google's, the hop count is too small (every visitor would be one address with one limit); raise it by one and look again. Never go past the number that shows your own address, because a count that is too large believes an entry the client wrote. Then send the same request with an `X-Forwarded-For` of your own making: the address in the log must still be yours, not the one you wrote.
 
     **The first account.** With `SPINE_REGISTRATION=open`, sign up on the site; the people in `SPINE_ADMIN_EMAILS` can approve others. The operator's commands (`list-users`, `approve-user`, `delete-user`, [CLAUDE.md](../CLAUDE.md)) run from a checkout with the server's settings and the database reached through the Cloud SQL Auth Proxy (`cloud-sql-proxy PROJECT_ID:$REGION:$INSTANCE --port 5432`, and `SPINE_STORE=postgres SPINE_DATABASE_URL=postgres://spine:PASSWORD@127.0.0.1:5432/spine`).
 
@@ -156,7 +163,7 @@ To try it before anyone is on it, deploy the image with `gcloud run deploy spine
 
 What grows by itself, and what you grow.
 
-- **The services** add instances as requests arrive, up to `maxScale`, and the load balancer spreads them. An instance holds nothing, so adding one is free of risk.
+- **The services** add instances as requests arrive, up to `maxScale`, and Cloud Run's front end spreads the requests over them. Set `maxScale` as a cost ceiling too: with no filter in front, a flood would otherwise scale you up and bill you. An instance holds nothing, so adding one is free of risk.
 - **The bucket** has no size to plan for.
 - **The database is the one thing that is a number.** Every request that signs someone in or touches an account reads or writes it; the limited ones (sign-in, sign-up, shares) also write a row to count. Raise its machine size with the load (Cloud SQL resizes with a short failover, which the high-availability pair makes brief), watch its CPU, connections and storage, and pool its connections when `maxScale` times the pool passes what it allows (step 3). Past a size one primary does not suit, the reads that are only reads (the legal texts, a share's metadata) are the ones to move to a replica; there is no code for it yet, and no sign that it is the first thing to be needed.
 - **The hourly job** does one pass over what has ended and is safe to run twice at once. Its file allows ten minutes: raise `timeoutSeconds` if the first pass after a long stop runs over.
@@ -170,4 +177,14 @@ Every size above is arithmetic with a limit named in step 3 and in the files; me
 - **The country of a share's opener is as old as the image,** since the file is baked in. Rebuild monthly (a new tag, a new revision, the same steps), or leave countries unknown.
 - **A limited request costs a write.** Sign-in is the one that matters, and it is already a password hash.
 - **The reads a sealed object makes at once** (`SPINE_MAX_CONCURRENT_READS`, the hourly bytes of a share) are counted in each instance, not across them: they bound what one instance spends on one source, and `maxScale` bounds how many instances there are.
-- **Three Google-side behaviours are the platform's and not this repository's:** the size of a request it accepts (the vault's parts and a share's copy are sent in pieces; check the limit for your region against the largest part your settings allow), the time it gives an instance to stop, and the load balancer's own timeout (raise it for the relay's backend to the service's 300 seconds).
+- **No cache and no flood filter in front.** The built files come from your instances (the browser keeps them, they are marked immutable), and the app's own limits and `maxScale` are the only brakes. The `run.app` addresses are public.
+- **Three Google-side behaviours are the platform's and not this repository's:** the size of a request it accepts (the vault's parts and a share's copy are sent in pieces; check the limit for your region against the largest part your settings allow), the time it gives an instance to stop, and the domain mapping's own behaviour while it is a preview.
+
+## When you outgrow it: a load balancer in front
+
+For a cache of the built files, Cloud Armor against floods, a closed ingress, or a mapping that is not a preview, put a global external Application Load Balancer in front, with a serverless network endpoint group for each service, one URL map (`spinevault.eu` to the app, `relay.spinevault.eu` to the relay), a Google-managed certificate for both names and a redirect from port 80. The code does not change; the settings do.
+
+- Turn Cloud CDN on for the app's backend with the cache mode that follows the origin's headers (`USE_ORIGIN_HEADERS`): only the built files, marked `public, max-age=31536000, immutable`, are then kept; the API and a share are never cached. Put Cloud Armor on both backends. Raise the balancer's timeout for the relay's backend to the service's 300 seconds.
+- Set `ingress: internal-and-cloud-load-balancing` on both services, so that the balancer is the only way in, and `SPINE_TRUSTED_HOPS=2` on the app (the balancer's own address is the last entry).
+- Make the balancer prove it: create a secret (`openssl rand -base64 48`) as `spine-edge-secret`, let the app's service account read it, name it as `SPINE_EDGE_SECRET` in `app.service.yaml`, and add it to the app's backend as a request header, `gcloud compute backend-services update BACKEND --global --custom-request-header="X-Spine-Edge:SECRET"`. A request without it has its forwarding headers dropped before anything reads an address (**S-68**), and the server refuses to start with two hops and no secret. Then send a request with an `X-Spine-Edge` and an `X-Forwarded-For` of your own making: the address in the log must still be yours.
+- Move the DNS records to the balancer's address and remove the domain mappings.
