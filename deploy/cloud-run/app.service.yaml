@@ -68,6 +68,7 @@ spec:
             - { name: SPINE_MAIL_SENDER, value: "Account Notices <notices@spinevault.eu>" }
             - { name: SPINE_REGISTRATION, value: open }
             - { name: SPINE_VAULT_MAX_MB, value: "25600" }
+            - { name: SPINE_EDGE_SECRET, valueFrom: { secretKeyRef: { name: spine-edge-secret, key: latest } } }
             - { name: SESSION_SECRET, valueFrom: { secretKeyRef: { name: spine-session-secret, key: latest } } }
             - { name: SPINE_DATABASE_URL, valueFrom: { secretKeyRef: { name: spine-database-url, key: latest } } }
             - { name: SPINE_RELAY_SECRET, valueFrom: { secretKeyRef: { name: spine-relay-secret, key: latest } } }

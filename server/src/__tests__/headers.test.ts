@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import Fastify from 'fastify';
 import { securityHeaders, contentSecurityPolicy, serverHeaders, serverHeadersOn, isDotfilePath } from '../headers.js';
-import { trustProxySetting } from '../trust-proxy.js';
+import { edgeCheck, edgeSecret, trustProxySetting } from '../trust-proxy.js';
 
 const root = (path: string) => readFileSync(new URL(`../../../${path}`, import.meta.url), 'utf8');
 const quoted = (text: string, header: string) => new RegExp(`${header}\\s+"([^"]+)"`).exec(text)![1].replace(/\s+/g, ' ').replace(/ ;/g, ';').trim();
@@ -78,9 +78,11 @@ describe('the headers the server sets when no proxy of ours is in front', () => 
   });
 });
 
+const EDGE = 'e'.repeat(48);
+
 describe('the platform’s hops in front of the server (SPINE_TRUSTED_HOPS, S-31)', () => {
   const clientOf = async (hops: number, forwarded: string) => {
-    const app = Fastify({ logger: false, trustProxy: trustProxySetting({ SPINE_TRUSTED_HOPS: String(hops) }) });
+    const app = Fastify({ logger: false, trustProxy: trustProxySetting({ SPINE_TRUSTED_HOPS: String(hops), SPINE_EDGE_SECRET: EDGE }) });
     app.get('/', async req => req.ip);
     return (await app.inject({ url: '/', remoteAddress: '10.0.0.1', headers: { 'x-forwarded-for': forwarded } })).body;
   };
@@ -96,10 +98,46 @@ describe('the platform’s hops in front of the server (SPINE_TRUSTED_HOPS, S-31
   });
 
   it('are a depth of 1 to 3, and not mixed with an address list', () => {
-    const one = trustProxySetting({ SPINE_TRUSTED_HOPS: '1' }) as (address: string, hop: number) => boolean;
+    const one = trustProxySetting({ SPINE_TRUSTED_HOPS: '1', SPINE_EDGE_SECRET: EDGE }) as (address: string, hop: number) => boolean;
     expect([one('10.0.0.1', 0), one('198.51.100.7', 1)]).toEqual([true, false]);
-    for (const bad of ['0', '4', 'true', '-1', '1.5']) expect(() => trustProxySetting({ SPINE_TRUSTED_HOPS: bad }), bad).toThrow(/SPINE_TRUSTED_HOPS/);
-    expect(() => trustProxySetting({ SPINE_TRUSTED_HOPS: '1', SPINE_TRUSTED_PROXIES: '10.0.0.1' })).toThrow(/both set/);
+    for (const bad of ['0', '4', 'true', '-1', '1.5']) expect(() => trustProxySetting({ SPINE_TRUSTED_HOPS: bad, SPINE_EDGE_SECRET: EDGE }), bad).toThrow(/SPINE_TRUSTED_HOPS/);
+    expect(() => trustProxySetting({ SPINE_TRUSTED_HOPS: '1', SPINE_TRUSTED_PROXIES: '10.0.0.1', SPINE_EDGE_SECRET: EDGE })).toThrow(/both set/);
     expect(trustProxySetting({})).toEqual(['127.0.0.1', '::1']);
+  });
+});
+
+describe('the platform’s proof (SPINE_EDGE_SECRET, S-68)', () => {
+  const env = { SPINE_TRUSTED_HOPS: '1', SPINE_EDGE_SECRET: EDGE };
+  const build = () => {
+    const app = Fastify({ logger: false, trustProxy: trustProxySetting(env) });
+    edgeCheck(app, env);
+    app.get('/', async req => ({ ip: req.ip, edge: req.headers['x-spine-edge'] ?? null, forwarded: req.headers['x-forwarded-for'] ?? null }));
+    return app;
+  };
+  const ask = async (headers: Record<string, string>) =>
+    (await build().inject({ url: '/', remoteAddress: '10.0.0.1', headers })).json() as { ip: string; edge: string | null; forwarded: string | null };
+
+  it('believes the forwarded address of a request that carries the secret', async () => {
+    expect(await ask({ 'x-spine-edge': EDGE, 'x-forwarded-for': '203.0.113.9, 198.51.100.7' })).toMatchObject({ ip: '198.51.100.7' });
+  });
+
+  it('takes the connecting address of one that does not, whatever it wrote', async () => {
+    // A client that reached the port itself writes the whole header: without the secret its chosen address is not used (S-68).
+    expect(await ask({ 'x-forwarded-for': '203.0.113.50' })).toMatchObject({ ip: '10.0.0.1', forwarded: null });
+    expect(await ask({ 'x-spine-edge': 'f'.repeat(48), 'x-forwarded-for': '203.0.113.50' })).toMatchObject({ ip: '10.0.0.1' });
+    expect(await ask({ 'x-spine-edge': EDGE.slice(0, -1), 'x-forwarded-for': '203.0.113.50' })).toMatchObject({ ip: '10.0.0.1' });
+  });
+
+  it('never lets the secret reach a handler', async () => {
+    expect((await ask({ 'x-spine-edge': EDGE, 'x-forwarded-for': '198.51.100.7' })).edge).toBeNull();
+    expect((await ask({ 'x-spine-edge': 'wrong' })).edge).toBeNull();
+  });
+
+  it('is required with the hops, long enough, and not set without them', () => {
+    expect(edgeSecret({})).toBeNull();
+    expect(() => edgeSecret({ SPINE_TRUSTED_HOPS: '1' })).toThrow(/needs SPINE_EDGE_SECRET/);
+    expect(() => edgeSecret({ SPINE_TRUSTED_HOPS: '1', SPINE_EDGE_SECRET: 'short' })).toThrow(/at least 32/);
+    expect(() => edgeSecret({ SPINE_EDGE_SECRET: EDGE })).toThrow(/without SPINE_TRUSTED_HOPS/);
+    expect(() => trustProxySetting({ SPINE_TRUSTED_HOPS: '2' })).toThrow(/needs SPINE_EDGE_SECRET/);
   });
 });

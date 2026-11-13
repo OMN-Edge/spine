@@ -69,6 +69,8 @@ describe('where the app may write, as installed', () => {
       }
       expect(app).toMatch(/run\.googleapis\.com\/ingress: internal-and-cloud-load-balancing/);
       expect(app).toMatch(/path: \/healthz/);
+      // The hops are believed only for a request that carries the load balancer's secret (S-68): one setting without the other stops the server at start.
+      expect(app).toMatch(/name: SPINE_EDGE_SECRET, valueFrom: \{ secretKeyRef/);
     });
   });
 });

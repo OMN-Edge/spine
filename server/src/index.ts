@@ -1,6 +1,6 @@
 import { objects } from './objects/index.js';
 import { sessionRoutes } from './routes/sessions.js';
-import { trustProxySetting } from './trust-proxy.js';
+import { edgeCheck, trustProxySetting } from './trust-proxy.js';
 import { serverHeaders, serverHeadersOn } from './headers.js';
 import Fastify from 'fastify';
 import { sameOriginOnly } from './same-origin.js';
@@ -106,6 +106,8 @@ app.log.info(
   'model settings given to devices',
 );
 
+// First, before any hook reads an address: where the platform is the proxy, only a request it forwarded is believed about where it came from (S-68).
+edgeCheck(app);
 // With no proxy of ours in front (Cloud Run), the server sets the headers the proxy would (headers.ts).
 if (serverHeadersOn()) serverHeaders(app);
 else if (process.env.SPINE_TRUSTED_HOPS) app.log.warn('SPINE_TRUSTED_HOPS is set (the platform is the proxy) and SPINE_SERVER_HEADERS is not on: nothing sets the security headers');

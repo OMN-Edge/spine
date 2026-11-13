@@ -18,7 +18,7 @@ Each of these is a setting, off by default, so a machine with Caddy or nginx and
 | Setting | What it changes | Why an instance has to |
 |---|---|---|
 | `SPINE_SERVER_HEADERS=on` | The server sets the content security policy, HSTS, `X-Frame-Options`, `nosniff`, the referrer and permissions policies, the no-store on `/share/`, and refuses dot-files. | Here no proxy of ours is in front to do it. |
-| `SPINE_TRUSTED_HOPS=2` | Takes the client's address from `X-Forwarded-For` by depth: the platform appends the address it saw, so what a client wrote earlier is ignored (1 when Cloud Run is reached directly, 2 behind the load balancer). | The platform's front end has no address to name in `SPINE_TRUSTED_PROXIES`, and without this every visitor would be one address with one rate limit (SECURITY.md **S-31**). |
+| `SPINE_TRUSTED_HOPS=2` and `SPINE_EDGE_SECRET` | Takes the client's address from `X-Forwarded-For` by depth: the platform appends the address it saw, so what a client wrote earlier is ignored (2 behind the load balancer). The load balancer also adds the secret as `X-Spine-Edge`, and a request without it has its forwarding headers dropped before anything reads an address, so a client that reached the port some other way cannot choose its own (**S-68**). The server refuses to start with one setting and not the other. | The platform's front end has no address to name in `SPINE_TRUSTED_PROXIES`, and without this every visitor would be one address with one rate limit (SECURITY.md **S-31**). |
 | `SPINE_LIMITS=store` | Every limit (sign-in, sign-up, recovery, shares, the per-address ones) is counted in the database, one count for all instances. | Counted in each instance, a limit that guards a password is N times weaker with N instances (**S-66**). |
 | `SPINE_JOBS=external` | The server starts no timer; `node dist/jobs.js` does the hourly work once, from a job. | An instance that scales to nothing, or is not given the processor between requests, does not keep time. Every pass is safe to run twice at once. |
 | `SPINE_STORE=postgres`, `SPINE_OBJECTS=gcs` | The rows are in Postgres and the bytes in a bucket; with both, the process writes no file, closes no directory and mirrors no backup (`local-files.ts`, held by a test). | State on an instance's disk is state a replacement does not have. |
@@ -84,10 +84,11 @@ A Google Cloud project with billing, `gcloud` signed in, and a domain whose reco
    mk() { printf %s "$2" | gcloud secrets create "$1" --data-file=-; }
    mk spine-session-secret "$(openssl rand -base64 48)"
    mk spine-relay-secret "$(openssl rand -base64 48)"
+   mk spine-edge-secret "$(openssl rand -base64 48)"   # the load balancer adds it to every request (step 9)
    mk spine-database-url "postgres://spine:PASSWORD@/spine?host=/cloudsql/$PROJECT_ID:$REGION:$INSTANCE"
    mk spine-brevo-key "..."                       # the mail provider's API key
    gcloud secrets create spine-fair-use --data-file=fair-use.json   # the hidden ceilings (docs/billing.md); an empty {} to use the built-in ones
-   for s in spine-session-secret spine-database-url spine-brevo-key spine-fair-use; do
+   for s in spine-session-secret spine-edge-secret spine-database-url spine-brevo-key spine-fair-use; do
      gcloud secrets add-iam-policy-binding $s --member=serviceAccount:$APP --role=roles/secretmanager.secretAccessor
    done
    for s in spine-relay-secret spine-database-url; do
@@ -118,7 +119,7 @@ A Google Cloud project with billing, `gcloud` signed in, and a domain whose reco
      --oauth-service-account-email=spine-scheduler@$PROJECT_ID.iam.gserviceaccount.com
    ```
 
-9. **The load balancer, the certificate and the names.** A global external Application Load Balancer, with a serverless network endpoint group for each service, one URL map that sends `spinevault.eu` to the app and `relay.spinevault.eu` to the relay, a Google-managed certificate for both names, and a redirect from port 80. The apex domain is why it is a load balancer and not a domain mapping. Turn Cloud CDN on for the app's backend with the cache mode that follows the origin's headers (`USE_ORIGIN_HEADERS`): only the built files, which the server marks `public, max-age=31536000, immutable`, are then kept; the API and a share are never cached (`no-store`, or no header). Put Cloud Armor on both backends for a first line against floods. Then the DNS records for both names go to the load balancer's address. Follow Google's "Set up a global external Application Load Balancer with Cloud Run" for the commands; the choices above are the ones that matter to Spine.
+9. **The load balancer, the certificate and the names.** A global external Application Load Balancer, with a serverless network endpoint group for each service, one URL map that sends `spinevault.eu` to the app and `relay.spinevault.eu` to the relay, a Google-managed certificate for both names, and a redirect from port 80. The apex domain is why it is a load balancer and not a domain mapping. Turn Cloud CDN on for the app's backend with the cache mode that follows the origin's headers (`USE_ORIGIN_HEADERS`): only the built files, which the server marks `public, max-age=31536000, immutable`, are then kept; the API and a share are never cached (`no-store`, or no header). Put Cloud Armor on both backends for a first line against floods. Give the app's backend service the secret as a custom request header, `gcloud compute backend-services update BACKEND --global --custom-request-header="X-Spine-Edge:$(gcloud secrets versions access latest --secret=spine-edge-secret)"`, so that every request it forwards carries the proof the server asks for. Then the DNS records for both names go to the load balancer's address. Follow Google's "Set up a global external Application Load Balancer with Cloud Run" for the commands; the choices above are the ones that matter to Spine.
 
 10. **Check it.**
 
@@ -132,7 +133,7 @@ A Google Cloud project with billing, `gcloud` signed in, and a domain whose reco
 
     The headers must be there, the job's last execution must have succeeded, and the relay's `relay ready` line must name `aiplatform.eu.rep.googleapis.com`.
 
-    **Confirm the client's address, once.** Make a request from your own connection and read its `remoteAddress` in the server's request log (`gcloud run services logs read spine --region=$REGION --limit=20`). It must be yours. If it is Google's, the hop count is too small (every visitor would be one address with one limit); raise it by one and look again. Never go past the number that shows your own address, because a count that is too large believes an entry the client wrote.
+    **Confirm the client's address, once.** Make a request from your own connection and read its `remoteAddress` in the server's request log (`gcloud run services logs read spine --region=$REGION --limit=20`). It must be yours. If it is Google's, either the header is not reaching the server (the log then says a request reached the port without `X-Spine-Edge`) or the hop count is too small (every visitor would be one address with one limit); fix the header first, then raise the count by one and look again. Never go past the number that shows your own address, because a count that is too large believes an entry the client wrote. Then send the same request with an `X-Spine-Edge` and an `X-Forwarded-For` of your own making: the address in the log must still be yours.
 
     **The first account.** With `SPINE_REGISTRATION=open`, sign up on the site; the people in `SPINE_ADMIN_EMAILS` can approve others. The operator's commands (`list-users`, `approve-user`, `delete-user`, [CLAUDE.md](../CLAUDE.md)) run from a checkout with the server's settings and the database reached through the Cloud SQL Auth Proxy (`cloud-sql-proxy PROJECT_ID:$REGION:$INSTANCE --port 5432`, and `SPINE_STORE=postgres SPINE_DATABASE_URL=postgres://spine:PASSWORD@127.0.0.1:5432/spine`).
 

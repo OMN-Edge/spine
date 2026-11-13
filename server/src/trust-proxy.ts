@@ -1,4 +1,6 @@
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { isIP } from 'node:net';
+import type { FastifyInstance } from 'fastify';
 
 /**
  * The addresses Fastify believes when they send `X-Forwarded-For`: nginx on this host and no one else
@@ -40,8 +42,55 @@ export function trustProxySetting(env: NodeJS.ProcessEnv = process.env): string[
   if (!hops) return trustedProxies(env);
   if ((env.SPINE_TRUSTED_PROXIES ?? '').trim()) throw new Error('SPINE_TRUSTED_HOPS and SPINE_TRUSTED_PROXIES are both set: use the one that says how the proxy is known (S-31)');
   if (!/^[1-3]$/.test(hops)) throw new Error(`SPINE_TRUSTED_HOPS: "${hops}" is not 1, 2 or 3; it counts the platform's own hops in front of the server, and a larger number would believe what the client wrote (S-31)`);
-  // A function and not Fastify's own number: Fastify refuses a bare hop count (it cannot tell the platform from a client that reached the port), and
-  // this is only for a port that the platform alone can reach, which is how Cloud Run serves a container.
+  edgeSecret(env); // a depth is believed only for a request that carries the proof it came through the platform (S-68)
+  // A function and not Fastify's own number: Fastify refuses a bare hop count (it cannot tell the platform from a client that reached the port),
+  // so `edgeCheck` is what tells them apart: a request without the platform's secret loses its forwarding headers before anything reads an address.
   const depth = Number(hops);
   return (_address, hop) => hop < depth;
+}
+
+/** The header the platform's front end adds to every request it forwards, carrying `SPINE_EDGE_SECRET`. */
+export const EDGE_HEADER = 'x-spine-edge';
+
+const MIN_EDGE_SECRET = 32;
+
+/**
+ * The secret the load balancer in front of the server adds as `X-Spine-Edge` (a custom request header of the backend service). It is what tells a request the
+ * platform forwarded from one a client sent to the port itself, which `SPINE_TRUSTED_HOPS` cannot (S-68): required with the hops, refused without them.
+ */
+export function edgeSecret(env: NodeJS.ProcessEnv = process.env): string | null {
+  const secret = (env.SPINE_EDGE_SECRET ?? '').trim();
+  const hops = (env.SPINE_TRUSTED_HOPS ?? '').trim();
+  if (!hops) {
+    if (secret) throw new Error('SPINE_EDGE_SECRET is set without SPINE_TRUSTED_HOPS: the secret only proves a request came through the platform whose hops are counted');
+    return null;
+  }
+  if (!secret) throw new Error('SPINE_TRUSTED_HOPS needs SPINE_EDGE_SECRET, the value the load balancer adds as X-Spine-Edge, so that a request a client sent to the port itself cannot choose its own address (S-68)');
+  if (secret.length < MIN_EDGE_SECRET) throw new Error(`SPINE_EDGE_SECRET is ${secret.length} characters; it needs at least ${MIN_EDGE_SECRET} (openssl rand -base64 48)`);
+  return secret;
+}
+
+const digest = (value: string) => createHash('sha256').update(value, 'utf8').digest();
+let lastWarned = 0;
+
+/**
+ * Before anything reads an address: a request that does not carry `SPINE_EDGE_SECRET` in `X-Spine-Edge` did not come through the platform, so what it says
+ * about itself is not believed. Its forwarding headers are dropped and its address is the one it connected from. The header itself is always dropped, so the
+ * secret reaches no handler and no log. Register it first.
+ */
+export function edgeCheck(app: FastifyInstance, env: NodeJS.ProcessEnv = process.env): void {
+  const secret = edgeSecret(env);
+  if (secret === null) return;
+  const wanted = digest(secret);
+  app.addHook('onRequest', async req => {
+    const given = req.headers[EDGE_HEADER];
+    delete req.headers[EDGE_HEADER];
+    if (typeof given === 'string' && timingSafeEqual(digest(given), wanted)) return;
+    for (const name of ['x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'forwarded']) delete req.headers[name];
+    // The platform's own probes arrive this way too; once a minute is enough to see that something else is reaching the port.
+    if (Date.now() - lastWarned > 60_000) {
+      lastWarned = Date.now();
+      req.log.warn('a request reached the port without the platform’s X-Spine-Edge: its forwarding headers were ignored');
+    }
+  });
 }
