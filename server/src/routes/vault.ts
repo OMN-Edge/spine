@@ -97,7 +97,7 @@ export async function vaultRoutes(app: FastifyInstance, opts: VaultRouteOptions 
       if (!(await getAccountsStore().vault.getKeys(req.userId))) return reply.status(404).send({ error: 'this account has no vault yet', code: 'no_vault' });
       await changeCredential(req, req.userId, authValue ?? null, keys, true);
       const user = await getAccountsStore().users.findById(req.userId);
-      if (user) mailAfter(req, user.id, securityChangeMail(user.email, authValue ? 'Your password was changed' : 'Your recovery kit was replaced', new Date().toISOString()), 'vault change');
+      if (user) mailAfter(req, user.id, securityChangeMail(user, authValue ? 'passwordChanged' : 'recoveryKitReplaced', new Date().toISOString()), 'vault change');
       req.log.info({ userId: req.userId }, 'vault keys rewrapped');
       return reply.send({ ok: true });
     },

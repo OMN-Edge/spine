@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { getAccountsStore } from 'spine-core/store/index.js';
+import { isSupportedLanguage } from 'spine-core/languages.js';
 import { deleteAccount, wipeAccount } from '../accounts.js';
 import { AUTH_VALUE, parseVaultKeys } from '../vault-keys.js';
 import { mailAfter, securityChangeMail } from '../notify.js';
@@ -44,9 +45,18 @@ export async function ownAccountRoutes(app: FastifyInstance) {
       return reply.status(409).send({ error: 'this vault has no reset verifier, so it cannot be recovered with the recovery kit alone', code: 'verifier_missing' });
     }
     await store.users.setEmailRecovery(req.userId, enabled);
-    mailAfter(req, user.id, securityChangeMail(user.email, enabled ? 'Recovery of your account by email was turned on' : 'Recovery of your account by email was turned off', new Date().toISOString()), 'email recovery setting');
+    mailAfter(req, user.id, securityChangeMail(user, enabled ? 'emailRecoveryOn' : 'emailRecoveryOff', new Date().toISOString()), 'email recovery setting');
     req.log.info({ userId: req.userId, enabled }, 'email recovery setting changed');
     return reply.send({ ok: true, email_recovery: enabled });
+  });
+
+  // The language the account's mail is written in and its screens start in (one of the languages documents are translated into). Not a
+  // security setting, so it asks for no recent sign-in and sends no mail; null clears it.
+  app.put<{ Body: { language?: unknown } }>('/api/account/language', { preHandler: [requireAuth, app.rateLimit({ max: 30, timeWindow: '10 minutes' })] }, async (req, reply) => {
+    const language = req.body?.language;
+    if (language !== null && !isSupportedLanguage(language)) return reply.status(400).send({ error: 'language must be a supported language code, or null' });
+    await getAccountsStore().users.setLanguage(req.userId, language);
+    return reply.send({ ok: true, language });
   });
 
   // Leaving (GDPR Art. 17, FR-EXP-02): the account, its records and the files, at once. Asks for the password again and for the
@@ -84,7 +94,7 @@ export async function ownAccountRoutes(app: FastifyInstance) {
     }
     const summary = await wipeAccount(req.userId, { authValue, keys });
     logger.info('an account was wiped by its owner', { objects: summary.objects });
-    mailAfter(req, user.id, securityChangeMail(user.email, 'Your records were erased and your account started over with a new password', new Date().toISOString()), 'wipe');
+    mailAfter(req, user.id, securityChangeMail(user, 'wiped', new Date().toISOString()), 'wipe');
     await req.session.destroy();
     return reply.send({ wiped: true, ...summary });
   });

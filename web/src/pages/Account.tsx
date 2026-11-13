@@ -13,6 +13,7 @@ import Passkeys from '../components/Passkeys';
 import AddDevice from '../components/AddDevice';
 import RecoveryKitSettings from '../components/RecoveryKitSettings';
 import EmailRecovery from '../components/EmailRecovery';
+import AccountLanguage from '../components/AccountLanguage';
 import { checkPasswordPolicy } from '../crypto/password-policy';
 import { useI18n } from '../i18n';
 
@@ -71,6 +72,7 @@ export default function Account() {
           <p className="text-sm text-gray-500 mb-3">{t('Keep the records of someone you look after, such as a child or a parent, apart from your own.')}</p>
           <Link to="/profiles" className="text-sm text-brand-600 hover:underline">{t('See and add people')}</Link>
         </section>
+        <AccountLanguage />
 
         <h2 id="security" className={heading}>{t('Sign-in and security')}</h2>
         <form onSubmit={submit} className="bg-white border border-gray-200 rounded-xl p-5 mt-6">

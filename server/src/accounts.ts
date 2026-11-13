@@ -10,6 +10,8 @@ import type { VaultKeys } from 'spine-core/store/types.js';
 import { createUserToken, hashUserToken } from './user-tokens.js';
 import { hashPassword } from './passwords.js';
 import type { MailMessage } from './mail/index.js';
+import { composeMail } from './mail/layout.js';
+import { recipientLanguage, tm, tmn, type Recipient } from './mail/i18n.js';
 
 /**
  * How long a link works. Verification can sit in an inbox overnight; a reset is
@@ -58,34 +60,79 @@ export const signInLink = () => publicUrl('/login');
  * sender are visible to the mail provider and to anyone who sees the inbox, so what
  * the sender is called is the operator's choice (SECURITY.md P8).
  */
-export function verificationMail(to: string, link: string): MailMessage {
-  return {
+export function verificationMail(to: Recipient, link: string): MailMessage {
+  const lang = recipientLanguage(to);
+  return composeMail({
     to,
-    subject: 'Confirm your email address',
-    text:
-      `Confirm your email address to finish creating your account:\n\n${link}\n\n` +
-      `The link works once and expires in 24 hours. If you did not ask for this, ignore this message.\n`,
-  };
+    subject: tm(lang, 'Confirm your email address'),
+    heading: tm(lang, 'Confirm your email address'),
+    intro: [tm(lang, 'Confirm your email address to finish creating your account:')],
+    action: { label: tm(lang, 'Confirm email address'), url: link },
+    outro: [tm(lang, 'The link works once and expires in 24 hours. If you did not ask for this, ignore this message.')],
+  });
 }
 
 /** Sent when the administrator approves an account (only when a mailer is set up). Neutral like the rest. */
-export function approvedMail(to: string, link: string): MailMessage {
-  return {
+export function approvedMail(to: Recipient, link: string): MailMessage {
+  const lang = recipientLanguage(to);
+  return composeMail({
     to,
-    subject: 'Your account is ready',
-    text: `Your account has been approved. You can sign in now:\n\n${link}\n`,
-  };
+    subject: tm(lang, 'Your account is ready'),
+    heading: tm(lang, 'Your account is ready'),
+    intro: [tm(lang, 'Your account has been approved. You can sign in now:')],
+    action: { label: tm(lang, 'Sign in'), url: link },
+  });
 }
 
-export function resetMail(to: string, link: string): MailMessage {
-  return {
+export function resetMail(to: Recipient, link: string): MailMessage {
+  const lang = recipientLanguage(to);
+  return composeMail({
     to,
-    subject: 'Reset your password',
-    text:
-      `Choose a new password:\n\n${link}\n\n` +
-      `The link works once and expires in one hour. If you did not ask for this, ignore this message ` +
-      `— your password has not changed.\n`,
-  };
+    subject: tm(lang, 'Reset your password'),
+    heading: tm(lang, 'Reset your password'),
+    intro: [tm(lang, 'Choose a new password:')],
+    action: { label: tm(lang, 'Choose a new password'), url: link },
+    outro: [tm(lang, 'The link works once and expires in one hour. If you did not ask for this, ignore this message — your password has not changed.')],
+  });
+}
+
+/** Said when someone opens the owner's card; the wording names no record, because the mail is the provider's to see (SECURITY.md P8). */
+export function cardOpenedMail(to: Recipient, at: string, country: string | null): MailMessage {
+  const lang = recipientLanguage(to);
+  return composeMail({
+    to,
+    subject: tm(lang, 'Your Spine card was opened'),
+    heading: tm(lang, 'Your Spine card was opened'),
+    intro: [country ? tm(lang, 'Your Spine card was opened at {at} (UTC), from {country}.', { at, country }) : tm(lang, 'Your Spine card was opened at {at} (UTC).', { at })],
+    action: { label: tm(lang, 'Open Spine'), url: signInLink() },
+    outro: [tm(lang, 'If you, or someone you showed it to, opened it, there is nothing to do. If not, sign in, open the card and turn it off.')],
+  });
+}
+
+/** Once a year, for a card not looked at: it names nothing that is on it, and the mail is the provider's to see (SECURITY.md P8). */
+export function cardReviewMail(to: Recipient): MailMessage {
+  const lang = recipientLanguage(to);
+  return composeMail({
+    to,
+    subject: tm(lang, 'A reminder about your Spine card'),
+    heading: tm(lang, 'Is your Spine card still right?'),
+    intro: [tm(lang, 'It has been a year since you last looked at your Spine card.')],
+    action: { label: tm(lang, 'Open Spine'), url: signInLink() },
+    outro: [tm(lang, 'Sign in, open the card and check that it is still right. If you do nothing it stays as it is, and we will write once more next year.')],
+  });
+}
+
+/** A reminder is due. It says that and nothing of what it is for: no medical content ever goes by mail (SECURITY.md M-53). */
+export function remindersDueMail(to: Recipient, n: number): MailMessage {
+  const lang = recipientLanguage(to);
+  return composeMail({
+    to,
+    subject: tmn(lang, n, 'A reminder is due in Spine', 'Reminders are due in Spine'),
+    heading: tmn(lang, n, 'A reminder is due', '{n} reminders are due'),
+    intro: [tmn(lang, n, 'A reminder you set in Spine is due.', '{n} reminders in Spine are due.')],
+    action: { label: tmn(lang, n, 'See the reminder', 'See the reminders'), url: signInLink() },
+    outro: [tmn(lang, n, 'Sign in to see it. This message does not say what it is about.', 'Sign in to see them. This message does not say what they are about.')],
+  });
 }
 
 /**
@@ -93,48 +140,17 @@ export function resetMail(to: string, link: string): MailMessage {
  * note, nothing about what is shared (the label is the owner's own words and may name a doctor or a condition, the
  * note is a stranger's). The link opens a page that asks them to sign in, so it grants nothing by itself.
  */
-/** Said when someone opens the owner's card; the wording names no record, because the mail is the provider's to see (SECURITY.md P8). */
-export function cardOpenedMail(to: string, at: string, country: string | null): MailMessage {
-  return {
+export function accessRequestMail(to: Recipient, link: string, requestedAt: string, ip: string | null): MailMessage {
+  const lang = recipientLanguage(to);
+  return composeMail({
     to,
-    subject: 'Your Spine card was opened',
-    text:
-      `Your Spine card was opened at ${at} (UTC)${country ? `, from ${country}` : ''}.\n\n` +
-      `If you, or someone you showed it to, opened it, there is nothing to do. If not, sign in, open the card and turn it off.\n`,
-  };
-}
-
-/** Once a year, for a card not looked at: it names nothing that is on it, and the mail is the provider's to see (SECURITY.md P8). */
-export function cardReviewMail(to: string): MailMessage {
-  return {
-    to,
-    subject: 'A reminder about your Spine card',
-    text:
-      `It has been a year since you last looked at your Spine card.\n\n` +
-      `Sign in, open the card and check that it is still right. If you do nothing it stays as it is, and we will write once more next year.\n`,
-  };
-}
-
-/** A reminder is due. It says that and nothing of what it is for: no medical content ever goes by mail (SECURITY.md M-53). */
-export function remindersDueMail(to: string, n: number): MailMessage {
-  return {
-    to,
-    subject: n === 1 ? 'A reminder is due in Spine' : 'Reminders are due in Spine',
-    text:
-      `${n === 1 ? 'A reminder you set in Spine is due' : `${n} reminders in Spine are due`}.\n\n` +
-      `Sign in to see ${n === 1 ? 'it' : 'them'}. This message does not say what ${n === 1 ? 'it is' : 'they are'} about.\n`,
-  };
-}
-
-export function accessRequestMail(to: string, link: string, requestedAt: string, ip: string | null): MailMessage {
-  return {
-    to,
-    subject: 'Someone is waiting for your approval',
-    text:
-      `A link you shared was opened in a browser that is waiting for your approval:\n\n${link}\n\n` +
-      `Requested at ${requestedAt}${ip ? ` from ${ip}` : ''}.\n\n` +
-      `Sign in to approve or deny it. If you do not expect this, deny it, or revoke the link from the Share links page.\n`,
-  };
+    subject: tm(lang, 'Someone is waiting for your approval'),
+    heading: tm(lang, 'Someone is waiting for your approval'),
+    intro: [tm(lang, 'A link you shared was opened in a browser that is waiting for your approval:')],
+    action: { label: tm(lang, 'Review the request'), url: link },
+    details: [[tm(lang, 'Requested at'), requestedAt], ...(ip ? [[tm(lang, 'From address'), ip] as [string, string]] : [])],
+    outro: [tm(lang, 'Sign in to approve or deny it. If you do not expect this, deny it, or revoke the link from the Share links page.')],
+  });
 }
 
 export interface DeletedAccount {

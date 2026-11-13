@@ -75,9 +75,16 @@ export const msg = (english: string) => english;
 const fill = (text: string, values?: Record<string, string | number>) =>
   values ? text.replace(/\{(\w+)\}/g, (whole, name: string) => (name in values ? String(values[name]) : whole)) : text;
 
+let chosenListener: ((lang: LanguageCode) => void) | null = null;
+/** Who is told when the person picks a language (the app, to keep it on the account while signed in); one listener, null to stop. */
+export function onLanguageChosen(listener: ((lang: LanguageCode) => void) | null): void { chosenListener = listener; }
+
 export interface I18n {
   lang: LanguageCode;
+  /** The person picks a language: remembered in this browser, and passed to `onLanguageChosen`. */
   setLang: (lang: LanguageCode) => void;
+  /** Switches to a language the account already has: remembered in this browser, and not reported as a choice. */
+  applyLang: (lang: LanguageCode) => void;
   /** Start in this language unless the reader has chosen one in this browser; not remembered as their choice. */
   preferLang: (lang: string | null | undefined) => void;
   t: (english: string, values?: Record<string, string | number>) => string;
@@ -85,7 +92,7 @@ export interface I18n {
   tx: (english: string, values: Record<string, ReactNode>) => ReactNode;
 }
 
-const make = (lang: LanguageCode, setLang: (lang: LanguageCode) => void, preferLang: I18n['preferLang'] = () => {}): I18n => {
+const make = (lang: LanguageCode, setLang: (lang: LanguageCode) => void, preferLang: I18n['preferLang'] = () => {}, applyLang: I18n['applyLang'] = () => {}): I18n => {
   const screens = screensIn(lang);
   const dictionary: Record<string, string> = screens === 'en' ? {} : DICTIONARIES[screens];
   const t: I18n['t'] = (english, values) => fill(dictionary[english] ?? english, values);
@@ -93,6 +100,7 @@ const make = (lang: LanguageCode, setLang: (lang: LanguageCode) => void, preferL
   return {
     lang,
     setLang,
+    applyLang,
     preferLang,
     t,
     // The forms of a plural are kept as "one|few|other" under the key "one-english|other-english"; a language with
@@ -122,10 +130,14 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   // The screens' language: in a language they are not written in, they are English.
   useEffect(() => { document.documentElement.lang = screensIn(lang); }, [lang]);
 
-  const setLang = useCallback((next: LanguageCode) => {
+  const applyLang = useCallback((next: LanguageCode) => {
     setLangState(next);
     try { localStorage.setItem(STORAGE_KEY, next); } catch { /* it still changes for this visit */ }
   }, []);
+  const setLang = useCallback((next: LanguageCode) => {
+    applyLang(next);
+    chosenListener?.(next);
+  }, [applyLang]);
 
   // A page's own language, such as the one a share link was made in, applies unless the reader has chosen one here.
   const preferLang = useCallback((preferred: string | null | undefined) => {
@@ -135,6 +147,6 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     if (!isLanguage(chosen)) setLangState(preferred);
   }, []);
 
-  const value = useMemo(() => make(lang, setLang, preferLang), [lang, setLang, preferLang]);
+  const value = useMemo(() => make(lang, setLang, preferLang, applyLang), [lang, setLang, preferLang, applyLang]);
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }

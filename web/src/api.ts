@@ -813,13 +813,15 @@ export const api = {
       await clearSealedCache();
       return req('/api/auth/logout', { method: 'POST' });
     },
-    me: () => req<{ authenticated: boolean; email: string; second_factor_enabled?: boolean; email_recovery?: boolean; vault?: boolean; consent_needed?: { health: boolean; terms: boolean } }>('/api/auth/me'),
+    me: () => req<{ authenticated: boolean; email: string; second_factor_enabled?: boolean; email_recovery?: boolean; language?: string | null; vault?: boolean; consent_needed?: { health: boolean; terms: boolean } }>('/api/auth/me'),
     options: () => req<AuthOptions>('/api/auth/options'),
     /** Whether an emailed link may recover the account (SECURITY.md S-38). */
     setEmailRecovery: (enabled: boolean) => put<{ ok: boolean; email_recovery: boolean }>('/api/account/email-recovery', { enabled }),
+    /** The language the account's mail is written in and its screens start in. */
+    setLanguage: (language: string | null) => put<{ ok: boolean; language: string | null }>('/api/account/language', { language }),
     /** The keys are made on the device; the server gets the derived credential and the sealed keys, never the password. */
-    register: (email: string, account: { authValue: string; keys: VaultKeyPayload }, consent: { health_data: boolean; terms: boolean }, ref?: string) =>
-      post<{ ok: boolean; message: string; pending?: boolean }>('/api/auth/register', { email, auth_value: account.authValue, keys: account.keys, consent_health_data: consent.health_data, accept_terms: consent.terms, ref }),
+    register: (email: string, account: { authValue: string; keys: VaultKeyPayload }, consent: { health_data: boolean; terms: boolean }, ref?: string, language?: string) =>
+      post<{ ok: boolean; message: string; pending?: boolean }>('/api/auth/register', { email, auth_value: account.authValue, keys: account.keys, consent_health_data: consent.health_data, accept_terms: consent.terms, ref, language }),
     /** An account without a vault makes one: the new credential replaces the password the server knew. */
     createVault: (account: { authValue: string; keys: VaultKeyPayload }) => put<{ ok: boolean }>('/api/vault/keys', { auth_value: account.authValue, keys: account.keys }),
     rewrap: (change: { authValue?: string; keys: VaultKeyPayload }) => post<{ ok: boolean }>('/api/vault/keys/rewrap', { auth_value: change.authValue, keys: change.keys }),

@@ -88,7 +88,7 @@ export async function remindCardReviews(now = new Date()): Promise<number> {
     if (!owner) continue;
     // Marked first: a mail that fails is not tried every hour, and the next year's reminder is the retry.
     await store.shared.markReminded(due.id, now.toISOString());
-    await mailer.send(cardReviewMail(owner.email)).then(() => { sent++; }, () => undefined);
+    await mailer.send(cardReviewMail(owner)).then(() => { sent++; }, () => undefined);
   }
   return sent;
 }
@@ -372,7 +372,7 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
       const mailer = getMailer();
       if (mailer.enabled) {
         const owner = await getAccountsStore().users.findById(bundle.userId);
-        if (owner) void mailer.send(accessRequestMail(owner.email, publicUrl(`/share-requests/${id}`), requestedAt, null)).catch(later('mailing the owner about a request to open a share'));
+        if (owner) void mailer.send(accessRequestMail(owner, publicUrl(`/share-requests/${id}`), requestedAt, null)).catch(later('mailing the owner about a request to open a share'));
       }
       return reply.status(202).header('Cache-Control', 'no-store').send({ request_id: id, status: 'pending' });
     },
@@ -407,7 +407,7 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
       if (mailer.enabled && Date.now() - last > CARD_MAIL_EVERY_MS) {
         cardMailed.set(bundle.id, Date.now());
         const owner = await getAccountsStore().users.findById(bundle.userId);
-        if (owner) void mailer.send(cardOpenedMail(owner.email, new Date().toISOString(), await countryOf(req.ip ?? null))).catch(later('mailing the owner about a card being opened'));
+        if (owner) void mailer.send(cardOpenedMail(owner, new Date().toISOString(), await countryOf(req.ip ?? null))).catch(later('mailing the owner about a card being opened'));
       }
     }
     return reply.status(204).send();

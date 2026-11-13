@@ -92,7 +92,7 @@ export async function passkeyRoutes(app: FastifyInstance, opts: PasskeyRouteOpti
     });
     if (!added) return reply.status(409).send({ error: 'this passkey is already registered' });
     const user = await getAccountsStore().users.findById(req.userId);
-    if (user) mailAfter(req, user.id, securityChangeMail(user.email, 'A passkey was added to your account.', new Date().toISOString()), 'passkey added');
+    if (user) mailAfter(req, user.id, securityChangeMail(user, 'passkeyAdded', new Date().toISOString()), 'passkey added');
     return reply.status(201).send({ ok: true });
   });
 
@@ -109,14 +109,14 @@ export async function passkeyRoutes(app: FastifyInstance, opts: PasskeyRouteOpti
     if (wrapped !== null && !sealed(wrapped, 90, 200)) return reply.status(400).send({ error: 'the sealed key is not what it should be' });
     if (!(await getAccountsStore().users.setPasskeyWrappedKey(req.userId, req.params.id, wrapped as string | null))) return reply.status(404).send({ error: 'not found' });
     const user = await getAccountsStore().users.findById(req.userId);
-    if (user) mailAfter(req, user.id, securityChangeMail(user.email, wrapped === null ? 'A passkey can no longer open your records.' : 'A passkey can now open your records.', new Date().toISOString()), 'passkey vault key');
+    if (user) mailAfter(req, user.id, securityChangeMail(user, wrapped === null ? 'passkeyClosedVault' : 'passkeyOpensVault', new Date().toISOString()), 'passkey vault key');
     return reply.send({ ok: true });
   });
 
   app.delete<{ Params: { id: string } }>('/api/auth/passkeys/:id', { preHandler: [requireAuth, requireRecentAuth] }, async (req, reply) => {
     if (!(await getAccountsStore().users.removePasskey(req.userId, req.params.id))) return reply.status(404).send({ error: 'not found' });
     const user = await getAccountsStore().users.findById(req.userId);
-    if (user) mailAfter(req, user.id, securityChangeMail(user.email, 'A passkey was removed from your account.', new Date().toISOString()), 'passkey removed');
+    if (user) mailAfter(req, user.id, securityChangeMail(user, 'passkeyRemoved', new Date().toISOString()), 'passkey removed');
     return reply.send({ ok: true });
   });
 
@@ -166,7 +166,7 @@ export async function passkeyRoutes(app: FastifyInstance, opts: PasskeyRouteOpti
 
     await req.session.regenerate();
     const device = await startSession(req, reply, user.id, user.auth_version);
-    if (device === 'new') mailAfter(req, user.id, newSignInMail(user.email, new Date().toISOString()), 'new sign-in');
+    if (device === 'new') mailAfter(req, user.id, newSignInMail(user, new Date().toISOString()), 'new sign-in');
     req.log.info({ ip: req.ip, userId: user.id }, 'login succeeded with a passkey');
     // The sealed key travels with the sign-in: it is ciphertext, and only this passkey's PRF output (on the device) opens it.
     return reply.send({ ok: true, email: user.email, credential_id: passkey.id, wrapped_key: passkey.wrapped_key });

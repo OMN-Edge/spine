@@ -41,6 +41,7 @@ export function createBrevoMailer(config: MailerConfig): Mailer {
           to: [{ email: message.to }],
           subject: message.subject,
           textContent: message.text,
+          ...(message.html ? { htmlContent: message.html } : {}),
         }),
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });

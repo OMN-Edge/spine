@@ -108,7 +108,7 @@ export async function enrolmentRoutes(app: FastifyInstance, opts: EnrolmentRoute
     await req.session.regenerate();
     const device = await startSession(req, reply, user.id, user.auth_version, { passwordTyped: false });
     // Always told: a way in that needed no password is worth a mail even from a browser the account knows.
-    mailAfter(req, user.id, device === 'new' ? newSignInMail(user.email, new Date().toISOString()) : securityChangeMail(user.email, 'A device was let in to your account by one that was signed in', new Date().toISOString()), 'device enrolled');
+    mailAfter(req, user.id, device === 'new' ? newSignInMail(user, new Date().toISOString()) : securityChangeMail(user, 'deviceEnrolled', new Date().toISOString()), 'device enrolled');
     req.log.info({ ip: req.ip, userId: user.id }, 'login succeeded by enrolment');
     return reply.header('Cache-Control', 'no-store').send({ ok: true, email: user.email, credential_id: `enrol:${id}`, wrapped_key: got.wrapped });
   });

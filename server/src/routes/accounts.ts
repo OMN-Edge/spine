@@ -3,6 +3,7 @@ import { HEALTH_CONSENT_VERSION, TERMS_VERSION } from '../legal.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
 import { getAccountsStore } from 'spine-core/store/index.js';
+import { isSupportedLanguage } from 'spine-core/languages.js';
 import { getMailer, type MailMessage } from '../mail/index.js';
 import {
   checkPasswordPolicy,
@@ -122,7 +123,7 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
   });
 
   if (registration === 'open' || registration === 'approval') {
-    app.post<{ Body: { email?: string; password?: string; auth_value?: string; keys?: unknown; consent_health_data?: unknown; accept_terms?: unknown; ref?: unknown } }>(
+    app.post<{ Body: { email?: string; password?: string; auth_value?: string; keys?: unknown; consent_health_data?: unknown; accept_terms?: unknown; ref?: unknown; language?: unknown } }>(
       '/api/auth/register',
       { preHandler: [perSource, perAddress, mailCap, signupCap] },
       async (req, reply) => {
@@ -137,6 +138,8 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
         if (!isPlausibleEmail(address)) {
           return reply.status(400).send({ error: 'a valid email address is required' });
         }
+        // The language the page was in, so the first mail (the one that confirms the address) is written in it; anything else is left unset.
+        const language = isSupportedLanguage(req.body?.language) ? req.body.language : null;
         // Two separate acts, each ticked by the person (GDPR Art. 9(2)(a) and Art. 7): consent to the use of health data is not
         // folded into accepting the terms, and an account is not made on a half answer.
         if (health !== true || terms !== true) {
@@ -166,6 +169,7 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
                 // the administrator's approval stands for it, so mail stays optional there.
                 verifiedAt: verifyByMail ? null : createdAt,
                 approved: !waits,
+                language,
                 consent: { healthVersion: HEALTH_CONSENT_VERSION, termsVersion: TERMS_VERSION },
               });
               if (keys) await tx.vault.putKeys(id, keys, createdAt);
@@ -173,7 +177,7 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
             await countSignup(req.body?.ref);
             if (verifyByMail) {
               const token = await issueUserToken(id, 'verify', VERIFY_TTL_MS);
-              sendLater(req, id, verificationMail(address, verificationLink(token)), 'verification');
+              sendLater(req, id, verificationMail({ email: address, language }, verificationLink(token)), 'verification');
             }
           } catch (err) {
             // Two requests for one new address can race to the unique index. The
@@ -235,7 +239,7 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
       // An owner who turned off recovery by email gets no mail, and the same answer as anyone (S-38).
       if (user && user.email_recovery !== 0) {
         const token = await issueUserToken(user.id, 'reset', RESET_TTL_MS);
-        sendLater(req, user.id, resetMail(user.email, resetLink(token)), 'reset');
+        sendLater(req, user.id, resetMail(user, resetLink(token)), 'reset');
       }
       return reply.send(GENERIC);
     },
@@ -355,8 +359,8 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
       // Said to the address, so a reset the owner did not make is seen (S-38); what the reset did, never anything about the records.
       const owner = await store.users.findById(userId);
       if (owner) {
-        const what = keys && req.body?.erase === true ? 'Your password was reset with a link sent to this address, and your records were erased' : 'Your password was reset with a link sent to this address';
-        mailAfter(req, userId, securityChangeMail(owner.email, what, now), 'reset');
+        const what = keys && req.body?.erase === true ? 'resetByLinkErased' : 'resetByLink';
+        mailAfter(req, userId, securityChangeMail(owner, what, now), 'reset');
       }
 
       req.log.info({ userId, erased: req.body?.erase === true }, 'password reset by link');

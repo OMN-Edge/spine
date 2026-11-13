@@ -144,7 +144,7 @@ export async function delegationRoutes(app: FastifyInstance, opts: DelegationRou
     const claimed = await repo().claim(req.userId, id, sha256(proof), new Date().toISOString(), randomUUID());
     if (!claimed) return reply.status(404).send({ error: 'this code is not valid, or it has been used or has expired', code: 'invalid_code' });
     const owner = await getAccountsStore().users.findById(claimed.grant.owner_user_id);
-    if (owner) mailAfter(req, owner.id, securityChangeMail(owner.email, 'Someone accepted your invitation to a profile: their access starts when you confirm the code they read out to you, on that profile\'s page', new Date().toISOString()), 'delegation accepted');
+    if (owner) mailAfter(req, owner.id, securityChangeMail(owner, 'delegationAccepted', new Date().toISOString()), 'delegation accepted');
     return reply.header('Cache-Control', 'no-store').send({ grant: { id: claimed.grant.id, profile_id: claimed.grant.profile_id, role: claimed.grant.role, owner_email: owner?.email ?? '' }, wrapped: claimed.wrapped });
   });
 
@@ -245,7 +245,7 @@ export async function delegationRoutes(app: FastifyInstance, opts: DelegationRou
       // Committed: the copies in the old owner's vault are gone (their rows are tombstones). A failure here leaves stray sealed bytes nothing refers to.
       for (const id of [...done.objectIds, grant.profile_id]) await removeObject(done.fromUserId, id).catch(err => req.log.error({ err }, 'a sealed object could not be removed after a promotion'));
       const former = await store.users.findById(done.fromUserId);
-      if (former) mailAfter(req, former.id, securityChangeMail(former.email, 'The records of a person you looked after were taken over by that person, and your access to them is paused until they let you back in', new Date().toISOString()), 'promotion');
+      if (former) mailAfter(req, former.id, securityChangeMail(former, 'promoted', new Date().toISOString()), 'promotion');
       return reply.send({ seq: done.seq, profile_id: grant.profile_id });
     },
   );
