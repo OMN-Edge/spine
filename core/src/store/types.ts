@@ -1519,6 +1519,14 @@ export interface MaintenanceRepository {
   releaseReminders(at: string): Promise<number>;
   /** Every account's sign-in rows (browser, address) started before the first cutoff or idle since the second, so one that is never signed in again does not keep them (privacy notice). */
   pruneSessions(startedBefore: string, idleSince: string, devicesFirstSeenBefore?: string, cookiesExpiredBefore?: string): Promise<number>;
+  /**
+   * One more request in a limiter's fixed window, as the count in that window, which starts at the first and ends `windowMs` later (a request after the end
+   * starts the next at 1). One statement, so any number of instances count into the same window and none lose a request to another: the limits of the
+   * server hold across instances, not per instance (`SPINE_LIMITS=store`). `name` is the limiter's, `subject` what it counts (an address, an account).
+   */
+  hitWindow(name: string, subject: string, windowMs: number, now: number): Promise<number>;
+  /** Removes the windows that have ended, so a limiter's rows do not outlast the hour they count; returns how many. */
+  pruneWindows(now: number): Promise<number>;
 }
 
 export interface StoreConfig {
@@ -1668,7 +1676,8 @@ export interface SharedRepository {
   touchCard(userId: string, id: string, now: string): Promise<boolean>;
   /** Live cards last reviewed before one date and not reminded since another: whom to remind. */
   cardsToRemind(reviewedBefore: string, remindedBefore: string): Promise<CardDue[]>;
-  markReminded(id: string, now: string): Promise<void>;
+  /** Claims the reminder: true for the one caller that moved it from 'not reminded since `remindedBefore`' to now, false for any other that asked at the same time (several instances run the hourly pass). */
+  markReminded(id: string, now: string, remindedBefore: string): Promise<boolean>;
   /**
    * After a promotion (**M-51**): the new owner takes over an emergency card bundle published, for the profile they took, by the old owner's
    * account, so the printed code keeps working and is theirs to turn off or replace. Allowed only to an account that holds a `promoted`

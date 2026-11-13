@@ -105,8 +105,8 @@ export function sharedRepository(db: Database): SharedRepository {
       })();
       return 'ok';
     },
-    async markReminded(id, now) {
-      db.prepare('UPDATE shared_bundles SET reminded_at = ? WHERE id = ?').run(now, id);
+    async markReminded(id, now, remindedBefore) {
+      return db.prepare('UPDATE shared_bundles SET reminded_at = ? WHERE id = ? AND (reminded_at IS NULL OR reminded_at < ?)').run(now, id, remindedBefore).changes === 1;
     },
     async addBlob(userId, id, bytes) {
       return db.prepare('UPDATE shared_bundles SET blobs = blobs + 1, blob_bytes = blob_bytes + ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL').run(bytes, id, userId).changes === 1;

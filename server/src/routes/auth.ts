@@ -73,6 +73,7 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions = 
       instanceWide,
       () => 'instance',
       'too many login attempts, try again later',
+      'login instance',
     ),
   ];
 
@@ -151,6 +152,7 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions = 
       { max: opts.secondFactorAttempts ?? SECOND_FACTOR_ATTEMPTS, windowMs: TEN_MINUTES_MS },
       req => (req.session as SessionData).pending?.userId ?? null,
       'too many attempts, try again later',
+      'second factor attempts',
     ),
   ];
 

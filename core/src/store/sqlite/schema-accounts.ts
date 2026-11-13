@@ -283,6 +283,17 @@ CREATE TABLE IF NOT EXISTS metrics (
   PRIMARY KEY (name, day)
 );
 
+-- The windows a limiter counts in, shared by every instance of the server (SPINE_LIMITS=store): what is limited (an address, an account), when its
+-- window began, how long it is, and how many requests it has had. Not an account's data: nothing here names a person beyond the key a limiter chose.
+CREATE TABLE IF NOT EXISTS rate_windows (
+  limiter TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  started INTEGER NOT NULL,
+  window_ms INTEGER NOT NULL,
+  hits INTEGER NOT NULL,
+  PRIMARY KEY (limiter, subject)
+);
+
 -- People who asked to be told when Spine opens: an address and a time, not accounts.
 CREATE TABLE IF NOT EXISTS waitlist (
   email TEXT NOT NULL PRIMARY KEY COLLATE NOCASE,

@@ -1,16 +1,10 @@
 # Deploying on Google Cloud: one VM
 
-One Compute Engine virtual machine in an EU region runs the Docker Compose stack of [self-host.md](self-host.md) (the proxy, the server, the daily backup and the relay), and calls Vertex AI at the `eu` endpoint as the VM's own service account. The configuration for `spinevault.eu` is in [deploy/gcp/](../deploy/gcp/). Nothing here has been run against a real project: read each command before you run it, and check the result of each step.
+One Compute Engine virtual machine in an EU region runs the Docker Compose stack of [self-host.md](self-host.md) (the proxy, the server, the daily backup and the relay), and calls Vertex AI at the `eu` endpoint as the VM's own service account. The configuration for `spinevault.eu` is in [deploy/gcp/](../deploy/gcp/).
 
-## Why a VM and not Cloud Run
+## When a VM, and when Cloud Run
 
-Cloud Run suits the relay alone ([relay.md](relay.md)) and nothing else here, for three reasons that come from the code, not from Cloud Run:
-
-- **The security headers are the proxy's, not the server's.** The content security policy, HSTS, `X-Frame-Options` and the no-store on `/share/` are set by Caddy (`Caddyfile`) and nginx (`nginx/spine.conf`). The server sets none, so on Cloud Run, which has no proxy of ours, a page would be served without them.
-- **The client's address cannot be told.** The server believes `X-Forwarded-For` only from the addresses in `SPINE_TRUSTED_PROXIES`, never a wide range (SECURITY.md **S-31**). Cloud Run's front end has no fixed address to name, so every visitor would arrive as one address and share one rate limit, and a share's log would show one country.
-- **With plans on, the relay reads the server's accounts database** (`createRelayGate` in `server/src/billing/gate.ts`), so the two must reach the same one. Cloud Run would need Cloud SQL and the bucket of [deployment-gcp.md](deployment-gcp.md) for the sealed bytes, which is a bigger and costlier setup than one disk.
-
-Putting the app on Cloud Run is a project, not a configuration: the headers set by the server when no proxy is in front, and a way to say that the last address in `X-Forwarded-For` is the client's when the host is one that appends it. Until then, the VM.
+One VM is the smallest thing that runs everything, with a disk, and needs no other service: right for a few hundred people and a person who will patch it. It cannot add machines by itself, and replacing it is an outage. For a deployment that has to grow without a person in the loop and be updated with no downtime, use Cloud Run with Cloud SQL and a bucket: [deploy-cloud-run.md](deploy-cloud-run.md). The server runs there as it is: it sets its own security headers (`SPINE_SERVER_HEADERS`), takes the client's address from the platform's hops (`SPINE_TRUSTED_HOPS`), counts its limits in the database (`SPINE_LIMITS`), keeps no file when its data is in Postgres and a bucket, and leaves the hourly work to a job (`SPINE_JOBS`).
 
 ## What it costs and where it runs
 

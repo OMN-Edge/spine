@@ -33,7 +33,7 @@ export async function familyRoutes(app: FastifyInstance, opts: FamilyRouteOption
   const off = () => !loadBillingConfig().enabled;
   const limits = [
     app.rateLimit({ max: opts.perSource ?? 10, timeWindow: '10 minutes' }),
-    windowLimiter({ max: opts.instanceWide ?? 2000, windowMs: 10 * 60 * 1000 }, () => 'instance', 'too many attempts, try again later'),
+    windowLimiter({ max: opts.instanceWide ?? 2000, windowMs: 10 * 60 * 1000 }, () => 'instance', 'too many attempts, try again later', 'family instance'),
   ];
 
   // What the account page shows: whose plan this is, who holds the seats, how many people it holds.

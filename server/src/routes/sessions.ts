@@ -49,7 +49,7 @@ export async function sessionRoutes(app: FastifyInstance, opts: SessionRouteOpti
       preHandler: [
         requireAuth,
         app.rateLimit({ max: 20, timeWindow: '10 minutes' }),
-        windowLimiter({ max: opts.reauthAttempts ?? REAUTH_ATTEMPTS, windowMs: TEN_MINUTES_MS }, req => req.userId || null, 'too many attempts, try again later'),
+        windowLimiter({ max: opts.reauthAttempts ?? REAUTH_ATTEMPTS, windowMs: TEN_MINUTES_MS }, req => req.userId || null, 'too many attempts, try again later', 'reauthentication attempts'),
       ],
     },
     async (req, reply) => {

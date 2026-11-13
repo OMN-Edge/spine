@@ -48,4 +48,27 @@ describe('where the app may write, as installed', () => {
     expect(install).toMatch(/local relay_data="\$\{SPINE_DIR\}\/data"\n\s+if \[ "\$\(env_value SPINE_STORE\)" = "postgres" \]; then\n\s+relay_data="\$\{SPINE_DIR\}\/relay-data"/);
     expect(install).toMatch(/s\|RELAY_DATA_HERE\|\$\{relay_data\}\|g/);
   });
+
+  // The Cloud Run files are settings written by hand: a name misspelt there is a setting that silently does nothing, so each is looked for in the page of settings.
+  describe('the Cloud Run files', () => {
+    const files = ['app.service.yaml', 'relay.service.yaml', 'jobs.job.yaml'];
+    const names = (text: string) => [...text.matchAll(/^\s*(?:#\s*)?- \{ name: ([A-Z0-9_]+),/gm)].map(m => m[1]);
+    it('set only settings the configuration page and the relay page know', () => {
+      const page = file('docs/configuration.md') + file('docs/relay.md');
+      const unknown: string[] = [];
+      for (const f of files) for (const name of names(file(`deploy/cloud-run/${f}`))) if (!page.includes(name)) unknown.push(`${f}: ${name}`);
+      expect(unknown).toEqual([]);
+    });
+
+    it('give the relay none of the server’s secrets, and the server a stand-alone setup: no disk, shared limits, the jobs outside', () => {
+      const relay = file('deploy/cloud-run/relay.service.yaml');
+      for (const secret of ['SESSION_SECRET', 'BREVO_API_KEY', 'PADDLE_API_KEY', 'PADDLE_WEBHOOK_SECRET']) expect(relay, secret).not.toMatch(new RegExp(`name: ${secret}\\b`));
+      const app = file('deploy/cloud-run/app.service.yaml');
+      for (const [name, value] of [['SPINE_STORE', 'postgres'], ['SPINE_OBJECTS', 'gcs'], ['SPINE_LIMITS', 'store'], ['SPINE_JOBS', 'external'], ['SPINE_SERVER_HEADERS', 'on']]) {
+        expect(app, name).toMatch(new RegExp(`name: ${name}, value: "?${value}"? `));
+      }
+      expect(app).toMatch(/run\.googleapis\.com\/ingress: internal-and-cloud-load-balancing/);
+      expect(app).toMatch(/path: \/healthz/);
+    });
+  });
 });

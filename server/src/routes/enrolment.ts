@@ -39,7 +39,7 @@ export async function enrolmentRoutes(app: FastifyInstance, opts: EnrolmentRoute
   const store = () => getAccountsStore().enrolments;
   const publicLimits = (perSource: number) => [
     app.rateLimit({ max: perSource, timeWindow: '10 minutes' }),
-    windowLimiter({ max: opts.instanceWide ?? 3000, windowMs: 10 * 60 * 1000 }, () => 'instance', 'too many attempts, try again later'),
+    windowLimiter({ max: opts.instanceWide ?? 3000, windowMs: 10 * 60 * 1000 }, () => 'instance', 'too many attempts, try again later', 'enrolment instance'),
   ];
 
   // --- The signed-in device ------------------------------------------------------------------------------------------------

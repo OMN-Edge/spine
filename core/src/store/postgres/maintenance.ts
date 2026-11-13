@@ -27,6 +27,21 @@ export function maintenanceRepository(q: Query): MaintenanceRepository {
       return changed(q, 'UPDATE reminder_dues SET mailed_on = NULL WHERE mailed_on = $1', [at]);
     },
 
+    async hitWindow(name, subject, windowMs, now) {
+      const rows = await many<{ hits: number }>(q, `
+        INSERT INTO rate_windows (limiter, subject, started, window_ms, hits) VALUES ($1, $2, $3, $4, 1)
+        ON CONFLICT (limiter, subject) DO UPDATE SET
+          started = CASE WHEN rate_windows.started + rate_windows.window_ms <= EXCLUDED.started THEN EXCLUDED.started ELSE rate_windows.started END,
+          hits = CASE WHEN rate_windows.started + rate_windows.window_ms <= EXCLUDED.started THEN 1 ELSE rate_windows.hits + 1 END,
+          window_ms = EXCLUDED.window_ms
+        RETURNING hits`, [name, subject, now, windowMs]);
+      return Number(rows[0].hits);
+    },
+
+    async pruneWindows(now) {
+      return changed(q, 'DELETE FROM rate_windows WHERE started + window_ms <= $1', [now]);
+    },
+
     async pruneSessions(startedBefore, idleSince, devicesFirstSeenBefore, cookiesExpiredBefore) {
       if (cookiesExpiredBefore) await q('DELETE FROM cookie_sessions WHERE expires_at < $1', [cookiesExpiredBefore]);
       // A browser's cookie lasts a year (the privacy notice says so); the hash of it is not kept longer.

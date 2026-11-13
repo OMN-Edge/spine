@@ -41,6 +41,21 @@ export function maintenanceRepository(db: Database): MaintenanceRepository {
       return db.prepare('UPDATE reminder_dues SET mailed_on = NULL WHERE mailed_on = ?').run(at).changes;
     },
 
+    async hitWindow(name, subject, windowMs, now) {
+      const row = db.prepare(`
+        INSERT INTO rate_windows (limiter, subject, started, window_ms, hits) VALUES (?, ?, ?, ?, 1)
+        ON CONFLICT (limiter, subject) DO UPDATE SET
+          started = CASE WHEN started + window_ms <= excluded.started THEN excluded.started ELSE started END,
+          hits = CASE WHEN started + window_ms <= excluded.started THEN 1 ELSE hits + 1 END,
+          window_ms = excluded.window_ms
+        RETURNING hits`).get(name, subject, now, windowMs) as { hits: number };
+      return row.hits;
+    },
+
+    async pruneWindows(now) {
+      return db.prepare('DELETE FROM rate_windows WHERE started + window_ms <= ?').run(now).changes;
+    },
+
     async pruneSessions(startedBefore, idleSince, devicesFirstSeenBefore, cookiesExpiredBefore) {
       if (cookiesExpiredBefore) db.prepare('DELETE FROM cookie_sessions WHERE expires_at < ?').run(cookiesExpiredBefore);
       // A browser's cookie lasts a year (the privacy notice says so); the hash of it is not kept longer.

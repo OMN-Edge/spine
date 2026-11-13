@@ -71,7 +71,8 @@ spine/
 │       ├── totp.ts         # RFC 6238 codes, secret encryption at rest, recovery codes (pure; no store)
 │       ├── second-factor.ts # checkSecondFactor(): joins totp.ts to the store; atomic spend
 │       ├── cli.ts          # operator commands: create-user, set-password, reset-link, disable-2fa, delete-user, list-users
-│       ├── trust-proxy.ts  # the only addresses whose X-Forwarded-For is believed (loopback); limiters key on req.ip
+│       ├── trust-proxy.ts  # the only addresses whose X-Forwarded-For is believed (loopback, SPINE_TRUSTED_PROXIES), or the platform's hops (SPINE_TRUSTED_HOPS, Cloud Run); limiters key on req.ip
+│       ├── headers.ts, limits.ts, jobs.ts, local-files.ts  # for a host with no proxy of ours and no disk (docs/deploy-cloud-run.md): the security headers the server sets (SPINE_SERVER_HEADERS), limits counted in the database for every instance (SPINE_LIMITS), the hourly work as `node dist/jobs.js` (SPINE_JOBS), and whether the process keeps a file at all
 │       ├── disk-space.ts, permissions.ts  # the free-space reserve a sealed write must leave (`SPINE_MIN_FREE_MB`, S-56); the modes data and backups are made with and the start-up check that the data directory is closed (S-61)
 │       ├── read-budget.ts, read-slots.ts  # bytes of a share one source may read an hour, and reads of sealed objects one account may have open at once (S-57, S-58)
 │       ├── same-origin.ts, reset-proof.ts # a request that changes something must come from the app's own origin (S-50); the signature a reset must carry, checked against the vault's verifier (S-38)
@@ -83,6 +84,7 @@ spine/
 │       └── __tests__/      # Vitest tests that drive the composed app, plus helpers/app.ts (buildTestApp) and helpers/seed.ts
 ├── web/                    # React + Vite + Tailwind
 ├── checkout/               # Paddle's checkout page, served from an origin of its own so its script never runs beside the vault (docs/billing.md)
+├── deploy/                 # gcp/ (one VM, docs/deploy-gcp.md) and cloud-run/ (services, job and build, docs/deploy-cloud-run.md): settings with no secret in them
 ├── nginx/                  # Site config template (spine.conf), security.txt template, /source /docs /security redirects
 └── systemd/                # spine-web.service, spine-backup.{service,timer}
 ```

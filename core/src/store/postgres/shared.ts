@@ -85,8 +85,8 @@ export function sharedRepository(q: Query, begin: Begin): SharedRepository {
         return 'ok' as const;
       });
     },
-    async markReminded(id, now) {
-      await q('UPDATE shared_bundles SET reminded_at = $1 WHERE id = $2', [now, id]);
+    async markReminded(id, now, remindedBefore) {
+      return (await changed(q, 'UPDATE shared_bundles SET reminded_at = $1 WHERE id = $2 AND (reminded_at IS NULL OR reminded_at < $3)', [now, id, remindedBefore])) === 1;
     },
     async addBlob(userId, id, bytes) {
       return (await changed(q, 'UPDATE shared_bundles SET blobs = blobs + 1, blob_bytes = blob_bytes + $1 WHERE id = $2 AND user_id = $3 AND revoked_at IS NULL', [bytes, id, userId])) === 1;

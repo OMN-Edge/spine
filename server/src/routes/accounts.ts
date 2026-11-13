@@ -94,14 +94,15 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
       return typeof email === 'string' ? normaliseEmail(email) : null;
     },
     'too many requests for this address, try again later',
+    'account address',
   );
 
   // In all, as login has: each source and each address is limited, but a spread of them made the instance send mail to as many strangers as
   // there were sources, at its provider's cost and reputation, and take as many sign-ups (S-51). The per-source limit runs first.
   const hour = 60 * 60 * 1000;
   const whole = (raw: string | undefined, fallback: number) => (Number.isInteger(Number(raw)) && Number(raw) > 0 && (raw ?? '').trim() !== '' ? Number(raw) : fallback);
-  const mailCap = windowLimiter({ max: opts.mailPerHour ?? whole(process.env.SPINE_MAIL_MAX_PER_HOUR, 120), windowMs: hour }, () => 'instance', 'too many requests just now, try again later');
-  const signupCap = windowLimiter({ max: opts.signupsPerHour ?? whole(process.env.SPINE_SIGNUPS_MAX_PER_HOUR, 60), windowMs: hour }, () => 'instance', 'too many sign-ups just now, try again later');
+  const mailCap = windowLimiter({ max: opts.mailPerHour ?? whole(process.env.SPINE_MAIL_MAX_PER_HOUR, 120), windowMs: hour }, () => 'instance', 'too many requests just now, try again later', 'account mail cap');
+  const signupCap = windowLimiter({ max: opts.signupsPerHour ?? whole(process.env.SPINE_SIGNUPS_MAX_PER_HOUR, 60), windowMs: hour }, () => 'instance', 'too many sign-ups just now, try again later', 'sign-up cap');
 
   /**
    * After the response, so how long the mail provider takes does not depend on
@@ -276,6 +277,7 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
       return typeof token === 'string' && token ? hashUserToken(token) : null;
     },
     'too many attempts, try again later',
+    'reset code attempts',
   );
   app.post<{ Body: { token?: string; password?: string; auth_value?: string; keys?: unknown; erase?: unknown; code?: unknown; proof?: unknown } }>(
     '/api/auth/reset',

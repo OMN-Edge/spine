@@ -19,7 +19,7 @@ export interface WaitlistRouteOptions {
  */
 export async function waitlistRoutes(app: FastifyInstance, opts: WaitlistRouteOptions = {}) {
   const whole = (raw: string | undefined, fallback: number) => (Number.isInteger(Number(raw)) && Number(raw) > 0 && (raw ?? '').trim() !== '' ? Number(raw) : fallback);
-  const inAll = windowLimiter({ max: opts.perHour ?? 200, windowMs: 60 * 60 * 1000 }, () => 'instance', 'too many requests just now, try again later');
+  const inAll = windowLimiter({ max: opts.perHour ?? 200, windowMs: 60 * 60 * 1000 }, () => 'instance', 'too many requests just now, try again later', 'waitlist');
   app.post<{ Body: { email?: unknown; source?: unknown } }>('/api/waitlist', { config: { rateLimit: opts.perSource ?? { max: 5, timeWindow: '1 minute' } }, preHandler: inAll }, async (req, reply) => {
     const { email, source } = req.body ?? {};
     const address = typeof email === 'string' ? normaliseEmail(email) : '';

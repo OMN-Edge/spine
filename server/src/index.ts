@@ -1,6 +1,7 @@
 import { objects } from './objects/index.js';
 import { sessionRoutes } from './routes/sessions.js';
-import { trustedProxies } from './trust-proxy.js';
+import { trustProxySetting } from './trust-proxy.js';
+import { serverHeaders, serverHeadersOn } from './headers.js';
 import Fastify from 'fastify';
 import { sameOriginOnly } from './same-origin.js';
 import fastifyCookie from '@fastify/cookie';
@@ -18,7 +19,7 @@ import { waitlistRoutes } from './routes/waitlist.js';
 import { delegationRoutes } from './routes/delegation.js';
 import { billingRoutes } from './routes/billing.js';
 import { familyRoutes } from './routes/family.js';
-import { reminderRoutes, remindDue } from './routes/reminders.js';
+import { reminderRoutes } from './routes/reminders.js';
 import { ownAccountRoutes } from './routes/own-account.js';
 import { adminRoutes } from './routes/admin.js';
 import { passkeyRoutes } from './routes/passkeys.js';
@@ -28,13 +29,15 @@ import { relayRoutes } from './routes/relay.js';
 import { demoRelayRoutes } from './routes/demo-relay.js';
 import { trustAnchorRoutes } from './routes/trust-anchors.js';
 import { securityTxtRoutes } from './routes/security-txt.js';
-import { remindCardReviews, sharedRoutes, shareShellRoutes, sweepShares } from './routes/shared.js';
-import { sweepSessions } from './sessions.js';
-import { sweepUnverified } from './accounts.js';
+import { healthRoutes } from './routes/health.js';
+import { sharedRoutes, shareShellRoutes } from './routes/shared.js';
+import { jobsAreExternal, runJobs } from './jobs.js';
+import { limitsWhere, SharedRateLimitStore } from './limits.js';
 import { decorateAuth } from 'spine-core/routes/middleware.js';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { ConfigError, resolveBackupDir, resolveDataDir } from 'spine-core/config.js';
 import { keepPrivate, privateByDefault } from './permissions.js';
+import { keepsFilesHere } from './local-files.js';
 import { disk, quotaWarning } from './disk-space.js';
 import { loadConfig, loadRegistrationMode, sessionLimits, vaultLimits, type Config } from './config.js';
 import { useLogger } from 'spine-core/logger.js';
@@ -65,8 +68,12 @@ const config = loadConfigOrExit();
 // What this process makes is for its own user alone, and the directories that hold the data and its backups are closed to everyone else, whatever
 // mode earlier files were made with (SECURITY.md S-61).
 privateByDefault();
-const closed = keepPrivate([resolveDataDir(), resolveBackupDir()]);
-if (closed.length > 0) console.log(`closed to other users: ${closed.join(', ')}`);
+if (keepsFilesHere()) {
+  const closed = keepPrivate([resolveDataDir(), resolveBackupDir()]);
+  if (closed.length > 0) console.log(`closed to other users: ${closed.join(', ')}`);
+} else {
+  console.log('keeps no file on this machine: the accounts are in Postgres and the sealed bytes in a bucket');
+}
 // A bad SPINE_OBJECTS stops the process here and not at the first upload.
 try { objects(); } catch (err) { console.error(err instanceof Error ? err.message : String(err)); process.exit(1); }
 // With open registration anyone can make accounts: say at start if the disk could not hold a handful of them at the quota (SECURITY.md S-56).
@@ -75,7 +82,7 @@ if (roomWarning) console.warn(`warning: ${roomWarning}`);
 
 const app = Fastify({
   logger: true,
-  trustProxy: trustedProxies(), // nginx sits in front, on this host, or the proxy named in SPINE_TRUSTED_PROXIES (S-31)
+  trustProxy: trustProxySetting(), // nginx sits in front, on this host, the proxy named in SPINE_TRUSTED_PROXIES, or the platform's hops (SPINE_TRUSTED_HOPS) (S-31)
 });
 
 // From here on, modules that log without the app (the parser, the LLM) write to the
@@ -99,6 +106,9 @@ app.log.info(
   'model settings given to devices',
 );
 
+// With no proxy of ours in front (Cloud Run), the server sets the headers the proxy would (headers.ts).
+if (serverHeadersOn()) serverHeaders(app);
+else if (process.env.SPINE_TRUSTED_HOPS) app.log.warn('SPINE_TRUSTED_HOPS is set (the platform is the proxy) and SPINE_SERVER_HEADERS is not on: nothing sets the security headers');
 // A request that changes something must come from the app's own origin (SECURITY.md S-50).
 app.addHook('onRequest', sameOriginOnly);
 await app.register(fastifyCookie);
@@ -116,6 +126,8 @@ await app.register(fastifySession, {
 
 await app.register(fastifyRateLimit, {
   global: false, // only apply where we explicitly enable it
+  // With more than one instance the count is in the database, so it is one count (limits.ts); otherwise the plugin's own, in the process.
+  ...(limitsWhere() === 'store' ? { store: SharedRateLimitStore as never } : {}),
 });
 
 const webDist = path.join(__dirname, '../../web/dist');
@@ -142,6 +154,7 @@ await app.register(relayRoutes);
 await app.register(demoRelayRoutes);
 await app.register(trustAnchorRoutes);
 await app.register(securityTxtRoutes);
+await app.register(healthRoutes);
 await app.register(sharedRoutes);
 // The records are on the device (stage 5): the server registers no route that reads or writes one, and the routes the device's
 // core runs (documents, uploads, tags, chat, ...) are not served here. A recipient's address gets the app shell.
@@ -184,27 +197,19 @@ if (accounts.length === 0) {
   app.log.warn('no user accounts exist — create one with: npm run cli -- create-user <email>');
 }
 
-// Sealed shares that have ended are deleted: at start, and hourly.
-// A failure leaves an ended share's sealed bytes on disk longer than it should be, so it is said, not swallowed.
-const sweep = () => sweepShares().catch(err => app.log.error({ err: err instanceof Error ? err.message : String(err) }, 'removing ended shares failed'));
-await sweep();
-setInterval(() => void sweep(), 60 * 60 * 1000).unref();
-// The yearly reminder about an emergency card nobody has looked at: at start, and hourly.
-const remind = () => remindCardReviews().catch(err => app.log.error({ err: err instanceof Error ? err.message : String(err) }, 'reminding about cards failed'));
-await remind();
-setInterval(() => void remind(), 60 * 60 * 1000).unref();
-// Follow-up reminders that are due: whoever they are for is mailed (a line, no medical content), at start and hourly.
-const remindReminders = () => remindDue().catch(err => app.log.error({ err: err instanceof Error ? err.message : String(err) }, 'mailing due reminders failed'));
-await remindReminders();
-setInterval(() => void remindReminders(), 60 * 60 * 1000).unref();
-// Ended sign-ins (browser and address) are deleted for every account the same way, so none outlives its 14 days because its owner never came back.
-const sweepSignIns = () => sweepSessions().catch(err => app.log.error({ err: err instanceof Error ? err.message : String(err) }, 'removing ended sign-ins failed'));
-await sweepSignIns();
-setInterval(() => void sweepSignIns(), 60 * 60 * 1000).unref();
-
-// Accounts whose address was never confirmed end after a week, so open registration does not fill the table with rows nobody will use (S-51).
-const sweepUnconfirmed = () => sweepUnverified().catch(err => app.log.error({ err: err instanceof Error ? err.message : String(err) }, 'removing unconfirmed accounts failed'));
-await sweepUnconfirmed();
-setInterval(() => void sweepUnconfirmed(), 60 * 60 * 1000).unref();
+// Work done on a clock (jobs.ts): at start and hourly, unless something outside runs it (`SPINE_JOBS=external`, a Cloud Run job).
+if (!jobsAreExternal()) {
+  const hourly = () => runJobs((message, detail) => app.log.error(detail, message));
+  await hourly();
+  setInterval(() => void hourly(), 60 * 60 * 1000).unref();
+}
 
 await app.listen({ port: config.port, host: config.host });
+
+// A platform that replaces instances without downtime says SIGTERM and waits a few seconds: stop taking new requests, finish those in flight, then end.
+for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+  process.once(signal, () => {
+    app.log.info({ signal }, 'stopping: finishing the requests in flight');
+    app.close().then(() => process.exit(0), () => process.exit(1));
+  });
+}

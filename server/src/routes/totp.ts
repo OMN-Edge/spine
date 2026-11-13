@@ -33,7 +33,7 @@ export async function totpRoutes(app: FastifyInstance, opts: TotpRouteOptions = 
   const limiters = [
     requireAuth,
     app.rateLimit({ max: 10, timeWindow: '10 minutes' }),
-    windowLimiter({ max: opts.attempts ?? 10, windowMs: 10 * 60 * 1000 }, req => req.userId || null),
+    windowLimiter({ max: opts.attempts ?? 10, windowMs: 10 * 60 * 1000 }, req => req.userId || null, 'too many requests, try again later', 'authenticator attempts'),
   ];
 
   const issuer = () => process.env.SPINE_DOMAIN || 'Archive';
