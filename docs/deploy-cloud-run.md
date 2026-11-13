@@ -47,6 +47,8 @@ A Google Cloud project with billing, `gcloud` signed in, and a domain whose reco
      --substitutions=_TAG=$TAG,_COMMIT=$(git rev-parse HEAD) .
    ```
 
+   Or from any machine with Docker, to any registry: `./scripts/publish-images.sh $REGION-docker.pkg.dev/$PROJECT_ID/spine $TAG` (`PLATFORMS=linux/amd64,linux/arm64` adds the Pi's architecture). Cloud Run runs `linux/amd64`, so an image built on an Apple-silicon machine without `--platform` will not start there.
+
 3. **The database.** Postgres, in a high-availability configuration with automated backups and point-in-time recovery (the backup of the rows: `backup.ts` makes none for Postgres), in the same region. Spine's own tables are made on the first start and added to by later ones.
 
    ```bash
