@@ -1682,6 +1682,8 @@
  "Confirm your email address first: follow the link in the message we sent you.": "Confirmați mai întâi adresa de e-mail: urmați linkul din mesajul pe care vi l-am trimis.",
  "That took too long. Sign in again.": "A durat prea mult. Conectați-vă din nou.",
  "Type the code.": "Introduceți codul.",
+ "We sent a six-digit code to your email address. Type it here; it works for five minutes.": "V-am trimis un cod din șase cifre la adresa de e-mail. Introduceți-l aici; este valabil cinci minute.",
+ "The code could not be sent. Try again in a moment.": "Codul nu a putut fi trimis. Încercați din nou peste puțin timp.",
  "Type your email address and your password.": "Introduceți adresa de e-mail și parola.",
  "That code is not right. Try again.": "Codul nu este corect. Încercați din nou.",
  "The email address or the password is not right.": "Adresa de e-mail sau parola nu este corectă.",

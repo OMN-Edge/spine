@@ -114,7 +114,7 @@ describe('signing in with a passkey', () => {
     expect((await store.users.getTotp(user.id))!.confirmed_at).toBeTruthy();
     // The password route now stops at the code…
     const password = await send('POST', '/api/auth/login', undefined, { email: user.email, password: TEST_PASSWORD });
-    expect(password.json()).toEqual({ second_factor_required: true });
+    expect(password.json()).toEqual({ second_factor_required: true, method: 'authenticator' });
     // …and the passkey goes straight in.
     const { res, cookie } = await signIn(device);
     expect(res.statusCode).toBe(200);

@@ -14,6 +14,8 @@ export interface PendingLogin {
   authVersion: number;
   expiresAt: number;
   failures: number;
+  /** Set when the second step is a code mailed to the address (`SPINE_EMAIL_2FA`, email-code.ts): the keyed hash of it. An authenticator is checked instead when there is none. */
+  emailCode?: string;
 }
 
 export interface SessionData {

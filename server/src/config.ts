@@ -90,6 +90,10 @@ function readMailConfig(
     if (!mail.sender) problems.push('SPINE_MAILER=brevo needs SPINE_MAIL_SENDER (pick a neutral name: it is visible in the recipient\'s inbox)');
     if (!env.SPINE_DOMAIN) problems.push('SPINE_MAILER=brevo needs SPINE_DOMAIN, which the links in mail point at');
   }
+  // A second step by mail needs mail: refuse to start rather than lock everyone out at the sign-in.
+  const rawEmail2fa = (env.SPINE_EMAIL_2FA ?? 'off').trim().toLowerCase();
+  if (rawEmail2fa !== 'off' && rawEmail2fa !== 'required') problems.push(`SPINE_EMAIL_2FA is "${env.SPINE_EMAIL_2FA}"; expected off or required`);
+  if (rawEmail2fa === 'required' && adapter === 'none') problems.push('SPINE_EMAIL_2FA=required needs a mailer, but SPINE_MAILER is none (the code is sent by email)');
   return { mail, registration, instance };
 }
 

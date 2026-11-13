@@ -791,7 +791,7 @@ export const api = {
       const { credential, masterKey, kdf } = await prepareSignIn(email, password, undefined, deriveKey);
       vaultState.setEmail(email);
       try {
-        const result = await req<{ ok?: boolean; email?: string; second_factor_required?: boolean }>('/api/auth/login', {
+        const result = await req<{ ok?: boolean; email?: string; second_factor_required?: boolean; method?: 'authenticator' | 'email' }>('/api/auth/login', {
           method: 'POST',
           body: JSON.stringify({ email, password: credential }),
         });
