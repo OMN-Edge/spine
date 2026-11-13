@@ -20,7 +20,7 @@ Each of these is a setting, off by default, so a machine with Caddy or nginx and
 | `SPINE_SERVER_HEADERS=on` | The server sets the content security policy, HSTS, `X-Frame-Options`, `nosniff`, the referrer and permissions policies, the no-store on `/share/`, and refuses dot-files. | Here no proxy of ours is in front to do it. |
 | `SPINE_TRUSTED_HOPS=1` | Takes the client's address from `X-Forwarded-For` by depth: Cloud Run's front end appends the address it saw, so what a client wrote earlier is ignored. The server accepts it without `SPINE_EDGE_SECRET` only when `K_SERVICE` is set, which Cloud Run does, and the count is 1; behind a load balancer it is 2 and the secret is required ([the other way](#the-other-way-a-load-balancer-in-front), **S-68**). | The platform's front end has no address to name in `SPINE_TRUSTED_PROXIES`, and without this every visitor would be one address with one rate limit (SECURITY.md **S-31**). |
 | `SPINE_LIMITS=store` | Every limit (sign-in, sign-up, recovery, shares, the per-address ones) is counted in the database, one count for all instances. | Counted in each instance, a limit that guards a password is N times weaker with N instances (**S-66**). |
-| `SPINE_JOBS=external` | The server starts no timer; `node dist/jobs.js` does the hourly work once, from a job. | An instance that scales to nothing, or is not given the processor between requests, does not keep time. Every pass is safe to run twice at once. |
+| `SPINE_JOBS=external` | The server starts no timer; `node dist/jobs.js` does the hourly work once, from a job, which includes refreshing the country file in the bucket. | An instance that scales to nothing, or is not given the processor between requests, does not keep time. Every pass is safe to run twice at once. |
 | `SPINE_STORE=postgres`, `SPINE_OBJECTS=gcs` | The rows are in Postgres and the bytes in a bucket; with both, the process writes no file, closes no directory and mirrors no backup (`local-files.ts`, held by a test). | State on an instance's disk is state a replacement does not have. |
 | `GET /healthz` and `SIGTERM` | The server answers the platform's checks only after its database is open, and on `SIGTERM` finishes the requests in flight before it ends (the relay does the same). | A rollout moves traffic only to instances that are up, and takes none from a request half done. |
 
@@ -39,7 +39,7 @@ A Google Cloud project with billing, `gcloud` signed in, and a domain whose reco
    gcloud artifacts repositories create spine --repository-format=docker --location=$REGION
    ```
 
-2. **The images,** from a checkout, tagged with the commit they were built from. The server's image carries the country file for the share log (a disk does not exist to keep it on).
+2. **The images,** from a checkout, tagged with the commit they were built from.
 
    ```bash
    TAG=$(git rev-parse --short HEAD)
@@ -176,7 +176,7 @@ Every size above is arithmetic with a limit named in step 3 and in the files; me
 
 ## What this setup gives up
 
-- **The country of a share's opener is as old as the image,** since the file is baked in. Rebuild monthly (a new tag, a new revision, the same steps), or leave countries unknown.
+- **The country of a share's opener** comes from a file in the bucket that the hourly job refreshes once a day from a public download (`SPINE_GEOIP_URL`); if the download fails the older file stays, and until the first one arrives countries are unknown.
 - **A limited request costs a write.** Sign-in is the one that matters, and it is already a password hash.
 - **The reads a sealed object makes at once** (`SPINE_MAX_CONCURRENT_READS`, the hourly bytes of a share) are counted in each instance, not across them: they bound what one instance spends on one source, and `maxScale` bounds how many instances there are.
 - **With domain mappings, no cache and no flood filter in front.** The built files come from your instances (the browser keeps them, they are marked immutable), and the app's own limits and `maxScale` are the only brakes. The `run.app` addresses are public. A load balancer adds a cache and Cloud Armor, and closes them.

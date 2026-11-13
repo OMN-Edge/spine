@@ -1,15 +1,13 @@
 # Builds the two images of docs/deploy-cloud-run.md, from the repository root:
 #   gcloud builds submit --region=europe-west4 --config=deploy/cloud-run/cloudbuild.yaml \
 #     --substitutions=_TAG=$(git rev-parse --short HEAD),_COMMIT=$(git rev-parse HEAD) .
-# The server's image carries the country file of a share's access log (a host with no disk has nowhere to keep one); a download that fails leaves
-# it out and countries unknown.
 substitutions:
   _REGION: europe-west4
   _TAG: dev
   _COMMIT: unknown
 steps:
   - name: gcr.io/cloud-builders/docker
-    args: [build, -t, '${_REGION}-docker.pkg.dev/$PROJECT_ID/spine/spine:${_TAG}', --build-arg, 'SPINE_COMMIT=${_COMMIT}', --build-arg, SPINE_BAKE_GEOIP=1, .]
+    args: [build, -t, '${_REGION}-docker.pkg.dev/$PROJECT_ID/spine/spine:${_TAG}', --build-arg, 'SPINE_COMMIT=${_COMMIT}', .]
   - name: gcr.io/cloud-builders/docker
     args: [build, -t, '${_REGION}-docker.pkg.dev/$PROJECT_ID/spine/spine-relay:${_TAG}', -f, relay.Dockerfile, .]
 images:

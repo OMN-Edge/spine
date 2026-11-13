@@ -1,10 +1,12 @@
 import { createWriteStream } from 'node:fs';
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import maxmind, { type CountryResponse } from 'maxmind';
-import { geoipFile } from './geo.js';
+import { COUNTRY_PREFIX, countryFileIsInTheBucket, countryKey, geoipFile } from './geo.js';
+import { objects, type ObjectStore } from './objects/index.js';
 import { useAccountsStore } from './store.js';
 
 /**
@@ -60,8 +62,50 @@ export async function updateGeoip(options: { url: string; file: string; check?: 
   }
 }
 
+/** How many days' files the bucket keeps: a reader that listed just before an update still finds the one it chose. */
+const KEEP_IN_BUCKET = 3;
+
+/**
+ * Where there is no disk (docs/deploy-cloud-run.md) the file is kept in the bucket, one object for each day (`geo.ts` reads the newest). It is
+ * downloaded and checked in the machine's temporary directory as above, put in the bucket, and the oldest ones are removed. At most one download a day:
+ * with today's object there, nothing is done. Returns the bytes downloaded, or 0 when there was nothing to do.
+ */
+export async function updateGeoipInBucket(options: { url: string; store: ObjectStore; now?: Date; check?: (file: string) => Promise<void> }): Promise<number> {
+  const key = countryKey((options.now ?? new Date()).toISOString().slice(0, 10).replace(/-/g, ''));
+  const have = await options.store.list(COUNTRY_PREFIX);
+  if (have.includes(key)) return 0;
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'spine-geoip-'));
+  try {
+    const file = path.join(dir, 'country.mmdb');
+    const bytes = await updateGeoip({ url: options.url, file, check: options.check });
+    await options.store.put(key, await fs.readFile(file));
+    for (const old of [...have, key].sort().slice(0, -KEEP_IN_BUCKET)) await options.store.remove(old);
+    return bytes;
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * The hourly job's share of it (`jobs.ts`): only where the file is in the bucket (a machine with a disk is updated by the install and the backup unit),
+ * and best effort, so that a download that fails is said and tried again at the next run, and never fails the run.
+ */
+export async function refreshCountryFile(env: NodeJS.ProcessEnv = process.env): Promise<void> {
+  if (!countryFileIsInTheBucket(env)) return;
+  try {
+    const bytes = await updateGeoipInBucket({ url: env.SPINE_GEOIP_URL || DEFAULT_URL, store: objects() });
+    if (bytes) console.log(`geoip: the country file in the bucket updated (${bytes} bytes)`);
+  } catch (err) {
+    console.error(`geoip: not updated (${err instanceof Error ? err.message : String(err)}); countries stay as they were`);
+  }
+}
+
 async function main(): Promise<void> {
   useAccountsStore();
+  if (countryFileIsInTheBucket()) {
+    await refreshCountryFile();
+    return;
+  }
   if (process.env.SPINE_GEOIP_DB) {
     console.log('geoip: SPINE_GEOIP_DB names a file of your own; nothing is downloaded');
     return;

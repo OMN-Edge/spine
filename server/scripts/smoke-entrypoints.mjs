@@ -78,7 +78,7 @@ running('the operator\'s commands run (create a user, list users)', 'dist/cli.js
 running('the operator lists the user it created', 'dist/cli.js', ['list-users'], {}, r => r.status === 0 && /smoke@example.com/.test(r.stdout));
 // Nothing listens at that address: the download fails, and a failed download must still end the process well (a unit runs it before the backup).
 running('the country file update ends well when it cannot download', 'dist/geoip-update.js', [], { SPINE_GEOIP_URL: 'http://127.0.0.1:9/country.mmdb' }, r => r.status === 0 && /geoip: not updated/.test(r.stderr) && !fs.existsSync(path.join(baseEnv.DATA_DIR, 'geoip', 'country.mmdb')));
-running('the jobs run once and end', 'dist/jobs.js', [], {}, r => r.status === 0 && /jobs: 6 of 6 done/.test(r.stdout));
+running('the jobs run once and end', 'dist/jobs.js', [], {}, r => r.status === 0 && /jobs: 7 of 7 done/.test(r.stdout));
 running('the backup runs and leaves a snapshot', 'dist/backup.js', [], {}, r => r.status === 0 && fs.existsSync(baseEnv.SPINE_BACKUP_DIR));
 
 fs.rmSync(tmp, { recursive: true, force: true });

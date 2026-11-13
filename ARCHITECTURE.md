@@ -204,7 +204,7 @@ Every row marked "configured provider" is a call the owner's device makes to the
 | Account mail (verification, reset, a sign-in from a new browser, a changed security setting, a share waiting for approval) | recipient address, a link, the time of the event. **Never document content** | configured mail provider |
 | Plan, checkout and portal (`SPINE_BILLING=on`) | the price asked for, the account's random id as custom data, and a customer and subscription id for the portal; never a card, never a record (the person gives Paddle their own details on its checkout) | Paddle |
 | Sealed bytes (`SPINE_OBJECTS=gcs`) | the vault's and the shares' sealed objects, under keys of their own naming; nothing readable | the operator's Google Cloud Storage bucket |
-| The country file (daily, before the backup) | nothing of an account: a download of a public file | GitHub (ip-location-db's release) |
+| The country file (daily: before the backup, or by the hourly job where the file is in the bucket) | nothing of an account: a download of a public file | GitHub (ip-location-db's release) |
 
 Residency is a property of the endpoint. For Vertex that means the `eu` multi-region host and service-account credentials, never an API key. See SECURITY.md **P8**, **M-8** and [docs/deployment-gcp.md](docs/deployment-gcp.md).
 

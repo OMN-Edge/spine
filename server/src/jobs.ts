@@ -3,6 +3,7 @@ import { remindDue } from './routes/reminders.js';
 import { remindCardReviews, sweepShares } from './routes/shared.js';
 import { sweepSessions } from './sessions.js';
 import { sweepUnverified } from './accounts.js';
+import { refreshCountryFile } from './geoip-update.js';
 import { getAccountsStore } from 'spine-core/store/index.js';
 
 /**
@@ -26,6 +27,8 @@ export const JOBS: Job[] = [
   { name: 'removing ended sign-ins', run: () => sweepSessions() },
   { name: 'removing unconfirmed accounts', run: () => sweepUnverified() },
   { name: 'removing ended limit windows', run: () => getAccountsStore().maintenance.pruneWindows(Date.now()) },
+  // Where the country file is kept in the bucket, once a day; nothing anywhere else.
+  { name: 'refreshing the country file', run: () => refreshCountryFile() },
 ];
 
 export const jobsAreExternal = (env: NodeJS.ProcessEnv = process.env): boolean => (env.SPINE_JOBS ?? 'internal') === 'external';

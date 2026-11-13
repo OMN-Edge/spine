@@ -4,9 +4,10 @@ import { JOBS, jobsAreExternal, runJobs } from '../jobs.js';
 import { healthRoutes } from '../routes/health.js';
 
 describe('the work done on a clock', () => {
-  it('is six passes, each named', () => {
+  it('is seven passes, each named', () => {
     expect(JOBS.map(j => j.name)).toEqual([
       'removing ended shares', 'reminding about cards', 'mailing due reminders', 'removing ended sign-ins', 'removing unconfirmed accounts', 'removing ended limit windows',
+      'refreshing the country file',
     ]);
   });
 

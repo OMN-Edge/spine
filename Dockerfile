@@ -35,10 +35,6 @@ COPY --from=build /app/server/dist server/dist
 COPY --from=build /app/web/dist web/dist
 # The privacy notice, terms and intended purpose the app serves; mount your own over this or set SPINE_LEGAL_DIR
 COPY docs/legal docs/legal
-# The country file for a share's access log, put in the image for a host with no disk of its own (Cloud Run, docs/deploy-cloud-run.md): build with
-# --build-arg SPINE_BAKE_GEOIP=1 and set SPINE_GEOIP_DB=/app/geoip/country.mmdb. A download that fails leaves the image without it, and countries unknown.
-ARG SPINE_BAKE_GEOIP=
-RUN if [ -n "$SPINE_BAKE_GEOIP" ]; then mkdir -p /app/geoip /tmp/geo && cd /app/server && DATA_DIR=/tmp/geo node dist/geoip-update.js && { mv /tmp/geo/geoip/country.mmdb /app/geoip/country.mmdb || true; } && rm -rf /tmp/geo; fi
 USER node
 ENV NODE_ENV=production DATA_DIR=/data
 WORKDIR /app/server

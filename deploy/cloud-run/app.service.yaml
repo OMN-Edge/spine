@@ -58,7 +58,6 @@ spec:
             # Every instance counts the limits in the same place; the hourly work is a job, not a timer in each instance
             - { name: SPINE_LIMITS, value: store }
             - { name: SPINE_JOBS, value: external }
-            - { name: SPINE_GEOIP_DB, value: /app/geoip/country.mmdb }
             - { name: SPINE_FAIR_USE_FILE, value: /secrets/fair-use/fair-use.json }
             - { name: SPINE_RELAY_URL, value: "https://relay.spinevault.eu" }
             - { name: SPINE_OPERATOR_NAME, value: CHANGE }
