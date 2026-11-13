@@ -35,4 +35,14 @@ describe('where the app may write, as installed', () => {
     expect(service('relay')).toMatch(/SPINE_DB_PATH: \/data\/spine\.db/);
     expect(compose).not.toMatch(/relay-data/);
   });
+
+  it('as a systemd unit, the relay opens the server\'s database and may write where it is (S-64)', () => {
+    const web = file('systemd/spine-web.service');
+    const relay = file('systemd/spine-relay.service');
+    expect(web).toMatch(/^Environment=DATA_DIR=SPINE_DIR\/data$/m);
+    expect(relay).toMatch(/^Environment=DATA_DIR=SPINE_DIR\/data$/m);
+    expect(relay).toMatch(/^Environment=SPINE_DB_PATH=SPINE_DIR\/data\/spine\.db$/m);
+    expect(relay).toMatch(/^ReadWritePaths=SPINE_DIR\/data$/m);
+    expect(relay + file('install.sh')).not.toMatch(/relay-data/);
+  });
 });

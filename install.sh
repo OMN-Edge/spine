@@ -316,8 +316,6 @@ function install_relay() {
   port=$(relay_port)
 
   echo "Installing the relay (127.0.0.1:${port})..."
-  mkdir -p "${SPINE_DIR}/relay-data"
-  chown -R "${SPINE_USER}:${SPINE_USER}" "${SPINE_DIR}/relay-data"
   sed \
     -e "s|SPINE_DIR|${SPINE_DIR}|g" \
     -e "s|SPINE_USER|${SPINE_USER}|g" \
