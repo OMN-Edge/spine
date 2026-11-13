@@ -53,8 +53,11 @@ export function buildPathLeaks(dir, root) {
 export function sealBuild(dir, root) {
   const leaks = buildPathLeaks(dir, root);
   if (leaks.length > 0) return [`built files name the folder they were built in (${root}), so the same commit would build differently elsewhere: ${leaks.join(', ')}`];
-  const index = path.join(dir, 'index.html');
-  fs.writeFileSync(index, addIntegrity(fs.readFileSync(index, 'utf8'), dir));
+  // The shell and the public pages written from it (seo-pages.mjs) load the same files, and each is sealed.
+  for (const page of listFiles(dir).filter(f => f.endsWith('.html'))) {
+    const file = path.join(dir, page);
+    fs.writeFileSync(file, addIntegrity(fs.readFileSync(file, 'utf8'), dir));
+  }
   fs.writeFileSync(path.join(dir, HASHES_FILE), `${hashLines(dir).join('\n')}\n`);
   return [];
 }
@@ -66,5 +69,5 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     console.error(`FAIL the build cannot be sealed:\n  - ${problems.join('\n  - ')}`);
     process.exit(1);
   }
-  console.log(`build sealed: integrity on the page's scripts and styles, ${HASHES_FILE} lists ${hashLines(path.join(here, '../dist')).length} files`);
+  console.log(`build sealed: integrity on the scripts and styles of the pages, ${HASHES_FILE} lists ${hashLines(path.join(here, '../dist')).length} files`);
 }

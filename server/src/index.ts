@@ -30,6 +30,7 @@ import { relayRoutes } from './routes/relay.js';
 import { demoRelayRoutes } from './routes/demo-relay.js';
 import { trustAnchorRoutes } from './routes/trust-anchors.js';
 import { securityTxtRoutes } from './routes/security-txt.js';
+import { copyOfTheSite, seoRoutes } from './seo.js';
 import { healthRoutes } from './routes/health.js';
 import { sharedRoutes, shareShellRoutes } from './routes/shared.js';
 import { jobsAreExternal, runJobs } from './jobs.js';
@@ -112,6 +113,8 @@ edgeCheck(app);
 // With no proxy of ours in front (Cloud Run), the server sets the headers the proxy would (headers.ts).
 if (serverHeadersOn()) serverHeaders(app);
 else if (process.env.SPINE_TRUSTED_HOPS) app.log.warn('SPINE_TRUSTED_HOPS is set (the platform is the proxy) and SPINE_SERVER_HEADERS is not on: nothing sets the security headers');
+// A copy of the site at another address (a service's own run.app name, a www. name) is not indexed beside it (seo.ts).
+copyOfTheSite(app);
 // A request that changes something must come from the app's own origin (SECURITY.md S-50).
 app.addHook('onRequest', sameOriginOnly);
 await app.register(fastifyCookie);
@@ -158,6 +161,7 @@ await app.register(relayRoutes);
 await app.register(demoRelayRoutes);
 await app.register(trustAnchorRoutes);
 await app.register(securityTxtRoutes);
+await app.register(seoRoutes, { webDist });
 await app.register(healthRoutes);
 await app.register(sharedRoutes);
 // The records are on the device (stage 5): the server registers no route that reads or writes one, and the routes the device's
@@ -182,7 +186,8 @@ app.setNotFoundHandler(async (_req, reply) => {
   // '/share/' (trailing slash) so only public token URLs are excluded: '/share'
   // itself is the authenticated ShareLinks page and must reach the SPA.
   if (!_req.url.startsWith('/api') && !_req.url.startsWith('/share/')) {
-    return reply.sendFile('index.html', webDist);
+    // The shell for a screen behind a sign-in or a path that is not one: not for a search engine (the public pages have files of their own, seo.ts).
+    return reply.header('x-robots-tag', 'noindex').sendFile('index.html', webDist);
   }
   return reply.status(404).send({ error: 'not found' });
 });
