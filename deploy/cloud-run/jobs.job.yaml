@@ -31,6 +31,10 @@ spec:
                 - { name: SPINE_GCS_BUCKET, value: BUCKET }
                 - { name: SPINE_DATABASE_POOL, value: "2" }
                 - { name: SPINE_MAILER, value: brevo }
+                # Plans on, so the mail two weeks before a trial ends is sent (only this: the job never calls the payment provider). Where the operator
+                # is told of the monthly AI budget, and the reminders to add documents, are settings on the admin page.
+                # - { name: SPINE_BILLING, value: "on" }
+                # - { name: SPINE_ALERT_EMAIL, value: "you@example.com" }
                 - { name: SPINE_MAIL_SENDER, value: "Account Notices <notices@spinevault.eu>" }
                 - { name: SESSION_SECRET, valueFrom: { secretKeyRef: { name: spine-session-secret, key: latest } } }
                 - { name: SPINE_DATABASE_URL, valueFrom: { secretKeyRef: { name: spine-database-url, key: latest } } }

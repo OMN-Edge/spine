@@ -6,7 +6,6 @@ import { buttonClass, inputClass, Notice } from '../components/AuthCard';
 import TwoFactor from '../components/TwoFactor';
 import Sessions from '../components/Sessions';
 import YourData from '../components/YourData';
-import AdminAccounts from '../components/AdminAccounts';
 import PlanCard from '../components/PlanCard';
 import SeatsCard from '../components/SeatsCard';
 import Passkeys from '../components/Passkeys';
@@ -96,7 +95,6 @@ export default function Account() {
         <h2 id="devices" className={heading}>{t('Devices')}</h2>
         <AddDevice />
         <Sessions />
-        <AdminAccounts />
 
         <h2 id="data" className={heading}>{t('Data and privacy')}</h2>
         <YourData />

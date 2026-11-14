@@ -29,8 +29,14 @@ export default function PlanCard() {
 
   const { plan, subscription, ai, vault, shares, prices, founding_left: foundingLeft, family } = billing;
   const sub = subscription;
-  const name = plan === 'family' ? t('Family') : plan === 'premium' ? t('Premium') : plan === 'trial' ? t('Free trial') : t('Free');
-  const money = (n: number) => `€${n}`;
+  const name = plan === 'family' ? t('Family') : plan === 'premium' ? t('Premium') : plan === 'essential' ? t('Essential') : plan === 'trial' ? t('Free trial') : t('Free');
+  // The amounts are Paddle's, in the currency of its prices; where it cannot say what they are, nothing is offered for sale.
+  const money = (n: number) => new Intl.NumberFormat(undefined, { style: 'currency', currency: prices?.currency ?? 'EUR' }).format(n);
+  const paid = plan === 'essential' || plan === 'premium' || plan === 'family';
+  // The trial's questions and translated pages are totals for the whole trial, shown from the first day.
+  const chat = ai?.chat.allowance != null ? ai.chat : null;
+  const translation = ai?.translation.allowance != null ? ai.translation : null;
+  const trialUsedUp = (!!chat && chat.used >= chat.allowance!) || (!!translation && translation.used >= translation.allowance!) || (!!ai && ai.reading.allowance !== null && plan === 'trial' && ai.reading.used >= ai.reading.allowance);
   // Only adding has an allowance (the pages read); using is not limited, so questions, translation and link traffic are not shown here (the "Your archive" section says what was done).
   const bar = (used: number, of: number) => (
     <span className="block h-1.5 mt-1 rounded bg-gray-100" role="presentation"><span className="block h-1.5 rounded bg-brand-500" style={{ width: `${of > 0 ? Math.min(100, Math.round((used / of) * 100)) : 0}%` }} /></span>
@@ -44,14 +50,14 @@ export default function PlanCard() {
   return (
     <section className="bg-white border border-gray-200 rounded-xl p-5 mt-6">
       <h2 className="font-medium text-gray-900 mb-1">{t('Your plan')}: {name}</h2>
-      {plan === 'trial' && billing.trial_ends_at && <p className="text-sm text-gray-500 mb-3">{t('Everything is included until {when}. After that you keep the free plan unless you upgrade.', { when: day(billing.trial_ends_at) })}</p>}
-      {plan === 'free' && <p className="text-sm text-gray-500 mb-3">{t('The free plan keeps your records, the timeline, search, export, the emergency card and one share link. Translation, questions, connections and approving visitors are part of Premium.')}</p>}
+      {plan === 'trial' && billing.trial_ends_at && <p className="text-sm text-gray-500 mb-3">{t('Everything is included until {when}, up to the totals below. After that your archive stays visible and you can export it, and you keep the free plan unless you upgrade.', { when: day(billing.trial_ends_at) })}</p>}
+      {plan === 'free' && <p className="text-sm text-gray-500 mb-3">{t('The free plan keeps your records, the timeline, search, export, the emergency card and one share link. Questions, connections and approving visitors are part of Essential and Premium, and translation of Premium.')}</p>}
       {sub && (
         <p className="text-sm text-gray-500 mb-3">
           {sub.provider === 'operator'
             ? t('Granted to your account until {when}.', { when: day(sub.ends_at ?? '') })
             : sub.ends_at
-              ? t('Your subscription ends on {when}; you keep Premium until then.', { when: day(sub.ends_at) })
+              ? t('Your subscription ends on {when}; you keep {plan} until then.', { when: day(sub.ends_at), plan: name })
               : t('Renews on {when}.', { when: sub.renews_at ? day(sub.renews_at) : '' })}
           {sub.founding && ` ${t('Founding member price, kept for as long as you stay subscribed.')}`}
         </p>
@@ -69,6 +75,9 @@ export default function PlanCard() {
             {bar(ai.reading.used, ai.reading.allowance)}
           </li>
         )}
+        {chat && <li className={chat.used >= chat.allowance! ? 'text-amber-700' : undefined}>{t('Questions in the trial: {used} of {allowance}', { used: chat.used, allowance: chat.allowance! })}{bar(chat.used, chat.allowance!)}</li>}
+        {translation && <li className={translation.used >= translation.allowance! ? 'text-amber-700' : undefined}>{t('Translated pages in the trial: {used} of {allowance}', { used: translation.used, allowance: translation.allowance! })}{bar(translation.used, translation.allowance!)}</li>}
+        {!!billing.addons?.page_topup.pages_left && <li>{t('Extra pages: {n} left', { n: billing.addons.page_topup.pages_left })}</li>}
         {vault && <li>{t('Storage: {used} of {limit} used', { used: formatBytes(vault.used_bytes), limit: formatBytes(vault.limit_bytes) })}{bar(vault.used_bytes, vault.limit_bytes)}</li>}
         {billing.people && <li>{t('People: up to {n}', { n: billing.people.limit })}</li>}
         {/* Share links are limited only on the free plan; on a paid plan nothing about them is a limit to show. */}
@@ -78,22 +87,45 @@ export default function PlanCard() {
       <ArchiveProgress />
 
       {error && <Notice kind="error">{error}</Notice>}
-      {plan !== 'premium' && plan !== 'family' && family && prices && (
+      {billing.addons?.page_topup.buyable && prices?.addons?.page_topup !== undefined && (reading.nearly || billing.addons.page_topup.pages_left > 0) && (
         <div className="space-y-1 mb-3">
-          <p className="text-sm text-gray-700">{t('For a family, with up to six people, children and teenagers among them:')}</p>
-          <button disabled={busy} onClick={() => go(() => api.billing.checkout('year', 'family'))} className={buttonClass}>{t('Family for {price} a year', { price: money(prices.family.year) })}</button>
-          <button disabled={busy} onClick={() => go(() => api.billing.checkout('month', 'family'))} className="ml-3 text-sm text-brand-600 hover:underline">{t('or {price} a month', { price: money(prices.family.month) })}</button>
+          <p className="text-sm text-gray-700">{t('Running out of pages? A top-up adds 250 pages that do not expire with the month.')}</p>
+          <button disabled={busy} onClick={() => go(() => api.billing.addon('page_topup'))} className={buttonClass}>{t('Add 250 pages for {price}', { price: money(prices.addons.page_topup) })}</button>
         </div>
       )}
-      {plan !== 'premium' && plan !== 'family' && prices && (
-        <div className="space-y-2">
-          <button disabled={busy} onClick={() => go(() => api.billing.checkout('year'))} className={buttonClass}>
-            {foundingLeft ? t('Premium for {price} a year (founding price)', { price: money(prices.founding.year) }) : t('Premium for {price} a year', { price: money(prices.premium.year) })}
-          </button>
-          <button disabled={busy} onClick={() => go(() => api.billing.checkout('month'))} className="text-sm text-brand-600 hover:underline">
-            {t('or {price} a month', { price: money(prices.premium.month) })}
-          </button>
+      {trialUsedUp && <p className="text-sm text-amber-700 mb-3">{t('You have used up one of the trial’s totals. Your archive stays visible and you can export it; to add, ask or translate more, become a Founding member or choose a plan.')}</p>}
+      {!paid && prices && (
+        <div className="space-y-3 mb-3">
+          {billing.essential && prices.essential && (
+            <div className="space-y-1">
+              <p className="text-sm text-gray-700">{t('Essential: five pages a month and questions about your records; with the yearly plan, a one-off import of 150 pages.')}</p>
+              <button disabled={busy} onClick={() => go(() => api.billing.checkout('year', 'essential'))} className={buttonClass}>{t('Essential for {price} a year', { price: money(prices.essential.year) })}</button>
+              <button disabled={busy} onClick={() => go(() => api.billing.checkout('month', 'essential'))} className="ml-3 text-sm text-brand-600 hover:underline">{t('or {price} a month', { price: money(prices.essential.month) })}</button>
+            </div>
+          )}
+          <div className="space-y-2">
+            <button disabled={busy} onClick={() => go(() => api.billing.checkout('year'))} className={buttonClass}>
+              {foundingLeft ? t('Premium for {price} a year (founding price)', { price: money(prices.founding.year) }) : t('Premium for {price} a year', { price: money(prices.premium.year) })}
+            </button>
+            <button disabled={busy} onClick={() => go(() => api.billing.checkout('month'))} className="text-sm text-brand-600 hover:underline">
+              {t('or {price} a month', { price: money(prices.premium.month) })}
+            </button>
+          </div>
+          {family && prices.family && (
+            <div className="space-y-1">
+              <p className="text-sm text-gray-700">{t('For a family, with up to six people, children and teenagers among them:')}</p>
+              <button disabled={busy} onClick={() => go(() => api.billing.checkout('year', 'family'))} className={buttonClass}>{t('Family for {price} a year', { price: money(prices.family.year) })}</button>
+              <button disabled={busy} onClick={() => go(() => api.billing.checkout('month', 'family'))} className="ml-3 text-sm text-brand-600 hover:underline">{t('or {price} a month', { price: money(prices.family.month) })}</button>
+            </div>
+          )}
           <p className="text-xs text-gray-500">{t('Renews until you cancel, and you can cancel at any time. In the first 14 days you can have your money back.')} <Link to="/pricing" className="underline">{t('What is included')}</Link></p>
+        </div>
+      )}
+      {billing.invite && (
+        <div className="space-y-1 mb-3">
+          <p className="text-sm text-gray-700">{t('Invite someone: when they make an account with your link, you each get {n} more pages.', { n: billing.invite.pages })}</p>
+          <p className="text-xs text-gray-500 break-all select-all">{`${window.location.origin}/register?ref=invite&by=${billing.invite.token}`}</p>
+          <p className="text-xs text-gray-500">{t('You can be rewarded for {max} invitations; {done} so far.', { max: billing.invite.max, done: billing.invite.rewarded })}</p>
         </div>
       )}
       {billing.can_manage && <button disabled={busy} onClick={() => go(() => api.billing.portal())} className="text-sm text-brand-600 hover:underline">{t('Manage billing, invoices and cancellation')}</button>}

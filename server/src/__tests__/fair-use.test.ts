@@ -66,7 +66,9 @@ describe('the hidden fair-use ceilings', () => {
       const f = fairUseOf('family');
       expect(f.monthly).toMatchObject({ messages: 1200, translatedPages: 1600, linkViews: 10000, linkBytes: 100 * GB });
       expect(f.yearly).toEqual({ messages: 4800, translatedPages: 6000, linkBytes: 200 * GB });
-      expect(fairUseOf('trial')).toEqual(p);
+      // Essential asks questions and does not translate; the trial has visible totals for both and no hidden ceiling for them.
+      expect(fairUseOf('essential')).toEqual({ monthly: { ...p.monthly, translatedPages: 0 }, yearly: { ...p.yearly, translatedPages: 0 } });
+      expect(fairUseOf('trial').monthly).toMatchObject({ messages: 1e9, translatedPages: 1e9, linkViews: 5000, readingMultiple: 2 });
       // Link opens are monthly only.
       expect(Object.keys(p.yearly)).not.toContain('linkViews');
     });

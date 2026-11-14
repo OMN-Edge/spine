@@ -29,3 +29,10 @@ export async function pagesAllowed(store: AccountsStore, user: string, e: Entitl
   for (const m of months) used.set(m, await store.usage.aiUsed(user, meterKey('pages', e, new Date(`${m}-15T00:00:00Z`), pool)));
   return carriedPages(grant, e.carryMonths, since, month, m => used.get(m) ?? 0);
 }
+
+/**
+ * The one-off import an account, or the plan's pool, may read: **only a yearly plan has one**, and it has all of it at once. A monthly plan has none (a
+ * person who pays by the month adds pages by the month; reading a whole archive is what the yearly plan is for), and so has the trial, whose 150 pages are
+ * in all. `interval` is the paying account's subscription.
+ */
+export const importGrant = (grant: number, interval: 'month' | 'year' | null): number => (interval === 'year' ? grant : 0);

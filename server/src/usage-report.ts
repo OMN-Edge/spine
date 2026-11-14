@@ -1,7 +1,7 @@
 import type { AccountsStore } from 'spine-core/store/types.js';
 import { CHAT_MESSAGE, TRANSLATED_PAGE, linkKey, meterKey } from 'spine-core/billing/plans.js';
 import { standingOf } from './billing/seat.js';
-import { fairUseOf } from './billing/fair-use.js';
+import { fairUseOf, syncFairUse } from './billing/fair-use.js';
 import { windowMonths } from './billing/window.js';
 import { costKey, tokenKey, type Family } from './billing/cost.js';
 
@@ -29,6 +29,7 @@ export interface UsageRow {
 const FAMILIES: Family[] = ['reading', 'chat', 'translation'];
 
 export async function usageReport(store: AccountsStore, month: string, now: Date = new Date()): Promise<UsageRow[]> {
+  await syncFairUse(store);
   const rows: UsageRow[] = [];
   const when = new Date(`${month}-15T00:00:00Z`);
   for (const user of await store.users.list()) {

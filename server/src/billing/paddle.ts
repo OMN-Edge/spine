@@ -37,7 +37,7 @@ export interface PaddleEvent {
     status?: string;
     customer_id?: string;
     subscription_id?: string;
-    custom_data?: { user_id?: unknown } | null;
+    custom_data?: { user_id?: unknown; addon?: unknown } | null;
     items?: Array<{ price?: { id?: string } }>;
     billing_cycle?: { interval?: string };
     current_billing_period?: { ends_at?: string } | null;
@@ -67,10 +67,10 @@ export const userOf = (event: PaddleEvent): string | null => {
   return typeof id === 'string' && id.length > 0 && id.length <= 64 ? id : null;
 };
 
-/** What a purchase is for, from the prices on it: the family plan if one of its prices is there, else Premium. */
-export function planOfItems(items: PaddleEvent['data']['items'], config: Enabled): 'premium' | 'family' {
-  const family = config.family;
-  return family && (items ?? []).some(i => i.price?.id === family.year || i.price?.id === family.month) ? 'family' : 'premium';
+/** What a purchase is for, from the prices on it: the family plan or Essential if one of its prices is there, else Premium. */
+export function planOfItems(items: PaddleEvent['data']['items'], config: Enabled): 'essential' | 'premium' | 'family' {
+  const has = (p: { year: string; month: string } | null) => !!p && (items ?? []).some(i => i.price?.id === p.year || i.price?.id === p.month);
+  return has(config.family) ? 'family' : has(config.essential) ? 'essential' : 'premium';
 }
 
 /** The account's row after a `subscription.*` delivery. Fields the delivery lacks keep what was known. */
@@ -116,10 +116,10 @@ async function call(config: Enabled, method: string, path: string, body?: unknow
  * `SPINE_CHECKOUT_URL`: naming that page in the request instead would need its domain approved at Paddle, in the sandbox too, while the
  * default needs no approval there. A default that is some other page is logged, since the person would be sent there.
  */
-export async function createCheckout(config: Enabled, priceId: string, userId: string): Promise<string> {
+export async function createCheckout(config: Enabled, priceId: string, userId: string, addon?: string): Promise<string> {
   const out = await call(config, 'POST', '/transactions', {
     items: [{ price_id: priceId, quantity: 1 }],
-    custom_data: { user_id: userId },
+    custom_data: addon ? { user_id: userId, addon } : { user_id: userId },
   });
   const url = ((out.data as { checkout?: { url?: string } } | undefined)?.checkout?.url) ?? '';
   if (!/^https?:\/\//.test(url)) throw new Error('the payment provider gave no checkout address');
@@ -135,4 +135,10 @@ export async function portalUrl(config: Enabled, customerId: string, subscriptio
   const url = ((out.data as { urls?: { general?: { overview?: string } } } | undefined)?.urls?.general?.overview) ?? '';
   if (!url.startsWith('https://')) throw new Error('the payment provider gave no portal address');
   return url;
+}
+
+/** What a completed transaction bought once, from the price on it (never from what its custom data claims): null for a subscription's or an unknown price. */
+export function addonOfItems(items: PaddleEvent['data']['items'], config: Enabled): 'page_topup' | null {
+  const id = config.addons.pageTopup;
+  return id && (items ?? []).some(i => i.price?.id === id) ? 'page_topup' : null;
 }

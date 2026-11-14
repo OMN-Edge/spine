@@ -6,6 +6,8 @@ import Login from './pages/Login';
 import Landing from './pages/Landing';
 import Register from './pages/Register';
 import Verify from './pages/Verify';
+import Unsubscribe from './pages/Unsubscribe';
+import Admin from './pages/Admin';
 import Forgot from './pages/Forgot';
 import Pair from './pages/Pair';
 import Reset from './pages/Reset';
@@ -373,6 +375,8 @@ export default function App() {
         <Route path="/login" element={<NotInDemo><Login /></NotInDemo>} />
         <Route path="/register" element={<NotInDemo><Register /></NotInDemo>} />
         <Route path="/verify" element={<Verify />} />
+        <Route path="/unsubscribe" element={<Unsubscribe />} />
+        <Route path="/admin" element={<Admin />} />
         <Route path="/privacy" element={<LegalPage doc="privacy" />} />
         <Route path="/terms" element={<LegalPage doc="terms" />} />
         <Route path="/purpose" element={<LegalPage doc="purpose" />} />

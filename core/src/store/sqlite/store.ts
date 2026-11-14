@@ -19,7 +19,7 @@ import { sessionRepository } from './sessions.js';
 import { cookieSessionRepository } from './cookie-sessions.js';
 import { enrolmentRepository } from './enrolments.js';
 import { usageRepository } from './usage.js';
-import { billingRepository, metricsRepository, waitlistRepository } from './billing.js';
+import { billingRepository, metricsRepository, settingsRepository, waitlistRepository } from './billing.js';
 import { changeLog } from './changes.js';
 import { fileRegistryRepository } from './file-registry.js';
 import { matchDecisionRepository } from './match-decisions.js';
@@ -92,6 +92,7 @@ function accountsOver(db: Database, depth: number): AccountsStore {
     billing: billingRepository(db),
     metrics: metricsRepository(db),
     waitlist: waitlistRepository(db),
+    settings: settingsRepository(db),
     delegations: delegationRepository(db),
     family: familyRepository(db),
     reminderDates: reminderDateRepository(db),

@@ -28,6 +28,8 @@ import { resetMessage, verifyResetProof } from '../reset-proof.js';
 import { removeAllObjects } from '../vault-files.js';
 import { checkSecondFactor, hasSecondFactor } from '../second-factor.js';
 import { mailAfter, securityChangeMail } from '../notify.js';
+import { grantInvitation } from '../billing/invitations.js';
+import { sendWelcome, stopLifecycleMail, userOfUnsubscribeToken } from '../lifecycle.js';
 
 /**
  * Signup, address verification and password recovery (SECURITY.md M-6, M-11).
@@ -71,8 +73,8 @@ const WAITING = {
 
 const INVALID_LINK = { error: 'this link is invalid or has expired' };
 
-/** Where sign-ups come from that the loops in the marketing plan are meant to bring: a shared page, a card, an invitation. A count a day, never a person. */
-const SIGNUP_REFS = new Set(['share', 'card', 'invite', 'doctors']);
+/** Where sign-ups come from that the loops and the channels of the marketing plan are meant to bring (a shared page, a card, an invitation, a post). A count a day, never a person: a link ends in `?ref=reddit`. */
+const SIGNUP_REFS = new Set(['share', 'card', 'invite', 'doctors', 'reddit', 'hn', 'producthunt', 'linkedin', 'diaspora', 'youtube', 'partner']);
 async function countSignup(ref: unknown): Promise<void> {
   try {
     const day = new Date().toISOString().slice(0, 10);
@@ -124,7 +126,7 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
   });
 
   if (registration === 'open' || registration === 'approval') {
-    app.post<{ Body: { email?: string; password?: string; auth_value?: string; keys?: unknown; consent_health_data?: unknown; accept_terms?: unknown; ref?: unknown; language?: unknown } }>(
+    app.post<{ Body: { email?: string; password?: string; auth_value?: string; keys?: unknown; consent_health_data?: unknown; accept_terms?: unknown; ref?: unknown; by?: unknown; language?: unknown } }>(
       '/api/auth/register',
       { preHandler: [perSource, perAddress, mailCap, signupCap] },
       async (req, reply) => {
@@ -176,6 +178,8 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
               if (keys) await tx.vault.putKeys(id, keys, createdAt);
             });
             await countSignup(req.body?.ref);
+            // A link of an account that invited them: both get their pages (`billing/invitations.ts`; nothing keeps who invited whom).
+            if (req.body?.by !== undefined) await grantInvitation(store, req.body.by, id).catch(() => undefined);
             if (verifyByMail) {
               const token = await issueUserToken(id, 'verify', VERIFY_TTL_MS);
               sendLater(req, id, verificationMail({ email: address, language }, verificationLink(token)), 'verification');
@@ -206,6 +210,20 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
 
       await store.users.markVerified(userId, now);
       req.log.info({ userId }, 'email verified');
+      // The welcome, with the first step; a mail that cannot be sent never fails the confirmation.
+      await sendWelcome(store, userId).catch(err => req.log.warn({ err: err instanceof Error ? err.message : String(err) }, 'the welcome could not be sent'));
+      return reply.send({ ok: true });
+    },
+  );
+
+  // The link in a reminder or a trial mail: stops those, and only those (account mail is not one of them). The token is the account and a signature only this
+  // server can make, so it works signed in or not, and the answer is the same for a stale one as for a good one.
+  app.post<{ Body: { token?: unknown } }>(
+    '/api/mail/unsubscribe',
+    { preHandler: [perSource] },
+    async (req, reply) => {
+      const userId = userOfUnsubscribeToken(req.body?.token);
+      if (userId) await stopLifecycleMail(getAccountsStore(), userId);
       return reply.send({ ok: true });
     },
   );

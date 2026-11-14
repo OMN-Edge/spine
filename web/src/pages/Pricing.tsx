@@ -1,93 +1,285 @@
 import { useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type Pricing as PricingData } from '../api';
-import { Wordmark } from '../components/Logo';
 import { useAuth } from '../auth';
 import { useI18n } from '../i18n';
+import { Actions, PublicPage, usePublicOptions, type PublicOptions } from '../components/PublicPage';
+import { FamilySpines } from '../components/PublicDrawings';
+import { TRIAL_TOTALS } from 'spine-core/billing/plans';
 
 /**
  * What the plans are and cost, read before an account exists (CR-PAY-01: the price, the renewal and how to cancel are shown before any
- * purchase). The amounts come from the server, which takes them from `billing/plans.ts`, so the page and the checkout cannot disagree about
- * what is on offer. On an instance with no plans (self-hosted, private) it says so.
+ * purchase), in the public pages' look (`PublicPage`: paper and ink, Literata headings, the teal accent, the honey highlight). The amounts are
+ * Paddle's, read by the server from the prices the checkout charges, so the page and the checkout cannot disagree about what is on offer;
+ * where Paddle cannot say, the page shows none. What each plan includes is `core/src/billing/plans.ts`; change one only with the other.
  */
+type Period = 'year' | 'month';
+
 export default function Pricing() {
-  const { t } = useI18n();
+  const options = usePublicOptions();
   const { authenticated } = useAuth();
   const [pricing, setPricing] = useState<PricingData | null>(null);
   useEffect(() => { api.billing.pricing().then(setPricing).catch(() => setPricing({ enabled: false })); }, []);
+  return <PricingPage pricing={pricing} authenticated={authenticated} options={options} />;
+}
+
+/** The page for what the server said (`null` while it has not): drawn from its arguments alone, so a test can give each case. */
+export function PricingPage({ pricing, authenticated, options }: { pricing: PricingData | null; authenticated: boolean; options: PublicOptions }) {
+  const { t } = useI18n();
+  const [period, setPeriod] = useState<Period>('year');
   const prices = pricing?.prices;
-  const money = (n: number) => `€${n}`;
+  // A whole amount without its cents (€49, not €49.00); any other with them.
+  const money = (n: number) => new Intl.NumberFormat(undefined, { style: 'currency', currency: prices?.currency ?? 'EUR', ...(Number.isInteger(n) ? { minimumFractionDigits: 0, maximumFractionDigits: 0 } : {}) }).format(n);
+  // Every account starts on the trial; a plan is chosen from the account page.
+  const cta = authenticated
+    ? { to: '/account', label: t('Choose a plan on your account page') }
+    : { to: '/register', label: t('Start with six months free') };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8">
-        <Link to="/" aria-label={t('Spine, home')} className="inline-block mb-6"><Wordmark /></Link>
-        <article className="bg-white border border-gray-200 rounded-xl p-6 space-y-4 text-sm text-gray-700 leading-relaxed">
-          <h1 className="text-xl font-semibold text-gray-900">{t('Plans and prices')}</h1>
-          {pricing && !pricing.enabled && <p>{t('This Spine has no paid plans. Everything in it is available to the people who have an account.')}</p>}
-          {pricing?.enabled && prices && (
-            <>
-              <p>{t('Every new account starts with six months of everything, including 150 pages of AI reading. After that you keep the free plan, or you choose Premium.')}</p>
+    <PublicPage options={options}>
+      <section className="landing-grid border-b border-ink/10">
+        <div className="mx-auto max-w-6xl px-4 pb-12 pt-14 sm:px-6 sm:pt-20">
+          <p className="text-sm font-medium uppercase tracking-[0.14em] text-accent">{t('Plans and prices')}</p>
+          <h1 className="mt-4 max-w-3xl font-display text-[clamp(2.3rem,5vw,3.6rem)] font-normal leading-[1.06] tracking-[-0.015em]">
+            {t('Pay for what you add. Everything you keep stays yours to use.')}
+          </h1>
+          <p className="mt-6 max-w-2xl text-lg leading-relaxed text-ink/75">
+            {t('A plan limits only how many pages you add each month. Asking about your records, translating them, sharing and exporting are not counted on the plans that include them.')}
+          </p>
+          {pricing && !pricing.enabled && <p className="mt-6 max-w-2xl text-ink/80">{t('This Spine has no paid plans. Everything in it is available to the people who have an account.')}</p>}
+          {pricing?.enabled && !prices && <p className="mt-6 max-w-2xl text-ink/80">{t('The prices cannot be shown right now. Try again in a moment.')}</p>}
+        </div>
+      </section>
 
-              <h2 className="text-base font-semibold text-gray-900 pt-2">{t('Free')} · {money(0)}</h2>
-              <ul className="list-disc pl-5 space-y-1">
-                <li>{t('Your records, the timeline, search on your device, export and the emergency card')}</li>
-                <li>{t('1 GB of storage')}</li>
-                <li>{t('One live share link, without translation')}</li>
-                <li>{t('About 10 pages of AI reading a month')}</li>
-              </ul>
+      {pricing?.enabled && prices && (
+        <>
+          <Trial />
 
-              <h2 className="text-base font-semibold text-gray-900 pt-2">{t('Premium')} · {t('{year} a year or {month} a month', { year: money(prices.premium.year), month: money(prices.premium.month) })}</h2>
-              <ul className="list-disc pl-5 space-y-1">
-                <li>{t('AI reading within fair use: about 30 pages a month, and what you do not use is kept for up to three months')}</li>
-                <li>{t('Questions about your records and translation of your documents: no monthly limit for normal use')}</li>
-                <li>{t('5 GB of storage')}</li>
-                <li>{t('Translation of your documents and of what a doctor opens')}</li>
-                <li>{t('Questions about your records, connections between documents, and related documents')}</li>
-                <li>{t('Share links, and approving visitors before they see one: no monthly limit for normal use')}</li>
-              </ul>
+          <section className="mx-auto max-w-6xl px-4 pt-14 sm:px-6">
+            <div className="flex flex-wrap items-end justify-between gap-6">
+              <h2 className="max-w-xl font-display text-[clamp(1.7rem,3.2vw,2.4rem)] font-normal leading-tight">{t('Then keep the plan that fits')}</h2>
+              <PeriodSwitch period={period} onChange={setPeriod} />
+            </div>
 
-              <p className="text-xs text-gray-500">{t('We may slow or pause automated or abusive use. This never affects normal use of your own records.')}</p>
-
-              {pricing.family && (
-                <>
-                  <h2 className="text-base font-semibold text-gray-900 pt-2">{t('Family')} · {t('{year} a year or {month} a month', { year: money(prices.family.year), month: money(prices.family.month) })}</h2>
-                  <ul className="list-disc pl-5 space-y-1">
-                    <li>{t('Everything in Premium, for up to six people')}</li>
-                    <li>{t('Up to six accounts can share the plan, each with its own records and its own password')}</li>
-                    <li>{t('Shared by all of them: 25 GB of storage and twice Premium’s pages of reading, with each account held to Premium’s pages')}</li>
-                    <li>{t('Records for children, kept by their guardians, with other guardians let in')}</li>
-                    <li>{t('A teenager from sixteen can have an account of their own, and at eighteen the records can become theirs')}</li>
-                  </ul>
-                </>
+            <div className="mt-8 grid gap-5 lg:grid-cols-3">
+              <PlanCard
+                name={t('Free')} tagline={t('To keep your records and show them')}
+                price={money(0)} per={t('for as long as you like')} cta={cta}
+                features={[
+                  [true, t('Your records, the timeline, search on your device, export and the emergency card')],
+                  [true, t('About 3 pages of AI reading a month, kept for up to three months')],
+                  [true, t('Up to 50 documents')],
+                  [true, t('1 GB of storage')],
+                  [true, t('One live share link, without translation')],
+                  [false, t('No questions and no translation')],
+                ]}
+              />
+              {pricing.essential && prices.essential && (
+                <PlanCard
+                  name={t('Essential')} tagline={t('To ask about a history that has grown')}
+                  {...amounts(prices.essential, period, money, t)} cta={cta}
+                  bonus={period === 'year' ? t('Includes a one-off import of {n} pages to read your whole archive', { n: 150 }) : null}
+                  features={[
+                    [true, t('About 5 pages of AI reading a month, kept for up to three months')],
+                    [true, t('2 GB of storage, with as many documents as you like')],
+                    [true, t('Questions about your records, connections between documents, and related documents')],
+                    [true, t('Share links, and approving visitors before they see one: no monthly limit for normal use')],
+                    [false, t('No translation of documents: that is part of Premium')],
+                  ]}
+                />
               )}
+              <PlanCard
+                featured name={t('Premium')} tagline={t('For a doctor in another country')}
+                {...amounts(prices.premium, period, money, t)} cta={cta}
+                bonus={period === 'year' ? t('Includes a one-off import of {n} pages to read your whole archive', { n: 250 }) : null}
+                note={period === 'year' && pricing.founding_left ? t('Founding members pay {price} a year', { price: money(prices.founding.year) }) : null}
+                features={[
+                  [true, t('AI reading within fair use: about 30 pages a month, and what you do not use is kept for up to three months')],
+                  [true, t('Translation of your documents and of what a doctor opens')],
+                  [true, t('Questions about your records and translation of your documents: no monthly limit for normal use')],
+                  [true, t('Questions about your records, connections between documents, and related documents')],
+                  [true, t('5 GB of storage')],
+                  [true, t('Share links, and approving visitors before they see one: no monthly limit for normal use')],
+                ]}
+              />
+            </div>
+            <p className="mt-5 max-w-3xl text-sm leading-relaxed text-ink/60">
+              {t('We may slow or pause automated or abusive use. This never affects normal use of your own records.')} {t('Translations help a doctor read your history. They are not certified translations.')}
+            </p>
+          </section>
 
-              {pricing.founding_left ? (
-                <p className="rounded-lg bg-gray-50 border border-gray-200 p-3">
-                  {t('The first 500 paying members pay {price} a year, kept for as long as they stay subscribed. {left} places are left.', { price: money(prices.founding.year), left: pricing.founding_left })}
-                </p>
-              ) : null}
+          {pricing.founding_left ? <Founding price={money(prices.founding.year)} regular={money(prices.premium.year)} left={pricing.founding_left} /> : null}
 
-              <h2 className="text-base font-semibold text-gray-900 pt-2">{t('How paying works')}</h2>
-              <ul className="list-disc pl-5 space-y-1">
-                <li>{t('A subscription renews every month or every year until you cancel. You cancel from your account, on the payment provider’s page, and keep Premium until the end of what you paid for.')}</li>
-                <li>{t('In the first 14 days you can have your money back.')}</li>
-                <li>{t('Paddle sells Premium to you: it takes the payment, sends the invoice and adds any tax, which you see before you pay. Spine never sees your card, only which plan you have.')}</li>
-                <li>{t('Spine is open-source software. Running your own copy is free, and has no plans.')}</li>
-              </ul>
-              <p>
-                {authenticated
-                  ? <Link to="/account" className="text-brand-600 hover:underline">{t('Choose a plan on your account page')}</Link>
-                  : <Link to="/register" className="text-brand-600 hover:underline">{t('Create an account')}</Link>}
-              </p>
-            </>
+          {pricing.family && prices.family && (
+            <section className="mx-auto max-w-6xl px-4 pt-14 sm:px-6">
+              <div className="grid items-center gap-10 rounded-3xl border border-ink/10 bg-honey/[0.09] p-6 sm:p-10 lg:grid-cols-[1.1fr_1fr]">
+                <div>
+                  <p className="text-sm font-medium uppercase tracking-[0.14em] text-accent">{t('Family')}</p>
+                  <h2 className="mt-3 font-display text-[clamp(1.7rem,3.2vw,2.4rem)] font-normal leading-tight">{t('Premium for up to six people')}</h2>
+                  <PriceLine {...amounts(prices.family, period, money, t)} />
+                  <ul className="mt-6 space-y-3">
+                    <Check ok>{t('Up to six accounts can share the plan, each with its own records and its own password')}</Check>
+                    <Check ok>{t('Shared by all of them: 25 GB of storage and twice Premium’s pages of reading, with each account held to Premium’s pages')}</Check>
+                    {period === 'year' && <Check ok>{t('With the yearly plan: a one-off import of 500 pages, to read your whole archive')}</Check>}
+                    <Check ok>{t('Records for children, kept by their guardians, with other guardians let in')}</Check>
+                    <Check ok>{t('A teenager from sixteen can have an account of their own, and at eighteen the records can become theirs')}</Check>
+                  </ul>
+                  <Link to={cta.to} className="mt-8 inline-block rounded-full bg-ink px-6 py-3 font-medium text-paper hover:bg-ink/85">{cta.label}</Link>
+                </div>
+                <figure><FamilySpines /></figure>
+              </div>
+            </section>
           )}
-        </article>
-        <nav className="mt-4 flex gap-4 text-xs text-gray-500" aria-label={t('Legal')}>
-          <Link to="/privacy" className="hover:underline">{t('Privacy notice')}</Link>
-          <Link to="/terms" className="hover:underline">{t('Terms of use')}</Link>
-        </nav>
+
+          <section className="mx-auto max-w-6xl px-4 pt-16 sm:px-6">
+            <h2 className="max-w-3xl font-display text-[clamp(1.7rem,3.2vw,2.4rem)] font-normal leading-tight">{t('What counts, and what does not')}</h2>
+            <dl className="mt-8 grid gap-x-12 gap-y-8 border-t border-ink/10 pt-8 md:grid-cols-3">
+              <Point title={t('Only adding counts')}>{t('A page counts when Spine reads it into your archive. Unused pages are kept for up to three months, so a visit with a full set of tests fits.')}</Point>
+              <Point title={t('Using is not counted')}>{t('Asking, translating, searching, sharing and exporting what is already in your archive never use up pages.')}</Point>
+              <Point title={t('Nothing is ever deleted')}>{t('When a trial or a plan ends, your archive stays visible and you can export it. Only adding more, and the features of the paid plans, stop.')}</Point>
+            </dl>
+          </section>
+
+          <section className="mx-auto max-w-6xl px-4 pt-16 sm:px-6">
+            <h2 className="max-w-3xl font-display text-[clamp(1.7rem,3.2vw,2.4rem)] font-normal leading-tight">{t('How paying works')}</h2>
+            <dl className="mt-8 grid gap-x-12 gap-y-8 border-t border-ink/10 pt-8 md:grid-cols-2">
+              <Point title={t('Cancel whenever you like')}>{t('A subscription renews every month or every year until you cancel. You cancel from your account, on the payment provider’s page, and keep your plan until the end of what you paid for.')}</Point>
+              <Point title={t('Your money back')}>{t('In the first 14 days you can withdraw and have your money back. For a yearly plan we refund what you paid, less what the law lets us keep for the part of the service already given.')}</Point>
+              <Point title={t('Paid through Paddle')}>{t('Paddle sells the plan to you: it takes the payment, sends the invoice and adds any tax, which you see before you pay. Spine never sees your card, only which plan you have.')}</Point>
+              <Point title={t('Or run your own')}>{t('Spine is open-source software. Running your own copy is free, and has no plans.')}</Point>
+            </dl>
+          </section>
+        </>
+      )}
+
+      <section className="mt-16 border-t border-ink/10">
+        <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-8 px-4 py-16 sm:px-6 lg:flex-row lg:items-end">
+          <h2 className="max-w-xl font-display text-[clamp(2rem,4.2vw,3.2rem)] font-normal leading-[1.08]">{t('See it with invented records first.')}</h2>
+          <Actions options={options} />
+        </div>
+      </section>
+    </PublicPage>
+  );
+}
+
+/** The amounts of a plan for the chosen period: the price, what it is per, and for a year what that comes to a month. */
+function amounts(p: { year: number; month: number }, period: Period, money: (n: number) => string, t: ReturnType<typeof useI18n>['t']) {
+  return period === 'year'
+    ? { price: money(p.year), per: t('a year'), sub: t('{price} a month, paid once a year', { price: money(Math.floor((p.year / 12) * 100) / 100) }) }
+    : { price: money(p.month), per: t('a month'), sub: t('or {price} a year', { price: money(p.year) }) };
+}
+
+/** Six months of everything, up to three totals, drawn as the three numbers they are. */
+function Trial() {
+  const { t } = useI18n();
+  const items: Array<[number, string]> = [[TRIAL_TOTALS.pages, t('pages of AI reading')], [TRIAL_TOTALS.messages, t('questions about your records')], [TRIAL_TOTALS.translated, t('translated pages')]];
+  return (
+    <section className="bg-band text-band-fg">
+      <div className="mx-auto grid max-w-6xl items-center gap-10 px-4 py-14 sm:px-6 lg:grid-cols-[1fr_1.3fr]">
+        <div>
+          <h2 className="font-display text-[clamp(1.8rem,3.4vw,2.6rem)] font-normal leading-tight">{t('Every account starts with six months of everything, free.')}</h2>
+          <p className="mt-4 max-w-md text-lg leading-relaxed text-band-fg/75">{t('No card. Every feature of Premium, up to these totals for the whole six months. After that you keep the free plan or choose one.')}</p>
+        </div>
+        <ul className="grid grid-cols-3 gap-3 sm:gap-5">
+          {items.map(([n, label]) => (
+            <li key={label} className="rounded-2xl border border-band-fg/15 bg-band-fg/[0.04] p-4 sm:p-6">
+              <span className="block font-display text-[clamp(2.2rem,5vw,3.6rem)] leading-none text-accent-light">{n}</span>
+              <span className="mt-3 block text-sm leading-snug text-band-fg/80">{label}</span>
+            </li>
+          ))}
+        </ul>
       </div>
+    </section>
+  );
+}
+
+function PeriodSwitch({ period, onChange }: { period: Period; onChange: (p: Period) => void }) {
+  const { t } = useI18n();
+  const button = (p: Period, label: ReactNode) => (
+    <button type="button" role="radio" aria-checked={period === p} onClick={() => onChange(p)}
+      className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${period === p ? 'bg-ink text-paper' : 'text-ink/70 hover:text-ink'}`}>{label}</button>
+  );
+  return (
+    <div role="radiogroup" aria-label={t('How often you pay')} className="inline-flex items-center gap-1 rounded-full border border-ink/15 bg-surface p-1">
+      {button('year', <>{t('Yearly')} <span className={`ml-1 rounded-full px-2 py-0.5 text-xs ${period === 'year' ? 'bg-honey text-band' : 'bg-honey/30 text-ink'}`}>{t('archive import included')}</span></>)}
+      {button('month', t('Monthly'))}
     </div>
   );
 }
+
+function PlanCard({ name, tagline, price, per, sub, bonus, note, features, cta, featured = false }: {
+  name: string; tagline: string; price: string; per: string; sub?: string; bonus?: string | null; note?: string | null;
+  features: Array<[boolean, string]>; cta: { to: string; label: string }; featured?: boolean;
+}) {
+  return (
+    <article className={`relative flex flex-col rounded-3xl p-6 sm:p-7 ${featured ? 'bg-band text-band-fg ring-1 ring-accent/40 shadow-[0_24px_60px_-28px_rgb(var(--band)/0.7)] lg:-my-3 lg:py-10' : 'border border-ink/12 bg-surface'}`}>
+      <h3 className="font-display text-2xl">{name}</h3>
+      <p className={`mt-1 text-sm ${featured ? 'text-band-fg/70' : 'text-ink/60'}`}>{tagline}</p>
+      <PriceLine price={price} per={per} sub={sub} inverted={featured} />
+      {bonus && <p className={`mt-4 rounded-xl px-3 py-2 text-sm font-medium ${featured ? 'bg-accent-light/15 text-accent-light' : 'bg-honey/25 text-ink'}`}>{bonus}</p>}
+      {note && <p className={`mt-2 text-sm ${featured ? 'text-band-fg/75' : 'text-ink/65'}`}>{note}</p>}
+      <ul className="mt-6 flex-1 space-y-3">
+        {features.map(([ok, text]) => <Check key={text} ok={ok} inverted={featured}>{text}</Check>)}
+      </ul>
+      <Link to={cta.to} className={`mt-8 rounded-full px-6 py-3 text-center font-medium ${featured ? 'bg-accent-light text-band hover:bg-accent-light/90' : 'border border-ink/25 hover:bg-ink/5'}`}>{cta.label}</Link>
+    </article>
+  );
+}
+
+function PriceLine({ price, per, sub, inverted = false }: { price: string; per: string; sub?: string; inverted?: boolean }) {
+  return (
+    <div className="mt-6">
+      <p><span className="font-display text-[2.6rem] leading-none">{price}</span> <span className={inverted ? 'text-band-fg/70' : 'text-ink/60'}>{per}</span></p>
+      {sub && <p className={`mt-1 text-sm ${inverted ? 'text-band-fg/60' : 'text-ink/55'}`}>{sub}</p>}
+    </div>
+  );
+}
+
+/** A line of what a plan includes (a tick) or does not (a dash, so it is not read by colour alone). */
+function Check({ ok, inverted = false, children }: { ok: boolean; inverted?: boolean; children: ReactNode }) {
+  const tone = inverted ? 'text-band-fg/85' : 'text-ink/80';
+  return (
+    <li className={`flex gap-3 text-[0.95rem] leading-snug ${ok ? tone : inverted ? 'text-band-fg/50' : 'text-ink/50'}`}>
+      <svg viewBox="0 0 20 20" aria-hidden="true" className={`mt-0.5 h-5 w-5 shrink-0 ${ok ? (inverted ? 'text-accent-light' : 'text-accent') : 'opacity-60'}`} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+        {ok ? <path d="M4.5 10.5l3.5 3.5 7.5-8" /> : <path d="M5.5 10h9" />}
+      </svg>
+      <span>{children}</span>
+    </li>
+  );
+}
+
+/** The founding offer, while places are left: the price kept for as long as the subscription runs, and how many of the 500 are taken. */
+function Founding({ price, regular, left }: { price: string; regular: string; left: number }) {
+  const { t } = useI18n();
+  const taken = 500 - left;
+  return (
+    <section className="mx-auto max-w-6xl px-4 pt-14 sm:px-6">
+      <div className="grid gap-8 rounded-3xl border border-accent/30 bg-accent/5 p-6 sm:p-10 md:grid-cols-[1.3fr_1fr] md:items-center">
+        <div>
+          <p className="text-sm font-medium uppercase tracking-[0.14em] text-accent">{t('Founding members')}</p>
+          <h2 className="mt-3 font-display text-[clamp(1.7rem,3.2vw,2.4rem)] font-normal leading-tight">
+            {t('Premium for {price} a year, for as long as you stay.', { price })}
+          </h2>
+          <p className="mt-4 max-w-xl leading-relaxed text-ink/75">{t('For the first 500 people only, instead of {regular}. The price stays yours for as long as your subscription runs, and you can take it during your free trial.', { regular })}</p>
+        </div>
+        <div>
+          <p className="flex items-baseline justify-between text-sm text-ink/70"><span>{t('{taken} of 500 places taken', { taken })}</span><span className="font-medium text-ink">{t('{left} left', { left })}</span></p>
+          <span className="mt-2 block h-3 overflow-hidden rounded-full bg-ink/10" role="presentation">
+            <span className="block h-3 rounded-full bg-accent" style={{ width: `${Math.max(2, Math.round((taken / 500) * 100))}%` }} />
+          </span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Point({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div>
+      <dt className="text-lg font-medium">{title}</dt>
+      <dd className="mt-2 leading-relaxed text-ink/70">{children}</dd>
+    </div>
+  );
+}
+

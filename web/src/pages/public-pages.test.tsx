@@ -8,6 +8,8 @@ import Protection from './Protection';
 import Families from './Families';
 import Encryption from './Encryption';
 import SecurityChecks from './SecurityChecks';
+import { PricingPage } from './Pricing';
+import type { Pricing as PricingData } from '../api';
 
 /**
  * The pages a visitor reads before an account: each opens on its own title inside the one header and footer, offers the demo as the
@@ -79,5 +81,47 @@ describe('the pages before an account', () => {
     for (const heading of ['The attacks it is built to resist', 'On every change', 'Before every release', 'At release']) expect(page).toContain(heading);
     expect(page.indexOf('The attacks it is built to resist')).toBeLessThan(page.indexOf('On every change'));
     expect(render(<Landing />, '/')).toContain('href="/security-checks"');
+  });
+});
+
+/**
+ * The plans page, drawn for each thing the server can say. Plans come from Paddle's prices, so the page shows an amount only where it was given one, and
+ * says so where it was not.
+ */
+describe('the plans page', () => {
+  const options = { registration: 'open' as const, instance: 'public' as const, billing: true, waitlist: false };
+  const prices = { currency: 'EUR', essential: { year: 24.9, month: 2.49 }, premium: { year: 49, month: 4.99 }, founding: { year: 39 }, family: { year: 89, month: 8.99 } };
+  const draw = (pricing: PricingData | null, authenticated = false) => text(render(<PricingPage pricing={pricing} authenticated={authenticated} options={options} />, '/pricing'));
+
+  it('shows each plan at the amount it was given, a whole amount without cents, and the import only with a yearly plan', () => {
+    const html = draw({ enabled: true, prices, essential: true, family: true, founding_left: 478 });
+    for (const shown of ['Free', 'Essential', 'Premium', 'Family', '€24.90', '€49', '€89', '€39']) expect(html).toContain(shown);
+    expect(html).not.toContain('€49.00');
+    expect(html).toContain('Includes a one-off import of 150 pages');
+    expect(html).toContain('Includes a one-off import of 250 pages');
+    expect(html).toContain('22 of 500 places taken');
+    for (const total of ['150', '50', '30']) expect(html).toContain(total);
+  });
+
+  it('leaves out the plans the instance does not sell, and the founding offer once its places are gone', () => {
+    const html = draw({ enabled: true, prices: { ...prices, essential: undefined, family: undefined }, founding_left: 0 });
+    expect(html).not.toContain('Essential');
+    expect(html).not.toContain('Family');
+    expect(html).not.toContain('Founding members');
+    expect(html).toContain('Premium');
+  });
+
+  it('shows no amount where Paddle could not say, and says that no plans exist where there are none', () => {
+    const none = draw({ enabled: true, prices: null });
+    expect(none).toContain('The prices cannot be shown right now');
+    expect(none).not.toMatch(/€\s?\d/);
+    expect(draw({ enabled: false })).toContain('This Spine has no paid plans');
+    expect(draw(null)).not.toMatch(/€\s?\d/);
+  });
+
+  it('sends a signed-in person to the account page and a visitor to sign-up', () => {
+    const pricing = { enabled: true, prices, essential: true, family: true, founding_left: 10 };
+    expect(render(<PricingPage pricing={pricing} authenticated options={options} />, '/pricing')).toContain('href="/account"');
+    expect(render(<PricingPage pricing={pricing} authenticated={false} options={options} />, '/pricing')).toContain('href="/register"');
   });
 });

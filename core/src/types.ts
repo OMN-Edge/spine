@@ -219,5 +219,5 @@ export interface JobStatus {
   step: string;
   error?: string;
   /** Pending because the model could not be asked: why, and when the upload is read again by itself (`ingestion/model-wait.ts`). */
-  waiting?: { reason: 'limit' | 'unavailable'; retry_at: string };
+  waiting?: { reason: 'limit' | 'plan' | 'unavailable'; retry_at: string };
 }

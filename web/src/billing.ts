@@ -51,6 +51,7 @@ export const planChanged = (): void => { window.dispatchEvent(new Event(PLAN_CHA
 /** A refusal that comes from the plan, in words the person is told (translated by the caller), or null for any other error. */
 export function planRefusal(err: unknown): string | null {
   const text = err instanceof Error ? err.message : '';
+  if (/trial.s total for this is used up/i.test(text)) return PLAN_TEXT.trial;
   if (/plan.s AI processing is used up/i.test(text)) return PLAN_TEXT.allowance;
   if (/another live share is not part of the account.s plan/i.test(text)) return PLAN_TEXT.shares;
   if (/approving visitors is not part of the account.s plan/i.test(text)) return PLAN_TEXT.approval;
@@ -63,6 +64,7 @@ export function planRefusal(err: unknown): string | null {
 }
 
 const PLAN_TEXT = {
+  trial: msg('You have used all the trial gives for this. Your archive stays visible and you can export it; become a Founding member or choose a plan on your account page to go on.'),
   allowance: msg('The AI reading in your plan is used up for now. It starts again next month, or you can upgrade on your account page.'),
   shares: msg('Your plan has one share link at a time. Revoke it, or upgrade on your account page for more.'),
   approval: msg('Approving visitors before they see a link is part of the paid plan. See your account page.'),

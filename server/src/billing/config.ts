@@ -13,9 +13,14 @@ export type BillingConfig =
       environment: 'sandbox' | 'production';
       apiKey: string;
       webhookSecret: string;
+      /** Premium's two prices and the founding one: the ids of prices in Paddle, which alone says what they cost (`catalog.ts`). */
       prices: { year: string; month: string; founding: string };
+      /** The Essential plan's two prices, when the operator sells it (both or neither). */
+      essential: { year: string; month: string } | null;
       /** The family plan's two prices, when the operator sells it (both or neither). */
       family: { year: string; month: string } | null;
+      /** The thing bought once, by its own price when the operator sells it (`billing/addons.ts`). */
+      addons: { pageTopup: string | null };
       /** The address of the page that opens Paddle's checkout: an origin of its own, so the provider's script never runs where the vault is. */
       checkoutUrl: string;
     };
@@ -38,7 +43,10 @@ export function readBillingConfig(env: NodeJS.ProcessEnv, instance: 'public' | '
   const checkoutUrl = need('SPINE_CHECKOUT_URL');
   if (checkoutUrl && !/^https:\/\/[^/\s]+(\/\S*)?$/.test(checkoutUrl) && !/^http:\/\/localhost(:\d+)?(\/\S*)?$/.test(checkoutUrl)) problems.push('SPINE_CHECKOUT_URL must be an https address');
 
-  // The family plan is sold only when both its prices are named; one alone is a mistake worth stopping for.
+  // Essential and the family plan are sold only when both their prices are named; one alone is a mistake worth stopping for.
+  const essentialYear = (env.SPINE_PADDLE_PRICE_ESSENTIAL_YEAR ?? '').trim();
+  const essentialMonth = (env.SPINE_PADDLE_PRICE_ESSENTIAL_MONTH ?? '').trim();
+  if (!!essentialYear !== !!essentialMonth) problems.push('the Essential plan needs both SPINE_PADDLE_PRICE_ESSENTIAL_YEAR and SPINE_PADDLE_PRICE_ESSENTIAL_MONTH, or neither');
   const familyYear = (env.SPINE_PADDLE_PRICE_FAMILY_YEAR ?? '').trim();
   const familyMonth = (env.SPINE_PADDLE_PRICE_FAMILY_MONTH ?? '').trim();
   if (!!familyYear !== !!familyMonth) problems.push('the family plan needs both SPINE_PADDLE_PRICE_FAMILY_YEAR and SPINE_PADDLE_PRICE_FAMILY_MONTH, or neither');
@@ -49,7 +57,9 @@ export function readBillingConfig(env: NodeJS.ProcessEnv, instance: 'public' | '
     apiKey: need('PADDLE_API_KEY'),
     webhookSecret: need('PADDLE_WEBHOOK_SECRET'),
     prices: { year: need('SPINE_PADDLE_PRICE_YEAR'), month: need('SPINE_PADDLE_PRICE_MONTH'), founding: need('SPINE_PADDLE_PRICE_FOUNDING') },
+    essential: essentialYear && essentialMonth ? { year: essentialYear, month: essentialMonth } : null,
     family: familyYear && familyMonth ? { year: familyYear, month: familyMonth } : null,
+    addons: { pageTopup: (env.SPINE_PADDLE_PRICE_TOPUP_PAGES ?? '').trim() || null },
     checkoutUrl,
   };
 }

@@ -4,6 +4,7 @@ import { getAccountsStore } from 'spine-core/store/index.js';
 import { PAGE, PLANS, SEAT_COOLDOWN_DAYS } from 'spine-core/billing/plans.js';
 import { buildTestApp, loginAs } from './helpers/app.js';
 import { createTestUser } from './helpers/seed.js';
+import { topupLeft } from '../billing/addons.js';
 import { createRelayGate } from '../billing/gate.js';
 import { accountEntitlements, liveSharesFor, vaultBytesFor } from '../billing/entitlements.js';
 import { fakeAuthValue, fakeVaultKeys } from 'spine-core/testing/vault.js';
@@ -108,11 +109,21 @@ describe('seats in a shared plan', () => {
       expect(await store().usage.aiUsed(payer.id, month)).toBe(0);
     });
 
+    it('gives both sides their invitation pages when a seat is taken, once', async () => {
+      on();
+      const payer = await account('family');
+      const member = await account();
+      await join(payer, member);
+      expect([await topupLeft(store(), payer.id), await topupLeft(store(), member.id)]).toEqual([10, 10]);
+    });
+
     it('holds each account to Premium’s pages of the plan’s, so one cannot add the whole pool, and leaves using to the pool', async () => {
       on();
       const payer = await account('family');
       const member = await account();
       await join(payer, member);
+      // Taking the seat gave both their invitation pages, which are outside the plan's own pages: set them aside to see the plan's.
+      for (const who of [payer, member]) await store().usage.aiAdd(who.id, 'once:topup:used', 10);
       const gate = createRelayGate(() => store());
       const month = new Date().toISOString().slice(0, 7);
       // The member adds all the pages one account may: they are stopped, and the payer and the pool have more.

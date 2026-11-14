@@ -5,12 +5,14 @@ import { LlmBlockedError } from './types.js';
  * could not be asked (a quota, an outage, a dropped connection): it waits and tries again. It gives up only on what asking again would not
  * change: the model refused these words, or the provider turned the request itself down.
  *
- * - `limit`: a daily allowance is used up (the relay's, for the account or the share, or the plan's); try after midnight UTC,
+ * - `limit`: a daily allowance is used up (the relay's, for the account or the share); try after midnight UTC,
  *   when the day's count starts again.
+ * - `plan`: what the plan gives is used up (its pages, or a trial's total); the plan's period is longer than a day and an upgrade lifts it, so the work
+ *   is kept and one call a day finds out.
  * - `unavailable`: the relay or the provider did not answer, or answered that it could not; try again soon, then less often.
  */
 export interface ModelWait {
-  reason: 'limit' | 'unavailable';
+  reason: 'limit' | 'plan' | 'unavailable';
   /** The earliest time worth trying again (ms since the epoch), when the reason says; otherwise the caller backs off. */
   until?: number;
 }
@@ -33,7 +35,8 @@ export function modelWait(err: unknown, now: number = Date.now()): ModelWait | n
   if (typeof status !== 'number') return null;
   if (typeof code === 'string' && FINAL_CODES.has(code)) return null;
   // 429: the relay's daily allowance. 402: the plan's (its period may be longer than a day; one call a day to find out costs nothing).
-  if (status === 429 || status === 402) return { reason: 'limit', until: nextUtcDay(now) };
+  if (status === 429) return { reason: 'limit', until: nextUtcDay(now) };
+  if (status === 402) return { reason: 'plan', until: nextUtcDay(now) };
   // 401: the relay's pass ran out, and the device fetches a new one with the next call. 408 and 5xx: the relay or the provider did not answer.
   if (status === 401 || status === 408 || status >= 500) return { reason: 'unavailable' };
   return null;

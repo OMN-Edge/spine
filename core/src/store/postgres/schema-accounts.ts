@@ -201,7 +201,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   customer_id TEXT,
   subscription_id TEXT,
   billing_interval TEXT, -- 'month' | 'year'
-  plan TEXT NOT NULL DEFAULT 'premium', -- 'premium' | 'family'
+  plan TEXT NOT NULL DEFAULT 'premium', -- 'essential' | 'premium' | 'family'
   status TEXT NOT NULL,
   founding INTEGER NOT NULL DEFAULT 0,
   current_period_end TEXT,
@@ -254,6 +254,15 @@ CREATE TABLE IF NOT EXISTS metrics (
   n BIGINT NOT NULL,
   PRIMARY KEY (name, day)
 );
+
+-- The few settings the operator changes from the admin page, by name (server/src/operator-settings.ts lists them and checks each value): the
+-- dashboard's targets, the AI budget, the reminder interval. Not an account's data.
+CREATE TABLE IF NOT EXISTS operator_settings (
+  key TEXT NOT NULL PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 
 -- The windows a limiter counts in, shared by every instance of the server (SPINE_LIMITS=store): see sqlite/schema-accounts.ts.
 CREATE TABLE IF NOT EXISTS rate_windows (

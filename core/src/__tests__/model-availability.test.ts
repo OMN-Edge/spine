@@ -10,7 +10,7 @@ describe('whether a model call that failed can succeed later', () => {
   it('waits for the next day when a daily allowance is used up: the relay’s or the plan’s', () => {
     const tomorrow = Date.UTC(2026, 10, 3, 0, 5);
     expect(modelWait(relay(429), NOW)).toEqual({ reason: 'limit', until: tomorrow });
-    expect(modelWait(relay(402, 'allowance_used'), NOW)).toEqual({ reason: 'limit', until: tomorrow });
+    expect(modelWait(relay(402, 'allowance_used'), NOW)).toEqual({ reason: 'plan', until: tomorrow });
   });
 
   it('tries again soon when the relay or the provider did not answer', () => {

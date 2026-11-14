@@ -32,13 +32,17 @@ describe('pages that carry from month to month', () => {
     expect(carriedPages(10, 1, '2027-01', '2027-06', none)).toBe(10);
   });
 
-  it('follows the plans: Premium 30 a month, Family 60 for all, each keeping three months’ worth, and Free and the trial none', () => {
+  it('follows the plans: Premium 30 a month, Family 60 for all, each keeping three months’ worth, and Free and Essential three months too, and the trial none', () => {
     expect(PLANS.premium.allowance.pages).toBe(30);
     expect(PLANS.family.allowance.pages).toBe(60);
     expect(PLANS.family.memberCap?.pages).toBe(30);
     expect(PLANS.premium.carryMonths).toBe(3);
     expect(PLANS.family.carryMonths).toBe(3);
-    expect(PLANS.free.carryMonths).toBe(1);
+    // Free keeps three pages a month, nine at most; Essential five, fifteen at most.
+    expect(PLANS.free.allowance.pages).toBe(3);
+    expect(PLANS.free.carryMonths).toBe(3);
+    expect(PLANS.essential.allowance.pages).toBe(5);
+    expect(PLANS.essential.carryMonths).toBe(3);
     expect(PLANS.trial.carryMonths).toBe(1);
   });
 });

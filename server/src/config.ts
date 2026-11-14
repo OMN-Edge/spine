@@ -113,6 +113,11 @@ export function loadInstanceKind(env: NodeJS.ProcessEnv = process.env): Instance
   return instance;
 }
 
+/** The addresses that may read the operator's numbers and nothing else (`SPINE_MARKETING_EMAILS`, the marketing role: it cannot approve or refuse an account). */
+export function marketingEmails(env: NodeJS.ProcessEnv = process.env): Set<string> {
+  return new Set((env.SPINE_MARKETING_EMAILS ?? '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean));
+}
+
 /** The addresses that may approve accounts from the app (`SPINE_ADMIN_EMAILS`, comma separated, compared lower-cased). The CLI needs none. */
 export function adminEmails(env: NodeJS.ProcessEnv = process.env): Set<string> {
   return new Set((env.SPINE_ADMIN_EMAILS ?? '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean));

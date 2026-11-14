@@ -3,6 +3,7 @@ import path from 'node:path';
 import { resolveDataDir } from 'spine-core/config.js';
 import { logger } from 'spine-core/logger.js';
 import type { PlanId } from 'spine-core/billing/plans.js';
+import type { AccountsStore } from 'spine-core/store/types.js';
 
 /**
  * The hidden fair-use ceilings (SECURITY.md **M-45**): what no use of an archive reaches and an abuse of an account does, so that one hostile account
@@ -42,21 +43,47 @@ const twice = (f: FairUse): FairUse => ({
   monthly: { ...f.monthly, messages: f.monthly.messages * 2, translatedPages: f.monthly.translatedPages * 2, linkViews: f.monthly.linkViews * 2, linkBytes: f.monthly.linkBytes * 2 },
   yearly: { messages: f.yearly.messages * 2, translatedPages: f.yearly.translatedPages * 2, linkBytes: f.yearly.linkBytes * 2 },
 });
-const DEFAULTS: Record<PlanId, FairUse> = {
+/** No ceiling: the trial's questions and translated pages have totals the person sees, which stop first. */
+const NONE = 1e9;
+export const DEFAULTS: Record<PlanId, FairUse> = {
   // The free plan has no questions and no translation, and its links are limited by the plan itself: only its reading has a ceiling.
   free: { monthly: { messages: 0, translatedPages: 0, linkViews: 0, linkBytes: 0, readingMultiple: 2 }, yearly: { messages: 0, translatedPages: 0, linkBytes: 0 } },
-  trial: PREMIUM,
+  // The trial counts questions and translated pages in visible totals, so it has no hidden ceiling for them; its pages read still do (twice its 150).
+  trial: { monthly: { ...PREMIUM.monthly, messages: NONE, translatedPages: NONE }, yearly: { ...PREMIUM.yearly, messages: NONE, translatedPages: NONE } },
+  // Essential asks questions but does not translate: no translated pages, and the same ceilings as Premium for the rest.
+  essential: { monthly: { ...PREMIUM.monthly, translatedPages: 0 }, yearly: { ...PREMIUM.yearly, translatedPages: 0 } },
   premium: PREMIUM,
   family: twice(PREMIUM),
 };
-const DEFAULT_WATCH: Watch = { aiEurosPerMonth: 15, fractionOfCeiling: 0.8 };
-const DEFAULT_PRICES: Prices = { inputPerMillionEur: 1.43, outputPerMillionEur: 8.61 };
+export const DEFAULT_WATCH: Watch = { aiEurosPerMonth: 15, fractionOfCeiling: 0.8 };
+export const DEFAULT_PRICES: Prices = { inputPerMillionEur: 1.43, outputPerMillionEur: 8.61 };
 
-interface Loaded { fairUse: Record<PlanId, FairUse>; watch: Watch; prices: Prices }
+export interface Loaded { fairUse: Record<PlanId, FairUse>; watch: Watch; prices: Prices }
 let loaded: { at: number; mtime: number; value: Loaded } | null = null;
 let checked = 0;
 
 const positive = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
+
+/**
+ * What the operator set on the admin page, kept in the database under one setting (`fair_use`, the same shape as the file) so it works where there is no
+ * disk to put a file on (Cloud Run) and is the same for every instance. It is the last word: built-in values, then the file, then this. Read again at most
+ * every half minute by whoever is about to apply a ceiling (`syncFairUse`, called by the relay's gate, the link routes and the report).
+ */
+export const DB_KEY = 'fair_use';
+let overrides: unknown = null;
+let overridesText = '';
+let overridesAt = 0;
+export async function syncFairUse(store: AccountsStore, now: number = Date.now()): Promise<void> {
+  if (overridesAt && now - overridesAt < 30_000) return;
+  overridesAt = now;
+  const text = (await store.settings.all()).find(r => r.key === DB_KEY)?.value ?? '';
+  if (text === overridesText) return;
+  overridesText = text;
+  try { overrides = text ? JSON.parse(text) : null; } catch { overrides = null; logger.warn('the fair-use settings of the admin page could not be read; the file and the built-in ceilings are used'); }
+  loaded = null; checked = 0;
+}
+/** After a change from the admin page: this instance reads the database again at once (the others within half a minute). */
+export const forgetFairUseOverrides = (): void => { overridesAt = 0; };
 
 /** The file the operator writes, if there is one. */
 export function fairUseFile(env: NodeJS.ProcessEnv = process.env): string | null {
@@ -64,7 +91,7 @@ export function fairUseFile(env: NodeJS.ProcessEnv = process.env): string | null
   try { return path.join(resolveDataDir(), 'fair-use.json'); } catch { return null; }
 }
 
-function merge(base: Loaded, file: unknown): Loaded {
+export function merge(base: Loaded, file: unknown): Loaded {
   const out: Loaded = JSON.parse(JSON.stringify(base));
   const raw = (file && typeof file === 'object' ? file : {}) as Record<string, unknown>;
   const fill = <T extends object>(into: T, from: unknown, where: string) => {
@@ -98,6 +125,7 @@ function current(env: NodeJS.ProcessEnv = process.env): Loaded {
   if (file && mtime) {
     try { value = merge(value, JSON.parse(fs.readFileSync(file, 'utf8'))); } catch (err) { logger.warn('the fair-use file could not be read; the built-in ceilings are used', { reason: err instanceof Error ? err.message : String(err) }); }
   }
+  if (overrides) value = merge(value, overrides);
   loaded = { at: now, mtime, value };
   return value;
 }
@@ -106,4 +134,7 @@ export const fairUseOf = (plan: PlanId): FairUse => current().fairUse[plan];
 export const watchOf = (): Watch => current().watch;
 export const pricesOf = (): Prices => current().prices;
 /** Tests: forget what was read, so the next call reads the file again. */
-export function resetFairUse(): void { loaded = null; checked = 0; }
+export function resetFairUse(): void { loaded = null; checked = 0; overrides = null; overridesText = ''; overridesAt = 0; }
+
+/** What applies now (built-in, file and admin page together), and what the admin page itself has set, for the page that edits them. */
+export function fairUseView(): { effective: Loaded; set: unknown } { return { effective: current(), set: overrides ?? {} }; }

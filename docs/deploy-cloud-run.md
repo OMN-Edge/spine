@@ -90,7 +90,7 @@ A Google Cloud project with billing, `gcloud` signed in, and a domain whose reco
    mk spine-relay-secret "$(openssl rand -base64 48)"
    mk spine-database-url "postgres://spine:PASSWORD@/spine?host=/cloudsql/$PROJECT_ID:$REGION:$INSTANCE"
    mk spine-brevo-key "..."                       # the mail provider's API key
-   gcloud secrets create spine-fair-use --data-file=fair-use.json   # the hidden ceilings (docs/billing.md); an empty {} to use the built-in ones
+   gcloud secrets create spine-fair-use --data-file=fair-use.json   # the hidden ceilings (docs/billing.md); an empty {} to use the built-in ones. An administrator can change any of them later on the admin page (/admin), which needs no new version of this secret
    for s in spine-session-secret spine-database-url spine-brevo-key spine-fair-use; do
      gcloud secrets add-iam-policy-binding $s --member=serviceAccount:$APP --role=roles/secretmanager.secretAccessor
    done
@@ -109,6 +109,10 @@ A Google Cloud project with billing, `gcloud` signed in, and a domain whose reco
    gcloud run services replace deploy/cloud-run/relay.service.yaml --region=$REGION
    gcloud run jobs replace deploy/cloud-run/jobs.job.yaml --region=$REGION
    ```
+
+   **If you sell plans** (docs/billing.md), uncomment and fill in the Paddle block of `app.service.yaml`, and `SPINE_BILLING: "on"` in `relay.service.yaml` and `jobs.job.yaml`: the relay applies the plans and the job sends the mail before a trial ends, and neither needs Paddle's own settings. Put `PADDLE_API_KEY` and `PADDLE_WEBHOOK_SECRET` in Secret Manager like the others (readable by the app's account only; the relay and the job never get them). Every price id is a price you made in Paddle, tax-inclusive and all in one currency, and the amounts a person sees are read from them, so a wrong or missing id shows no price. **Archive the founding price in Paddle when the count of places reaches 500.** The checkout page is `checkout/`, served from an origin of its own (`pay.<your domain>`), and Paddle's webhook address is `https://<your domain>/api/billing/webhook`.
+
+   **The operator's page.** Set `SPINE_ADMIN_EMAILS` (and `SPINE_MARKETING_EMAILS` for a read-only role) in `app.service.yaml`, then sign in at `https://<your domain>/admin`. The page is not linked from anywhere. There an administrator sets the targets, the monthly AI budget, the reminder interval and the hidden ceilings; they are kept in the database, so a change needs no new revision and every instance has it within half a minute. The secret `spine-fair-use` stays the starting point for the ceilings.
 
    Both services take traffic from the internet through Cloud Run's own front end (`ingress: all`), which a domain mapping needs. That is what makes one hop safe: the container's port is reachable only through Google's front end, which writes the last entry of `X-Forwarded-For`, so nothing can reach it with a header of its own. The `run.app` addresses stay public too; the server tells search engines they are copies of the real site (`seo.ts`).
 
@@ -148,7 +152,7 @@ A Google Cloud project with billing, `gcloud` signed in, and a domain whose reco
 
     **Search.** The server answers `/robots.txt` and `/sitemap.xml` from `SPINE_DOMAIN`, and each public page (the front page, how it works, protection, encryption, security checks, families, doctors, how to check it, the legal texts, and the prices where there are plans) has its own title and description in the build. Anything served at another address, such as the services' `run.app` names, is marked `noindex` with a canonical link to your own name, and a screen behind a sign-in is `noindex` too. To be found, add the site to Google Search Console (verify the domain with a DNS record), submit `https://spinevault.eu/sitemap.xml`, and read what it reports. Nothing in the hosting changes what is ranked: that is the pages' content and how many sites link to them.
 
-    **The first account.** With `SPINE_REGISTRATION=open`, sign up on the site; the people in `SPINE_ADMIN_EMAILS` can approve others. The operator's commands (`list-users`, `approve-user`, `delete-user`, [CLAUDE.md](../CLAUDE.md)) run from a checkout with the server's settings and the database reached through the Cloud SQL Auth Proxy (`cloud-sql-proxy PROJECT_ID:$REGION:$INSTANCE --port 5432`, and `SPINE_STORE=postgres SPINE_DATABASE_URL=postgres://spine:PASSWORD@127.0.0.1:5432/spine`).
+    **The first account.** With `SPINE_REGISTRATION=open`, sign up on the site; the people in `SPINE_ADMIN_EMAILS` can approve others, and use `/admin`. The operator's commands (`list-users`, `approve-user`, `delete-user`, [CLAUDE.md](../CLAUDE.md)) run from a checkout with the server's settings and the database reached through the Cloud SQL Auth Proxy (`cloud-sql-proxy PROJECT_ID:$REGION:$INSTANCE --port 5432`, and `SPINE_STORE=postgres SPINE_DATABASE_URL=postgres://spine:PASSWORD@127.0.0.1:5432/spine`).
 
 ## Updating with no downtime
 

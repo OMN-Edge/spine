@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { COUNTS, IMPORT_PAGES, PAGE, PAST_DUE_GRACE_DAYS, PLANS, TASK_METER, TRANSLATED_PAGE, meterKey, SEAT_COOLDOWN_DAYS, SEAT_INVITES_WAITING, SEAT_INVITE_DAYS, entitlementsOf, planOf, subscriptionEntitles, taskCost, trialEnd, usagePeriod } from '../billing/plans.js';
+import { COUNTS, ESSENTIAL_IMPORT_PAGES, IMPORT_PAGES, TRIAL_TOTALS, PAGE, PAST_DUE_GRACE_DAYS, PLANS, TASK_METER, TRANSLATED_PAGE, meterKey, SEAT_COOLDOWN_DAYS, SEAT_INVITES_WAITING, SEAT_INVITE_DAYS, entitlementsOf, planOf, subscriptionEntitles, taskCost, trialEnd, usagePeriod } from '../billing/plans.js';
 import type { SubscriptionRecord } from '../store/types.js';
 
 const DAY = 86_400_000;
@@ -46,11 +46,28 @@ describe('which plan an account has', () => {
 describe('what a plan includes', () => {
   it('counts the trial once and the other plans by month', () => {
     const trial = entitlementsOf(created(1), null, now);
-    expect(trial).toMatchObject({ plan: 'trial', allowance: { pages: 150, import: 0, messages: Infinity, translated: Infinity }, vaultBytes: 5 * 1024 ** 3, liveShares: null, linkViews: Infinity, linkBytes: Infinity, documents: null, translation: true, approvalMode: true });
+    expect(trial).toMatchObject({ plan: 'trial', allowance: { pages: 150, import: 0, messages: 50, translated: 30 }, vaultBytes: 5 * 1024 ** 3, liveShares: null, linkViews: Infinity, linkBytes: Infinity, documents: null, translation: true, approvalMode: true });
     expect(usagePeriod(trial, now)).toBe('trial');
     const free = entitlementsOf(created(300), null, now);
-    expect(free).toMatchObject({ plan: 'free', allowance: { pages: 10, import: 0, messages: 0, translated: 0 }, vaultBytes: 1024 ** 3, liveShares: 1, documents: 50, linkViews: 20, linkBytes: 1024 ** 3, chat: false });
+    expect(free).toMatchObject({ plan: 'free', allowance: { pages: 3, import: 0, messages: 0, translated: 0 }, carryMonths: 3, vaultBytes: 1024 ** 3, liveShares: 1, documents: 50, linkViews: 20, linkBytes: 250 * 1024 ** 2, chat: false });
     expect(usagePeriod(free, now)).toBe('2026-06');
+  });
+
+  it('gives Essential five pages a month and an import of 150, with questions and no translation', () => {
+    const essential = entitlementsOf(created(400), sub({ plan: 'essential', current_period_end: new Date(now.getTime() + 30 * DAY).toISOString() }), now);
+    expect(essential).toMatchObject({ plan: 'essential', allowance: { pages: 5, import: ESSENTIAL_IMPORT_PAGES, messages: Infinity, translated: Infinity }, carryMonths: 3, vaultBytes: 2 * 1024 ** 3, documents: null, chat: true, translation: false, linking: true, related: true, approvalMode: true, seats: 1, profiles: 1, delegation: false, liveShares: null, linkViews: Infinity });
+    expect(ESSENTIAL_IMPORT_PAGES).toBe(150);
+    // Ending it goes the way every subscription does.
+    expect(planOf(created(400), sub({ plan: 'essential', status: 'canceled', current_period_end: new Date(now.getTime() - DAY).toISOString() }), now)).toBe('free');
+  });
+
+  it('gives the trial visible totals for the whole trial: 150 pages, 50 questions, 30 translated pages', () => {
+    expect(TRIAL_TOTALS).toEqual({ pages: 150, messages: 50, translated: 30 });
+    expect(PLANS.trial.allowance).toMatchObject({ pages: 150, messages: 50, translated: 30 });
+  });
+
+  it('writes no amount in the code: what a plan costs is Paddle\'s', () => {
+    expect(readFileSync(new URL('../billing/plans.ts', import.meta.url), 'utf8')).not.toMatch(/PRICES|\b\d+\.\d\d\b|€/);
   });
 });
 
@@ -72,7 +89,7 @@ describe('the family plan', () => {
   // Seats are accounts, people are profiles: the plan holds six of each, and only a plan whose seats are more than one can be shared.
   it('has six seats and six people in all, and the plans that are not shared have one seat', () => {
     expect(PLANS.family).toMatchObject({ seats: 6, profiles: 6 });
-    for (const plan of ['trial', 'free', 'premium'] as const) expect(PLANS[plan].seats, plan).toBe(1);
+    for (const plan of ['trial', 'free', 'essential', 'premium'] as const) expect(PLANS[plan].seats, plan).toBe(1);
     expect(entitlementsOf(created(400), sub({ plan: 'family', current_period_end: new Date(now.getTime() + 30 * DAY).toISOString() }), now).seats).toBe(6);
   });
 
@@ -86,7 +103,9 @@ describe('the meters', () => {
     expect(COUNTS).toEqual(['pages', 'messages', 'translated', 'import']);
     expect(TASK_METER).toMatchObject({ extraction: 'reading', embed: 'reading', linking: 'reading', chat: 'chat', agent: 'chat', translation: 'translation' });
     // Only adding has an allowance: pages and the import. Using is counted, with none.
-    for (const plan of ['trial', 'premium', 'family'] as const) expect([plan, PLANS[plan].allowance.messages, PLANS[plan].allowance.translated]).toEqual([plan, Infinity, Infinity]);
+    for (const plan of ['essential', 'premium', 'family'] as const) expect([plan, PLANS[plan].allowance.messages, PLANS[plan].allowance.translated]).toEqual([plan, Infinity, Infinity]);
+    // The trial is the exception: its questions and translated pages are totals the person sees, for the whole trial.
+    expect([PLANS.trial.allowance.messages, PLANS.trial.allowance.translated]).toEqual([50, 30]);
     expect(PLANS.free.allowance).toMatchObject({ messages: 0, translated: 0 });
   });
 
@@ -95,10 +114,15 @@ describe('the meters', () => {
     const free = entitlementsOf(created(300), null, now);
     expect(meterKey('reading', trial, now)).toBe('trial');
     expect(meterKey('reading', free, now)).toBe('2026-06');
-    // The trial's pages are one total; its questions and translation are by the month like Premium's.
+    // The trial's pages, questions and translated pages are one total each, for the whole trial; the other plans' are by the month.
     expect(meterKey('pages', trial, now)).toBe('trial:pages');
     expect(meterKey('pages', free, now)).toBe('2026-06:pages');
-    expect(meterKey('messages', trial, now)).toBe('2026-06:messages');
+    expect(meterKey('messages', trial, now)).toBe('trial:messages');
+    expect(meterKey('translated', trial, now)).toBe('trial:translated');
+    expect(meterKey('messages', free, now)).toBe('2026-06:messages');
+    // The cost ceilings behind them stay by the month on the trial too.
+    expect(meterKey('chat', trial, now)).toBe('2026-06:chat');
+    expect(meterKey('translation', trial, now)).toBe('2026-06:translation');
     expect(meterKey('translated', free, now, true)).toBe('pool:2026-06:translated');
     // The import allowance is once, not by the month: its key has no month, so nothing forgets it.
     expect(meterKey('import', free, now)).toBe('once:import');
@@ -108,7 +132,7 @@ describe('the meters', () => {
   it('give Premium the pages of the plan table, no ceiling of any kind in what a browser is sent, and Free no questions and no translation', () => {
     expect(PLANS.premium.allowance).toMatchObject({ pages: 30, import: IMPORT_PAGES, messages: Infinity, translated: Infinity, reading: Infinity, chat: Infinity, translation: Infinity });
     expect(PLANS.free).toMatchObject({ chat: false, translation: false });
-    expect(PLANS.free.allowance).toMatchObject({ pages: 10, messages: 0, translated: 0 });
+    expect(PLANS.free.allowance).toMatchObject({ pages: 3, messages: 0, translated: 0 });
     // The hidden fair-use ceilings are the server's configuration (`server/src/billing/fair-use.ts`); none is in what the browser bundles.
     expect(readFileSync(new URL('../billing/plans.ts', import.meta.url), 'utf8')).not.toMatch(/CEILING|FAIR_USE|BACKSTOP/);
   });

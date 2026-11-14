@@ -54,7 +54,7 @@ export interface Document {
 }
 
 /** Work that waits for the reading service (a daily limit, an outage) and is done by itself at `retry_at`. */
-export interface ModelWaiting { reason: 'limit' | 'unavailable'; retry_at: string }
+export interface ModelWaiting { reason: 'limit' | 'plan' | 'unavailable'; retry_at: string }
 
 export type Flag = 'low' | 'high' | 'normal';
 export type DoctorRole = 'author' | 'prescriber' | 'referrer' | 'other';
@@ -616,14 +616,16 @@ const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, 
   signal?.addEventListener('abort', () => { clearTimeout(timer); reject(new DOMException('stopped', 'AbortError')); }, { once: true });
 });
 
-export interface Prices { premium: { year: number; month: number }; founding: { year: number }; family: { year: number; month: number }; currency: string }
-export interface Pricing { enabled: boolean; prices?: Prices; founding_left?: number; /** The family plan is sold here. */ family?: boolean }
+/** What each plan costs, as Paddle says; a plan the operator does not sell is absent. Nothing here is written in the app. */
+export interface Prices { currency: string; essential?: { year: number; month: number }; premium: { year: number; month: number }; founding: { year: number }; family?: { year: number; month: number }; /** What the things bought once cost, for the ones sold here. */ addons?: { page_topup?: number } }
+/** `prices` is null while Paddle cannot say what they are: the screens then show no amount and offer no purchase. */
+export interface Pricing { enabled: boolean; prices?: Prices | null; founding_left?: number; /** Essential is sold here. */ essential?: boolean; /** The family plan is sold here. */ family?: boolean }
 /** One meter of the plan: pages for reading, messages for chat, pages for translation. `own_*` only on a plan whose seats are shared. */
 export interface MeterView { used: number; /** What each month adds where unused pages carry over (the plan allowance is then what can be added by the end of this month). */ monthly?: number; /** Null where only adding is limited and using is only counted. */ allowance: number | null; own_used?: number; own_cap?: number }
 /** What the account page shows of the plan (the server's `GET /api/billing`). */
 export interface BillingView {
   enabled: boolean;
-  plan?: 'trial' | 'free' | 'premium' | 'family';
+  plan?: 'trial' | 'free' | 'essential' | 'premium' | 'family';
   trial_ends_at?: string | null;
   subscription?: { status: string; interval: 'month' | 'year' | null; founding: boolean; ends_at: string | null; renews_at: string | null; provider: 'paddle' | 'operator' } | null;
   can_manage?: boolean;
@@ -636,15 +638,39 @@ export interface BillingView {
   vault?: { used_bytes: number; limit_bytes: number };
   /** `limit` is null where the plan does not limit how many are live. */
   shares?: { live: number; limit: number | null };
+  /** The things bought once: whether this account may buy each now, and what is left of it. */
+  addons?: { page_topup: { buyable: boolean; pages_left: number } };
+  /** The link this account can send, what each side gets, and how many of the most it has been rewarded for. */
+  invite?: { token: string; pages: number; rewarded: number; max: number };
   features?: { translation: boolean; chat: boolean; linking: boolean; related: boolean; approval_mode: boolean; delegation: boolean };
   people?: { limit: number };
   limits?: { documents: number | null };
   /** `organizer` pays for a plan others hold seats in; `member` holds a seat in another's plan. */
   seat?: 'organizer' | 'member' | 'none';
   seats?: { limit: number };
+  essential?: boolean;
   family?: boolean;
-  prices?: Prices;
+  prices?: Prices | null;
   founding_left?: number;
+}
+
+/** One setting the admin page changes (the server's `operator-settings.ts`); its words are the server's, in English. */
+export interface OperatorSetting { key: string; label: string; help: string; unit: 'count' | 'percent' | 'euros' | 'days'; min: number; max: number; fallback: number | null; env?: string; value: number | null; source: 'admin' | 'environment' | 'default'; updated_at: string | null }
+
+/** The hidden fair-use ceilings as the admin page edits them: each value with the built-in one and where the value in force comes from. */
+export interface FairUseSection { title: string; rows: Array<{ path: string; label: string; unit: 'count' | 'bytes' | 'multiple' | 'fraction' | 'euros'; value: number; builtin: number; source: 'admin' | 'file or default' }> }
+
+/** The operator's numbers (the server's `GET /api/admin/dashboard`). */
+export interface AdminDashboard {
+  generated_at: string;
+  windows: Record<'today' | 'days7' | 'days30', Record<string, number>>;
+  sources: Record<string, number>;
+  accounts: { total: number; by_plan: Record<string, number>; founding: { held: number; limit: number } };
+  funnel: { signups: number; read: number; imported: number; asked: number; translated: number };
+  cohorts: Array<{ week: string; signups: number; read: number; asked: number; translated: number }>;
+  costs: { month: string; euros: number; budget_euros: number | null; above_alert: number; by_plan: Record<string, number>; per_signup_trial: number | null };
+  limits: Record<string, number>;
+  guardrails: Array<{ key: string; value: number | null; target: number; unit: 'percent' | 'count' | 'euros'; state: 'ok' | 'amber' | 'red'; note: string }>;
 }
 
 /** The accounts that share one plan (the server's `GET /api/family`). */
@@ -697,11 +723,17 @@ export const api = {
     /** A new code for the card (the old one is turned off first), for when the printed one is lost. */
     replace: () => post<EmergencyView>('/api/emergency/replace', undefined),
   },
+  mail: {
+    /** Stops the reminders and the trial's summary for the account a mail's link was made for. */
+    unsubscribe: (token: string) => post<{ ok: boolean }>('/api/mail/unsubscribe', { token }),
+  },
   billing: {
     pricing: () => req<Pricing>('/api/pricing'),
     get: () => req<BillingView>('/api/billing'),
     /** Where to send the person to pay: the provider's checkout, on a page of its own. */
-    checkout: (interval: 'month' | 'year', plan: 'premium' | 'family' = 'premium') => post<{ url: string }>('/api/billing/checkout', { interval, plan }),
+    checkout: (interval: 'month' | 'year', plan: 'essential' | 'premium' | 'family' = 'premium') => post<{ url: string }>('/api/billing/checkout', { interval, plan }),
+    /** The thing bought once: 250 more pages. */
+    addon: (addon: 'page_topup') => post<{ url: string }>('/api/billing/checkout', { addon }),
     portal: () => post<{ url: string }>('/api/billing/portal', {}),
   },
   family: {
@@ -717,6 +749,14 @@ export const api = {
   waitlist: (email: string, source?: string) => post<{ ok: boolean }>('/api/waitlist', { email, source }),
   /** The accounts waiting for approval (SPINE_REGISTRATION=approval); only an address in SPINE_ADMIN_EMAILS is let see them. */
   admin: {
+    /** What the operator looks at: counts and the plans accounts are on, never a person (the server's `dashboard.ts`). */
+    dashboard: () => req<AdminDashboard>('/api/admin/dashboard'),
+    /** The settings the admin page changes: what applies, where it comes from, and whether this account may change them. */
+    settings: () => req<{ settings: OperatorSetting[]; can_edit: boolean }>('/api/admin/settings'),
+    setSetting: (key: string, value: number | null) => put<{ settings: OperatorSetting[] }>('/api/admin/settings', { key, value }),
+    /** The hidden fair-use ceilings, for an administrator only (the server's `billing/fair-use-admin.ts`). */
+    fairUse: () => req<{ sections: FairUseSection[] }>('/api/admin/fair-use'),
+    setFairUse: (path: string, value: number | null) => put<{ sections: FairUseSection[] }>('/api/admin/fair-use', { path, value }),
     accounts: () => req<{ pending: Array<{ id: string; email: string; created_at: string; email_confirmed: boolean }> }>('/api/admin/accounts'),
     approve: (id: string) => post<{ ok: boolean }>(`/api/admin/accounts/${encodeURIComponent(id)}/approve`, {}),
     refuse: (id: string) => post<{ ok: boolean }>(`/api/admin/accounts/${encodeURIComponent(id)}/refuse`, {}),
@@ -824,8 +864,8 @@ export const api = {
     /** The language the account's mail is written in and its screens start in. */
     setLanguage: (language: string | null) => put<{ ok: boolean; language: string | null }>('/api/account/language', { language }),
     /** The keys are made on the device; the server gets the derived credential and the sealed keys, never the password. */
-    register: (email: string, account: { authValue: string; keys: VaultKeyPayload }, consent: { health_data: boolean; terms: boolean }, ref?: string, language?: string) =>
-      post<{ ok: boolean; message: string; pending?: boolean }>('/api/auth/register', { email, auth_value: account.authValue, keys: account.keys, consent_health_data: consent.health_data, accept_terms: consent.terms, ref, language }),
+    register: (email: string, account: { authValue: string; keys: VaultKeyPayload }, consent: { health_data: boolean; terms: boolean }, ref?: string, language?: string, by?: string) =>
+      post<{ ok: boolean; message: string; pending?: boolean }>('/api/auth/register', { email, auth_value: account.authValue, keys: account.keys, consent_health_data: consent.health_data, accept_terms: consent.terms, ref, language, by }),
     /** An account without a vault makes one: the new credential replaces the password the server knew. */
     createVault: (account: { authValue: string; keys: VaultKeyPayload }) => put<{ ok: boolean }>('/api/vault/keys', { auth_value: account.authValue, keys: account.keys }),
     rewrap: (change: { authValue?: string; keys: VaultKeyPayload }) => post<{ ok: boolean }>('/api/vault/keys/rewrap', { auth_value: change.authValue, keys: change.keys }),

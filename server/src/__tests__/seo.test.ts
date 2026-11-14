@@ -42,7 +42,7 @@ describe('robots.txt and the sitemap', () => {
   it('keep the API and the shares out, and name the sitemap by this instance’s own address', async () => {
     const res = await ask('/robots.txt');
     expect(res.headers['content-type']).toContain('text/plain');
-    expect(res.body).toBe('User-agent: *\nDisallow: /api/\nDisallow: /share/\nSitemap: https://spine.example.org/sitemap.xml\n');
+    expect(res.body).toBe('User-agent: *\nDisallow: /api/\nDisallow: /share/\nDisallow: /admin\nSitemap: https://spine.example.org/sitemap.xml\n');
     expect(res.body).not.toMatch(/spinevault|cocinda/);
   });
 

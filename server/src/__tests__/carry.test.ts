@@ -82,4 +82,28 @@ describe('the pages kept from month to month', () => {
     const view = (await app.inject({ method: 'GET', url: '/api/billing', headers: { cookie } })).json();
     expect(view.totals).toEqual({ pages: 412, messages: 0, translated: 0 });
   });
+
+  it('gives the one-off import to a yearly plan only, all of it at once, and none to a monthly plan', async () => {
+    const monthly = await createTestUser(`carry-${++n}-monthly@spine.test`, { createdAt: LONG_AGO });
+    await store().billing.put({ user_id: monthly.id, provider: 'operator', customer_id: null, subscription_id: null, interval: 'month', plan: 'premium', status: 'active', founding: false, current_period_end: null, cancel_scheduled: false, updated_at: LONG_AGO });
+    const yearly = await premium();
+    const importing = (id: string) => gate('2027-01-10T00:00:00Z').admit(id, 'extraction', { bulk: true, pages: 1 });
+    // The month's own pages used up, so only the import can let a page in.
+    for (const id of [monthly.id, yearly.id]) await store().usage.aiAdd(id, '2027-01:pages', 30);
+    expect(await importing(monthly.id)).toMatchObject({ status: 402, code: 'allowance_used' });
+    await store().usage.aiAdd(yearly.id, 'once:import', 249);
+    expect(await importing(yearly.id)).toBeNull();
+    await store().usage.aiAdd(yearly.id, 'once:import', 1);
+    expect(await importing(yearly.id)).toMatchObject({ code: 'allowance_used' });
+  });
+
+  it('shows the account page the import of a yearly plan and none for a monthly one', async () => {
+    Object.assign(process.env, { SPINE_BILLING: 'on', PADDLE_ENVIRONMENT: 'sandbox', PADDLE_API_KEY: 'pdl_test_key', PADDLE_WEBHOOK_SECRET: 'whsec_test', SPINE_CHECKOUT_URL: 'https://pay.spine.example/', SPINE_PADDLE_PRICE_YEAR: 'pri_year', SPINE_PADDLE_PRICE_MONTH: 'pri_month', SPINE_PADDLE_PRICE_FOUNDING: 'pri_founding' });
+    const monthly = await createTestUser(`carry-${++n}-view-monthly@spine.test`, { createdAt: LONG_AGO });
+    await store().billing.put({ user_id: monthly.id, provider: 'operator', customer_id: null, subscription_id: null, interval: 'month', plan: 'premium', status: 'active', founding: false, current_period_end: null, cancel_scheduled: false, updated_at: LONG_AGO });
+    const yearly = await premium();
+    const view = async (u: { email: string; password: string }) => (await app.inject({ method: 'GET', url: '/api/billing', headers: { cookie: await loginAs(app, u.email, u.password) } })).json();
+    expect((await view(yearly)).ai.import).toMatchObject({ allowance: 250 });
+    expect((await view(monthly)).ai.import).toMatchObject({ allowance: 0 });
+  });
 });

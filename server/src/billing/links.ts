@@ -2,7 +2,7 @@ import { getAccountsStore } from 'spine-core/store/index.js';
 import { linkKey } from 'spine-core/billing/plans.js';
 import { loadBillingConfig } from './config.js';
 import { standingOf, type Standing } from './seat.js';
-import { fairUseOf } from './fair-use.js';
+import { fairUseOf, syncFairUse } from './fair-use.js';
 import { windowMonths } from './window.js';
 
 /**
@@ -29,6 +29,7 @@ export async function linkPosition(userId: string, now: Date, standing?: Standin
   const c = await counters(userId, now);
   if (!c) return null;
   const st = standing ?? c.standing;
+  await syncFairUse(c.store);
   const fair = fairUseOf(st.entitlements.plan);
   const [views, bytes, yearBytes] = await Promise.all([
     c.store.usage.aiUsed(c.holder, c.views),

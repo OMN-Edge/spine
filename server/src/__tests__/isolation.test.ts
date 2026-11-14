@@ -177,6 +177,9 @@ describe('P1 — deny by default', () => {
     'GET /api/share/:link/documents/:id/connections',
     // Public on purpose, and scoped by the link: share-chat.test.ts.
     'POST /api/share/:link/chat',
+    // Public on purpose (lifecycle.test.ts): the link in a reminder stops those mails for the account its signed token names, signed in or not; a token that is
+    // not ours is answered the same and changes nothing.
+    'POST /api/mail/unsubscribe',
     // Public on purpose (billing.test.ts, growth.test.ts): the prices and the founding places left, read before an account exists; the payment
     // provider's signed messages, refused unless the signature is right; and asking to be told when Spine opens, an address and nothing else.
     'GET /api/pricing',

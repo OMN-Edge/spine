@@ -75,8 +75,8 @@ describe('the views and bytes of share links', () => {
 
   it('limits only the free plan: a paid plan’s links are counted and open for whoever needs them, behind a ceiling no use reaches', async () => {
     on();
-    expect(PLANS.free).toMatchObject({ linkViews: 20, linkBytes: 1024 ** 3, liveShares: 1 });
-    for (const plan of ['trial', 'premium', 'family'] as const) expect([plan, PLANS[plan].linkViews, PLANS[plan].linkBytes, PLANS[plan].liveShares]).toEqual([plan, Infinity, Infinity, null]);
+    expect(PLANS.free).toMatchObject({ linkViews: 20, linkBytes: 250 * 1024 ** 2, liveShares: 1 });
+    for (const plan of ['trial', 'essential', 'premium', 'family'] as const) expect([plan, PLANS[plan].linkViews, PLANS[plan].linkBytes, PLANS[plan].liveShares]).toEqual([plan, Infinity, Infinity, null]);
     const paid = await account('premium');
     await share(paid, 'aaaaaaaaaaaaaaaaaaaaaaa6');
     // Past what the free plan allows, a paid plan’s link still opens, and the views are counted.

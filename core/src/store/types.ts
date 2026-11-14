@@ -57,7 +57,8 @@ import type {
  *  8. `billing.findBySubscription`/`findByCustomer`/`recordEvent`/`pruneEvents`/`foundingHeld` — the payment provider's side (SECURITY.md **M-45**):
  *     a webhook names the provider's own ids, which the server recorded when it first heard of them, and the count of founding prices is of
  *     all accounts. Nothing here answers more than a plan.
- *  9. `metrics.*` and `waitlist.*` — counts a day under a name, and addresses of people who are not accounts: neither belongs to a user.
+ *  9. `metrics.*`, `waitlist.*` and `settings.*` — counts a day under a name, addresses of people who are not accounts, and the few settings
+ *     the operator changes from the admin page (targets, budgets): none of them belongs to a user.
  */
 /**
  * What the server keeps: accounts, sessions, the vault's sealed objects and the sealed copies of shares (SECURITY.md **M-37**). It is a
@@ -76,6 +77,7 @@ export interface AccountsStore {
   billing: BillingRepository;
   metrics: MetricsRepository;
   waitlist: WaitlistRepository;
+  settings: OperatorSettingsRepository;
   delegations: DelegationRepository;
   family: FamilyRepository;
   reminderDates: ReminderDateRepository;
@@ -870,7 +872,7 @@ export interface SubscriptionRecord {
   subscription_id: string | null;
   interval: 'month' | 'year' | null;
   /** What it is a subscription to. */
-  plan: 'premium' | 'family';
+  plan: 'essential' | 'premium' | 'family';
   /** The provider's word: active, trialing, past_due, paused, canceled. */
   status: string;
   /** Pays the founding price, locked for as long as the subscription runs. */
@@ -939,8 +941,8 @@ export interface BillingRepository {
   findByCustomer(customerId: string): Promise<SubscriptionRecord | null>;
   /** Writes the account's row, replacing any. An account's subscription is one row. */
   put(record: SubscriptionRecord): Promise<void>;
-  /** Accounts that hold the founding price now (not counting ended subscriptions). */
-  foundingHeld(now: string): Promise<number>;
+  /** Founding places taken: every account that ever had the founding price, a cancelled subscription's too and a deleted account's (a place, once taken, stays taken for good). */
+  foundingHeld(): Promise<number>;
   /** Records a provider event's id; false if it was already seen, so a repeated delivery is applied once. */
   recordEvent(eventId: string, at: string): Promise<boolean>;
   /** Forgets event ids older than this. */
@@ -1042,6 +1044,14 @@ export interface MetricsRepository {
   bump(name: string, day: string): Promise<void>;
   /** Totals by name since the day (YYYY-MM-DD). */
   totals(sinceDay: string): Promise<Array<{ name: string; total: number }>>;
+}
+
+/** The operator's settings changed from the admin page (`server/src/operator-settings.ts` says which there are, and checks a value before it is kept). A name and its value as text; none belongs to a user. */
+export interface OperatorSettingsRepository {
+  all(): Promise<Array<{ key: string; value: string; updated_at: string }>>;
+  set(key: string, value: string, at: string): Promise<void>;
+  /** Forgets a setting, so its default applies again. */
+  clear(key: string): Promise<void>;
 }
 
 /** People who asked to be told when Spine opens. Not accounts: an address and a time. */

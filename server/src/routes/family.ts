@@ -4,6 +4,7 @@ import { getAccountsStore } from 'spine-core/store/index.js';
 import { requireAuth, requireRecentAuth } from 'spine-core/routes/middleware.js';
 import { SEAT_COOLDOWN_DAYS, SEAT_INVITES_WAITING, SEAT_INVITE_DAYS } from 'spine-core/billing/plans.js';
 import { loadBillingConfig } from '../billing/config.js';
+import { grantInvitation, inviteToken } from '../billing/invitations.js';
 import { standingOf } from '../billing/seat.js';
 import { windowLimiter } from '../rate-limit.js';
 import { mailAfter, securityChangeMail } from '../notify.js';
@@ -118,6 +119,8 @@ export async function familyRoutes(app: FastifyInstance, opts: FamilyRouteOption
       return reply.status(409).send({ error: REFUSALS[result], code: result });
     }
     const [organizer, me] = await Promise.all([store().users.findById(result.organizer_id), store().users.findById(req.userId)]);
+    // Taking a seat in a plan one was invited to is an invitation too: both sides get their pages, once.
+    await grantInvitation(store(), inviteToken(result.organizer_id), req.userId).catch(() => undefined);
     if (organizer) mailAfter(req, organizer.id, securityChangeMail(organizer, 'seatTaken', now.toISOString(), { email: me?.email ?? '—' }), 'seat taken');
     return reply.header('Cache-Control', 'no-store').send({ ok: true });
   });

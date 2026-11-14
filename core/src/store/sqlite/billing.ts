@@ -1,5 +1,5 @@
 import type { Database } from './driver.js';
-import type { BillingRepository, MetricsRepository, SubscriptionRecord, WaitlistRepository } from '../types.js';
+import type { BillingRepository, MetricsRepository, OperatorSettingsRepository, SubscriptionRecord, WaitlistRepository } from '../types.js';
 
 const COLUMNS = 'user_id, provider, customer_id, subscription_id, billing_interval, plan, status, founding, current_period_end, cancel_scheduled, updated_at';
 
@@ -9,7 +9,7 @@ const asSubscription = (r: Record<string, unknown>): SubscriptionRecord => ({
   customer_id: (r.customer_id as string | null) ?? null,
   subscription_id: (r.subscription_id as string | null) ?? null,
   interval: (r.billing_interval as SubscriptionRecord['interval']) ?? null,
-  plan: r.plan === 'family' ? 'family' : 'premium',
+  plan: r.plan === 'family' ? 'family' : r.plan === 'essential' ? 'essential' : 'premium',
   status: r.status as string,
   founding: r.founding === 1,
   current_period_end: (r.current_period_end as string | null) ?? null,
@@ -27,7 +27,9 @@ export function billingRepository(db: Database): BillingRepository {
       billing_interval = excluded.billing_interval, plan = excluded.plan, status = excluded.status, founding = excluded.founding,
       current_period_end = excluded.current_period_end, cancel_scheduled = excluded.cancel_scheduled, updated_at = excluded.updated_at`);
   // Held: the founding price of a subscription that has not ended.
-  const founding = db.prepare(`SELECT COUNT(*) AS n FROM subscriptions WHERE founding = 1 AND (status IN ('active', 'trialing', 'past_due') OR current_period_end > ?)`);
+  const founding = db.prepare(`SELECT COUNT(*) AS n FROM subscriptions WHERE founding = 1`);
+  // Each founding place is also counted once, by the day, with no account in it, so a place stays taken when the account is deleted (`routes/billing.ts`).
+  const taken = db.prepare(`SELECT COALESCE(SUM(n), 0) AS n FROM metrics WHERE name = 'founding_taken'`);
   const event = db.prepare('INSERT OR IGNORE INTO billing_events (id, at) VALUES (?, ?)');
   const prune = db.prepare('DELETE FROM billing_events WHERE at < ?');
 
@@ -43,7 +45,7 @@ export function billingRepository(db: Database): BillingRepository {
     async put(s) {
       put.run(s.user_id, s.provider, s.customer_id, s.subscription_id, s.interval, s.plan, s.status, s.founding ? 1 : 0, s.current_period_end, s.cancel_scheduled ? 1 : 0, s.updated_at);
     },
-    async foundingHeld(now) { return (founding.get(now) as { n: number }).n; },
+    async foundingHeld() { return Math.max((founding.get() as { n: number }).n, Number((taken.get() as { n: number }).n)); },
     async recordEvent(id, at) { return event.run(id, at).changes === 1; },
     async pruneEvents(before) { return prune.run(before).changes; },
   };
@@ -68,5 +70,16 @@ export function waitlistRepository(db: Database): WaitlistRepository {
     async add(email, at, source) { return add.run(email, at, source).changes === 1; },
     async list() { return list.all() as Array<{ email: string; created_at: string; source: string | null }>; },
     async remove(email) { return remove.run(email).changes === 1; },
+  };
+}
+
+export function settingsRepository(db: Database): OperatorSettingsRepository {
+  const all = db.prepare('SELECT key, value, updated_at FROM operator_settings ORDER BY key');
+  const set = db.prepare('INSERT INTO operator_settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at');
+  const clear = db.prepare('DELETE FROM operator_settings WHERE key = ?');
+  return {
+    async all() { return all.all() as Array<{ key: string; value: string; updated_at: string }>; },
+    async set(key, value, at) { set.run(key, value, at); },
+    async clear(key) { clear.run(key); },
   };
 }

@@ -226,7 +226,7 @@ export async function runCli(args: string[], io: CliIo): Promise<number> {
       const days = daysFlag ? Number(daysFlag.split('=')[1]) : 365;
       if (!Number.isInteger(days) || days < 1 || days > 3650) { io.err('--days must be a whole number from 1 to 3650'); return 2; }
       const planFlag = flags.find(flag => flag.startsWith('--plan='))?.split('=')[1] ?? 'premium';
-      if (planFlag !== 'premium' && planFlag !== 'family') { io.err('--plan must be premium or family'); return 2; }
+      if (planFlag !== 'essential' && planFlag !== 'premium' && planFlag !== 'family') { io.err('--plan must be essential, premium or family'); return 2; }
       const existing = await store.billing.get(user.id);
       if (existing?.provider === 'paddle' && existing.status !== 'canceled') { io.err(`${email} pays for a plan; change it in the payment provider's dashboard`); return 1; }
       const now = new Date();

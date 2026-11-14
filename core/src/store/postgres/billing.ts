@@ -1,4 +1,4 @@
-import type { BillingRepository, MetricsRepository, SubscriptionRecord, WaitlistRepository } from '../types.js';
+import type { BillingRepository, MetricsRepository, OperatorSettingsRepository, SubscriptionRecord, WaitlistRepository } from '../types.js';
 import { changed, many, one, type Query } from './query.js';
 
 const COLUMNS = 'user_id, provider, customer_id, subscription_id, billing_interval, plan, status, founding, current_period_end, cancel_scheduled, updated_at';
@@ -9,7 +9,7 @@ const asSubscription = (r: Record<string, unknown>): SubscriptionRecord => ({
   customer_id: (r.customer_id as string | null) ?? null,
   subscription_id: (r.subscription_id as string | null) ?? null,
   interval: (r.billing_interval as SubscriptionRecord['interval']) ?? null,
-  plan: r.plan === 'family' ? 'family' : 'premium',
+  plan: r.plan === 'family' ? 'family' : r.plan === 'essential' ? 'essential' : 'premium',
   status: r.status as string,
   founding: r.founding === 1,
   current_period_end: (r.current_period_end as string | null) ?? null,
@@ -33,8 +33,11 @@ export function billingRepository(q: Query): BillingRepository {
           current_period_end = excluded.current_period_end, cancel_scheduled = excluded.cancel_scheduled, updated_at = excluded.updated_at`,
       [s.user_id, s.provider, s.customer_id, s.subscription_id, s.interval, s.plan, s.status, s.founding ? 1 : 0, s.current_period_end, s.cancel_scheduled ? 1 : 0, s.updated_at]);
     },
-    async foundingHeld(now) {
-      return Number((await one<{ n: number }>(q, `SELECT COUNT(*) AS n FROM subscriptions WHERE founding = 1 AND (status IN ('active', 'trialing', 'past_due') OR current_period_end > $1)`, [now]))!.n);
+    async foundingHeld() {
+      const rows = Number((await one<{ n: number }>(q, `SELECT COUNT(*) AS n FROM subscriptions WHERE founding = 1`, []))!.n);
+      // Each founding place is also counted once, by the day, with no account in it, so a place stays taken when the account is deleted.
+      const taken = Number((await one<{ n: number }>(q, `SELECT COALESCE(SUM(n), 0) AS n FROM metrics WHERE name = 'founding_taken'`, []))!.n);
+      return Math.max(rows, taken);
     },
     async recordEvent(id, at) { return (await changed(q, 'INSERT INTO billing_events (id, at) VALUES ($1, $2) ON CONFLICT DO NOTHING', [id, at])) === 1; },
     async pruneEvents(before) { return changed(q, 'DELETE FROM billing_events WHERE at < $1', [before]); },
@@ -54,5 +57,13 @@ export function waitlistRepository(q: Query): WaitlistRepository {
     async add(email, at, source) { return (await changed(q, 'INSERT INTO waitlist (email, created_at, source) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING', [email, at, source])) === 1; },
     async list() { return many<{ email: string; created_at: string; source: string | null }>(q, 'SELECT email, created_at, source FROM waitlist ORDER BY created_at, email'); },
     async remove(email) { return (await changed(q, 'DELETE FROM waitlist WHERE lower(email) = lower($1)', [email])) === 1; },
+  };
+}
+
+export function settingsRepository(q: Query): OperatorSettingsRepository {
+  return {
+    async all() { return many<{ key: string; value: string; updated_at: string }>(q, 'SELECT key, value, updated_at FROM operator_settings ORDER BY key'); },
+    async set(key, value, at) { await q('INSERT INTO operator_settings (key, value, updated_at) VALUES ($1, $2, $3) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at', [key, value, at]); },
+    async clear(key) { await q('DELETE FROM operator_settings WHERE key = $1', [key]); },
   };
 }

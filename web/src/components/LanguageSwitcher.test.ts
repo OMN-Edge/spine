@@ -29,6 +29,6 @@ describe('the account\'s language', () => {
 
   it('is where a new share link starts, and what the sign-up sends', () => {
     expect(source('../pages/ShareLinks.tsx')).toContain("language: accountLanguage ?? ''");
-    expect(source('../pages/Register.tsx')).toContain("params.get('ref') ?? undefined, lang)");
+    expect(source('../pages/Register.tsx')).toContain("params.get('ref') ?? undefined, lang, params.get('by') ?? undefined)");
   });
 });

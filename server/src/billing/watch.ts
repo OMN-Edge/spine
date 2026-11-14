@@ -7,6 +7,7 @@ import { linkPosition } from './links.js';
 import { costKey, type Family } from './cost.js';
 import { windowMonths } from './window.js';
 import type { Standing } from './seat.js';
+import { settingOf } from '../operator-settings.js';
 
 /**
  * What the operator is told, and when (SECURITY.md **M-45**): an account whose AI use costs more than a set amount in a month, and one that reaches a set
@@ -26,7 +27,8 @@ export async function watchAccount(store: AccountsStore, userId: string, standin
   looked.set(userId, now.getTime());
   const e = standing.entitlements;
   const fair = fairUseOf(e.plan);
-  const { fractionOfCeiling, aiEurosPerMonth } = watchOf();
+  const { fractionOfCeiling } = watchOf();
+  const aiEurosPerMonth = (await settingOf(store, 'ai.account_alert')) ?? Infinity;
   const month = now.toISOString().slice(0, 7);
   const pooled = !!e.memberCap;
   const holder = pooled ? standing.holder : userId;

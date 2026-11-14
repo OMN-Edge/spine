@@ -49,7 +49,7 @@ export default function Register() {
     setError('');
     setBusy(true);
     try {
-      const result = await api.auth.register(email, account, { health_data: health, terms }, params.get('ref') ?? undefined, lang);
+      const result = await api.auth.register(email, account, { health_data: health, terms }, params.get('ref') ?? undefined, lang, params.get('by') ?? undefined);
       setDone(result.pending ? t('Your account request is in. It can be used once the administrator has approved it.') : result.message);
       setAccount(null);
     } catch (err) {

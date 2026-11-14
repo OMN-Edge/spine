@@ -12,7 +12,9 @@ export default function ModelWaitNote({ waiting, className = '' }: { waiting: Mo
     <p role="status" className={`rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-900 ${className}`}>
       {waiting.reason === 'limit'
         ? t('The limit on reading for today has been reached. This is read by itself when it starts again, at {time}.', { time })
-        : t('The reading service could not be reached. This is tried again by itself at {time}.', { time })}
+        : waiting.reason === 'plan'
+          ? t('The reading your plan gives is used up. This is kept and read when there is room again, or at once if you choose a plan on your account page; you can fill in its details by hand meanwhile. Tried again by itself at {time}.', { time })
+          : t('The reading service could not be reached. This is tried again by itself at {time}.', { time })}
     </p>
   );
 }

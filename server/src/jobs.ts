@@ -5,6 +5,8 @@ import { sweepSessions } from './sessions.js';
 import { sweepUnverified } from './accounts.js';
 import { refreshCountryFile } from './geoip-update.js';
 import { getAccountsStore } from 'spine-core/store/index.js';
+import { watchBudget } from './billing/budget.js';
+import { sendLifecycleMail } from './lifecycle.js';
 
 /**
  * The work that is done on a clock and not on a request: ended shares are deleted, a card nobody has looked at for a year is reminded, due follow-up
@@ -27,6 +29,10 @@ export const JOBS: Job[] = [
   { name: 'removing ended sign-ins', run: () => sweepSessions() },
   { name: 'removing unconfirmed accounts', run: () => sweepUnverified() },
   { name: 'removing ended limit windows', run: () => getAccountsStore().maintenance.pruneWindows(Date.now()) },
+  // The reminder to add an appointment's documents (SPINE_NUDGE_DAYS) and the mail two weeks before a trial ends; no medical content in either.
+  { name: 'mailing the reminders and the trial summaries', run: () => sendLifecycleMail(getAccountsStore()) },
+  // The estimated AI cost of the month against SPINE_AI_BUDGET_EUR; nothing without it.
+  { name: 'watching the AI budget', run: () => watchBudget(getAccountsStore()) },
   // Where the country file is kept in the bucket, once a day; nothing anywhere else.
   { name: 'refreshing the country file', run: () => refreshCountryFile() },
 ];

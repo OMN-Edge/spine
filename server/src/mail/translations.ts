@@ -75,6 +75,25 @@ const ro: Record<string, string> = {
   'Two-factor sign-in was turned off': 'Autentificarea în doi pași a fost dezactivată',
   'Your password was reset with a link sent to this address': 'Parola dumneavoastră a fost resetată cu un link trimis la această adresă',
   'Your password was reset with a link sent to this address, and your records were erased': 'Parola dumneavoastră a fost resetată cu un link trimis la această adresă, iar documentele dumneavoastră au fost șterse',
+  // Mail about using Spine (lifecycle.ts)
+  'Welcome to Spine': 'Bun venit în Spine',
+  'Your account is ready.': 'Contul dumneavoastră este gata.',
+  'The first step is to add the documents you already have. Spine reads them, sorts them and puts them on a timeline.': 'Primul pas este să adăugați documentele pe care le aveți deja. Spine le citește, le sortează și le pune pe o cronologie.',
+  'Add your documents': 'Adăugați documentele',
+  'Had an appointment lately?': 'Ați fost la o consultație în ultima vreme?',
+  'If you did, add its documents now, while you remember what they are for.': 'Dacă da, adăugați acum documentele acesteia, cât încă vă amintiți la ce servesc.',
+  'Add documents': 'Adăugați documente',
+  'You get this reminder now and then. To stop it, open this address:': 'Primiți acest memento din când în când. Pentru a-l opri, deschideți această adresă:',
+  'The plan that fits what you did is Premium.': 'Planul potrivit pentru ce ați făcut este Premium.',
+  'The plan that fits what you did is Essential.': 'Planul potrivit pentru ce ați făcut este Esențial.',
+  'What you did fits the free plan, which you keep.': 'Ce ați făcut se potrivește cu planul gratuit, pe care îl păstrați.',
+  'Your Spine trial ends in two weeks': 'Perioada de probă Spine se termină în două săptămâni',
+  'Your trial ends on {date}. Your archive stays visible and you can export it; after that only adding more and asking are held back.': 'Perioada de probă se termină la {date}. Arhiva dumneavoastră rămâne vizibilă și o puteți exporta; după aceea doar adăugarea de documente noi și întrebările sunt oprite.',
+  'Pages read': 'Pagini citite',
+  'Questions asked': 'Întrebări puse',
+  'Pages translated': 'Pagini traduse',
+  'See the plans': 'Vedeți planurile',
+  'To stop messages like this one, open this address:': 'Pentru a opri mesaje ca acesta, deschideți această adresă:',
 };
 
 const fr: Record<string, string> = {
@@ -153,6 +172,25 @@ const fr: Record<string, string> = {
   'Two-factor sign-in was turned off': 'La connexion à deux facteurs a été désactivée',
   'Your password was reset with a link sent to this address': 'Votre mot de passe a été réinitialisé avec un lien envoyé à cette adresse',
   'Your password was reset with a link sent to this address, and your records were erased': 'Votre mot de passe a été réinitialisé avec un lien envoyé à cette adresse, et vos documents ont été effacés',
+  // Mail about using Spine (lifecycle.ts)
+  'Welcome to Spine': 'Bienvenue dans Spine',
+  'Your account is ready.': 'Votre compte est prêt.',
+  'The first step is to add the documents you already have. Spine reads them, sorts them and puts them on a timeline.': 'La première étape consiste à ajouter les documents que vous avez déjà. Spine les lit, les classe et les place sur une chronologie.',
+  'Add your documents': 'Ajoutez vos documents',
+  'Had an appointment lately?': 'Un rendez-vous récemment ?',
+  'If you did, add its documents now, while you remember what they are for.': 'Si oui, ajoutez-en maintenant les documents, tant que vous vous souvenez de leur raison d’être.',
+  'Add documents': 'Ajouter des documents',
+  'You get this reminder now and then. To stop it, open this address:': 'Vous recevez ce rappel de temps en temps. Pour l’arrêter, ouvrez cette adresse :',
+  'The plan that fits what you did is Premium.': 'L’offre qui correspond à ce que vous avez fait est Premium.',
+  'The plan that fits what you did is Essential.': 'L’offre qui correspond à ce que vous avez fait est Essentiel.',
+  'What you did fits the free plan, which you keep.': 'Ce que vous avez fait correspond à l’offre gratuite, que vous gardez.',
+  'Your Spine trial ends in two weeks': 'Votre essai de Spine se termine dans deux semaines',
+  'Your trial ends on {date}. Your archive stays visible and you can export it; after that only adding more and asking are held back.': 'Votre essai se termine le {date}. Votre archive reste visible et vous pouvez l’exporter ; après cela, seuls l’ajout de nouveaux documents et les questions sont retenus.',
+  'Pages read': 'Pages lues',
+  'Questions asked': 'Questions posées',
+  'Pages translated': 'Pages traduites',
+  'See the plans': 'Voir les offres',
+  'To stop messages like this one, open this address:': 'Pour arrêter les messages comme celui-ci, ouvrez cette adresse :',
 };
 
 const de: Record<string, string> = {
@@ -231,6 +269,25 @@ const de: Record<string, string> = {
   'Two-factor sign-in was turned off': 'Die Zwei-Faktor-Anmeldung wurde ausgeschaltet',
   'Your password was reset with a link sent to this address': 'Ihr Passwort wurde mit einem an diese Adresse gesendeten Link zurückgesetzt',
   'Your password was reset with a link sent to this address, and your records were erased': 'Ihr Passwort wurde mit einem an diese Adresse gesendeten Link zurückgesetzt und Ihre Dokumente wurden gelöscht',
+  // Mail about using Spine (lifecycle.ts)
+  'Welcome to Spine': 'Willkommen bei Spine',
+  'Your account is ready.': 'Ihr Konto ist bereit.',
+  'The first step is to add the documents you already have. Spine reads them, sorts them and puts them on a timeline.': 'Der erste Schritt ist, die Dokumente hinzuzufügen, die Sie schon haben. Spine liest und sortiert sie und legt sie auf einer Zeitleiste ab.',
+  'Add your documents': 'Fügen Sie Ihre Dokumente hinzu',
+  'Had an appointment lately?': 'Hatten Sie kürzlich einen Termin?',
+  'If you did, add its documents now, while you remember what they are for.': 'Wenn ja, fügen Sie die Dokumente jetzt hinzu, solange Sie noch wissen, wofür sie sind.',
+  'Add documents': 'Dokumente hinzufügen',
+  'You get this reminder now and then. To stop it, open this address:': 'Sie bekommen diese Erinnerung hin und wieder. Um sie zu beenden, öffnen Sie diese Adresse:',
+  'The plan that fits what you did is Premium.': 'Der Tarif, der zu dem passt, was Sie getan haben, ist Premium.',
+  'The plan that fits what you did is Essential.': 'Der Tarif, der zu dem passt, was Sie getan haben, ist Essential.',
+  'What you did fits the free plan, which you keep.': 'Was Sie getan haben, passt zum kostenlosen Tarif, den Sie behalten.',
+  'Your Spine trial ends in two weeks': 'Ihre Spine-Testphase endet in zwei Wochen',
+  'Your trial ends on {date}. Your archive stays visible and you can export it; after that only adding more and asking are held back.': 'Ihre Testphase endet am {date}. Ihr Archiv bleibt sichtbar und Sie können es exportieren; danach sind nur das Hinzufügen weiterer Dokumente und Fragen gesperrt.',
+  'Pages read': 'Gelesene Seiten',
+  'Questions asked': 'Gestellte Fragen',
+  'Pages translated': 'Übersetzte Seiten',
+  'See the plans': 'Tarife ansehen',
+  'To stop messages like this one, open this address:': 'Um Nachrichten wie diese zu beenden, öffnen Sie diese Adresse:',
 };
 
 export const DICTIONARIES = { ro, fr, de } as const;

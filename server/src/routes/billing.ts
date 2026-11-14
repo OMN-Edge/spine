@@ -2,14 +2,17 @@ import type { FastifyInstance } from 'fastify';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { requireAuth } from 'spine-core/routes/middleware.js';
 import { logger } from 'spine-core/logger.js';
-import { COUNTS, FOUNDING_LIMIT, PRICES, linkKey, meterKey, subscriptionEntitles, trialEnd, type Count } from 'spine-core/billing/plans.js';
+import { COUNTS, FOUNDING_LIMIT, linkKey, meterKey, subscriptionEntitles, trialEnd, type Count } from 'spine-core/billing/plans.js';
 import type { SubscriptionRecord } from 'spine-core/store/types.js';
 import { loadBillingConfig } from '../billing/config.js';
-import { applySubscriptionEvent, createCheckout, parseEvent, planOfItems, portalUrl, userOf, verifySignature, type PaddleEvent } from '../billing/paddle.js';
+import { loadPrices } from '../billing/catalog.js';
+import { addonOfItems, applySubscriptionEvent, createCheckout, parseEvent, planOfItems, portalUrl, userOf, verifySignature, type PaddleEvent } from '../billing/paddle.js';
 import { vaultBytesFor, liveSharesFor } from '../billing/entitlements.js';
-import { pagesAllowed } from '../billing/carry.js';
+import { importGrant, pagesAllowed } from '../billing/carry.js';
 import { TOTALS, totalKey } from '../billing/totals.js';
 import { standingOf } from '../billing/seat.js';
+import { inviteToken, MAX_REWARDED, BONUS_PAGES } from '../billing/invitations.js';
+import { grantOnce, mayBuy, topupLeft, type Addon } from '../billing/addons.js';
 
 const day = (now = new Date()) => now.toISOString().slice(0, 10);
 
@@ -30,8 +33,8 @@ export async function billingRoutes(app: FastifyInstance) {
   app.get('/api/pricing', async (_req, reply) => {
     const config = loadBillingConfig();
     if (!config.enabled) return reply.header('Cache-Control', 'no-store').send({ enabled: false });
-    const held = await getAccountsStore().billing.foundingHeld(new Date().toISOString());
-    return reply.header('Cache-Control', 'public, max-age=60').send({ enabled: true, prices: PRICES, family: !!config.family, founding_left: Math.max(0, FOUNDING_LIMIT - held) });
+    const held = await getAccountsStore().billing.foundingHeld();
+    return reply.header('Cache-Control', 'public, max-age=60').send({ enabled: true, prices: await loadPrices(config), essential: !!config.essential, family: !!config.family, founding_left: Math.max(0, FOUNDING_LIMIT - held) });
   });
 
   // The signed-in account's plan, what it has used and what it can change.
@@ -53,10 +56,12 @@ export async function billingRoutes(app: FastifyInstance) {
     const read = async (meter: Count) => {
       const own = await store.usage.aiUsed(req.userId, meterKey(meter, e, now));
       const plan = pooled ? await store.usage.aiUsed(standing.holder, meterKey(meter, e, now, true)) : own;
-      const cap = e.memberCap ? finite(e.memberCap[meter]) : null;
+      // The one-off import is for a yearly plan only (`billing/carry.ts`): a monthly plan shows none.
+      const grant = (n: number) => (meter === 'import' ? importGrant(n, standing.subscription?.interval ?? null) : n);
+      const cap = e.memberCap ? finite(grant(e.memberCap[meter])) : null;
       // The pages carry from month to month on a paid plan: the allowance is what can be added by the end of this month, and `monthly` what each month adds.
       const carries = meter === 'pages' && e.carryMonths > 1 && e.aiPeriod === 'month';
-      const allowance = carries ? await pagesAllowed(store, pooled ? standing.holder : req.userId, e, e.allowance.pages, now, pooled) : finite(e.allowance[meter]);
+      const allowance = carries ? await pagesAllowed(store, pooled ? standing.holder : req.userId, e, e.allowance.pages, now, pooled) : finite(grant(e.allowance[meter]));
       const ownCap = carries && e.memberCap ? await pagesAllowed(store, req.userId, e, e.memberCap.pages, now, false) : cap;
       return {
         used: plan,
@@ -68,13 +73,14 @@ export async function billingRoutes(app: FastifyInstance) {
     // What links send, and what the owner's own devices read: the plan's views and bytes of the month (billing/links.ts).
     const linkUse = async (what: 'views' | 'egress') => store.usage.aiUsed(pooled ? standing.holder : req.userId, linkKey(what, now, pooled));
     const totals = Object.fromEntries(await Promise.all(TOTALS.map(async c => [c, await store.usage.aiUsed(req.userId, totalKey(c))] as const)));
+    const topup = await topupLeft(store, req.userId);
     const [meters, vault, shares, vaultLimit, sharesLimit, held, pool, linkViews, linkBytes] = await Promise.all([
       Promise.all(COUNTS.map(async m => [m, await read(m)] as const)).then(Object.fromEntries),
       store.vault.usage(req.userId),
       store.shared.usage(req.userId, now.toISOString()),
       vaultBytesFor(req.userId),
       liveSharesFor(req.userId),
-      store.billing.foundingHeld(now.toISOString()),
+      store.billing.foundingHeld(),
       pooled ? store.family.pool(standing.holder, now.toISOString()) : Promise.resolve(null),
       linkUse('views'), linkUse('egress'),
     ]);
@@ -98,32 +104,58 @@ export async function billingRoutes(app: FastifyInstance) {
       vault: { used_bytes: pool ? pool.bytes : vault.bytes, limit_bytes: pooled ? Math.min(e.vaultBytes ?? vaultLimit, vaultLimit * standing.entitlements.seats) : vaultLimit },
       // Only the free plan limits how many are live; null is no limit but the instance's.
       shares: { live: pool ? pool.links : shares.bundles, limit: e.liveShares === null ? null : sharesLimit },
+      // What is bought once: which of them this account may buy now (and the operator sells), and what is left of it.
+      addons: {
+        page_topup: { buyable: !!config.addons.pageTopup && mayBuy('page_topup', e.plan), pages_left: topup },
+      },
+      // The link this account can send: both sides get pages when someone makes an account with it, and it is rewarded for at most `max` of them.
+      invite: { token: inviteToken(req.userId), pages: BONUS_PAGES, rewarded: Math.min(MAX_REWARDED, await store.usage.aiUsed(req.userId, 'bonus:rewarded')), max: MAX_REWARDED },
       features: { translation: e.translation, chat: e.chat, linking: e.linking, related: e.related, approval_mode: e.approvalMode, delegation: e.delegation },
       people: { limit: e.profiles },
       // What the app holds itself to, because the server cannot count into sealed records (`core/src/plan-limits.ts`).
       limits: { documents: e.documents },
       seats: { limit: e.seats },
-      prices: PRICES,
+      prices: await loadPrices(config),
+      essential: !!config.essential,
       family: !!config.family,
       founding_left: Math.max(0, FOUNDING_LIMIT - held),
     });
   });
 
   // Starts a purchase: a transaction at the provider for the price the account is offered, and where to send the person to pay it.
-  app.post<{ Body: { interval?: unknown; plan?: unknown } }>('/api/billing/checkout', { preHandler: requireAuth, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
+  app.post<{ Body: { interval?: unknown; plan?: unknown; addon?: unknown } }>('/api/billing/checkout', { preHandler: requireAuth, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
     const config = loadBillingConfig();
     if (!config.enabled) return reply.status(404).send({ error: 'this instance has no plans' });
+    const wanted = req.body?.addon;
+    if (wanted !== undefined) {
+      // The thing bought once, a top-up of pages, for the plans it is meant for; an account with a subscription needs nothing more to buy it.
+      if (wanted !== 'page_topup') return reply.status(400).send({ error: 'addon must be page_topup' });
+      const addon: Addon = wanted;
+      const price = config.addons.pageTopup;
+      if (!price) return reply.status(400).send({ error: 'this is not sold here', code: 'plan_not_offered' });
+      const standing = await standingOf(getAccountsStore(), req.userId, new Date());
+      if (!standing || !mayBuy(addon, standing.entitlements.plan)) return reply.status(409).send({ error: 'this is not for the account’s plan', code: 'plan_not_offered' });
+      try {
+        const url = await createCheckout(config, price, req.userId, addon);
+        await getAccountsStore().metrics.bump(`checkout_started_${addon}`, day());
+        return reply.send({ url });
+      } catch (err) {
+        logger.warn('a checkout could not be started', { reason: err instanceof Error ? err.message : String(err) });
+        return reply.status(502).send({ error: 'the payment provider could not be reached; try again in a moment' });
+      }
+    }
     const interval = req.body?.interval;
     if (interval !== 'month' && interval !== 'year') return reply.status(400).send({ error: 'interval must be month or year' });
-    const plan = req.body?.plan === 'family' ? 'family' : 'premium';
+    const plan = req.body?.plan === 'family' ? 'family' : req.body?.plan === 'essential' ? 'essential' : 'premium';
     if (plan === 'family' && !config.family) return reply.status(400).send({ error: 'the family plan is not sold here', code: 'plan_not_offered' });
+    if (plan === 'essential' && !config.essential) return reply.status(400).send({ error: 'the Essential plan is not sold here', code: 'plan_not_offered' });
     const store = getAccountsStore();
     const now = new Date();
     const sub = await store.billing.get(req.userId);
     if (subscriptionEntitles(sub, now)) return reply.status(409).send({ error: 'this account already has a plan; change it from the billing page', code: 'already_subscribed' });
     // The founding price goes to the first places on the yearly plan; it is locked for as long as the subscription runs.
-    const founding = plan === 'premium' && interval === 'year' && (await store.billing.foundingHeld(now.toISOString())) < FOUNDING_LIMIT;
-    const price = plan === 'family' ? config.family![interval] : founding ? config.prices.founding : interval === 'year' ? config.prices.year : config.prices.month;
+    const founding = plan === 'premium' && interval === 'year' && (await store.billing.foundingHeld()) < FOUNDING_LIMIT;
+    const price = plan === 'family' ? config.family![interval] : plan === 'essential' ? config.essential![interval] : founding ? config.prices.founding : interval === 'year' ? config.prices.year : config.prices.month;
     try {
       const url = await createCheckout(config, price, req.userId);
       await store.metrics.bump('checkout_started', day(now));
@@ -160,6 +192,19 @@ export async function billingRoutes(app: FastifyInstance) {
       if (!event) return reply.status(400).send({ error: 'not an event' });
 
       const store = getAccountsStore();
+      // What is bought once is not a subscription's message: it is applied once per transaction, and nothing else about the account changes.
+      const addon = event.event_type === 'transaction.completed' ? addonOfItems(event.data.items, config) : null;
+      if (addon) {
+        const buyer = userOf(event);
+        if (!buyer || !event.data.id || !(await store.users.findById(buyer))) return reply.send({ ok: true });
+        const granted = await grantOnce(store, buyer, addon, event.data.id).catch(err => {
+          logger.error('a purchase could not be applied', { reason: err instanceof Error ? err.message : String(err) });
+          return null;
+        });
+        if (granted === null) return reply.status(409).send({ error: 'not applied yet' });
+        if (granted) { await store.metrics.bump(`addon_${addon}`, day()); await store.metrics.bump('paid_event', day()); }
+        return reply.send({ ok: true });
+      }
       const outcome = await applyEvent(event, config).catch(err => {
         logger.error('a payment event could not be applied', { type: event.event_type, reason: err instanceof Error ? err.message : String(err) });
         return 'unresolved' as Outcome;
@@ -173,6 +218,17 @@ export async function billingRoutes(app: FastifyInstance) {
       return reply.send({ ok: true });
     });
   });
+}
+
+/**
+ * A founding place is taken for good the first time an account has the founding price: it is counted once, by the day and with no account in the count, so it
+ * is not given back when the subscription ends or the account is deleted (the founding price is for the first 500 who ever signed up for it). The account's
+ * own mark makes it once, however many messages tell of it.
+ */
+async function takeFoundingPlace(store: ReturnType<typeof getAccountsStore>, userId: string, record: SubscriptionRecord): Promise<void> {
+  if (!record.founding) return;
+  if ((await store.usage.aiAdd(userId, 'founding:counted', 1)) !== 1) return;
+  await store.metrics.bump('founding_taken', day());
 }
 
 async function applyEvent(event: PaddleEvent, config: Extract<ReturnType<typeof loadBillingConfig>, { enabled: true }>): Promise<Outcome> {
@@ -196,7 +252,9 @@ async function applyEvent(event: PaddleEvent, config: Extract<ReturnType<typeof 
   if (previous && previous.updated_at > at) return 'ignored';
 
   if (isSubscription) {
-    await store.billing.put(applySubscriptionEvent(previous, userId, event, config, at));
+    const next = applySubscriptionEvent(previous, userId, event, config, at);
+    await store.billing.put(next);
+    await takeFoundingPlace(store, userId, next);
     return 'applied';
   }
   // A purchase completed: link the account to the provider's customer and subscription at once, with a short placeholder end that the
@@ -210,5 +268,6 @@ async function applyEvent(event: PaddleEvent, config: Extract<ReturnType<typeof 
         cancel_scheduled: false, updated_at: BEFORE_ANY_MESSAGE,
       };
   await store.billing.put(next);
+  await takeFoundingPlace(store, userId, next);
   return 'applied';
 }

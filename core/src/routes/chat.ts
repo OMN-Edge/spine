@@ -14,6 +14,8 @@ import { helpTopic } from '../help.js';
 import { describeError } from '../failure.js';
 import { modelWait } from '../llm/availability.js';
 
+/** The relay's own refusals (`server/src/billing/gate.ts`): a 402 with one of these codes is the plan's words and quotes nothing; any other 402 is not passed on. */
+const PLAN_CODES = new Set(['allowance_used', 'plan_required', 'fair_use']);
 const MAX_TITLE = 60;
 /** The conversation the answers about Spine go into when the person is not in one. */
 export const GUIDE_TITLE = 'Getting started';
@@ -217,6 +219,8 @@ export async function chatRoutes(app: HttpApp) {
         logger.warn('a question could not be answered', { error: describeError(err) });
         // The relay's daily allowance for the account is used up: say so, rather than that the question failed.
         if (modelWait(err)?.reason === 'limit') return { status: 429, error: 'the daily allowance of model calls is used up; it starts again at midnight UTC' };
+        // The plan's own words (its total is used up) are the relay's and quote nothing: they reach the screen as they are.
+        if (modelWait(err)?.reason === 'plan' && PLAN_CODES.has((err as { code?: unknown }).code as string)) return { status: 402, error: err instanceof Error ? err.message : 'the plan’s AI processing is used up' };
         return { status: 502, error: 'could not answer just now' };
       }
       if (!answered) return { status: 502, error: 'could not answer just now' };
