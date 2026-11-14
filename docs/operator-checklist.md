@@ -46,6 +46,20 @@ None of these can be seen from the code either.
 - [ ] **A memory ceiling for the web service.** Reads of sealed objects are streamed, but the server still holds a body in memory while it is written (up to `SPINE_VAULT_MAX_OBJECT_MB`) and nothing in the unit limits the process, so on a small host a burst of large uploads can take the machine's memory. Choose `MemoryMax=` for `spine-web` from the host's memory (a drop-in with `systemctl edit spine-web`), so that the one service is stopped and restarted, not the host (SECURITY.md **S-58**).
 - [ ] **Backups off the disk.** The daily backup lands beside `data/` by default, which does not survive losing the disk. Point `SPINE_BACKUP_DIR` at other storage; `install.sh -s` gives the backup service access to it ([setup.md](setup.md)).
 
+## On Cloud Run: the services and accounts it needs
+
+What has to exist before the steps of [deploy-cloud-run.md](deploy-cloud-run.md) can finish. Each is an account or a service somewhere else.
+
+- [ ] **A Google Cloud project with billing**, and `gcloud` signed in as someone who may enable services and set IAM. The services to enable are in step 1: Cloud Run, Cloud SQL Admin, Secret Manager, Artifact Registry, Cloud Scheduler, Cloud Build, Vertex AI, and Compute Engine (needed only for a load balancer). Cloud Storage is on in a new project.
+- [ ] **Vertex AI model access.** The model the relay calls has to be available to the project at the `eu` endpoint, and Claude on Vertex is enabled in Model Garden by an administrator ([relay.md](relay.md)).
+- [ ] **A domain whose DNS records you can set,** verified with Google (`gcloud domains verify`, which asks for a record at the registrar) before a domain mapping can be made. The same verification serves Search Console, which you add after the first deploy ([deploy-cloud-run.md](deploy-cloud-run.md), step 10).
+- [ ] **A place for the images:** the Artifact Registry repository of step 1, and the images in it, built with Cloud Build or `scripts/publish-images.sh`. Images from a release tag are at `ghcr.io`, which Cloud Run reaches through an Artifact Registry remote repository ([verify-build.md](verify-build.md#official-images)).
+- [ ] **Postgres and the bucket** of steps 3 and 4, and the two service accounts of step 5 with the roles listed there.
+- [ ] **The mail provider** (Brevo, above): the sending domain's records at the registrar and the API key in Secret Manager. `SPINE_REGISTRATION=open` refuses to start without it.
+- [ ] **Paddle,** if you use plans (above): the checkout page at an origin of its own, and the webhook's address once the domain answers.
+- [ ] **The country file's source reachable.** The hourly job downloads it from GitHub's releases (`ip-location-db`), so the job needs outbound internet, which Cloud Run has by default. If it is blocked, countries stay unknown and the job's log says so.
+- [ ] **For releases from GitHub:** a repository with Actions on, and Packages for `ghcr.io`. The first tag is the first run of the workflows ([verify-build.md](verify-build.md)).
+
 ## Check that it did what you meant
 
 - [ ] **Say which commit you run, and check it.** The page's footer shows the commit and `/trust` explains the check to your users in plain words (set `SPINE_REPO_URL` so its links to the code, docs and security page work). For an official release, tag it (`git tag vX.Y.Z && git push origin vX.Y.Z`), wait for the release workflow, deploy the tag and run `./scripts/deploy-check.sh vX.Y.Z`. Then build it yourself and run `node scripts/verify-build.mjs https://<your domain> web/dist` ([verify-build.md](verify-build.md)): it must say `ok`. Do it after each update; a user who runs it against you gets the same answer.
