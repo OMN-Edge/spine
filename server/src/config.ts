@@ -1,4 +1,5 @@
 import { readBillingConfig, type BillingConfig } from './billing/config.js';
+import { readInvoicingConfig, type InvoicingConfig } from './billing/invoicing/config.js';
 import {
   ConfigError,
   readEmbeddingConfig,
@@ -51,6 +52,8 @@ export interface Config {
   instance: InstanceKind;
   /** Plans and payment (`SPINE_BILLING`); off unless said, and never on a private instance. */
   billing: BillingConfig;
+  /** Whether the operator issues an invoice for each payment, and through whom (`billing/invoicing/`). */
+  invoicing: InvoicingConfig;
 }
 
 export const REGISTRATION_MODES: readonly RegistrationMode[] = ['operator', 'open', 'approval'];
@@ -160,6 +163,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const parser = readParserConfig(env, problems);
   const embeddings = readEmbeddingConfig(given, problems);
   const billing = readBillingConfig(env, instance, problems);
+  const invoicing = readInvoicingConfig(env, billing, problems);
 
   if (problems.length > 0) throw new ConfigError(problems);
 
@@ -178,6 +182,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     registration,
     instance,
     billing,
+    invoicing,
   };
 }
 

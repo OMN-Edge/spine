@@ -117,3 +117,14 @@ describe('leaving with a subscription', () => {
     await app.close();
   });
 });
+
+describe('leaving with a plan the operator granted', () => {
+  it('is not held up: nothing is being charged', async () => {
+    const app = await buildTestApp();
+    const user = await createTestUser('guest@spine.test');
+    const cookie = await loginAs(app, user.email, user.password);
+    await getAccountsStore().billing.put({ user_id: user.id, provider: 'operator', customer_id: null, subscription_id: null, interval: null, plan: 'premium', status: 'active', founding: false, current_period_end: new Date(Date.now() + 90 * 86400e3).toISOString(), cancel_scheduled: false, updated_at: new Date().toISOString() });
+    expect((await app.inject({ method: 'POST', url: '/api/account/delete', headers: { cookie }, payload: { confirm: user.email } })).statusCode).toBe(200);
+    await app.close();
+  });
+});

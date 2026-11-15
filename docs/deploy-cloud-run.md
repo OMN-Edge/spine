@@ -114,6 +114,12 @@ A Google Cloud project with billing, `gcloud` signed in, and a domain whose reco
 
    **The operator's page.** Set `SPINE_ADMIN_EMAILS` (and `SPINE_MARKETING_EMAILS` for a read-only role) in `app.service.yaml`, then sign in at `https://<your domain>/admin`. The page is not linked from anywhere. There an administrator sets the targets, the monthly AI budget, the reminder interval and the hidden ceilings; they are kept in the database, so a change needs no new revision and every instance has it within half a minute. The secret `spine-fair-use` stays the starting point for the ceilings.
 
+   A service made from a file is private: Google's front end answers 403 until its invoker role is given to everyone. Do it for both when you are ready for the site to be reachable (the app's own sign-in, limits and sealing are what protect it from there, not the front end), and not before, since until then you can still test each with your own token (`curl -H "Authorization: Bearer $(gcloud auth print-identity-token)" https://SERVICE-URL/`):
+
+   ```bash
+   for s in spine spine-relay; do gcloud run services add-iam-policy-binding $s --region=$REGION --member=allUsers --role=roles/run.invoker; done
+   ```
+
    Both services take traffic from the internet through Cloud Run's own front end (`ingress: all`), which a domain mapping needs. That is what makes one hop safe: the container's port is reachable only through Google's front end, which writes the last entry of `X-Forwarded-For`, so nothing can reach it with a header of its own. The `run.app` addresses stay public too; the server tells search engines they are copies of the real site (`seo.ts`).
 
 8. **The hourly job.** Cloud Scheduler starts it with an identity that may run it and nothing else.

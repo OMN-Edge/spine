@@ -3,7 +3,7 @@ import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest
 import { buildTestApp, loginAs } from './helpers/app.js';
 import { createTestUser, seedDocument, TEST_PASSWORD } from './helpers/seed.js';
 import { getAccountsStore } from 'spine-core/store/index.js';
-import { HEALTH_CONSENT_VERSION, TERMS_VERSION, legalText } from '../legal.js';
+import { HEALTH_CONSENT_VERSION, TERMS_VERSION, legalText, operatorInfo } from '../legal.js';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { fakeAuthValue, fakeVaultKeys } from 'spine-core/testing/vault.js';
 import { tmpdir } from 'os';
@@ -32,10 +32,10 @@ const records = holdsRecordsInThisRun(); // `npm run test:accounts` runs the ser
 
 describe('the texts a person agrees to', () => {
   it('are public, carry a version, and have the operator filled in', async () => {
-    for (const doc of ['privacy', 'terms', 'purpose']) {
+    for (const doc of ['privacy', 'terms', 'purpose', 'refunds']) {
       const res = await call('GET', `/api/legal/${doc}`);
       expect(res.statusCode).toBe(200);
-      expect(res.json()).toMatchObject({ doc, version: doc === 'terms' ? TERMS_VERSION : HEALTH_CONSENT_VERSION });
+      expect(res.json()).toMatchObject({ doc, version: doc === 'terms' || doc === 'refunds' ? TERMS_VERSION : HEALTH_CONSENT_VERSION });
       expect(res.json().markdown).not.toContain('{{');
     }
     expect((await call('GET', '/api/legal/nothing')).statusCode).toBe(404);
@@ -47,6 +47,31 @@ describe('the texts a person agrees to', () => {
     expect(legalText('privacy', {})!.markdown).toContain('the operator of this instance');
     // The intended purpose says what the product is not, in plain words.
     expect(legalText('purpose', {})!.markdown).toMatch(/does not diagnose/);
+  });
+
+  it('sends requests about a person\'s data to the privacy contact where there is one, and to the contact where not', () => {
+    const both = { SPINE_OPERATOR_NAME: 'Example SRL', SPINE_OPERATOR_CONTACT: 'support@example.test', SPINE_OPERATOR_PRIVACY_CONTACT: 'privacy@example.test' };
+    const privacy = legalText('privacy', both)!.markdown;
+    expect(privacy).toContain('privacy@example.test');
+    expect(privacy).not.toContain('support@example.test');
+    // The terms and the refund policy are about the service and a purchase: the contact.
+    for (const doc of ['terms', 'refunds'] as const) {
+      expect(legalText(doc, both)!.markdown).toContain('support@example.test');
+      expect(legalText(doc, both)!.markdown).not.toContain('privacy@example.test');
+    }
+    expect(legalText('privacy', { SPINE_OPERATOR_CONTACT: 'support@example.test' })!.markdown).toContain('support@example.test');
+    expect(legalText('privacy', {})!.markdown).not.toContain('{{');
+  });
+
+  it('has a refund policy that says what the terms say: Paddle sells, fourteen days, and no records are asked for', () => {
+    const terms = legalText('terms', {})!.markdown;
+    const refunds = legalText('refunds', { SPINE_OPERATOR_NAME: 'Example SRL', SPINE_OPERATOR_CONTACT: 'billing@example.test' })!.markdown;
+    expect(refunds).toContain('Example SRL');
+    expect(refunds).toContain('billing@example.test');
+    expect(terms).toMatch(/fourteen days/);
+    expect(refunds).toMatch(/fourteen days/);
+    expect(refunds).toMatch(/Paddle sells/);
+    expect(refunds).toMatch(/Do not send us any document/);
   });
 });
 
@@ -213,5 +238,24 @@ describe('starting over', () => {
 
   it('is not possible without signing in', async () => {
     expect((await call('POST', '/api/account/wipe', undefined, { confirm: 'x' })).statusCode).toBe(401);
+  });
+});
+
+describe('the company that operates this Spine', () => {
+  const company = { SPINE_OPERATOR_NAME: 'Example SRL', SPINE_OPERATOR_IDS: 'Reg. no. J00/0000/0000; Tax no. 0000000', SPINE_OPERATOR_ADDRESS: '1 Example Street, Exampleville, 000000, Examplia', SPINE_OPERATOR_CONTACT: 'hello@example.test' };
+
+  it('is one reading of the settings: a name, each number as written, the address and the contact, and nothing where no name is set', () => {
+    expect(operatorInfo(company)).toEqual({ name: 'Example SRL', ids: ['Reg. no. J00/0000/0000', 'Tax no. 0000000'], address: '1 Example Street, Exampleville, 000000, Examplia', contact: 'hello@example.test' });
+    expect(operatorInfo({ SPINE_OPERATOR_NAME: 'Example SRL' })).toEqual({ name: 'Example SRL', ids: [], address: null, contact: null });
+    expect(operatorInfo({ SPINE_OPERATOR_IDS: 'Reg. no. J00/0000/0000' })).toBeNull();
+  });
+
+  it('is listed in the terms under its own heading, and the terms say plainly where it is not named', () => {
+    const terms = legalText('terms', company)!.markdown;
+    expect(terms).toMatch(/## Legal \/ Company information\s+Spine is operated by:/);
+    for (const line of ['Example SRL', 'Reg. no. J00/0000/0000', 'Tax no. 0000000', '1 Example Street, Exampleville, 000000, Examplia', 'hello@example.test']) expect(terms).toContain(`- ${line}`);
+    const unnamed = legalText('terms', {})!.markdown;
+    expect(unnamed).toContain('- the operator of this instance');
+    expect(unnamed).not.toContain('{{');
   });
 });

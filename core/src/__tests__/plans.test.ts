@@ -12,11 +12,11 @@ const now = new Date('2026-06-15T12:00:00.000Z');
 const created = (daysAgo: number) => ({ created_at: new Date(now.getTime() - daysAgo * DAY).toISOString() });
 
 describe('which plan an account has', () => {
-  it('is the trial for six months from the account’s day, then the free plan', () => {
+  it('is the trial for three months from the account’s day, then the free plan', () => {
     expect(planOf(created(0), null, now)).toBe('trial');
-    expect(planOf(created(150), null, now)).toBe('trial');
-    expect(planOf(created(200), null, now)).toBe('free');
-    expect(trialEnd('2026-01-31T00:00:00.000Z').slice(0, 10)).toBe('2026-07-31');
+    expect(planOf(created(60), null, now)).toBe('trial');
+    expect(planOf(created(120), null, now)).toBe('free');
+    expect(trialEnd('2026-01-15T00:00:00.000Z').slice(0, 10)).toBe('2026-04-15');
   });
 
   it('is Premium while a subscription runs, over the trial or the free plan', () => {
@@ -24,11 +24,18 @@ describe('which plan an account has', () => {
     expect(planOf(created(10), sub({}), now)).toBe('premium');
   });
 
-  it('keeps what was paid for after a cancellation, to the end of it', () => {
-    const ending = (days: number) => sub({ status: 'canceled', current_period_end: new Date(now.getTime() + days * DAY).toISOString() });
-    expect(subscriptionEntitles(ending(5), now)).toBe(true);
-    expect(subscriptionEntitles(ending(-1), now)).toBe(false);
+  it('keeps what was paid for when the end is set for a date, to the end of it', () => {
+    const planned = (days: number) => sub({ status: 'active', cancel_scheduled: true, current_period_end: new Date(now.getTime() + days * DAY).toISOString() });
+    expect(subscriptionEntitles(planned(5), now)).toBe(true);
+    expect(subscriptionEntitles(planned(-2), now)).toBe(false);
+  });
+
+  it('ends at once when the subscription is cancelled at once, whatever was paid for, and keeps what was paid for while it is paused', () => {
+    const at = (status: string, days: number) => sub({ status, current_period_end: new Date(now.getTime() + days * DAY).toISOString() });
+    expect(subscriptionEntitles(at('canceled', 5), now)).toBe(false);
     expect(subscriptionEntitles(sub({ status: 'canceled', current_period_end: null }), now)).toBe(false);
+    expect(subscriptionEntitles(at('paused', 5), now)).toBe(true);
+    expect(subscriptionEntitles(at('paused', -1), now)).toBe(false);
   });
 
   it('gives a late payment a few days and no more', () => {
@@ -46,24 +53,24 @@ describe('which plan an account has', () => {
 describe('what a plan includes', () => {
   it('counts the trial once and the other plans by month', () => {
     const trial = entitlementsOf(created(1), null, now);
-    expect(trial).toMatchObject({ plan: 'trial', allowance: { pages: 150, import: 0, messages: 50, translated: 30 }, vaultBytes: 5 * 1024 ** 3, liveShares: null, linkViews: Infinity, linkBytes: Infinity, documents: null, translation: true, approvalMode: true });
+    expect(trial).toMatchObject({ plan: 'trial', allowance: { pages: 100, import: 0, messages: 50, translated: 30 }, vaultBytes: 5 * 1024 ** 3, liveShares: null, linkViews: Infinity, linkBytes: Infinity, keptPages: null, translation: true, approvalMode: true });
     expect(usagePeriod(trial, now)).toBe('trial');
     const free = entitlementsOf(created(300), null, now);
-    expect(free).toMatchObject({ plan: 'free', allowance: { pages: 3, import: 0, messages: 0, translated: 0 }, carryMonths: 3, vaultBytes: 1024 ** 3, liveShares: 1, documents: 50, linkViews: 20, linkBytes: 250 * 1024 ** 2, chat: false });
+    expect(free).toMatchObject({ plan: 'free', allowance: { pages: 3, import: 0, messages: 0, translated: 0 }, carryMonths: 3, vaultBytes: 1024 ** 3, liveShares: 1, keptPages: 50, linkViews: 20, linkBytes: 250 * 1024 ** 2, chat: false });
     expect(usagePeriod(free, now)).toBe('2026-06');
   });
 
   it('gives Essential five pages a month and an import of 150, with questions and no translation', () => {
     const essential = entitlementsOf(created(400), sub({ plan: 'essential', current_period_end: new Date(now.getTime() + 30 * DAY).toISOString() }), now);
-    expect(essential).toMatchObject({ plan: 'essential', allowance: { pages: 5, import: ESSENTIAL_IMPORT_PAGES, messages: Infinity, translated: Infinity }, carryMonths: 3, vaultBytes: 2 * 1024 ** 3, documents: null, chat: true, translation: false, linking: true, related: true, approvalMode: true, seats: 1, profiles: 1, delegation: false, liveShares: null, linkViews: Infinity });
+    expect(essential).toMatchObject({ plan: 'essential', allowance: { pages: 5, import: ESSENTIAL_IMPORT_PAGES, messages: Infinity, translated: Infinity }, carryMonths: 3, vaultBytes: 2 * 1024 ** 3, keptPages: null, chat: true, translation: false, linking: true, related: true, approvalMode: true, seats: 1, profiles: 1, delegation: false, liveShares: null, linkViews: Infinity });
     expect(ESSENTIAL_IMPORT_PAGES).toBe(150);
     // Ending it goes the way every subscription does.
     expect(planOf(created(400), sub({ plan: 'essential', status: 'canceled', current_period_end: new Date(now.getTime() - DAY).toISOString() }), now)).toBe('free');
   });
 
-  it('gives the trial visible totals for the whole trial: 150 pages, 50 questions, 30 translated pages', () => {
-    expect(TRIAL_TOTALS).toEqual({ pages: 150, messages: 50, translated: 30 });
-    expect(PLANS.trial.allowance).toMatchObject({ pages: 150, messages: 50, translated: 30 });
+  it('gives the trial visible totals for the whole trial: 100 pages, 50 questions, 30 translated pages', () => {
+    expect(TRIAL_TOTALS).toEqual({ pages: 100, messages: 50, translated: 30 });
+    expect(PLANS.trial.allowance).toMatchObject({ pages: 100, messages: 50, translated: 30 });
   });
 
   it('writes no amount in the code: what a plan costs is Paddle\'s', () => {

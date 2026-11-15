@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import CompanyLine from './CompanyLine';
 import { LogoMark } from './Logo';
 import { Link } from 'react-router-dom';
 import { useI18n } from '../i18n';
@@ -31,6 +32,7 @@ export default function AuthCard({
           <Link to="/terms" className="hover:underline">{t('Terms of use')}</Link>
           <Link to="/purpose" className="hover:underline">{t('What Spine is for')}</Link>
         </p>
+        <CompanyLine className="mt-3 text-gray-500" />
       </div>
     </div>
   );

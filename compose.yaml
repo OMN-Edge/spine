@@ -53,6 +53,9 @@ services:
       SESSION_SECRET: ""
       BREVO_API_KEY: ""
       PADDLE_API_KEY: ""
+      STRIPE_SECRET_KEY: ""
+      STRIPE_WEBHOOK_SECRET: ""
+      BILLYOU_API_KEY: ""
       PADDLE_WEBHOOK_SECRET: ""
       SPINE_RELAY_ORIGIN: https://${SPINE_DOMAIN}
       SPINE_RELAY_PORT: "8080"

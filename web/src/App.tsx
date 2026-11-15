@@ -28,7 +28,7 @@ import Profiles from './pages/Profiles';
 import Invite from './pages/Invite';
 import Family from './pages/Family';
 import { pendingInvite } from './invite';
-import { useDocumentLimit } from './billing';
+import { usePageLimit } from './billing';
 import { pendingSeatInvite } from './seat';
 import { useProfiles } from './profiles';
 import ForDoctors from './pages/ForDoctors';
@@ -42,6 +42,7 @@ import LegalPage from './pages/LegalPage';
 import ConsentGate from './pages/ConsentGate';
 import VaultSetup from './pages/VaultSetup';
 import { vaultState } from './crypto/vault-state';
+import CompanyLine from './components/CompanyLine';
 import UnlockScreen from './components/UnlockScreen';
 import SyncNotice from './components/SyncNotice';
 import SaveStatus from './components/SaveStatus';
@@ -91,8 +92,8 @@ function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const chat = useChat();
-  // The plan's limit on documents is held to by the core, which the server cannot tell by counting (`core/src/plan-limits.ts`).
-  useDocumentLimit(!demo);
+  // The plan's limit on pages kept is held to by the core, which the server cannot tell by counting (`core/src/plan-limits.ts`).
+  usePageLimit(!demo);
   // Whose records are open, always shown, with the others to switch to and the page where people are added and let in.
   const { people } = useProfiles(!demo);
   // A person whose records were open was taken over by them (SECURITY.md M-51): another person is open now, and the page says why.
@@ -238,7 +239,7 @@ function Layout({ children }: { children: React.ReactNode }) {
       )}
       {demo && <DemoBanner />}
       {/* With the chat open beside it, the page gives it room instead of sitting under it. */}
-      <main className={`max-w-6xl mx-auto px-4 sm:px-6 py-6 pb-24 sm:py-8 transition-[margin] duration-200 ${chat?.enabled && chat.open ? 'sm:mr-[26.5rem] sm:max-w-none' : ''}`}>{children}</main>
+      <main className={`max-w-6xl mx-auto px-4 sm:px-6 py-6 pb-24 sm:py-8 transition-[margin] duration-200 ${chat?.enabled && chat.open ? 'sm:mr-[26.5rem] sm:max-w-none' : ''}`}>{children}<CompanyLine className="mt-12 text-gray-500" /></main>
       <ChatPanel />
     </div>
   );
@@ -380,6 +381,7 @@ export default function App() {
         <Route path="/privacy" element={<LegalPage doc="privacy" />} />
         <Route path="/terms" element={<LegalPage doc="terms" />} />
         <Route path="/purpose" element={<LegalPage doc="purpose" />} />
+        <Route path="/refunds" element={<LegalPage doc="refunds" />} />
         <Route path="/trust" element={<Trust />} />
         <Route path="/pricing" element={<Pricing />} />
         <Route path="/for-doctors" element={<ForDoctors />} />

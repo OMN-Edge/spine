@@ -88,9 +88,9 @@ describe('the mail about using Spine', () => {
   it('tells a trial account two weeks before it ends what it did and the plan that fits, once, and an account past that nothing', async () => {
     Object.assign(process.env, BILLING);
     const day = (n: number) => new Date(Date.now() - n * DAY).toISOString();
-    // A trial lasts six months (183 days or so): 175 days in is under two weeks from the end; 100 days in is not.
-    const near = await createTestUser('life-trial-near@spine.test', { createdAt: day(172) });
-    const far = await createTestUser('life-trial-far@spine.test', { createdAt: day(100) });
+    // A trial lasts three months (90 days or so): 80 days in is under two weeks from the end; 30 days in is not.
+    const near = await createTestUser('life-trial-near@spine.test', { createdAt: day(80) });
+    const far = await createTestUser('life-trial-far@spine.test', { createdAt: day(30) });
     await store().usage.aiAdd(near.id, 'total:pages', 37);
     await store().usage.aiAdd(near.id, 'total:messages', 5);
     await sendLifecycleMail(store());

@@ -272,7 +272,8 @@ describe('the hidden fair-use ceilings', () => {
       for (const url of ['/api/billing', '/api/family', '/api/pricing']) {
         const body = (await app.inject({ method: 'GET', url, headers: { cookie } })).body;
         expect(body, url).not.toMatch(/fair|ceiling|abuse|yearly/i);
-        for (const number of ['2400', '3000', '5000', '600', '800', '107374182400']) expect(body, `${url} ${number}`).not.toContain(number);
+        // A ceiling's number as a number of its own, not the digits inside a random id or a timestamp's milliseconds (which held "800" in one run of eighty).
+        for (const number of ['2400', '3000', '5000', '600', '800', '107374182400']) expect(body, `${url} ${number}`).not.toMatch(new RegExp(`(?<![\\w.-])${number}(?![\\w.-])`));
       }
       const root = path.resolve(import.meta.dirname, '../../..');
       const pricing = fs.readFileSync(path.join(root, 'web/src/pages/Pricing.tsx'), 'utf8');

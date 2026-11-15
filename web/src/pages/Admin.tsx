@@ -6,6 +6,8 @@ import AdminAccounts from '../components/AdminAccounts';
 import AdminDashboardView from '../components/AdminDashboard';
 import AdminSettings from '../components/AdminSettings';
 import AdminFairUse from '../components/AdminFairUse';
+import AdminInvoices from '../components/AdminInvoices';
+import AdminWithdrawals from '../components/AdminWithdrawals';
 import { useI18n } from '../i18n';
 import '@fontsource/literata/400.css';
 import { LogoMark } from '../components/Logo';
@@ -58,7 +60,7 @@ export default function Admin() {
         {state === 'loading' && <p className="text-ink/50">{t('Loading…')}</p>}
         {state === 'forbidden' && <p className="font-display text-2xl">{t('This page is for the administrator.')}</p>}
         {state === 'failed' && <p className="text-red-700">{t('Could not load the numbers.')}</p>}
-        {state === 'ok' && data && <><AdminDashboardView data={data} /><div className="mt-14"><AdminSettings onChanged={() => void reload()} /></div><div className="mt-14"><AdminFairUse /></div><div className="mt-14"><AdminAccounts /></div></>}
+        {state === 'ok' && data && <><AdminDashboardView data={data} /><div className="mt-14"><AdminSettings onChanged={() => void reload()} /></div><div className="mt-14"><AdminFairUse /></div><div className="mt-14"><AdminWithdrawals /></div><div className="mt-14"><AdminInvoices /></div><div className="mt-14"><AdminAccounts /></div></>}
       </main>
     </div>
   );

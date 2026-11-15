@@ -110,7 +110,8 @@ describe('code', () => {
     'NOTICE_TITLES', // marks strings for the translation dictionaries only
     'TOOL_KINDS', 'ENTRYPOINTS', // lists that a test holds the code to (every chat tool is read or action; every process is started)
     'openWasm', // the WebAssembly driver as a factory, for the suite that runs on it
-  ]);
+    'forgetRates', // forgets the National Bank's rates kept for an hour, so a test that scripts the bank's file starts without the last one
+      ]);
   it('has no production export that nothing refers to, except the listed test helpers', () => {
     const exported = /^export\s+(?:async\s+)?(?:function\*?|const|class|let|enum)\s+([A-Za-z_$][\w$]*)/gm;
     const loose: string[] = [];

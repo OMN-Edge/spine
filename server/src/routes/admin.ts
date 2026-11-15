@@ -9,6 +9,11 @@ import { dashboardOf, type Dashboard } from '../dashboard.js';
 import { changeSetting, operatorSettings } from '../operator-settings.js';
 import { changeFairUse, fairUseSections } from '../billing/fair-use-admin.js';
 import { syncFairUse } from '../billing/fair-use.js';
+import { retryInvoice, settleInvoice } from '../billing/invoicing/queue.js';
+import { loadBillingConfig } from '../billing/config.js';
+import { billingProvider } from '../billing/provider.js';
+import { withdrawalAcceptedMail, withdrawalDeclinedMail } from '../billing/withdrawal-mail.js';
+import { euSalesTotals } from '../billing/invoicing/threshold.js';
 
 /**
  * Approving the accounts that asked for one under `SPINE_REGISTRATION=approval`, from the app. Who may is `SPINE_ADMIN_EMAILS`, checked on every
@@ -46,6 +51,67 @@ export async function adminRoutes(app: FastifyInstance, opts: AdminRouteOptions 
       memo = { at: Date.now(), value: await working };
     }
     return reply.header('Cache-Control', 'no-store').send(memo.value);
+  });
+
+  // The invoices the operator owes (docs/billing.md): how many are in each state, the ones that stopped and why, and the EU consumer sales against the yearly threshold. A
+  // reference and the service's own words, never a buyer. The operator mends one (retry, or settle by hand) with a recently typed password.
+  app.get('/api/admin/invoices', { preHandler: [requireAuth, onlyReaders] }, async (_req, reply) => {
+    const store = getAccountsStore();
+    const [counts, stopped, eu] = await Promise.all([store.billing.invoiceCounts(), store.billing.invoicesStopped(50), euSalesTotals(store)]);
+    return reply.header('Cache-Control', 'no-store').send({
+      counts,
+      stopped: stopped.map(r => ({ ref: r.ref, state: r.state, attempts: r.attempts, reason: r.last_error, invoice: r.series ? `${r.series}-${r.number}` : null, at: r.updated_at, can_retry: r.state !== 'issued' && !(r.ref.startsWith('storno:') && !r.issuer_ref) })),
+      eu: { year: eu.year, this_year: eu.thisYear / 100, last_year: eu.lastYear / 100, limit: eu.limit / 100 },
+    });
+  });
+  app.post<{ Body: { ref?: unknown; action?: unknown } }>('/api/admin/invoices', { preHandler: [requireAuth, onlyAdmins, requireRecentAuth] }, async (req, reply) => {
+    const { ref, action } = req.body ?? {};
+    if (typeof ref !== 'string' || ref.length === 0 || ref.length > 200 || (action !== 'retry' && action !== 'settle')) return reply.status(400).send({ error: 'ref and an action, retry or settle, are needed' });
+    const done = await (action === 'retry' ? retryInvoice(ref) : settleInvoice(ref));
+    return done.ok ? reply.send({ ok: true }) : reply.status(409).send({ error: done.error });
+  });
+
+  // Buyers' requests to withdraw from a purchase. The operator decides each: pays back (all of the last payment, or an amount) and ends the plan, or declines with a reason.
+  // The refund then reaches `charge.refunded`, which has the invoice reversed. The buyer is told either way.
+  app.get('/api/admin/withdrawals', { preHandler: [requireAuth, onlyReaders] }, async (_req, reply) => {
+    const store = getAccountsStore();
+    const open = await store.billing.withdrawals('requested', 50);
+    const rows = await Promise.all(open.map(async w => {
+      const [user, sub, first] = await Promise.all([store.users.findById(w.user_id), store.billing.get(w.user_id), store.billing.firstPaymentAt(w.user_id)]);
+      return { id: w.id, email: user?.email ?? null, plan: sub?.plan ?? null, interval: sub?.interval ?? null, requested_at: w.requested_at, first_payment: first };
+    }));
+    return reply.header('Cache-Control', 'no-store').send({ requests: rows });
+  });
+  app.post<{ Body: { id?: unknown; action?: unknown; amount?: unknown; note?: unknown } }>('/api/admin/withdrawals', { preHandler: [requireAuth, onlyAdmins, requireRecentAuth] }, async (req, reply) => {
+    const { id, action, amount, note } = req.body ?? {};
+    if (typeof id !== 'string' || (action !== 'refund' && action !== 'decline')) return reply.status(400).send({ error: 'id and an action, refund or decline, are needed' });
+    if (amount !== undefined && amount !== null && !(typeof amount === 'number' && Number.isFinite(amount) && amount > 0 && amount <= 100_000)) return reply.status(400).send({ error: 'amount must be a positive number' });
+    if (note !== undefined && note !== null && (typeof note !== 'string' || note.length > 500)) return reply.status(400).send({ error: 'note must be at most 500 characters' });
+    const store = getAccountsStore();
+    const request = await store.billing.withdrawal(id);
+    if (!request || request.state !== 'requested') return reply.status(409).send({ error: 'there is no open request with this id' });
+    const user = await store.users.findById(request.user_id);
+    const at = new Date().toISOString();
+    const mailer = getMailer();
+    const tell = async (message: ReturnType<typeof withdrawalDeclinedMail>) => { if (mailer.enabled) await mailer.send(message).catch(err => logger.warn('a withdrawal mail could not be sent', { reason: err instanceof Error ? err.message : String(err) })); };
+    if (action === 'decline') {
+      await store.billing.decideWithdrawal(id, { state: 'declined', refundedMinor: null, note: typeof note === 'string' && note.trim() ? note.trim() : null }, at);
+      if (user) await tell(withdrawalDeclinedMail({ email: user.email, language: user.language }, typeof note === 'string' && note.trim() ? note.trim() : null));
+      return reply.send({ ok: true });
+    }
+    const config = loadBillingConfig();
+    const sub = await store.billing.get(request.user_id);
+    if (!config.enabled || sub?.provider !== config.provider || !sub.subscription_id) return reply.status(409).send({ error: 'there is no subscription to end and pay back here: refund it at the payment provider' });
+    try {
+      const paid = await billingProvider(config).withdraw({ subscriptionId: sub.subscription_id, amountMinor: typeof amount === 'number' ? Math.round(amount * 100) : null, key: `withdrawal:${id}` });
+      await store.billing.decideWithdrawal(id, { state: 'refunded', refundedMinor: paid.refundedMinor, note: null }, at);
+      await store.metrics.bump('withdrawal_refunded', at.slice(0, 10));
+      if (user) await tell(withdrawalAcceptedMail({ email: user.email, language: user.language }, `${(paid.refundedMinor / 100).toFixed(2)} ${paid.currency}`));
+      return reply.send({ ok: true, refunded: paid.refundedMinor / 100, currency: paid.currency });
+    } catch (err) {
+      logger.warn('a withdrawal could not be paid back', { reason: err instanceof Error ? err.message : String(err) });
+      return reply.status(502).send({ error: 'the payment provider could not do it; nothing is marked as decided, so it can be tried again' });
+    }
   });
 
   // The settings the admin page changes (`operator-settings.ts`): the marketing role may read them, an administrator change them. A change is

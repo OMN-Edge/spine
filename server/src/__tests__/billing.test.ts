@@ -8,7 +8,7 @@ import { createTestUser, OWNER_ID, TEST_PASSWORD } from './helpers/seed.js';
 import { billingOn, loadBillingConfig } from '../billing/config.js';
 import { createRelayGate } from '../billing/gate.js';
 import { accountEntitlements, liveSharesFor, vaultBytesFor } from '../billing/entitlements.js';
-import { createCheckout, verifySignature } from '../billing/paddle.js';
+import { createCheckout, verifySignature } from '../billing/providers/paddle.js';
 import { loadPrices, resetCatalog } from '../billing/catalog.js';
 import { topupLeft } from '../billing/addons.js';
 import { loadConfig } from '../config.js';
@@ -94,7 +94,7 @@ describe('plans and payment', () => {
       paddlePrices();
       expect((await get('/api/billing', {})).statusCode).toBe(401);
       const body = (await get('/api/billing')).json();
-      expect(body).toMatchObject({ enabled: true, plan: 'trial', subscription: null, can_manage: false, ai: { period: 'trial', reading: { used: 0, allowance: 150 }, chat: { used: 0, allowance: 50 }, translation: { used: 0, allowance: 30 } }, links: { views: { used: 0, allowance: null }, bytes: { used: 0, allowance: null } }, founding_left: 500 });
+      expect(body).toMatchObject({ enabled: true, plan: 'trial', subscription: null, can_manage: false, ai: { period: 'trial', reading: { used: 0, allowance: 100 }, chat: { used: 0, allowance: 50 }, translation: { used: 0, allowance: 30 } }, links: { views: { used: 0, allowance: null }, bytes: { used: 0, allowance: null } }, founding_left: 500 });
       expect(body.trial_ends_at).toBeTruthy();
       paddlePrices();
       expect((await get('/api/pricing', {})).json()).toMatchObject({ enabled: true, founding_left: 500, essential: false, prices: { currency: 'EUR', premium: { year: 49, month: 4.99 }, founding: { year: 39 } } });
@@ -150,6 +150,75 @@ describe('plans and payment', () => {
       expect(await accountEntitlements(user.id)).toMatchObject({ plan: 'premium', translation: true });
       const cookiePayer = await loginAs(app, user.email, user.password);
       expect((await get('/api/billing', { cookie: cookiePayer })).json()).toMatchObject({ plan: 'premium', can_manage: true, subscription: { interval: 'year', founding: true }, founding_left: 499 });
+    });
+
+    it('end the plan at once when the subscription is cancelled at once, and keep it to the date when the end is only set for one', async () => {
+      on();
+      const planned = await createTestUser('planned@spine.test', { createdAt: LONG_AGO });
+      await hook(eventBody('subscription.created', subscription(planned.id, { id: 'sub_planned' })));
+      await hook(eventBody('subscription.updated', subscription(null, { id: 'sub_planned', scheduled_change: { action: 'cancel' } })));
+      expect(await accountEntitlements(planned.id)).toMatchObject({ plan: 'premium' });
+
+      const withdrawn = await createTestUser('withdrawn@spine.test', { createdAt: LONG_AGO });
+      await hook(eventBody('subscription.created', subscription(withdrawn.id, { id: 'sub_withdrawn' })));
+      expect(await accountEntitlements(withdrawn.id)).toMatchObject({ plan: 'premium' });
+      // Cancelled at once (a withdrawal): Paddle's message names the status and no period; the end the account had does not buy more days.
+      await hook(eventBody('subscription.canceled', subscription(null, { id: 'sub_withdrawn', status: 'canceled', current_billing_period: null, scheduled_change: null })));
+      expect(await getAccountsStore().billing.get(withdrawn.id)).toMatchObject({ status: 'canceled' });
+      expect(await accountEntitlements(withdrawn.id)).toMatchObject({ plan: 'free' });
+      expect((await get('/api/billing', { cookie: await loginAs(app, withdrawn.email, withdrawn.password) })).json()).toMatchObject({ plan: 'free', subscription: null });
+    });
+
+    it('do not let the end of an earlier subscription take the plan of the one the account has now', async () => {
+      on();
+      const user = await createTestUser('moved@spine.test', { createdAt: LONG_AGO });
+      await hook(eventBody('subscription.created', subscription(user.id, { id: 'sub_old' })));
+      await hook(eventBody('subscription.created', subscription(user.id, { id: 'sub_new' })));
+      expect(await getAccountsStore().billing.get(user.id)).toMatchObject({ subscription_id: 'sub_new' });
+      // The operator cancels the one that was billing for nothing; its message names the account, but the account has moved on.
+      const res = await hook(eventBody('subscription.canceled', subscription(user.id, { id: 'sub_old', status: 'canceled', current_billing_period: null })));
+      expect(res.statusCode).toBe(200);
+      expect(await getAccountsStore().billing.get(user.id)).toMatchObject({ subscription_id: 'sub_new', status: 'active' });
+      expect(await accountEntitlements(user.id)).toMatchObject({ plan: 'premium' });
+      // The current subscription's own cancellation does end it.
+      await hook(eventBody('subscription.canceled', subscription(user.id, { id: 'sub_new', status: 'canceled', current_billing_period: null })));
+      expect(await accountEntitlements(user.id)).toMatchObject({ plan: 'free' });
+    });
+
+    it('stop being founding when the subscription moves to another price or a new one is made at the usual price, and keep it when a message names no price', async () => {
+      on();
+      const user = await createTestUser('founder@spine.test', { createdAt: LONG_AGO });
+      await hook(eventBody('subscription.created', subscription(user.id, { id: 'sub_f', items: [{ price: { id: 'pri_founding' } }] })));
+      expect((await getAccountsStore().billing.get(user.id))!.founding).toBe(true);
+      // A message about the same subscription that lists no price says nothing about it.
+      await hook(eventBody('subscription.updated', subscription(null, { id: 'sub_f', items: [] })));
+      expect((await getAccountsStore().billing.get(user.id))!.founding).toBe(true);
+      // The subscription moves to the usual monthly price: it is not the founding price any more.
+      await hook(eventBody('subscription.updated', subscription(null, { id: 'sub_f', items: [{ price: { id: 'pri_month' } }], billing_cycle: { interval: 'month' } })));
+      expect(await getAccountsStore().billing.get(user.id)).toMatchObject({ founding: false, interval: 'month' });
+      expect((await get('/api/billing', { cookie: await loginAs(app, user.email, user.password) })).json().subscription).toMatchObject({ founding: false });
+    });
+
+    it('notes an account that has a plan being given a second subscription, once, and still applies it', async () => {
+      on();
+      const warn = vi.spyOn(logger, 'warn');
+      const user = await createTestUser('doublebilled@spine.test', { createdAt: LONG_AGO });
+      const count = async () => (await getAccountsStore().metrics.totals('2000-01-01')).find(t => t.name === 'second_subscription')?.total ?? 0;
+      const before = await count();
+      await hook(eventBody('subscription.created', subscription(user.id, { id: 'sub_first' })));
+      expect(await count()).toBe(before);
+      // The same subscription told of again is not a second one.
+      await hook(eventBody('subscription.updated', subscription(null, { id: 'sub_first' })));
+      expect(await count()).toBe(before);
+      // A different subscription for the account (two checkouts paid): the row follows the new one, and the operator is told.
+      await hook(eventBody('subscription.created', subscription(user.id, { id: 'sub_second' })));
+      expect(await getAccountsStore().billing.get(user.id)).toMatchObject({ subscription_id: 'sub_second' });
+      expect(await count()).toBe(before + 1);
+      expect(warn).toHaveBeenCalledWith('an account that has a plan was given a second subscription', { provider: 'paddle', first: 'sub_first', second: 'sub_second' });
+      // Its later messages do not say it again.
+      await hook(eventBody('subscription.updated', subscription(null, { id: 'sub_second' })));
+      expect(await count()).toBe(before + 1);
+      warn.mockRestore();
     });
 
     it('keep what was paid for after a cancellation, until the end of it', async () => {
@@ -305,6 +374,44 @@ describe('plans and payment', () => {
       expect(res.json()).toEqual({ url: 'https://customer-portal.paddle.com/cpl_1' });
       expect((fetchMock.mock.calls[0] as unknown as [string])[0]).toBe('https://sandbox-api.paddle.com/customers/ctm_m/portal-sessions');
     });
+
+    it('opens the page for one action: the subscription’s own cancellation form or card form, the overview otherwise, and the overview where the link is not there', async () => {
+      on();
+      const user = await createTestUser('actions@spine.test');
+      await getAccountsStore().billing.put({ user_id: user.id, provider: 'paddle', customer_id: 'ctm_a', subscription_id: 'sub_a', interval: 'month', plan: 'premium', status: 'active', founding: false, current_period_end: new Date(Date.now() + 20 * 86400e3).toISOString(), cancel_scheduled: false, updated_at: new Date().toISOString() });
+      const headers = { cookie: await loginAs(app, user.email, user.password) };
+      const session = { data: { urls: { general: { overview: 'https://customer-portal.paddle.com/cpl_overview' }, subscriptions: [
+        { id: 'sub_other', cancel_subscription: 'https://customer-portal.paddle.com/cpl_OTHER_cancel', update_subscription_payment_method: 'https://customer-portal.paddle.com/cpl_OTHER_card' },
+        { id: 'sub_a', view_subscription: 'https://customer-portal.paddle.com/cpl_a_view', cancel_subscription: 'https://customer-portal.paddle.com/cpl_a_cancel', update_subscription_payment_method: 'https://customer-portal.paddle.com/cpl_a_card' },
+      ] } } };
+      const ask = async (payload?: unknown) => (await app.inject({ method: 'POST', url: '/api/billing/portal', headers, payload: payload as never })).json();
+
+      const fetchMock = stubProvider(session);
+      expect(await ask({ action: 'cancel' })).toEqual({ url: 'https://customer-portal.paddle.com/cpl_a_cancel' });
+      expect(await ask({ action: 'payment_method' })).toEqual({ url: 'https://customer-portal.paddle.com/cpl_a_card' });
+      expect(await ask({ action: 'overview' })).toEqual({ url: 'https://customer-portal.paddle.com/cpl_overview' });
+      expect(await ask()).toEqual({ url: 'https://customer-portal.paddle.com/cpl_overview' });
+      // The session is made for this subscription, so its own links come back; a link is made at each request and none is kept.
+      const call = fetchMock.mock.calls[0] as unknown as [string, { body: string }];
+      expect(JSON.parse(call[1].body)).toEqual({ subscription_ids: ['sub_a'] });
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+
+      // A link that is not there, or is not https, is the overview: a person is never sent nowhere.
+      stubProvider({ data: { urls: { general: { overview: 'https://customer-portal.paddle.com/cpl_overview' }, subscriptions: [{ id: 'sub_a', cancel_subscription: 'http://insecure.example/x' }] } } });
+      expect(await ask({ action: 'cancel' })).toEqual({ url: 'https://customer-portal.paddle.com/cpl_overview' });
+      stubProvider({ data: { urls: { general: { overview: 'https://customer-portal.paddle.com/cpl_overview' } } } });
+      expect(await ask({ action: 'payment_method' })).toEqual({ url: 'https://customer-portal.paddle.com/cpl_overview' });
+    });
+
+    it('refuses an action it does not know, before asking the provider anything', async () => {
+      on();
+      const user = await createTestUser('badaction@spine.test');
+      await getAccountsStore().billing.put({ user_id: user.id, provider: 'paddle', customer_id: 'ctm_b', subscription_id: 'sub_b', interval: 'month', plan: 'premium', status: 'active', founding: false, current_period_end: new Date(Date.now() + 20 * 86400e3).toISOString(), cancel_scheduled: false, updated_at: new Date().toISOString() });
+      const fetchMock = stubProvider({});
+      const res = await app.inject({ method: 'POST', url: '/api/billing/portal', headers: { cookie: await loginAs(app, user.email, user.password) }, payload: { action: 'refund_everything' } });
+      expect(res.statusCode).toBe(400);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
   });
 
   describe('what the relay asks before and after a call', () => {
@@ -336,9 +443,9 @@ describe('plans and payment', () => {
       expect(await gate().admit(user.id, 'extraction')).toMatchObject({ status: 402, code: 'allowance_used' });
     });
 
-    it('stops adding pages when the trial’s 150 are used, and does not stop the small calls or what the trial has left of questions and translation', async () => {
+    it('stops adding pages when the trial’s 100 are used, and does not stop the small calls or what the trial has left of questions and translation', async () => {
       const user = await createTestUser('gate-cap@spine.test');
-      await getAccountsStore().usage.aiAdd(user.id, 'trial:pages', 149);
+      await getAccountsStore().usage.aiAdd(user.id, 'trial:pages', 99);
       expect(await gate().admit(user.id, 'page')).toBeNull();
       await getAccountsStore().usage.aiAdd(user.id, 'trial:pages', 1);
       for (const task of ['page', 'extraction'] as const) expect(await gate().admit(user.id, task), task).toMatchObject({ code: 'allowance_used' });
@@ -390,9 +497,9 @@ describe('plans and payment', () => {
       expect(await gate().admit(essential.id, 'extraction', { bulk: true, pages: 1 })).toBeNull();
       await store.usage.aiAdd(essential.id, month, 156 * PAGE);
       expect(await gate().admit(essential.id, 'extraction', { bulk: true, pages: 1 })).toMatchObject({ code: 'fair_use' });
-      // The trial: twice its 150 pages in all.
+      // The trial: twice its 100 pages in all.
       const trial = await createTestUser('gate-reading-trial@spine.test');
-      await store.usage.aiAdd(trial.id, 'trial', 299 * PAGE);
+      await store.usage.aiAdd(trial.id, 'trial', 199 * PAGE);
       expect(await gate().admit(trial.id, 'embed')).toBeNull();
       await store.usage.aiAdd(trial.id, 'trial', PAGE);
       expect(await gate().admit(trial.id, 'embed')).toMatchObject({ code: 'fair_use' });
@@ -804,8 +911,8 @@ describe('plans and payment', () => {
     });
   });
 
-  it('counts a trial of six months', () => {
-    expect(TRIAL_MONTHS).toBe(6);
+  it('counts a trial of three months', () => {
+    expect(TRIAL_MONTHS).toBe(3);
     expect(TEST_PASSWORD).toBeTruthy();
   });
 });

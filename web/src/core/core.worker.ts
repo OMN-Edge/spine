@@ -281,7 +281,7 @@ self.onmessage = async (event: MessageEvent<ToWorker>) => {
       useImportMode(m.on);
       reply({ id: m.id, ok: true });
     } else if (m.type === 'planLimits') {
-      usePlanLimits({ documents: m.documents });
+      usePlanLimits({ pages: m.pages });
       reply({ id: m.id, ok: true });
     } else if (m.type === 'lock') {
       // Refuses (code `unsaved`) rather than dropping what could not be saved; the page asks the person, and may say `force`.

@@ -46,7 +46,7 @@ describe('the pages before an account', () => {
       });
 
       it('sits in the one header and footer, with every page and every rule a link away', () => {
-        for (const href of ['/how-it-works', '/protection', '/families', '/encryption', '/for-doctors', '/login', '/privacy', '/terms', '/purpose', '/trust']) {
+        for (const href of ['/how-it-works', '/protection', '/families', '/encryption', '/for-doctors', '/login', '/privacy', '/terms', '/purpose', '/refunds', '/trust']) {
           expect(html).toContain(`href="${href}"`);
         }
         expect(html).toContain('href="#main"');
@@ -82,6 +82,14 @@ describe('the pages before an account', () => {
     expect(page.indexOf('The attacks it is built to resist')).toBeLessThan(page.indexOf('On every change'));
     expect(render(<Landing />, '/')).toContain('href="/security-checks"');
   });
+
+  it('says under the headline what Spine is and what it is not, before the page asks for anything', () => {
+    const page = text(render(<Landing />, '/'));
+    const line = 'Spine is software for keeping, organising and sharing your own documents. It does not diagnose and does not give medical advice.';
+    expect(page).toContain(line);
+    expect(page.indexOf('All your medical records')).toBeLessThan(page.indexOf(line));
+    expect(page.indexOf(line)).toBeLessThan(page.indexOf('Try the demo'));
+  });
 });
 
 /**
@@ -100,7 +108,67 @@ describe('the plans page', () => {
     expect(html).toContain('Includes a one-off import of 150 pages');
     expect(html).toContain('Includes a one-off import of 250 pages');
     expect(html).toContain('22 of 500 places taken');
-    for (const total of ['150', '50', '30']) expect(html).toContain(total);
+    for (const total of ['100', '50', '30']) expect(html).toContain(total);
+  });
+
+  it('shows the founding offer above the plans, three plans in a row, and the family plan in a tile of its own below them that the page links to', () => {
+    const html = render(<PricingPage pricing={{ enabled: true, prices, essential: true, family: true, founding_left: 478 }} authenticated={false} options={options} />, '/pricing');
+    const cards = [...html.matchAll(/<article[\s\S]*?<\/article>/g)].map(m => text(m[0]).trim());
+    expect(cards.map(c => c.split(' ')[0])).toEqual(['Free', 'Essential', 'Premium']);
+    for (const card of cards) expect(card.toLowerCase(), card.slice(0, 30)).toContain('emergency card');
+    expect(html.indexOf('Founding members')).toBeLessThan(html.indexOf('Then keep the plan that fits'));
+    expect(html.indexOf('id="family"')).toBeGreaterThan(html.lastIndexOf('</article>'));
+    expect(html).toContain('href="#family"');
+    const family = text(html.slice(html.indexOf('id="family"')));
+    expect(family).toContain('€89');
+    expect(family).toContain('emergency card');
+    expect(family).toContain('Includes a one-off import of 500 pages');
+    expect(html.match(/Premium for up to six people/g)).toHaveLength(1);
+  });
+
+  it('says one short line about the yearly price, how much less it is than twelve months, and nothing beside the monthly one', () => {
+    const pricing = { enabled: true, prices, essential: true, family: true, founding_left: 478 };
+    const yearly = text(render(<PricingPage pricing={pricing} authenticated={false} options={options} />, '/pricing'));
+    // Rounded down, so the page never claims more than the prices give.
+    for (const saving of ['Save 16%', 'Save 18%', 'Save 17%']) expect(yearly).toContain(saving);
+    const monthly = text(render(<PricingPage pricing={pricing} authenticated={false} options={options} initialPeriod="month" />, '/pricing'));
+    for (const shown of ['€2.49', '€4.99', '€8.99']) expect(monthly).toContain(shown);
+    expect(monthly).not.toMatch(/\bor €\d+(\.\d+)? a year/);
+    expect(monthly).not.toMatch(/Save \d+%|save \d+%/);
+  });
+
+  it('says nothing about a saving where the yearly price is no cheaper than twelve months', () => {
+    const pricing = { enabled: true, prices: { ...prices, premium: { year: 60, month: 5 } }, essential: true, family: true, founding_left: 0 };
+    const html = text(render(<PricingPage pricing={pricing} authenticated={false} options={options} />, '/pricing'));
+    expect(html).not.toContain('Save 0%');
+    expect(html.match(/Save \d+%/g)).toHaveLength(2);
+  });
+
+  it('does not offer the family plan, nor a link to it, where the instance does not sell it', () => {
+    const html = render(<PricingPage pricing={{ enabled: true, prices: { ...prices, family: undefined }, family: false, founding_left: 10 }} authenticated={false} options={options} />, '/pricing');
+    expect(html).not.toContain('id="family"');
+    expect(html).not.toContain('href="#family"');
+  });
+
+  it('says nothing twice within a plan, and counts the free plan’s pages kept, not its documents', () => {
+    const html = render(<PricingPage pricing={{ enabled: true, prices, essential: true, family: true, founding_left: 478 }} authenticated={false} options={options} />, '/pricing');
+    for (const card of html.matchAll(/<article[\s\S]*?<\/article>/g)) {
+      const lines = [...card[0].matchAll(/<li[\s\S]*?<\/li>/g)].map(m => text(m[0]));
+      expect(new Set(lines).size, lines.join(' | ')).toBe(lines.length);
+      // Translation and questions are each said once in a card, not once for what they are and again for how often.
+      expect(lines.filter(l => /translation of your documents/i.test(l)).length).toBeLessThanOrEqual(1);
+    }
+    const page = text(html);
+    expect(page).toContain('Up to 50 pages kept');
+    expect(page).not.toMatch(/50 documents/);
+  });
+
+  it('opens with three months free', () => {
+    const page = text(render(<PricingPage pricing={{ enabled: true, prices, essential: true, family: true, founding_left: 478 }} authenticated={false} options={options} />, '/pricing'));
+    expect(page).toContain('Every account starts with three months of everything, free.');
+    expect(page).toContain('Start with three months free');
+    expect(page).not.toMatch(/six months/i);
+    for (const total of ['100', '50', '30']) expect(page).toContain(total);
   });
 
   it('leaves out the plans the instance does not sell, and the founding offer once its places are gone', () => {

@@ -35,6 +35,7 @@ import { startIngestionJob, getJobStatus } from 'spine-core/ingestion/pipeline.j
 import { getReadingJob, isReadingUpload, readUpload } from 'spine-core/ingestion/read-upload.js';
 import { getStore } from 'spine-core/store/index.js';
 import { resetParser } from 'spine-core/parser/index.js';
+import { usePlanLimits } from 'spine-core/plan-limits.js';
 import { seedSourceFile, createTestUser, OWNER_ID } from './helpers/seed.js';
 
 // Helpers
@@ -574,5 +575,43 @@ describe('pipeline — the demo reads the first pages only (SECURITY.md M-39)', 
     expect((await waitForJob(id)).status).toBe('done');
     expect(await getStore().pages.listForSourceFile(OWNER_ID, id)).toHaveLength(7);
     expect(mockExtractPdfPages).not.toHaveBeenCalled();
+  });
+});
+
+describe('pipeline — a plan that keeps a number of pages (SECURITY.md M-45)', () => {
+  afterEach(() => usePlanLimits({ pages: null }));
+
+  it('refuses an upload whose pages do not fit as soon as they are counted, before any is read, and keeps none', async () => {
+    const id = uuidv4();
+    await insertSourceFile(id);
+    const kept = await getStore().pages.count(OWNER_ID);
+    usePlanLimits({ pages: kept + 2 });
+    mockParseDocument.mockClear();
+    mockRasterizePdf.mockResolvedValueOnce([makePageImage(1), makePageImage(2), makePageImage(3)]);
+
+    startIngestionJob(id, OWNER_ID);
+    const job = await waitForJob(id);
+
+    expect(job.status).toBe('error');
+    expect(job.error).toMatch(/more pages are not part of the account.s plan/);
+    expect(mockParseDocument).not.toHaveBeenCalled();
+    expect(await getStore().pages.count(OWNER_ID)).toBe(kept);
+  });
+
+  it('keeps an upload whose pages fit exactly, whatever the number of documents they make', async () => {
+    const id = uuidv4();
+    await insertSourceFile(id);
+    const kept = await getStore().pages.count(OWNER_ID);
+    usePlanLimits({ pages: kept + 2 });
+    mockRasterizePdf.mockResolvedValueOnce([makePageImage(1), makePageImage(2)]);
+    mockParseDocument.mockResolvedValueOnce(makeParseResult(2));
+    mockCheckContinuation.mockResolvedValue({ is_continuation: false, confidence: 0.9, reasoning: 'a new document' });
+    mockExtractFields.mockResolvedValue(makeExtraction());
+
+    startIngestionJob(id, OWNER_ID);
+    const job = await waitForJob(id);
+
+    expect(job.status).toBe('done');
+    expect(await getStore().pages.count(OWNER_ID)).toBe(kept + 2);
   });
 });

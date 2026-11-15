@@ -73,4 +73,13 @@ describe('where the app may write, as installed', () => {
       expect(app).toMatch(/path: \/healthz/);
     });
   });
+
+  it('on Cloud Run, the services do not set PORT (the platform reserves it and refuses the revision) and the job\'s Cloud SQL annotation is on its execution template', () => {
+    // Found on the first real deployment (2026-11-15): `gcloud run services replace` refused PORT as a reserved name, and `jobs replace` refused
+    // metadata under the task template, because the annotation belongs on the execution template.
+    for (const name of ['app.service.yaml', 'relay.service.yaml']) expect(file(`deploy/cloud-run/${name}`), name).not.toMatch(/name: PORT\b/);
+    const job = file('deploy/cloud-run/jobs.job.yaml');
+    expect(job).toMatch(/^spec:\n {2}template:\n {4}metadata:\n {6}annotations:\n {8}run\.googleapis\.com\/cloudsql-instances:/m);
+    expect(job).not.toMatch(/^ {6}template:\n {8}metadata:/m);
+  });
 });

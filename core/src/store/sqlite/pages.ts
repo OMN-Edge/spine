@@ -133,6 +133,11 @@ export function pageRepository(db: Database): PageRepository {
       return listForSourceFile.all(sourceFileId, owner(userId)) as PageSummary[];
     },
 
+    async count(userId) {
+      // Every page of the person, not only those shown: the plan counts what is kept.
+      return (db.prepare('SELECT COUNT(*) AS n FROM pages WHERE user_id = ?').get(owner(userId)) as { n: number }).n;
+    },
+
     async listForDocument(userId, documentId) {
       const uid = owner(userId);
       return listForDocument.all(documentId, uid, uid) as PageWithoutPath[];

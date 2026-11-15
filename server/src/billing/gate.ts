@@ -62,7 +62,7 @@ function limitOf(e: Entitlements, fair: FairUse, meter: Meter, account: boolean)
 /**
  * The hidden ceiling on pages read, in the cost unit: a multiple of the pages the plan lets the account add this month, which is the month's allowance, what
  * has carried from the months before and the one-off import of a yearly plan, so the import itself fits under it and a page that is read and
- * then rejected costs the person nothing. The trial's is the multiple of its 150 pages in all.
+ * then rejected costs the person nothing. The trial's is the multiple of its 100 pages in all.
  */
 async function readingCeiling(store: AccountsStore, e: Entitlements, fair: FairUse, user: string, holder: string, account: boolean, now: Date): Promise<number> {
   const pool = !account && !!e.memberCap;

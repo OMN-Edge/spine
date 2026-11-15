@@ -1,5 +1,17 @@
 /** The mail's words in Romanian, French and German: an English string to its translation (see i18n.ts). Formal address throughout, as the screens use. */
 const ro: Record<string, string> = {
+  'Your withdrawal request': 'Cererea dumneavoastră de retragere',
+  'We received your request to withdraw from your purchase on {date}.': 'Am primit pe {date} cererea dumneavoastră de retragere din achiziție.',
+  'We will answer within 14 days. If it is accepted we end your plan and refund what is due, to the way you paid.': 'Vă vom răspunde în 14 zile. Dacă este acceptată, încheiem planul și vă rambursăm ce se cuvine, în modul în care ați plătit.',
+  'This message is the confirmation of your request; keep it.': 'Acest mesaj este confirmarea cererii dumneavoastră; păstrați-l.',
+  'Your withdrawal was accepted': 'Retragerea dumneavoastră a fost acceptată',
+  'We accepted your withdrawal. Your plan has ended, and we refunded {amount} to the way you paid; it can take a few days to show.': 'Am acceptat retragerea dumneavoastră. Planul a fost încheiat și am rambursat {amount} în modul în care ați plătit; poate dura câteva zile până apare.',
+  'Your records stay, and you can export them.': 'Documentele dumneavoastră rămân și le puteți exporta.',
+  'About your withdrawal request': 'Despre cererea dumneavoastră de retragere',
+  'We cannot accept your withdrawal request.': 'Nu putem accepta cererea dumneavoastră de retragere.',
+  'Reason: {reason}': 'Motiv: {reason}',
+  'If you think this is wrong, write to us and say the address of your account.': 'Dacă credeți că este o greșeală, scrieți-ne și spuneți adresa contului dumneavoastră.',
+  'I ask for the service to start now. I understand that I lose my right of withdrawal once it has been fully provided, and that if I withdraw after using it I pay for what I used. I have read the [terms]({terms}) and the [refund policy]({refunds}).': 'Cer ca serviciul să înceapă acum. Înțeleg că pierd dreptul de retragere după ce serviciul a fost prestat integral și că, dacă mă retrag după ce l-am folosit, plătesc pentru ce am folosit. Am citit [termenii]({terms}) și [politica de rambursare]({refunds}).',
   'You are getting this because of something that happened to your Spine account.': 'Primiți acest mesaj din cauza unui eveniment legat de contul dumneavoastră Spine.',
   'Spine never puts what is in your records in an email.': 'Spine nu pune niciodată în e-mail ce conțin documentele dumneavoastră.',
   'Or paste this address into your browser:': 'Sau copiați această adresă în browser:',
@@ -97,6 +109,18 @@ const ro: Record<string, string> = {
 };
 
 const fr: Record<string, string> = {
+  'Your withdrawal request': 'Votre demande de rétractation',
+  'We received your request to withdraw from your purchase on {date}.': 'Nous avons reçu le {date} votre demande de rétractation de votre achat.',
+  'We will answer within 14 days. If it is accepted we end your plan and refund what is due, to the way you paid.': 'Nous répondrons sous 14 jours. Si elle est acceptée, nous mettons fin à votre abonnement et remboursons ce qui est dû, selon le moyen de paiement utilisé.',
+  'This message is the confirmation of your request; keep it.': 'Ce message est la confirmation de votre demande ; conservez-le.',
+  'Your withdrawal was accepted': 'Votre rétractation a été acceptée',
+  'We accepted your withdrawal. Your plan has ended, and we refunded {amount} to the way you paid; it can take a few days to show.': 'Nous avons accepté votre rétractation. Votre abonnement a pris fin et nous avons remboursé {amount} selon le moyen de paiement utilisé ; cela peut prendre quelques jours.',
+  'Your records stay, and you can export them.': 'Vos documents restent, et vous pouvez les exporter.',
+  'About your withdrawal request': 'À propos de votre demande de rétractation',
+  'We cannot accept your withdrawal request.': 'Nous ne pouvons pas accepter votre demande de rétractation.',
+  'Reason: {reason}': 'Motif : {reason}',
+  'If you think this is wrong, write to us and say the address of your account.': 'Si vous pensez que c’est une erreur, écrivez-nous en indiquant l’adresse de votre compte.',
+  'I ask for the service to start now. I understand that I lose my right of withdrawal once it has been fully provided, and that if I withdraw after using it I pay for what I used. I have read the [terms]({terms}) and the [refund policy]({refunds}).': 'Je demande que le service commence maintenant. Je comprends que je perds mon droit de rétractation une fois le service entièrement fourni, et que si je me rétracte après l’avoir utilisé, je paie ce que j’ai utilisé. J’ai lu les [conditions]({terms}) et la [politique de remboursement]({refunds}).',
   'You are getting this because of something that happened to your Spine account.': 'Vous recevez ce message à la suite d’un événement concernant votre compte Spine.',
   'Spine never puts what is in your records in an email.': 'Spine ne met jamais le contenu de vos documents dans un e-mail.',
   'Or paste this address into your browser:': 'Ou collez cette adresse dans votre navigateur :',
@@ -194,6 +218,18 @@ const fr: Record<string, string> = {
 };
 
 const de: Record<string, string> = {
+  'Your withdrawal request': 'Ihr Widerruf',
+  'We received your request to withdraw from your purchase on {date}.': 'Wir haben Ihren Widerruf Ihres Kaufs am {date} erhalten.',
+  'We will answer within 14 days. If it is accepted we end your plan and refund what is due, to the way you paid.': 'Wir antworten innerhalb von 14 Tagen. Wird er angenommen, beenden wir Ihren Tarif und erstatten, was Ihnen zusteht, auf dem Zahlungsweg, den Sie genutzt haben.',
+  'This message is the confirmation of your request; keep it.': 'Diese Nachricht ist die Bestätigung Ihrer Anfrage; bewahren Sie sie auf.',
+  'Your withdrawal was accepted': 'Ihr Widerruf wurde angenommen',
+  'We accepted your withdrawal. Your plan has ended, and we refunded {amount} to the way you paid; it can take a few days to show.': 'Wir haben Ihren Widerruf angenommen. Ihr Tarif ist beendet, und wir haben {amount} auf dem Zahlungsweg erstattet, den Sie genutzt haben; das kann einige Tage dauern.',
+  'Your records stay, and you can export them.': 'Ihre Unterlagen bleiben erhalten, und Sie können sie exportieren.',
+  'About your withdrawal request': 'Zu Ihrem Widerruf',
+  'We cannot accept your withdrawal request.': 'Wir können Ihren Widerruf nicht annehmen.',
+  'Reason: {reason}': 'Grund: {reason}',
+  'If you think this is wrong, write to us and say the address of your account.': 'Wenn Sie meinen, dass das falsch ist, schreiben Sie uns und nennen Sie die Adresse Ihres Kontos.',
+  'I ask for the service to start now. I understand that I lose my right of withdrawal once it has been fully provided, and that if I withdraw after using it I pay for what I used. I have read the [terms]({terms}) and the [refund policy]({refunds}).': 'Ich verlange, dass die Leistung jetzt beginnt. Mir ist bekannt, dass ich mein Widerrufsrecht verliere, sobald die Leistung vollständig erbracht ist, und dass ich bei einem Widerruf nach der Nutzung das Genutzte bezahle. Ich habe die [Bedingungen]({terms}) und die [Rückerstattungsrichtlinie]({refunds}) gelesen.',
   'You are getting this because of something that happened to your Spine account.': 'Sie erhalten diese Nachricht, weil sich an Ihrem Spine-Konto etwas ereignet hat.',
   'Spine never puts what is in your records in an email.': 'Spine schreibt nie etwas aus Ihren Dokumenten in eine E-Mail.',
   'Or paste this address into your browser:': 'Oder fügen Sie diese Adresse in Ihren Browser ein:',

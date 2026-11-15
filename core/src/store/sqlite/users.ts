@@ -155,6 +155,7 @@ export function userRepository(db: Database): UserRepository {
     'ai_seen',
     'reminder_dues',
     'subscriptions',
+    'billing_customers',
     'user_devices',
     'user_tokens',
     'user_passkeys',
@@ -174,7 +175,7 @@ export function userRepository(db: Database): UserRepository {
   const deleteSeatLeft = db.prepare('DELETE FROM family_left WHERE member_id = ? OR organizer_id = ?');
   const deleteUser = db.prepare('DELETE FROM users WHERE id = ?');
   // What a wipe keeps: the account and how it signs in, its plan, and what it used (the counts are the plan's and the instance's).
-  const KEPT_BY_WIPE = new Set(['model_usage', 'ai_usage', 'subscriptions', 'user_devices', 'user_passkeys', 'user_recovery_codes', 'user_totp']);
+  const KEPT_BY_WIPE = new Set(['model_usage', 'ai_usage', 'subscriptions', 'billing_customers', 'user_devices', 'user_passkeys', 'user_recovery_codes', 'user_totp']);
   const wipeFrom = OWNED_TABLES.filter(table => tables.has(table) && !KEPT_BY_WIPE.has(table)).map(table => db.prepare(`DELETE FROM ${table} WHERE user_id = ?`));
   // A passkey that opened the vault held its key sealed under the passkey: that vault is gone, so it only signs in now.
   const unwrapPasskeys = tables.has('user_passkeys') ? db.prepare('UPDATE user_passkeys SET wrapped_key = NULL WHERE user_id = ?') : null;

@@ -25,16 +25,16 @@ export default function Pricing() {
 }
 
 /** The page for what the server said (`null` while it has not): drawn from its arguments alone, so a test can give each case. */
-export function PricingPage({ pricing, authenticated, options }: { pricing: PricingData | null; authenticated: boolean; options: PublicOptions }) {
+export function PricingPage({ pricing, authenticated, options, initialPeriod = 'year' }: { pricing: PricingData | null; authenticated: boolean; options: PublicOptions; initialPeriod?: Period }) {
   const { t } = useI18n();
-  const [period, setPeriod] = useState<Period>('year');
+  const [period, setPeriod] = useState<Period>(initialPeriod);
   const prices = pricing?.prices;
   // A whole amount without its cents (€49, not €49.00); any other with them.
   const money = (n: number) => new Intl.NumberFormat(undefined, { style: 'currency', currency: prices?.currency ?? 'EUR', ...(Number.isInteger(n) ? { minimumFractionDigits: 0, maximumFractionDigits: 0 } : {}) }).format(n);
   // Every account starts on the trial; a plan is chosen from the account page.
   const cta = authenticated
     ? { to: '/account', label: t('Choose a plan on your account page') }
-    : { to: '/register', label: t('Start with six months free') };
+    : { to: '/register', label: t('Start with three months free') };
 
   return (
     <PublicPage options={options}>
@@ -45,7 +45,7 @@ export function PricingPage({ pricing, authenticated, options }: { pricing: Pric
             {t('Pay for what you add. Everything you keep stays yours to use.')}
           </h1>
           <p className="mt-6 max-w-2xl text-lg leading-relaxed text-ink/75">
-            {t('A plan limits only how many pages you add each month. Asking about your records, translating them, sharing and exporting are not counted on the plans that include them.')}
+            {t('What differs is how many pages you add. Asking about your records, translating them, sharing and exporting are not counted on the plans that include them.')}
           </p>
           {pricing && !pricing.enabled && <p className="mt-6 max-w-2xl text-ink/80">{t('This Spine has no paid plans. Everything in it is available to the people who have an account.')}</p>}
           {pricing?.enabled && !prices && <p className="mt-6 max-w-2xl text-ink/80">{t('The prices cannot be shown right now. Try again in a moment.')}</p>}
@@ -56,20 +56,28 @@ export function PricingPage({ pricing, authenticated, options }: { pricing: Pric
         <>
           <Trial />
 
+          {pricing.founding_left ? <Founding price={money(prices.founding.year)} regular={money(prices.premium.year)} left={pricing.founding_left} /> : null}
+
           <section className="mx-auto max-w-6xl px-4 pt-14 sm:px-6">
             <div className="flex flex-wrap items-end justify-between gap-6">
               <h2 className="max-w-xl font-display text-[clamp(1.7rem,3.2vw,2.4rem)] font-normal leading-tight">{t('Then keep the plan that fits')}</h2>
               <PeriodSwitch period={period} onChange={setPeriod} />
             </div>
+            {pricing.family && prices.family && (
+              <p className="mt-4 text-ink/75">
+                {t('Sharing with family?')} <a href="#family" className="font-medium text-accent underline underline-offset-4 hover:text-ink">{t('See the Family plan')}</a>
+              </p>
+            )}
 
             <div className="mt-8 grid gap-5 lg:grid-cols-3">
               <PlanCard
                 name={t('Free')} tagline={t('To keep your records and show them')}
                 price={money(0)} per={t('for as long as you like')} cta={cta}
                 features={[
-                  [true, t('Your records, the timeline, search on your device, export and the emergency card')],
+                  [true, t('Your records, the timeline, search on your device and export')],
+                  [true, t('The emergency card')],
+                  [true, t('Up to 50 pages kept')],
                   [true, t('About 3 pages of AI reading a month, kept for up to three months')],
-                  [true, t('Up to 50 documents')],
                   [true, t('1 GB of storage')],
                   [true, t('One live share link, without translation')],
                   [false, t('No questions and no translation')],
@@ -81,8 +89,9 @@ export function PricingPage({ pricing, authenticated, options }: { pricing: Pric
                   {...amounts(prices.essential, period, money, t)} cta={cta}
                   bonus={period === 'year' ? t('Includes a one-off import of {n} pages to read your whole archive', { n: 150 }) : null}
                   features={[
+                    [true, t('The emergency card')],
                     [true, t('About 5 pages of AI reading a month, kept for up to three months')],
-                    [true, t('2 GB of storage, with as many documents as you like')],
+                    [true, t('2 GB of storage, and no limit on the pages you keep')],
                     [true, t('Questions about your records, connections between documents, and related documents')],
                     [true, t('Share links, and approving visitors before they see one: no monthly limit for normal use')],
                     [false, t('No translation of documents: that is part of Premium')],
@@ -95,11 +104,11 @@ export function PricingPage({ pricing, authenticated, options }: { pricing: Pric
                 bonus={period === 'year' ? t('Includes a one-off import of {n} pages to read your whole archive', { n: 250 }) : null}
                 note={period === 'year' && pricing.founding_left ? t('Founding members pay {price} a year', { price: money(prices.founding.year) }) : null}
                 features={[
-                  [true, t('AI reading within fair use: about 30 pages a month, and what you do not use is kept for up to three months')],
                   [true, t('Translation of your documents and of what a doctor opens')],
-                  [true, t('Questions about your records and translation of your documents: no monthly limit for normal use')],
+                  [true, t('AI reading within fair use: about 30 pages a month, and what you do not use is kept for up to three months')],
                   [true, t('Questions about your records, connections between documents, and related documents')],
-                  [true, t('5 GB of storage')],
+                  [true, t('The emergency card')],
+                  [true, t('5 GB of storage, and no limit on the pages you keep')],
                   [true, t('Share links, and approving visitors before they see one: no monthly limit for normal use')],
                 ]}
               />
@@ -109,19 +118,18 @@ export function PricingPage({ pricing, authenticated, options }: { pricing: Pric
             </p>
           </section>
 
-          {pricing.founding_left ? <Founding price={money(prices.founding.year)} regular={money(prices.premium.year)} left={pricing.founding_left} /> : null}
-
           {pricing.family && prices.family && (
-            <section className="mx-auto max-w-6xl px-4 pt-14 sm:px-6">
+            <section id="family" className="mx-auto max-w-6xl scroll-mt-6 px-4 pt-14 sm:px-6">
               <div className="grid items-center gap-10 rounded-3xl border border-ink/10 bg-honey/[0.09] p-6 sm:p-10 lg:grid-cols-[1.1fr_1fr]">
                 <div>
                   <p className="text-sm font-medium uppercase tracking-[0.14em] text-accent">{t('Family')}</p>
                   <h2 className="mt-3 font-display text-[clamp(1.7rem,3.2vw,2.4rem)] font-normal leading-tight">{t('Premium for up to six people')}</h2>
                   <PriceLine {...amounts(prices.family, period, money, t)} />
                   <ul className="mt-6 space-y-3">
-                    <Check ok>{t('Up to six accounts can share the plan, each with its own records and its own password')}</Check>
-                    <Check ok>{t('Shared by all of them: 25 GB of storage and twice Premium’s pages of reading, with each account held to Premium’s pages')}</Check>
-                    {period === 'year' && <Check ok>{t('With the yearly plan: a one-off import of 500 pages, to read your whole archive')}</Check>}
+                    <Check ok>{t('Every Premium feature, for each person')}</Check>
+                    <Check ok>{t('Each person has their own account, records, password and emergency card')}</Check>
+                    <Check ok>{t('Shared by all: 25 GB of storage and 60 pages of AI reading a month, with each account held to 30')}</Check>
+                    {period === 'year' && <Check ok>{t('Includes a one-off import of {n} pages to read your whole archive', { n: 500 })}</Check>}
                     <Check ok>{t('Records for children, kept by their guardians, with other guardians let in')}</Check>
                     <Check ok>{t('A teenager from sixteen can have an account of their own, and at eighteen the records can become theirs')}</Check>
                   </ul>
@@ -163,14 +171,18 @@ export function PricingPage({ pricing, authenticated, options }: { pricing: Pric
   );
 }
 
-/** The amounts of a plan for the chosen period: the price, what it is per, and for a year what that comes to a month. */
+/**
+ * The amounts of a plan for the chosen period: what is charged and what it is per, and for a year one short line, how much less than twelve months
+ * of the monthly price. Rounded down, so the page never claims more than the prices give; where there is no saving, nothing is said.
+ */
 function amounts(p: { year: number; month: number }, period: Period, money: (n: number) => string, t: ReturnType<typeof useI18n>['t']) {
+  const percent = Math.floor((1 - p.year / (p.month * 12)) * 100);
   return period === 'year'
-    ? { price: money(p.year), per: t('a year'), sub: t('{price} a month, paid once a year', { price: money(Math.floor((p.year / 12) * 100) / 100) }) }
-    : { price: money(p.month), per: t('a month'), sub: t('or {price} a year', { price: money(p.year) }) };
+    ? { price: money(p.year), per: t('a year'), sub: percent > 0 ? t('Save {percent}%', { percent }) : undefined }
+    : { price: money(p.month), per: t('a month') };
 }
 
-/** Six months of everything, up to three totals, drawn as the three numbers they are. */
+/** Three months of everything, up to three totals, drawn as the three numbers they are. */
 function Trial() {
   const { t } = useI18n();
   const items: Array<[number, string]> = [[TRIAL_TOTALS.pages, t('pages of AI reading')], [TRIAL_TOTALS.messages, t('questions about your records')], [TRIAL_TOTALS.translated, t('translated pages')]];
@@ -178,8 +190,8 @@ function Trial() {
     <section className="bg-band text-band-fg">
       <div className="mx-auto grid max-w-6xl items-center gap-10 px-4 py-14 sm:px-6 lg:grid-cols-[1fr_1.3fr]">
         <div>
-          <h2 className="font-display text-[clamp(1.8rem,3.4vw,2.6rem)] font-normal leading-tight">{t('Every account starts with six months of everything, free.')}</h2>
-          <p className="mt-4 max-w-md text-lg leading-relaxed text-band-fg/75">{t('No card. Every feature of Premium, up to these totals for the whole six months. After that you keep the free plan or choose one.')}</p>
+          <h2 className="font-display text-[clamp(1.8rem,3.4vw,2.6rem)] font-normal leading-tight">{t('Every account starts with three months of everything, free.')}</h2>
+          <p className="mt-4 max-w-md text-lg leading-relaxed text-band-fg/75">{t('No card. Every feature of Premium, up to these totals for the whole three months. After that you keep the free plan or choose one.')}</p>
         </div>
         <ul className="grid grid-cols-3 gap-3 sm:gap-5">
           {items.map(([n, label]) => (

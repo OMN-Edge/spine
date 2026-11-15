@@ -7,7 +7,7 @@ Tick these before the first real user, and again after changing provider, host o
 ## Before you start
 
 - [ ] **Decide who the controller is.** The operator of an instance is the controller of what it holds (SECURITY.md, "Distribution and who owns the risk"). Set `SPINE_OPERATOR_NAME` and `SPINE_OPERATOR_CONTACT` so the privacy notice and terms name you ([docs/legal/](legal/), `SPINE_LEGAL_DIR` to replace the drafts).
-- [ ] **Have the texts reviewed by a lawyer.** `docs/legal/privacy.md`, `terms.md` and `purpose.md` and the drafts in [docs/compliance/](compliance/) are first drafts written from what the software does; nothing in them has been reviewed by one. The Romanian and EU citations in [requirements.md](requirements.md) were looked up on 2026-10-24 and need a lawyer's confirmation.
+- [ ] **Have the texts reviewed by a lawyer.** `docs/legal/privacy.md`, `terms.md`, `purpose.md` and `refunds.md` and the drafts in [docs/compliance/](compliance/) are first drafts written from what the software does; nothing in them has been reviewed by one. The Romanian and EU citations in [requirements.md](requirements.md) were looked up on 2026-10-24 and need a lawyer's confirmation.
 - [ ] **Choose where inference runs** ([setup.md](setup.md) step 0). If data must stay in the EU, use Vertex AI at an `eu` endpoint with a service account; the Anthropic adapter makes no such commitment ([deployment-gcp.md](deployment-gcp.md)). A provider outside the EU or EEA is a transfer that needs a basis under Chapter V before you use it (requirements `CR-GDPR-05`).
 - [ ] **Decide whether page images may leave the machine.** Off by default. It takes two settings, `SPINE_PARSER` of `multimodal` or `hybrid` and `SPINE_MULTIMODAL_ENABLED=true`; photos and signature stamps need the second one as well ([setup.md](setup.md)).
 
@@ -78,7 +78,7 @@ What has to exist before the steps of [deploy-cloud-run.md](deploy-cloud-run.md)
 ## Keeping it up
 
 - [ ] **Update on a schedule.** `./install.sh -b` stops on a high or critical advisory; advisories published later are only found at the next build (SECURITY.md **S-32**). Take a backup before updating: there is no migration runner, and a database of an older shape is refused at startup.
-- [ ] **A way to be told of a vulnerability.** Set `SPINE_OPERATOR_CONTACT`: the server publishes it as the `Contact:` of `/.well-known/security.txt` (an address or a link; without one the file is a 404, since the standard requires a contact), behind nginx, Caddy or alone. Set `SPINE_REPO_URL` for the `/security` redirect (SECURITY.md, "Reporting a vulnerability").
+- [ ] **A way to be told of a vulnerability.** Set `SPINE_OPERATOR_SECURITY_CONTACT` (or `SPINE_OPERATOR_CONTACT`, which it falls back to): the server publishes it as the `Contact:` of `/.well-known/security.txt` (an address or a link; without one the file is a 404, since the standard requires a contact), behind nginx, Caddy or alone. Set `SPINE_REPO_URL` for the `/security` redirect (SECURITY.md, "Reporting a vulnerability").
 - [ ] **A breach plan.** [compliance/breach-procedure.md](compliance/breach-procedure.md): 72 hours to the supervisory authority when there is a risk to people, and the containment steps in SECURITY.md, "Operational response".
 - [ ] **Re-read this page** when you change provider, region, mailer or host.
 

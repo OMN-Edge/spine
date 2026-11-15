@@ -69,7 +69,7 @@ export async function ownAccountRoutes(app: FastifyInstance) {
     }
     // Leaving does not stop a subscription at the payment provider, and a person who left would go on being charged: cancel it first.
     const sub = await getAccountsStore().billing.get(req.userId);
-    if (sub?.provider === 'paddle' && !sub.cancel_scheduled && subscriptionEntitles(sub, new Date())) {
+    if (sub && sub.provider !== 'operator' && !sub.cancel_scheduled && subscriptionEntitles(sub, new Date())) {
       return reply.status(409).send({ error: 'cancel the subscription first (billing, manage), then delete the account', code: 'subscription_active' });
     }
     const summary = await deleteAccount(req.userId);

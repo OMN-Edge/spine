@@ -4,8 +4,11 @@ import { useSettings } from 'spine-core/config.js';
 import { securityContact, securityTxtRoutes } from '../routes/security-txt.js';
 
 describe('/.well-known/security.txt', () => {
-  const before = process.env.SPINE_OPERATOR_CONTACT;
-  afterEach(() => { if (before === undefined) delete process.env.SPINE_OPERATOR_CONTACT; else process.env.SPINE_OPERATOR_CONTACT = before; });
+  const before = { contact: process.env.SPINE_OPERATOR_CONTACT, security: process.env.SPINE_OPERATOR_SECURITY_CONTACT };
+  afterEach(() => {
+    if (before.contact === undefined) delete process.env.SPINE_OPERATOR_CONTACT; else process.env.SPINE_OPERATOR_CONTACT = before.contact;
+    if (before.security === undefined) delete process.env.SPINE_OPERATOR_SECURITY_CONTACT; else process.env.SPINE_OPERATOR_SECURITY_CONTACT = before.security;
+  });
 
   async function get() {
     useSettings({ ...process.env, SPINE_DOMAIN: 'spine.example.org' } as never);
@@ -27,6 +30,20 @@ describe('/.well-known/security.txt', () => {
     const days = (Date.parse(expires) - Date.now()) / 86_400_000;
     expect(days).toBeGreaterThan(360);
     expect(days).toBeLessThan(366);
+  });
+
+  it('names the security contact where there is one, and the contact where there is none or it is not an address', async () => {
+    process.env.SPINE_OPERATOR_CONTACT = 'support@operator.example';
+    process.env.SPINE_OPERATOR_SECURITY_CONTACT = 'security@operator.example';
+    expect((await get()).body).toContain('Contact: mailto:security@operator.example\n');
+    expect((await get()).body).not.toContain('support@operator.example');
+    process.env.SPINE_OPERATOR_SECURITY_CONTACT = 'not an address';
+    expect((await get()).body).toContain('Contact: mailto:support@operator.example\n');
+    delete process.env.SPINE_OPERATOR_SECURITY_CONTACT;
+    expect((await get()).body).toContain('Contact: mailto:support@operator.example\n');
+    delete process.env.SPINE_OPERATOR_CONTACT;
+    process.env.SPINE_OPERATOR_SECURITY_CONTACT = 'security@operator.example';
+    expect((await get()).body).toContain('Contact: mailto:security@operator.example\n');
   });
 
   it("never names the project's address, and is a 404 with no contact set", async () => {

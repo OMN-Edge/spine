@@ -8,11 +8,11 @@ metadata:
     cloud.googleapis.com/location: europe-west4
 spec:
   template:
+    metadata:
+      annotations:
+        run.googleapis.com/cloudsql-instances: PROJECT_ID:europe-west4:INSTANCE
     spec:
       template:
-        metadata:
-          annotations:
-            run.googleapis.com/cloudsql-instances: PROJECT_ID:europe-west4:INSTANCE
         spec:
           serviceAccountName: spine-app@PROJECT_ID.iam.gserviceaccount.com
           maxRetries: 1

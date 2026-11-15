@@ -27,6 +27,9 @@ export default function Landing() {
             <p className="mt-6 max-w-xl text-lg leading-relaxed text-ink/75">
               {t('Spine keeps your scans, results and letters, reads out the dates, values and doctors in them, and lets you show a doctor exactly what you choose, for as long as you choose.')}
             </p>
+            <p className="mt-4 max-w-xl text-sm leading-relaxed text-ink/60">
+              {t('Spine is software for keeping, organising and sharing your own documents. It does not diagnose and does not give medical advice.')}
+            </p>
             <Actions options={options} className="mt-9" />
             {options.waitlist && !open && <Waitlist />}
             {options.instance === 'private' && <p className="mt-4 text-sm text-ink/60">{t('This is a private Spine. Accounts are approved by its administrator.')}</p>}

@@ -4,7 +4,7 @@ The records a controller keeps (GDPR Art. 5(2), 24, 30, 33, 35) for a Spine serv
 
 | Item | File | Status |
 | --- | --- | --- |
-| Privacy notice (Art. 13), terms, written intended purpose (MDR, MDCG 2019-11) | `docs/legal/` (served by the app at `/privacy`, `/terms`, `/purpose`; `SPINE_LEGAL_DIR` replaces them) | Draft |
+| Privacy notice (Art. 13), terms, written intended purpose (MDR, MDCG 2019-11), refund policy | `docs/legal/` (served by the app at `/privacy`, `/terms`, `/purpose`, `/refunds`; `SPINE_LEGAL_DIR` replaces them) | Draft |
 | Consent to the use of health data, separate from the terms (Art. 9(2)(a)) | recorded per account with the version shown (`legal.ts`) | Built |
 | Record of processing activities (Art. 30) | [ropa.md](ropa.md) | Draft |
 | Data protection impact assessment (Art. 35) | [dpia.md](dpia.md) | Draft |

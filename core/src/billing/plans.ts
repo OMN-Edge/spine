@@ -14,7 +14,7 @@ export type PaidPlan = 'essential' | 'premium' | 'family';
 
 /** A page of AI processing is 1000, so a call can cost a part of one and the totals stay whole numbers. */
 export const PAGE = 1000;
-export const TRIAL_MONTHS = 6;
+export const TRIAL_MONTHS = 3;
 /** The first this many paying accounts keep the founding price for as long as they stay subscribed. */
 export const FOUNDING_LIMIT = 500;
 /** A payment that failed leaves the account its plan this long (Paddle retries and reminds meanwhile). */
@@ -75,8 +75,8 @@ export interface Entitlements {
    */
   linkViews: number;
   linkBytes: number;
-  /** Documents a person may keep, or null for no limit. Counted by the app, not the server, which cannot see into sealed records (`plan-limits.ts`). */
-  documents: number | null;
+  /** Pages a person may keep, in all their documents (hidden ones too), or null for no limit. Counted by the app, not the server, which cannot see into sealed records (`plan-limits.ts`). */
+  keptPages: number | null;
   /** Translating documents, for the owner and for a share's recipient. */
   translation: boolean;
   /** Asking questions of the records (the assistant), and a share's chat. */
@@ -124,24 +124,24 @@ const PREMIUM_ALLOWANCE = allowances({ pages: 30, import: IMPORT_PAGES }, true);
 const FAMILY_ACCOUNT: Allowances = PREMIUM_ALLOWANCE;
 /** Essential's one-off import: a history of about 150 pages. */
 export const ESSENTIAL_IMPORT_PAGES = 150;
-/** What the trial gives, in all, for the six months: shown from the first day, and the offer made at a limit (`docs/billing.md`). */
-export const TRIAL_TOTALS = { pages: 150, messages: 50, translated: 30 } as const;
+/** What the trial gives, in all, for the three months: shown from the first day, and the offer made at a limit (`docs/billing.md`). */
+export const TRIAL_TOTALS = { pages: 100, messages: 50, translated: 30 } as const;
 
 /**
  * The limits of each plan: "fair use" on the pricing page and in the plan's words. Raising one later is a gift; lowering one is not.
  */
 export const PLANS: Record<PlanId, Omit<Entitlements, 'plan'>> = {
   // The trial has Premium's features, with visible totals for the whole trial: pages (the import is part of them), questions and translated pages.
-  trial: { allowance: allowances({ pages: TRIAL_TOTALS.pages, import: 0 }, { messages: TRIAL_TOTALS.messages, translated: TRIAL_TOTALS.translated }), memberCap: null, aiPeriod: 'trial', carryMonths: 1, vaultBytes: 5 * GB, liveShares: null, linkViews: UNLIMITED, linkBytes: UNLIMITED, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 6, documents: null, seats: 1, delegation: true },
-  // The free plan keeps and shows: three pages a month, which carry for three months (nine at most).
-  free: { allowance: allowances({ pages: 3, import: 0 }, false), memberCap: null, aiPeriod: 'month', carryMonths: CARRY_MONTHS, vaultBytes: GB, liveShares: 1, linkViews: 20, linkBytes: 250 * 1024 ** 2, translation: false, chat: false, linking: false, related: false, approvalMode: false, profiles: 1, documents: 50, seats: 1, delegation: false },
-  // Essential is for a history that has outgrown fifty documents and for asking questions: five pages a month and an import of 150, no translation.
-  essential: { allowance: allowances({ pages: 5, import: ESSENTIAL_IMPORT_PAGES }, true), memberCap: null, aiPeriod: 'month', carryMonths: CARRY_MONTHS, vaultBytes: 2 * GB, liveShares: null, linkViews: UNLIMITED, linkBytes: UNLIMITED, translation: false, chat: true, linking: true, related: true, approvalMode: true, profiles: 1, documents: null, seats: 1, delegation: false },
-  premium: { allowance: PREMIUM_ALLOWANCE, memberCap: null, aiPeriod: 'month', carryMonths: CARRY_MONTHS, vaultBytes: 5 * GB, liveShares: null, linkViews: UNLIMITED, linkBytes: UNLIMITED, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 1, documents: null, seats: 1, delegation: false },
+  trial: { allowance: allowances({ pages: TRIAL_TOTALS.pages, import: 0 }, { messages: TRIAL_TOTALS.messages, translated: TRIAL_TOTALS.translated }), memberCap: null, aiPeriod: 'trial', carryMonths: 1, vaultBytes: 5 * GB, liveShares: null, linkViews: UNLIMITED, linkBytes: UNLIMITED, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 6, keptPages: null, seats: 1, delegation: true },
+  // The free plan keeps and shows up to fifty pages, and reads three a month, which carry for three months (nine at most).
+  free: { allowance: allowances({ pages: 3, import: 0 }, false), memberCap: null, aiPeriod: 'month', carryMonths: CARRY_MONTHS, vaultBytes: GB, liveShares: 1, linkViews: 20, linkBytes: 250 * 1024 ** 2, translation: false, chat: false, linking: false, related: false, approvalMode: false, profiles: 1, keptPages: 50, seats: 1, delegation: false },
+  // Essential is for a history that has outgrown fifty pages and for asking questions: five pages a month and an import of 150, no translation.
+  essential: { allowance: allowances({ pages: 5, import: ESSENTIAL_IMPORT_PAGES }, true), memberCap: null, aiPeriod: 'month', carryMonths: CARRY_MONTHS, vaultBytes: 2 * GB, liveShares: null, linkViews: UNLIMITED, linkBytes: UNLIMITED, translation: false, chat: true, linking: true, related: true, approvalMode: true, profiles: 1, keptPages: null, seats: 1, delegation: false },
+  premium: { allowance: PREMIUM_ALLOWANCE, memberCap: null, aiPeriod: 'month', carryMonths: CARRY_MONTHS, vaultBytes: 5 * GB, liveShares: null, linkViews: UNLIMITED, linkBytes: UNLIMITED, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 1, keptPages: null, seats: 1, delegation: false },
   // Premium for up to six people, who may be children and may have accounts of their own: six accounts at most (the seats), six people in
   // all (each account's own included), and one pool for the lot (twice Premium's pages and 25 GB of storage, shared), with each account
   // held to Premium's pages. A larger plan would be another entry here.
-  family: { allowance: allowances({ pages: 60, import: 2 * IMPORT_PAGES }, true), memberCap: FAMILY_ACCOUNT, aiPeriod: 'month', carryMonths: CARRY_MONTHS, vaultBytes: 25 * GB, liveShares: null, linkViews: UNLIMITED, linkBytes: UNLIMITED, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 6, documents: null, seats: 6, delegation: true },
+  family: { allowance: allowances({ pages: 60, import: 2 * IMPORT_PAGES }, true), memberCap: FAMILY_ACCOUNT, aiPeriod: 'month', carryMonths: CARRY_MONTHS, vaultBytes: 25 * GB, liveShares: null, linkViews: UNLIMITED, linkBytes: UNLIMITED, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 6, keptPages: null, seats: 6, delegation: true },
 };
 
 const addMonths = (iso: string, months: number): Date => {
@@ -152,13 +152,16 @@ const addMonths = (iso: string, months: number): Date => {
 
 export const trialEnd = (accountCreatedAt: string): string => addMonths(accountCreatedAt, TRIAL_MONTHS).toISOString();
 
-/** Whether a subscription gives the paid plan at `now`: running, late within the grace, or cancelled but paid up to a date still ahead. */
+/** Whether a subscription gives the paid plan at `now`: running (an end set for a date ahead included), late within the grace, or paused but paid up to a date still ahead. Cancelled at once gives nothing. */
 export function subscriptionEntitles(sub: SubscriptionRecord | null, now: Date): boolean {
   if (!sub) return false;
   const end = sub.current_period_end ? Date.parse(sub.current_period_end) : null;
   if (sub.status === 'active' || sub.status === 'trialing') return end === null || end + 24 * 3600e3 > now.getTime();
   if (sub.status === 'past_due') return end === null || end + PAST_DUE_GRACE_DAYS * 24 * 3600e3 > now.getTime();
-  // Cancelled (or paused) keeps what was paid for.
+  // Cancelled at once (a withdrawal, a refund, the provider's own end after payments that failed): nothing more is given. An end set for a date is still
+  // `active` until the date comes, and keeps what was paid for.
+  if (sub.status === 'canceled') return false;
+  // Paused keeps what was paid for.
   return end !== null && end > now.getTime();
 }
 

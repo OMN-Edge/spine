@@ -536,7 +536,10 @@ export class ApiError extends Error {
 }
 
 /** What the sign-in page needs before anyone is signed in. `approval`: people ask for an account and the administrator approves it. `private`: a private deployment. */
-export interface AuthOptions { registration: 'operator' | 'open' | 'approval'; recovery: boolean; instance: 'public' | 'private'; billing: boolean; waitlist: boolean }
+export interface AuthOptions { registration: 'operator' | 'open' | 'approval'; recovery: boolean; instance: 'public' | 'private'; billing: boolean; waitlist: boolean; operator?: Operator | null }
+
+/** Who runs this instance (`SPINE_OPERATOR_*`), for the footer; null where the operator has not said. */
+export interface Operator { name: string; ids: string[]; address: string | null; contact: string | null }
 
 async function req<T>(url: string, options?: RequestInit, retried = false): Promise<T> {
   const res = await appFetch(url, {
@@ -627,7 +630,7 @@ export interface BillingView {
   enabled: boolean;
   plan?: 'trial' | 'free' | 'essential' | 'premium' | 'family';
   trial_ends_at?: string | null;
-  subscription?: { status: string; interval: 'month' | 'year' | null; founding: boolean; ends_at: string | null; renews_at: string | null; provider: 'paddle' | 'operator' } | null;
+  subscription?: { status: string; interval: 'month' | 'year' | null; founding: boolean; ends_at: string | null; renews_at: string | null; provider: 'paddle' | 'stripe' | 'operator' } | null;
   can_manage?: boolean;
   /** What the AI has done, in three meters: each in its own unit, the plan's (a pool on a plan with seats), and an account's own against its cap there. */
   /** What the plan lets the share links send in a month: times opened, and bytes (with what the owner's own devices read). */
@@ -644,7 +647,11 @@ export interface BillingView {
   invite?: { token: string; pages: number; rewarded: number; max: number };
   features?: { translation: boolean; chat: boolean; linking: boolean; related: boolean; approval_mode: boolean; delegation: boolean };
   people?: { limit: number };
-  limits?: { documents: number | null };
+  limits?: { pages: number | null };
+  /** A purchase asks for the billing details first (the operator issues the invoices). */
+  billing_details?: boolean;
+  /** Whether to offer withdrawing from the purchase (the fourteen days), until when, and whether a request is open. */
+  withdrawal?: { allowed: boolean; until: string | null; requested: boolean };
   /** `organizer` pays for a plan others hold seats in; `member` holds a seat in another's plan. */
   seat?: 'organizer' | 'member' | 'none';
   seats?: { limit: number };
@@ -732,9 +739,18 @@ export const api = {
     get: () => req<BillingView>('/api/billing'),
     /** Where to send the person to pay: the provider's checkout, on a page of its own. */
     checkout: (interval: 'month' | 'year', plan: 'essential' | 'premium' | 'family' = 'premium') => post<{ url: string }>('/api/billing/checkout', { interval, plan }),
+    /** The billing details an invoice needs: whether a purchase asks for them (where the operator issues invoices), and what is held, read from the payment provider. */
+    details: () => req<{ required: boolean; details: import('spine-core/billing/billing-details').BillingDetails | null }>('/api/billing/details'),
+    saveDetails: (details: import('spine-core/billing/billing-details').BillingDetails) => put<{ ok: true }>('/api/billing/details', details),
+    /** A request to withdraw from the purchase, which the operator decides. */
+    withdraw: () => post<{ ok: boolean; requested_at: string }>('/api/billing/withdraw', {}),
+    /** The account's invoices, and the address of one's PDF (asked for when it is pressed, since it does not last). */
+    invoices: () => req<{ invoices: Array<{ ref: string; number: string; at: string; credit_note: boolean }> }>('/api/billing/invoices'),
+    invoicePdf: (ref: string) => post<{ url: string }>('/api/billing/invoices/pdf', { ref }),
     /** The thing bought once: 250 more pages. */
     addon: (addon: 'page_topup') => post<{ url: string }>('/api/billing/checkout', { addon }),
-    portal: () => post<{ url: string }>('/api/billing/portal', {}),
+    /** The provider's page for the subscription: its overview, or straight to cancelling or to the card. */
+    portal: (action?: 'cancel' | 'payment_method') => post<{ url: string }>('/api/billing/portal', action ? { action } : {}),
   },
   family: {
     get: () => req<FamilyView>('/api/family'),
@@ -757,6 +773,17 @@ export const api = {
     /** The hidden fair-use ceilings, for an administrator only (the server's `billing/fair-use-admin.ts`). */
     fairUse: () => req<{ sections: FairUseSection[] }>('/api/admin/fair-use'),
     setFairUse: (path: string, value: number | null) => put<{ sections: FairUseSection[] }>('/api/admin/fair-use', { path, value }),
+    /** The invoices the operator owes: how many in each state, the ones that stopped and why, and the EU consumer sales against the yearly threshold (the server's `billing/invoicing/`). */
+    invoices: () => req<{
+      counts: Record<'pending' | 'issued' | 'done' | 'failed' | 'check', number>;
+      stopped: Array<{ ref: string; state: 'failed' | 'check'; attempts: number; reason: string | null; invoice: string | null; at: string; can_retry: boolean }>;
+      eu: { year: number; this_year: number; last_year: number; limit: number };
+    }>('/api/admin/invoices'),
+    /** Tries an invoice that stopped again, or settles it because it was made by hand. */
+    mendInvoice: (ref: string, action: 'retry' | 'settle') => post<{ ok: boolean }>('/api/admin/invoices', { ref, action }),
+    /** The buyers who asked to withdraw from a purchase, and the operator's decision: pay back (all, or an amount) and end the plan, or decline with a reason. */
+    withdrawals: () => req<{ requests: Array<{ id: string; email: string | null; plan: string | null; interval: string | null; requested_at: string; first_payment: string | null }> }>('/api/admin/withdrawals'),
+    decideWithdrawal: (id: string, action: 'refund' | 'decline', extra: { amount?: number; note?: string } = {}) => post<{ ok: boolean }>('/api/admin/withdrawals', { id, action, ...extra }),
     accounts: () => req<{ pending: Array<{ id: string; email: string; created_at: string; email_confirmed: boolean }> }>('/api/admin/accounts'),
     approve: (id: string) => post<{ ok: boolean }>(`/api/admin/accounts/${encodeURIComponent(id)}/approve`, {}),
     refuse: (id: string) => post<{ ok: boolean }>(`/api/admin/accounts/${encodeURIComponent(id)}/refuse`, {}),
@@ -1176,7 +1203,7 @@ export const api = {
   },
 
   /** A legal text (the privacy notice, the terms, what Spine is for), public. */
-  legal: (doc: 'privacy' | 'terms' | 'purpose') => req<{ doc: string; version: string; markdown: string }>(`/api/legal/${doc}`),
+  legal: (doc: 'privacy' | 'terms' | 'purpose' | 'refunds') => req<{ doc: string; version: string; markdown: string }>(`/api/legal/${doc}`),
 
   account: {
     /** Agree to the use of health data and the terms, given apart. */

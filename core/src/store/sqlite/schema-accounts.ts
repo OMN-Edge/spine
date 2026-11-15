@@ -227,7 +227,7 @@ CREATE INDEX IF NOT EXISTS idx_shared_opens_user ON shared_opens(user_id);
 -- operator's CLI. No card number and no address is ever here: the provider keeps those; this keeps only which plan, until when.
 CREATE TABLE IF NOT EXISTS subscriptions (
   user_id TEXT PRIMARY KEY REFERENCES users(id),
-  provider TEXT NOT NULL, -- 'paddle' | 'operator'
+  provider TEXT NOT NULL, -- 'paddle' | 'stripe' | 'operator'
   customer_id TEXT,
   subscription_id TEXT,
   billing_interval TEXT, -- 'month' | 'year'
@@ -246,6 +246,46 @@ CREATE TABLE IF NOT EXISTS billing_events (
   id TEXT PRIMARY KEY,
   at TEXT NOT NULL
 );
+
+-- The payment provider's customer record for an account, made when the account gave its billing details (docs/billing.md): only the provider's id. The name, address and
+-- county are at the provider and are read from there (SECURITY.md M-45). Removed with the account.
+CREATE TABLE IF NOT EXISTS billing_customers (
+  user_id TEXT PRIMARY KEY,
+  customer_id TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+-- Payments whose invoice the operator issues (Stripe is not the seller): the provider's reference for the payment, where its invoice has got to, and the
+-- issuing service's number once it is made. No name, address or amount: they are read from the provider each time. Kept, since an invoice is owed for a deleted account too.
+CREATE TABLE IF NOT EXISTS invoice_queue (
+  ref TEXT PRIMARY KEY,
+  user_id TEXT,
+  state TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at TEXT NOT NULL,
+  last_error TEXT,
+  issuer_ref TEXT,
+  series TEXT,
+  number TEXT,
+  -- The state to go back to when the operator retries one that stopped (where it had got to), and what the invoice counts for in the EU consumer threshold (minor units of EUR; negative for a storno).
+  resume TEXT,
+  eu_minor BIGINT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_invoice_queue_due ON invoice_queue(state, next_attempt_at);
+
+-- A buyer's withdrawal from a purchase (the EU's fourteen days): who, when, and what the operator decided and refunded. Kept with the account's accounting, not removed with it.
+CREATE TABLE IF NOT EXISTS withdrawal_requests (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  state TEXT NOT NULL,
+  requested_at TEXT NOT NULL,
+  decided_at TEXT,
+  refunded_minor BIGINT,
+  note TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_withdrawal_open ON withdrawal_requests(user_id) WHERE state = 'requested';
 
 -- AI processing an account has used in a period ('trial', or 'YYYY-MM'), in thousandths of a page. Only a number, never what was read.
 CREATE TABLE IF NOT EXISTS ai_usage (

@@ -54,7 +54,7 @@ import type {
  *     here.
  *  7. `cookieSessions.*` — the cookie session's state, found by the digest of the cookie's random id before there is an acting
  *     user (it is what says who that is), and holding no record.
- *  8. `billing.findBySubscription`/`findByCustomer`/`recordEvent`/`pruneEvents`/`foundingHeld` — the payment provider's side (SECURITY.md **M-45**):
+ *  8. `billing.findBySubscription`/`findByCustomer`/`recordEvent`/`pruneEvents`/`foundingHeld` and the invoice queue (`queueInvoice`, `invoicesDue`, `invoice`, `updateInvoice`) — the payment provider's side (SECURITY.md **M-45**):
  *     a webhook names the provider's own ids, which the server recorded when it first heard of them, and the count of founding prices is of
  *     all accounts. Nothing here answers more than a plan.
  *  9. `metrics.*`, `waitlist.*` and `settings.*` — counts a day under a name, addresses of people who are not accounts, and the few settings
@@ -362,6 +362,8 @@ export interface PageRepository {
   create(userId: string, page: NewPage): Promise<void>;
   /** Ordered by page number — ingestion depends on that order. */
   listForSourceFile(userId: string, sourceFileId: string): Promise<PageSummary[]>;
+  /** How many pages the person keeps, hidden ones and those of documents set aside or waiting to be read included: what a plan's limit on pages counts. */
+  count(userId: string): Promise<number>;
   /** The document's pages the owner has not hidden. */
   listForDocument(userId: string, documentId: string): Promise<PageWithoutPath[]>;
   /**
@@ -488,8 +490,6 @@ export interface DocumentRepository {
   renameProvider(userId: string, from: string, to: string | null): Promise<number>;
   /** Those of these documents that are the user's and shown (not set aside, grouping confirmed), in the order given. */
   listShownByIds(userId: string, ids: string[]): Promise<Document[]>;
-  /** How many documents the person keeps, set aside and waiting to be read included: what a plan's limit on documents counts. */
-  count(userId: string): Promise<number>;
   /** Which of these ids are the user's. For checking a share link names only their own. */
   ownedIds(userId: string, ids: string[]): Promise<string[]>;
   /** Resolved from the link and scoped by the link's owner — P12's exception. */
@@ -866,8 +866,8 @@ export interface FileRegistryRepository {
 /** What an account pays for (`billing/plans.ts` says what that gives). One row per account; none means it has never subscribed. */
 export interface SubscriptionRecord {
   user_id: string;
-  /** Who bills it: `paddle`, or `operator` for an account the operator granted (CLI `grant-plan`). */
-  provider: 'paddle' | 'operator';
+  /** Who bills it: `paddle` or `stripe`, or `operator` for an account the operator granted (CLI `grant-plan`). */
+  provider: 'paddle' | 'stripe' | 'operator';
   customer_id: string | null;
   subscription_id: string | null;
   interval: 'month' | 'year' | null;
@@ -947,7 +947,77 @@ export interface BillingRepository {
   recordEvent(eventId: string, at: string): Promise<boolean>;
   /** Forgets event ids older than this. */
   pruneEvents(before: string): Promise<number>;
+  /** The payment provider's customer record for the account's billing details (none until it gave them): only its id; what it holds is at the provider. */
+  customerOf(userId: string): Promise<string | null>;
+  setCustomer(userId: string, customerId: string, at: string): Promise<void>;
+  /** Puts a payment on the queue of invoices to issue (`billing/invoicing/queue.ts`), by the provider's reference for it; false if it was there already, so a payment told twice is invoiced once. The account may be gone or unknown: the invoice is owed all the same. */
+  queueInvoice(ref: string, userId: string | null, at: string): Promise<boolean>;
+  /** The invoices that are waiting (to be issued, or to be sent to e-Factura) and whose time has come, oldest first. */
+  invoicesDue(now: string, limit: number): Promise<QueuedInvoice[]>;
+  invoice(ref: string): Promise<QueuedInvoice | null>;
+  /** A buyer's request to withdraw from a purchase: one open at a time for an account (false if there is one). */
+  requestWithdrawal(id: string, userId: string, at: string): Promise<boolean>;
+  /** The requests in a state (every state if null), newest first. */
+  withdrawals(state: WithdrawalState | null, limit: number): Promise<WithdrawalRecord[]>;
+  withdrawal(id: string): Promise<WithdrawalRecord | null>;
+  /** The account's request that has not been decided, if any. */
+  openWithdrawalOf(userId: string): Promise<WithdrawalRecord | null>;
+  decideWithdrawal(id: string, decision: { state: 'refunded' | 'declined'; refundedMinor: number | null; note: string | null }, at: string): Promise<void>;
+  /** The account's invoices (and their stornos), newest first, and when its first payment was queued (the day a purchase began). */
+  invoicesOf(userId: string): Promise<QueuedInvoice[]>;
+  firstPaymentAt(userId: string): Promise<string | null>;
+  /** The invoices that stopped for the operator (`failed`, `check`), newest first, and how many there are in each state. */
+  invoicesStopped(limit: number): Promise<QueuedInvoice[]>;
+  invoiceCounts(): Promise<Record<InvoiceState, number>>;
+  /** What the invoices made in a calendar year count for in the EU consumer threshold (minor units of EUR). */
+  euSalesMinor(year: number): Promise<number>;
+  updateInvoice(ref: string, patch: InvoicePatch, at: string): Promise<void>;
 }
+
+/**
+ * Where a payment's invoice has got to. Only references and numbers, never the buyer: the name and address are read from the payment provider each
+ * time they are needed. `pending`: not yet issued. `issued`: made, and waiting to be sent to e-Factura. `done`: nothing more to do. `failed`: refused, or tried
+ * too often; the operator looks. `check`: an attempt ended with no answer at a service that cannot tell a repeat from a new invoice, so nothing is sent again until the operator has looked.
+ */
+export type InvoiceState = 'pending' | 'issued' | 'done' | 'failed' | 'check';
+
+export interface QueuedInvoice {
+  /** The provider's reference for the payment (a checkout session or an invoice of its own): one invoice for each. */
+  ref: string;
+  user_id: string | null;
+  state: InvoiceState;
+  attempts: number;
+  /** Not before this (ISO). */
+  next_attempt_at: string;
+  /** What went wrong the last time, in the issuer's words (never what was sent), cut short. */
+  last_error: string | null;
+  /** The issuing service's own id, series and number of the invoice, once it is made. */
+  issuer_ref: string | null;
+  series: string | null;
+  number: string | null;
+  /** Where an invoice that stopped had got to (`pending` or `issued`), for the operator's retry. */
+  resume: 'pending' | 'issued' | null;
+  /** What the invoice counts for in the EU consumer threshold, in minor units of EUR (negative for a storno); null where it counts for nothing. */
+  eu_minor: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type WithdrawalState = 'requested' | 'refunded' | 'declined';
+
+export interface WithdrawalRecord {
+  id: string;
+  user_id: string;
+  state: WithdrawalState;
+  requested_at: string;
+  decided_at: string | null;
+  /** What was paid back, in minor units, once refunded. */
+  refunded_minor: number | null;
+  /** The operator's reason, for a request it declined. */
+  note: string | null;
+}
+
+export type InvoicePatch = Partial<Pick<QueuedInvoice, 'state' | 'attempts' | 'next_attempt_at' | 'last_error' | 'issuer_ref' | 'series' | 'number' | 'resume' | 'eu_minor'>>;
 
 /**
  * Letting another account see (and, for a guardian, write to) one profile of the owner's vault (FR-PRF-02, SECURITY.md **M-49**). The

@@ -156,9 +156,9 @@ class CoreWorker {
     window.dispatchEvent(new Event(PROFILE_CHANGED));
   }
 
-  /** Tells the core what the plan limits that only the app can count (the number of documents), so it holds to it. */
-  async setPlanLimits(limits: { documents: number | null }): Promise<void> {
-    await this.send({ type: 'planLimits', documents: limits.documents });
+  /** Tells the core what the plan limits that only the app can count (the number of pages kept), so it holds to it. */
+  async setPlanLimits(limits: { pages: number | null }): Promise<void> {
+    await this.send({ type: 'planLimits', pages: limits.pages });
   }
 
   /** Says that the uploads that follow are an archive being imported (or that they are not), so reading draws on the import allowance. */

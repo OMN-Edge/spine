@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { INTERFACE_LANGUAGES } from 'spine-core/languages.js';
 import { accessRequestMail, approvedMail, cardOpenedMail, cardReviewMail, remindersDueMail, resetMail, verificationMail } from '../accounts.js';
 import { signInCodeMail } from '../email-code.js';
+import { withdrawalAcceptedMail, withdrawalDeclinedMail, withdrawalReceivedMail } from '../billing/withdrawal-mail.js';
 import { nudgeMail, trialEndsMail, welcomeMail } from '../lifecycle.js';
 import { CHANGES, newSignInMail, securityChangeMail, type Change } from '../notify.js';
 import { missing, recipientLanguage, tm, tmn } from '../mail/i18n.js';
@@ -20,6 +21,7 @@ function everyMail(language: string) {
     ...[1, 2, 5, 20, 21].map(n => remindersDueMail(to, n)),
     accessRequestMail(to, 'https://x.example/share-requests/1', at, null), accessRequestMail(to, 'https://x.example/share-requests/1', at, '203.0.113.9'),
     newSignInMail(to, at), signInCodeMail(to, '123456'),
+    withdrawalReceivedMail(to, at), withdrawalAcceptedMail(to, '4.99 EUR'), withdrawalDeclinedMail(to, 'The service was fully used.'), withdrawalDeclinedMail(to, null),
     welcomeMail(to), nudgeMail(to, 'user-1'), ...(['free', 'essential', 'premium'] as const).map(fits => trialEndsMail(to, 'user-1', { endsOn: '2027-01-15', pages: 12, questions: 3, translated: 1, fits })),
     ...(Object.keys(CHANGES) as Change[]).map(c => securityChangeMail(to, c, at, { email: 'b@example.org' })),
   ];
