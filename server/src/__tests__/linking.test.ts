@@ -304,6 +304,36 @@ describe('the chain', () => {
     expect(chain.edges).toHaveLength(2);
   });
 
+  it('follows a suggestion one step only, so a chain of guesses does not reach across the archive', async () => {
+    const a = await doc('Visit A', 'consultation_note', '2026-01-10');
+    const b = await doc('Lab B', 'lab_result', '2026-01-20');
+    const c = await doc('Visit C', 'consultation_note', '2026-04-10');
+    const d = await doc('Lab D', 'lab_result', '2026-09-01');
+    const store = getStore();
+    const now = '2026-10-01T00:00:00Z';
+    for (const [x, y, kind] of [[a, b, 'requests'], [b, c, 'follow_up'], [c, d, 'requests']] as const) {
+      await store.links.add(OWNER_ID, { from_document_id: x.id, to_document_id: y.id, kind, source: 'auto', state: 'proposed', reason: null }, now);
+    }
+    expect((await chainOf(OWNER_ID, a.id))!.nodes.map(n => n.id)).toEqual([a.id, b.id]);
+    expect((await chainOf(OWNER_ID, b.id))!.nodes.map(n => n.id)).toEqual([a.id, b.id, c.id]);
+    expect((await chainOf(OWNER_ID, d.id))!.nodes.map(n => n.id)).toEqual([c.id, d.id]);
+  });
+
+  it('follows what the owner confirmed onward, but not a suggestion made about a document further along', async () => {
+    const a = await doc('Visit A', 'consultation_note', '2026-01-10');
+    const b = await doc('Lab B', 'lab_result', '2026-01-20');
+    const c = await doc('Control C', 'consultation_note', '2026-04-10');
+    const guess = await doc('Guess', 'lab_result', '2026-04-12');
+    const store = getStore();
+    const now = '2026-10-01T00:00:00Z';
+    await store.links.add(OWNER_ID, { from_document_id: a.id, to_document_id: b.id, kind: 'requests', source: 'auto', state: 'confirmed', reason: null }, now);
+    await store.links.add(OWNER_ID, { from_document_id: b.id, to_document_id: c.id, kind: 'follow_up', source: 'owner', state: 'confirmed', reason: null }, now);
+    await store.links.add(OWNER_ID, { from_document_id: c.id, to_document_id: guess.id, kind: 'requests', source: 'auto', state: 'proposed', reason: null }, now);
+    expect((await chainOf(OWNER_ID, a.id))!.nodes.map(n => n.id)).toEqual([a.id, b.id, c.id]);
+    // on the document the suggestion is about, it shows
+    expect((await chainOf(OWNER_ID, c.id))!.nodes.map(n => n.id)).toEqual([a.id, b.id, c.id, guess.id].sort((x, y) => [a, b, c, guess].findIndex(d => d.id === x) - [a, b, c, guess].findIndex(d => d.id === y)));
+  });
+
   it('is capped', async () => {
     const hub = await doc('Hub', 'consultation_note', '2026-01-01');
     for (let i = 0; i < 40; i++) {

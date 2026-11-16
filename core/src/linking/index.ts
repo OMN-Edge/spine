@@ -242,8 +242,8 @@ export interface ChainEdge { from: string; to: string; kind: LinkKind; state: 'p
 const MAX_NODES = 30;
 
 /**
- * The chain around a document: the documents connected to it through links the owner has not dismissed, nearest first,
- * capped, ordered by date with the document itself marked by the caller. Every lookup goes through the store as the user.
+ * The chain around a document: the documents connected to it through links the owner has not dismissed (a suggestion only to the document it was made for, onward
+ * only through what the owner confirmed), capped, ordered by date with the document itself marked by the caller. Every lookup goes through the store as the user.
  */
 export async function chainOf(userId: string, documentId: string): Promise<{ nodes: ChainNode[]; edges: ChainEdge[] } | null> {
   const store = getStore();
@@ -257,6 +257,9 @@ export async function chainOf(userId: string, documentId: string): Promise<{ nod
     for (const id of frontier) {
       for (const l of await store.links.forDocument(userId, id)) {
         if (l.state === 'dismissed') continue;
+        // A suggestion is about the document it was made for: it is shown on that document and on the one it names, and goes no further. Only what the owner has confirmed
+        // is followed onward, so a chain of guesses cannot reach across the archive (two steps of "possibly" are not one episode).
+        if (id !== documentId && l.state !== 'confirmed') continue;
         for (const other of [l.from_document_id, l.to_document_id]) {
           if (included.size < MAX_NODES && !included.has(other)) { included.add(other); next.push(other); }
         }
