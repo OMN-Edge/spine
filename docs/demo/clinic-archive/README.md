@@ -6,7 +6,7 @@ It is for two things: to try the app on a believable archive, and to check that 
 
 ## Where it comes from
 
-The files are not kept in the repository: they are generated, and the same every time, so there is nothing to commit or to go stale (the evaluation builds them in memory, and `npm run demo-archive -w spine-server` writes them here, with `manifest.json`, for trying them by hand). Everything is generated from one script: `server/src/__integration__/support/clinic/specs.ts` holds what each document says (the text, the values, the dates, the doctor) and what is true of the archive, `render.ts` draws the pages, and `build.ts` writes the files and `manifest.json`. Because the values are known, the evaluation also checks what was read from each document against them (date, kind, provider, doctor, every numeric lab value and whether it was flagged).
+The files are not kept in the repository: they are generated, and the same every time, so there is nothing to commit or to go stale (the evaluation builds them in memory, and `npm run demo-archive -w spine-server` writes them here, with `manifest.json`, for trying them by hand). Everything is generated from one script: `core/src/testing/clinic/specs.ts` holds what each document says (the text, the values, the dates, the doctor) and what is true of the archive, `render.ts` draws the pages, and `build.ts` writes the files and `manifest.json`. Because the values are known, the evaluation also checks what was read from each document against them (date, kind, provider, doctor, every numeric lab value and whether it was flagged).
 
 ## The stories, and what makes them hard
 
@@ -22,3 +22,7 @@ A care cycle is one story: a visit, what it asked for, what answered it, the vis
 - **Two documents held twice** (a lipid report and the sick-leave certificate, the second copy scanned a little askew): a copy is not a relative of its original, and only one of the two carries links.
 
 `manifest.json` lists every document with its story, and the ground truth: which stories exist, which links between neighbouring cycles of one condition are real, which pairs must never be linked, and which are a matter of taste.
+
+## The demo
+
+"Try the demo" and "Explore with sample records" load this archive (all but the two copies, so 38 documents) into the visitor's own browser, with no model: each document arrives as reading it would have found it (made from the same values it was drawn from), the links between documents are confirmed (two are left as suggestions to decide), the episodes are named (two are left as suggestions), and every document is already translated into English, French and German, written by hand and stored as the app stores a translation it made, so the demo shows translation working with nothing to pay for. The episodes are named in the screen's language. The files are made by the web build (`web/scripts/demo-archive.mjs`) into the build output and fetched when someone asks for the sample; `core/src/testing/clinic/restore.ts` turns the script's values into what the demo loads and `core/src/testing/clinic/words.ts` holds the titles, summaries, facts and translations.

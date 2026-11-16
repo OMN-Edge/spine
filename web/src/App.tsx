@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Link, NavLink, useNavigate, useLocation, useParams, Navigate } from 'react-router-dom';
-import { api } from './api';
+import { api, type DemoLanguage } from './api';
 import { AuthContext, useAuth } from './auth';
 import Login from './pages/Login';
 import Landing from './pages/Landing';
@@ -297,7 +297,7 @@ export default function App() {
   const [demo, setDemo] = useState(false);
   const [demoUploads, setDemoUploads] = useState<{ uploads: number; pages: number } | null>(null);
   const [demoAgreed, setDemoAgreed] = useState(false);
-  const startDemo = useCallback(async (language: 'en' | 'ro') => {
+  const startDemo = useCallback(async (language: DemoLanguage) => {
     const limits = await device.openDemo();
     try { await api.demo.load(language); } catch (err) { await device.lock(true); throw err; }
     setDemoUploads(limits);

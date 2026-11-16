@@ -19,7 +19,7 @@ export interface AuthContextValue {
   /** The demo is open: sample records in this browser's memory, with no account and no vault behind them. */
   demo: boolean;
   /** Starts the demo and loads the sample records; throws if the core could not start. */
-  startDemo: (language: 'en' | 'ro') => Promise<void>;
+  startDemo: (language: import('./api').DemoLanguage) => Promise<void>;
   /** Ends the demo; what was in it is gone. */
   leaveDemo: () => Promise<void>;
   /** What the visitor may upload of their own in the demo, or null where the operator has not let them (SECURITY.md M-39). */

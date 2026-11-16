@@ -263,7 +263,7 @@ function draw(doc: Doc, page: Page) {
 /** One document as PDF bytes. A `scan` copy is the same page a little askew on a greyer sheet, as a document that was scanned and sent again. */
 export function renderPdf(page: Page): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: 'A4', margin: 0, info: { Title: `${page.provider.name} ${page.docNo}`, Author: page.provider.name, Producer: 'invented clinical document' }, compress: true });
+    const doc = new PDFDocument({ size: 'A4', margin: 0, info: { Title: `${page.provider.name} ${page.docNo}`, Author: page.provider.name, Producer: 'invented clinical document', CreationDate: new Date(Date.UTC(2026, 0, 1)), ModDate: new Date(Date.UTC(2026, 0, 1)) }, compress: true });
     doc.registerFont('R', font('Regular')); doc.registerFont('B', font('Bold')); doc.registerFont('I', font('Italic'));
     const chunks: Buffer[] = [];
     doc.on('data', c => chunks.push(c as Buffer)); doc.on('end', () => resolve(Buffer.concat(chunks))); doc.on('error', reject);

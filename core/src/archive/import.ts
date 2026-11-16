@@ -84,6 +84,7 @@ async function importExport(userId: string, zip: ZipReader, filename: string | n
   // The directory goes back first, so a document names the same person whichever file it is in.
   const people = await restoreDirectory(userId, manifest);
 
+  let lastStamp = 0;
   for (const [fileIndex, file] of manifest.files.entries()) {
     summary.documents += file.documents.length;
     const ext = path.extname(file.path).toLowerCase().slice(0, 8);
@@ -130,8 +131,10 @@ async function importExport(userId: string, zip: ZipReader, filename: string | n
     summary.restored += file.documents.length - setAside.size;
     for (const p of prints) if (p) known.set(p, { sourceFileId: fileId }); // two copies inside one zip are one document
 
+    // Each file of one import is a millisecond after the last: files made in one instant would tie, and their order (which an export names its documents' places by) would not come out the same after a round trip.
+    lastStamp = Math.max(Date.now(), lastStamp + 1);
     await store.sourceFiles.create(userId, {
-      id: fileId, uploadedAt: new Date().toISOString(), originalFilename: file.original_filename, filePath, mimeType: MIME_OF[kind], checksum: saved.checksum, photoSet: file.photo_set, fromExport: true,
+      id: fileId, uploadedAt: new Date(lastStamp).toISOString(), originalFilename: file.original_filename, filePath, mimeType: MIME_OF[kind], checksum: saved.checksum, photoSet: file.photo_set, fromExport: true,
     });
     links.expect();
     startRestore(userId, fileId, filePath, kind !== 'pdf', file, setAside, people, ids => links.finished(fileIndex, ids));

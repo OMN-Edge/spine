@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api } from '../api';
+import { api, demoLanguageOf } from '../api';
 import { announceChange } from '../dataChanged';
 import { useI18n } from '../i18n';
 
@@ -26,7 +26,7 @@ export function SampleOffer({ onChange }: { onChange: () => void }) {
   const [error, setError] = useState('');
   const load = async () => {
     setBusy(true); setError('');
-    try { await api.demo.load(lang === 'ro' ? 'ro' : 'en'); onChange(); } catch (err) { setError(err instanceof Error ? err.message : t('Something went wrong. Try again.')); }
+    try { await api.demo.load(demoLanguageOf(lang)); onChange(); } catch (err) { setError(err instanceof Error ? err.message : t('Something went wrong. Try again.')); }
     setBusy(false);
   };
   return (

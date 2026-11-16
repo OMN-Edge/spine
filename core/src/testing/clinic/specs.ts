@@ -20,7 +20,7 @@ export const PROVIDERS: Record<string, Provider> = {
   cas: { key: 'cas', name: 'Spitalul Județean Exemplu', sub: 'Certificate de concediu medical', address: 'Str. Spitalului 1, Ploiești', contact: 'tel. 0244 555 011', color: '#1e3a8a', tint: '#dbe4f7', logo: 'plain' },
 };
 
-const DR = {
+export const DOCTORS = {
   anghel: { name: 'Dr. Anghel Carmen', role: 'medic primar endocrinologie', code: 'E48213' },
   vasile: { name: 'Dr. Vasile Radu', role: 'medic specialist oftalmologie', code: 'O30977' },
   popescu: { name: 'Dr. Popescu Ion', role: 'medic specialist cardiologie', code: 'A12345' },
@@ -40,7 +40,7 @@ export interface DocSpec {
   /** The care cycle it belongs to: the story it is a part of. */
   cycle: Cycle;
   provider: keyof typeof PROVIDERS;
-  doctor: keyof typeof DR | null;
+  doctor: keyof typeof DOCTORS | null;
   date: string;
   body: Body;
   /** A second copy of another document, scanned and sent again. */
@@ -201,7 +201,7 @@ const providerOf = (d: DocSpec) => PROVIDERS[d.provider]!;
 export function pageOf(d: DocSpec, byId: Map<string, DocSpec>): Page {
   const base = d.duplicateOf ? byId.get(d.duplicateOf)! : d;
   return {
-    provider: providerOf(base), patient: PATIENT, date: base.date, doctor: base.doctor ? DR[base.doctor] : null, body: base.body,
+    provider: providerOf(base), patient: PATIENT, date: base.date, doctor: base.doctor ? DOCTORS[base.doctor] : null, body: base.body,
     docNo: base.docNo ?? `${base.provider.toUpperCase().slice(0, 3)}-${base.date.replace(/-/g, '')}-${(base.id.length * 37 % 900) + 100}`,
     ...(d.duplicateOf ? { scan: true } : {}),
   };
@@ -231,5 +231,5 @@ export function expectedOf(d: DocSpec, byId: Map<string, DocSpec>): Expected {
   const values = base.body.kind === 'lab'
     ? base.body.groups.flatMap(g => g.rows).filter(r => /^[<>]?\s*[0-9]/.test(r.value)).map(r => ({ test: r.name, value: r.value.replace(/^[<>]\s*/, ''), flag: r.flag === 'H' ? ('high' as const) : r.flag === 'L' ? ('low' as const) : null }))
     : [];
-  return { types, date: base.date, providerWords: PROVIDER_WORDS[base.provider] ?? [], doctorSurname: base.doctor ? DR[base.doctor].name.replace(/^Dr\.\s*/, '').split(' ')[0]!.toLowerCase() : null, values };
+  return { types, date: base.date, providerWords: PROVIDER_WORDS[base.provider] ?? [], doctorSurname: base.doctor ? DOCTORS[base.doctor].name.replace(/^Dr\.\s*/, '').split(' ')[0]!.toLowerCase() : null, values };
 }

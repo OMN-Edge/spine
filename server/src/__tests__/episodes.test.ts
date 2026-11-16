@@ -35,13 +35,26 @@ describe('which documents may belong together', () => {
   });
 });
 
+describe('the documents of an episode', () => {
+  it('come in date order, and documents of one day in the order of their titles, not of their ids (an import makes new ids, and an export must come out the same)', async () => {
+    const store = getStore();
+    const a = await doc('2026-02-24', 'Clinica Ordine'); const b = await doc('2026-02-24', 'Clinica Ordine'); const c = await doc('2026-02-10', 'Clinica Ordine');
+    await store.documents.update(OWNER, a.id, { title: 'Rețetă' });
+    await store.documents.update(OWNER, b.id, { title: 'Control' });
+    await store.documents.update(OWNER, c.id, { title: 'Consultație' });
+    const made = await call('POST', '/api/episodes', { title: 'Order', document_ids: [a.id, b.id, c.id] });
+    const titles = ((made.json() as { document_ids: string[] }).document_ids).map(id => ({ [a.id]: 'Rețetă', [b.id]: 'Control', [c.id]: 'Consultație' }[id]));
+    expect(titles).toEqual(['Consultație', 'Control', 'Rețetă']);
+  });
+});
+
 describe('an archive that already holds old suggestions', () => {
   it('replaces a suggested episode that spans a year with the care cycles in it, and leaves a confirmed one alone', async () => {
     const store = getStore();
     const at = new Date().toISOString();
     // three visits of one clinic, each with its test, and each cycle followed by the next: what the old rule made into one episode
     const days = ['2025-02-10', '2025-02-17', '2025-05-26', '2025-06-02', '2025-11-17', '2025-11-24'];
-    const docs = [];
+    const docs: Awaited<ReturnType<typeof doc>>[] = [];
     for (const d of days) docs.push(await doc(d, 'Clinica Veche'));
     const link = (i: number, j: number) => store.links.add(OWNER, { from_document_id: docs[i]!.id, to_document_id: docs[j]!.id, kind: 'follow_up', source: 'auto', state: 'proposed', reason: null }, at);
     for (const [i, j] of [[0, 1], [2, 3], [4, 5], [1, 2], [3, 4]] as const) await link(i, j);

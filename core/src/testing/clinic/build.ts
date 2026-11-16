@@ -25,6 +25,6 @@ export async function buildArchive(dir: string): Promise<Array<{ id: string; fil
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
-  const dir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../../docs/demo/clinic-archive');
+  const dir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../docs/demo/clinic-archive');
   buildArchive(dir).then(files => console.log(`wrote ${files.length} documents to ${dir}`));
 }

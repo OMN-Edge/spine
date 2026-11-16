@@ -8,6 +8,7 @@ import { startShareCore, type ShareCore } from './boot-share';
 import { applyRelayConfig, relayFetch, relayToken, useTokenUrl } from './native/relay-auth';
 import { useImportMode, useRelayHooks } from 'spine-core/llm/adapters/relay';
 import { usePlanLimits } from 'spine-core/plan-limits';
+import { useDemoSource } from 'spine-core/demo/archive';
 import { deviceSettings } from './native/settings';
 import { VaultSession, type KeysResponse } from '../crypto/vault-client';
 import { deriveFromPassword } from '../crypto/keys';
@@ -166,6 +167,24 @@ async function rereadPeople(): Promise<void> {
     (self as unknown as Worker).postMessage({ id: 0, people: { gone } } satisfies FromWorker);
   }
 }
+
+/**
+ * The sample archive is made with the build (`scripts/demo-archive.mjs`) and fetched from this origin when the sample is asked for: by the demo with no account, and by an account's
+ * own "Explore with sample records". Registered once for the worker, whichever way it is started.
+ */
+const demoBase = `${import.meta.env?.BASE_URL ?? '/'}demo/clinic/`;
+useDemoSource({
+  archive: async () => {
+    const res = await fetch(`${demoBase}archive.json`);
+    if (!res.ok) throw new Error('the sample records could not be fetched');
+    return res.json();
+  },
+  pdf: async name => {
+    const res = await fetch(`${demoBase}${name}`);
+    if (!res.ok) throw new Error('a sample document could not be fetched');
+    return new Uint8Array(await res.arrayBuffer());
+  },
+});
 
 /**
  * The demo's core: no vault, so nothing is saved, and no share host, so no link can be made. Where the operator lets visitors read files of

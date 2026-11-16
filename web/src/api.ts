@@ -680,6 +680,10 @@ export interface EmergencyView {
   scans: Array<{ id: string; at: string; country: string | null }>;
 }
 
+/** The language the sample records are named in: the screen's, where the sample has it, else English. */
+export type DemoLanguage = 'en' | 'ro' | 'fr' | 'de';
+export const demoLanguageOf = (lang: string): DemoLanguage => (lang === 'ro' || lang === 'fr' || lang === 'de' ? lang : 'en');
+
 export const api = {
   emergency: {
     get: () => req<EmergencyView>('/api/emergency'),
@@ -1155,7 +1159,7 @@ export const api = {
   /** Sample records to explore before uploading anything real. */
   demo: {
     state: () => req<{ loaded: boolean; processing: boolean }>('/api/demo'),
-    load: (language: 'en' | 'ro') => post<{ loaded: boolean; processing: boolean }>('/api/demo', { language }),
+    load: (language: DemoLanguage) => post<{ loaded: boolean; processing: boolean }>('/api/demo', { language }),
     remove: () => del<{ removed: boolean }>('/api/demo'),
   },
 

@@ -183,28 +183,28 @@ try {
     const from = asked.length;
     await press('Try the demo');
     check(await waitDemo('This is a demo with invented records'), 'the front page opens the demo with no account');
-    check(await waitDemo('Chest X-ray'), 'and the demo shows the sample records');
+    check(await waitDemo('Radiografie pulmonară', 120000), 'and the demo shows the sample records (an invented archive of thirty-eight documents, in Romanian)');
     const nav = await d.evaluate(() => [...document.querySelectorAll('nav a, nav button')].map(e => e.innerText.trim()).filter(Boolean));
     check(nav.includes('Upload') && !nav.includes('Share') && !nav.includes('Sign out') && nav.includes('Leave the demo'), `and offers uploading, but no sharing or account (${nav.join(', ')})`);
-    await d.evaluate(() => [...document.querySelectorAll('a')].find(a => a.innerText.includes('Chest X-ray'))?.click());
-    check(await waitDemo('the report states that there are no changes', 20000) && (await d.evaluate(() => location.pathname)).startsWith('/documents/'), 'a sample document opens');
+    await d.evaluate(() => [...document.querySelectorAll('a')].find(a => a.innerText.includes('Radiografie pulmonară — condensare'))?.click());
+    check(await waitDemo('Chest X-ray — left lower lobe consolidation', 20000) && (await d.evaluate(() => location.pathname)).startsWith('/documents/'), 'a sample document opens, already translated into the screen\u2019s language with no model');
     await go('/scan');
     await pause(500);
     check(await d.evaluate(() => location.pathname) === '/', 'the camera is not in the demo');
     const reached = asked.slice(from).filter(u => /^\/api\/(vault|shared|relay\/|demo(\/|\?|$)|documents|source-files|auth\/(login|register))/.test(u));
     check(reached.length === 0, `the demo sent the server nothing of the records${reached.length ? `: ${reached.join(', ')}` : ''}`);
     await d.reload({ waitUntil: 'networkidle0' });
-    check(await waitDemo('Try the demo', 10000) && !(await said()).includes('Chest X-ray'), 'a reload ends the demo and keeps nothing');
+    check(await waitDemo('Try the demo', 10000) && !(await said()).includes('Radiografie pulmonară'), 'a reload ends the demo and keeps nothing');
     await press('Try the demo');
-    check(await waitDemo('Chest X-ray'), 'the demo opens again');
+    check(await waitDemo('Radiografie pulmonară', 120000), 'the demo opens again');
     await press('Sign in');
     check(await d.waitForSelector('input[type=email]', { visible: true, timeout: 10000 }).then(() => true, () => false), 'and Sign in from the demo ends it and shows the sign-in form');
     await go('/');
-    check(await waitDemo('Try the demo', 10000) && !(await said()).includes('Chest X-ray'), 'after which the front page is the front page again');
+    check(await waitDemo('Try the demo', 10000) && !(await said()).includes('Radiografie pulmonară'), 'after which the front page is the front page again');
 
     // Files of the visitor's own: agreed to first, a few only, the first pages of each, read through the relay with the demo's pass.
     await press('Try the demo');
-    await waitDemo('Chest X-ray');
+    await waitDemo('Radiografie pulmonară', 120000);
     await press('Upload');
     check(await waitDemo('I agree to the health data') && !(await d.$('input[type=file]')), 'the demo asks before the first file of the visitor’s own, and offers none until then');
     await d.evaluate(() => document.querySelector('input[type=checkbox]').click());
@@ -254,7 +254,7 @@ try {
     await pause(1000);
     docs = await countDocs();
     const after = await said();
-    check(docs >= 3 && !after.includes('Chest X-ray') && !after.includes('This browser kept'), `after a reload the account holds them (${docs} documents), not the sample records, and is not offered them again`);
+    check(docs >= 3 && !after.includes('Radiografie pulmonară') && !after.includes('This browser kept'), `after a reload the account holds them (${docs} documents), not the sample records, and is not offered them again`);
     check(relay.calls.slice(callsAtAdd).filter(c => c.task !== 'embed').length === 0, 'adding them called no model');
     await ctx.close();
   }
@@ -320,7 +320,7 @@ try {
   check(await waitFor('Timeline', 30000) && !(await text()).includes('Open your records'), 'the records open with the master password just chosen, without asking for it again');
   check(await waitFor('Explore with sample records'), 'the empty timeline is shown from the device');
   await click('Explore with sample records');
-  check(await waitFor('Chest X-ray'), 'sample records are written on the device');
+  check(await waitFor('Radiografie pulmonară', 120000), 'sample records are written on the device');
   for (let t = 0; t < (REAL ? 60000 : 4000) && !relay.calls.some(c => c.task === 'embed'); t += 500) await wait(500);
   check(relay.calls.some(c => c.task === 'embed'), 'each document is embedded through the relay, for search by meaning');
   await (await p.evaluateHandle(() => [...document.querySelectorAll('a')].find(a => a.getAttribute('href')?.startsWith('/documents/')))).asElement().click();
@@ -333,7 +333,7 @@ try {
   await p.goto(`http://localhost:${front}/`, { waitUntil: 'networkidle0' });
   check(await waitFor('Open your records'), 'after a reload the key is gone and is asked for again');
   await type('input[type=password]', MASTER); await click('Open');
-  check(await waitFor('Chest X-ray'), 'unlocking brings the records back from the vault');
+  check(await waitFor('Radiografie pulmonară'), 'unlocking brings the records back from the vault');
   // What this device fetched or wrote is kept, sealed, in the browser (SECURITY.md M-43): the reload asks the server for the index and the
   // profile and nothing else, where it used to fetch every segment and part again.
   await wait(1500);
@@ -342,7 +342,7 @@ try {
   check((await p.evaluate(async () => (await indexedDB.databases()).map(d => d.name))).includes('spine-sealed'), 'the sealed objects are kept in the browser');
   // Search runs on the device too: the words index and the vectors are in the database it holds.
   await click('Search');
-  await type('input[placeholder^="Search documents"]', 'cholecalciferol');
+  await type('input[placeholder^="Search documents"]', 'rosuvastatină');
   await p.keyboard.press('Enter');
   check(await waitFor('Prescription', 15000), 'a word search finds a record, from the index on the device');
   check(errors.length === 0, `no page errors${errors.length ? `: ${errors[0]}` : ''}`);
@@ -375,12 +375,12 @@ try {
   const guestText = () => guest.evaluate(() => document.body.innerText);
   const guestWait = async (what, ms = 30000) => { for (let t = 0; t < ms; t += 250) { if ((await guestText()).includes(what)) return true; await wait(250); } return false; };
   await guest.goto(direct, { waitUntil: 'load' });
-  check(await guestWait('Chest X-ray'), 'someone with no account opens the link and reads the shared records');
+  check(await guestWait('Chest X-ray — left lower lobe consolidation'), 'someone with no account opens the link and reads the shared records');
   check(await guestWait('Shared securely via Spine', 2000), 'the shared page carries its footer');
   const footerLeads = async () => { for (let w = 0; w < 5000; w += 250) { const h = await guest.evaluate(() => [...document.querySelectorAll('a')].find(a => a.innerText.includes('Shared securely via Spine'))?.getAttribute('href') ?? null); if (h) return h; await wait(250); } return null; };
   check(await footerLeads() === '/?ref=share', "and the footer leads to this instance's own front page, saying it came from a shared page");
-  await (await guest.evaluateHandle(() => [...document.querySelectorAll('a')].find(a => a.innerText.includes('Chest X-ray')))).asElement().click();
-  check(await guestWait('Findings', 20000), 'a shared document opens with its details');
+  await (await guest.evaluateHandle(() => [...document.querySelectorAll('a')].find(a => a.innerText.includes('Chest X-ray — left lower lobe consolidation')))).asElement().click();
+  check(await guestWait('Impression', 20000), 'a shared document opens with its details');
   check(!asked.some(u => u.includes(key)), 'the key never went to the server');
   check(guestErrors.length === 0, `no errors on the recipient's page${guestErrors.length ? `: ${guestErrors[0]}` : ''}`);
 
@@ -399,16 +399,18 @@ try {
 
   // The owner connects two documents by hand; a link that shares both lets its recipient see the connection, and only that one.
   await click('Timeline');
-  await waitFor('Chest X-ray');
-  const xray = (await p.evaluateHandle(() => [...document.querySelectorAll('a')].find(a => a.offsetParent && a.innerText.includes('Chest X-ray')))).asElement();
+  await waitFor('Radiografie pulmonară');
+  const xray = (await p.evaluateHandle(() => [...document.querySelectorAll('a')].find(a => a.offsetParent && a.innerText.includes('Radiografie pulmonară')))).asElement();
   if (!xray) console.log('     owner page:', (await text()).replace(/\s+/g, ' ').slice(0, 300));
   await xray.click();
   await waitFor('Connected documents');
   await click('Add a link');
-  await type('input[placeholder="Search for a document"]', 'Prescription');
+  await type('input[placeholder="Search for a document"]', 'levotiroxină');
   await p.waitForSelector('li button', { timeout: 15000 }).catch(() => undefined);
-  const rx = (await p.evaluateHandle(() => [...document.querySelectorAll('li button')].find(b => b.innerText.includes('Prescription')))).asElement();
-  if (!rx) console.log('     picker:', (await text()).replace(/\s+/g, ' ').slice(-400));
+  // the picker's results arrive after the search: the buttons already on the page (a document's connections) are not them
+  let rx = null;
+  for (let t = 0; t < 15000 && !rx; t += 250) { rx = (await p.evaluateHandle(() => [...document.querySelectorAll('li button')].find(b => /Rețetă|Prescription/.test(b.innerText)))).asElement(); if (!rx) await wait(250); }
+  if (!rx) console.log('     picker buttons:', JSON.stringify(await p.evaluate(() => [...document.querySelectorAll('li button')].map(b => b.innerText.slice(0, 60)))));
   await rx.click();
   await click('Add link');
   check(await waitFor('requested by', 15000), 'the owner connects two documents by hand');
@@ -435,13 +437,13 @@ try {
   const g3Text = () => g3.evaluate(() => document.body.innerText);
   const g3Wait = async (what, ms = 30000) => { for (let t = 0; t < ms; t += 250) { if ((await g3Text()).includes(what)) return true; await wait(250); } return false; };
   await g3.goto(full, { waitUntil: 'load' });
-  check(await g3Wait('Chest X-ray'), 'the recipient reads a link that includes scans');
+  check(await g3Wait('Chest X-ray — left lower lobe consolidation'), 'the recipient reads a link that includes scans');
   await (await g3.evaluateHandle(() => [...document.querySelectorAll('button,a')].find(e => e.innerText.trim() === 'Trends')))?.asElement()?.click();
   check(await g3Wait('Hemoglobin') || await g3Wait('Cholesterol') || await g3Wait('Glucose'), 'the recipient sees values over time (trends) from the copy');
   await g3.goBack().catch(() => undefined);
-  await g3Wait('Chest X-ray');
-  await (await g3.evaluateHandle(() => [...document.querySelectorAll('a')].find(a => a.innerText.includes('Chest X-ray')))).asElement().click();
-  await g3Wait('Findings', 20000);
+  await g3Wait('Chest X-ray — left lower lobe consolidation');
+  await (await g3.evaluateHandle(() => [...document.querySelectorAll('a')].find(a => a.innerText.includes('Chest X-ray — left lower lobe consolidation')))).asElement().click();
+  await g3Wait('Impression', 20000);
   await wait(3000);
   check(await g3Wait('Connected documents', 15000) && /requested by/.test(await g3Text()), 'the recipient sees the connection between the two shared documents');
   check((await g3.evaluate(() => [...document.querySelectorAll('img')].map(i => i.naturalWidth))).some(w => w > 500), 'the recipient sees the page images of a link that includes scans');
@@ -450,12 +452,13 @@ try {
   {
     const callsBefore = relay.calls.length;
     await g3.goBack().catch(() => undefined);
-    await g3Wait('Chest X-ray');
+    await g3Wait('Chest X-ray — left lower lobe consolidation');
     const box = await g3.$('input[aria-label="Language"]');
     check(!!box, 'the recipient is offered a choice of language');
     if (box) {
       await box.click({ clickCount: 3 });
-      await box.type('Rom');
+      // the sample documents are Romanian, so a Romanian reader has nothing to translate: Italian is a language none is kept in, and goes to the model
+      await box.type('Ital');
       await g3.keyboard.press('Enter');
       let said = false;
       for (let t = 0; t < (REAL ? 90000 : 30000) && !said; t += 1000) { await wait(1000); said = /Translated into|Translating into|Se traduce|Tradus/.test(await g3.evaluate(() => document.body.innerText)); }
@@ -465,15 +468,15 @@ try {
       for (let t = 0; t < (REAL ? 90000 : 5000) && !relay.calls.slice(callsBefore).some(c => c.task === 'translation'); t += 1000) await wait(1000);
       const translations = relay.calls.slice(callsBefore).filter(c => c.task === 'translation').length;
       check(translations > 0, `the translation went to the model through the relay (${translations} call(s))`);
-      check(/Istoric medical|Documente/.test(await g3.evaluate(() => document.body.innerText)), 'the page itself is in the language they picked');
+      check((await box.evaluate(e => e.value)).includes('Ital'), 'and the language they picked is the one shown');
       // Back to English, for the rest of the checks.
       await box.click({ clickCount: 3 });
       await box.type('Eng');
       await g3.keyboard.press('Enter');
       await wait(1500);
     }
-    await (await g3.evaluateHandle(() => [...document.querySelectorAll('a')].find(a => a.innerText.includes('Chest X-ray')))).asElement()?.click();
-    await g3Wait('Findings', 20000);
+    await (await g3.evaluateHandle(() => [...document.querySelectorAll('a')].find(a => a.innerText.includes('Chest X-ray — left lower lobe consolidation')))).asElement()?.click();
+    await g3Wait('Impression', 20000);
   }
   const before = relay.calls.length;
   const pageText = () => g3.evaluate(() => [...document.querySelectorAll('*')].filter(e => e.children.length === 0).map(e => e.textContent?.trim()).filter(Boolean).join(' | '));
@@ -536,7 +539,7 @@ try {
   check(await p.evaluate(() => [...document.querySelectorAll('button')].find(b => b.innerText === 'Approve')?.disabled === true), 'Approve waits until the owner has checked the code');
   await p.evaluate(() => [...document.querySelectorAll('label')].find(l => l.innerText.includes('It is the same'))?.querySelector('input')?.click());
   await click('Approve');
-  check(await guest2Wait('Chest X-ray', 40000), 'once approved, that browser (and only it) opens the records');
+  check(await guest2Wait('Chest X-ray — left lower lobe consolidation', 40000), 'once approved, that browser (and only it) opens the records');
 
   // Opt-in: upload a digitally signed PDF and see its signer filed as a doctor on the device. `SPINE_CHECK_SIGNED=/path/to/signed.pdf`.
   // The expected name is read by poppler's pdfsig in this script; only whether the page shows it is printed, never the name.
@@ -622,7 +625,7 @@ try {
     await p.goto(`http://localhost:${front}/`, { waitUntil: 'networkidle0' });
     await waitFor('Open your records');
     await type('input[type=password]', MASTER); await click('Open');
-    await waitFor('Chest X-ray', 40000);
+    await waitFor('Radiografie pulmonară', 40000);
     for (let t = 0; t < 60000; t += 3000) {
       await wait(3000);
       count = await p.evaluate(() => new Set([...document.querySelectorAll('a')].map(a => a.getAttribute('href')).filter(h => h?.startsWith('/documents/'))).size);
@@ -792,7 +795,7 @@ try {
     check(report.length > 0 && !report.includes('@') && !report.includes('check@example') && !report.includes(MASTER), 'and those details hold no address and no password');
     refuse = false;
     await dClick('Try again');
-    check(await dWait('Chest X-ray', 60000), 'Try again opens the records once the server answers');
+    check(await dWait('Radiografie pulmonară', 60000), 'Try again opens the records once the server answers');
     // Review in the Get started list goes to /upload#grouping: the first upload waiting for its grouping is marked and scrolled into view.
     const go = to => d.evaluate(address => { history.pushState({}, '', address); dispatchEvent(new PopStateEvent('popstate')); }, to);
     await go('/upload');
@@ -832,7 +835,7 @@ try {
     const dClick = async label => { const h = await d.evaluateHandle(l => [...document.querySelectorAll('button,a')].find(e => e.offsetParent && e.innerText.trim().toLowerCase().startsWith(l.toLowerCase())), label); await h.asElement().click(); };
     await d.goto(`http://localhost:${front}/login`, { waitUntil: 'networkidle0' });
     await d.type('input[type=email]', 'check@example.com'); await d.type('input[type=password]', MASTER); await dClick('Sign in');
-    check(await dWait('Chest X-ray', 60000), 'a second device signing in with the master password sees the records the first device saved');
+    check(await dWait('Radiografie pulmonară', 60000), 'a second device signing in with the master password sees the records the first device saved');
 
     const removeTag = async (page, read, name) => {
       await page.evaluate(async () => { // within the page: a reload would lock it. The Library is under More in the top bar.
@@ -915,10 +918,10 @@ try {
     check(waiting, 'the new device waits for the other to approve it');
     if (!waiting) console.log(`     the new device says: ${(await eText()).replace(/\s+/g, ' ').slice(0, 500)} ${JSON.stringify(eErrors)}`);
     check(await waitFor('A browser is asking to open your records', 20000), 'the first device is told that a browser is asking, and can see which');
-    check(!(await eText()).includes('Chest X-ray'), 'the new device has nothing until it is approved');
+    check(!(await eText()).includes('Radiografie pulmonară'), 'the new device has nothing until it is approved');
     await clickIn(p, 'Approve');
     await confirmIfAsked(p);
-    check(await eWait('Chest X-ray', 60000), 'once approved, the new device opens the same records without a master password typed on it');
+    check(await eWait('Radiografie pulmonară', 60000), 'once approved, the new device opens the same records without a master password typed on it');
     check(await e.$('input[type=password]') === null, 'and no password field was shown to it');
     check(await waitFor('Approved', 15000), 'the first device says it was approved');
 
@@ -968,7 +971,7 @@ try {
     check(await waitFor('Child', 15000) && (await text()).includes('Open now'), 'another person is added next to the first');
     await (await p.evaluateHandle(() => [...document.querySelectorAll('li')].find(li => li.innerText.includes('Child'))?.querySelector('button'))).asElement().click();
     check(await waitFor('Explore with sample records', 30000), "the other person's records start empty, apart from the first person's");
-    check(!(await text()).includes('Chest X-ray'), "and none of the first person's documents are in them");
+    check(!(await text()).includes('Radiografie pulmonară'), "and none of the first person's documents are in them");
     check((await text()).includes('Child'), "the page says whose records are open");
     check(!(await text()).includes('Open your records'), 'opening them did not ask for the master password');
     await (await p.waitForSelector('button[title="Whose records are open"]', { visible: true })).click();
@@ -977,7 +980,7 @@ try {
     await click('Add or manage people');
     check(await waitFor('Add a person'), 'and from it the page of people');
     await (await p.evaluateHandle(() => [...document.querySelectorAll('li')].find(li => !li.innerText.includes('Open now'))?.querySelector('button'))).asElement().click();
-    check(await waitFor('Chest X-ray', 30000), "the first person's records are back, as they were");
+    check(await waitFor('Radiografie pulmonară', 30000), "the first person's records are back, as they were");
 
     // A child's records carry a birth date, kept sealed with them; without a real date they are refused.
     await openPeople();
@@ -992,7 +995,7 @@ try {
     await click('Add');
     check(await waitFor('child,', 15000), 'a child is added, and shown with their age');
     await click('Timeline');
-    await waitFor('Chest X-ray');
+    await waitFor('Radiografie pulmonară');
 
     // A person's name and a child's birth date can be corrected, and the list shows the correction.
     await openPeople();
@@ -1007,7 +1010,7 @@ try {
     await (await p.evaluateHandle(() => [...document.querySelectorAll('li button[type=submit]')][0])).asElement().click();
     check(await waitFor('Kiddo', 15000) && /Kiddo[\s\S]{0,40}child, 16 years old/.test(await text()), "a person's name and a child's birth date can be corrected");
     await click('Timeline');
-    await waitFor('Chest X-ray');
+    await waitFor('Radiografie pulmonară');
 
     // The emergency card: written with an official number kept off it until ticked, turned on, and printable at the size of a bank card.
     await click('Share');
@@ -1070,7 +1073,7 @@ try {
     await click('Turn the card off');
     check(await waitFor('Turn the card on'), 'the card can be turned off');
     await click('Timeline');
-    await waitFor('Chest X-ray');
+    await waitFor('Radiografie pulmonară');
 
     // Letting someone in: a code is made on the device, shown once, and an invitation that is not used can be cancelled.
     await openPeople();
@@ -1151,7 +1154,7 @@ try {
       check(await qWait('This invitation cannot be used', 15000), 'the code does not work twice');
       // The shared person is open: the owner's sample records are there.
       await q.evaluate(() => [...document.querySelectorAll('a')].find(a => a.getAttribute('href') === '/')?.click());
-      check(await qWait('Chest X-ray', 60000), "the shared person's records, the owner's, are what is open");
+      check(await qWait('Radiografie pulmonară', 60000), "the shared person's records, the owner's, are what is open");
       // A change made by someone who can only read is refused by the vault, and the page says it was not saved.
       await q.evaluate(async () => { // the Library is under More in the top bar
         if (!document.querySelector('a[href="/library"]')) { document.querySelector('nav button[aria-haspopup=menu]:not([title]):not([aria-label])')?.click(); await new Promise(r => setTimeout(r, 100)); }
@@ -1166,7 +1169,7 @@ try {
     }
     // What the guest changed was refused: the owner still has all of it.
     await click('Timeline');
-    check(await waitFor('Chest X-ray', 20000), "the owner's records are as they were");
+    check(await waitFor('Radiografie pulmonară', 20000), "the owner's records are as they were");
 
     // A teenager's own records: the parent invites them as themselves, they accept, and the empty records their new account started with are
     // not kept beside them; at eighteen they take them over, the parent's device lets go of them, and the teenager decides who comes back.
@@ -1233,7 +1236,7 @@ try {
       check(!/Alex Example\s+child/.test(await qText()), 'and Alex is no longer marked as a child in someone\'s care');
       // The parent's device notices that Alex's records are no longer the parent's, and says so.
       check(await waitFor('took over their own records', 90000), "the parent's device lets go of Alex's records and says why");
-      check(await waitFor('Chest X-ray', 30000), "and opens the parent's own records instead");
+      check(await waitFor('Radiografie pulmonară', 30000), "and opens the parent's own records instead");
       // The teenager lets the parent back in; the parent sees Alex again, as shared by the teenager.
       await q.evaluate(() => [...document.querySelectorAll('li li')].find(l => /check@example\.com · can change them · paused/.test(l.innerText))?.querySelector('button')?.click());
       let resumed = false;
@@ -1245,9 +1248,9 @@ try {
     await openPeople();
     check(await waitFor('Shared by teen@example.com', 30000) && /Alex Example\s+Shared by teen@example\.com · you can change the records/.test(await text()), "the parent sees Alex's records again, shared by Alex and no longer as a child, once let back in");
     await click('Timeline');
-    await waitFor('Chest X-ray');
+    await waitFor('Radiografie pulmonară');
     await click('Timeline');
-    await waitFor('Chest X-ray');
+    await waitFor('Radiografie pulmonară');
   }
 
   // Follow-up reminders (SECURITY.md M-53): the uploaded document says to come back, so a reminder is proposed; the owner confirms it with its date
@@ -1373,14 +1376,14 @@ try {
     check(await waitFor('Sign in with a passkey'), 'signed out');
     check(!(await p.evaluate(async () => (await indexedDB.databases()).map(d => d.name))).includes('spine-sealed'), 'and signing out removes the sealed objects kept in the browser');
     await click('Sign in with a passkey');
-    check(await waitFor('Chest X-ray', 30000), 'signing in with the passkey opens the records, with no master password typed');
+    check(await waitFor('Radiografie pulmonară', 30000), 'signing in with the passkey opens the records, with no master password typed');
     check(!(await text()).includes('Open your records'), 'and the master password is not asked for');
 
     // After a reload the key is gone again; the passkey opens it from the unlock screen.
     await p.goto(`http://localhost:${front}/`, { waitUntil: 'networkidle0' });
     check(await waitFor('Open with a passkey'), 'after a reload the unlock screen offers the passkey');
     await click('Open with a passkey');
-    check(await waitFor('Chest X-ray', 30000), 'the passkey opens the records after a reload');
+    check(await waitFor('Radiografie pulmonară', 30000), 'the passkey opens the records after a reload');
     await cdp.send('WebAuthn.disable');
   }
 
@@ -1392,7 +1395,7 @@ try {
     const removedAt = Date.now();
     await click('Remove the sample records');
     let removedHere = false;
-    for (let t = 0; t < 30000 && !removedHere; t += 500) { await wait(500); const now = await text(); removedHere = !now.includes('Chest X-ray') && !now.includes('Remove the sample records'); }
+    for (let t = 0; t < 30000 && !removedHere; t += 500) { await wait(500); const now = await text(); removedHere = !now.includes('Radiografie pulmonară') && !now.includes('Remove the sample records'); }
     check(removedHere, 'and removes them');
     for (let t = 0; t < 120000 && puts.length === before; t += 1000) await wait(1000);
     console.log(`     the copy was sent again ${puts.length > before ? Math.round((puts[before] - removedAt) / 1000) + ' s' : 'never'} after the removal`);
@@ -1404,7 +1407,7 @@ try {
       // With nothing left to share the copy is not usable: the page says the link is unavailable, which is also the proof it was made again.
       const settled = () => r.evaluate(() => /Shared securely via Spine|Link unavailable/.test(document.body.innerText));
       for (let w = 0; w < 12000 && !(await settled()); w += 250) await wait(250);
-      gone = (await settled()) && !(await r.evaluate(() => document.body.innerText)).includes('Chest X-ray');
+      gone = (await settled()) && !(await r.evaluate(() => document.body.innerText)).includes('Radiografie pulmonară');
       if (!gone) await wait(4000);
     }
     if (!gone) console.log('     recipient says:', (await r.evaluate(() => document.body.innerText)).replace(/\s+/g, ' ').slice(0, 400));
@@ -1417,7 +1420,7 @@ try {
   // What the server holds.
   const sealed = fs.readdirSync(path.join(data, 'vault'), { recursive: true }).length;
   // A PDF's header, not a bare '%PDF': four bytes turn up by chance in a few MB of ciphertext.
-  const readable = ['Chest X-ray', 'Example Clinic', 'Ioan Specimen', 'Example Laboratory', '%PDF-1.', '%PDF-2.'].filter(w => {
+  const readable = ['Radiografie pulmonară', 'Policlinica Sănătatea', 'Marinescu Elena', 'MedisLab', 'Popa Mihai', '%PDF-1.', '%PDF-2.'].filter(w => {
     // grep exits 1 when it finds nothing, which is the answer wanted.
     return spawnSync('grep', ['-rlaF', w, data], { encoding: 'utf8' }).stdout.trim() !== '';
   });

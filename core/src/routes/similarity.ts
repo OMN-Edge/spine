@@ -1,7 +1,6 @@
 import type { HttpApp } from '../http.js';
 import { getStore } from '../store/index.js';
 import { requireAuth } from './middleware.js';
-import { translationEnabled } from '../config.js';
 import { isSupportedLanguage } from '../languages.js';
 import { translateDocument, warmTranslations } from '../translation.js';
 import { embeddingStatus, hybridSearch, relatedTo, scheduleSync } from '../similarity/index.js';
@@ -22,13 +21,14 @@ export async function similarityRoutes(app: HttpApp) {
     const language = req.query.lang;
     let titled: Array<(typeof related)[number] & { translated_title: string | null }> = related.map(r => ({ ...r, translated_title: null }));
     let pending = false;
-    if (isSupportedLanguage(language) && translationEnabled()) {
+    // with translation by a model off this still reads what is kept (the sample records'), and asks for nothing more
+    if (isSupportedLanguage(language)) {
       const missing: string[] = [];
       titled = [];
       for (const r of related) {
         const done = await translateDocument(req.userId, r.id, language, { cachedOnly: true });
         if (done === null || done === 'not_found') missing.push(r.id);
-        titled.push({ ...r, translated_title: done && done !== 'not_found' && done.status !== 'same' ? done.title : null });
+        titled.push({ ...r, translated_title: done && done !== 'not_found' && done.status !== 'same' && done.status !== 'off' ? done.title : null });
       }
       if (missing.length > 0) { pending = true; warmTranslations(req.userId, missing, language); }
     }
@@ -44,13 +44,14 @@ export async function similarityRoutes(app: HttpApp) {
   app.get<{ Querystring: { ids?: string; lang?: string } }>('/api/translations/titles', async (req, reply) => {
     const language = req.query.lang;
     const ids = [...new Set((req.query.ids ?? '').split(',').map(x => x.trim()).filter(Boolean))].slice(0, 20);
-    if (!isSupportedLanguage(language) || !translationEnabled() || ids.length === 0) return reply.header('Cache-Control', 'no-store').send({ titles: {}, pending: false });
+    if (!isSupportedLanguage(language) || ids.length === 0) return reply.header('Cache-Control', 'no-store').send({ titles: {}, pending: false });
     const titles: Record<string, string | null> = {};
     const missing: string[] = [];
     for (const id of ids) {
       const done = await translateDocument(req.userId, id, language, { cachedOnly: true });
       if (done === 'not_found') continue; // not the caller's, or gone: the same as an id that never existed
       if (done === null) { missing.push(id); continue; }
+      if (done.status === 'off') continue; // translation is off and nothing is kept: no title to give
       titles[id] = done.status !== 'same' ? done.title : null;
     }
     if (missing.length > 0) warmTranslations(req.userId, missing, language);

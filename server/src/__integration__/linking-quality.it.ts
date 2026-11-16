@@ -1,14 +1,14 @@
 import { expect, it } from 'vitest';
 import { describePipeline, describeTarget } from './support/live.js';
 import { OWNER_ID, startWorld, until } from './support/world.js';
-import { buildArchive } from './support/clinic/build.js';
-import { DOCS, GROUND_TRUTH, expectedOf } from './support/clinic/specs.js';
+import { buildArchive } from 'spine-core/testing/clinic/build.js';
+import { DOCS, GROUND_TRUTH, expectedOf } from 'spine-core/testing/clinic/specs.js';
 import { getStore } from 'spine-core/store/index.js';
 import { settleLinking } from 'spine-core/linking/index.js';
 import { proposeEpisodes } from 'spine-core/episodes/index.js';
 
 /**
- * Do the suggested links and episodes mean something? The whole flow runs for real, on the invented clinic archive (`support/clinic/`): forty PDFs are uploaded, read by the model, their grouping
+ * Do the suggested links and episodes mean something? The whole flow runs for real, on the invented clinic archive (`core/src/testing/clinic/`): forty PDFs are uploaded, read by the model, their grouping
  * confirmed, embedded, looked at for links, and proposed as episodes; then what the app suggested is marked against what is true of the archive (`GROUND_TRUTH`): a link between two care cycles that
  * is not a real follow-up is false, a link between documents that are only alike in the day, the clinic or the lab is a violation, a copy is not a relative, an episode holds one story and never
  * spans a year. The report is printed first, then the rules are asserted.
