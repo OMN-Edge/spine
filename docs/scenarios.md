@@ -30,7 +30,7 @@ Status: auto (`web/src/pages/public-pages.test.tsx`: each page's title, the shar
 ### 1.0a Try the app without an account
 Someone with no account wants to see what the app looks like with records in it, and perhaps with a document of their own, before signing up.
 
-- The front page offers Try the demo. It opens the timeline with the sample records (English or Romanian, by the interface language) and a banner saying it is a demo with invented records, that nothing done there is saved, and that it ends on leaving or reloading.
+- The front page offers Try the demo. It opens the timeline with the sample archive (Romanian documents, with their translations and episodes in the interface language) and a banner saying it is a demo with invented records, that nothing done there is saved, and that it ends on leaving or reloading.
 - Everything that reads works: the timeline, a document's page with its image and values, review and editing, episodes, trends, doctors, the library and search. There is no Scan, Share links, Account, chat or Read again.
 - Where the operator has set `SPINE_DEMO_UPLOADS=on`, Upload is there too. Before the first file it says what happens to the files (read on the device where it can, the result sent to the model through the relay, which does not store or log it; nothing kept) and asks the visitor to agree. It takes up to three files and reads the first five pages of each (both settings); a zip is refused. Past three, it says that is the most the demo takes and points to an account.
 - With files of their own, the banner offers Create an account to keep them (Sign in to keep them where registration is the operator's), and leaving the page asks first. Keeping them holds them in this browser for a day at most; once signed in, the account is offered them once: Add to my records restores them with no model call, Discard deletes them.
@@ -164,7 +164,7 @@ Status: auto (`own-account`, `cli`); screens: hand.
 ## 2. Getting documents in
 
 ### 2.0 Look around before uploading
-- On an empty timeline, Explore with sample records adds five invented documents (English or Romanian, by the interface language) about nobody: a consultation, two blood tests with the same five tests, a prescription and a chest X-ray a week after it. The X-ray is left waiting for review and the prescription and the X-ray are suggested as an episode, so Review and Episodes have something to show. Nothing is read by a model and nothing leaves the host.
+- On an empty timeline, Explore with sample records adds an invented patient's archive of 38 documents about nobody, drawn like a clinic's own (a thyroid followed over a year in three visits, an eye check and blood tests on the same day at the same clinic, a pneumonia from the family doctor to the hospital, a urine infection, a skin visit, an annual check-up). The documents are in Romanian and each is already translated into English, French and German, so a reader in one of those sees the translation with a note that it is one and a way back to the original. The links between documents are confirmed (two are left as suggestions) and eight episodes are named in the interface language, with two left as suggestions to confirm, so Review, Episodes and the connected documents of a document have something to show. One document is left waiting for review. Nothing is read by a model and nothing leaves the host.
 - A banner says they are samples. Remove the sample records takes away exactly them, not anything uploaded since.
 - They are that account's own records: they can be searched, charted, shared and edited like any other, and no other account sees them.
 
@@ -397,7 +397,8 @@ Status: auto (`structured`).
 ---
 
 ### 4.x Group documents into episodes
-- Open Episodes. Spine suggests groups of documents that may belong together: ones linked to each other, and ones from the same provider within two weeks. A suggestion has no title of its own; it is shown as the provider and the dates.
+- Open Episodes. Spine suggests groups of documents that may belong together, from the links between them: a visit, what it asked for, what answered it and the visit that read the answers, never more than a few months and never joined only by being from the same clinic or the same day. A chronic condition followed over a year is several episodes. A suggestion has no title of its own; it is shown as the provider and the dates.
+- Search again looks at every document for links once more (it uses AI where linking is on) and then groups them. It replaces the app's own suggestions that no longer hold and never touches what was confirmed or dismissed.
 - Confirm a suggestion, or say it is not an episode (it is not suggested again). Rename a confirmed episode, take a document out, add one, or remove the episode. Or make one by hand: tick the documents.
 - A document is in one episode at a time: putting it in another takes it out of the first.
 - The timeline can be narrowed to one episode, and each document says which episode it is in. Facility and specialty narrow the timeline and the search the same way.

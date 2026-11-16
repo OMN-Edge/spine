@@ -36,8 +36,8 @@ spine/
 │       ├── embedding/      # embedder interface: types.ts, index.ts (registry), adapters/{none,relay}.ts (`vertex` is the relay service's)
 │       ├── similarity/     # card.ts (what a document is embedded as), index.ts (sync, related, hybrid search)
 │       ├── chat/           # agent.ts (the LangGraph agent and its read-only tools), screen.ts (what is on screen, resolved), index.ts (askQuestion; the fixed-pipeline fallback), retrieval.ts (keywords, fused search)
-│       ├── episodes/       # index.ts: proposing episodes from the data (no model), scheduleEpisodes()
-│       ├── linking/        # index.ts: candidates (no model), the judge, links as proposals, the chain
+│       ├── episodes/       # index.ts: proposing episodes from the data (no model), scheduleEpisodes(); cluster.ts: joining documents by links, nearest first, within a care cycle
+│       ├── linking/        # index.ts: candidates (no model), the judge, links as proposals, the chain; copies.ts: a document held twice
 │       ├── billing/plans.ts # the plans, what each includes (seats and people among it), entitlementsOf() and taskCost(): the one place a limit is written (the server enforces, the account page shows)
 │       ├── reminders/index.ts, reminder-host.ts # follow-up reminders: proposing them from what a document says, their dates, and the port the device tells them to the server through (the words never go); routes/reminders.ts confirms them
 │       ├── plan-limits.ts  # what a plan limits that only the app can count (documents), told to the core by the page
