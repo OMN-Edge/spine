@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { testSecret } from './helpers/secrets.js';
 import {
   base32Decode,
   base32Encode,
@@ -16,7 +17,7 @@ import {
 } from '../totp.js';
 
 beforeEach(() => {
-  process.env.SESSION_SECRET = 'test-secret-must-be-at-least-32-chars-long!!';
+  process.env.SESSION_SECRET = testSecret('session');
 });
 
 /** RFC 4226 appendix D and RFC 6238 appendix B both use this key. */

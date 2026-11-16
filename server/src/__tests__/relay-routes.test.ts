@@ -2,8 +2,10 @@ import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import { buildTestApp, loginSession } from './helpers/app.js';
 import { verifyToken } from '../relay/token.js';
 import { relayEnv, relaySettings } from '../routes/relay.js';
+import { testSecret } from './helpers/secrets.js';
 
-const SECRET = 'relay-route-secret-relay-route-secret-9876';
+const SECRET = testSecret('relay-route');
+const SESSION = testSecret('session');
 
 describe('what a device is given to call the relay', () => {
   let app: Awaited<ReturnType<typeof buildTestApp>>;
@@ -21,7 +23,7 @@ describe('what a device is given to call the relay', () => {
     Object.assign(process.env, {
       SPINE_RELAY_URL: 'https://relay.example.run.app', SPINE_RELAY_SECRET: SECRET, SPINE_LLM_PROVIDER: 'vertex',
       SPINE_LLM_ENDPOINT: 'aiplatform.eu.rep.googleapis.com', SPINE_LLM_REGION: 'eu', SPINE_LLM_PROJECT: 'proj-1', SPINE_LLM_MODEL: 'gemini-test',
-      SPINE_PARSER: 'text', SESSION_SECRET: 'test-secret-must-be-at-least-32-chars-long!!', ANTHROPIC_API_KEY: 'sk-ant-never-sent',
+      SPINE_PARSER: 'text', SESSION_SECRET: SESSION, ANTHROPIC_API_KEY: 'sk-ant-never-sent',
     });
   };
 
@@ -55,7 +57,7 @@ describe('what a device is given to call the relay', () => {
     expect(body.env.SPINE_LLM_PROJECT).toBeUndefined();
     expect(body.env.SPINE_PARSER).toBe('text');
     const text = res.body;
-    for (const secret of [SECRET, 'sk-ant-never-sent', 'test-secret-must-be-at-least']) expect(text).not.toContain(secret);
+    for (const secret of [SECRET, 'sk-ant-never-sent', SESSION]) expect(text).not.toContain(secret);
   });
 
   it('gives a pass the relay accepts, for this account, that runs out', async () => {

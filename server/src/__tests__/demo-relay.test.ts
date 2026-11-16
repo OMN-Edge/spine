@@ -2,8 +2,9 @@ import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { buildTestApp } from './helpers/app.js';
 import { verifyToken } from '../relay/token.js';
 import { demoUploads } from '../config.js';
+import { testSecret } from './helpers/secrets.js';
 
-const SECRET = 'demo-relay-secret-demo-relay-secret-12345';
+const SECRET = testSecret('demo-relay');
 
 /** SECURITY.md M-39: what a visitor's browser, with no account, is told and given for the demo's uploads. */
 describe('the demo’s pass to the relay', () => {

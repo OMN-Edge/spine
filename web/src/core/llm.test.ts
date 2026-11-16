@@ -13,7 +13,7 @@ import { standInClients } from '../../../server/src/testing/stand-in';
  * A model call as the device makes it: the server's own LLM interface, built with the relay client, going through the real relay code to a
  * stand-in model. What the relay runs is what the device sent, as messages, and nothing of the device's pass or cookies.
  */
-const SECRET = 'device-llm-test-secret-device-llm-test';
+const SECRET = `device-llm-test-${crypto.randomUUID()}`; // one for the run: nothing secret is written in a file
 let relay: Server;
 let tokens: Server;
 const stand = standInClients({ continuation: { is_continuation: true, confidence: 0.9, reasoning: 'same table' } });
