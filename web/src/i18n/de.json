@@ -904,10 +904,7 @@
  "dates {n} days apart": "Daten {n} Tage auseinander",
  "Episodes": "Episoden",
  "Episode": "Episode",
- "Looking…": "Suche…",
- "Look for episodes": "Episoden suchen",
  "New episode": "Neue Episode",
- "An episode groups documents that belong together, such as a visit and its tests. Spine suggests groups from the provider, the dates and the links between documents; it says nothing about the care. Nothing counts until you confirm it.": "Eine Episode fasst Dokumente zusammen, die zusammengehören, etwa einen Besuch und seine Untersuchungen. Spine schlägt Gruppen nach Anbieter, Datum und Verknüpfungen zwischen Dokumenten vor; es sagt nichts über die Behandlung. Nichts zählt, bevor Sie es bestätigen.",
  "Title (optional)": "Titel (optional)",
  "Create the episode": "Episode anlegen",
  "{n} suggested episode|{n} suggested episodes": "{n} vorgeschlagene Episode|{n} vorgeschlagene Episoden",
@@ -1929,5 +1926,8 @@
   "pages read for you so far": "bisher für dich gelesene Seiten",
   "questions answered about your records so far": "bisher beantwortete Fragen zu deinen Unterlagen",
   "pages translated so far": "bisher übersetzte Seiten",
- "The screens, the mail Spine sends you, translations of your documents and new share links start in this language.": "Die Bildschirme, die E-Mails von Spine, die Übersetzungen Ihrer Dokumente und neue Freigabelinks beginnen in dieser Sprache."
+ "The screens, the mail Spine sends you, translations of your documents and new share links start in this language.": "Die Bildschirme, die E-Mails von Spine, die Übersetzungen Ihrer Dokumente und neue Freigabelinks beginnen in dieser Sprache.",
+ "Search again": "Erneut suchen",
+ "An episode groups documents that belong together, such as a visit and its tests. Spine suggests groups from the links between documents, a few weeks at most from one document to the next; it says nothing about the care. Nothing counts until you confirm it.": "Eine Episode fasst Dokumente zusammen, die zusammengehören, etwa einen Besuch und seine Untersuchungen. Spine schlägt Gruppen aus den Verknüpfungen zwischen Dokumenten vor, höchstens einige Wochen von einem Dokument zum nächsten; es sagt nichts über die Behandlung. Nichts gilt, bis Sie es bestätigen.",
+ "Search again looks at every document for links once more (it uses AI) and then groups them. What you confirmed or dismissed stays.": "Erneut suchen prüft die Verknüpfungen jedes Dokuments noch einmal (nutzt KI) und gruppiert sie dann. Was Sie bestätigt oder abgelehnt haben, bleibt."
 }

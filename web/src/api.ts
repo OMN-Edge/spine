@@ -1166,6 +1166,9 @@ export const api = {
   },
 
   episodes: {
+    /** Looks at every document for links once more, then for episodes; asks again with `searching` until it is over. */
+    search: () => post<{ searching: boolean; documents: number; proposed?: number }>('/api/episodes/search', {}),
+    searching: () => req<{ searching: boolean }>('/api/episodes/search'),
     /** Proposed and confirmed by default; `all` includes the ones the owner said are not episodes. */
     list: (state?: 'proposed' | 'confirmed' | 'dismissed' | 'all') => req<Episode[]>(`/api/episodes${state ? `?state=${state}` : ''}`),
     create: (title: string, documentIds: string[]) => post<Episode>('/api/episodes', { title, document_ids: documentIds }),

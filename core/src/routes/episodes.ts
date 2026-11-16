@@ -2,6 +2,8 @@ import type { HttpApp } from '../http.js';
 import { v4 as uuidv4 } from 'uuid';
 import { getStore, type EpisodeState } from '../store/index.js';
 import { proposeEpisodes } from '../episodes/index.js';
+import { linkingEnabled } from '../config.js';
+import { isLinking, scheduleLinking } from '../linking/index.js';
 import { requireAuth } from './middleware.js';
 
 const MAX_TITLE = 120;
@@ -76,4 +78,16 @@ export async function episodeRoutes(app: HttpApp) {
   app.post('/api/episodes/propose', async (req, reply) => {
     return reply.send({ proposed: await proposeEpisodes(req.userId) });
   });
+
+  // Search again, for everything: every document is looked at for links once more (it costs a model call for each that has a candidate), and the episodes are looked for when that
+  // ends. What the owner confirmed or dismissed is never touched; the app's own suggestions that no longer hold are replaced. Where looking for links is off, only the episodes.
+  app.post('/api/episodes/search', async (req, reply) => {
+    if (!linkingEnabled()) return reply.send({ searching: false, documents: 0, proposed: await proposeEpisodes(req.userId) });
+    const documents = await getStore().documents.listFor(req.userId, { limit: 1_000_000, offset: 0 });
+    scheduleLinking(req.userId, documents.map(d => d.id), 0);
+    return reply.status(202).send({ searching: true, documents: documents.length });
+  });
+
+  // Whether that search is still going: the page asks until it is not.
+  app.get('/api/episodes/search', async (req, reply) => reply.header('Cache-Control', 'no-store').send({ searching: isLinking(req.userId) }));
 }

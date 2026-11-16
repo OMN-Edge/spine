@@ -285,6 +285,77 @@ describe('finding links', () => {
   });
 });
 
+describe('searching again for everything, from the episodes page', () => {
+  const search = () => post('/api/episodes/search', {});
+  const links = async () => (await getStore().links.all(OWNER_ID));
+
+  it('looks at every visible document once more, and replaces the app\u2019s old suggestions that the model no longer holds, keeping what the owner confirmed and dismissed', async () => {
+    process.env.SPINE_LINKING = 'on';
+    const consult = await doc('Cardiology visit', 'consultation_note', '2026-03-02');
+    const lab = await doc('Blood count', 'lab_result', '2026-03-20');
+    const lipid = await doc('Lipid panel', 'lab_result', '2026-03-25');
+    const urine = await doc('Urine test', 'lab_result', '2026-04-01');
+    const store = getStore();
+    const at = '2026-05-01T00:00:00Z';
+    // an old suggestion (the model will no longer hold it), one the owner confirmed, and a pair the owner dismissed
+    await store.links.add(OWNER_ID, { from_document_id: consult.id, to_document_id: lab.id, kind: 'requests', source: 'auto', state: 'proposed', reason: null }, at);
+    await store.links.add(OWNER_ID, { from_document_id: consult.id, to_document_id: lipid.id, kind: 'requests', source: 'owner', state: 'confirmed', reason: null }, at);
+    await store.links.add(OWNER_ID, { from_document_id: consult.id, to_document_id: urine.id, kind: 'requests', source: 'auto', state: 'dismissed', reason: null }, at);
+
+    relation = null; // the judge says nothing is linked
+    const res = await search();
+    expect(res.statusCode).toBe(202);
+    expect(res.json()).toEqual({ searching: true, documents: 4 });
+    await settleLinking(OWNER_ID);
+    expect((await get('/api/episodes/search')).json()).toEqual({ searching: false });
+
+    const held = await links();
+    expect(held.some(l => l.state === 'proposed' && l.source === 'auto')).toBe(false); // the old suggestion is gone
+    expect(held.find(l => l.to_document_id === lipid.id)).toMatchObject({ state: 'confirmed', source: 'owner' });
+    expect(held.find(l => l.to_document_id === urine.id)).toMatchObject({ state: 'dismissed' });
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.flatMap(c => c.candidates).length).toBeGreaterThan(0);
+  });
+
+  it('proposes again what the model still holds, and never offers the dismissed pair', async () => {
+    process.env.SPINE_LINKING = 'on';
+    const { consult, lab } = await consultAndLab();
+    const urine = await doc('Urine test', 'lab_result', '2026-04-10');
+    await getStore().links.add(OWNER_ID, { from_document_id: consult.id, to_document_id: urine.id, kind: 'requests', source: 'auto', state: 'dismissed', reason: null }, '2026-05-01T00:00:00Z');
+    relation = 'same_episode'; // a relation that reads the same from both documents
+    expect((await search()).statusCode).toBe(202);
+    await settleLinking(OWNER_ID);
+    const held = await links();
+    expect(held.some(l => [l.from_document_id, l.to_document_id].includes(consult.id) && [l.from_document_id, l.to_document_id].includes(lab.id) && l.state === 'proposed')).toBe(true);
+    expect(held.filter(l => [l.from_document_id, l.to_document_id].includes(urine.id) && l.state !== 'dismissed')).toEqual([]);
+  });
+
+  it('asks the model about no document that has no candidate, so an archive of unrelated documents costs nothing', async () => {
+    process.env.SPINE_LINKING = 'on';
+    await doc('Old lab', 'lab_result', '2020-01-01');
+    await doc('Vaccine', 'vaccination', '2026-03-03');
+    expect((await search()).json()).toMatchObject({ searching: true, documents: 2 });
+    await settleLinking(OWNER_ID);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('only groups, and answers at once, where looking for links is off', async () => {
+    process.env.SPINE_LINKING = 'off';
+    await consultAndLab();
+    const res = await search();
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ searching: false, documents: 0 });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('is the owner\u2019s own: another account\u2019s documents are not looked at, and it needs a sign-in', async () => {
+    process.env.SPINE_LINKING = 'on';
+    await consultAndLab(otherId);
+    expect((await app.inject({ method: 'POST', url: '/api/episodes/search', payload: {} })).statusCode).toBe(401);
+    expect((await search()).json()).toMatchObject({ documents: 0 });
+  });
+});
+
 describe('a document held twice', () => {
   /** A consultation, the lab it asked for and a copy of that lab (scanned again), all of one clinic. */
   async function withCopy() {

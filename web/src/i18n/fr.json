@@ -904,10 +904,7 @@
  "dates {n} days apart": "dates à {n} jours d’écart",
  "Episodes": "Épisodes",
  "Episode": "Épisode",
- "Looking…": "Recherche…",
- "Look for episodes": "Chercher des épisodes",
  "New episode": "Nouvel épisode",
- "An episode groups documents that belong together, such as a visit and its tests. Spine suggests groups from the provider, the dates and the links between documents; it says nothing about the care. Nothing counts until you confirm it.": "Un épisode regroupe des documents qui vont ensemble, par exemple une consultation et ses examens. Spine propose des groupes d’après le prestataire, les dates et les liens entre documents ; il ne dit rien des soins. Rien ne compte tant que vous n’avez pas confirmé.",
  "Title (optional)": "Titre (facultatif)",
  "Create the episode": "Créer l’épisode",
  "{n} suggested episode|{n} suggested episodes": "{n} épisode proposé|{n} épisodes proposés",
@@ -1929,5 +1926,8 @@
   "pages read for you so far": "pages lues pour vous jusqu’ici",
   "questions answered about your records so far": "questions répondues sur vos documents jusqu’ici",
   "pages translated so far": "pages traduites jusqu’ici",
- "The screens, the mail Spine sends you, translations of your documents and new share links start in this language.": "Les écrans, les e-mails que Spine vous envoie, les traductions de vos documents et les nouveaux liens de partage démarrent dans cette langue."
+ "The screens, the mail Spine sends you, translations of your documents and new share links start in this language.": "Les écrans, les e-mails que Spine vous envoie, les traductions de vos documents et les nouveaux liens de partage démarrent dans cette langue.",
+ "Search again": "Chercher à nouveau",
+ "An episode groups documents that belong together, such as a visit and its tests. Spine suggests groups from the links between documents, a few weeks at most from one document to the next; it says nothing about the care. Nothing counts until you confirm it.": "Un épisode regroupe des documents qui vont ensemble, par exemple une consultation et ses examens. Spine suggère des groupes à partir des liens entre les documents, à quelques semaines au plus d’un document au suivant ; il ne dit rien des soins. Rien ne compte tant que vous ne confirmez pas.",
+ "Search again looks at every document for links once more (it uses AI) and then groups them. What you confirmed or dismissed stays.": "Chercher à nouveau examine encore une fois les liens de chaque document (utilise l’IA) puis les regroupe. Ce que vous avez confirmé ou écarté reste."
 }
