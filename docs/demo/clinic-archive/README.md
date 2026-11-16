@@ -6,7 +6,7 @@ It is for two things: to try the app on a believable archive, and to check that 
 
 ## Where it comes from
 
-Everything is generated from one script, so it is the same every time: `server/src/__integration__/support/clinic/specs.ts` holds what each document says (the text, the values, the dates, the doctor) and what is true of the archive, `render.ts` draws the pages, and `build.ts` writes the files and `manifest.json` here: `npm run demo-archive -w spine-server`. Because the values are known, the evaluation also checks what was read from each document against them (date, kind, provider, doctor, every numeric lab value and whether it was flagged).
+The files are not kept in the repository: they are generated, and the same every time, so there is nothing to commit or to go stale (the evaluation builds them in memory, and `npm run demo-archive -w spine-server` writes them here, with `manifest.json`, for trying them by hand). Everything is generated from one script: `server/src/__integration__/support/clinic/specs.ts` holds what each document says (the text, the values, the dates, the doctor) and what is true of the archive, `render.ts` draws the pages, and `build.ts` writes the files and `manifest.json`. Because the values are known, the evaluation also checks what was read from each document against them (date, kind, provider, doctor, every numeric lab value and whether it was flagged).
 
 ## The stories, and what makes them hard
 
