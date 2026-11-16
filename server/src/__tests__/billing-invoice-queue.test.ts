@@ -4,7 +4,7 @@ import { tmpdir } from 'os';
 import path from 'path';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { draftOf, MAX_ATTEMPTS, processInvoice, reverseRefunded, type InvoicingContext } from '../billing/invoicing/queue.js';
-import { InvoiceError, type InvoiceDraft, type InvoiceIssuer, type IssuedInvoice } from '../billing/invoicing/issuer.js';
+import { InvoiceError, type InvoiceDraft, type InvoiceIssuer, type IssuedInvoice } from 'spine-billing/invoicing/issuer.js';
 import type { Sale } from '../billing/provider.js';
 import { buildTestApp } from './helpers/app.js';
 

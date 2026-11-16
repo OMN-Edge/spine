@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readBillingConfig } from '../billing/config.js';
 import { readInvoicingConfig } from '../billing/invoicing/config.js';
-import { bnrRate, forgetRates, parseRates } from '../billing/invoicing/bnr.js';
+import { bnrRate, forgetRates, parseRates } from 'spine-billing/invoicing/bnr.js';
 
 /** The operator's invoicing settings: off unless named, only with Stripe, and every setting of the service named, the VAT said and never assumed. */
 const STRIPE = { SPINE_BILLING: 'on', SPINE_BILLING_PROVIDER: 'stripe', STRIPE_SECRET_KEY: 'sk_test_x', STRIPE_WEBHOOK_SECRET: 'whsec_x', SPINE_STRIPE_PRICE_YEAR: 'p1', SPINE_STRIPE_PRICE_MONTH: 'p2', SPINE_STRIPE_PRICE_FOUNDING: 'p3' };

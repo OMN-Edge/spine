@@ -3,9 +3,9 @@ import { buildTestApp, loginAs } from './helpers/app.js';
 import { OWNER_EMAIL, TEST_PASSWORD, createTestUser } from './helpers/seed.js';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { resetMailer, type Mailer, type MailMessage } from '../mail/index.js';
-import { hashUserToken } from '../user-tokens.js';
-import { issueUserToken } from '../accounts.js';
-import { verifyPassword } from '../passwords.js';
+import { hashUserToken } from '../identity/index.js';
+import { issueUserToken } from '../identity/index.js';
+import { verifyPassword } from '../identity/index.js';
 import { v4 as uuidv4 } from 'uuid';
 
 /**

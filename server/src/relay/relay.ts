@@ -6,7 +6,7 @@ import { LLM_TASKS, type LlmTask, type TaskClients } from 'spine-core/llm/tasks.
 import { LlmBlockedError } from 'spine-core/llm/types.js';
 import type { Embedder } from 'spine-core/embedding/types.js';
 import { EMBED_PATH, TASK_PATH, embedRequest, taskRequest, type StreamLine } from 'spine-core/relay/protocol.js';
-import type { RelayGate } from '../billing/gate.js';
+import type { RelayGate } from '../plans/gate.js';
 import type { RelayTask } from 'spine-core/billing/plans.js';
 import { verifyToken } from './token.js';
 
@@ -37,7 +37,7 @@ export interface RelayConfig {
   dailyDemoTotalCalls: number;
   /** Where the day's calls are counted: the `usage` repository of the store the relay is configured with (`getAccountsStore()`). */
   usage: UsageRepository;
-  /** Plans (`billing/gate.ts`): whether an account's plan includes a task and has allowance left, and what a call cost. Absent: no plans, only the daily counts. */
+  /** Plans (`plans/gate.ts`): whether an account's plan includes a task and has allowance left, and what a call cost. Absent: no plans, only the daily counts. */
   gate?: RelayGate;
   maxBodyBytes: number;
   /** The largest request a share's pass may send (default 512 KiB): a recipient's question or translation is small, and a count of calls is no bound on cost while their size is free (SECURITY.md S-49). */
@@ -220,7 +220,7 @@ export function createRelay(config: RelayConfig) {
     const declared = Number(req.headers['content-length']);
     if (Number.isFinite(declared) && declared > bodyLimit(who.userId)) return refuse(413, 'too large', 'too_large');
     if (!(await spend(who.userId))) return refuse(429, 'the daily allowance of model calls is used up');
-    // What the device says about the call for the plan's counts (billing/gate.ts): a random id for the piece of work it belongs to, how many pages
+    // What the device says about the call for the plan's counts (plans/gate.ts): a random id for the piece of work it belongs to, how many pages
     // it covers, and that it is part of an archive import. Shapes are checked; none is logged.
     const asked = String(req.headers['x-spine-work'] ?? '');
     const pagesSaid = Number(req.headers['x-spine-pages']);

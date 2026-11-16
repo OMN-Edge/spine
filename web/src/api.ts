@@ -717,6 +717,19 @@ export interface EmergencyView {
 export type DemoLanguage = 'en' | 'ro' | 'fr' | 'de';
 export const demoLanguageOf = (lang: string): DemoLanguage => (lang === 'ro' || lang === 'fr' || lang === 'de' ? lang : 'en');
 
+export interface CatalogView {
+  enabled: boolean;
+  provider?: string;
+  environment?: 'sandbox' | 'production';
+  canPublish?: boolean;
+  currency?: string;
+  adoptable?: number;
+  products?: Array<{
+    id: string; name: string; description: string | null; on_sale: boolean; in_step: boolean; periods: Array<'month' | 'year' | 'once'>;
+    prices: Array<{ period: 'month' | 'year' | 'once'; currency: string; amount_minor: number; version: number; sent: boolean; earlier: Array<{ version: number; amount_minor: number }> }>;
+  }>;
+}
+
 export const api = {
   emergency: {
     get: () => req<EmergencyView>('/api/emergency'),
@@ -770,7 +783,7 @@ export const api = {
     /** The settings the admin page changes: what applies, where it comes from, and whether this account may change them. */
     settings: () => req<{ settings: OperatorSetting[]; can_edit: boolean }>('/api/admin/settings'),
     setSetting: (key: string, value: number | null) => put<{ settings: OperatorSetting[] }>('/api/admin/settings', { key, value }),
-    /** The hidden fair-use ceilings, for an administrator only (the server's `billing/fair-use-admin.ts`). */
+    /** The hidden fair-use ceilings, for an administrator only (the server's `plans/fair-use-admin.ts`). */
     fairUse: () => req<{ sections: FairUseSection[] }>('/api/admin/fair-use'),
     setFairUse: (path: string, value: number | null) => put<{ sections: FairUseSection[] }>('/api/admin/fair-use', { path, value }),
     /** The invoices the operator owes: how many in each state, the ones that stopped and why, and the EU consumer sales against the yearly threshold (the server's `billing/invoicing/`). */
@@ -781,7 +794,7 @@ export const api = {
     }>('/api/admin/invoices'),
     /** Tries an invoice that stopped again, or settles it because it was made by hand. */
     mendInvoice: (ref: string, action: 'retry' | 'settle') => post<{ ok: boolean }>('/api/admin/invoices', { ref, action }),
-    /** Spine's own e-Factura link (the server's `billing/invoicing/efactura/`): whether ANAF has authorised it and until when, and the newest documents with ANAF's word on each. */
+    /** Spine's own e-Factura link (the server's `spine-anaf` package): whether ANAF has authorised it and until when, and the newest documents with ANAF's word on each. */
     efactura: () => req<{
       enabled: boolean; mode?: 'test' | 'prod'; series?: string; seller?: { name: string; cif: string };
       authorised?: boolean; accessExpiresAt?: string | null; refreshExpiresAt?: string | null;
@@ -796,6 +809,13 @@ export const api = {
     /** What each account with a subscription has (the plan, who bills it, its state and end), for an administrator only. */
     subscriptions: () => req<{ subscriptions: Array<{ email: string | null; plan: string; interval: string | null; provider: string; status: string; founding: boolean; until: string | null; ends: boolean }> }>('/api/admin/subscriptions'),
     decideWithdrawal: (id: string, action: 'refund' | 'decline', extra: { amount?: number; note?: string } = {}) => post<{ ok: boolean }>('/api/admin/withdrawals', { id, action, ...extra }),
+    /** What is sold (the server's `billing/products.ts`): each product with its prices as versions, whether each has been sent to the payment provider, and the prices named in the environment that are not yet in it. */
+    catalog: () => req<CatalogView>('/api/admin/catalog'),
+    saveProduct: (id: string, patch: { name?: string; description?: string | null; on_sale?: boolean }) => put<{ ok: boolean }>(`/api/admin/catalog/${encodeURIComponent(id)}`, patch),
+    setPrice: (id: string, period: string, amountMinor: number) => put<{ ok: boolean; version: number }>(`/api/admin/catalog/${encodeURIComponent(id)}/price`, { period, amount_minor: amountMinor }),
+    publishCatalog: () => post<{ reports: Array<{ product: string; state: 'in_step' | 'published' | 'failed'; message: string | null }> }>('/api/admin/catalog/publish', {}),
+    adoptCatalog: () => post<{ adopted: number }>('/api/admin/catalog/adopt', {}),
+    checkCatalog: () => post<{ differences: Array<{ product: string; period: string; currency: string; expectedMinor: number; foundMinor: number | null; message: string | null }> }>('/api/admin/catalog/check', {}),
     accounts: () => req<{ pending: Array<{ id: string; email: string; created_at: string; email_confirmed: boolean }> }>('/api/admin/accounts'),
     approve: (id: string) => post<{ ok: boolean }>(`/api/admin/accounts/${encodeURIComponent(id)}/approve`, {}),
     refuse: (id: string) => post<{ ok: boolean }>(`/api/admin/accounts/${encodeURIComponent(id)}/refuse`, {}),

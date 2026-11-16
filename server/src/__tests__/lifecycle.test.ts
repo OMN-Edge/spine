@@ -2,7 +2,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { buildTestApp } from './helpers/app.js';
 import { createTestUser } from './helpers/seed.js';
-import { issueUserToken } from '../accounts.js';
+import { issueUserToken } from '../identity/index.js';
 import { resetMailer, type Mailer, type MailMessage } from '../mail/index.js';
 import { nudgeMail, planThatFits, sendLifecycleMail, sendWelcome, trialEndsMail, unsubscribeToken, userOfUnsubscribeToken } from '../lifecycle.js';
 import { JOBS } from '../jobs.js';

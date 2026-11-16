@@ -2,9 +2,9 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { buildTestApp } from './helpers/app.js';
 import { createTestUser } from './helpers/seed.js';
-import { createRelayGate } from '../billing/gate.js';
-import { pagesAllowed } from '../billing/carry.js';
-import { standingOf } from '../billing/seat.js';
+import { createRelayGate } from '../plans/gate.js';
+import { pagesAllowed } from '../plans/carry.js';
+import { standingOf } from '../plans/seat.js';
 import { loginAs } from './helpers/app.js';
 
 const LONG_AGO = '2020-01-01T00:00:00.000Z';

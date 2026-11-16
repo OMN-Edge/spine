@@ -7,6 +7,7 @@ import AdminDashboardView from '../components/AdminDashboard';
 import AdminSettings from '../components/AdminSettings';
 import AdminFairUse from '../components/AdminFairUse';
 import AdminInvoices from '../components/AdminInvoices';
+import AdminCatalog from '../components/AdminCatalog';
 import AdminEfactura from '../components/AdminEfactura';
 import AdminWithdrawals from '../components/AdminWithdrawals';
 import AdminSubscriptions from '../components/AdminSubscriptions';
@@ -27,6 +28,7 @@ export default function Admin() {
   const menu = [
     { to: '/admin', label: t('Overview') },
     { to: '/admin/subscriptions', label: t('Subscriptions') },
+    { to: '/admin/products', label: t('Products') },
     { to: '/admin/invoices', label: t('Invoices') },
     { to: '/admin/accounts', label: t('Accounts') },
     { to: '/admin/settings', label: t('Settings') },
@@ -82,6 +84,7 @@ export default function Admin() {
           <Routes>
             <Route index element={<AdminDashboardView data={data} />} />
             <Route path="subscriptions" element={<><AdminSubscriptions /><div className="mt-14"><AdminWithdrawals /></div></>} />
+            <Route path="products" element={<AdminCatalog />} />
             <Route path="invoices" element={<><AdminInvoices /><div className="mt-14"><AdminEfactura /></div></>} />
             <Route path="accounts" element={<AdminAccounts />} />
             <Route path="settings" element={<><AdminSettings onChanged={() => void reload()} /><div className="mt-14"><AdminFairUse /></div></>} />

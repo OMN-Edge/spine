@@ -257,7 +257,7 @@ describe('ended sign-ins are deleted for every account', () => {
     await loginAs(app);
     const store = getAccountsStore();
     await store.sessions.open(OWNER_ID, { id: 'old-browser', at: new Date(Date.now() - 20 * 86_400_000).toISOString(), userAgent: 'x', address: '203.0.113.9' });
-    const { sweepSessions } = await import('../sessions.js');
+    const { sweepSessions } = await import('../identity/index.js');
     expect(await sweepSessions()).toBeGreaterThanOrEqual(1);
     const left = (await store.sessions.list(OWNER_ID)).map(s => s.id);
     expect(left).not.toContain('old-browser');
@@ -269,7 +269,7 @@ describe('ended sign-ins are deleted for every account', () => {
     const now = new Date();
     await store.sessions.rememberDevice(OWNER_ID, 'hash-of-an-old-browser', new Date(now.getTime() - 400 * 86_400_000).toISOString());
     await store.sessions.rememberDevice(OWNER_ID, 'hash-of-a-recent-browser', new Date(now.getTime() - 30 * 86_400_000).toISOString());
-    const { sweepSessions } = await import('../sessions.js');
+    const { sweepSessions } = await import('../identity/index.js');
     await sweepSessions(now);
     // A browser the account still remembers is 'known' on the next sign-in; one it forgot is 'new' again.
     expect(await store.sessions.rememberDevice(OWNER_ID, 'hash-of-a-recent-browser', now.toISOString())).toBe('known');

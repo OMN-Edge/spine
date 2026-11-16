@@ -38,7 +38,7 @@ export const SEAT_INVITES_WAITING = 10;
  * so `messages` and `translated` are counted (the account page shows them) and have no allowance. Behind them are hidden fair-use ceilings, high
  * enough that no use of an archive meets them and low enough that an abuse of an account, or an app that does not tell the truth about what it
  * sends, cannot make a plan pay for more than a bounded amount; they are not here, and not in what a browser is sent: the server holds them in its
- * configuration (`server/src/billing/fair-use.ts`). The cost meters (`reading`, `chat`, `translation`, in thousandths of one page of reading, the unit
+ * configuration (`server/src/plans/fair-use.ts`). The cost meters (`reading`, `chat`, `translation`, in thousandths of one page of reading, the unit
  * of `taskCost`) are what they are counted in.
  */
 export type Count = 'pages' | 'messages' | 'translated' | 'import';
@@ -61,7 +61,7 @@ export interface Entitlements {
   memberCap: Allowances | null;
   /** `trial`: reading once, for the whole trial; `month`: a calendar month (UTC). Chat and translation are always by the month. */
   aiPeriod: 'trial' | 'month';
-  /** How many months of the page allowance can be kept: what a month does not use carries into the next, up to this many months' worth (`billing/carry.ts`). One: nothing carries. */
+  /** How many months of the page allowance can be kept: what a month does not use carries into the next, up to this many months' worth (`plans/carry.ts`). One: nothing carries. */
   carryMonths: number;
   /** Bytes of sealed objects an account may keep (on a plan with seats, all its accounts together), or null for the instance's own ceiling (`vaultLimits`); never above that ceiling. */
   vaultBytes: number | null;

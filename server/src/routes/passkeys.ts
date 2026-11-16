@@ -2,13 +2,13 @@ import type { FastifyInstance } from 'fastify';
 import { generateAuthenticationOptions, generateRegistrationOptions, verifyAuthenticationResponse, verifyRegistrationResponse } from '@simplewebauthn/server';
 import type { AuthenticationResponseJSON, AuthenticatorTransport, RegistrationResponseJSON } from '@simplewebauthn/server';
 import { getAccountsStore } from 'spine-core/store/index.js';
-import { relyingParty } from '../passkeys.js';
-import { mailAfter, newSignInMail, securityChangeMail } from '../notify.js';
-import { startSession } from '../sessions.js';
+import { relyingParty } from '../identity/index.js';
+import { mailAfter, newSignInMail, securityChangeMail } from '../identity/index.js';
+import { startSession } from '../identity/index.js';
 import { windowLimiter } from '../rate-limit.js';
 import { sealed } from '../vault-keys.js';
 import { requireAuth, requireRecentAuth } from 'spine-core/routes/middleware.js';
-import { maySignIn, type SessionData } from '../session-auth.js';
+import { maySignIn, type SessionData } from '../identity/index.js';
 import { PENDING_LOGIN_MS } from './auth.js';
 
 /**

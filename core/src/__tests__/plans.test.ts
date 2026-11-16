@@ -140,7 +140,7 @@ describe('the meters', () => {
     expect(PLANS.premium.allowance).toMatchObject({ pages: 30, import: IMPORT_PAGES, messages: Infinity, translated: Infinity, reading: Infinity, chat: Infinity, translation: Infinity });
     expect(PLANS.free).toMatchObject({ chat: false, translation: false });
     expect(PLANS.free.allowance).toMatchObject({ pages: 3, messages: 0, translated: 0 });
-    // The hidden fair-use ceilings are the server's configuration (`server/src/billing/fair-use.ts`); none is in what the browser bundles.
+    // The hidden fair-use ceilings are the server's configuration (`server/src/plans/fair-use.ts`); none is in what the browser bundles.
     expect(readFileSync(new URL('../billing/plans.ts', import.meta.url), 'utf8')).not.toMatch(/CEILING|FAIR_USE|BACKSTOP/);
   });
 });

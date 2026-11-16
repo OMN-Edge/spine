@@ -4,7 +4,7 @@ import { parseSender } from '../mail/adapters/brevo.js';
 import { MailerConfigError, MailerDisabledError } from '../mail/types.js';
 import { publicUrl, ConfigError } from 'spine-core/config.js';
 import { loadConfig, loadMailConfig, loadRegistrationMode } from '../config.js';
-import { resetMail, verificationMail } from '../accounts.js';
+import { resetMail, verificationMail } from '../identity/index.js';
 
 describe('createMailer — the registry', () => {
   it('lists the adapters that exist', () => {

@@ -6,21 +6,30 @@ import { COUNTS, FOUNDING_LIMIT, linkKey, meterKey, subscriptionEntitles, trialE
 import { loadBillingConfig } from '../billing/config.js';
 import { loadPrices } from '../billing/catalog.js';
 import { billingProvider, MANAGE_ACTIONS, type Buyer, type ManageAction } from '../billing/provider.js';
-import { addonOfPrices, applyProviderEvent, type Outcome } from '../billing/events.js';
-import { vaultBytesFor, liveSharesFor } from '../billing/entitlements.js';
-import { importGrant, pagesAllowed } from '../billing/carry.js';
-import { TOTALS, totalKey } from '../billing/totals.js';
-import { standingOf } from '../billing/seat.js';
-import { inviteToken, MAX_REWARDED, BONUS_PAGES } from '../billing/invitations.js';
+import { applyProviderEvent, type Outcome } from 'spine-billing/events.js';
+import { plansFor } from '../plans/mapping.js';
+import { withCatalog } from '../plans/products.js';
+import { vaultBytesFor, liveSharesFor } from '../plans/entitlements.js';
+import { importGrant, pagesAllowed } from '../plans/carry.js';
+import { TOTALS, totalKey } from '../plans/totals.js';
+import { standingOf } from '../plans/seat.js';
+import { inviteToken, MAX_REWARDED, BONUS_PAGES } from '../plans/invitations.js';
 import { billingDetailsSchema } from 'spine-core/billing/billing-details.js';
 import { loadInvoicingConfig } from '../billing/invoicing/config.js';
 import { contextFromSettings, efacturaFromSettings, invoiceNewPayment, reverseRefunded } from '../billing/invoicing/queue.js';
-import { linkIsValid, PDF_PATH } from '../billing/invoicing/efactura/index.js';
+import { linkIsValid } from 'spine-anaf/index.js';
+import { PDF_PATH } from 'spine-billing/invoicing/efactura.js';
 import { alertOperator } from '../billing/invoicing/alert.js';
 import { withdrawalReceivedMail } from '../billing/withdrawal-mail.js';
 import { getMailer } from '../mail/index.js';
 import { randomUUID } from 'node:crypto';
-import { grantOnce, mayBuy, topupLeft, type Addon } from '../billing/addons.js';
+import { grantOnce, mayBuy, topupLeft, type Addon } from '../plans/addons.js';
+
+/** The billing configuration with the catalog's prices in place of the environment's where it has them (`plans/products.ts`): what the pricing page shows and a checkout charges. */
+async function pricesConfig(): Promise<ReturnType<typeof loadBillingConfig>> {
+  const config = loadBillingConfig();
+  return config.enabled ? withCatalog(config) : config;
+}
 
 const day = (now = new Date()) => now.toISOString().slice(0, 10);
 
@@ -60,7 +69,7 @@ function needsDetails(config: ReturnType<typeof loadBillingConfig>): boolean {
 export async function billingRoutes(app: FastifyInstance) {
   // What the pricing page shows, before an account exists: the prices and how many founding places are left.
   app.get('/api/pricing', async (_req, reply) => {
-    const config = loadBillingConfig();
+    const config = await pricesConfig();
     if (!config.enabled) return reply.header('Cache-Control', 'no-store').send({ enabled: false });
     const held = await getAccountsStore().billing.foundingHeld();
     return reply.header('Cache-Control', 'public, max-age=60').send({ enabled: true, prices: await loadPrices(config), essential: !!config.essential, family: !!config.family, founding_left: Math.max(0, FOUNDING_LIMIT - held) });
@@ -68,7 +77,7 @@ export async function billingRoutes(app: FastifyInstance) {
 
   // The signed-in account's plan, what it has used and what it can change.
   app.get('/api/billing', { preHandler: requireAuth }, async (req, reply) => {
-    const config = loadBillingConfig();
+    const config = await pricesConfig();
     if (!config.enabled) return reply.header('Cache-Control', 'no-store').send({ enabled: false });
     const store = getAccountsStore();
     const user = await store.users.findById(req.userId);
@@ -85,7 +94,7 @@ export async function billingRoutes(app: FastifyInstance) {
     const read = async (meter: Count) => {
       const own = await store.usage.aiUsed(req.userId, meterKey(meter, e, now));
       const plan = pooled ? await store.usage.aiUsed(standing.holder, meterKey(meter, e, now, true)) : own;
-      // The one-off import is for a yearly plan only (`billing/carry.ts`): a monthly plan shows none.
+      // The one-off import is for a yearly plan only (`plans/carry.ts`): a monthly plan shows none.
       const grant = (n: number) => (meter === 'import' ? importGrant(n, standing.subscription?.interval ?? null) : n);
       const cap = e.memberCap ? finite(grant(e.memberCap[meter])) : null;
       // The pages carry from month to month on a paid plan: the allowance is what can be added by the end of this month, and `monthly` what each month adds.
@@ -99,7 +108,7 @@ export async function billingRoutes(app: FastifyInstance) {
         ...(ownCap !== null ? { own_used: own, own_cap: ownCap } : {}),
       };
     };
-    // What links send, and what the owner's own devices read: the plan's views and bytes of the month (billing/links.ts).
+    // What links send, and what the owner's own devices read: the plan's views and bytes of the month (plans/links.ts).
     const linkUse = async (what: 'views' | 'egress') => store.usage.aiUsed(pooled ? standing.holder : req.userId, linkKey(what, now, pooled));
     const totals = Object.fromEntries(await Promise.all(TOTALS.map(async c => [c, await store.usage.aiUsed(req.userId, totalKey(c))] as const)));
     const topup = await topupLeft(store, req.userId);
@@ -251,7 +260,7 @@ export async function billingRoutes(app: FastifyInstance) {
 
   // Starts a purchase: a transaction at the provider for the price the account is offered, and where to send the person to pay it.
   app.post<{ Body: { interval?: unknown; plan?: unknown; addon?: unknown } }>('/api/billing/checkout', { preHandler: requireAuth, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
-    const config = loadBillingConfig();
+    const config = await pricesConfig();
     if (!config.enabled) return reply.status(404).send({ error: 'this instance has no plans' });
     const wanted = req.body?.addon;
     if (wanted !== undefined) {
@@ -338,7 +347,8 @@ export async function billingRoutes(app: FastifyInstance) {
         return reply.send({ ok: true });
       }
       // What is bought once is not a subscription's message: it is applied once per transaction, and nothing else about the account changes.
-      const addon = event.kind === 'payment' ? addonOfPrices(event.priceIds, config) : null;
+      const plans = await plansFor(config);
+      const addon = event.kind === 'payment' ? plans.addonOf(event.priceIds) : null;
       if (addon && event.kind === 'payment') {
         const buyer = event.userId;
         if (!buyer || !event.transactionId || !(await store.users.findById(buyer))) return reply.send({ ok: true });
@@ -350,7 +360,7 @@ export async function billingRoutes(app: FastifyInstance) {
         if (granted) { await store.metrics.bump(`addon_${addon}`, day()); await store.metrics.bump('paid_event', day()); }
         return reply.send({ ok: true });
       }
-      const outcome = await applyProviderEvent(provider.id, event, config).catch(err => {
+      const outcome = await applyProviderEvent(provider.id, event, plans).catch(err => {
         logger.error('a payment event could not be applied', { type: event.kind, reason: err instanceof Error ? err.message : String(err) });
         return 'unresolved' as Outcome;
       });

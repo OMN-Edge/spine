@@ -2,7 +2,7 @@ import type { AccountsStore, StoreConfig } from '../types.js';
 import { accountsSchema } from './schema-accounts.js';
 import type { PgPool, PgQueryable } from './pool.js';
 import type { Begin, Query } from './query.js';
-import { billingRepository, metricsRepository, settingsRepository, waitlistRepository } from './billing.js';
+import { billingRepository, catalogRepository, metricsRepository, settingsRepository, waitlistRepository } from './billing.js';
 import { maintenanceRepository } from './maintenance.js';
 import { sharedRepository } from './shared.js';
 import { delegationRepository } from './delegations.js';
@@ -79,6 +79,7 @@ function accountsOver(q: Query, begin: Begin): Omit<AccountsStore, 'close'> {
     metrics: metricsRepository(q),
     waitlist: waitlistRepository(q),
     settings: settingsRepository(q),
+    catalog: catalogRepository(q),
     delegations: delegationRepository(q, begin),
     family: familyRepository(q, begin),
     reminderDates: reminderDateRepository(q, begin),

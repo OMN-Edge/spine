@@ -1,4 +1,4 @@
-import type { BillingRepository, EfacturaDocument, EfacturaDocumentPatch, EfacturaTokens, InvoicePatch, InvoiceState, QueuedInvoice, WithdrawalRecord, MetricsRepository, OperatorSettingsRepository, SubscriptionRecord, WaitlistRepository } from '../types.js';
+import type { BillingRepository, CatalogLink, CatalogPrice, CatalogProduct, CatalogRepository, EfacturaDocument, EfacturaDocumentPatch, EfacturaTokens, InvoicePatch, InvoiceState, QueuedInvoice, WithdrawalRecord, MetricsRepository, OperatorSettingsRepository, SubscriptionRecord, WaitlistRepository } from '../types.js';
 import { changed, many, one, type Begin, type Query } from './query.js';
 
 const COLUMNS = 'user_id, provider, customer_id, subscription_id, billing_interval, plan, status, founding, current_period_end, cancel_scheduled, updated_at';
@@ -172,5 +172,29 @@ export function settingsRepository(q: Query): OperatorSettingsRepository {
     async all() { return many<{ key: string; value: string; updated_at: string }>(q, 'SELECT key, value, updated_at FROM operator_settings ORDER BY key'); },
     async set(key, value, at) { await q('INSERT INTO operator_settings (key, value, updated_at) VALUES ($1, $2, $3) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at', [key, value, at]); },
     async clear(key) { await q('DELETE FROM operator_settings WHERE key = $1', [key]); },
+  };
+}
+
+export function catalogRepository(q: Query): CatalogRepository {
+  const PRICE = 'id, product_id, period, currency, amount_minor, version, created_at';
+  return {
+    async products() { return many<CatalogProduct>(q, 'SELECT id, name, description, on_sale, updated_at FROM catalog_products ORDER BY id'); },
+    async saveProduct(p, at) {
+      await q('INSERT INTO catalog_products (id, name, description, on_sale, updated_at) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO UPDATE SET name = excluded.name, description = excluded.description, on_sale = excluded.on_sale, updated_at = excluded.updated_at',
+        [p.id, p.name, p.description, p.on_sale, at]);
+    },
+    async prices() { return (await many<CatalogPrice>(q, `SELECT ${PRICE} FROM catalog_prices ORDER BY created_at, version, id`)).map(r => ({ ...r, amount_minor: Number(r.amount_minor), version: Number(r.version) })); },
+    async addPrice(p, at) {
+      const row = (await one<CatalogPrice>(q, `INSERT INTO catalog_prices (id, product_id, period, currency, amount_minor, version, created_at)
+        SELECT $1 || ':' || $2 || ':' || $3 || ':' || (COALESCE(MAX(version), 0) + 1), $1, $2, $3, $4, COALESCE(MAX(version), 0) + 1, $5 FROM catalog_prices WHERE product_id = $1 AND period = $2 AND currency = $3
+        RETURNING ${PRICE}`, [p.product_id, p.period, p.currency, p.amount_minor, at]))!;
+      return { ...row, amount_minor: Number(row.amount_minor), version: Number(row.version) };
+    },
+    async links(provider) { return many<CatalogLink>(q, 'SELECT price_id, provider, provider_product_id, provider_price_id, synced_at, archived_at FROM catalog_links WHERE provider = $1 ORDER BY price_id', [provider]); },
+    async saveLink(l) {
+      await q('INSERT INTO catalog_links (price_id, provider, provider_product_id, provider_price_id, synced_at, archived_at) VALUES ($1, $2, $3, $4, $5, NULL) ON CONFLICT (price_id, provider) DO UPDATE SET provider_product_id = excluded.provider_product_id, provider_price_id = excluded.provider_price_id, synced_at = excluded.synced_at',
+        [l.price_id, l.provider, l.provider_product_id, l.provider_price_id, l.synced_at]);
+    },
+    async archiveLink(priceId, provider, at) { await q('UPDATE catalog_links SET archived_at = $1 WHERE price_id = $2 AND provider = $3 AND archived_at IS NULL', [at, priceId, provider]); },
   };
 }

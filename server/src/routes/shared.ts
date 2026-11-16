@@ -4,7 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { sharedLimits } from '../config.js';
-import { accountEntitlements, liveSharesFor } from '../billing/entitlements.js';
+import { accountEntitlements, liveSharesFor } from '../plans/entitlements.js';
 import { BLOB_NAME, SHARE_ID, blobNames, readBlob, removeBlob, removeBlobs, removeShare, streamBlob, streamBundle, writeBlob, writeBundle } from '../shared-files.js';
 import { readSlots } from '../read-slots.js';
 import { readBudget } from '../read-budget.js';
@@ -14,14 +14,14 @@ import { spaceFor } from '../disk-space.js';
 const MAX_BLOBS = 10_000;
 import { requireAuth } from 'spine-core/routes/middleware.js';
 import { countryOf } from '../geo.js';
-import { accessRequestMail, cardOpenedMail, cardReviewMail } from '../accounts.js';
+import { accessRequestMail, cardOpenedMail, cardReviewMail } from '../identity/index.js';
 import { getMailer } from '../mail/index.js';
 import { publicUrl } from 'spine-core/config.js';
 import { issueToken } from '../relay/token.js';
 import { relaySettings, relayEnv } from './relay.js';
 import { windowLimiter } from '../rate-limit.js';
 import { logger } from 'spine-core/logger.js';
-import { chargeLink, linksRefuse } from '../billing/links.js';
+import { chargeLink, linksRefuse } from '../plans/links.js';
 
 /** What a link answers when its owner's plan has used up the month's views or bytes. */
 const LINK_LIMIT = { error: 'this link has reached its limit for the month; it opens again next month', code: 'link_limit' } as const;
@@ -134,7 +134,7 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
       release();
       return reply.status(429).send({ error: 'this has been read a great deal from here; try again later', code: 'read_budget' });
     }
-    // What a link sends is counted against the owner's plan (`billing/links.ts`), as it starts: a read that is cut short still cost what it sent.
+    // What a link sends is counted against the owner's plan (`plans/links.ts`), as it starts: a read that is cut short still cost what it sent.
     if (counted) await chargeLink(counted.userId, opened.size, counted.view).catch(() => undefined);
     opened.body.once('close', release);
     opened.body.on('error', err => req.log.error({ err }, 'a sealed copy could not be read to the end'));
@@ -314,7 +314,7 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
 
   // ── The public ───────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-  // The plan's views and bytes for a month (billing/links.ts): past them a link stays live and refuses its readers until the next month; a card never.
+  // The plan's views and bytes for a month (plans/links.ts): past them a link stays live and refuses its readers until the next month; a card never.
   const limited = async (bundle: { kind: string; userId: string }) => (bundle.kind === 'share' ? await linksRefuse(bundle.userId) : null);
 
   const read = { config: { rateLimit: opts.readPerSource ?? { max: 60, timeWindow: '1 minute' } } };

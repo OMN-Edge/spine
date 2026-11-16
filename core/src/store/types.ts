@@ -57,8 +57,8 @@ import type {
  *  8. `billing.findBySubscription`/`findByCustomer`/`recordEvent`/`pruneEvents`/`foundingHeld`/`subscriptions` (the operator's list of what accounts pay for) and the invoice queue (`queueInvoice`, `invoicesDue`, `invoice`, `updateInvoice`) — the payment provider's side (SECURITY.md **M-45**):
  *     a webhook names the provider's own ids, which the server recorded when it first heard of them, and the count of founding prices is of
  *     all accounts. Nothing here answers more than a plan.
- *  9. `metrics.*`, `waitlist.*` and `settings.*` — counts a day under a name, addresses of people who are not accounts, and the few settings
- *     the operator changes from the admin page (targets, budgets): none of them belongs to a user.
+ *  9. `metrics.*`, `waitlist.*`, `settings.*` and `catalog.*` — counts a day under a name, addresses of people who are not accounts, the few settings
+ *     the operator changes from the admin page (targets, budgets), and the products and prices the operator sells: none of them belongs to a user.
  */
 /**
  * What the server keeps: accounts, sessions, the vault's sealed objects and the sealed copies of shares (SECURITY.md **M-37**). It is a
@@ -78,6 +78,7 @@ export interface AccountsStore {
   metrics: MetricsRepository;
   waitlist: WaitlistRepository;
   settings: OperatorSettingsRepository;
+  catalog: CatalogRepository;
   delegations: DelegationRepository;
   family: FamilyRepository;
   reminderDates: ReminderDateRepository;
@@ -976,7 +977,7 @@ export interface BillingRepository {
   updateInvoice(ref: string, patch: InvoicePatch, at: string): Promise<void>;
 
   /**
-   * What the operator's own e-Factura link keeps (`billing/invoicing/efactura/`): the sealed authorisation ANAF gave (only the operator's, never an account's), the numbered
+   * What the operator's own e-Factura link keeps (`packages/anaf/`): the sealed authorisation ANAF gave (only the operator's, never an account's), the numbered
    * documents it made, and the number each series has reached. None of these is about one account, so none takes a user.
    */
   efacturaTokens(): Promise<EfacturaTokens | null>;
@@ -1180,6 +1181,29 @@ export interface OperatorSettingsRepository {
   set(key: string, value: string, at: string): Promise<void>;
   /** Forgets a setting, so its default applies again. */
   clear(key: string): Promise<void>;
+}
+
+/** A thing the operator sells, as the application declared it (its `id`) and the operator named it. */
+export interface CatalogProduct { id: string; name: string; description: string | null; on_sale: number; updated_at: string }
+/** One price of a product: an amount in minor units for a billing period (`once` for a thing bought once) in a currency, as a numbered version. A version is never changed. */
+export interface CatalogPrice { id: string; product_id: string; period: 'month' | 'year' | 'once'; currency: string; amount_minor: number; version: number; created_at: string }
+/** What a provider calls a price: where a version was sent, and when it was taken off sale there (`archived_at`; the provider keeps it for the subscribers who bought it). */
+export interface CatalogLink { price_id: string; provider: string; provider_product_id: string; provider_price_id: string; synced_at: string; archived_at: string | null }
+
+/** The operator's product catalog (`packages/billing/src/products.ts`): none of it belongs to a user. */
+export interface CatalogRepository {
+  products(): Promise<CatalogProduct[]>;
+  /** Makes the product or changes what the operator may edit (name, description, whether it is on sale). */
+  saveProduct(product: Omit<CatalogProduct, 'updated_at'>, at: string): Promise<void>;
+  /** Every version of every price, oldest first. */
+  prices(): Promise<CatalogPrice[]>;
+  /** The next version of a price, made in one transaction so two writers do not make the same number. */
+  addPrice(price: Pick<CatalogPrice, 'product_id' | 'period' | 'currency' | 'amount_minor'>, at: string): Promise<CatalogPrice>;
+  links(provider: string): Promise<CatalogLink[]>;
+  /** Records where a version is at a provider (made, or found there again). */
+  saveLink(link: Omit<CatalogLink, 'archived_at'>): Promise<void>;
+  /** Records that a version was taken off sale at the provider. */
+  archiveLink(priceId: string, provider: string, at: string): Promise<void>;
 }
 
 /** People who asked to be told when Spine opens. Not accounts: an address and a time. */

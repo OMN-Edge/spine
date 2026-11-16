@@ -21,7 +21,7 @@ export type BillingConfig =
       essential: { year: string; month: string } | null;
       /** The family plan's two prices, when the operator sells it (both or neither). */
       family: { year: string; month: string } | null;
-      /** The thing bought once, by its own price when the operator sells it (`billing/addons.ts`). */
+      /** The thing bought once, by its own price when the operator sells it (`plans/addons.ts`). */
       addons: { pageTopup: string | null };
       /** The address of the page that opens Paddle's checkout: an origin of its own, so the provider's script never runs where the vault is. Stripe's checkout is Stripe's own page: none. */
       checkoutUrl: string | null;

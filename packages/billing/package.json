@@ -1,0 +1,30 @@
+{
+  "name": "spine-billing",
+  "version": "0.1.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "description": "What an application that is paid by a provider needs: the provider's adapters (Stripe, Paddle), its messages applied to an account, the product catalog and its sync, withdrawals, and the invoices issued for payments (Billyou, or e-Factura through spine-anaf). Names no plan and nothing of Spine's.",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    "./*.js": {
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^5.5.0",
+    "vitest": "^5.0.5"
+  },
+  "dependencies": {
+    "spine-anaf": "*"
+  }
+}

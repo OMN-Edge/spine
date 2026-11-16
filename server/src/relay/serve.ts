@@ -4,7 +4,7 @@ import { createTaskClients, type TaskClients } from 'spine-core/llm/index.js';
 import { getEmbedder } from 'spine-core/embedding/index.js';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { billingOn } from '../billing/config.js';
-import { createRelayGate } from '../billing/gate.js';
+import { createRelayGate } from '../plans/gate.js';
 import { createRelay } from './relay.js';
 import { MIN_SECRET_LENGTH } from './token.js';
 

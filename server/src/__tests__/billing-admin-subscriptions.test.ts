@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { meterKey } from 'spine-core/billing/plans.js';
-import { standingOf } from '../billing/seat.js';
+import { standingOf } from '../plans/seat.js';
 import { buildTestApp, loginAs } from './helpers/app.js';
 import { createTestUser, TEST_PASSWORD } from './helpers/seed.js';
 

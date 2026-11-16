@@ -4,9 +4,9 @@ import { getAccountsStore } from 'spine-core/store/index.js';
 import { PAGE, PLANS, SEAT_COOLDOWN_DAYS } from 'spine-core/billing/plans.js';
 import { buildTestApp, loginAs } from './helpers/app.js';
 import { createTestUser } from './helpers/seed.js';
-import { topupLeft } from '../billing/addons.js';
-import { createRelayGate } from '../billing/gate.js';
-import { accountEntitlements, liveSharesFor, vaultBytesFor } from '../billing/entitlements.js';
+import { topupLeft } from '../plans/addons.js';
+import { createRelayGate } from '../plans/gate.js';
+import { accountEntitlements, liveSharesFor, vaultBytesFor } from '../plans/entitlements.js';
 import { fakeAuthValue, fakeVaultKeys } from 'spine-core/testing/vault.js';
 
 const LONG_AGO = '2020-01-01T00:00:00.000Z';

@@ -3,7 +3,8 @@ import { createHmac } from 'node:crypto';
 import { useSettings } from 'spine-core/config.js';
 import { readBillingConfig } from '../billing/config.js';
 import { billingProvider, type Enabled } from '../billing/provider.js';
-import { STRIPE_VERSION, verifySignature, withdrawalConsent } from '../billing/providers/stripe.js';
+import { STRIPE_VERSION, verifySignature } from 'spine-billing/providers/stripe.js';
+import { withdrawalConsent } from '../billing/provider.js';
 
 /**
  * What is particular to Stripe, on top of what every adapter does (`billing-provider.test.ts`): how a delivery is signed, how Stripe's statuses and the end
@@ -213,10 +214,10 @@ describe('opening the portal', () => {
 
 describe('reading a price', () => {
   it('gives the amount in the major unit, the currency and how often it repeats', async () => {
-    stripeApi({ json: { id: 'pri_year', active: true, unit_amount: 2490, currency: 'eur', recurring: { interval: 'year' } } });
-    expect(await provider.readPrice('pri_year')).toEqual({ amount: 24.9, currency: 'EUR', interval: 'year' });
+    stripeApi({ json: { id: 'pri_year', active: true, unit_amount: 2490, currency: 'eur', recurring: { interval: 'year' }, product: 'prod_main' } });
+    expect(await provider.readPrice('pri_year')).toEqual({ amount: 24.9, currency: 'EUR', interval: 'year', productId: 'prod_main' });
     stripeApi({ json: { id: 'pri_topup', active: true, unit_amount: 1999, currency: 'eur', recurring: null } });
-    expect(await provider.readPrice('pri_topup')).toEqual({ amount: 19.99, currency: 'EUR', interval: null });
+    expect(await provider.readPrice('pri_topup')).toEqual({ amount: 19.99, currency: 'EUR', interval: null, productId: null });
     stripeApi({ json: { id: 'pri_yen', active: true, unit_amount: 500, currency: 'jpy', recurring: null } });
     expect(await provider.readPrice('pri_yen')).toMatchObject({ amount: 500, currency: 'JPY' });
   });
@@ -420,5 +421,63 @@ describe('a withdrawal paid back', () => {
     expect(calls).toHaveLength(3);
     stripeApi({ json: { data: [] } });
     await expect(provider.withdraw({ subscriptionId: 'sub_1', amountMinor: null, key: 'withdrawal:w4' })).rejects.toThrow(/no payment/);
+  });
+});
+
+describe('the catalog sent to Stripe', () => {
+  const catalog = provider.catalog!;
+  const missing = { status: 404, json: { error: { code: 'resource_missing' } } };
+
+  it('makes a product under an id of its own when Stripe has none, so asking again finds it', async () => {
+    const calls = stripeApi(missing, { json: { id: 'app_premium', name: 'Premium' } });
+    expect(await catalog.ensureProduct({ key: 'app_premium', name: 'Premium', description: 'All of it' })).toBe('app_premium');
+    expect(calls.map(c => `${c.method} ${new URL(c.url).pathname}`)).toEqual(['GET /v1/products/app_premium', 'POST /v1/products']);
+    expect(Object.fromEntries(calls[1]!.form)).toEqual({ id: 'app_premium', name: 'Premium', description: 'All of it' });
+    expect(calls[1]!.headers['idempotency-key']).toBe('catalog:product:app_premium');
+  });
+
+  it('leaves a product alone that is the same, and corrects a name or description that is not', async () => {
+    const same = stripeApi({ json: { id: 'app_premium', name: 'Premium', description: 'All of it' } });
+    await catalog.ensureProduct({ key: 'app_premium', name: 'Premium', description: 'All of it' });
+    expect(same).toHaveLength(1);
+    const changed = stripeApi({ json: { id: 'app_premium', name: 'Old', description: null } }, { json: { id: 'app_premium' } });
+    await catalog.ensureProduct({ key: 'app_premium', name: 'Premium', description: null });
+    expect(changed.map(c => c.method)).toEqual(['GET', 'POST']);
+    expect(Object.fromEntries(changed[1]!.form)).toEqual({ name: 'Premium', description: '' });
+  });
+
+  it('makes a price with its lookup key, tax included and repeating as the period says, and a thing bought once with no repeat', async () => {
+    const calls = stripeApi({ json: { data: [] } }, { json: { id: 'price_new' } }, { json: { data: [] } }, { json: { id: 'price_once' } });
+    expect(await catalog.ensurePrice({ key: 'app_premium_year_eur_v1', productId: 'app_premium', period: 'year', currency: 'EUR', amountMinor: 2490 })).toBe('price_new');
+    expect(new URL(calls[0]!.url).searchParams.get('lookup_keys[]')).toBe('app_premium_year_eur_v1');
+    expect(Object.fromEntries(calls[1]!.form)).toEqual({ product: 'app_premium', currency: 'eur', unit_amount: '2490', lookup_key: 'app_premium_year_eur_v1', tax_behavior: 'inclusive', 'recurring[interval]': 'year' });
+    await catalog.ensurePrice({ key: 'app_topup_once_eur_v1', productId: 'app_topup', period: 'once', currency: 'EUR', amountMinor: 1999 });
+    expect(calls[3]!.form.has('recurring[interval]')).toBe(false);
+  });
+
+  it('finds a price already made under the key and makes nothing, but refuses one under it that is not this price', async () => {
+    const found = stripeApi({ json: { data: [{ id: 'price_have', unit_amount: 2490, currency: 'eur', product: 'app_premium' }] } });
+    expect(await catalog.ensurePrice({ key: 'k', productId: 'app_premium', period: 'year', currency: 'EUR', amountMinor: 2490 })).toBe('price_have');
+    expect(found).toHaveLength(1);
+    stripeApi({ json: { data: [{ id: 'price_have', unit_amount: 2000, currency: 'eur', product: 'app_premium' }] } });
+    await expect(catalog.ensurePrice({ key: 'k', productId: 'app_premium', period: 'year', currency: 'EUR', amountMinor: 2490 })).rejects.toThrow(/not this one/);
+  });
+
+  it('does not hand back a price that was taken off sale, which Stripe still finds by its key', async () => {
+    stripeApi({ json: { data: [{ id: 'price_old', active: false, unit_amount: 2490, currency: 'eur', product: 'app_premium' }] } });
+    await expect(catalog.ensurePrice({ key: 'k', productId: 'app_premium', period: 'year', currency: 'EUR', amountMinor: 2490 })).rejects.toThrow(/taken off sale/);
+  });
+
+  it('takes a price off sale without deleting it', async () => {
+    const calls = stripeApi({ json: { id: 'price_have', active: false } });
+    await catalog.archivePrice('price_have');
+    expect(`${calls[0]!.method} ${new URL(calls[0]!.url).pathname}`).toBe('POST /v1/prices/price_have');
+    expect(Object.fromEntries(calls[0]!.form)).toEqual({ active: 'false' });
+  });
+
+  it('is not there for Paddle, which is the merchant of record and has its prices made in its own dashboard', () => {
+    const problems: string[] = [];
+    const paddle = readBillingConfig({ SPINE_BILLING: 'on', SPINE_BILLING_PROVIDER: 'paddle', PADDLE_API_KEY: 'pdl_k', PADDLE_WEBHOOK_SECRET: 'pdl_s', SPINE_PADDLE_PRICE_YEAR: 'pri_y', SPINE_PADDLE_PRICE_MONTH: 'pri_m', SPINE_PADDLE_PRICE_FOUNDING: 'pri_f', SPINE_CHECKOUT_URL: 'https://pay.example.org' }, 'public', problems) as Enabled;
+    expect(billingProvider(paddle).catalog).toBeUndefined();
   });
 });

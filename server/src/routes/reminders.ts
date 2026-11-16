@@ -4,7 +4,7 @@ import { requireAuth } from 'spine-core/routes/middleware.js';
 import { MAX_REMINDERS, validDay } from 'spine-core/reminders/index.js';
 import { OBJECT_ID } from '../vault-files.js';
 import { getMailer } from '../mail/index.js';
-import { remindersDueMail } from '../accounts.js';
+import { remindersDueMail } from '../identity/index.js';
 
 /**
  * The dates of follow-up reminders (SECURITY.md **M-53**). A device tells the server the day each confirmed reminder is due, under a random id and the

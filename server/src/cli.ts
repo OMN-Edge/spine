@@ -1,9 +1,9 @@
-import { emailSecondFactorRequired } from './email-code.js';
+import { emailSecondFactorRequired } from './identity/index.js';
 import { formatReport, usageReport } from './usage-report.js';
 import { pathToFileURL } from 'url';
 import { v4 as uuidv4 } from 'uuid';
 import { getAccountsStore } from 'spine-core/store/index.js';
-import { RESET_TTL_MS, deleteAccount, describeAccount, issueUserToken, resetLink } from './accounts.js';
+import { RESET_TTL_MS, deleteAccount, describeAccount, issueUserToken, resetLink } from './identity/index.js';
 import { useAccountsStore } from './store.js';
 import { useModelProviders } from './providers.js';
 import {
@@ -12,7 +12,7 @@ import {
   hashPassword,
   isPlausibleEmail,
   normaliseEmail,
-} from './passwords.js';
+} from './identity/index.js';
 
 /**
  * Operator commands. Accounts are created here, not through the web app: there is
@@ -290,7 +290,7 @@ export async function runCli(args: string[], io: CliIo): Promise<number> {
     // `retry` puts one that stopped back where it had got to; `settle` marks it done because it was made or mended by hand. References and the service's words, never a buyer.
     case 'invoices': {
       const { retryInvoice, settleInvoice } = await import('./billing/invoicing/queue.js');
-      const { euSalesTotals } = await import('./billing/invoicing/threshold.js');
+      const { euSalesTotals } = await import('spine-billing/invoicing/threshold.js');
       const [action, ref] = positional;
       if (action === 'retry' || action === 'settle') {
         if (!ref) { io.err(`${action} needs the invoice's reference (the first column of the list)`); return 2; }

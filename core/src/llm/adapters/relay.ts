@@ -22,7 +22,7 @@ export function useRelayHooks(next: RelayHooks): void { hooks = next; }
 
 /**
  * Whether the person said they are importing an archive: every call then says so (`x-spine-import`), and the relay draws reading from the one-off
- * import allowance while it lasts (billing/gate.ts). Off whenever a core starts, and only the Upload page turns it on.
+ * import allowance while it lasts (plans/gate.ts). Off whenever a core starts, and only the Upload page turns it on.
  */
 let importing = false;
 export function useImportMode(on: boolean): void { importing = on; }

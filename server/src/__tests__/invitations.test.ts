@@ -2,8 +2,8 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { buildTestApp } from './helpers/app.js';
 import { createTestUser } from './helpers/seed.js';
-import { BONUS_PAGES, MAX_REWARDED, grantInvitation, inviteToken, inviterOf } from '../billing/invitations.js';
-import { topupLeft } from '../billing/addons.js';
+import { BONUS_PAGES, MAX_REWARDED, grantInvitation, inviteToken, inviterOf } from '../plans/invitations.js';
+import { topupLeft } from '../plans/addons.js';
 
 const CONSENT = { consent_health_data: true, accept_terms: true };
 

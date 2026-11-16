@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { getAccountsStore } from 'spine-core/store/index.js';
-import { isPlausibleEmail, normaliseEmail } from '../passwords.js';
+import { isPlausibleEmail, normaliseEmail } from '../identity/index.js';
 import { windowLimiter } from '../rate-limit.js';
 
 const SOURCE = /^[a-z0-9_-]{1,32}$/;

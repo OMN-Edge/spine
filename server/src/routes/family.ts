@@ -4,10 +4,10 @@ import { getAccountsStore } from 'spine-core/store/index.js';
 import { requireAuth, requireRecentAuth } from 'spine-core/routes/middleware.js';
 import { SEAT_COOLDOWN_DAYS, SEAT_INVITES_WAITING, SEAT_INVITE_DAYS } from 'spine-core/billing/plans.js';
 import { loadBillingConfig } from '../billing/config.js';
-import { grantInvitation, inviteToken } from '../billing/invitations.js';
-import { standingOf } from '../billing/seat.js';
+import { grantInvitation, inviteToken } from '../plans/invitations.js';
+import { standingOf } from '../plans/seat.js';
 import { windowLimiter } from '../rate-limit.js';
-import { mailAfter, securityChangeMail } from '../notify.js';
+import { mailAfter, securityChangeMail } from '../identity/index.js';
 
 /**
  * Seats: accounts that share one subscription (SECURITY.md **M-52**). The account that pays (the organizer) invites others with a link whose

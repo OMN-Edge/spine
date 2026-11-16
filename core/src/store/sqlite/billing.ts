@@ -1,5 +1,5 @@
 import type { Database } from './driver.js';
-import type { BillingRepository, EfacturaDocument, EfacturaDocumentPatch, InvoicePatch, InvoiceState, QueuedInvoice, WithdrawalRecord, MetricsRepository, OperatorSettingsRepository, SubscriptionRecord, WaitlistRepository } from '../types.js';
+import type { BillingRepository, CatalogLink, CatalogPrice, CatalogProduct, CatalogRepository, EfacturaDocument, EfacturaDocumentPatch, InvoicePatch, InvoiceState, QueuedInvoice, WithdrawalRecord, MetricsRepository, OperatorSettingsRepository, SubscriptionRecord, WaitlistRepository } from '../types.js';
 
 const COLUMNS = 'user_id, provider, customer_id, subscription_id, billing_interval, plan, status, founding, current_period_end, cancel_scheduled, updated_at';
 
@@ -167,5 +167,27 @@ export function settingsRepository(db: Database): OperatorSettingsRepository {
     async all() { return all.all() as Array<{ key: string; value: string; updated_at: string }>; },
     async set(key, value, at) { set.run(key, value, at); },
     async clear(key) { clear.run(key); },
+  };
+}
+
+export function catalogRepository(db: Database): CatalogRepository {
+  const PRICE = 'id, product_id, period, currency, amount_minor, version, created_at';
+  const products = db.prepare('SELECT id, name, description, on_sale, updated_at FROM catalog_products ORDER BY id');
+  const saveProduct = db.prepare('INSERT INTO catalog_products (id, name, description, on_sale, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET name = excluded.name, description = excluded.description, on_sale = excluded.on_sale, updated_at = excluded.updated_at');
+  const prices = db.prepare(`SELECT ${PRICE} FROM catalog_prices ORDER BY created_at, version, id`);
+  const addPrice = db.prepare(`INSERT INTO catalog_prices (id, product_id, period, currency, amount_minor, version, created_at)
+    SELECT @product || ':' || @period || ':' || @currency || ':' || (COALESCE(MAX(version), 0) + 1), @product, @period, @currency, @amount, COALESCE(MAX(version), 0) + 1, @at FROM catalog_prices WHERE product_id = @product AND period = @period AND currency = @currency
+    RETURNING ${PRICE}`);
+  const links = db.prepare('SELECT price_id, provider, provider_product_id, provider_price_id, synced_at, archived_at FROM catalog_links WHERE provider = ? ORDER BY price_id');
+  const saveLink = db.prepare('INSERT INTO catalog_links (price_id, provider, provider_product_id, provider_price_id, synced_at, archived_at) VALUES (?, ?, ?, ?, ?, NULL) ON CONFLICT (price_id, provider) DO UPDATE SET provider_product_id = excluded.provider_product_id, provider_price_id = excluded.provider_price_id, synced_at = excluded.synced_at');
+  const archiveLink = db.prepare('UPDATE catalog_links SET archived_at = ? WHERE price_id = ? AND provider = ? AND archived_at IS NULL');
+  return {
+    async products() { return products.all() as CatalogProduct[]; },
+    async saveProduct(p, at) { saveProduct.run(p.id, p.name, p.description, p.on_sale, at); },
+    async prices() { return prices.all() as CatalogPrice[]; },
+    async addPrice(p, at) { return addPrice.get({ product: p.product_id, period: p.period, currency: p.currency, amount: p.amount_minor, at }) as CatalogPrice; },
+    async links(provider) { return links.all(provider) as CatalogLink[]; },
+    async saveLink(l) { saveLink.run(l.price_id, l.provider, l.provider_product_id, l.provider_price_id, l.synced_at); },
+    async archiveLink(priceId, provider, at) { archiveLink.run(at, priceId, provider); },
   };
 }

@@ -4,7 +4,7 @@ import type { BaseChatModel } from '@langchain/core/language_models/chat_models'
 import type { TaskClients, TaskSpecs } from './tasks.js';
 
 /**
- * What the device tells the relay about a call, for the plan's counts (`billing/gate.ts`): `work` is a random id it gives every call of one piece of
+ * What the device tells the relay about a call, for the plan's counts (`plans/gate.ts`): `work` is a random id it gives every call of one piece of
  * work (a chat question, a document's translation into a language), so the plan counts the work once; `pages` is how many pages the call reads or
  * translates. Neither is a word of what is sent, and the relay does not log them.
  */

@@ -1,5 +1,5 @@
 import type { AccountsStore } from 'spine-core/store/types.js';
-import { watchOf } from './billing/fair-use.js';
+import { watchOf } from './plans/fair-use.js';
 
 /**
  * The settings the operator changes from the admin page, kept in the database (`operator_settings`) so they work on a host with no disk and change

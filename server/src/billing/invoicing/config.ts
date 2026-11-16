@@ -1,6 +1,6 @@
 import { ConfigError } from 'spine-core/config.js';
 import type { BillingConfig } from '../config.js';
-import type { UblSeller, ZeroVat } from './efactura/ubl.js';
+import type { UblSeller, ZeroVat } from 'spine-anaf/index.js';
 
 /**
  * Whether the operator issues an invoice for each payment, and through which: **off unless `SPINE_INVOICING` names one** (`billyou`, a service, or `efactura`, Spine's own link to ANAF), and only with a payment provider

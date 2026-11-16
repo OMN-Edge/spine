@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { getStore, getAccountsStore } from 'spine-core/store/index.js';
-import { hashPassword } from '../../passwords.js';
+import { hashPassword } from '../../identity/index.js';
 import type { DocType } from 'spine-core/types.js';
 import { HEALTH_CONSENT_VERSION, TERMS_VERSION } from '../../legal.js';
 

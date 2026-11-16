@@ -1,9 +1,9 @@
 import type { AccountsStore } from 'spine-core/store/types.js';
 import { CHAT_MESSAGE, TRANSLATED_PAGE, linkKey, meterKey } from 'spine-core/billing/plans.js';
-import { standingOf } from './billing/seat.js';
-import { fairUseOf, syncFairUse } from './billing/fair-use.js';
-import { windowMonths } from './billing/window.js';
-import { costKey, tokenKey, type Family } from './billing/cost.js';
+import { standingOf } from './plans/seat.js';
+import { fairUseOf, syncFairUse } from './plans/fair-use.js';
+import { windowMonths } from './plans/window.js';
+import { costKey, tokenKey, type Family } from './plans/cost.js';
 
 /**
  * What each account really used, for the operator (SECURITY.md **M-45**): the estimated cost of its AI use by kind of work, questions, translated pages, link

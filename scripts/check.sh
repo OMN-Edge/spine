@@ -4,8 +4,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# One install for the workspaces (core, server, web); core is built first because server and web use it.
-server() { npm ci && npm run build:core && npm run typecheck -w spine-core && npm test -w spine-core && npm run test:accounts -w spine-core \
+# One install for the workspaces (core, anaf, billing, server, web); core is built first because the others use it, and anaf and billing before the server, which uses them.
+server() { npm ci && npm run build:core && npm run build:anaf && npm run build:billing && npm run typecheck -w spine-core && npm test -w spine-core && npm run test:accounts -w spine-core \
+  && npm run typecheck -w spine-anaf && npm test -w spine-anaf && npm run typecheck -w spine-billing && npm test -w spine-billing \
   && npm run typecheck -w spine-server && npm test -w spine-server && npm run test:accounts -w spine-server \
   && npm run build -w spine-server && npm run smoke -w spine-server && npm audit --omit=dev --audit-level=high; }
 web()    { npm ci && npm run build:core && npm test -w spine-web && npm run build -w spine-web && npm audit --omit=dev --audit-level=high; }
@@ -30,7 +31,7 @@ scan_semgrep() {
     --config p/typescript --config p/nodejs --config p/security-audit \
     --exclude-rule javascript.express.security.audit.xss.direct-response-write.direct-response-write \
     --exclude __tests__ --exclude __integration__ \
-    core/src server/src web/src
+    core/src packages/anaf/src packages/billing/src server/src web/src
 }
 
 case "${1:-all}" in

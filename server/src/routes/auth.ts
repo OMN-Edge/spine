@@ -5,15 +5,15 @@ import {
   normaliseEmail,
   verifyAgainstDummy,
   verifyPassword,
-} from '../passwords.js';
-import { authenticate, maySignIn, type SessionData } from '../session-auth.js';
+} from '../identity/index.js';
+import { authenticate, maySignIn, type SessionData } from '../identity/index.js';
 import { windowLimiter } from '../rate-limit.js';
-import { startSession } from '../sessions.js';
-import { mailAfter, newSignInMail } from '../notify.js';
-import { checkSecondFactor, hasSecondFactor, secondFactorMethod } from '../second-factor.js';
-import { emailSecondFactorRequired } from '../email-code.js';
+import { startSession } from '../identity/index.js';
+import { mailAfter, newSignInMail } from '../identity/index.js';
+import { checkSecondFactor, hasSecondFactor, secondFactorMethod } from '../identity/index.js';
+import { emailSecondFactorRequired } from '../identity/index.js';
 import { consentNeeded } from '../legal.js';
-import { emailCodeMatches, hashEmailCode, newEmailCode, signInCodeMail } from '../email-code.js';
+import { emailCodeMatches, hashEmailCode, newEmailCode, signInCodeMail } from '../identity/index.js';
 import { getMailer } from '../mail/index.js';
 
 /**

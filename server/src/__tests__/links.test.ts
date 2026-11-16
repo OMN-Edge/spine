@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { linkKey, PLANS } from 'spine-core/billing/plans.js';
-import { fairUseOf } from '../billing/fair-use.js';
+import { fairUseOf } from '../plans/fair-use.js';
 import { buildTestApp, loginAs } from './helpers/app.js';
 import { createTestUser } from './helpers/seed.js';
 import { fakeAuthValue, fakeVaultKeys } from 'spine-core/testing/vault.js';

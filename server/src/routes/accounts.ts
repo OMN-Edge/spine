@@ -10,7 +10,7 @@ import {
   hashPassword,
   isPlausibleEmail,
   normaliseEmail,
-} from '../passwords.js';
+} from '../identity/index.js';
 import {
   RESET_TTL_MS,
   VERIFY_TTL_MS,
@@ -19,16 +19,16 @@ import {
   resetMail,
   verificationLink,
   verificationMail,
-} from '../accounts.js';
-import { hashUserToken } from '../user-tokens.js';
+} from '../identity/index.js';
+import { hashUserToken } from '../identity/index.js';
 import { windowLimiter, type WindowLimit } from '../rate-limit.js';
 import { loadInstanceKind, loadRegistrationMode, type InstanceKind, type RegistrationMode } from '../config.js';
 import { AUTH_VALUE, parseKdfParams, parseVaultKeys } from '../vault-keys.js';
 import { resetMessage, verifyResetProof } from '../reset-proof.js';
 import { removeAllObjects } from '../vault-files.js';
-import { checkSecondFactor, hasSecondFactor } from '../second-factor.js';
-import { mailAfter, securityChangeMail } from '../notify.js';
-import { grantInvitation } from '../billing/invitations.js';
+import { checkSecondFactor, hasSecondFactor } from '../identity/index.js';
+import { mailAfter, securityChangeMail } from '../identity/index.js';
+import { grantInvitation } from '../plans/invitations.js';
 import { sendWelcome, stopLifecycleMail, userOfUnsubscribeToken } from '../lifecycle.js';
 
 /**
@@ -178,7 +178,7 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
               if (keys) await tx.vault.putKeys(id, keys, createdAt);
             });
             await countSignup(req.body?.ref);
-            // A link of an account that invited them: both get their pages (`billing/invitations.ts`; nothing keeps who invited whom).
+            // A link of an account that invited them: both get their pages (`plans/invitations.ts`; nothing keeps who invited whom).
             if (req.body?.by !== undefined) await grantInvitation(store, req.body.by, id).catch(() => undefined);
             if (verifyByMail) {
               const token = await issueUserToken(id, 'verify', VERIFY_TTL_MS);

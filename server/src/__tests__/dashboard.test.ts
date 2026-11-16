@@ -2,8 +2,8 @@ import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vite
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { buildTestApp, loginAs } from './helpers/app.js';
 import { createTestUser, TEST_PASSWORD } from './helpers/seed.js';
-import { createRelayGate } from '../billing/gate.js';
-import { watchBudget } from '../billing/budget.js';
+import { createRelayGate } from '../plans/gate.js';
+import { watchBudget } from '../plans/budget.js';
 import { dashboardOf } from '../dashboard.js';
 import { resetMailer, type Mailer, type MailMessage } from '../mail/index.js';
 import { runJobs, JOBS } from '../jobs.js';

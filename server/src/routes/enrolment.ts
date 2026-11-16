@@ -3,10 +3,10 @@ import { createHash, randomBytes } from 'node:crypto';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { requireAuth, requireRecentAuth } from 'spine-core/routes/middleware.js';
 import { countryOf } from '../geo.js';
-import { mailAfter, newSignInMail, securityChangeMail } from '../notify.js';
+import { mailAfter, newSignInMail, securityChangeMail } from '../identity/index.js';
 import { windowLimiter } from '../rate-limit.js';
-import { cleanHeader, startSession } from '../sessions.js';
-import { maySignIn, type SessionData } from '../session-auth.js';
+import { cleanHeader, startSession } from '../identity/index.js';
+import { maySignIn, type SessionData } from '../identity/index.js';
 import { sealed } from '../vault-keys.js';
 
 /**

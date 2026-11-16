@@ -6,7 +6,7 @@ import { logger } from 'spine-core/logger.js';
 import { composeMail } from './mail/layout.js';
 import { getMailer, type MailMessage } from './mail/index.js';
 import { recipientLanguage, tm, type Recipient } from './mail/i18n.js';
-import { standingOf } from './billing/seat.js';
+import { standingOf } from './plans/seat.js';
 import { billingOn } from './billing/config.js';
 import { settingOf } from './operator-settings.js';
 

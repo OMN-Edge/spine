@@ -3,19 +3,20 @@ import { getAccountsStore } from 'spine-core/store/index.js';
 import { requireAuth, requireRecentAuth } from 'spine-core/routes/middleware.js';
 import { logger } from 'spine-core/logger.js';
 import { adminEmails, marketingEmails } from '../config.js';
-import { approvedMail, deleteAccount, signInLink } from '../accounts.js';
+import { approvedMail, deleteAccount, signInLink } from '../identity/index.js';
 import { getMailer } from '../mail/index.js';
 import { dashboardOf, type Dashboard } from '../dashboard.js';
 import { changeSetting, operatorSettings } from '../operator-settings.js';
-import { changeFairUse, fairUseSections } from '../billing/fair-use-admin.js';
-import { syncFairUse } from '../billing/fair-use.js';
+import { changeFairUse, fairUseSections } from '../plans/fair-use-admin.js';
+import { syncFairUse } from '../plans/fair-use.js';
 import { efacturaFromSettings, retryInvoice, settleInvoice } from '../billing/invoicing/queue.js';
 import { loadBillingConfig } from '../billing/config.js';
 import { billingProvider } from '../billing/provider.js';
 import { withdrawalAcceptedMail, withdrawalDeclinedMail } from '../billing/withdrawal-mail.js';
-import { euSalesTotals } from '../billing/invoicing/threshold.js';
+import { euSalesTotals } from 'spine-billing/invoicing/threshold.js';
 import { usedSince } from '../usage-report.js';
-import { suggestedRefund } from '../billing/withdrawal-share.js';
+import { suggestedRefund } from 'spine-billing/withdrawal-share.js';
+import { adminCatalogRoutes } from './admin-catalog.js';
 
 /**
  * Approving the accounts that asked for one under `SPINE_REGISTRATION=approval`, from the app. Who may is `SPINE_ADMIN_EMAILS`, checked on every
@@ -111,6 +112,9 @@ export async function adminRoutes(app: FastifyInstance, opts: AdminRouteOptions 
     }
   });
 
+  // What is sold and for how much (`billing/products.ts`): the catalog an administrator edits and sends to the payment provider.
+  await adminCatalogRoutes(app, onlyAdmins);
+
   // Buyers' requests to withdraw from a purchase. The operator decides each: pays back (all of the last payment, or an amount) and ends the plan, or declines with a reason.
   // The refund then reaches `charge.refunded`, which has the invoice reversed. The buyer is told either way.
   app.get('/api/admin/withdrawals', { preHandler: [requireAuth, onlyReaders] }, async (_req, reply) => {
@@ -122,7 +126,7 @@ export async function adminRoutes(app: FastifyInstance, opts: AdminRouteOptions 
       const [user, sub, first] = await Promise.all([store.users.findById(w.user_id), store.billing.get(w.user_id), store.billing.firstPaymentAt(w.user_id)]);
       // Whether the service was used since the purchase, and how many times the account has asked and been paid back before: what the operator weighs in deciding.
       const used = first ? await usedSince(store, w.user_id, new Date(first)) : null;
-      // What to pay back, as a suggestion (`billing/withdrawal-share.ts`): needs the last payment, which only the provider knows; a provider that cannot say gives none.
+      // What to pay back, as a suggestion (`packages/billing/src/withdrawal-share.ts`): needs the last payment, which only the provider knows; a provider that cannot say gives none.
       let suggested: ReturnType<typeof suggestedRefund> | null = null;
       if (first && sub?.subscription_id && sub.interval && config.enabled && sub.provider === config.provider) {
         const paid = await billingProvider(config).lastPaid(sub.subscription_id).catch(() => null);
@@ -183,7 +187,7 @@ export async function adminRoutes(app: FastifyInstance, opts: AdminRouteOptions 
     return reply.send({ settings: settings.map(({ fallbackOf: _f, ...s }) => s) });
   });
 
-  // The hidden fair-use ceilings (`billing/fair-use-admin.ts`): an administrator only, for both reading and changing, because they are never shown to anyone
+  // The hidden fair-use ceilings (`plans/fair-use-admin.ts`): an administrator only, for both reading and changing, because they are never shown to anyone
   // else, the marketing role included.
   app.get('/api/admin/fair-use', { preHandler: [requireAuth, onlyAdmins] }, async (_req, reply) => {
     await syncFairUse(getAccountsStore());

@@ -1,9 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { isSupportedLanguage } from 'spine-core/languages.js';
-import { deleteAccount, wipeAccount } from '../accounts.js';
+import { deleteAccount, wipeAccount } from '../identity/index.js';
 import { AUTH_VALUE, parseVaultKeys } from '../vault-keys.js';
-import { mailAfter, securityChangeMail } from '../notify.js';
+import { mailAfter, securityChangeMail } from '../identity/index.js';
 import { HEALTH_CONSENT_VERSION, LEGAL_DOCS, TERMS_VERSION, consentNeeded, legalText, type LegalDoc } from '../legal.js';
 import { requireAuth, requireRecentAuth } from 'spine-core/routes/middleware.js';
 import { logger } from 'spine-core/logger.js';

@@ -4,19 +4,21 @@ import { tmpdir } from 'os';
 import path from 'path';
 import { ZipFile } from 'yazl';
 import { getAccountsStore } from 'spine-core/store/index.js';
-import { InvoiceError, type InvoiceDraft } from '../billing/invoicing/issuer.js';
+import { AnafError } from 'spine-anaf/error.js';
+import { InvoiceError, type InvoiceDraft } from 'spine-billing/invoicing/issuer.js';
 import { processInvoice, reverseRefunded } from '../billing/invoicing/queue.js';
 import type { Sale } from '../billing/provider.js';
-import { efacturaIssuer, linkIsValid, signedLink } from '../billing/invoicing/efactura/issuer.js';
-import { AnafLink, expiryOf } from '../billing/invoicing/efactura/anaf.js';
-import { openText, sealText } from '../billing/invoicing/efactura/seal.js';
-import { readZip } from '../billing/invoicing/efactura/zip.js';
+import { efacturaIssuer, linkIsValid, signedLink } from 'spine-anaf/issuer.js';
+import { AnafLink, expiryOf } from 'spine-anaf/anaf.js';
+import { openText, sealText } from 'spine-anaf/seal.js';
+import { readZip } from 'spine-anaf/zip.js';
+import { openEfactura } from 'spine-billing/invoicing/efactura.js';
 import { loadInvoicingConfig } from '../billing/invoicing/config.js';
 import { loadBillingConfig } from '../billing/config.js';
 import { buildTestApp, loginAs } from './helpers/app.js';
 import { createTestUser, TEST_PASSWORD } from './helpers/seed.js';
 
-/** Spine's own e-Factura link (`billing/invoicing/efactura/`): the authorisation with ANAF, the numbered documents, what is sent and what ANAF says, with ANAF scripted. */
+/** Spine's own e-Factura link (`packages/anaf/`): the authorisation with ANAF, the numbered documents, what is sent and what ANAF says, with ANAF scripted. */
 const KEY = Buffer.alloc(32, 7);
 const T0 = new Date('2026-11-16T10:00:00.000Z');
 const ADMIN = 'admin-efactura@spine.test';
@@ -131,7 +133,7 @@ describe('Spine’s own e-Factura link', () => {
       const { fetcher } = anaf({ '/token': [{ status: 400, body: JSON.stringify({ error: 'invalid_client' }) }] });
       const link = new AnafLink(settings(fetcher), store());
       const state = new URL(await link.authorisationUrl()).searchParams.get('state')!;
-      await expect(link.complete('c', state)).rejects.toMatchObject({ name: 'InvoiceError', retry: false, message: expect.stringContaining('invalid_client') });
+      await expect(link.complete('c', state)).rejects.toMatchObject({ name: 'AnafError', retry: false, message: expect.stringContaining('invalid_client') });
     });
   });
 
@@ -216,7 +218,7 @@ describe('Spine’s own e-Factura link', () => {
 
     it('refuse a draft that cannot be written as an invoice, as one that will not pass by waiting', async () => {
       const issuer = issuerOver(anaf({}).fetcher);
-      await expect(issuer.issue(draft({ id: 'cs_nocounty', buyer: { name: 'Ion', email: 'i@spine.test', country: 'RO' } }))).rejects.toMatchObject({ name: 'InvoiceError', retry: false, message: expect.stringContaining('county') });
+      await expect(issuer.issue(draft({ id: 'cs_nocounty', buyer: { name: 'Ion', email: 'i@spine.test', country: 'RO' } }))).rejects.toMatchObject({ name: 'AnafError', retry: false, message: expect.stringContaining('county') });
     });
 
     it('reverse an invoice with a credit note of its own number, once, from what the invoice was made from', async () => {
@@ -230,7 +232,7 @@ describe('Spine’s own e-Factura link', () => {
       expect(row).toMatchObject({ kind: 'credit', reverses: 'cs_rev' });
       expect(row.xml).toContain(`<cac:InvoiceDocumentReference><cbc:ID>SPN-${made.number}</cbc:ID>`);
       expect(row.xml).toContain('Rambursare');
-      await expect(issuer.reverse({ id: 'cs_unknown', series: 'SPN', number: '1' }, 'x')).rejects.toBeInstanceOf(InvoiceError);
+      await expect(issuer.reverse({ id: 'cs_unknown', series: 'SPN', number: '1' }, 'x')).rejects.toBeInstanceOf(AnafError);
     });
 
     it('go to ANAF as a person’s report, are asked after until ANAF has decided, and the signed answer is kept', async () => {
@@ -333,11 +335,11 @@ describe('Spine’s own e-Factura link', () => {
       await issuer.issue(draft({ id: 'cs_wait' }));
       for (const [status, retry] of [[401, true], [403, true], [429, true], [503, true]] as const) {
         const sender = issuerOver(anaf({ '/uploadb2c': [{ status, body: 'no' }] }).fetcher);
-        await expect(sender.sendToAnaf({ id: 'cs_wait', series: 'SPN', number: '1' })).rejects.toMatchObject({ name: 'InvoiceError', retry });
+        await expect(sender.sendToAnaf({ id: 'cs_wait', series: 'SPN', number: '1' })).rejects.toMatchObject({ name: 'AnafError', retry });
       }
       const rejected = issuerOver(anaf({ '/uploadb2c': ['<html><head><title>Request Rejected</title></head></html>'] }).fetcher);
       await expect(rejected.sendToAnaf({ id: 'cs_wait', series: 'SPN', number: '1' })).rejects.toMatchObject({ retry: false, message: expect.stringContaining('Request Rejected') });
-      await expect(issuerOver(anaf({}).fetcher).sendToAnaf({ id: 'cs_wait', series: 'SPN', number: '1' })).rejects.toBeInstanceOf(InvoiceError);
+      await expect(issuerOver(anaf({}).fetcher).sendToAnaf({ id: 'cs_wait', series: 'SPN', number: '1' })).rejects.toBeInstanceOf(AnafError);
     });
 
     it('have a PDF made by the Ministry’s converter from the document’s XML, and a clear word where it is not one', async () => {
@@ -348,6 +350,17 @@ describe('Spine’s own e-Factura link', () => {
       expect(calls[0]).toMatchObject({ method: 'POST', url: 'https://webservicesp.anaf.ro/prod/FCTEL/rest/transformare/FACT1' });
       expect(calls[0]!.body).toContain('<Invoice');
       await expect(issuerOver(anaf({ '/transformare/FACT1': ['<html>nope</html>'] }).fetcher).pdf('cs_pdf')).rejects.toThrow(/did not return a PDF/);
+    });
+  });
+
+  describe('the billing code\u2019s door to it', () => {
+    it('answers every call in the billing code\u2019s own error, with what the queue decides by (retry, status) kept', async () => {
+      const { fetcher } = anaf({});
+      const open = openEfactura({ mode: 'test', clientId: 'client-id', clientSecret: 'client-secret', redirectUri: 'https://spine.test/cb', key: KEY, seller: SELLER, series: 'SPN', zeroVat: { category: 'O' }, publicUrl: 'https://spine.test' }, store(), { fetcher, now: () => T0 });
+      // an invoice that does not exist is refused for good: the same class and flag as the issuer's own
+      const refused = await open.issuer.reverse({ id: 'cs_none', series: 'SPN', number: '1' }, 'x').catch((e: unknown) => e);
+      expect(refused).toBeInstanceOf(InvoiceError);
+      expect(refused).toMatchObject({ retry: false, status: null });
     });
   });
 

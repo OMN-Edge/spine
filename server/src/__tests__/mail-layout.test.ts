@@ -1,8 +1,8 @@
 import { publicUrl } from 'spine-core/config.js';
 import { describe, expect, it } from 'vitest';
 import { composeMail } from '../mail/layout.js';
-import { accessRequestMail, remindersDueMail, resetMail } from '../accounts.js';
-import { securityChangeMail } from '../notify.js';
+import { accessRequestMail, remindersDueMail, resetMail } from '../identity/index.js';
+import { securityChangeMail } from '../identity/index.js';
 
 describe('the mail layout', () => {
   it('puts the link in both parts, as a button and as an address, and fetches only the mark from its own origin', () => {

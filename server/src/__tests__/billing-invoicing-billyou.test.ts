@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { InvoiceError, type InvoiceDraft } from '../billing/invoicing/issuer.js';
-import { billyouIssuer, invoiceBody, type BillyouSettings } from '../billing/invoicing/billyou.js';
+import { InvoiceError, type InvoiceDraft } from 'spine-billing/invoicing/issuer.js';
+import { billyouIssuer, invoiceBody, type BillyouSettings } from 'spine-billing/invoicing/billyou.js';
 import { scripted } from './helpers/scripted-fetch.js';
 
 /** The Billyou adapter: what it asks from what a payment says, and what it does with the answers. The shapes are those a sandbox account answered on 2026-11-15. */

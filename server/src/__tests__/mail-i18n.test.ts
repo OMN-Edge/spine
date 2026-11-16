@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { INTERFACE_LANGUAGES } from 'spine-core/languages.js';
-import { accessRequestMail, approvedMail, cardOpenedMail, cardReviewMail, remindersDueMail, resetMail, verificationMail } from '../accounts.js';
-import { signInCodeMail } from '../email-code.js';
+import { accessRequestMail, approvedMail, cardOpenedMail, cardReviewMail, remindersDueMail, resetMail, verificationMail } from '../identity/index.js';
+import { signInCodeMail } from '../identity/index.js';
 import { withdrawalAcceptedMail, withdrawalDeclinedMail, withdrawalReceivedMail } from '../billing/withdrawal-mail.js';
 import { nudgeMail, trialEndsMail, welcomeMail } from '../lifecycle.js';
-import { CHANGES, newSignInMail, securityChangeMail, type Change } from '../notify.js';
+import { CHANGES, newSignInMail, securityChangeMail, type Change } from '../identity/index.js';
 import { missing, recipientLanguage, tm, tmn } from '../mail/i18n.js';
 import { DICTIONARIES } from '../mail/translations.js';
 

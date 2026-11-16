@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import path from 'path';
 import { getAccountsStore } from 'spine-core/store/index.js';
-import { forgetRates } from '../billing/invoicing/bnr.js';
+import { forgetRates } from 'spine-billing/invoicing/bnr.js';
 import { buildTestApp } from './helpers/app.js';
 
 /** From a payment to an invoice, through the route: Stripe's signed message, the sale read back from Stripe, the invoice made at Billyou (both scripted). */

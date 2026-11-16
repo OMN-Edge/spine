@@ -8,12 +8,12 @@ import { linkKey } from 'spine-core/billing/plans.js';
 import { logger } from 'spine-core/logger.js';
 import { buildTestApp, loginAs } from './helpers/app.js';
 import { createTestUser } from './helpers/seed.js';
-import { createRelayGate, FAIR_USE_MESSAGE } from '../billing/gate.js';
-import { fairUseOf, resetFairUse } from '../billing/fair-use.js';
-import { watchAccount, resetWatch } from '../billing/watch.js';
-import { standingOf } from '../billing/seat.js';
-import { windowMonths } from '../billing/window.js';
-import { costKey, tokenKey } from '../billing/cost.js';
+import { createRelayGate, FAIR_USE_MESSAGE } from '../plans/gate.js';
+import { fairUseOf, resetFairUse } from '../plans/fair-use.js';
+import { watchAccount, resetWatch } from '../plans/watch.js';
+import { standingOf } from '../plans/seat.js';
+import { windowMonths } from '../plans/window.js';
+import { costKey, tokenKey } from '../plans/cost.js';
 import { usageReport, formatReport } from '../usage-report.js';
 import { resetMailer, type MailMessage } from '../mail/index.js';
 

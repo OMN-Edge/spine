@@ -1,8 +1,8 @@
 import type { AccountsStore } from 'spine-core/store/types.js';
 import { FOUNDING_LIMIT, type PlanId } from 'spine-core/billing/plans.js';
-import { standingOf } from './billing/seat.js';
-import { costKey, type Family } from './billing/cost.js';
-import { monthlyCost } from './billing/budget.js';
+import { standingOf } from './plans/seat.js';
+import { costKey, type Family } from './plans/cost.js';
+import { monthlyCost } from './plans/budget.js';
 import { operatorSettings } from './operator-settings.js';
 
 /**

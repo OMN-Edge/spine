@@ -33,7 +33,7 @@ describe.skipIf(!haveServer)('the device and the server together', () => {
   let dataDir = '';
   let server: typeof import('../../../server/src/__tests__/helpers/app.js');
   let store: typeof import('spine-core/store/index.js');
-  let accounts: typeof import('../../../server/src/accounts.js');
+  let accounts: typeof import('../../../server/src/identity/index.js');
   let mail: typeof import('../../../server/src/mail/index.js');
   let userId = '';
 
@@ -67,7 +67,7 @@ describe.skipIf(!haveServer)('the device and the server together', () => {
     process.env.DATA_DIR = dataDir;
     server = await import('../../../server/src/__tests__/helpers/app.js');
     store = await import('spine-core/store/index.js');
-    accounts = await import('../../../server/src/accounts.js');
+    accounts = await import('../../../server/src/identity/index.js');
     mail = await import('../../../server/src/mail/index.js');
     mail.resetMailer({ enabled: true, async send() {} });
     // The server's entry points say where the sealed bytes go (S3); this test is one, over files in the directory above.

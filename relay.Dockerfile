@@ -8,10 +8,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 make g+
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY core/package.json core/
+COPY packages/anaf/package.json packages/anaf/
+COPY packages/billing/package.json packages/billing/
 COPY server/package.json server/
 COPY web/package.json web/
 RUN npm ci
 COPY core core
+COPY packages/anaf packages/anaf
+COPY packages/billing packages/billing
 COPY server server
 RUN npm run build:server && npm run smoke -w spine-server && rm -rf node_modules && npm ci --omit=dev --workspace spine-server
 
@@ -22,6 +26,10 @@ WORKDIR /app
 COPY --from=build /app/node_modules node_modules
 COPY --from=build /app/core/package.json core/
 COPY --from=build /app/core/dist core/dist
+COPY --from=build /app/packages/anaf/package.json packages/anaf/
+COPY --from=build /app/packages/anaf/dist packages/anaf/dist
+COPY --from=build /app/packages/billing/package.json packages/billing/
+COPY --from=build /app/packages/billing/dist packages/billing/dist
 COPY --from=build /app/server/package.json server/
 COPY --from=build /app/server/dist server/dist
 WORKDIR /app/server

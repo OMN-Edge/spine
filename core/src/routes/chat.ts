@@ -14,7 +14,7 @@ import { helpTopic } from '../help.js';
 import { describeError } from '../failure.js';
 import { modelWait } from '../llm/availability.js';
 
-/** The relay's own refusals (`server/src/billing/gate.ts`): a 402 with one of these codes is the plan's words and quotes nothing; any other 402 is not passed on. */
+/** The relay's own refusals (`server/src/plans/gate.ts`): a 402 with one of these codes is the plan's words and quotes nothing; any other 402 is not passed on. */
 const PLAN_CODES = new Set(['allowance_used', 'plan_required', 'fair_use']);
 const MAX_TITLE = 60;
 /** The conversation the answers about Spine go into when the person is not in one. */

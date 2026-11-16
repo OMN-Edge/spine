@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { buildTestApp, loginAs } from './helpers/app.js';
 import { OWNER_EMAIL, TEST_PASSWORD, createTestUser } from './helpers/seed.js';
 import { getAccountsStore } from 'spine-core/store/index.js';
-import { MAX_PASSWORD_LENGTH } from '../passwords.js';
+import { MAX_PASSWORD_LENGTH } from '../identity/index.js';
 
 let app: Awaited<ReturnType<typeof buildTestApp>>;
 

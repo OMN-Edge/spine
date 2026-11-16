@@ -9,8 +9,8 @@ const alerts: Array<{ subject: string; lines: string[] }> = [];
 vi.mock('../billing/invoicing/alert.js', () => ({ alertOperator: async (subject: string, lines: string[]) => { alerts.push({ subject, lines }); } }));
 
 const { processInvoice, retryInvoice, settleInvoice } = await import('../billing/invoicing/queue.js');
-const { euMinorOf, euSalesTotals, watchEuThreshold, EU_THRESHOLD_MINOR } = await import('../billing/invoicing/threshold.js');
-const { InvoiceError } = await import('../billing/invoicing/issuer.js');
+const { euMinorOf, euSalesTotals, watchEuThreshold, EU_THRESHOLD_MINOR } = await import('spine-billing/invoicing/threshold.js');
+const { InvoiceError } = await import('spine-billing/invoicing/issuer.js');
 type Ctx = import('../billing/invoicing/queue.js').InvoicingContext;
 type Sale = import('../billing/provider.js').Sale;
 

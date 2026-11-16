@@ -4,7 +4,7 @@ import { buildTestApp, loginAs } from './helpers/app.js';
 import { createTestUser } from './helpers/seed.js';
 import { fakeAuthValue, fakeVaultKeys } from 'spine-core/testing/vault.js';
 import { getAccountsStore } from 'spine-core/store/index.js';
-import { issueUserToken } from '../accounts.js';
+import { issueUserToken } from '../identity/index.js';
 import { resetMessage } from '../reset-proof.js';
 import { resetMailer, type MailMessage } from '../mail/index.js';
 

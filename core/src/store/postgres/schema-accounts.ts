@@ -246,7 +246,7 @@ CREATE TABLE IF NOT EXISTS invoice_queue (
 );
 CREATE INDEX IF NOT EXISTS idx_invoice_queue_due ON invoice_queue(state, next_attempt_at);
 
--- The operator's e-Factura link (billing/invoicing/efactura/): ANAF's authorisation sealed with a key that is not here, the authorisation being asked for, the
+-- The operator's e-Factura link (anaf/): ANAF's authorisation sealed with a key that is not here, the authorisation being asked for, the
 -- numbered documents and each series' next number. Nothing here is an account's, and the documents are kept (an invoice is kept ten years).
 CREATE TABLE IF NOT EXISTS efactura_auth (
   id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -339,6 +339,36 @@ CREATE TABLE IF NOT EXISTS operator_settings (
   value TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+
+-- The operator's product catalog (packages/billing/src/products.ts): what is sold, each price as a version that is never changed (a new amount is a new version), and the
+-- provider's own ids for each version once it has been sent there. Not an account's data. A version a subscriber bought stays, so an old subscription still says what it was.
+CREATE TABLE IF NOT EXISTS catalog_products (
+  id TEXT NOT NULL PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  on_sale INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS catalog_prices (
+  id TEXT NOT NULL PRIMARY KEY,
+  product_id TEXT NOT NULL,
+  period TEXT NOT NULL,
+  currency TEXT NOT NULL,
+  amount_minor INTEGER NOT NULL,
+  version INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE (product_id, period, currency, version)
+);
+CREATE TABLE IF NOT EXISTS catalog_links (
+  price_id TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  provider_product_id TEXT NOT NULL,
+  provider_price_id TEXT NOT NULL,
+  synced_at TEXT NOT NULL,
+  archived_at TEXT,
+  PRIMARY KEY (price_id, provider)
+);
+CREATE INDEX IF NOT EXISTS idx_catalog_links_provider_price ON catalog_links(provider, provider_price_id);
 
 
 -- The windows a limiter counts in, shared by every instance of the server (SPINE_LIMITS=store): see sqlite/schema-accounts.ts.

@@ -187,6 +187,85 @@ describe('S5 — one door per engine and vendor', () => {
   });
 });
 
+describe('S14 — accounts and sign-in have one door', () => {
+  it('imports nothing of server/src/identity but its index, from anywhere outside the folder (tests too)', () => {
+    const offenders: string[] = [];
+    for (const file of walk(path.join(repo, 'server', 'src'))) {
+      if (rel(file).startsWith('server/src/identity/')) continue;
+      for (const spec of specifiers(file)) {
+        if (!isRelative(spec)) continue;
+        const t = target(file, spec);
+        if (t.startsWith('server/src/identity/') && t !== 'server/src/identity/index.js') offenders.push(`${rel(file)} -> ${t}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe('S15 — the ANAF link is a package that names nothing of Spine\u2019s', () => {
+  const PACKAGE = 'packages/anaf/';
+  it('imports only its own files and Node\u2019s built-ins (so it can be taken out of the repository as it is)', () => {
+    const offenders: string[] = [];
+    for (const file of walk(path.join(repo, PACKAGE, 'src'))) {
+      if (isTest(file)) continue;
+      for (const spec of specifiers(file)) {
+        if (isRelative(spec)) { if (!target(file, spec).startsWith(`${PACKAGE}src/`)) offenders.push(`${rel(file)} -> ${spec}`); continue; }
+        if (!BUILTINS.has(spec)) offenders.push(`${rel(file)} -> ${spec} (a package: add it to this check and say why, or leave it out)`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('is reached from the server by its name and only through its index, by production code (its own tests and the server\u2019s reach into it)', () => {
+    const offenders: string[] = [];
+    for (const file of production('server')) {
+      for (const spec of specifiers(file)) {
+        if (isRelative(spec) && /(^|\/)anaf\//.test(target(file, spec))) offenders.push(`${rel(file)} -> ${spec} (by path: name the package)`);
+        if (/^spine-anaf\//.test(spec) && spec !== 'spine-anaf/index.js') offenders.push(`${rel(file)} -> ${spec}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('is built before the server and declared by it, and is in the lockfile\u2019s workspaces', () => {
+    const root = JSON.parse(fs.readFileSync(path.join(repo, 'package.json'), 'utf8')) as { workspaces: string[]; scripts: Record<string, string> };
+    expect(root.workspaces).toContain('packages/anaf');
+    expect(root.scripts['build:server']).toMatch(/build:anaf.*spine-server/);
+    expect(root.scripts.build).toMatch(/build:anaf.*spine-server.*spine-web/);
+    const server = JSON.parse(fs.readFileSync(path.join(repo, 'server/package.json'), 'utf8')) as { dependencies: Record<string, string> };
+    expect(Object.keys(server.dependencies)).toContain('spine-anaf');
+  });
+});
+
+describe('S16 — the billing package names no plan and nothing of Spine\u2019s', () => {
+  const PACKAGE = 'packages/billing/';
+  it('imports only its own files, Node\u2019s built-ins and the ANAF package (so what a price is for is passed to it, and it can be taken out as it is)', () => {
+    const offenders: string[] = [];
+    for (const file of walk(path.join(repo, PACKAGE, 'src'))) {
+      if (isTest(file)) continue;
+      for (const spec of specifiers(file)) {
+        if (isRelative(spec)) { if (!target(file, spec).startsWith(`${PACKAGE}src/`)) offenders.push(`${rel(file)} -> ${spec}`); continue; }
+        if (!BUILTINS.has(spec) && !/^spine-anaf\//.test(spec)) offenders.push(`${rel(file)} -> ${spec} (a package: add it to this check and say why, or leave it out)`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('is reached from the server by its name, never by a path, and is built before the server', () => {
+    const offenders: string[] = [];
+    for (const file of production('server')) {
+      for (const spec of specifiers(file)) if (isRelative(spec) && /(^|\/)packages\/billing\//.test(target(file, spec))) offenders.push(`${rel(file)} -> ${spec}`);
+    }
+    expect(offenders).toEqual([]);
+    const root = JSON.parse(fs.readFileSync(path.join(repo, 'package.json'), 'utf8')) as { workspaces: string[]; scripts: Record<string, string> };
+    expect(root.workspaces).toContain('packages/billing');
+    expect(root.scripts['build:server']).toMatch(/build:billing.*spine-server/);
+    expect(root.scripts.build).toMatch(/build:billing.*spine-server.*spine-web/);
+    const server = JSON.parse(fs.readFileSync(path.join(repo, 'server/package.json'), 'utf8')) as { dependencies: Record<string, string> };
+    expect(Object.keys(server.dependencies)).toContain('spine-billing');
+  });
+});
+
 describe('S6 — production ships production', () => {
   const config = (file: string) => JSON.parse(fs.readFileSync(path.join(repo, file), 'utf8')) as { exclude?: string[] };
 
