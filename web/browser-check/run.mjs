@@ -1,10 +1,13 @@
 // Runs the browser check: builds it, serves it with the production content security policy, opens it in Chrome and prints what each step did.
-// `npm run check:browser` (needs Google Chrome; set CHROME to its path elsewhere than macOS, and CHROME_FLAGS=--no-sandbox where it runs as root or in a container). Exits 1 if a step failed or the policy blocked anything.
+// `npm run check:browser` (needs Google Chrome; set CHROME to its path elsewhere than macOS, and CHROME_FLAGS=--no-sandbox where it runs as root or in a container).
+// `npm run check:webkit` is the same steps in WebKit, the engine of every browser on an iPhone (needs `npx playwright-core install webkit` once). Exits 1 if a step failed or the policy blocked anything.
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import puppeteer from 'puppeteer-core';
+
+const WEBKIT = process.env.BROWSER === 'webkit';
 
 const here = import.meta.dirname;
 try {
@@ -27,7 +30,14 @@ const server = http.createServer((req, res) => {
 }).listen(0);
 const port = server.address().port;
 
-const browser = await puppeteer.launch({ executablePath: process.env.CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true, args: (process.env.CHROME_FLAGS ?? '').split(/\s+/).filter(Boolean) });
+let browser;
+if (WEBKIT) {
+  // A run that cannot start is a failure, not a skip: a skipped check is reported as a pass.
+  const { webkit } = await import('playwright-core');
+  try { browser = await webkit.launch(); } catch (err) { console.log(`FAIL WebKit could not start (npx playwright-core install webkit): ${String(err.message).split('\n')[0]}`); process.exit(1); }
+} else {
+  browser = await puppeteer.launch({ executablePath: process.env.CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true, args: (process.env.CHROME_FLAGS ?? '').split(/\s+/).filter(Boolean) });
+}
 let failed = false;
 try {
   const page = await browser.newPage();
@@ -38,7 +48,11 @@ try {
   page.on('pageerror', e => problems.push(`page error: ${e.message}`));
   page.on('console', m => { if (/Content Security Policy|violat/i.test(m.text())) problems.push(m.text()); });
   await page.goto(`http://localhost:${port}/`, { waitUntil: 'load' });
-  await Promise.race([page.waitForFunction('window.__result', { timeout: 120000 }), crashed]);
+  // Playwright waits for a condition by evaluating a string, which the page's policy refuses; it is asked in a loop instead.
+  const done = WEBKIT
+    ? (async () => { for (let waited = 0; waited < 120000; waited += 250) { if (await page.evaluate('window.__result')) return; await new Promise(r => setTimeout(r, 250)); } throw new Error('the check did not finish in 120 s'); })()
+    : page.waitForFunction('window.__result', { timeout: 120000 });
+  await Promise.race([done, crashed]);
   const result = await page.evaluate('window.__result');
   for (const [name, r] of Object.entries(result)) {
     const bad = r.error !== undefined;

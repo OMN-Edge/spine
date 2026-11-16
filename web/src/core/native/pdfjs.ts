@@ -10,7 +10,32 @@ import * as worker from 'pdfjs-real/legacy/build/pdf.worker.mjs';
  */
 (globalThis as unknown as { pdfjsWorker: unknown }).pdfjsWorker = worker;
 
+/**
+ * The canvases PDF.js makes for itself, not for the page: a picture drawn much smaller than it is stored is scaled down in steps on canvases of
+ * its own. Its default factory asks the page's `document` for them, and a worker has none (`this._document.createElement`: what failed on a
+ * phone, on a file with a logo in it), so they are `OffscreenCanvas`es, which a worker has.
+ */
+class WorkerCanvasFactory {
+  create(width: number, height: number) {
+    if (width <= 0 || height <= 0) throw new Error('Invalid canvas size');
+    const canvas = new OffscreenCanvas(width, height);
+    return { canvas, context: canvas.getContext('2d', { willReadFrequently: true }) };
+  }
+  reset({ canvas }: { canvas?: OffscreenCanvas | null }, width: number, height: number) {
+    if (!canvas) throw new Error('Canvas is not specified');
+    if (width <= 0 || height <= 0) throw new Error('Invalid canvas size');
+    canvas.width = width;
+    canvas.height = height;
+  }
+  destroy(held: { canvas?: OffscreenCanvas | null; context?: unknown }) {
+    if (!held.canvas) throw new Error('Canvas is not specified');
+    held.canvas.width = held.canvas.height = 0;
+    held.canvas = null;
+    held.context = null;
+  }
+}
+
 export const STANDARD_FONTS = `${import.meta.env?.BASE_URL ?? '/'}pdfjs/standard_fonts/`;
 export const getDocument: typeof pdfjs.getDocument = (src: Parameters<typeof pdfjs.getDocument>[0]) =>
-  pdfjs.getDocument({ ...(src as object), standardFontDataUrl: STANDARD_FONTS, disableFontFace: true } as never);
+  pdfjs.getDocument({ ...(src as object), standardFontDataUrl: STANDARD_FONTS, disableFontFace: true, CanvasFactory: WorkerCanvasFactory } as never);
 export const { OPS, Util } = pdfjs;

@@ -33,7 +33,7 @@ Open the address Vite prints. Create an account first (`cd server && npm run cli
 | `npm test -w spine-core`, `npm test -w spine-server`, `npm test -w spine-web` | Every change. Seconds, no model is ever called |
 | `npm run typecheck -w spine-core -w spine-server` | Every change |
 | `./scripts/check.sh all` | Before you send it. This is what CI runs: tests, typecheck, dependency audit, gitleaks, semgrep (`brew install gitleaks semgrep` for the scans) |
-| `cd web && npm run check:browser && npm run check:app` | A change to the device, the vault, sync, sharing or anything structural; needs `npm run build` first and Chrome |
+| `cd web && npm run check:browser && npm run check:webkit && npm run check:app` | A change to the device, the vault, sync, sharing or anything structural; needs `npm run build` first, Chrome, and for `check:webkit` WebKit (`npx playwright-core install webkit`, once) |
 | `npm run test:integration -w spine-server` | After changing a prompt, a tool, the pipeline or the model; it calls the real model in `.env` |
 
 [testing.md](testing.md) says what each check answers and which file holds which test.
