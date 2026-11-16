@@ -145,11 +145,12 @@ useDigests(browserDigests); // what the core registers when it starts: the share
   await step(out, 'fonts', async () => {
     // PDF.js runs in that worker and posts messages of its own, so only the worker's own answer is waited for.
     const worker = new Worker(new URL('./raster.worker.ts', import.meta.url), { type: 'module' });
-    const said = await new Promise<{ i: number; w: number; ratio: number; error?: string }>((resolve, reject) => { worker.onmessage = e => { if ('ratio' in e.data || 'error' in e.data) resolve(e.data); }; worker.onerror = e => reject(new Error(e.message)); });
+    const said = await new Promise<{ i: number; w: number; ratio: number; picture?: number; error?: string }>((resolve, reject) => { worker.onmessage = e => { if ('ratio' in e.data || 'error' in e.data) resolve(e.data); }; worker.onerror = e => reject(new Error(e.message)); });
     worker.terminate();
     if (said.error) throw new Error(said.error);
     if (!(said.ratio > 2)) throw new Error(`the letters I and W hold ${said.i} and ${said.w} dark pixels: they were drawn alike, not as letters (${JSON.stringify(said).slice(0, 200)})`);
-    return { ink_I: said.i, ink_W: said.w };
+    if (said.picture !== 1) throw new Error('a page with a scaled-down picture was not drawn in the worker');
+    return { ink_I: said.i, ink_W: said.w, picture: said.picture };
   });
   await step(out, 'core', async () => { const core = await startCore(); return (await core.inject({ method: 'GET', url: '/api/tags' })).statusCode; });
   (window as any).__result = out;

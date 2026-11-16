@@ -45,7 +45,17 @@ function ink(data: Uint8ClampedArray, width: number, from: number, to: number): 
     const rows = (y: number) => Math.round((y / 841.89) * height); // a point from the top of the page, as a row
     const i = ink(data, width, rows(100), rows(200));
     const w = ink(data, width, rows(300), rows(400));
-    (self as unknown as Worker).postMessage({ i, w, ratio: i ? w / i : 0 });
+    // A picture stored much larger than it is drawn (a logo in a letterhead) is scaled down by PDF.js on canvases of its own, which its default
+    // factory asks a `document` for; a worker has none, and such a file could not be read on a phone.
+    const art = new OffscreenCanvas(1600, 1600);
+    const paint = art.getContext('2d')!;
+    for (let k = 0; k < 40; k++) { paint.fillStyle = `hsl(${k * 9} 70% 50%)`; paint.fillRect(0, k * 40, 1600, 40); }
+    const picture = await PDFDocument.create();
+    const image = await picture.embedPng(new Uint8Array(await (await art.convertToBlob({ type: 'image/png' })).arrayBuffer()));
+    picture.addPage([595.28, 841.89]).drawImage(image, { x: 60, y: 700, width: 90, height: 90 });
+    fs.writeFileSync('/data/originals/picture.pdf', await picture.save());
+    const drawn = await rasterizePdf('picture', '/data/originals/picture.pdf');
+    (self as unknown as Worker).postMessage({ i, w, ratio: i ? w / i : 0, picture: drawn.length });
   } catch (e) {
     (self as unknown as Worker).postMessage({ error: String((e as Error).stack || e).slice(0, 400) });
   }
