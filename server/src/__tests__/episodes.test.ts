@@ -35,6 +35,33 @@ describe('which documents may belong together', () => {
   });
 });
 
+describe('an archive that already holds old suggestions', () => {
+  it('replaces a suggested episode that spans a year with the care cycles in it, and leaves a confirmed one alone', async () => {
+    const store = getStore();
+    const at = new Date().toISOString();
+    // three visits of one clinic, each with its test, and each cycle followed by the next: what the old rule made into one episode
+    const days = ['2025-02-10', '2025-02-17', '2025-05-26', '2025-06-02', '2025-11-17', '2025-11-24'];
+    const docs = [];
+    for (const d of days) docs.push(await doc(d, 'Clinica Veche'));
+    const link = (i: number, j: number) => store.links.add(OWNER, { from_document_id: docs[i]!.id, to_document_id: docs[j]!.id, kind: 'follow_up', source: 'auto', state: 'proposed', reason: null }, at);
+    for (const [i, j] of [[0, 1], [2, 3], [4, 5], [1, 2], [3, 4]] as const) await link(i, j);
+    // the old proposal: all six in one, with no title, as the app made it
+    await store.episodes.create(OWNER, { id: uuidv4(), title: '', state: 'proposed', source: 'auto', documentIds: docs.map(d => d.id) }, at);
+    // and one the owner confirmed, which must not move
+    const mine = await doc('2025-08-01', 'Clinica Veche'); const mine2 = await doc('2025-08-04', 'Clinica Veche');
+    const confirmed = await call('POST', '/api/episodes', { title: 'Summer', document_ids: [mine.id, mine2.id] });
+    expect(confirmed.statusCode).toBe(201);
+
+    await proposeEpisodes(OWNER);
+    const held = (await call('GET', '/api/episodes')).json() as Array<{ state: string; document_ids: string[]; first_date: string; last_date: string }>;
+    const proposed = held.filter(e => e.state === 'proposed' && e.document_ids.some(id => docs.some(d => d.id === id)));
+    expect(proposed.every(e => e.document_ids.length < docs.length)).toBe(true);
+    for (const e of proposed) expect((Date.parse(e.last_date) - Date.parse(e.first_date)) / 86_400_000).toBeLessThanOrEqual(120);
+    expect(proposed.map(e => [...e.document_ids].sort().join('|')).sort()).toEqual([[docs[0]!.id, docs[1]!.id], [docs[2]!.id, docs[3]!.id], [docs[4]!.id, docs[5]!.id]].map(g => g.sort().join('|')).sort());
+    expect(held.find(e => e.state === 'confirmed')!.document_ids.sort()).toEqual([mine.id, mine2.id].sort());
+  });
+});
+
 describe('proposing, confirming and dismissing', () => {
   it('proposes with no title, replaces its proposals, and does not propose a dismissed group again', async () => {
     const a = await doc('2026-04-01', 'Clinica Invent'); const b = await doc('2026-04-05', 'Clinica Invent');
