@@ -781,8 +781,20 @@ export const api = {
     }>('/api/admin/invoices'),
     /** Tries an invoice that stopped again, or settles it because it was made by hand. */
     mendInvoice: (ref: string, action: 'retry' | 'settle') => post<{ ok: boolean }>('/api/admin/invoices', { ref, action }),
+    /** Spine's own e-Factura link (the server's `billing/invoicing/efactura/`): whether ANAF has authorised it and until when, and the newest documents with ANAF's word on each. */
+    efactura: () => req<{
+      enabled: boolean; mode?: 'test' | 'prod'; series?: string; seller?: { name: string; cif: string };
+      authorised?: boolean; accessExpiresAt?: string | null; refreshExpiresAt?: string | null;
+      documents?: Array<{ id: string; number: string; kind: 'invoice' | 'credit'; date: string; state: 'sent' | 'ok' | 'nok' | 'abroad' | null; message: string | null }>;
+    }>('/api/admin/efactura').then(v => v as { enabled: false } | Required<Pick<typeof v, 'mode' | 'series' | 'seller' | 'authorised' | 'accessExpiresAt' | 'refreshExpiresAt' | 'documents'>> & { enabled: true }),
+    /** Asks ANAF's own test service whether the token is accepted, with nothing sent to e-Factura. */
+    testEfactura: () => post<{ ok: boolean; status: number | null; message: string; certificateSeen: boolean }>('/api/admin/efactura/test', {}),
+    /** Where to send the browser to sign in with the certificate at ANAF. */
+    authoriseEfactura: () => post<{ url: string }>('/api/admin/efactura/authorise', {}),
     /** The buyers who asked to withdraw from a purchase, and the operator's decision: pay back (all, or an amount) and end the plan, or decline with a reason. */
-    withdrawals: () => req<{ requests: Array<{ id: string; email: string | null; plan: string | null; interval: string | null; requested_at: string; first_payment: string | null }> }>('/api/admin/withdrawals'),
+    withdrawals: () => req<{ requests: Array<{ id: string; email: string | null; plan: string | null; interval: string | null; requested_at: string; first_payment: string | null; used: { pages: number; questions: number; translated: number } | null; earlier_refunds: number; suggested: { refundMinor: number; keptMinor: number; currency: string; basis: 'unused' | 'time'; days: number; periodDays: number } | null }> }>('/api/admin/withdrawals'),
+    /** What each account with a subscription has (the plan, who bills it, its state and end), for an administrator only. */
+    subscriptions: () => req<{ subscriptions: Array<{ email: string | null; plan: string; interval: string | null; provider: string; status: string; founding: boolean; until: string | null; ends: boolean }> }>('/api/admin/subscriptions'),
     decideWithdrawal: (id: string, action: 'refund' | 'decline', extra: { amount?: number; note?: string } = {}) => post<{ ok: boolean }>('/api/admin/withdrawals', { id, action, ...extra }),
     accounts: () => req<{ pending: Array<{ id: string; email: string; created_at: string; email_confirmed: boolean }> }>('/api/admin/accounts'),
     approve: (id: string) => post<{ ok: boolean }>(`/api/admin/accounts/${encodeURIComponent(id)}/approve`, {}),

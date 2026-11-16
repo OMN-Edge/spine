@@ -171,5 +171,6 @@ export function paddleProvider(config: Enabled): BillingProvider {
     readBuyer: async () => null,
     // Paddle is the seller and refunds in its own dashboard.
     withdraw: async () => { throw new Error('Paddle refunds from its own dashboard'); },
+    lastPaid: async () => null,
   };
 }

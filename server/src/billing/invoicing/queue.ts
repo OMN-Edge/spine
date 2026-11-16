@@ -4,6 +4,7 @@ import type { InvoiceState, QueuedInvoice } from 'spine-core/store/types.js';
 import { billingProvider, type Enabled, type Sale } from '../provider.js';
 import { loadBillingConfig } from '../config.js';
 import { billyouIssuer } from './billyou.js';
+import { makeEfactura, type Efactura } from './efactura/index.js';
 import { bnrRate } from './bnr.js';
 import { alertOperator } from './alert.js';
 import { loadInvoicingConfig, type InvoicingConfig } from './config.js';
@@ -45,13 +46,26 @@ export function draftOf(ref: string, sale: Sale, config: Active): InvoiceDraft {
 }
 
 /** The service the operator named, made once for the process (a token is kept between calls). */
-let made: { key: string; issuer: InvoiceIssuer } | null = null;
-export function issuerFor(config: Active): InvoiceIssuer {
-  const key = JSON.stringify([config.issuer, config.billyou, config.vatPercent]);
-  if (made?.key === key) return made.issuer;
+let made: { key: string; issuer: InvoiceIssuer; efactura: Efactura | null } | null = null;
+
+function build(config: Active): NonNullable<typeof made> {
+  const key = JSON.stringify([config.issuer, config.issuer === 'billyou' ? config.billyou : { ...config.direct, key: config.direct.key.toString('base64') }, config.vatPercent]);
+  if (made?.key === key) return made;
+  if (config.issuer === 'efactura') {
+    const efactura = makeEfactura(config.direct, getAccountsStore().billing);
+    return (made = { key, issuer: efactura.issuer, efactura });
+  }
   const issuer = billyouIssuer({ apiKey: config.billyou.apiKey, seriesId: config.billyou.seriesId, exchangeRate: currency => bnrRate(currency), ...(config.billyou.zeroVat ? { zeroVat: config.billyou.zeroVat } : {}) });
-  made = { key, issuer };
-  return issuer;
+  return (made = { key, issuer, efactura: null });
+}
+
+export function issuerFor(config: Active): InvoiceIssuer { return build(config).issuer; }
+
+/** Spine's own e-Factura link, where that is the issuer: the operator's page and the PDF route use it; null where invoices go through a service or are off. */
+export function efacturaFromSettings(env: NodeJS.ProcessEnv = process.env): Efactura | null {
+  const billing = loadBillingConfig(env);
+  const config = loadInvoicingConfig(billing, env);
+  return config.enabled && config.issuer === 'efactura' ? build(config).efactura : null;
 }
 
 /**

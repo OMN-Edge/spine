@@ -90,8 +90,11 @@ describe('withdrawing from a purchase', () => {
     await app.inject({ method: 'POST', url: '/api/billing/withdraw', headers: { cookie: b.cookie }, payload: {} });
     expect((await app.inject({ method: 'GET', url: '/api/admin/withdrawals', headers: { cookie: b.cookie } })).statusCode).toBe(403);
     const admin = await loginAs(app, ADMIN, TEST_PASSWORD);
-    const list = (await app.inject({ method: 'GET', url: '/api/admin/withdrawals', headers: { cookie: admin } })).json().requests as Array<{ email: string; plan: string }>;
-    expect(list.find(r => r.email === b.email)).toMatchObject({ plan: 'premium' });
+    // The last payment is read from Stripe to suggest what to pay back: nothing used since it, so the whole of it.
+    stripe({ '/v1/invoices': { json: { data: [{ amount_paid: 1900, currency: 'eur' }] } } });
+    const list = (await app.inject({ method: 'GET', url: '/api/admin/withdrawals', headers: { cookie: admin } })).json().requests as Array<{ email: string; plan: string; suggested: unknown }>;
+    expect(list.find(r => r.email === b.email)).toMatchObject({ plan: 'premium', suggested: { refundMinor: 1900, keptMinor: 0, currency: 'EUR', basis: 'unused' } });
+    vi.unstubAllGlobals();
     const id = (await store().billing.openWithdrawalOf(b.id))!.id;
     expect((await app.inject({ method: 'POST', url: '/api/admin/withdrawals', headers: { cookie: b.cookie }, payload: { id, action: 'decline' } })).statusCode).toBe(403);
     expect((await app.inject({ method: 'POST', url: '/api/admin/withdrawals', headers: { cookie: admin }, payload: { id, action: 'refund', amount: -3 } })).statusCode).toBe(400);

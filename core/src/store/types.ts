@@ -54,7 +54,7 @@ import type {
  *     here.
  *  7. `cookieSessions.*` — the cookie session's state, found by the digest of the cookie's random id before there is an acting
  *     user (it is what says who that is), and holding no record.
- *  8. `billing.findBySubscription`/`findByCustomer`/`recordEvent`/`pruneEvents`/`foundingHeld` and the invoice queue (`queueInvoice`, `invoicesDue`, `invoice`, `updateInvoice`) — the payment provider's side (SECURITY.md **M-45**):
+ *  8. `billing.findBySubscription`/`findByCustomer`/`recordEvent`/`pruneEvents`/`foundingHeld`/`subscriptions` (the operator's list of what accounts pay for) and the invoice queue (`queueInvoice`, `invoicesDue`, `invoice`, `updateInvoice`) — the payment provider's side (SECURITY.md **M-45**):
  *     a webhook names the provider's own ids, which the server recorded when it first heard of them, and the count of founding prices is of
  *     all accounts. Nothing here answers more than a plan.
  *  9. `metrics.*`, `waitlist.*` and `settings.*` — counts a day under a name, addresses of people who are not accounts, and the few settings
@@ -936,6 +936,8 @@ export interface ReminderDateRepository {
 
 export interface BillingRepository {
   get(userId: string): Promise<SubscriptionRecord | null>;
+  /** The accounts that have a subscription row, the most recently changed first: the operator's list on the admin page (plan, status, end; never what an account holds). */
+  subscriptions(limit: number): Promise<SubscriptionRecord[]>;
   /** The provider's side (a webhook) names a subscription or a customer, not a user: the fifth and sixth lookups with no acting user (SECURITY.md **M-45**). */
   findBySubscription(subscriptionId: string): Promise<SubscriptionRecord | null>;
   findByCustomer(customerId: string): Promise<SubscriptionRecord | null>;
@@ -972,7 +974,63 @@ export interface BillingRepository {
   /** What the invoices made in a calendar year count for in the EU consumer threshold (minor units of EUR). */
   euSalesMinor(year: number): Promise<number>;
   updateInvoice(ref: string, patch: InvoicePatch, at: string): Promise<void>;
+
+  /**
+   * What the operator's own e-Factura link keeps (`billing/invoicing/efactura/`): the sealed authorisation ANAF gave (only the operator's, never an account's), the numbered
+   * documents it made, and the number each series has reached. None of these is about one account, so none takes a user.
+   */
+  efacturaTokens(): Promise<EfacturaTokens | null>;
+  efacturaSaveTokens(tokens: EfacturaTokens): Promise<void>;
+  /** Starts an authorisation: remembers the `state` the browser must come back with, replacing any earlier one. */
+  efacturaBeginAuthorisation(state: string, at: string): Promise<void>;
+  /** Ends it: true only if `state` is the one remembered and not older than `maxAgeMs`; it can be used once. */
+  efacturaFinishAuthorisation(state: string, now: string, maxAgeMs: number): Promise<boolean>;
+  /**
+   * The numbered document for a draft: the one it has, or a new one with the series' next number. Done in one transaction, so the numbers have no gaps (a document is made
+   * for a draft once, and a number is never given twice or given and lost).
+   */
+  efacturaReserve(draftId: string, kind: EfacturaKind, series: string, issueDate: string, at: string, reverses: string | null): Promise<EfacturaDocument>;
+  efacturaDocument(draftId: string): Promise<EfacturaDocument | null>;
+  efacturaUpdateDocument(draftId: string, patch: EfacturaDocumentPatch, at: string): Promise<void>;
+  /** The newest documents, for the operator's page. */
+  efacturaDocuments(limit: number): Promise<EfacturaDocument[]>;
 }
+
+/** The authorisation ANAF gave: the access and refresh tokens sealed as one string (AES-GCM; the key is the operator's, not in the store), and when each ends. */
+export interface EfacturaTokens {
+  sealed: string;
+  access_expires_at: string;
+  refresh_expires_at: string;
+  authorised_at: string;
+  updated_at: string;
+}
+
+export type EfacturaKind = 'invoice' | 'credit';
+
+/** A numbered invoice or credit note and how far it has got with ANAF. The XML is kept (an invoice is kept ten years), and the signed answer ANAF gives, which it keeps for 60 days only. */
+export interface EfacturaDocument {
+  draft_id: string;
+  kind: EfacturaKind;
+  series: string;
+  number: number;
+  issue_date: string;
+  /** The draft id of the invoice a credit note reverses. */
+  reverses: string | null;
+  xml: string | null;
+  /** What the document was made from (the issuer's own JSON), kept so a credit note, or the same invoice made again after ANAF refused it, is made from the same data. */
+  input: string | null;
+  /** ANAF's upload index, once it has the file. */
+  anaf_index: string | null;
+  /** `sent` (ANAF has it, undecided), `ok`, `nok`, or `abroad` (the buyer is outside Romania: nothing to send). */
+  anaf_state: 'sent' | 'ok' | 'nok' | 'abroad' | null;
+  anaf_message: string | null;
+  /** ANAF's answer as it sent it (a zip: the invoice and the Ministry's signature), base64. */
+  signed: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type EfacturaDocumentPatch = Partial<Pick<EfacturaDocument, 'xml' | 'input' | 'anaf_index' | 'anaf_state' | 'anaf_message' | 'signed'>>;
 
 /**
  * Where a payment's invoice has got to. Only references and numbers, never the buyer: the name and address are read from the payment provider each

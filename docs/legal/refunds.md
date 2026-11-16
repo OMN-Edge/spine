@@ -10,9 +10,11 @@ Paddle sells the plans and the top-up to you as the seller of record: it takes t
 
 Where we sell, you can withdraw from your account page: within the fourteen days press "Withdraw from this purchase". We confirm by email at once, and answer within fourteen days. If we accept, we end your plan and pay back to the way you paid; for a plan you have already used we pay back less the part of the service already given, as the law allows. Where Paddle sells, you ask Paddle or us.
 
-For a digital service you have fourteen days to withdraw from a purchase, counted from the day you buy. You do not have to give a reason. If you ask for the service to start earlier, you lose that right as the law allows, as the order page says.
+For a digital service you have fourteen days to withdraw from a purchase, counted from the day you buy. You do not have to give a reason. On the order page you ask for the service to start at once and accept that you lose the right once the service has been fully provided.
 
-For a yearly plan, if you withdraw within those fourteen days we refund what you paid, less what the law allows us to keep for the part of the service already given.
+**A top-up of pages** is fully provided when its pages have been used. Once they are, it cannot be withdrawn from or refunded; before that, we refund what you paid less the part already used.
+
+**A plan** is provided over the whole of the period you paid for, so using it for a few days does not end your right to withdraw. If you withdraw within the fourteen days, you pay an amount in proportion to what has been provided until you told us, worked out on the price you paid, and we refund the rest. The use made of the plan (pages read, questions asked, pages translated) is what we look at for this; we never look at your records.
 
 ## After the fourteen days
 

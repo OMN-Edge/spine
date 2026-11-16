@@ -161,6 +161,10 @@ describe('P1 — deny by default', () => {
     'GET /api/share/:link/documents/:id',
     'GET /api/share/:link/pages/:pageId/image',
     'GET /api/share/:link/meta',
+    // Public on purpose, and carrying no session: ANAF's redirect back from the certificate sign-in (the cookie is SameSite=strict) is trusted by the one-time state an administrator asked for, and an invoice's PDF is at a link the
+    // account's own request signed for ten minutes (billing-efactura.test.ts).
+    'GET /api/admin/efactura/callback',
+    'GET /api/billing/invoice-pdf/:id',
     // Public on purpose: the privacy notice, the terms and the intended purpose are read before an account exists (own-account.test.ts).
     'GET /api/legal/:doc',
     // Public on purpose: they are how a passkey signs in (passkeys.test.ts); each is rate limited and single use.

@@ -29,7 +29,7 @@ describe('the invoicing settings', () => {
   it('stop the start without the VAT, without a service’s settings, and with Paddle, which sends its own invoices', () => {
     expect(read({ SPINE_INVOICING: 'billyou' }).problems).toEqual(expect.arrayContaining([expect.stringContaining('SPINE_INVOICING_VAT_PERCENT'), expect.stringContaining('BILLYOU_API_KEY'), expect.stringContaining('BILLYOU_SERIES_ID')]));
     expect(read({ ...BILLYOU, SPINE_INVOICING_VAT_PERCENT: 'abc' }).problems.join()).toContain('expected a number');
-    expect(read({ SPINE_INVOICING: 'nobody' }).problems.join()).toContain('expected off or billyou');
+    expect(read({ SPINE_INVOICING: 'nobody' }).problems.join()).toContain('expected off, billyou or efactura');
     const problems: string[] = [];
     readInvoicingConfig({ ...BILLYOU } as never, { enabled: true, provider: 'paddle' } as never, problems);
     expect(problems.join()).toContain('Paddle is the seller');

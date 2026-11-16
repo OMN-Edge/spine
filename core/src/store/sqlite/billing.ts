@@ -1,5 +1,5 @@
 import type { Database } from './driver.js';
-import type { BillingRepository, InvoicePatch, InvoiceState, QueuedInvoice, WithdrawalRecord, MetricsRepository, OperatorSettingsRepository, SubscriptionRecord, WaitlistRepository } from '../types.js';
+import type { BillingRepository, EfacturaDocument, EfacturaDocumentPatch, InvoicePatch, InvoiceState, QueuedInvoice, WithdrawalRecord, MetricsRepository, OperatorSettingsRepository, SubscriptionRecord, WaitlistRepository } from '../types.js';
 
 const COLUMNS = 'user_id, provider, customer_id, subscription_id, billing_interval, plan, status, founding, current_period_end, cancel_scheduled, updated_at';
 
@@ -19,11 +19,16 @@ const asSubscription = (r: Record<string, unknown>): SubscriptionRecord => ({
 
 const INVOICE_FIELDS = ['state', 'attempts', 'next_attempt_at', 'last_error', 'issuer_ref', 'series', 'number', 'resume', 'eu_minor'];
 const WITHDRAWAL_COLUMNS = 'id, user_id, state, requested_at, decided_at, refunded_minor, note';
+const EFACTURA_FIELDS = ['xml', 'input', 'anaf_index', 'anaf_state', 'anaf_message', 'signed'];
+const EFACTURA_COLUMNS = 'draft_id, kind, series, number, issue_date, reverses, xml, input, anaf_index, anaf_state, anaf_message, signed, created_at, updated_at';
 const INVOICE_COLUMNS = 'ref, user_id, state, attempts, next_attempt_at, last_error, issuer_ref, series, number, resume, eu_minor, created_at, updated_at';
+
+type EfacturaTokensRow = NonNullable<Awaited<ReturnType<BillingRepository['efacturaTokens']>>>;
 
 /** The account's own row is read with its id; the provider's side finds one by the provider's ids (store/types.ts, exceptions). */
 export function billingRepository(db: Database): BillingRepository {
   const get = db.prepare(`SELECT ${COLUMNS} FROM subscriptions WHERE user_id = ?`);
+  const all = db.prepare(`SELECT ${COLUMNS} FROM subscriptions ORDER BY updated_at DESC LIMIT ?`);
   const bySubscription = db.prepare(`SELECT ${COLUMNS} FROM subscriptions WHERE subscription_id = ?`);
   const byCustomer = db.prepare(`SELECT ${COLUMNS} FROM subscriptions WHERE customer_id = ?`);
   const put = db.prepare(`INSERT INTO subscriptions (${COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -53,6 +58,30 @@ export function billingRepository(db: Database): BillingRepository {
   const euSales = db.prepare('SELECT SUM(eu_minor) AS n FROM invoice_queue WHERE created_at >= ? AND created_at < ?');
   const oneInvoice = db.prepare(`SELECT ${INVOICE_COLUMNS} FROM invoice_queue WHERE ref = ?`);
 
+  const tokens = db.prepare('SELECT sealed, access_expires_at, refresh_expires_at, authorised_at, updated_at FROM efactura_auth WHERE id = 1');
+  const saveTokens = db.prepare(`INSERT INTO efactura_auth (id, sealed, access_expires_at, refresh_expires_at, authorised_at, updated_at) VALUES (1, ?, ?, ?, ?, ?)
+    ON CONFLICT (id) DO UPDATE SET sealed = excluded.sealed, access_expires_at = excluded.access_expires_at, refresh_expires_at = excluded.refresh_expires_at, authorised_at = excluded.authorised_at, updated_at = excluded.updated_at`);
+  const beginAuth = db.prepare('INSERT INTO efactura_pending (id, state, created_at) VALUES (1, ?, ?) ON CONFLICT (id) DO UPDATE SET state = excluded.state, created_at = excluded.created_at');
+  // Only the state asked for is taken: anyone can call the callback, and a wrong state must not spend the right one.
+  const takePending = db.prepare('DELETE FROM efactura_pending WHERE id = 1 AND state = ? RETURNING created_at');
+  const oneDocument = db.prepare(`SELECT ${EFACTURA_COLUMNS} FROM efactura_documents WHERE draft_id = ?`);
+  const newSeries = db.prepare('INSERT OR IGNORE INTO efactura_series (series, next_number) VALUES (?, 1)');
+  const takeNumber = db.prepare('UPDATE efactura_series SET next_number = next_number + 1 WHERE series = ? RETURNING next_number - 1 AS n');
+  const putDocument = db.prepare(`INSERT INTO efactura_documents (draft_id, kind, series, number, issue_date, reverses, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+  const newestDocuments = db.prepare(`SELECT ${EFACTURA_COLUMNS} FROM efactura_documents ORDER BY created_at DESC, number DESC LIMIT ?`);
+  const reserve = db.transaction((draftId: string, kind: string, series: string, issueDate: string, at: string, reverses: string | null) => {
+    const existing = oneDocument.get(draftId) as EfacturaDocument | undefined;
+    if (existing) return existing;
+    newSeries.run(series);
+    const { n } = takeNumber.get(series) as { n: number };
+    putDocument.run(draftId, kind, series, n, issueDate, reverses, at, at);
+    return oneDocument.get(draftId) as EfacturaDocument;
+  });
+  const finish = db.transaction((state: string, now: string, maxAgeMs: number) => {
+    const pending = takePending.get(state) as { created_at: string } | undefined;
+    return !!pending && Date.parse(now) - Date.parse(pending.created_at) <= maxAgeMs;
+  });
+
   const row = (statement: ReturnType<Database['prepare']>, key: string) => {
     const r = statement.get(key) as Record<string, unknown> | undefined;
     return r ? asSubscription(r) : null;
@@ -60,6 +89,7 @@ export function billingRepository(db: Database): BillingRepository {
 
   return {
     async get(userId) { return row(get, userId); },
+    async subscriptions(limit) { return (all.all(limit) as Array<Record<string, unknown>>).map(asSubscription); },
     async findBySubscription(id) { return row(bySubscription, id); },
     async findByCustomer(id) { return row(byCustomer, id); },
     async put(s) {
@@ -92,6 +122,18 @@ export function billingRepository(db: Database): BillingRepository {
       if (known.length === 0) return;
       db.prepare(`UPDATE invoice_queue SET ${known.map(([k]) => `${k} = ?`).join(', ')}, updated_at = ? WHERE ref = ?`).run(...known.map(([, v]) => v as string | number | null), at, ref);
     },
+    async efacturaTokens() { return (tokens.get() as EfacturaTokensRow | undefined) ?? null; },
+    async efacturaSaveTokens(t) { saveTokens.run(t.sealed, t.access_expires_at, t.refresh_expires_at, t.authorised_at, t.updated_at); },
+    async efacturaBeginAuthorisation(state, at) { beginAuth.run(state, at); },
+    async efacturaFinishAuthorisation(state, now, maxAgeMs) { return finish(state, now, maxAgeMs); },
+    async efacturaReserve(draftId, kind, series, issueDate, at, reverses) { return reserve(draftId, kind, series, issueDate, at, reverses); },
+    async efacturaDocument(draftId) { return (oneDocument.get(draftId) as EfacturaDocument | undefined) ?? null; },
+    async efacturaUpdateDocument(draftId, patch: EfacturaDocumentPatch, at) {
+      const known = Object.entries(patch).filter(([k]) => EFACTURA_FIELDS.includes(k));
+      if (known.length === 0) return;
+      db.prepare(`UPDATE efactura_documents SET ${known.map(([k]) => `${k} = ?`).join(', ')}, updated_at = ? WHERE draft_id = ?`).run(...known.map(([, v]) => v as string | null), at, draftId);
+    },
+    async efacturaDocuments(limit) { return newestDocuments.all(limit) as EfacturaDocument[]; },
   };
 }
 

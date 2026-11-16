@@ -24,22 +24,24 @@ export default function AdminAccounts() {
 
   if (rows === null) return null;
   return (
-    <section className="bg-white border border-gray-200 rounded-xl p-5 mt-6">
-      <h2 className="font-medium text-gray-900 mb-1">{t('Accounts waiting for approval')}</h2>
-      <p className="text-sm text-gray-500 mb-4">{rows.length === 0 ? t('No one is waiting.') : tn(rows.length, '{n} person is waiting.', '{n} people are waiting.')}</p>
+    <section>
+      <h2 className="font-display text-[clamp(1.5rem,2.6vw,2rem)] font-normal leading-tight">{t('Accounts waiting for approval')}</h2>
+      <div className="mt-5 rounded-2xl border border-ink/10 bg-surface p-5">
+      <p className="text-sm text-ink/60 mb-4">{rows.length === 0 ? t('No one is waiting.') : tn(rows.length, '{n} person is waiting.', '{n} people are waiting.')}</p>
       {error && <Notice kind="error">{error}</Notice>}
-      <ul className="divide-y divide-gray-100">
+      <ul className="divide-y divide-ink/10">
         {rows.map(row => (
           <li key={row.id} className="py-3 flex flex-wrap items-center gap-3">
             <div className="min-w-0 flex-1">
-              <div className="text-sm text-gray-900 break-all">{row.email}</div>
-              <div className="text-xs text-gray-500">{new Date(row.created_at).toLocaleString()}{row.email_confirmed ? '' : ` · ${t('address not confirmed')}`}</div>
+              <div className="text-sm text-ink break-all">{row.email}</div>
+              <div className="text-xs text-ink/60">{new Date(row.created_at).toLocaleString()}{row.email_confirmed ? '' : ` · ${t('address not confirmed')}`}</div>
             </div>
-            <button type="button" onClick={() => void act(() => api.admin.approve(row.id))} className="text-sm rounded-lg bg-brand-600 text-white px-3 py-1.5 hover:bg-brand-700">{t('Approve')}</button>
-            <button type="button" onClick={() => void act(() => api.admin.refuse(row.id))} className="text-sm rounded-lg border border-gray-300 px-3 py-1.5 text-gray-700 hover:bg-gray-50">{t('Refuse')}</button>
+            <button type="button" onClick={() => void act(() => api.admin.approve(row.id))} className="rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-paper hover:bg-accent/90">{t('Approve')}</button>
+            <button type="button" onClick={() => void act(() => api.admin.refuse(row.id))} className="rounded-full border border-ink/20 px-4 py-1.5 text-sm text-ink/80 hover:bg-ink/5">{t('Refuse')}</button>
           </li>
         ))}
       </ul>
+    </div>
     </section>
   );
 }

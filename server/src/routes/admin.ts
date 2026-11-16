@@ -9,11 +9,13 @@ import { dashboardOf, type Dashboard } from '../dashboard.js';
 import { changeSetting, operatorSettings } from '../operator-settings.js';
 import { changeFairUse, fairUseSections } from '../billing/fair-use-admin.js';
 import { syncFairUse } from '../billing/fair-use.js';
-import { retryInvoice, settleInvoice } from '../billing/invoicing/queue.js';
+import { efacturaFromSettings, retryInvoice, settleInvoice } from '../billing/invoicing/queue.js';
 import { loadBillingConfig } from '../billing/config.js';
 import { billingProvider } from '../billing/provider.js';
 import { withdrawalAcceptedMail, withdrawalDeclinedMail } from '../billing/withdrawal-mail.js';
 import { euSalesTotals } from '../billing/invoicing/threshold.js';
+import { usedSince } from '../usage-report.js';
+import { suggestedRefund } from '../billing/withdrawal-share.js';
 
 /**
  * Approving the accounts that asked for one under `SPINE_REGISTRATION=approval`, from the app. Who may is `SPINE_ADMIN_EMAILS`, checked on every
@@ -71,14 +73,65 @@ export async function adminRoutes(app: FastifyInstance, opts: AdminRouteOptions 
     return done.ok ? reply.send({ ok: true }) : reply.status(409).send({ error: done.error });
   });
 
+  // Spine's own link to ANAF's e-Factura (`SPINE_INVOICING=efactura`, docs/efactura.md): whether the operator has authorised it, until when, and the newest documents with ANAF's word on each.
+  // The operator starts the authorisation here and finishes it in a browser that holds the certificate; ANAF sends the browser back to the callback, which has no session to rely on (the
+  // cookie is SameSite=strict and the redirect comes from another site), so what it checks is the one-time `state` that only a recently typed password could have asked for.
+  app.get('/api/admin/efactura', { preHandler: [requireAuth, onlyReaders] }, async (_req, reply) => {
+    const efactura = efacturaFromSettings();
+    if (!efactura) return reply.header('Cache-Control', 'no-store').send({ enabled: false });
+    const [status, documents] = await Promise.all([efactura.link.status(), getAccountsStore().billing.efacturaDocuments(30)]);
+    const { seller, series, mode, redirectUri } = efactura.config;
+    return reply.header('Cache-Control', 'no-store').send({
+      enabled: true, mode, series, redirect_uri: redirectUri, seller: { name: seller.name, cif: seller.cif }, ...status,
+      documents: documents.map(d => ({ id: d.draft_id, number: `${d.series}-${String(d.number).padStart(5, '0')}`, kind: d.kind, date: d.issue_date, state: d.anaf_state, message: d.anaf_message })),
+    });
+  });
+  app.post('/api/admin/efactura/authorise', { preHandler: [requireAuth, onlyAdmins, requireRecentAuth] }, async (_req, reply) => {
+    const efactura = efacturaFromSettings();
+    if (!efactura) return reply.status(404).send({ error: 'e-Factura is not on here' });
+    return reply.header('Cache-Control', 'no-store').send({ url: await efactura.link.authorisationUrl() });
+  });
+  // ANAF's test service for the token: whether the authorisation is accepted, with nothing sent to e-Factura. An administrator's, since it uses the operator's token.
+  app.post('/api/admin/efactura/test', { preHandler: [requireAuth, onlyAdmins], config: { rateLimit: { max: 6, timeWindow: '1 minute' } } }, async (_req, reply) => {
+    const efactura = efacturaFromSettings();
+    if (!efactura) return reply.status(404).send({ error: 'e-Factura is not on here' });
+    return reply.header('Cache-Control', 'no-store').send(await efactura.link.hello());
+  });
+  app.get<{ Querystring: { code?: string; state?: string; error?: string } }>('/api/admin/efactura/callback', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const { code, state } = req.query;
+    const back = (outcome: 'ok' | 'error') => reply.header('Cache-Control', 'no-store').redirect(`/admin/invoices?efactura=${outcome}`);
+    const efactura = efacturaFromSettings();
+    if (!efactura || typeof code !== 'string' || typeof state !== 'string' || code.length > 2000 || state.length > 200) return back('error');
+    try {
+      await efactura.link.complete(code, state);
+      return back('ok');
+    } catch (err) {
+      logger.warn('the ANAF authorisation was not completed', { reason: err instanceof Error ? err.message : String(err) });
+      return back('error');
+    }
+  });
+
   // Buyers' requests to withdraw from a purchase. The operator decides each: pays back (all of the last payment, or an amount) and ends the plan, or declines with a reason.
   // The refund then reaches `charge.refunded`, which has the invoice reversed. The buyer is told either way.
   app.get('/api/admin/withdrawals', { preHandler: [requireAuth, onlyReaders] }, async (_req, reply) => {
     const store = getAccountsStore();
     const open = await store.billing.withdrawals('requested', 50);
+    const decided = await store.billing.withdrawals(null, 500);
+    const config = loadBillingConfig();
     const rows = await Promise.all(open.map(async w => {
       const [user, sub, first] = await Promise.all([store.users.findById(w.user_id), store.billing.get(w.user_id), store.billing.firstPaymentAt(w.user_id)]);
-      return { id: w.id, email: user?.email ?? null, plan: sub?.plan ?? null, interval: sub?.interval ?? null, requested_at: w.requested_at, first_payment: first };
+      // Whether the service was used since the purchase, and how many times the account has asked and been paid back before: what the operator weighs in deciding.
+      const used = first ? await usedSince(store, w.user_id, new Date(first)) : null;
+      // What to pay back, as a suggestion (`billing/withdrawal-share.ts`): needs the last payment, which only the provider knows; a provider that cannot say gives none.
+      let suggested: ReturnType<typeof suggestedRefund> | null = null;
+      if (first && sub?.subscription_id && sub.interval && config.enabled && sub.provider === config.provider) {
+        const paid = await billingProvider(config).lastPaid(sub.subscription_id).catch(() => null);
+        if (paid) suggested = suggestedRefund({ paidMinor: paid.amountMinor, currency: paid.currency, interval: sub.interval, paidAt: new Date(first), asked: new Date(w.requested_at), used });
+      }
+      return {
+        id: w.id, email: user?.email ?? null, plan: sub?.plan ?? null, interval: sub?.interval ?? null, requested_at: w.requested_at, first_payment: first, used, suggested,
+        earlier_refunds: decided.filter(b => b.user_id === w.user_id && b.state === 'refunded').length,
+      };
     }));
     return reply.header('Cache-Control', 'no-store').send({ requests: rows });
   });
@@ -141,6 +194,17 @@ export async function adminRoutes(app: FastifyInstance, opts: AdminRouteOptions 
     if (problem) return reply.status(400).send({ error: problem });
     logger.info('a fair-use ceiling was changed', { event: 'fair_use_change', path: req.body?.path, account: req.userId });
     return reply.send({ sections: fairUseSections() });
+  });
+
+  // What each account with a subscription has: the plan, who bills it, its state and when it ends or renews. The operator's list, so an administrator's only.
+  app.get('/api/admin/subscriptions', { preHandler: [requireAuth, onlyAdmins] }, async (_req, reply) => {
+    const store = getAccountsStore();
+    const rows = await store.billing.subscriptions(500);
+    const out = await Promise.all(rows.map(async r => ({
+      email: (await store.users.findById(r.user_id))?.email ?? null, plan: r.plan, interval: r.interval, provider: r.provider, status: r.status, founding: r.founding,
+      until: r.current_period_end, ends: r.cancel_scheduled,
+    })));
+    return reply.header('Cache-Control', 'no-store').send({ subscriptions: out });
   });
 
   app.get('/api/admin/accounts', { preHandler: [requireAuth, onlyAdmins] }, async (_req, reply) => {

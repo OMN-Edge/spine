@@ -1,5 +1,5 @@
-import type { BillingRepository, InvoicePatch, InvoiceState, QueuedInvoice, WithdrawalRecord, MetricsRepository, OperatorSettingsRepository, SubscriptionRecord, WaitlistRepository } from '../types.js';
-import { changed, many, one, type Query } from './query.js';
+import type { BillingRepository, EfacturaDocument, EfacturaDocumentPatch, EfacturaTokens, InvoicePatch, InvoiceState, QueuedInvoice, WithdrawalRecord, MetricsRepository, OperatorSettingsRepository, SubscriptionRecord, WaitlistRepository } from '../types.js';
+import { changed, many, one, type Begin, type Query } from './query.js';
 
 const COLUMNS = 'user_id, provider, customer_id, subscription_id, billing_interval, plan, status, founding, current_period_end, cancel_scheduled, updated_at';
 
@@ -23,6 +23,14 @@ const asWithdrawal = (r: Record<string, unknown>): WithdrawalRecord => ({
   id: r.id as string, user_id: r.user_id as string, state: r.state as WithdrawalRecord['state'], requested_at: r.requested_at as string, decided_at: (r.decided_at as string | null) ?? null,
   refunded_minor: r.refunded_minor === null || r.refunded_minor === undefined ? null : Number(r.refunded_minor), note: (r.note as string | null) ?? null,
 });
+const EFACTURA_FIELDS = ['xml', 'input', 'anaf_index', 'anaf_state', 'anaf_message', 'signed'];
+const EFACTURA_COLUMNS = 'draft_id, kind, series, number, issue_date, reverses, xml, input, anaf_index, anaf_state, anaf_message, signed, created_at, updated_at';
+const asDocument = (r: Record<string, unknown>): EfacturaDocument => ({
+  draft_id: r.draft_id as string, kind: r.kind as EfacturaDocument['kind'], series: r.series as string, number: Number(r.number), issue_date: r.issue_date as string,
+  reverses: (r.reverses as string | null) ?? null, xml: (r.xml as string | null) ?? null, input: (r.input as string | null) ?? null, anaf_index: (r.anaf_index as string | null) ?? null,
+  anaf_state: (r.anaf_state as EfacturaDocument['anaf_state']) ?? null, anaf_message: (r.anaf_message as string | null) ?? null, signed: (r.signed as string | null) ?? null,
+  created_at: r.created_at as string, updated_at: r.updated_at as string,
+});
 const INVOICE_COLUMNS = 'ref, user_id, state, attempts, next_attempt_at, last_error, issuer_ref, series, number, resume, eu_minor, created_at, updated_at';
 const asInvoice = (r: Record<string, unknown>): QueuedInvoice => ({
   ref: r.ref as string, user_id: (r.user_id as string | null) ?? null, state: r.state as QueuedInvoice['state'], attempts: Number(r.attempts), next_attempt_at: r.next_attempt_at as string,
@@ -31,13 +39,14 @@ const asInvoice = (r: Record<string, unknown>): QueuedInvoice => ({
   created_at: r.created_at as string, updated_at: r.updated_at as string,
 });
 
-export function billingRepository(q: Query): BillingRepository {
+export function billingRepository(q: Query, begin: Begin): BillingRepository {
   const find = async (where: string, key: string) => {
     const r = await one(q, `SELECT ${COLUMNS} FROM subscriptions WHERE ${where} = $1`, [key]);
     return r ? asSubscription(r) : null;
   };
   return {
     get: userId => find('user_id', userId),
+    subscriptions: async limit => (await many(q, `SELECT ${COLUMNS} FROM subscriptions ORDER BY updated_at DESC LIMIT $1`, [limit])).map(asSubscription),
     findBySubscription: id => find('subscription_id', id),
     findByCustomer: id => find('customer_id', id),
     async put(s) {
@@ -98,6 +107,46 @@ export function billingRepository(q: Query): BillingRepository {
       const known = Object.entries(patch).filter(([k]) => INVOICE_FIELDS.includes(k));
       if (known.length === 0) return;
       await q(`UPDATE invoice_queue SET ${known.map(([k], i) => `${k} = $${i + 1}`).join(', ')}, updated_at = $${known.length + 1} WHERE ref = $${known.length + 2}`, [...known.map(([, v]) => v), at, ref]);
+    },
+    async efacturaTokens() {
+      const r = await one<EfacturaTokens>(q, 'SELECT sealed, access_expires_at, refresh_expires_at, authorised_at, updated_at FROM efactura_auth WHERE id = 1');
+      return r ? { sealed: r.sealed, access_expires_at: r.access_expires_at, refresh_expires_at: r.refresh_expires_at, authorised_at: r.authorised_at, updated_at: r.updated_at } : null;
+    },
+    async efacturaSaveTokens(t) {
+      await q(`INSERT INTO efactura_auth (id, sealed, access_expires_at, refresh_expires_at, authorised_at, updated_at) VALUES (1, $1, $2, $3, $4, $5)
+        ON CONFLICT (id) DO UPDATE SET sealed = excluded.sealed, access_expires_at = excluded.access_expires_at, refresh_expires_at = excluded.refresh_expires_at, authorised_at = excluded.authorised_at, updated_at = excluded.updated_at`,
+      [t.sealed, t.access_expires_at, t.refresh_expires_at, t.authorised_at, t.updated_at]);
+    },
+    async efacturaBeginAuthorisation(state, at) {
+      await q('INSERT INTO efactura_pending (id, state, created_at) VALUES (1, $1, $2) ON CONFLICT (id) DO UPDATE SET state = excluded.state, created_at = excluded.created_at', [state, at]);
+    },
+    async efacturaFinishAuthorisation(state, now, maxAgeMs) {
+      // Only the state asked for is taken: anyone can call the callback, and a wrong state must not spend the right one.
+      const pending = await one<{ created_at: string }>(q, 'DELETE FROM efactura_pending WHERE id = 1 AND state = $1 RETURNING created_at', [state]);
+      return !!pending && Date.parse(now) - Date.parse(pending.created_at) <= maxAgeMs;
+    },
+    async efacturaReserve(draftId, kind, series, issueDate, at, reverses) {
+      return begin(async tq => {
+        const existing = await one(tq, `SELECT ${EFACTURA_COLUMNS} FROM efactura_documents WHERE draft_id = $1`, [draftId]);
+        if (existing) return asDocument(existing);
+        await tq('INSERT INTO efactura_series (series, next_number) VALUES ($1, 1) ON CONFLICT DO NOTHING', [series]);
+        // The counter's row lock makes two requests take turns. If both were for one draft, the second fails on the draft's key and rolls back with the counter, so no number is given and lost; asked again, it finds the first's document above.
+        const taken = await one<{ n: number }>(tq, 'UPDATE efactura_series SET next_number = next_number + 1 WHERE series = $1 RETURNING next_number - 1 AS n', [series]);
+        await tq('INSERT INTO efactura_documents (draft_id, kind, series, number, issue_date, reverses, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $7)', [draftId, kind, series, Number(taken!.n), issueDate, reverses, at]);
+        return asDocument((await one(tq, `SELECT ${EFACTURA_COLUMNS} FROM efactura_documents WHERE draft_id = $1`, [draftId]))!);
+      });
+    },
+    async efacturaDocument(draftId) {
+      const r = await one(q, `SELECT ${EFACTURA_COLUMNS} FROM efactura_documents WHERE draft_id = $1`, [draftId]);
+      return r ? asDocument(r) : null;
+    },
+    async efacturaUpdateDocument(draftId, patch: EfacturaDocumentPatch, at) {
+      const known = Object.entries(patch).filter(([k]) => EFACTURA_FIELDS.includes(k));
+      if (known.length === 0) return;
+      await q(`UPDATE efactura_documents SET ${known.map(([k], i) => `${k} = $${i + 1}`).join(', ')}, updated_at = $${known.length + 1} WHERE draft_id = $${known.length + 2}`, [...known.map(([, v]) => v), at, draftId]);
+    },
+    async efacturaDocuments(limit) {
+      return (await many(q, `SELECT ${EFACTURA_COLUMNS} FROM efactura_documents ORDER BY created_at DESC, number DESC LIMIT $1`, [limit])).map(asDocument);
     },
   };
 }

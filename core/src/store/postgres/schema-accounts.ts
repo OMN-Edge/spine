@@ -246,6 +246,43 @@ CREATE TABLE IF NOT EXISTS invoice_queue (
 );
 CREATE INDEX IF NOT EXISTS idx_invoice_queue_due ON invoice_queue(state, next_attempt_at);
 
+-- The operator's e-Factura link (billing/invoicing/efactura/): ANAF's authorisation sealed with a key that is not here, the authorisation being asked for, the
+-- numbered documents and each series' next number. Nothing here is an account's, and the documents are kept (an invoice is kept ten years).
+CREATE TABLE IF NOT EXISTS efactura_auth (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  sealed TEXT NOT NULL,
+  access_expires_at TEXT NOT NULL,
+  refresh_expires_at TEXT NOT NULL,
+  authorised_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS efactura_pending (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  state TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS efactura_series (
+  series TEXT PRIMARY KEY,
+  next_number BIGINT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS efactura_documents (
+  draft_id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL,
+  series TEXT NOT NULL,
+  number BIGINT NOT NULL,
+  issue_date TEXT NOT NULL,
+  reverses TEXT,
+  xml TEXT,
+  input TEXT,
+  anaf_index TEXT,
+  anaf_state TEXT,
+  anaf_message TEXT,
+  signed TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE (series, number)
+);
+
 -- A buyer's withdrawal from a purchase (the EU's fourteen days): who, when, and what the operator decided and refunded. Kept with the account's accounting, not removed with it.
 CREATE TABLE IF NOT EXISTS withdrawal_requests (
   id TEXT PRIMARY KEY,

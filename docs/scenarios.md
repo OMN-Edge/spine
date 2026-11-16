@@ -962,6 +962,11 @@ Where the operator issues invoices, the plan card lists the account's invoices a
 
 Status: auto (`billing-withdrawal`, `billing-invoicing-billyou`).
 
+### 13.2s The operator invoices through Spine's own link to ANAF
+With `SPINE_INVOICING=efactura`, `/admin` has an e-Factura panel: whether ANAF has authorised the application and until when, the series and the seller, and the newest invoices with ANAF's word on each. The operator presses "Sign in to ANAF with the certificate", signs in at ANAF with the qualified certificate, and ANAF's redirect brings the browser back to `/admin` with a notice; a redirect with a state that was not asked for, or that was used, is refused, and the real one still works afterwards. A payment is numbered in the series once, written as the e-Factura XML, sent to ANAF as a company's invoice or a person's report, asked after every five minutes until ANAF decides, and its signed answer kept; a refusal shows ANAF's own words and is sent again from the same data when the operator asks. A refund makes a credit note that is sent the same way; a buyer abroad is not sent. The plan card's Download opens the Ministry's PDF at a link that lasts ten minutes.
+
+Status: auto (`billing-efactura`, `billing-efactura-ubl`).
+
 ### 13.2p The operator sees the invoices that stopped
 Where the operator issues invoices, `/admin` has an Invoices panel: how many are done and how many wait, and each invoice that stopped, by its reference with the reason in the service's own words, how often it was tried and when. An administrator presses "Try again" (it goes back to where it had got to and is tried at the next pass) or "Mark as done by hand" (the operator made it, or mended it, in the service); the marketing role sees it and can change nothing. The same is `npm run cli -- invoices`, with `retry` and `settle`. The operator is also mailed (`SPINE_ALERT_EMAIL`) when one stops, and when sales to consumers in other EU countries reach 70%, 90% and 100% of the yearly 10,000 EUR threshold, which the panel shows too.
 

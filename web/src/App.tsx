@@ -377,7 +377,7 @@ export default function App() {
         <Route path="/register" element={<NotInDemo><Register /></NotInDemo>} />
         <Route path="/verify" element={<Verify />} />
         <Route path="/unsubscribe" element={<Unsubscribe />} />
-        <Route path="/admin" element={<Admin />} />
+        <Route path="/admin/*" element={<Admin />} />
         <Route path="/privacy" element={<LegalPage doc="privacy" />} />
         <Route path="/terms" element={<LegalPage doc="terms" />} />
         <Route path="/purpose" element={<LegalPage doc="purpose" />} />

@@ -1,13 +1,31 @@
 import { ConfigError } from 'spine-core/config.js';
 import type { BillingConfig } from '../config.js';
+import type { UblSeller, ZeroVat } from './efactura/ubl.js';
 
 /**
- * Whether the operator issues an invoice for each payment, and through which service: **off unless `SPINE_INVOICING` names one** (Billyou is the only one), and only with a payment provider
+ * Whether the operator issues an invoice for each payment, and through which: **off unless `SPINE_INVOICING` names one** (`billyou`, a service, or `efactura`, Spine's own link to ANAF), and only with a payment provider
  * that is not the seller of record (Stripe; Paddle sends its own invoices). On, every setting of the service and the VAT the operator charges is given, or the
  * process does not start (P3): the VAT is the accountant's word and is never assumed (`docs/billing.md`, "Invoices").
  */
+export interface EfacturaConfig {
+  /** ANAF's test platform or the real one: a test run needs the same sign-in and certificate. */
+  mode: 'test' | 'prod';
+  clientId: string;
+  clientSecret: string;
+  /** The address ANAF sends the browser back to once the operator has signed in with the certificate (registered with the application at ANAF). */
+  redirectUri: string;
+  /** The 32 bytes that seal ANAF's tokens in the store. */
+  key: Buffer;
+  seller: UblSeller;
+  series: string;
+  zeroVat: ZeroVat;
+  /** The address the server is served from, for the links to an invoice's PDF. */
+  publicUrl: string;
+}
+
 export type InvoicingConfig =
   | { enabled: false }
+  | { enabled: true; issuer: 'efactura'; vatPercent: number; efactura: true; mail: false; direct: EfacturaConfig }
   | {
       enabled: true;
       issuer: 'billyou';
@@ -23,8 +41,8 @@ export type InvoicingConfig =
 export function readInvoicingConfig(env: NodeJS.ProcessEnv, billing: BillingConfig, problems: string[]): InvoicingConfig {
   const issuer = (env.SPINE_INVOICING ?? 'off').trim().toLowerCase();
   if (issuer === 'off' || issuer === '') return { enabled: false };
-  if (issuer !== 'billyou') {
-    problems.push(`SPINE_INVOICING is "${issuer}"; expected off or billyou`);
+  if (issuer !== 'billyou' && issuer !== 'efactura') {
+    problems.push(`SPINE_INVOICING is "${issuer}"; expected off, billyou or efactura`);
     return { enabled: false };
   }
   if (!billing.enabled || billing.provider !== 'stripe') problems.push('SPINE_INVOICING needs SPINE_BILLING=on with SPINE_BILLING_PROVIDER=stripe: Paddle is the seller and sends its own invoices');
@@ -49,6 +67,10 @@ export function readInvoicingConfig(env: NodeJS.ProcessEnv, billing: BillingConf
   if (vatPercent === 0 && !['O', 'Z', 'E', 'AE'].includes(zero)) problems.push('SPINE_INVOICING_VAT_PERCENT=0 needs SPINE_INVOICING_ZERO_VAT, the tax class of a line with no VAT: O (outside scope), Z (zero-rated), E (exempt) or AE (reverse charge)');
   const code = (env.SPINE_INVOICING_EXEMPTION_CODE ?? '').trim();
   if (zero === 'E' && !code) problems.push('SPINE_INVOICING_ZERO_VAT=E needs SPINE_INVOICING_EXEMPTION_CODE (the VATEX code of the exemption)');
+  if (issuer === 'efactura') {
+    const direct = readEfacturaConfig(env, vatPercent === 0 && ['O', 'Z', 'E', 'AE'].includes(zero) ? { category: zero as ZeroVat['category'], ...(code ? { exemptionCode: code } : {}) } : { category: 'O' }, need, problems);
+    return { enabled: true, issuer: 'efactura', vatPercent: Number.isFinite(vatPercent) ? vatPercent : 0, efactura: true, mail: false, direct };
+  }
   const billyou = {
     apiKey: need('BILLYOU_API_KEY'), seriesId: need('BILLYOU_SERIES_ID'),
     zeroVat: vatPercent === 0 && ['O', 'Z', 'E', 'AE'].includes(zero) ? { taxCategory: zero as 'O' | 'Z' | 'E' | 'AE', ...(code ? { vatExemptionCode: code } : {}) } : null,
@@ -62,4 +84,34 @@ export function loadInvoicingConfig(billing: BillingConfig, env: NodeJS.ProcessE
   const config = readInvoicingConfig(env, billing, problems);
   if (problems.length > 0) throw new ConfigError(problems);
   return config;
+}
+
+/** The settings of Spine's own link to ANAF: the application registered there, the key that seals its tokens, and who the seller is on the invoice (every field of an address the e-Factura rules ask for). */
+function readEfacturaConfig(env: NodeJS.ProcessEnv, zeroVat: ZeroVat, need: (name: string) => string, problems: string[]): EfacturaConfig {
+  const mode = (env.SPINE_EFACTURA_MODE ?? 'test').trim().toLowerCase();
+  if (mode !== 'test' && mode !== 'prod') problems.push(`SPINE_EFACTURA_MODE is "${mode}"; expected test or prod`);
+  const rawKey = need('SPINE_EFACTURA_KEY');
+  const key = Buffer.from(rawKey, 'base64');
+  if (rawKey && key.length !== 32) problems.push('SPINE_EFACTURA_KEY must be 32 random bytes in base64 (openssl rand -base64 32)');
+  const redirectUri = need('SPINE_EFACTURA_REDIRECT_URI');
+  if (redirectUri && !redirectUri.startsWith('https://')) problems.push('SPINE_EFACTURA_REDIRECT_URI must be an https address: ANAF refuses any other');
+  const cif = need('SPINE_SELLER_CIF').toUpperCase().replace(/^RO/, '').replace(/\s/g, '');
+  if (cif && !/^\d{2,10}$/.test(cif)) problems.push('SPINE_SELLER_CIF is the company\'s tax number, digits only (2 to 10)');
+  const county = need('SPINE_SELLER_COUNTY').toUpperCase().replace(/^RO-/, '');
+  if (county && !/^[A-Z]{1,2}$/.test(county)) problems.push('SPINE_SELLER_COUNTY is the county\'s code ("B", "CJ", "IS")');
+  const sector = (env.SPINE_SELLER_SECTOR ?? '').trim();
+  if (county === 'B' && !/^[1-6]$/.test(sector)) problems.push('SPINE_SELLER_COUNTY=B (Bucharest) needs SPINE_SELLER_SECTOR, 1 to 6');
+  const vatId = (env.SPINE_SELLER_VAT_ID ?? '').trim();
+  const registerNo = (env.SPINE_SELLER_REGISTER_NO ?? '').trim();
+  const tradeName = (env.SPINE_SELLER_TRADE_NAME ?? '').trim();
+  const email = (env.SPINE_SELLER_EMAIL ?? '').trim();
+  const domain = need('SPINE_DOMAIN');
+  return {
+    mode: mode === 'prod' ? 'prod' : 'test', clientId: need('ANAF_CLIENT_ID'), clientSecret: need('ANAF_CLIENT_SECRET'), redirectUri, key,
+    seller: {
+      name: need('SPINE_SELLER_NAME'), cif, street: need('SPINE_SELLER_STREET'), city: need('SPINE_SELLER_CITY'), county, postalCode: need('SPINE_SELLER_POSTAL_CODE'),
+      ...(sector ? { sector } : {}), ...(vatId ? { vatId } : {}), ...(registerNo ? { registerNo } : {}), ...(tradeName ? { tradeName } : {}), ...(email ? { email } : {}),
+    },
+    series: (env.SPINE_EFACTURA_SERIES ?? 'SPN').trim().toUpperCase(), zeroVat, publicUrl: `https://${domain}`,
+  };
 }

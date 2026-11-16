@@ -26,30 +26,32 @@ export default function AdminInvoices() {
   const counts = view?.counts;
   const waiting = counts ? counts.pending + counts.issued : 0;
   return (
-    <section className="bg-white border border-gray-200 rounded-xl p-5">
-      <h2 className="font-medium text-gray-900 mb-1">{t('Invoices')}</h2>
+    <section>
+      <h2 className="font-display text-[clamp(1.5rem,2.6vw,2rem)] font-normal leading-tight">{t('Invoices')}</h2>
+      <div className="mt-5 rounded-2xl border border-ink/10 bg-surface p-5">
       {error && <Notice kind="error">{error}</Notice>}
       {view && counts && (
         <>
-          <p className="text-sm text-gray-500 mb-3">{t('Invoices done: {done}. Waiting to be made or sent: {waiting}.', { done: counts.done, waiting })}</p>
-          <p className="text-sm text-gray-700 mb-2">{view.stopped.length === 0 ? t('Nothing is waiting for you.') : tn(view.stopped.length, '{n} invoice needs a look.', '{n} invoices need a look.')}</p>
-          <ul className="divide-y divide-gray-100">
+          <p className="text-sm text-ink/60 mb-3">{t('Invoices done: {done}. Waiting to be made or sent: {waiting}.', { done: counts.done, waiting })}</p>
+          <p className="text-sm text-ink/80 mb-2">{view.stopped.length === 0 ? t('Nothing is waiting for you.') : tn(view.stopped.length, '{n} invoice needs a look.', '{n} invoices need a look.')}</p>
+          <ul className="divide-y divide-ink/10">
             {view.stopped.map(row => (
               <li key={row.ref} className="py-3 flex flex-wrap items-center gap-3">
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm text-gray-900 break-all">{row.ref}{row.invoice ? ` · ${row.invoice}` : ''}</div>
-                  {row.reason && <div className="text-xs text-gray-600 break-words">{row.reason}</div>}
-                  <div className="text-xs text-gray-500">{t('Tried: {n}', { n: row.attempts })} · {new Date(row.at).toLocaleString()}</div>
+                  <div className="text-sm text-ink break-all">{row.ref}{row.invoice ? ` · ${row.invoice}` : ''}</div>
+                  {row.reason && <div className="text-xs text-ink/65 break-words">{row.reason}</div>}
+                  <div className="text-xs text-ink/60">{t('Tried: {n}', { n: row.attempts })} · {new Date(row.at).toLocaleString()}</div>
                 </div>
-                {row.can_retry && <button type="button" onClick={() => void act(row.ref, 'retry')} className="text-sm rounded-lg bg-brand-600 text-white px-3 py-1.5 hover:bg-brand-700">{t('Try again')}</button>}
-                <button type="button" onClick={() => void act(row.ref, 'settle')} className="text-sm rounded-lg border border-gray-300 px-3 py-1.5 text-gray-700 hover:bg-gray-50">{t('Mark as done by hand')}</button>
+                {row.can_retry && <button type="button" onClick={() => void act(row.ref, 'retry')} className="rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-paper hover:bg-accent/90">{t('Try again')}</button>}
+                <button type="button" onClick={() => void act(row.ref, 'settle')} className="rounded-full border border-ink/20 px-4 py-1.5 text-sm text-ink/80 hover:bg-ink/5">{t('Mark as done by hand')}</button>
               </li>
             ))}
           </ul>
-          <p className="text-sm text-gray-700 mt-4">{t('Sales to consumers in other EU countries: {thisYear} this year, {lastYear} last year, against the {limit} limit.', { thisYear: money(view.eu.this_year), lastYear: money(view.eu.last_year), limit: money(view.eu.limit) })}</p>
-          <p className="text-xs text-gray-500">{t('Past the limit the buyer’s country’s VAT applies: talk to the accountant first.')}</p>
+          <p className="text-sm text-ink/80 mt-4">{t('Sales to consumers in other EU countries: {thisYear} this year, {lastYear} last year, against the {limit} limit.', { thisYear: money(view.eu.this_year), lastYear: money(view.eu.last_year), limit: money(view.eu.limit) })}</p>
+          <p className="text-xs text-ink/60">{t('Past the limit the buyer’s country’s VAT applies: talk to the accountant first.')}</p>
         </>
       )}
+    </div>
     </section>
   );
 }

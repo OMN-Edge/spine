@@ -75,7 +75,7 @@ function accountsOver(q: Query, begin: Begin): Omit<AccountsStore, 'close'> {
     vault: vaultRepository(q, begin),
     shared: sharedRepository(q, begin),
     maintenance: maintenanceRepository(q),
-    billing: billingRepository(q),
+    billing: billingRepository(q, begin),
     metrics: metricsRepository(q),
     waitlist: waitlistRepository(q),
     settings: settingsRepository(q),

@@ -337,6 +337,13 @@ export function stripeProvider(config: Enabled): BillingProvider {
       return { refundedMinor: refunded, currency: str(refund.currency)?.toUpperCase() ?? '' };
     },
 
+    async lastPaid(subscriptionId: string): Promise<{ amountMinor: number; currency: string } | null> {
+      const invoices = await call('GET', '/v1/invoices', { subscription: subscriptionId, status: 'paid', limit: '1' });
+      const last = ((invoices.data as Array<{ amount_paid?: unknown; currency?: unknown }> | undefined) ?? [])[0];
+      const currency = str(last?.currency)?.toUpperCase();
+      return typeof last?.amount_paid === 'number' && last.amount_paid > 0 && currency ? { amountMinor: last.amount_paid, currency } : null;
+    },
+
     /** What Stripe says about a price: its amount in the major unit, its currency and how often it repeats (null for a thing bought once). */
     async readPrice(id: string): Promise<PriceReading> {
       const price = await call('GET', `/v1/prices/${encodeURIComponent(id)}`);

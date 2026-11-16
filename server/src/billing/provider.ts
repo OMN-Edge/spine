@@ -83,6 +83,8 @@ export interface BillingProvider {
   readBuyer(customerId: string): Promise<BillingDetails | null>;
   /** Ends a subscription at once and pays back its last payment, in full or the part named: a buyer's withdrawal, decided by the operator. Done once for a key; says what was paid back. */
   withdraw(input: { subscriptionId: string; amountMinor: number | null; key: string }): Promise<{ refundedMinor: number; currency: string }>;
+  /** What the subscription's last payment was, in the minor unit, to suggest what to pay back on a withdrawal; null where the provider cannot say (the operator pays back there from its dashboard). */
+  lastPaid(subscriptionId: string): Promise<{ amountMinor: number; currency: string } | null>;
   /** What the provider says about one price the operator named (`catalog.ts` keeps it for a while and checks the set). */
   readPrice(id: string): Promise<PriceReading>;
 }

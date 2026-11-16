@@ -14,7 +14,8 @@ import { standingOf } from '../billing/seat.js';
 import { inviteToken, MAX_REWARDED, BONUS_PAGES } from '../billing/invitations.js';
 import { billingDetailsSchema } from 'spine-core/billing/billing-details.js';
 import { loadInvoicingConfig } from '../billing/invoicing/config.js';
-import { contextFromSettings, invoiceNewPayment, reverseRefunded } from '../billing/invoicing/queue.js';
+import { contextFromSettings, efacturaFromSettings, invoiceNewPayment, reverseRefunded } from '../billing/invoicing/queue.js';
+import { linkIsValid, PDF_PATH } from '../billing/invoicing/efactura/index.js';
 import { alertOperator } from '../billing/invoicing/alert.js';
 import { withdrawalReceivedMail } from '../billing/withdrawal-mail.js';
 import { getMailer } from '../mail/index.js';
@@ -231,6 +232,20 @@ export async function billingRoutes(app: FastifyInstance) {
     } catch (err) {
       logger.warn('an invoice PDF could not be fetched', { reason: err instanceof Error ? err.message : String(err) });
       return reply.status(502).send({ error: 'the invoice could not be fetched; try again in a moment' });
+    }
+  });
+
+  // The PDF of an invoice Spine made itself (`SPINE_INVOICING=efactura`), at a link that the account's own request for it signed and that ends in ten minutes: a link carries no cookie.
+  app.get<{ Params: { id: string }; Querystring: { t?: string } }>(`${PDF_PATH}/:id`, { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const efactura = efacturaFromSettings();
+    const { id } = req.params;
+    if (!efactura || typeof req.query.t !== 'string' || !linkIsValid(efactura.pdfKey, id, req.query.t, new Date())) return reply.status(404).send({ error: 'not found' });
+    try {
+      const pdf = await efactura.issuer.pdf(id);
+      return reply.header('Cache-Control', 'private, no-store').header('Content-Type', 'application/pdf').header('Content-Disposition', 'inline; filename="invoice.pdf"').send(pdf);
+    } catch (err) {
+      logger.warn('an invoice PDF could not be made', { reason: err instanceof Error ? err.message : String(err) });
+      return reply.status(502).send({ error: 'the invoice could not be made; try again in a moment' });
     }
   });
 
