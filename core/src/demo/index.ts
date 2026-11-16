@@ -22,7 +22,7 @@ export async function loadDemo(userId: string, lang: DemoLanguage): Promise<'loa
   // Once every record is in, the episodes are looked for, as they are after an upload is read, so the samples show a suggested one.
   const records = demoRecords(lang);
   let left = records.length;
-  const oneDone = () => { if (--left === 0) scheduleEpisodes(userId, 0); };
+  const oneDone = () => { if (--left === 0) void finish(userId); };
   for (const demo of records) {
     const { fileId, filePath } = newUploadPath(userId, '.pdf');
     await textToPdf(demo.text, filePath);
@@ -33,6 +33,24 @@ export async function loadDemo(userId: string, lang: DemoLanguage): Promise<'loa
     startRestore(userId, fileId, filePath, false, demo.file, new Set(), [], oneDone);
   }
   return 'loaded';
+}
+
+/**
+ * Nothing reads the sample records with a model, so nothing looks for links either: the visit's prescription and the X-ray a week later are linked here as a suggestion (as the search would
+ * after an upload), so the sample shows a suggested link and, from it, a suggested episode. The owner can confirm or dismiss both like any other.
+ */
+async function finish(userId: string): Promise<void> {
+  try {
+    const store = getStore();
+    const docs = (await store.documents.listFor(userId, { limit: 100, offset: 0 })).filter(d => d.doc_date);
+    const prescription = docs.find(d => d.doc_type === 'prescription');
+    const imaging = docs.find(d => d.doc_type === 'imaging');
+    if (prescription && imaging) {
+      const [from, to] = prescription.doc_date! <= imaging.doc_date! ? [prescription, imaging] : [imaging, prescription];
+      await store.links.add(userId, { from_document_id: from.id, to_document_id: to.id, kind: 'same_episode', source: 'auto', state: 'proposed', reason: null }, new Date().toISOString());
+    }
+  } catch { /* the samples are still there without it */ }
+  scheduleEpisodes(userId, 0);
 }
 
 /** What the sample is doing: whether any is held, and whether it is still being set up. */

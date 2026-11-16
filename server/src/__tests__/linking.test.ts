@@ -285,6 +285,41 @@ describe('finding links', () => {
   });
 });
 
+describe('a document held twice', () => {
+  /** A consultation, the lab it asked for and a copy of that lab (scanned again), all of one clinic. */
+  async function withCopy() {
+    const store = getStore();
+    const consult = await seedDocument({ userId: OWNER_ID, docType: 'consultation_note', docDate: '2026-03-02', provider: 'Clinica Copii', aiSummary: 'Visit with chest pain, asks lipid tests.' });
+    const make = async () => {
+      const d = await seedDocument({ userId: OWNER_ID, docType: 'lab_result', docDate: '2026-03-12', provider: 'Laborator Copii', aiSummary: 'Lipid panel: total cholesterol 5.9 mmol/L high, LDL 3.8 high, glucose normal.' });
+      await store.documents.update(OWNER_ID, d.id, { title: 'Buletin de analize' });
+      return asDocument(d.id);
+    };
+    const first = await make(); const second = await make();
+    const [early, late] = first.id < second.id ? [first, second] : [second, first];
+    return { consult, early, late };
+  }
+
+  it('is not offered as a candidate to the document it copies, and only the earliest copy is offered to others', async () => {
+    const { consult, early, late } = await withCopy();
+    const { candidatesFor } = await import('spine-core/linking/index.js');
+    const visible = await getStore().documents.listFor(OWNER_ID, { limit: 100, offset: 0 });
+    expect((await candidatesFor(getStore(), OWNER_ID, early, visible)).map(d => d.id)).not.toContain(late.id);
+    const forConsult = (await candidatesFor(getStore(), OWNER_ID, await asDocument(consult.id), visible)).map(d => d.id);
+    expect(forConsult).toContain(early.id);
+    expect(forConsult).not.toContain(late.id);
+  });
+
+  it('is not looked at for links of its own: the later copy asks no model and proposes nothing, the earliest does', async () => {
+    const { consult, early, late } = await withCopy();
+    expect(await findLinks(OWNER_ID, late.id)).toBe(0);
+    expect(calls).toHaveLength(0);
+    expect(await findLinks(OWNER_ID, early.id)).toBeGreaterThanOrEqual(1);
+    expect((await linksOf(early.id)).some(l => [l.from_document_id, l.to_document_id].includes(consult.id))).toBe(true);
+    expect(await linksOf(late.id)).toEqual([]);
+  });
+});
+
 describe('the chain', () => {
   it('is the connected documents, by date, without dismissed links', async () => {
     const a = await doc('Visit', 'consultation_note', '2026-03-02');

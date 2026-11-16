@@ -3,17 +3,19 @@ import { getStore } from '../store/index.js';
 import type { Document } from '../types.js';
 import { logger } from '../logger.js';
 import { describeError } from '../failure.js';
+import { linkingEnabled } from '../config.js';
+import { clusterDocuments, type EpisodeLink } from './cluster.js';
 
 /**
  * Proposing episodes (FR-ORG-01): which documents may belong together, from the data and from nothing else. No model is asked and no
  * title is written: an episode the app proposes has an empty title, which the pages show as the provider and the dates the documents
  * themselves give, so nothing in a title can be a clinical inference (FR-ORG-08). The owner confirms, renames or dismisses.
  *
- * Two documents are joined when a link joins them (suggested or confirmed; not one the owner dismissed), or when the same provider
- * issued both within `NEAR_DAYS` of each other. A group is proposed when it has two to `MAX_DOCUMENTS` documents. First guesses.
+ * Documents are joined by the links between them (suggested or confirmed; not one the owner dismissed), one link at a time, nearest in time first, and never into a group that
+ * spans more than a care cycle (`cluster.ts`): a year of follow-ups is a series of episodes, not one. The same provider alone joins nothing, since a clinic issues unrelated documents
+ * the same day; it is used only where no links are looked for at all (`SPINE_LINKING` off), as a first guess with the same limits. A group has two to `MAX_DOCUMENTS` documents.
  */
 const NEAR_DAYS = 14;
-const MAX_DOCUMENTS = 12;
 const DAY = 86_400_000;
 
 const dayOf = (date: string | null): number | null => {
@@ -26,35 +28,25 @@ const providerKey = (p: string | null): string | null => {
   return key || null;
 };
 
-/** The groups of documents that may belong together. Pure; the caller keeps out what is already placed. */
-export function groupDocuments(docs: Document[], links: Array<{ from: string; to: string }>): string[][] {
-  const parent = new Map(docs.map(d => [d.id, d.id]));
-  const find = (id: string): string => {
-    let root = id;
-    while (parent.get(root) !== root) root = parent.get(root)!;
-    parent.set(id, root);
-    return root;
-  };
-  const join = (a: string, b: string) => { if (parent.has(a) && parent.has(b)) parent.set(find(a), find(b)); };
-
-  for (const l of links) join(l.from, l.to);
-  for (let i = 0; i < docs.length; i++) {
-    const a = docs[i];
-    const ka = providerKey(a.provider); const da = dayOf(a.doc_date);
-    if (!ka || da === null) continue;
-    for (let j = i + 1; j < docs.length; j++) {
-      const b = docs[j];
-      const db = dayOf(b.doc_date);
-      if (db !== null && providerKey(b.provider) === ka && Math.abs(da - db) <= NEAR_DAYS) join(a.id, b.id);
+/**
+ * The groups of documents that may belong together. Pure; the caller keeps out what is already placed. With `providerFallback`, two documents of one provider within `NEAR_DAYS` of each
+ * other are taken as linked too (for an archive nothing has looked for links in).
+ */
+export function groupDocuments(docs: Document[], links: EpisodeLink[], options: { providerFallback?: boolean } = {}): string[][] {
+  const all: EpisodeLink[] = [...links];
+  if (options.providerFallback) {
+    for (let i = 0; i < docs.length; i++) {
+      const a = docs[i]!;
+      const ka = providerKey(a.provider); const da = dayOf(a.doc_date);
+      if (!ka || da === null) continue;
+      for (let j = i + 1; j < docs.length; j++) {
+        const b = docs[j]!;
+        const db = dayOf(b.doc_date);
+        if (db !== null && providerKey(b.provider) === ka && Math.abs(da - db) <= NEAR_DAYS) all.push({ from: a.id, to: b.id, kind: 'same_episode', state: 'proposed', source: 'auto' });
+      }
     }
   }
-
-  const groups = new Map<string, string[]>();
-  for (const d of docs) {
-    const root = find(d.id);
-    groups.set(root, [...(groups.get(root) ?? []), d.id]);
-  }
-  return [...groups.values()].filter(g => g.length >= 2 && g.length <= MAX_DOCUMENTS);
+  return clusterDocuments(docs, all);
 }
 
 /**
@@ -75,7 +67,8 @@ export async function proposeEpisodes(userId: string): Promise<number> {
   const free = visible.filter(d => !placed.has(d.id));
   const groups = groupDocuments(
     free,
-    links.filter(l => l.state !== 'dismissed' && shown.has(l.from_document_id) && shown.has(l.to_document_id)).map(l => ({ from: l.from_document_id, to: l.to_document_id })),
+    links.filter(l => l.state !== 'dismissed' && shown.has(l.from_document_id) && shown.has(l.to_document_id)).map(l => ({ from: l.from_document_id, to: l.to_document_id, kind: l.kind, state: l.state, source: l.source })),
+    { providerFallback: !linkingEnabled() },
   ).filter(g => !dismissed.some(set => g.every(id => set.has(id))));
 
   const now = new Date().toISOString();

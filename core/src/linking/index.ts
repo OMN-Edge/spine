@@ -8,6 +8,7 @@ import { reduceLinks } from './reduce.js';
 import { scheduleEpisodes } from '../episodes/index.js';
 import { buildWhy, parseWhy, serializeWhy, type LinkWhy } from './why.js';
 import { similarTo, similarityEnabled } from '../similarity/index.js';
+import { copiesOf, isLaterCopy } from './copies.js';
 import type { Store } from '../store/index.js';
 import type { Document, DocType } from '../types.js';
 import type { LinkKind } from '../store/types.js';
@@ -52,9 +53,12 @@ export async function candidatesFor(store: Store, userId: string, target: Docume
   ]);
   const t0 = dayOf(target.doc_date);
   const scored = new Map<string, Candidate>();
+  // A copy of the target is not a relative of it, and of several copies of one candidate only the earliest is offered.
+  const scoreOf = new Map(similar.map(s => [s.id, s.score]));
+  const copies = new Set(copiesOf(target, [...others.values()], scoreOf).map(d => d.id));
   const add = (id: string, points: number) => {
     const doc = others.get(id);
-    if (!doc || dismissed.has(id)) return;
+    if (!doc || dismissed.has(id) || copies.has(id) || isLaterCopy(doc, [...others.values()].filter(d => !copies.has(d.id)))) return;
     // Two dated documents far apart are not one chain.
     const d0 = dayOf(doc.doc_date);
     if (t0 !== null && d0 !== null && Math.abs(t0 - d0) > WINDOW_DAYS) return;
@@ -140,6 +144,10 @@ export async function findLinks(userId: string, documentId: string): Promise<num
   const visible = await store.documents.listFor(userId, { limit: MANY, offset: 0 });
   const target = visible.find(d => d.id === documentId);
   if (!target) return 0;
+
+  // Of documents held twice only the earliest is looked at: the other would double every suggestion.
+  const scores = similarityEnabled() ? new Map((await similarTo(userId, target.id, 20).catch(() => [])).map(s => [s.id, s.score])) : new Map<string, number>();
+  if (isLaterCopy(target, visible.filter(d => d.id !== target.id), scores)) return 0;
 
   const candidates = await candidatesFor(store, userId, target, visible);
   // Nothing to judge: nothing is asked, and nothing already suggested or decided is touched.

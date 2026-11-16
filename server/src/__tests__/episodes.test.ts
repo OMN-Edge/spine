@@ -18,21 +18,27 @@ const doc = (docDate: string | null, provider: string | null) => seedDocument({ 
 const asDoc = (id: string, doc_date: string | null, provider: string | null) => ({ id, doc_date, provider } as Document);
 
 describe('which documents may belong together', () => {
-  it('joins by a link, and by the same provider within two weeks, and keeps a lone document out', () => {
+  it('joins by a link, and keeps a lone document out; the same provider alone joins nothing', () => {
     const docs = [asDoc('a', '2026-03-01', 'Clinica Aurora'), asDoc('b', '2026-03-10', 'Clinica  AURORA'), asDoc('c', '2026-06-01', 'Clinica Aurora'), asDoc('d', '2026-06-02', 'Other'), asDoc('e', null, 'Clinica Aurora'), asDoc('f', '2026-09-09', 'Lone Clinic')];
-    const groups = groupDocuments(docs, [{ from: 'c', to: 'd' }]).map(g => g.sort());
-    expect(groups.sort()).toEqual([['a', 'b'], ['c', 'd']]);
+    expect(groupDocuments(docs, [{ from: 'c', to: 'd' }]).map(g => g.sort())).toEqual([['c', 'd']]);
+  });
+
+  it('takes the same provider within two weeks as a first guess only where asked (nothing has looked for links)', () => {
+    const docs = [asDoc('a', '2026-03-01', 'Clinica Aurora'), asDoc('b', '2026-03-10', 'Clinica  AURORA'), asDoc('c', '2026-06-01', 'Clinica Aurora'), asDoc('d', '2026-06-02', 'Other'), asDoc('e', null, 'Clinica Aurora')];
+    expect(groupDocuments(docs, [{ from: 'c', to: 'd' }], { providerFallback: true }).map(g => g.sort()).sort()).toEqual([['a', 'b'], ['c', 'd']]);
   });
 
   it('does not make an episode of a crowd', () => {
     const many = Array.from({ length: 13 }, (_, i) => asDoc(`d${i}`, '2026-03-01', 'Same Clinic'));
     expect(groupDocuments(many, [])).toEqual([]);
+    for (const g of groupDocuments(many, [], { providerFallback: true })) expect(g.length).toBeLessThanOrEqual(12);
   });
 });
 
 describe('proposing, confirming and dismissing', () => {
   it('proposes with no title, replaces its proposals, and does not propose a dismissed group again', async () => {
     const a = await doc('2026-04-01', 'Clinica Invent'); const b = await doc('2026-04-05', 'Clinica Invent');
+    await getStore().links.add(OWNER, { from_document_id: a.id, to_document_id: b.id, kind: 'same_episode', source: 'auto', state: 'proposed', reason: null }, new Date().toISOString());
     expect(await proposeEpisodes(OWNER)).toBeGreaterThanOrEqual(1);
     const mine = (await call('GET', '/api/episodes')).json() as Array<{ id: string; title: string; state: string; document_ids: string[]; first_date: string; last_date: string; provider: string }>;
     const ep = mine.find(e => e.document_ids.includes(a.id))!;
