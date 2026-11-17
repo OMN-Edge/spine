@@ -42,6 +42,11 @@ const ro: Record<string, string> = {
   'From address': 'De la adresa',
   'Sign in to approve or deny it. If you do not expect this, deny it, or revoke the link from the Share links page.': 'Autentificați-vă pentru a o aproba sau a o refuza. Dacă nu vă așteptați la asta, refuzați-o sau revocați linkul din pagina Linkuri de partajare.',
 
+  'Your sign-in code': 'Codul dumneavoastră de autentificare',
+  'Type this code in the page where you just entered your password:': 'Scrieți acest cod în pagina în care tocmai ați introdus parola:',
+  'Code': 'Cod',
+  'The code works once and expires in five minutes. If you did not just try to sign in, someone knows your password: reset it.': 'Codul funcționează o singură dată și expiră în cinci minute. Dacă nu v-ați autentificat dumneavoastră, cineva vă știe parola: resetați-o.',
+
   'New sign-in to your account': 'Autentificare nouă în contul dumneavoastră',
   'Your account was signed in from a browser it had not been used from before, at {at} (UTC).': 'Contul dumneavoastră a fost accesat, la {at} (UTC), dintr-un browser din care nu mai fusese folosit până acum.',
   'If that was you, there is nothing to do. If it was not, sign in, open Account, end the sign-ins you do not recognise and change your password.': 'Dacă ați fost dumneavoastră, nu aveți nimic de făcut. Dacă nu, autentificați-vă, deschideți Cont, încheiați autentificările pe care nu le recunoașteți și schimbați parola.',
@@ -115,6 +120,11 @@ const fr: Record<string, string> = {
   'From address': 'Depuis l’adresse',
   'Sign in to approve or deny it. If you do not expect this, deny it, or revoke the link from the Share links page.': 'Connectez-vous pour l’approuver ou la refuser. Si vous ne vous y attendez pas, refusez-la, ou révoquez le lien depuis la page Liens de partage.',
 
+  'Your sign-in code': 'Votre code de connexion',
+  'Type this code in the page where you just entered your password:': 'Saisissez ce code dans la page où vous venez d’entrer votre mot de passe :',
+  'Code': 'Code',
+  'The code works once and expires in five minutes. If you did not just try to sign in, someone knows your password: reset it.': 'Le code ne fonctionne qu’une fois et expire dans cinq minutes. Si vous n’avez pas tenté de vous connecter, quelqu’un connaît votre mot de passe : réinitialisez-le.',
+
   'New sign-in to your account': 'Nouvelle connexion à votre compte',
   'Your account was signed in from a browser it had not been used from before, at {at} (UTC).': 'Votre compte a été connecté, le {at} (UTC), depuis un navigateur qui n’avait jamais servi auparavant.',
   'If that was you, there is nothing to do. If it was not, sign in, open Account, end the sign-ins you do not recognise and change your password.': 'Si c’était vous, il n’y a rien à faire. Sinon, connectez-vous, ouvrez Compte, mettez fin aux connexions que vous ne reconnaissez pas et changez votre mot de passe.',
@@ -187,6 +197,11 @@ const de: Record<string, string> = {
   'Requested at': 'Angefragt am',
   'From address': 'Von Adresse',
   'Sign in to approve or deny it. If you do not expect this, deny it, or revoke the link from the Share links page.': 'Melden Sie sich an, um sie zu genehmigen oder abzulehnen. Wenn Sie damit nicht rechnen, lehnen Sie sie ab oder widerrufen Sie den Link auf der Seite „Freigabelinks“.',
+
+  'Your sign-in code': 'Ihr Anmeldecode',
+  'Type this code in the page where you just entered your password:': 'Geben Sie diesen Code auf der Seite ein, auf der Sie gerade Ihr Passwort eingegeben haben:',
+  'Code': 'Code',
+  'The code works once and expires in five minutes. If you did not just try to sign in, someone knows your password: reset it.': 'Der Code funktioniert nur einmal und läuft in fünf Minuten ab. Wenn Sie sich nicht gerade anmelden wollten, kennt jemand Ihr Passwort: setzen Sie es zurück.',
 
   'New sign-in to your account': 'Neue Anmeldung bei Ihrem Konto',
   'Your account was signed in from a browser it had not been used from before, at {at} (UTC).': 'Ihr Konto wurde am {at} (UTC) in einem Browser angemeldet, von dem aus es zuvor noch nie verwendet wurde.',

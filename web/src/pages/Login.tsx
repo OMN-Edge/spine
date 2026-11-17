@@ -20,6 +20,8 @@ export default function Login() {
   const [unverified, setUnverified] = useState(false);
   // The password was right and the account has a second factor: ask for the code.
   const [needsCode, setNeedsCode] = useState(false);
+  // Where the code comes from: the authenticator app (or a recovery code), or a message the server mailed after the password.
+  const [codeByMail, setCodeByMail] = useState(false);
   const [code, setCode] = useState('');
   const [resent, setResent] = useState('');
   const [options, setOptions] = useState<AuthOptions>({ registration: 'operator', recovery: false, instance: 'public', billing: false, waitlist: false });
@@ -37,6 +39,7 @@ export default function Login() {
       if (err.code === 'awaiting_approval') return t('Your account is waiting for the administrator to approve it. You will be able to sign in once it has.');
       if (err.code === 'email_not_verified') return t('Confirm your email address first: follow the link in the message we sent you.');
       if (err.code === 'login_expired') return t('That took too long. Sign in again.');
+      if (err.code === 'code_not_sent') return t('The code could not be sent. Try again in a moment.');
       if (err.status === 400 && /code/.test(err.message)) return t('Type the code.');
       if (err.status === 400) return t('Type your email address and your password.');
       if (err.status === 401 && /code/.test(err.message)) return t('That code is not right. Try again.');
@@ -54,6 +57,7 @@ export default function Login() {
       const result = await api.auth.login(email, password);
       if (result.second_factor_required) {
         setPassword(''); // it has done its job; do not keep it in the page
+        setCodeByMail(result.method === 'email');
         setNeedsCode(true);
         return;
       }
@@ -123,11 +127,11 @@ export default function Login() {
       {needsCode ? (
         <form onSubmit={submitCode}>
           <p className="text-sm text-gray-600 mb-3">
-            {t('Enter the code from your authenticator app, or one of your recovery codes.')}
+            {codeByMail ? t('We sent a six-digit code to your email address. Type it here; it works for five minutes.') : t('Enter the code from your authenticator app, or one of your recovery codes.')}
           </p>
           <input
             type="text" placeholder={t('Code')} autoComplete="one-time-code" autoFocus
-            inputMode="text" autoCapitalize="characters" spellCheck={false}
+            inputMode={codeByMail ? 'numeric' : 'text'} autoCapitalize="characters" spellCheck={false}
             value={code} onChange={e => setCode(e.target.value)} className={inputClass}
           />
           {error && <Notice kind="error">{error}</Notice>}

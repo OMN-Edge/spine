@@ -29,6 +29,7 @@ const ABSENT_ON_PURPOSE = new Set([
   'archive.json', // the sample archive the web build makes (web/scripts/demo-archive.mjs); kept nowhere in the repository
   'hashes.txt', '/hashes.txt', // made by the web build (web/scripts/seal-build.mjs) and served with the app
   '/.well-known/security.txt', // served by nginx, from nginx/
+  '/robots.txt', '/sitemap.xml', // answered by the server from SPINE_DOMAIN (server/src/seo.ts), and made by no file
   'connection.js', // a file of @langchain/google-common, cited as the reason for a control
   'backup.js', // the compiled form of server/src/backup.ts
   'support/live.js', // the compiled form of the integration support file

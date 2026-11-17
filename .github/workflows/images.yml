@@ -1,0 +1,89 @@
+# The official images: a pushed tag `vX.Y.Z` builds the server's and the relay's images from that exact commit for linux/amd64 (Cloud Run) and linux/arm64 (the Pi),
+# pushes them to ghcr.io/<owner>/<repo> and ghcr.io/<owner>/<repo>-relay tagged with the version, and signs each with an attestation (GitHub's artifact attestations,
+# Sigstore) saying "this image was built from this commit by this workflow". Check one with `gh attestation verify oci://ghcr.io/<owner>/<repo>:vX.Y.Z --repo <owner>/<repo>`.
+# A deploy that builds its own images (`./scripts/publish-images.sh`, Cloud Build) does not use this.
+#
+# The same split as release.yml (SECURITY.md S-59): `build` can only read, runs the image builds and hands over the images as files with a list of their hashes;
+# `publish` builds nothing and installs nothing, checks the files are the ones listed, and then holds the right to push and to sign.
+name: images
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+  build:
+    needs: checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with: { fetch-depth: 0 }
+      - name: The tag is on main
+        run: git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "::error::$GITHUB_REF_NAME is not a commit of main"; exit 1; }
+      - name: The tag is the version in package.json
+        run: |
+          version="$(sed -n 's/^  "version": "\(.*\)",$/\1/p' web/package.json)"
+          [ "$GITHUB_REF_NAME" = "v$version" ] || { echo "::error::the tag is $GITHUB_REF_NAME but web/package.json says '$version'"; exit 1; }
+      - uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+      - name: Build both images, for both architectures, as files
+        run: |
+          mkdir images
+          docker buildx build --platform linux/amd64,linux/arm64 --build-arg "SPINE_COMMIT=$GITHUB_SHA" --output type=oci,dest=images/spine.tar .
+          docker buildx build --platform linux/amd64,linux/arm64 -f relay.Dockerfile --output type=oci,dest=images/spine-relay.tar .
+          (cd images && sha256sum spine.tar spine-relay.tar > files.sha256)
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: image-files
+          path: images/
+          if-no-files-found: error
+          retention-days: 1
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write       # the images go to ghcr.io
+      id-token: write       # the attestation is signed with this run's identity
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: image-files
+          path: images
+      - name: The files are the ones the build made
+        working-directory: images
+        run: |
+          [ "$(ls | sort | tr '\n' ' ')" = "files.sha256 spine-relay.tar spine.tar " ] || { echo "::error::the build handed over other files than the list names"; ls; exit 1; }
+          sha256sum -c files.sha256
+      - name: Push both, every architecture, and keep the digests
+        id: push
+        env:
+          REGISTRY_USER: '${{ github.actor }}'
+          REGISTRY_TOKEN: '${{ github.token }}'
+        run: |
+          repo="ghcr.io/${GITHUB_REPOSITORY,,}"
+          for pair in "spine:$repo" "spine-relay:$repo-relay"; do
+            file="${pair%%:*}"; image="${pair#*:}"
+            skopeo copy --all --digestfile "$file.digest" --dest-creds "$REGISTRY_USER:$REGISTRY_TOKEN" "oci-archive:images/$file.tar" "docker://$image:$GITHUB_REF_NAME"
+          done
+          echo "server=$repo" >> "$GITHUB_OUTPUT"
+          echo "server_digest=$(cat spine.digest)" >> "$GITHUB_OUTPUT"
+          echo "relay=$repo-relay" >> "$GITHUB_OUTPUT"
+          echo "relay_digest=$(cat spine-relay.digest)" >> "$GITHUB_OUTPUT"
+      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        with:
+          subject-name: ${{ steps.push.outputs.server }}
+          subject-digest: ${{ steps.push.outputs.server_digest }}
+          push-to-registry: true
+      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        with:
+          subject-name: ${{ steps.push.outputs.relay }}
+          subject-digest: ${{ steps.push.outputs.relay_digest }}
+          push-to-registry: true

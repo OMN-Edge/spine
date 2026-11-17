@@ -1,0 +1,55 @@
+# The relay on Cloud Run (docs/deploy-cloud-run.md, docs/relay.md): `gcloud run services replace relay.service.yaml --region=europe-west4`.
+# Its own service account holds the Vertex role; the app's does not, so code in the app cannot call a model (SECURITY.md S-65 is closed here).
+# It gets none of the server's secrets: no session secret, no mail key, no payment key.
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: spine-relay
+  labels:
+    cloud.googleapis.com/location: europe-west4
+  annotations:
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "2"
+        autoscaling.knative.dev/maxScale: "40"
+        run.googleapis.com/cloudsql-instances: PROJECT_ID:europe-west4:INSTANCE
+        run.googleapis.com/startup-cpu-boost: "true"
+    spec:
+      serviceAccountName: spine-relay@PROJECT_ID.iam.gserviceaccount.com
+      containerConcurrency: 20
+      # A model call can take a minute and a chat streams for as long as the answer
+      timeoutSeconds: 300
+      containers:
+        - image: europe-west4-docker.pkg.dev/PROJECT_ID/spine/spine-relay:TAG
+          ports:
+            - containerPort: 8080
+          resources:
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          startupProbe:
+            httpGet:
+              path: /healthz
+            periodSeconds: 3
+            failureThreshold: 20
+          env:
+            - { name: SPINE_RELAY_ORIGIN, value: "https://spinevault.eu" }
+            - { name: SPINE_STORE, value: postgres }
+            - { name: SPINE_DATABASE_POOL, value: "3" }
+            - { name: SPINE_LLM_PROVIDER, value: vertex }
+            - { name: SPINE_LLM_ENDPOINT, value: aiplatform.eu.rep.googleapis.com }
+            - { name: SPINE_LLM_REGION, value: eu }
+            - { name: SPINE_LLM_PROJECT, value: PROJECT_ID }
+            - { name: SPINE_LLM_MODEL, value: gemini-3.5-flash }
+            - { name: SPINE_LLM_MODELS, value: "gemini-3.7-flash=Gemini 3.7 Flash,gemini-3.5-flash=Gemini 3.5 Flash" }
+            - { name: SPINE_EMBEDDINGS, value: vertex }
+            # Plans on: the relay reads the same accounts database as the server (SECURITY.md S-64)
+            # - { name: SPINE_BILLING, value: "on" }
+            - { name: SPINE_RELAY_SECRET, valueFrom: { secretKeyRef: { name: spine-relay-secret, key: latest } } }
+            - { name: SPINE_DATABASE_URL, valueFrom: { secretKeyRef: { name: spine-database-url, key: latest } } }
+  traffic:
+    - percent: 100
+      latestRevision: true

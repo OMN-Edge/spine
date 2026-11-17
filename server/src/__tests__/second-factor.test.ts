@@ -164,7 +164,7 @@ describe('signing in with it on', () => {
     const { res, cookie } = await passwordStep();
 
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ second_factor_required: true });
+    expect(res.json()).toEqual({ second_factor_required: true, method: 'authenticator' });
 
     // The cookie holds a pending login, which is not a login.
     expect((await get('/api/auth/me', cookie)).statusCode).toBe(401);
@@ -516,7 +516,7 @@ describe('other ways in do not skip it', () => {
     expect((await get('/api/auth/me', cookieOf(reset))).statusCode).toBe(401);
 
     const login = await post('/api/auth/login', { email: OWNER_EMAIL, password: 'a-brand-new-password-1' });
-    expect(login.json()).toEqual({ second_factor_required: true });
+    expect(login.json()).toEqual({ second_factor_required: true, method: 'authenticator' });
     expect((await get('/api/auth/me', cookieOf(login))).statusCode).toBe(401);
   });
 

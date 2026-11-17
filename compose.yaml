@@ -56,10 +56,14 @@ services:
       PADDLE_WEBHOOK_SECRET: ""
       SPINE_RELAY_ORIGIN: https://${SPINE_DOMAIN}
       SPINE_RELAY_PORT: "8080"
-      # The daily count, kept across restarts; one relay instance uses this file
-      SPINE_DB_PATH: /data/relay.db
+      # The server's own database, in the volume it keeps it in: with plans on the relay asks it what each account may do and counts the day's
+      # calls in it, and an account it does not hold is refused (SECURITY.md S-64). The image's default is a database in memory, so it is named here.
+      DATA_DIR: /data
+      SPINE_DB_PATH: /data/spine.db
     volumes:
-      - relay-data:/data
+      # The server's volume, so that its SQLite file is the one database. With SPINE_STORE=postgres the relay reaches the database over the
+      # network and needs no file: SPINE_RELAY_DATA=relay-data in .env gives it a volume of its own, and the vault's files are out of its reach.
+      - ${SPINE_RELAY_DATA:-data}:/data
     networks:
       spine: {}
 

@@ -115,7 +115,9 @@ export function createRelayGate(store: () => AccountsStore, now: () => Date = ()
       const who = await ownerOf(subject);
       if (!who) return null;
       const standing = await standingOf(store(), who.userId, now());
-      if (!standing) return null;
+      // An account this store does not hold is refused, never admitted: a relay that reads a database of its own (compose.yaml's, before it is given the server's)
+      // would otherwise run every call with no plan, allowance or ceiling (SECURITY.md S-64).
+      if (!standing) return { status: 402, error: 'this account has no plan here', code: 'plan_required' };
       const e = standing.entitlements;
       const fair = fairUseOf(e.plan);
       const feature = TASK_FEATURE[task];

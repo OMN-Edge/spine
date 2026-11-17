@@ -795,7 +795,7 @@ export const api = {
       const { credential, masterKey, kdf } = await prepareSignIn(email, password, undefined, deriveKey);
       vaultState.setEmail(email);
       try {
-        const result = await req<{ ok?: boolean; email?: string; second_factor_required?: boolean }>('/api/auth/login', {
+        const result = await req<{ ok?: boolean; email?: string; second_factor_required?: boolean; method?: 'authenticator' | 'email' }>('/api/auth/login', {
           method: 'POST',
           body: JSON.stringify({ email, password: credential }),
         });
@@ -817,7 +817,7 @@ export const api = {
       await clearSealedCache();
       return req('/api/auth/logout', { method: 'POST' });
     },
-    me: () => req<{ authenticated: boolean; email: string; second_factor_enabled?: boolean; email_recovery?: boolean; language?: string | null; vault?: boolean; consent_needed?: { health: boolean; terms: boolean } }>('/api/auth/me'),
+    me: () => req<{ authenticated: boolean; email: string; second_factor_enabled?: boolean; second_factor?: 'authenticator' | 'email' | null; email_recovery?: boolean; language?: string | null; vault?: boolean; consent_needed?: { health: boolean; terms: boolean } }>('/api/auth/me'),
     options: () => req<AuthOptions>('/api/auth/options'),
     /** Whether an emailed link may recover the account (SECURITY.md S-38). */
     setEmailRecovery: (enabled: boolean) => put<{ ok: boolean; email_recovery: boolean }>('/api/account/email-recovery', { enabled }),
@@ -903,6 +903,13 @@ export const api = {
       disable: async (password: string, code: string) => post<{ ok: boolean }>('/api/auth/totp/disable', { password: await credentialFor(password), code }),
       newRecoveryCodes: async (password: string, code: string) =>
         post<{ ok: boolean; recovery_codes: string[] }>('/api/auth/totp/recovery-codes', { password: await credentialFor(password), code }),
+    },
+    /** A code sent to the address as the second step, for an account with no authenticator app (SECURITY.md S-20). */
+    emailSecondFactor: {
+      status: () => req<{ enabled: boolean; required: boolean; available: boolean }>('/api/auth/email-2fa'),
+      start: async (password: string) => post<{ ok: boolean }>('/api/auth/email-2fa/start', { password: await credentialFor(password) }),
+      enable: (code: string) => post<{ ok: boolean }>('/api/auth/email-2fa/enable', { code }),
+      disable: async (password: string) => post<{ ok: boolean }>('/api/auth/email-2fa/disable', { password: await credentialFor(password) }),
     },
   },
 

@@ -87,4 +87,12 @@ describe('a build that names its own folder', () => {
     expect(sealBuild(dir, '/home/someone/spine').join(' ')).toMatch(/built in/);
     expect(fs.existsSync(path.join(dir, HASHES_FILE))).toBe(false);
   });
+
+  it('does not take a longer name for the folder: in the container it is /app, and /apple-touch-icon.png is not it', () => {
+    const dir = built({ ...FILES, 'index.html': `${PAGE}<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">` });
+    expect(buildPathLeaks(dir, '/app')).toEqual([]);
+    expect(sealBuild(dir, '/app')).toEqual([]);
+    const leaking = built({ ...FILES, 'assets/index-A.js': 'at /app/web/src/x.ts:1' });
+    expect(buildPathLeaks(leaking, '/app')).toEqual(['assets/index-A.js']);
+  });
 });

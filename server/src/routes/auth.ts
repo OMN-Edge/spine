@@ -10,8 +10,11 @@ import { authenticate, maySignIn, type SessionData } from '../session-auth.js';
 import { windowLimiter } from '../rate-limit.js';
 import { startSession } from '../sessions.js';
 import { mailAfter, newSignInMail } from '../notify.js';
-import { checkSecondFactor, hasSecondFactor } from '../second-factor.js';
+import { checkSecondFactor, hasSecondFactor, secondFactorMethod } from '../second-factor.js';
+import { emailSecondFactorRequired } from '../email-code.js';
 import { consentNeeded } from '../legal.js';
+import { emailCodeMatches, hashEmailCode, newEmailCode, signInCodeMail } from '../email-code.js';
+import { getMailer } from '../mail/index.js';
 
 /**
  * SECURITY.md P5: every unauthenticated endpoint is rate limited. Login carries
@@ -73,6 +76,7 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions = 
       instanceWide,
       () => 'instance',
       'too many login attempts, try again later',
+      'login instance',
     ),
   ];
 
@@ -122,7 +126,8 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions = 
 
       // The password alone is not enough for a user with a second factor (M-12). This
       // is the only place a session is issued, so it is the only place that checks.
-      if (await hasSecondFactor(user.id)) {
+      const method = await secondFactorMethod(user);
+      if (method === 'authenticator') {
         session.pending = {
           userId: user.id,
           authVersion: user.auth_version,
@@ -130,7 +135,28 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions = 
           failures: 0,
         };
         req.log.info({ ip: req.ip, userId: user.id }, 'password accepted, second factor required');
-        return reply.send({ second_factor_required: true });
+        return reply.send({ second_factor_required: true, method: 'authenticator' });
+      }
+
+      // No authenticator, and the account chose a code to the mailbox or the operator requires one. An authenticator, when there is one, is what is
+      // asked for above, so enrolling one takes the place of this. Sent before the answer, because without it there is no way in.
+      if (method === 'email') {
+        const code = newEmailCode();
+        try {
+          await getMailer().send(signInCodeMail(user, code));
+        } catch (err) {
+          req.log.error({ userId: user.id, err: err instanceof Error ? err.message : String(err) }, 'could not send the sign-in code');
+          return reply.status(503).send({ error: 'could not send the code, try again', code: 'code_not_sent' });
+        }
+        session.pending = {
+          userId: user.id,
+          authVersion: user.auth_version,
+          expiresAt: Date.now() + PENDING_LOGIN_MS,
+          failures: 0,
+          emailCode: hashEmailCode(user.id, code),
+        };
+        req.log.info({ ip: req.ip, userId: user.id }, 'password accepted, code sent by email');
+        return reply.send({ second_factor_required: true, method: 'email' });
       }
 
       const device = await startSession(req, reply, user.id, user.auth_version);
@@ -151,6 +177,7 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions = 
       { max: opts.secondFactorAttempts ?? SECOND_FACTOR_ATTEMPTS, windowMs: TEN_MINUTES_MS },
       req => (req.session as SessionData).pending?.userId ?? null,
       'too many attempts, try again later',
+      'second factor attempts',
     ),
   ];
 
@@ -179,7 +206,10 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions = 
         return reply.status(401).send(expired);
       }
 
-      if (!(await checkSecondFactor(user, code))) {
+      // The mailed code when that is what the login was given, else the authenticator or a recovery code. A user who has enrolled an authenticator since
+      // is not here: enrolling changes `auth_version`, which voids the pending login above.
+      const right = pending.emailCode ? emailCodeMatches(user.id, code, pending.emailCode) : await checkSecondFactor(user, code);
+      if (!right) {
         const failures = pending.failures + 1;
         session.pending = { ...pending, failures };
         req.log.warn({ ip: req.ip, userId: user.id, failures }, 'failed second factor');
@@ -213,6 +243,9 @@ export async function authRoutes(app: FastifyInstance, opts: AuthRouteOptions = 
       authenticated: true,
       email: user.email,
       second_factor_enabled: await hasSecondFactor(user.id),
+      // What the second step is: the authenticator app, a code sent to the address, or none (S-20); and whether the operator requires the code.
+      second_factor: await secondFactorMethod(user),
+      email_second_factor_required: emailSecondFactorRequired(),
       // Whether an emailed link may recover the account; the owner can turn it off (SECURITY.md S-38).
       email_recovery: user.email_recovery !== 0,
       // The language the account's mail is written in and its screens start in; null until one is chosen.

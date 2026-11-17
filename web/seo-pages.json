@@ -1,0 +1,13 @@
+[
+  { "path": "/", "title": "Spine: all your medical records, in one place only you can open", "description": "Spine keeps your scans, results and letters, reads out the dates, values and doctors in them, and lets you show a doctor exactly what you choose." },
+  { "path": "/how-it-works", "title": "How Spine works", "description": "Add what you have, check what was read, and share what a doctor needs: from a folder of papers to records you can find, check and share." },
+  { "path": "/protection", "title": "How Spine protects your records", "description": "How your records are sealed on your device before the server keeps anything, and who can see what." },
+  { "path": "/encryption", "title": "Encryption in Spine, in detail", "description": "The algorithms, the levels of keys and what “sealed” means, explained plainly." },
+  { "path": "/security-checks", "title": "Spine security checks", "description": "A security claim is only as honest as its limits. Plainly, with nothing left out." },
+  { "path": "/families", "title": "Spine for families", "description": "Keep the records of the people you look after, and give them an emergency card." },
+  { "path": "/for-doctors", "title": "Spine for doctors", "description": "Your patient shared their records with you through Spine. They chose what you can see and for how long, and you needed no account." },
+  { "path": "/trust", "title": "How to check Spine", "description": "Spine runs in your browser, and your records are encrypted there before the server keeps anything. This page explains how anyone can check the app." },
+  { "path": "/pricing", "title": "Plans and prices", "description": "The plans and prices of this Spine.", "when": "billing" },
+  { "path": "/privacy", "title": "Privacy notice", "description": "How this Spine handles your data." },
+  { "path": "/terms", "title": "Terms of use", "description": "The terms of using this Spine." }
+]

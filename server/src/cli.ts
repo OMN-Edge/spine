@@ -1,3 +1,4 @@
+import { emailSecondFactorRequired } from './email-code.js';
 import { formatReport, usageReport } from './usage-report.js';
 import { pathToFileURL } from 'url';
 import { v4 as uuidv4 } from 'uuid';
@@ -166,15 +167,19 @@ export async function runCli(args: string[], io: CliIo): Promise<number> {
         io.err(`no account for ${email}`);
         return 1;
       }
-      if (!(await store.users.getTotp(user.id))) {
+      const hadTotp = !!(await store.users.getTotp(user.id));
+      const hadEmail = user.email_second_factor === 1;
+      if (!hadTotp && !hadEmail) {
         io.out(`${email} has no two-factor to turn off`);
         return 0;
       }
 
-      // For a lost phone with no recovery codes. It also ends their sessions, so a
+      // For a lost phone with no recovery codes, or a mailbox that is gone. Turning off the authenticator also ends their sessions, so a
       // session opened by whoever has the phone does not outlive the reset.
-      await store.users.disableTotp(user.id);
-      io.out(`two-factor turned off for ${email}; their sessions are signed out`);
+      if (hadTotp) await store.users.disableTotp(user.id);
+      if (hadEmail) await store.users.setEmailSecondFactor(user.id, false);
+      io.out(`two-factor turned off for ${email}${hadTotp ? '; their sessions are signed out' : ''}`);
+      if (emailSecondFactorRequired()) io.out('SPINE_EMAIL_2FA=required is set: an account with no authenticator is still sent a code by mail');
       return 0;
     }
 

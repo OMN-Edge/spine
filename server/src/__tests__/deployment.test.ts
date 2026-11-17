@@ -26,4 +26,51 @@ describe('where the app may write, as installed', () => {
       expect(service(name), name).toMatch(/- backups:\/backups/);
     }
   });
+
+  it('in compose, the relay reads the same database as the server, unless the database is Postgres, when it has a volume of its own (S-64, P9)', () => {
+    const compose = file('compose.yaml');
+    const service = (name: string) => compose.split(/^ {2}(?=\S)/m).find(block => block.startsWith(`${name}:`)) ?? '';
+    expect(service('web')).toMatch(/- data:\/data/);
+    expect(service('relay')).toMatch(/- \$\{SPINE_RELAY_DATA:-data\}:\/data/);
+    expect(service('relay')).toMatch(/SPINE_DB_PATH: \/data\/spine\.db/);
+    expect(compose).toMatch(/^ {2}relay-data:$/m);
+  });
+
+  it('as a systemd unit, the relay opens the server\'s database and may write where it is, or a directory of its own with Postgres (S-64, P9)', () => {
+    const web = file('systemd/spine-web.service');
+    const relay = file('systemd/spine-relay.service');
+    const install = file('install.sh');
+    expect(web).toMatch(/^Environment=DATA_DIR=SPINE_DIR\/data$/m);
+    expect(relay).toMatch(/^Environment=DATA_DIR=RELAY_DATA_HERE$/m);
+    expect(relay).toMatch(/^Environment=SPINE_DB_PATH=RELAY_DATA_HERE\/spine\.db$/m);
+    expect(relay).toMatch(/^ReadWritePaths=RELAY_DATA_HERE$/m);
+    // install.sh -r names data/ for SQLite and relay-data/ for Postgres, and fills the placeholder in
+    expect(install).toMatch(/local relay_data="\$\{SPINE_DIR\}\/data"\n\s+if \[ "\$\(env_value SPINE_STORE\)" = "postgres" \]; then\n\s+relay_data="\$\{SPINE_DIR\}\/relay-data"/);
+    expect(install).toMatch(/s\|RELAY_DATA_HERE\|\$\{relay_data\}\|g/);
+  });
+
+  // The Cloud Run files are settings written by hand: a name misspelt there is a setting that silently does nothing, so each is looked for in the page of settings.
+  describe('the Cloud Run files', () => {
+    const files = ['app.service.yaml', 'relay.service.yaml', 'jobs.job.yaml'];
+    const names = (text: string) => [...text.matchAll(/^\s*(?:#\s*)?- \{ name: ([A-Z0-9_]+),/gm)].map(m => m[1]);
+    it('set only settings the configuration page and the relay page know', () => {
+      const page = file('docs/configuration.md') + file('docs/relay.md');
+      const unknown: string[] = [];
+      for (const f of files) for (const name of names(file(`deploy/cloud-run/${f}`))) if (!page.includes(name)) unknown.push(`${f}: ${name}`);
+      expect(unknown).toEqual([]);
+    });
+
+    it('give the relay none of the server’s secrets, and the server a stand-alone setup: no disk, shared limits, the jobs outside', () => {
+      const relay = file('deploy/cloud-run/relay.service.yaml');
+      for (const secret of ['SESSION_SECRET', 'BREVO_API_KEY', 'PADDLE_API_KEY', 'PADDLE_WEBHOOK_SECRET']) expect(relay, secret).not.toMatch(new RegExp(`name: ${secret}\\b`));
+      const app = file('deploy/cloud-run/app.service.yaml');
+      for (const [name, value] of [['SPINE_STORE', 'postgres'], ['SPINE_OBJECTS', 'gcs'], ['SPINE_LIMITS', 'store'], ['SPINE_JOBS', 'external'], ['SPINE_SERVER_HEADERS', 'on']]) {
+        expect(app, name).toMatch(new RegExp(`name: ${name}, value: "?${value}"? `));
+      }
+      // Reached through Cloud Run's own front end (a domain mapping), so the ingress is open and the hops are one: the platform is the only way to the port (S-68).
+      expect(app).toMatch(/run\.googleapis\.com\/ingress: all/);
+      expect(app).toMatch(/name: SPINE_TRUSTED_HOPS, value: "1"/);
+      expect(app).toMatch(/path: \/healthz/);
+    });
+  });
 });

@@ -63,15 +63,18 @@ spine/
 │       ├── native/         # the Node versions of the tools the shared code asks for (poppler, Tesseract, sharp, pdfkit, yauzl, yazl, maxmind): for the tests that run the whole app on Node; none is used in production
 │       ├── objects/        # the object store the sealed bytes go to: types.ts (the port), filesystem.ts and gcs.ts (the adapters), index.ts (SPINE_OBJECTS; `useObjects` is called by `useAccountsStore`); vault-files.ts and shared-files.ts build the keys
 │       ├── billing/        # config.ts (SPINE_BILLING and Paddle's settings), paddle.ts (signature check, checkout, portal), entitlements.ts (an account's limits for the routes), seat.ts (what an account has and whose plan it is: its own, or the plan whose seat it holds), fair-use.ts (the hidden ceilings, the operator's file), window.ts, cost.ts, watch.ts (the twelve months a yearly ceiling counts over, what an account's AI use cost, and who is told), links.ts, gate.ts (what the relay asks before and after a call)
-│       ├── geo.ts          # the country a share was opened from (maxmind, reading data/geoip/country.mmdb or SPINE_GEOIP_DB; looked at again every minute): the one native library the production server uses
+│       ├── geo.ts          # the country a share was opened from (maxmind, reading data/geoip/country.mmdb or SPINE_GEOIP_DB, or the newest geoip/country-*.mmdb of the bucket where there is no disk; looked at again every minute, or ten: the one native library the production server uses
 │       ├── geoip-update.ts # downloads that file (ip-location-db "user-country", public domain) and checks it before it replaces the one in use; best effort, always ends well; run by install.sh -s and daily before the backup
 │       ├── providers.ts    # registers the model providers the relay service runs; llm/adapters/ (anthropic, vertex) and embedding/adapters/ (vertex) hold them
 │       ├── driver-native.ts, driver-pg.ts # the native SQLite driver and the `pg` pool, both registered by useAccountsStore(); the store config says which is opened
+│       ├── email-code.ts   # the second step by mail (chosen by the owner, or the floor under SPINE_EMAIL_2FA=required): the six-digit code, its keyed hash in the pending login, the mail (S-20); routes/email-second-factor.ts turns it on and off
 │       ├── passwords.ts    # argon2id hash/verify, policy, email normalisation
 │       ├── totp.ts         # RFC 6238 codes, secret encryption at rest, recovery codes (pure; no store)
 │       ├── second-factor.ts # checkSecondFactor(): joins totp.ts to the store; atomic spend
 │       ├── cli.ts          # operator commands: create-user, set-password, reset-link, disable-2fa, delete-user, list-users
-│       ├── trust-proxy.ts  # the only addresses whose X-Forwarded-For is believed (loopback); limiters key on req.ip
+│       ├── trust-proxy.ts  # the only addresses whose X-Forwarded-For is believed (loopback, SPINE_TRUSTED_PROXIES), or the platform's hops (SPINE_TRUSTED_HOPS, Cloud Run) (one hop on Cloud Run itself, or two behind a load balancer whose SPINE_EDGE_SECRET the request carries); limiters key on req.ip
+│       ├── headers.ts, limits.ts, jobs.ts, local-files.ts  # for a host with no proxy of ours and no disk (docs/deploy-cloud-run.md): the security headers the server sets (SPINE_SERVER_HEADERS), limits counted in the database for every instance (SPINE_LIMITS), the hourly work as `node dist/jobs.js` (SPINE_JOBS), and whether the process keeps a file at all
+│       ├── seo.ts          # robots.txt and sitemap.xml from SPINE_DOMAIN, from the pages the web build lists (web/seo-pages.json, web/scripts/seo-pages.mjs); noindex and a canonical link on any other host
 │       ├── disk-space.ts, permissions.ts  # the free-space reserve a sealed write must leave (`SPINE_MIN_FREE_MB`, S-56); the modes data and backups are made with and the start-up check that the data directory is closed (S-61)
 │       ├── read-budget.ts, read-slots.ts  # bytes of a share one source may read an hour, and reads of sealed objects one account may have open at once (S-57, S-58)
 │       ├── same-origin.ts, reset-proof.ts # a request that changes something must come from the app's own origin (S-50); the signature a reset must carry, checked against the vault's verifier (S-38)
@@ -83,6 +86,7 @@ spine/
 │       └── __tests__/      # Vitest tests that drive the composed app, plus helpers/app.ts (buildTestApp) and helpers/seed.ts
 ├── web/                    # React + Vite + Tailwind
 ├── checkout/               # Paddle's checkout page, served from an origin of its own so its script never runs beside the vault (docs/billing.md)
+├── deploy/                 # gcp/ (one VM, docs/deploy-gcp.md) and cloud-run/ (services, job and build, docs/deploy-cloud-run.md): settings with no secret in them
 ├── nginx/                  # Site config template (spine.conf), security.txt template, /source /docs /security redirects
 └── systemd/                # spine-web.service, spine-backup.{service,timer}
 ```

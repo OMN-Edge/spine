@@ -66,6 +66,10 @@ export function userRepository(q: Query, begin: Begin): UserRepository {
       await q('UPDATE users SET email_recovery = $1 WHERE id = $2', [on ? 1 : 0, id]);
     },
 
+    async setEmailSecondFactor(id, on) {
+      await q('UPDATE users SET email_second_factor = $1 WHERE id = $2', [on ? 1 : 0, id]);
+    },
+
     async setLanguage(id, language) {
       await q('UPDATE users SET language = $1 WHERE id = $2', [language, id]);
     },

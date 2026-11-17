@@ -1,5 +1,7 @@
 import { type UserRecord, getAccountsStore } from 'spine-core/store/index.js';
 import { logger } from 'spine-core/logger.js';
+import { verifyPassword } from './passwords.js';
+import { emailSecondFactorRequired } from './email-code.js';
 import {
   RECOVERY_CODE_COUNT,
   decryptSecret,
@@ -13,6 +15,23 @@ import {
 /** Whether this user must present a second factor to sign in. */
 export async function hasSecondFactor(userId: string): Promise<boolean> {
   return (await getAccountsStore().users.getTotp(userId))?.confirmed_at != null;
+}
+
+/**
+ * What the second step of a sign-in is for this account (SECURITY.md S-20): an authenticator app when one is enrolled, which takes precedence; else a code
+ * sent to the address, when the owner chose it or the operator requires it (`SPINE_EMAIL_2FA`); else none.
+ */
+export type SecondFactorMethod = 'authenticator' | 'email';
+export async function secondFactorMethod(user: Pick<UserRecord, 'id' | 'email_second_factor'>): Promise<SecondFactorMethod | null> {
+  if (await hasSecondFactor(user.id)) return 'authenticator';
+  return user.email_second_factor === 1 || emailSecondFactorRequired() ? 'email' : null;
+}
+
+/** Whether the password is the account's: asked again for anything that changes the second step. */
+export async function passwordIsRight(userId: string, password: unknown): Promise<boolean> {
+  if (typeof password !== 'string' || !password) return false;
+  const user = await getAccountsStore().users.findById(userId);
+  return !!user && (await verifyPassword(user.password_hash, password));
 }
 
 /**
