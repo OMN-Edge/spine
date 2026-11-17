@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS users (
   email_verified_at TEXT,
   approved INTEGER NOT NULL DEFAULT 1,
   email_recovery INTEGER NOT NULL DEFAULT 1,
+  email_second_factor INTEGER NOT NULL DEFAULT 0,
   language TEXT,
   created_at TEXT NOT NULL,
   health_consent_at TEXT,
@@ -126,6 +127,7 @@ CREATE TABLE IF NOT EXISTS vault_keys (
 );
 ALTER TABLE vault_keys ADD COLUMN IF NOT EXISTS reset_verifier TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email_recovery INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_second_factor INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS language TEXT;
 
 CREATE TABLE IF NOT EXISTS vault_objects (
@@ -251,6 +253,16 @@ CREATE TABLE IF NOT EXISTS metrics (
   day TEXT NOT NULL,
   n BIGINT NOT NULL,
   PRIMARY KEY (name, day)
+);
+
+-- The windows a limiter counts in, shared by every instance of the server (SPINE_LIMITS=store): see sqlite/schema-accounts.ts.
+CREATE TABLE IF NOT EXISTS rate_windows (
+  limiter TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  started BIGINT NOT NULL,
+  window_ms BIGINT NOT NULL,
+  hits INTEGER NOT NULL,
+  PRIMARY KEY (limiter, subject)
 );
 
 -- People who asked to be told when Spine opens: an address and a time, not accounts.

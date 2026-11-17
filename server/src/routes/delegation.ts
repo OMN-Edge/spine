@@ -120,7 +120,7 @@ export async function delegationRoutes(app: FastifyInstance, opts: DelegationRou
 
   const limits = [
     app.rateLimit({ max: opts.claimsPerSource ?? 10, timeWindow: '10 minutes' }),
-    windowLimiter({ max: opts.instanceWide ?? 2000, windowMs: 10 * 60 * 1000 }, () => 'instance', 'too many attempts, try again later'),
+    windowLimiter({ max: opts.instanceWide ?? 2000, windowMs: 10 * 60 * 1000 }, () => 'instance', 'too many attempts, try again later', 'delegation instance'),
   ];
 
   // Who an invitation is from and what it lets the person do, so they can decide before using it. Shown only to whoever holds the code (the

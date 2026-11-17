@@ -5,7 +5,7 @@ import { windowLimiter } from '../rate-limit.js';
 /** SECURITY.md S-53: the limiter that keys on an address or a user dropped expired keys by walking the whole map on every request. */
 const req = (key: string) => ({ key, ip: '10.0.0.1', log: { warn: () => undefined } }) as unknown as FastifyRequest & { key: string };
 const reply = () => { const r = { code: 0, status(c: number) { r.code = c; return r; }, send() { return r; } }; return r as unknown as FastifyReply & { code: number }; };
-const limiter = (max: number, windowMs: number) => windowLimiter({ max, windowMs }, r => (r as unknown as { key: string }).key);
+const limiter = (max: number, windowMs: number) => windowLimiter({ max, windowMs }, r => (r as unknown as { key: string }).key, 'too many requests, try again later', 'test limiter');
 
 afterEach(() => vi.useRealTimers());
 

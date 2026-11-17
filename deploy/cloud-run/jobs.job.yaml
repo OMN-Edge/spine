@@ -1,0 +1,37 @@
+# The work done on a clock (server/src/jobs.ts), as a Cloud Run job that Cloud Scheduler starts every hour (docs/deploy-cloud-run.md):
+# `gcloud run jobs replace jobs.job.yaml --region=europe-west4`. The server runs none of it itself (SPINE_JOBS=external).
+apiVersion: run.googleapis.com/v1
+kind: Job
+metadata:
+  name: spine-jobs
+  labels:
+    cloud.googleapis.com/location: europe-west4
+spec:
+  template:
+    spec:
+      template:
+        metadata:
+          annotations:
+            run.googleapis.com/cloudsql-instances: PROJECT_ID:europe-west4:INSTANCE
+        spec:
+          serviceAccountName: spine-app@PROJECT_ID.iam.gserviceaccount.com
+          maxRetries: 1
+          timeoutSeconds: 600
+          containers:
+            - image: europe-west4-docker.pkg.dev/PROJECT_ID/spine/spine:TAG
+              command: ["node", "dist/jobs.js"]
+              resources:
+                limits:
+                  cpu: "1"
+                  memory: 512Mi
+              env:
+                - { name: SPINE_DOMAIN, value: spinevault.eu }
+                - { name: SPINE_STORE, value: postgres }
+                - { name: SPINE_OBJECTS, value: gcs }
+                - { name: SPINE_GCS_BUCKET, value: BUCKET }
+                - { name: SPINE_DATABASE_POOL, value: "2" }
+                - { name: SPINE_MAILER, value: brevo }
+                - { name: SPINE_MAIL_SENDER, value: "Account Notices <notices@spinevault.eu>" }
+                - { name: SESSION_SECRET, valueFrom: { secretKeyRef: { name: spine-session-secret, key: latest } } }
+                - { name: SPINE_DATABASE_URL, valueFrom: { secretKeyRef: { name: spine-database-url, key: latest } } }
+                - { name: BREVO_API_KEY, valueFrom: { secretKeyRef: { name: spine-brevo-key, key: latest } } }

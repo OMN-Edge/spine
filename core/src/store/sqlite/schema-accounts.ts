@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS users (
   -- session. Every other account (the operator's, a self-registered one in open mode, all from before) is 1.
   approved INTEGER NOT NULL DEFAULT 1,
   email_recovery INTEGER NOT NULL DEFAULT 1,
+  email_second_factor INTEGER NOT NULL DEFAULT 0,
   -- A language code from SUPPORTED_LANGUAGES (core/src/languages.ts); NULL until chosen. The account's mail is written in it and the screens start in it.
   language TEXT,
   created_at TEXT NOT NULL,
@@ -281,6 +282,17 @@ CREATE TABLE IF NOT EXISTS metrics (
   day TEXT NOT NULL,
   n INTEGER NOT NULL,
   PRIMARY KEY (name, day)
+);
+
+-- The windows a limiter counts in, shared by every instance of the server (SPINE_LIMITS=store): what is limited (an address, an account), when its
+-- window began, how long it is, and how many requests it has had. Not an account's data: nothing here names a person beyond the key a limiter chose.
+CREATE TABLE IF NOT EXISTS rate_windows (
+  limiter TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  started INTEGER NOT NULL,
+  window_ms INTEGER NOT NULL,
+  hits INTEGER NOT NULL,
+  PRIMARY KEY (limiter, subject)
 );
 
 -- People who asked to be told when Spine opens: an address and a time, not accounts.

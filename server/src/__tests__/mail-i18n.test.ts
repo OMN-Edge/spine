@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { INTERFACE_LANGUAGES } from 'spine-core/languages.js';
 import { accessRequestMail, approvedMail, cardOpenedMail, cardReviewMail, remindersDueMail, resetMail, verificationMail } from '../accounts.js';
+import { signInCodeMail } from '../email-code.js';
 import { CHANGES, newSignInMail, securityChangeMail, type Change } from '../notify.js';
 import { missing, recipientLanguage, tm, tmn } from '../mail/i18n.js';
 import { DICTIONARIES } from '../mail/translations.js';
@@ -17,7 +18,7 @@ function everyMail(language: string) {
     cardOpenedMail(to, at, null), cardOpenedMail(to, at, 'Romania'), cardReviewMail(to),
     ...[1, 2, 5, 20, 21].map(n => remindersDueMail(to, n)),
     accessRequestMail(to, 'https://x.example/share-requests/1', at, null), accessRequestMail(to, 'https://x.example/share-requests/1', at, '203.0.113.9'),
-    newSignInMail(to, at),
+    newSignInMail(to, at), signInCodeMail(to, '123456'),
     ...(Object.keys(CHANGES) as Change[]).map(c => securityChangeMail(to, c, at, { email: 'b@example.org' })),
   ];
 }

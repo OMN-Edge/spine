@@ -11,6 +11,7 @@ const root = path.resolve(import.meta.dirname, '../../..');
 const read = (name: string) => fs.readFileSync(path.join(root, '.github/workflows', name), 'utf8');
 const ci = read('ci.yml');
 const release = read('release.yml');
+const images = read('images.yml');
 
 /** The jobs of a workflow, by name, each with its own text. */
 function jobsOf(text: string): Map<string, string> {
@@ -23,7 +24,7 @@ function jobsOf(text: string): Map<string, string> {
 
 describe('the workflows', () => {
   it('name every action by the commit it is, not by a tag its owner can move', () => {
-    for (const [name, text] of [['ci.yml', ci], ['release.yml', release]]) {
+    for (const [name, text] of [['ci.yml', ci], ['release.yml', release], ['images.yml', images]]) {
       const uses = [...text.matchAll(/^\s*-?\s*uses:\s*(\S+)/gm)].map(m => m[1]).filter(u => !u.startsWith('./'));
       expect(uses.length, name).toBeGreaterThan(0);
       for (const use of uses) expect(use, `${name}: ${use}`).toMatch(/^[\w.-]+\/[\w.-]+(\/[\w.-]+)?@[0-9a-f]{40}$/);
@@ -54,5 +55,21 @@ describe('the workflows', () => {
       expect(text, `${name} must not hold the right to sign or publish`).not.toMatch(/attestations: write|id-token: write|contents: write/);
     }
     expect([...jobs.values()].some(t => /npm ci/.test(t))).toBe(true);
+  });
+
+  it('push and sign the images in a job that builds nothing, and build them in a job that cannot push', () => {
+    const jobs = jobsOf(images);
+    const pushing = [...jobs].filter(([, text]) => /packages: write|attestations: write|id-token: write/.test(text));
+    expect(pushing.length).toBe(1);
+    const [, pushText] = pushing[0];
+    expect(pushText).not.toMatch(/npm |setup-node|setup-buildx|buildx build|docker build|npx /);
+    expect(pushText).toMatch(/attest-build-provenance/);
+    // what it pushes is what the building job made: the hashes are compared before anything is pushed
+    expect(pushText).toMatch(/sha256sum -c/);
+    for (const [name, text] of jobs) {
+      if (text === pushText) continue;
+      expect(text, `${name} must not hold the right to push or sign`).not.toMatch(/packages: write|attestations: write|id-token: write|contents: write/);
+    }
+    expect([...jobs.values()].some(t => /buildx build/.test(t))).toBe(true);
   });
 });

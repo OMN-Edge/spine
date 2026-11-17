@@ -44,3 +44,13 @@ gh attestation verify hashes.txt --repo OMN-Edge/spine --signer-workflow OMN-Edg
 The operator deploys a release by checking out the tag, building (the same files, since the build is reproducible) and running `scripts/deploy-check.sh v1.0.0`, which verifies the attestation of the release's `hashes.txt` and compares it with the `hashes.txt` it just built into `web/dist`. A personal deploy needs none of this: build and restart, and the page shows `-dirty` if the tree was not clean.
 
 What the attestation adds is a second party's signature on "this commit builds to this list", so the list no longer comes only from the site. It does not change the limit above: a page swapped for one visitor is seen by no one else.
+
+## Official images
+
+The same tag runs `.github/workflows/images.yml`, which builds the server's and the relay's images from that commit for `linux/amd64` and `linux/arm64`, pushes them to `ghcr.io/OMN-Edge/spine` and `ghcr.io/OMN-Edge/spine-relay` tagged with the version, and signs each with an attestation stored beside it in the registry. The building job can only read; the job that pushes and signs builds nothing and checks that it holds the files the building job listed (SECURITY.md **S-59**). To check an image before running it:
+
+```bash
+gh attestation verify oci://ghcr.io/omn-edge/spine:v1.0.0 --repo OMN-Edge/spine --signer-workflow OMN-Edge/spine/.github/workflows/images.yml
+```
+
+Run an image by its digest (`ghcr.io/omn-edge/spine@sha256:...`), which the check prints, so that a tag moved later cannot change what runs. Cloud Run takes these through an Artifact Registry remote repository ([deploy-cloud-run.md](deploy-cloud-run.md)); a Raspberry Pi pulls them directly.

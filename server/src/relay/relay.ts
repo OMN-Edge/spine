@@ -185,6 +185,10 @@ export function createRelay(config: RelayConfig) {
     const started = now();
     res.setHeader('access-control-allow-origin', config.allowedOrigin);
     res.setHeader('vary', 'origin');
+    // Its answers are data for a script, never a page: say so, and that the address is only ever https. Caddy and nginx set the same for this host; Cloud Run has neither.
+    res.setHeader('x-content-type-options', 'nosniff');
+    res.setHeader('strict-transport-security', 'max-age=31536000; includeSubDomains');
+    res.setHeader('referrer-policy', 'no-referrer');
     if (req.method === 'OPTIONS') {
       res.writeHead(204, { 'access-control-allow-methods': 'POST', 'access-control-allow-headers': 'authorization, content-type, x-spine-work, x-spine-pages, x-spine-import', 'access-control-max-age': '600' });
       return void res.end();

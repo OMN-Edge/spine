@@ -86,8 +86,9 @@ export async function remindCardReviews(now = new Date()): Promise<number> {
   for (const due of await store.shared.cardsToRemind(year, year)) {
     const owner = await store.users.findById(due.userId);
     if (!owner) continue;
-    // Marked first: a mail that fails is not tried every hour, and the next year's reminder is the retry.
-    await store.shared.markReminded(due.id, now.toISOString());
+    // Marked first: a mail that fails is not tried every hour, and the next year's reminder is the retry. Whoever marks it is the one that mails it,
+    // so several instances running this pass at once send one mail, not one each.
+    if (!(await store.shared.markReminded(due.id, now.toISOString(), year))) continue;
     await mailer.send(cardReviewMail(owner)).then(() => { sent++; }, () => undefined);
   }
   return sent;
@@ -345,7 +346,7 @@ export async function sharedRoutes(app: FastifyInstance, opts: SharedRouteOption
 
   // A browser asks to be let in. It sends its own public key; on approval the owner's device wraps the share key to it, so a leaked
   // link alone opens nothing. The same browser asking again changes nothing and sends nothing.
-  const perLink = windowLimiter(opts.requestPerLink ?? { max: 10, windowMs: 60 * 60 * 1000 }, req => (req.params as { id?: string }).id ?? '', 'too many requests for this link, try again later');
+  const perLink = windowLimiter(opts.requestPerLink ?? { max: 10, windowMs: 60 * 60 * 1000 }, req => (req.params as { id?: string }).id ?? '', 'too many requests for this link, try again later', 'share access request per link');
   app.post<{ Params: { id: string }; Body: { key?: unknown; note?: unknown } }>(
     '/api/shared/:id/access-request',
     { config: { rateLimit: opts.requestPerSource ?? { max: 10, timeWindow: '1 minute' } }, preHandler: perLink },

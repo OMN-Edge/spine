@@ -1,0 +1,17 @@
+# Builds the two images of docs/deploy-cloud-run.md, from the repository root:
+#   gcloud builds submit --region=europe-west4 --config=deploy/cloud-run/cloudbuild.yaml \
+#     --substitutions=_TAG=$(git rev-parse --short HEAD),_COMMIT=$(git rev-parse HEAD) .
+substitutions:
+  _REGION: europe-west4
+  _TAG: dev
+  _COMMIT: unknown
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: [build, -t, '${_REGION}-docker.pkg.dev/$PROJECT_ID/spine/spine:${_TAG}', --build-arg, 'SPINE_COMMIT=${_COMMIT}', .]
+  - name: gcr.io/cloud-builders/docker
+    args: [build, -t, '${_REGION}-docker.pkg.dev/$PROJECT_ID/spine/spine-relay:${_TAG}', -f, relay.Dockerfile, .]
+images:
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/spine/spine:${_TAG}'
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/spine/spine-relay:${_TAG}'
+options:
+  logging: CLOUD_LOGGING_ONLY

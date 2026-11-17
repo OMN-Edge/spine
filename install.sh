@@ -315,14 +315,22 @@ function install_relay() {
   local port
   port=$(relay_port)
 
+  # The relay opens the server's own database, so it may write where that is (data/); a Postgres database is reached over the network, and then
+  # the relay has a directory of its own and no way to the vault's files (SECURITY.md P9).
+  local relay_data="${SPINE_DIR}/data"
+  if [ "$(env_value SPINE_STORE)" = "postgres" ]; then
+    relay_data="${SPINE_DIR}/relay-data"
+    mkdir -p "${relay_data}"
+    chown -R "${SPINE_USER}:${SPINE_USER}" "${relay_data}"
+  fi
+
   echo "Installing the relay (127.0.0.1:${port})..."
-  mkdir -p "${SPINE_DIR}/relay-data"
-  chown -R "${SPINE_USER}:${SPINE_USER}" "${SPINE_DIR}/relay-data"
   sed \
     -e "s|SPINE_DIR|${SPINE_DIR}|g" \
     -e "s|SPINE_USER|${SPINE_USER}|g" \
     -e "s|SPINE_DOMAIN|${domain}|g" \
     -e "s|RELAY_PORT_HERE|${port}|g" \
+    -e "s|RELAY_DATA_HERE|${relay_data}|g" \
     "${SPINE_DIR}/systemd/spine-relay.service" \
     > /etc/systemd/system/spine-relay.service
   echo "  installed /etc/systemd/system/spine-relay.service"
@@ -406,11 +414,6 @@ function setup_nginx() {
     sed -e '/SPINE_REPO_URL/d' -e "s|SPINE_RELAY_URL|${RELAY_URL}|g" -e "s/SPINE_DOMAIN/${DOMAIN}/g" "${SPINE_DIR}/nginx/spine.conf"
   fi | tee /etc/nginx/sites-available/spine > /dev/null
 
-  # security.txt (RFC 9116) expires after a year; running -n again renews it.
-  mkdir -p /var/www/spine
-  EXPIRES=$(date -u -d '+1 year' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v+1y +%Y-%m-%dT%H:%M:%SZ)
-  sed -e "s/SPINE_DOMAIN/${DOMAIN}/g" -e "s/SPINE_EXPIRES/${EXPIRES}/g" "${SPINE_DIR}/nginx/security.txt" \
-    > /var/www/spine/security.txt
   ln -sf /etc/nginx/sites-available/spine /etc/nginx/sites-enabled/spine
 
   # The relay's site, when it runs here; removed when SPINE_RELAY_DOMAIN is no longer set

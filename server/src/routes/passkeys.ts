@@ -40,7 +40,7 @@ export interface PasskeyRouteOptions {
 export async function passkeyRoutes(app: FastifyInstance, opts: PasskeyRouteOptions = {}) {
   const perSource = [
     app.rateLimit({ max: opts.perSource ?? 20, timeWindow: '10 minutes' }),
-    windowLimiter({ max: opts.instanceWide ?? 200, windowMs: 10 * 60 * 1000 }, () => 'instance', 'too many sign-in attempts, try again later'),
+    windowLimiter({ max: opts.instanceWide ?? 200, windowMs: 10 * 60 * 1000 }, () => 'instance', 'too many sign-in attempts, try again later', 'passkey instance'),
   ];
 
   // --- Managing them (signed in) ---------------------------------------------------------------------------------------------

@@ -1,0 +1,84 @@
+# The Spine server on Cloud Run (docs/deploy-cloud-run.md): `gcloud run services replace app.service.yaml --region=europe-west4`.
+# Replace PROJECT_ID, INSTANCE (the Cloud SQL instance's name), TAG, and the bucket and domain below. Nothing here is a secret: each secret is a reference
+# to Secret Manager, which the service account named below may read.
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: spine
+  labels:
+    cloud.googleapis.com/location: europe-west4
+  annotations:
+    # Reached through the global load balancer of the doc (its certificate, its apex domain, the CDN for the hashed assets), not at the run.app address.
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        # Never none: a person signing in should not wait for a start. Two keep one instance's replacement from being an outage.
+        autoscaling.knative.dev/minScale: "2"
+        # What the database can bear: every instance may open SPINE_DATABASE_POOL connections (the doc's arithmetic).
+        autoscaling.knative.dev/maxScale: "40"
+        run.googleapis.com/cloudsql-instances: PROJECT_ID:europe-west4:INSTANCE
+        run.googleapis.com/startup-cpu-boost: "true"
+    spec:
+      serviceAccountName: spine-app@PROJECT_ID.iam.gserviceaccount.com
+      containerConcurrency: 40
+      timeoutSeconds: 300
+      containers:
+        - image: europe-west4-docker.pkg.dev/PROJECT_ID/spine/spine:TAG
+          ports:
+            - containerPort: 8080
+          resources:
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          # The server listens only after it has opened its database (index.ts), so a 200 means the start went through.
+          startupProbe:
+            httpGet:
+              path: /healthz
+            periodSeconds: 3
+            failureThreshold: 20
+          livenessProbe:
+            httpGet:
+              path: /healthz
+            periodSeconds: 30
+          env:
+            - { name: PORT, value: "8080" }
+            - { name: SPINE_HOST, value: "0.0.0.0" }
+            - { name: SPINE_DOMAIN, value: spinevault.eu }
+            # Nothing on this instance's disk: the accounts in Postgres, the sealed bytes in a bucket
+            - { name: SPINE_STORE, value: postgres }
+            - { name: SPINE_OBJECTS, value: gcs }
+            - { name: SPINE_GCS_BUCKET, value: BUCKET }
+            # Four connections an instance: 40 instances are 160, with the relay's (3 each) and the job's about 280, which the Cloud SQL instance of the doc holds (the doc's arithmetic)
+            - { name: SPINE_DATABASE_POOL, value: "4" }
+            # No proxy of ours in front: the headers are the server's, the client's address is the last-but-one of X-Forwarded-For (the load balancer adds one, Cloud Run another)
+            - { name: SPINE_SERVER_HEADERS, value: "on" }
+            - { name: SPINE_TRUSTED_HOPS, value: "1" }
+            # Every instance counts the limits in the same place; the hourly work is a job, not a timer in each instance
+            - { name: SPINE_LIMITS, value: store }
+            - { name: SPINE_JOBS, value: external }
+            - { name: SPINE_FAIR_USE_FILE, value: /secrets/fair-use/fair-use.json }
+            - { name: SPINE_RELAY_URL, value: "https://relay.spinevault.eu" }
+            - { name: SPINE_OPERATOR_NAME, value: CHANGE }
+            - { name: SPINE_OPERATOR_CONTACT, value: privacy@spinevault.eu }
+            - { name: SPINE_REPO_URL, value: "https://github.com/OMN-Edge/spine" }
+            - { name: SPINE_MAILER, value: brevo }
+            - { name: SPINE_MAIL_SENDER, value: "Account Notices <notices@spinevault.eu>" }
+            - { name: SPINE_REGISTRATION, value: open }
+            - { name: SPINE_VAULT_MAX_MB, value: "25600" }
+            - { name: SESSION_SECRET, valueFrom: { secretKeyRef: { name: spine-session-secret, key: latest } } }
+            - { name: SPINE_DATABASE_URL, valueFrom: { secretKeyRef: { name: spine-database-url, key: latest } } }
+            - { name: SPINE_RELAY_SECRET, valueFrom: { secretKeyRef: { name: spine-relay-secret, key: latest } } }
+            - { name: BREVO_API_KEY, valueFrom: { secretKeyRef: { name: spine-brevo-key, key: latest } } }
+          volumeMounts:
+            - { name: fair-use, mountPath: /secrets/fair-use }
+      volumes:
+        - name: fair-use
+          secret:
+            secretName: spine-fair-use
+            items:
+              - { key: latest, path: fair-use.json }
+  traffic:
+    - percent: 100
+      latestRevision: true

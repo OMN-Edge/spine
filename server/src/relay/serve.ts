@@ -103,5 +103,14 @@ export function serveRelay(): void {
   // Cloud Run sets PORT and needs every interface. On the server's own machine the relay reads the server's .env, whose PORT is the
   // server's, so SPINE_RELAY_PORT comes first, and SPINE_RELAY_HOST=127.0.0.1 keeps it behind the proxy (docs/relay.md).
   const port = Number(process.env.SPINE_RELAY_PORT || process.env.PORT || 8080);
-  createServer((req, res) => { void handle(req, res).catch(() => { if (!res.headersSent) res.writeHead(500); res.end(); }); }).listen(port, process.env.SPINE_RELAY_HOST || '0.0.0.0');
+  const server = createServer((req, res) => { void handle(req, res).catch(() => { if (!res.headersSent) res.writeHead(500); res.end(); }); }).listen(port, process.env.SPINE_RELAY_HOST || '0.0.0.0');
+  // A platform that replaces instances without downtime says SIGTERM and waits a few seconds: take no new call, let the ones in flight finish (a model call
+  // can take a minute), then end. A call still running when the platform's time is up is cut, which the device retries.
+  for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+    process.once(signal, () => {
+      console.log(JSON.stringify({ time: new Date().toISOString(), event: 'relay stopping', signal }));
+      server.close(() => process.exit(0));
+      server.closeIdleConnections();
+    });
+  }
 }

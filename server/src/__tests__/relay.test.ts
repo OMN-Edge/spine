@@ -76,6 +76,14 @@ describe('the relay', () => {
   const post = (path: string, body: unknown, token: string | null = mint(), extra: Record<string, string> = {}, signal?: AbortSignal) =>
     fetch(base + path, { method: 'POST', body: typeof body === 'string' ? body : JSON.stringify(body), headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}), ...extra }, signal });
 
+  it('says that what it answers is data and only for https, on every answer, whoever it is for', async () => {
+    for (const res of [await fetch(`${base}/healthz`), await post(TASK, {}, null), await fetch(`${base}/`, { method: 'OPTIONS' })]) {
+      expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+      expect(res.headers.get('strict-transport-security')).toContain('max-age=31536000');
+      expect(res.headers.get('referrer-policy')).toBe('no-referrer');
+    }
+  });
+
   it('runs a task through the relay’s own model and answers the parsed result', async () => {
     const res = await post(TASK, { model: MODEL, messages: messages('Hemoglobin 13.5') }, mint(), { cookie: 'session=secret' });
     expect(res.status).toBe(200);

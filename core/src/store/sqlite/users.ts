@@ -37,6 +37,7 @@ export function userRepository(db: Database): UserRepository {
     'SELECT id, email, created_at, email_verified_at, approved FROM users ORDER BY created_at',
   );
   const setEmailRecovery = db.prepare('UPDATE users SET email_recovery = ? WHERE id = ?');
+  const setEmailSecondFactor = db.prepare('UPDATE users SET email_second_factor = ? WHERE id = ?');
   const setLanguage = db.prepare('UPDATE users SET language = ? WHERE id = ?');
   const approve = db.prepare('UPDATE users SET approved = 1, email_verified_at = COALESCE(email_verified_at, ?) WHERE id = ? AND approved = 0');
   const markVerified = db.prepare(
@@ -260,6 +261,10 @@ export function userRepository(db: Database): UserRepository {
 
     async setEmailRecovery(id, on) {
       setEmailRecovery.run(on ? 1 : 0, id);
+    },
+
+    async setEmailSecondFactor(id, on) {
+      setEmailSecondFactor.run(on ? 1 : 0, id);
     },
 
     async setLanguage(id, language) {

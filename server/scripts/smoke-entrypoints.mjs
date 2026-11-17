@@ -13,7 +13,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 
-export const ENTRYPOINTS = ['dist/index.js', 'dist/relay/main.js', 'dist/cli.js', 'dist/backup.js', 'dist/geoip-update.js'];
+export const ENTRYPOINTS = ['dist/index.js', 'dist/relay/main.js', 'dist/cli.js', 'dist/backup.js', 'dist/geoip-update.js', 'dist/jobs.js'];
 
 const server = path.resolve(import.meta.dirname, '..');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'spine-smoke-'));
@@ -65,6 +65,7 @@ await serving('the server', 'dist/index.js', { SPINE_HOST: '127.0.0.1' }, [
   ['answers the sign-in options', 'GET', '/api/auth/options', undefined, s => s === 200],
   ['has sign-in registered (a bad login is refused, not missing)', 'POST', '/api/auth/login', '{}', s => s === 400 || s === 401],
   ['keeps no route for records', 'GET', '/api/documents', undefined, s => s === 404],
+  ['answers the platform\'s health check', 'GET', '/healthz', undefined, s => s === 200],
 ]);
 await serving('the relay', 'dist/relay/main.js', {
   SPINE_RELAY_SECRET: '0123456789012345678901234567890123456789', SPINE_RELAY_ORIGIN: 'https://app.example',
@@ -77,6 +78,7 @@ running('the operator\'s commands run (create a user, list users)', 'dist/cli.js
 running('the operator lists the user it created', 'dist/cli.js', ['list-users'], {}, r => r.status === 0 && /smoke@example.com/.test(r.stdout));
 // Nothing listens at that address: the download fails, and a failed download must still end the process well (a unit runs it before the backup).
 running('the country file update ends well when it cannot download', 'dist/geoip-update.js', [], { SPINE_GEOIP_URL: 'http://127.0.0.1:9/country.mmdb' }, r => r.status === 0 && /geoip: not updated/.test(r.stderr) && !fs.existsSync(path.join(baseEnv.DATA_DIR, 'geoip', 'country.mmdb')));
+running('the jobs run once and end', 'dist/jobs.js', [], {}, r => r.status === 0 && /jobs: 7 of 7 done/.test(r.stdout));
 running('the backup runs and leaves a snapshot', 'dist/backup.js', [], {}, r => r.status === 0 && fs.existsSync(baseEnv.SPINE_BACKUP_DIR));
 
 fs.rmSync(tmp, { recursive: true, force: true });

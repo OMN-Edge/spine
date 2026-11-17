@@ -272,6 +272,15 @@ describe('the sealed card at the server', () => {
     expect((await app.inject({ method: 'POST', url: '/api/shared/none-none-none-none-none-none/review', headers: { cookie } })).statusCode).toBe(404);
   });
 
+  it('is mailed once when several instances run the hourly pass at the same time', async () => {
+    mails.length = 0;
+    const year = 365 * 24 * 3600e3;
+    const due = new Date(Date.now() + 2 * year);
+    const sent = await Promise.all([remindCardReviews(due), remindCardReviews(due), remindCardReviews(due)]);
+    expect(sent.reduce((a, b) => a + b, 0)).toBe(1);
+    expect(mails).toHaveLength(1);
+  });
+
   it('stops opening when it is turned off', async () => {
     expect((await app.inject({ method: 'DELETE', url: `/api/shared/${ID_A}`, headers: { cookie } })).statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: `/api/shared/${ID_A}/bundle` })).statusCode).toBe(410);

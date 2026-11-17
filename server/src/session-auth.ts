@@ -14,6 +14,8 @@ export interface PendingLogin {
   authVersion: number;
   expiresAt: number;
   failures: number;
+  /** Set when the second step is a code mailed to the address (`SPINE_EMAIL_2FA`, email-code.ts): the keyed hash of it. An authenticator is checked instead when there is none. */
+  emailCode?: string;
 }
 
 export interface SessionData {
@@ -24,6 +26,8 @@ export interface SessionData {
   /** When the password was last typed for this session, for actions that ask again (S-33). */
   reauthAt?: number;
   pending?: PendingLogin;
+  /** A code mailed to turn on the second step by email (`routes/email-second-factor.ts`): the keyed hash of it, when it ends and the wrong tries so far. */
+  emailEnrol?: { hash: string; expiresAt: number; failures: number };
   /** A passkey challenge the server made and the device has yet to sign: single use, short lived. */
   passkey?: { kind: 'register' | 'login'; challenge: string; expiresAt: number };
 }
