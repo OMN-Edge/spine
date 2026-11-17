@@ -22,10 +22,15 @@ import type { Store } from './store/types.js';
  * dates, codes and names are not: the model is told to keep them, and they are not in the bundle at all where
  * they can be left out (a measurement's value and unit, a doctor's name).
  *
- * The cache is validated by a digest of the bundle, not invalidated by hand. Re-extracting a document,
- * editing a field or a note, or anything else that changes what would be translated changes the digest, and
- * the next read finds the stored translation stale and translates again. Moving pages does the same through
- * the re-extraction it asks for. There is no list of events to keep in step with.
+ * The cache is validated by digests, not invalidated by hand. A translation is kept with a digest of the whole
+ * bundle and one for each of four parts: the title, the summary, the notes, and the details (fields, results and
+ * specialties, which re-reading a document replaces together). A part's translation depends on that part's text,
+ * the language it is in and the one it is translated into, and the version of the way translations are made;
+ * never on another part. Re-extracting a document, editing a field or a note, or anything else that changes
+ * what would be translated changes the digest of the part it is in, and the next read finds that part stale and
+ * translates it again, and only it: the other parts are served as they were. Any change to a part's text counts
+ * (there is no judgement of what is minor, and one part costs one short call). Moving pages does the same
+ * through the re-extraction it asks for. There is no list of events to keep in step with.
  *
  * What a document is in originally is extraction's job (`documents.language`): reading it in that language
  * needs no translation, and every other language is translated from it, never from another translation.
@@ -53,10 +58,45 @@ export interface TranslatedDocument {
   doctors: Record<string, string | null>;
 }
 
+/** The parts of a bundle that are kept, and found stale, one by one. */
+const PARTS = ['title', 'summary', 'notes', 'details'] as const;
+type PartName = typeof PARTS[number];
+type PartHashes = Record<PartName, string>;
+
+/** What is stored as a translation's content: the translated bundle, with the digests of the parts it was made from. */
+type Kept = TranslationBundle & { parts?: PartHashes };
+
 interface Source {
   document: Document;
   bundle: TranslationBundle;
   hash: string;
+  parts: PartHashes;
+}
+
+/** `v` changes when the way a translation is made changes, so what an older way kept is not served again. */
+const partHash = (part: PartName, language: SupportedLanguage, from: string | null, value: unknown): string =>
+  sha256Hex(JSON.stringify({ v: 2, part, language, from, value }));
+
+/** The digest of a title as it would be translated: all a list needs to know whether the title it holds is still good. */
+const titleHashOf = (document: Document, language: SupportedLanguage): string =>
+  partHash('title', language, document.language, (document.title ?? '').trim() === '' ? null : document.title);
+
+/** The content to store: the bundle with the digests of what it was made from. */
+const keep = (source: Source, bundle: TranslationBundle): string => JSON.stringify({ ...bundle, parts: source.parts } satisfies Kept);
+
+/** What a kept translation holds that is still good for the document as it is now: the parts whose digest has not changed. */
+function stillGood(kept: Kept, source: Source): TranslationBundle | null {
+  if (!kept.parts) return null;
+  const good = (part: PartName) => kept.parts?.[part] === source.parts[part];
+  return {
+    title: good('title') ? kept.title ?? null : null,
+    summary: good('summary') ? kept.summary ?? null : null,
+    notes: good('notes') ? kept.notes ?? null : null,
+    fields: good('details') ? kept.fields ?? [] : [],
+    measurements: good('details') ? kept.measurements ?? [] : [],
+    doctors: good('details') ? kept.doctors ?? [] : [],
+    source_language: kept.source_language ?? null,
+  };
 }
 
 const sourceOf = async (userId: string, document: Document, language: SupportedLanguage, store: Store = getStore()): Promise<Source> => {
@@ -74,9 +114,14 @@ const sourceOf = async (userId: string, document: Document, language: SupportedL
     measurements: measurements.filter(m => !blank(m.name)).map(m => ({ id: m.id, name: m.name })),
     doctors: doctors.filter(d => !blank(d.specialty)).map(d => ({ id: d.id, specialty: d.specialty })),
   };
-  // `v` changes when the way a translation is made changes, so what an older way kept is not served again.
   const hash = sha256Hex(JSON.stringify({ v: 2, language, from: document.language, bundle }));
-  return { document, bundle, hash };
+  const parts: PartHashes = {
+    title: titleHashOf(document, language),
+    summary: partHash('summary', language, document.language, bundle.summary),
+    notes: partHash('notes', language, document.language, bundle.notes),
+    details: partHash('details', language, document.language, { fields: bundle.fields, measurements: bundle.measurements, doctors: bundle.doctors }),
+  };
+  return { document, bundle, hash, parts };
 };
 
 const isEmpty = (bundle: TranslationBundle) =>
@@ -244,7 +289,7 @@ export async function storeTranslation(
     doctors: source.bundle.doctors.map(d => ({ id: d.id, specialty: d.specialty === null ? null : by.doctors[d.specialty] ?? d.specialty })),
     source_language: document.language,
   };
-  await store.translations.put(userId, documentId, language, source.hash, JSON.stringify(bundle), new Date().toISOString());
+  await store.translations.put(userId, documentId, language, source.hash, keep(source, bundle), new Date().toISOString());
   return true;
 }
 
@@ -304,9 +349,16 @@ export async function translateDocument(
   /** What is kept and still good, when it does not cover the whole document: only the rest is asked for. */
   let base: TranslationBundle | null = null;
   const cached = await store.translations.get(userId, documentId, language);
+  if (cached && cached.sourceHash !== source.hash) {
+    // Stale as a whole, perhaps not in every part: what is still good is kept, and only the rest is asked for.
+    try {
+      const good = stillGood(JSON.parse(cached.content) as Kept, source);
+      if (good && !isEmpty(good)) base = good;
+    } catch { /* an unreadable row is the same as a stale one: translate again */ }
+  }
   if (cached && cached.sourceHash === source.hash) {
     try {
-      const kept = JSON.parse(cached.content) as TranslationBundle;
+      const kept = JSON.parse(cached.content) as Kept;
       // Made for a share recipient, who does not record a language: the owner's visit does, from what the model said,
       // and the stored translation moves to the digest it now has, so nothing is translated again.
       const detected = !document.language && options.persistLanguage !== false ? cleanLanguageCode(kept.source_language) : null;
@@ -314,14 +366,18 @@ export async function translateDocument(
         await store.documents.update(userId, documentId, { language: detected });
         if (detected === language) return unchanged('same');
         const recorded = await sourceOf(userId, { ...document, language: detected }, language);
-        await store.translations.put(userId, documentId, language, recorded.hash, cached.content, cached.createdAt);
+        await store.translations.put(userId, documentId, language, recorded.hash, keep(recorded, kept), cached.createdAt);
         return shape(recorded, kept, language, 'cached');
       }
       // Already in this language, as the model said for a reader who records no language (a share's): nothing to translate, and
       // nothing to ask again at every look. Before this was kept, a document with no language recorded (one read from no text) was
       // detected afresh at each of a list's polls, and stayed "translating".
       if (cleanLanguageCode(kept.source_language) === language) return unchanged('same');
-      if (isEmpty(leftOver(source.bundle, kept))) return shape(source, kept, language, 'cached');
+      if (isEmpty(leftOver(source.bundle, kept))) {
+        // Kept before the parts had digests of their own: they are written now, so the next edit costs only the part it touches.
+        if (!kept.parts) await store.translations.put(userId, documentId, language, source.hash, keep(source, kept), cached.createdAt);
+        return shape(source, kept, language, 'cached');
+      }
       base = kept;
     } catch { /* an unreadable row is the same as a stale one: translate again */ }
   }
@@ -397,7 +453,7 @@ export async function translateDocument(
               // Kept as that, for a reader who records no language too, so the next look does not ask the model again.
               if (options.persistLanguage === false) {
                 const marker: TranslationBundle = { title: null, summary: null, notes: null, fields: [], measurements: [], doctors: [], source_language: detected };
-                await store.translations.put(userId, documentId, language, current.hash, JSON.stringify(marker), new Date().toISOString());
+                await store.translations.put(userId, documentId, language, current.hash, keep(current, marker), new Date().toISOString());
               }
               return unchanged('same');
             }
@@ -422,7 +478,7 @@ export async function translateDocument(
           failures.set(key, Date.now());
           logger.warn('a document could only be translated in part', { documentId, language });
         }
-        await store.translations.put(userId, documentId, language, current.hash, JSON.stringify(merged), new Date().toISOString());
+        await store.translations.put(userId, documentId, language, current.hash, keep(current, merged), new Date().toISOString());
         return shape(current, merged, language, 'translated');
       } catch (err) {
         logger.warn('a document could not be translated', { documentId, language, error: describeError(err) });
@@ -467,9 +523,16 @@ export async function carryTranslations(userId: string, documentIds: string[], c
     for (const language of await store.translations.languagesFor(userId, documentId)) {
       if (!isSupportedLanguage(language)) continue;
       const kept = await store.translations.get(userId, documentId, language);
-      if (!kept || kept.sourceHash !== (await sourceOf(userId, mine, language)).hash) continue;
+      if (!kept) continue;
+      const own = await sourceOf(userId, mine, language);
       let content: TranslationBundle;
-      try { content = JSON.parse(kept.content) as TranslationBundle; } catch { continue; }
+      try {
+        const parsed = JSON.parse(kept.content) as Kept;
+        // What is still good for the owner's document, part by part: an edited note does not keep the title out of the copy.
+        const good = kept.sourceHash === own.hash ? parsed : stillGood(parsed, own);
+        if (!good || isEmpty(good)) continue;
+        content = good;
+      } catch { continue; }
       const held = await sourceOf(userId, theirs, language, copy);
       const ids = <T extends { id: string }>(list: T[]) => new Set(list.map(item => item.id));
       const [fields, measurements, doctors] = [ids(held.bundle.fields), ids(held.bundle.measurements), ids(held.bundle.doctors)];
@@ -482,7 +545,134 @@ export async function carryTranslations(userId: string, documentIds: string[], c
         doctors: (content.doctors ?? []).filter(d => doctors.has(d.id)),
         source_language: content.source_language ?? null,
       };
-      await copy.translations.put(userId, documentId, language, held.hash, JSON.stringify(cut), kept.createdAt);
+      await copy.translations.put(userId, documentId, language, held.hash, keep(held, cut), kept.createdAt);
     }
   }
 }
+
+/** The digest of a summary as it would be translated: what a list needs to know whether the summary it holds is still good. */
+const summaryHashOf = (document: Document, language: SupportedLanguage): string =>
+  partHash('summary', language, document.language, (document.ai_summary ?? '').trim() === '' ? null : document.ai_summary);
+
+/**
+ * What a list learns of a document's title and summary in a language: `same` (already in it, or nothing to translate), `ready` (the title and the summary,
+ * each null where it is not kept or no longer matches; `stale` says some is still to be made), `missing` (nothing yet: to be made), `off` or `not_found`.
+ */
+export type KeptText = { state: 'same' | 'missing' | 'off' | 'not_found' } | { state: 'ready'; title: string | null; summary: string | null; stale: boolean };
+
+/**
+ * The titles and summaries of these documents in `language`, from what is kept and nowhere else: the model is never asked. A text is given only
+ * while its own digest still matches the document's, so it is never one that no longer matches its document, and it does not matter what else on the
+ * document changed. Only the title and the summary are read (one document row and one translation row); a translation kept before the parts had
+ * digests is checked once against the whole document and then written with them.
+ */
+export async function keptTexts(userId: string, documentIds: string[], language: SupportedLanguage): Promise<Map<string, KeptText>> {
+  const store = getStore();
+  const out = new Map<string, KeptText>();
+  const blank = (text: string | null | undefined) => (text ?? '').trim() === '';
+  for (const id of documentIds) {
+    const document = await store.documents.findFor(userId, id);
+    if (!document) { out.set(id, { state: 'not_found' }); continue; }
+    const [hasTitle, hasSummary] = [!blank(document.title), !blank(document.ai_summary)];
+    const kept = await store.translations.get(userId, id, language);
+    let content: Kept | null = null;
+    try { content = kept ? JSON.parse(kept.content) as Kept : null; } catch { /* unreadable: the same as none */ }
+    let title: string | null = null;
+    let summary: string | null = null;
+    if (kept && content) {
+      let parts = content.parts;
+      if (!parts) {
+        const source = await sourceOf(userId, document, language);
+        if (kept.sourceHash === source.hash) {
+          await store.translations.put(userId, id, language, source.hash, keep(source, content), kept.createdAt);
+          parts = source.parts;
+        }
+      }
+      if (parts) {
+        if (hasTitle && parts.title === titleHashOf(document, language) && !blank(content.title)) title = content.title!.trim();
+        if (hasSummary && parts.summary === summaryHashOf(document, language) && !blank(content.summary)) summary = content.summary!.trim();
+      }
+    }
+    if (title !== null || summary !== null) out.set(id, { state: 'ready', title, summary, stale: translationEnabled() && ((hasTitle && title === null) || (hasSummary && summary === null)) });
+    else if (!translationEnabled()) out.set(id, { state: 'off' });
+    else if (document.language === language || (!hasTitle && !hasSummary)) out.set(id, { state: 'same' });
+    else out.set(id, { state: 'missing' });
+  }
+  return out;
+}
+
+/** The wording of doctors' specialties and of test names in a language, and whether some is still being made. */
+export interface KeptTerms {
+  /** By the specialty as the directory has it. */
+  specialties: Record<string, string>;
+  /** By the test's name as the trends list it. */
+  tests: Record<string, string>;
+  pending: boolean;
+}
+
+const termsRunning = new Set<string>();
+const termsFailedAt = new Map<string, number>();
+
+/**
+ * Specialties and test names in `language`, for the pages that list them across documents (the doctors, the trends), where no one document's translation
+ * is theirs: a doctor and a test are in many documents. They are kept by the text (`term_translations`), so every doctor with a specialty and every
+ * document with a test gets the same words, and an edited name is a new text with nothing stale to find. What is not kept yet is translated in the
+ * background, all of it in one short call to the model (counted by the relay like a document's), and `pending` tells the page to ask again; with
+ * translation off, or while a failure is being waited out, nothing is asked and the original shows.
+ */
+export async function keptTerms(userId: string, language: SupportedLanguage): Promise<KeptTerms> {
+  const store = getStore();
+  const clean = (text: string | null | undefined) => (text ?? '').trim();
+  const specialties = new Set((await store.doctors.listFor(userId)).map(d => clean(d.specialty)).filter(Boolean));
+  const tests = new Set((await store.measurements.names(userId)).map(n => clean(n.name)).filter(Boolean));
+  const out: KeptTerms = { specialties: {}, tests: {}, pending: false };
+  const have = new Set<string>();
+  for (const row of await store.termTranslations.forLanguage(userId, language)) {
+    const inUse = row.kind === 'specialty' ? specialties : tests;
+    if (!inUse.has(row.sourceText)) continue;
+    have.add(`${row.kind}\u0000${row.sourceText}`);
+    if (row.translated !== row.sourceText) (row.kind === 'specialty' ? out.specialties : out.tests)[row.sourceText] = row.translated;
+  }
+  const missing = [
+    ...[...specialties].filter(t => !have.has(`specialty\u0000${t}`)).map(text => ({ kind: 'specialty' as const, text })),
+    ...[...tests].filter(t => !have.has(`test\u0000${t}`)).map(text => ({ kind: 'test' as const, text })),
+  ];
+  const key = `${userId}:${language}`;
+  const paused = Date.now() - (termsFailedAt.get(key) ?? 0) < FAILURE_PAUSE_MS;
+  if (missing.length === 0 || !translationEnabled() || paused) return out;
+  out.pending = true;
+  if (!termsRunning.has(key)) {
+    termsRunning.add(key);
+    void (async () => {
+      try {
+        const llm = getChatLlm();
+        const meta = { work: crypto.randomUUID(), pages: 1 };
+        for (let i = 0; i < missing.length; i += TERMS_PER_CALL) {
+          const part = missing.slice(i, i + TERMS_PER_CALL);
+          const asked = part.map((m, n) => ({ ...m, id: String(n) }));
+          const bundle: TranslationBundle = {
+            title: null, summary: null, notes: null, fields: [],
+            measurements: asked.filter(m => m.kind === 'test').map(m => ({ id: m.id, name: m.text })),
+            doctors: asked.filter(m => m.kind === 'specialty').map(m => ({ id: m.id, specialty: m.text })),
+          };
+          const answer = await translatePiece(bundle, b => llm.translate(b, LANGUAGE_NAMES[language], null, meta));
+          if (!answer) { termsFailedAt.set(key, Date.now()); continue; }
+          const said = new Map<string, string | null>([...answer.measurements.map(m => [m.id, m.name] as const), ...answer.doctors.map(d => [d.id, d.specialty] as const)]);
+          // The model's text is kept only where it is a translation and not a ramble; a name it could not do is asked for again after the pause.
+          const rows = asked.flatMap(m => { const text = said.get(m.id); return text && sound(text, m.text) ? [{ kind: m.kind, sourceText: m.text, translated: text.trim() }] : []; });
+          if (rows.length < asked.length) termsFailedAt.set(key, Date.now());
+          await store.termTranslations.put(userId, language, rows, new Date().toISOString());
+        }
+      } catch (err) {
+        logger.warn('terms could not be translated', { language, error: describeError(err) });
+        termsFailedAt.set(key, Date.now());
+      } finally {
+        termsRunning.delete(key);
+      }
+    })();
+  }
+  return out;
+}
+
+/** Specialties and test names asked of the model in one call. */
+const TERMS_PER_CALL = 80;

@@ -130,6 +130,7 @@ export interface RecordsStore {
   tags: TagRepository;
   shareLinks: ShareLinkRepository;
   translations: TranslationRepository;
+  termTranslations: TermTranslationRepository;
   embeddings: EmbeddingRepository;
   links: LinkRepository;
   episodes: EpisodeRepository;
@@ -1238,6 +1239,14 @@ export interface ResolvedShareLink {
 }
 
 /** A document's details in another language, kept until what was translated changes (see the schema files). */
+/** What a doctor's specialty or a test's name is called in a language, by the text it translates. */
+export type TermKind = 'specialty' | 'test';
+export interface TermTranslationRepository {
+  forLanguage(userId: string, language: string): Promise<Array<{ kind: TermKind; sourceText: string; translated: string }>>;
+  /** Adds or replaces these (by kind, language and text). */
+  put(userId: string, language: string, rows: Array<{ kind: TermKind; sourceText: string; translated: string }>, createdAt: string): Promise<void>;
+}
+
 export interface TranslationRepository {
   get(userId: string, documentId: string, language: string): Promise<{ sourceHash: string; content: string; createdAt: string } | null>;
   /** The languages a document has a translation kept in. */

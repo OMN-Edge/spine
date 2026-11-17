@@ -972,8 +972,10 @@ export const api = {
 
   documents: {
     /** Documents that share a test or a doctor with this one, or read like it, and why. */
-    /** Titles in a language for some of the owner's documents; `pending` while the rest are being translated. */
-    titles: (ids: string[], lang: string) => req<{ titles: Record<string, string | null>; pending: boolean }>(`/api/translations/titles?lang=${lang}&ids=${ids.map(encodeURIComponent).join(',')}`),
+    /** Titles and summaries in a language for some of the owner's documents; `pending` while the rest are being translated (`warm: false` asks for what is kept and starts nothing). */
+    titles: (ids: string[], lang: string, warm = true) => req<{ titles: Record<string, string | null>; summaries?: Record<string, string>; pending: boolean }>(`/api/translations/titles?lang=${lang}&ids=${ids.map(encodeURIComponent).join(',')}${warm ? '' : '&warm=0'}`),
+    /** Specialties and test names in a language, as kept; `pending` while the rest are being translated. */
+    terms: (lang: string) => req<{ specialties: Record<string, string>; tests: Record<string, string>; pending: boolean }>(`/api/translations/terms?lang=${lang}`),
     related: (id: string, lang?: string) => req<{ related: RelatedDocument[]; translation_pending?: boolean; meaning: { enabled: boolean; ready: boolean } }>(`/api/documents/${id}/related${lang ? `?lang=${lang}` : ''}`),
     /** The documents around this one: what asked for it, what it asked for, what follows it up. */
     chain: (id: string) => req<Chain>(`/api/documents/${id}/chain`),

@@ -5,6 +5,7 @@ import { useI18n } from '../i18n';
 import { Combobox } from './Combobox';
 import LinkWhyLine from './LinkWhy';
 import { documentTitle } from '../titles';
+import { useListTitles } from '../useListTitles';
 import GuideTip from './GuideTip';
 
 /** How the document being added relates to this one. `from` is the earlier of the two in the stored link. */
@@ -27,6 +28,7 @@ const RELATIONS: Record<Relation, { thisIsFrom: boolean; kind: LinkKind }> = {
 export default function CareChain({ documentId, quiet = false }: { documentId: string; quiet?: boolean }) {
   const { t } = useI18n();
   const [chain, setChain] = useState<Chain | null>(null);
+  const { titleOf } = useListTitles((chain?.nodes ?? []).map(n => n.id), false);
   const [adding, setAdding] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -58,7 +60,7 @@ export default function CareChain({ documentId, quiet = false }: { documentId: s
   if (!chain) return null;
 
   const byId = new Map(chain.nodes.map(n => [n.id, n]));
-  const name = (n: ChainNode | undefined) => (n ? documentTitle(n, t) : '');
+  const name = (n: ChainNode | undefined) => (n ? documentTitle({ ...n, title: titleOf(n) }, t) : '');
   const phrase = (e: ChainEdge): string => {
     const other = name(byId.get(e.from));
     // A suggestion claims no relation: that is for the owner to confirm (FR-ORG-08).

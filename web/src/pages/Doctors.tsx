@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type DoctorEntry, type DoctorSummary } from '../api';
 import { useI18n } from '../i18n';
+import { useTerms } from '../useListTitles';
 import GuideTip from '../components/GuideTip';
 
 const DISMISSED = 'spine.doctors-not-the-same';
@@ -64,6 +65,7 @@ function Duplicates({ onMerged }: { onMerged: () => void }) {
 
 export default function Doctors() {
   const { t, tn } = useI18n();
+  const name = useTerms();
   const [doctors, setDoctors] = useState<DoctorEntry[] | null>(null);
   const [query, setQuery] = useState('');
 
@@ -99,7 +101,7 @@ export default function Doctors() {
                     <Link to={`/doctors/${d.id}`} className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-gray-50">
                       <span className="min-w-0">
                         <span className="block text-sm font-medium text-gray-900 truncate">{d.name}</span>
-                        <span className="block text-xs text-gray-400 truncate">{[d.specialty, d.clinic, d.license_code].filter(Boolean).join(' · ') || t('No specialty yet')}</span>
+                        <span className="block text-xs text-gray-400 truncate">{[d.specialty ? name.specialty(d.specialty) : null, d.clinic, d.license_code].filter(Boolean).join(' · ') || t('No specialty yet')}</span>
                       </span>
                       <span className="text-right shrink-0 text-xs text-gray-500">
                         {tn(d.document_count, '{n} document', '{n} documents')}

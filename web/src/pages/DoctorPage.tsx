@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, type DoctorDetail, type DoctorEntry } from '../api';
 import { ROLE_LABELS } from '../components/DoctorsPanel';
 import { documentTitle } from '../titles';
+import { useListTitles, useTerms } from '../useListTitles';
 import { useI18n } from '../i18n';
 import { Combobox } from '../components/Combobox';
 
@@ -14,6 +15,8 @@ export default function DoctorPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [doctor, setDoctor] = useState<DoctorDetail | null>(null);
+  const names = useTerms();
+  const { titleOf } = useListTitles((doctor?.documents ?? []).map(d => d.id), false);
   const [missing, setMissing] = useState(false);
   const [others, setOthers] = useState<DoctorEntry[]>([]);
   const [form, setForm] = useState<{ name: string; specialty: string; clinic: string; license_code: string } | null>(null); // non-null while editing
@@ -73,7 +76,7 @@ export default function DoctorPage() {
         {form === null ? (
           <>
             <h1 className="text-xl font-semibold text-gray-900 break-words">{doctor.name}</h1>
-            <p className="text-sm text-gray-500">{[doctor.specialty, doctor.clinic].filter(Boolean).join(' · ') || t('No specialty or clinic yet')}</p>
+            <p className="text-sm text-gray-500">{[doctor.specialty ? names.specialty(doctor.specialty) : null, doctor.clinic].filter(Boolean).join(' · ') || t('No specialty or clinic yet')}</p>
             {doctor.license_code && <p className="text-xs text-gray-400">{t('Code {code}', { code: doctor.license_code })}</p>}
             <button className="text-sm text-brand-600 hover:underline mt-3" onClick={() => { setMessage(''); setForm({ name: doctor.name, specialty: doctor.specialty ?? '', clinic: doctor.clinic ?? '', license_code: doctor.license_code ?? '' }); }}>{t('Edit')}</button>
           </>
@@ -104,7 +107,7 @@ export default function DoctorPage() {
             {doctor.documents.map(d => (
               <li key={`${d.id}-${d.role}`}>
                 <Link to={`/documents/${d.id}`} className="flex items-baseline justify-between gap-3 py-2 hover:bg-gray-50">
-                  <span className="text-sm text-gray-900 truncate">{documentTitle(d, t)}</span>
+                  <span className="text-sm text-gray-900 truncate">{documentTitle({ ...d, title: titleOf(d) }, t)}</span>
                   <span className="text-xs text-gray-400 shrink-0">{t(ROLE_LABELS[d.role])} · {d.doc_date ?? t('no date')}</span>
                 </Link>
               </li>

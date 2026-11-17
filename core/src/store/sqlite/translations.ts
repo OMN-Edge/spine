@@ -1,5 +1,5 @@
 import type { Database } from './driver.js';
-import type { TranslationRepository } from '../types.js';
+import type { TermKind, TermTranslationRepository, TranslationRepository } from '../types.js';
 import { owner } from '../owner.js';
 
 /** Every statement filters by `user_id` (SECURITY.md P12). The cache holds the owner's medical text, so it is theirs like the rest. */
@@ -30,6 +30,25 @@ export function translationRepository(db: Database): TranslationRepository {
     async put(userId, documentId, language, sourceHash, content, createdAt) {
       const uid = owner(userId);
       upsert.run(uid, language, sourceHash, content, createdAt, documentId, uid);
+    },
+  };
+}
+
+/** The wording of specialties and test names, per user. */
+export function termTranslationRepository(db: Database): TermTranslationRepository {
+  const inLanguage = db.prepare('SELECT kind, source_text, translated FROM term_translations WHERE language = ? AND user_id = ? ORDER BY kind, source_text');
+  const upsert = db.prepare(`
+    INSERT INTO term_translations (user_id, kind, language, source_text, translated, created_at) VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT (user_id, kind, language, source_text) DO UPDATE SET translated = excluded.translated, created_at = excluded.created_at
+  `);
+  return {
+    async forLanguage(userId, language) {
+      return (inLanguage.all(language, owner(userId)) as Array<{ kind: TermKind; source_text: string; translated: string }>)
+        .map(row => ({ kind: row.kind, sourceText: row.source_text, translated: row.translated }));
+    },
+    async put(userId, language, rows, createdAt) {
+      const uid = owner(userId);
+      for (const row of rows) upsert.run(uid, row.kind, language, row.sourceText, row.translated, createdAt);
     },
   };
 }

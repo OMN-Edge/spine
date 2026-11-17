@@ -13,6 +13,7 @@ import { languageName } from '../i18n/useTranslation';
 import { DOC_TYPE_LABELS } from '../components/DocumentCard';
 import { LIFETIMES } from '../lifetimes';
 import { documentByline, documentTitle } from '../titles';
+import { useListTitles } from '../useListTitles';
 
 const input = 'w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500';
 const label = 'block text-xs font-medium text-gray-500 mb-1';
@@ -33,6 +34,7 @@ export function describeScope(link: ShareLink, t: ReturnType<typeof useI18n>['t'
 /** The documents to pick from, searchable, with the ones already chosen ticked. */
 export function DocumentPicker({ docs, chosen, onChange }: { docs: Document[]; chosen: string[]; onChange: (ids: string[]) => void }) {
   const { t } = useI18n();
+  const { titleOf } = useListTitles(docs.map(d => d.id), false);
   const [query, setQuery] = useState('');
   const [type, setType] = useState('');
   const shown = useMemo(() => {
@@ -73,7 +75,7 @@ export function DocumentPicker({ docs, chosen, onChange }: { docs: Document[]; c
             <label className="flex items-start gap-3 px-3 py-2 cursor-pointer hover:bg-gray-50">
               <input type="checkbox" checked={picked.has(d.id)} onChange={() => toggle(d.id)} className="mt-1" />
               <span className="min-w-0 flex-1">
-                <span className="block text-sm text-gray-900 truncate">{documentTitle(d, t)}</span>
+                <span className="block text-sm text-gray-900 truncate">{documentTitle({ ...d, title: titleOf(d) }, t)}</span>
                 <span className="block text-xs text-gray-500 truncate">{documentByline(d, t)}</span>
               </span>
             </label>

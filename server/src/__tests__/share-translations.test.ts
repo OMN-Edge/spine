@@ -74,14 +74,22 @@ describe('a share’s copy and the owner’s translations', () => {
     expect(kept?.content).not.toMatch(/ascuns/);
   });
 
-  it('carries nothing that is no longer good for the owner’s document, and nothing at all when not asked to', async () => {
+  it('carries nothing at all when not asked to, and of a translation that is stale only what is still good for the owner’s document', async () => {
     const id = await documentWithAHiddenPage();
     resetChatLlm(fakeLlm);
     await translateDocument(OWNER_ID, id, 'en');
     expect(await (await openAsReader(id)).translations.languagesFor(OWNER_ID, id)).toEqual([]);
 
-    await owner.documents.update(OWNER_ID, id, { ai_summary: 'Rezumat nou' }); // the kept one is stale now
-    expect(await (await openAsReader(id, copy => carryTranslations(OWNER_ID, [id], copy))).translations.languagesFor(OWNER_ID, id)).toEqual([]);
+    await owner.documents.update(OWNER_ID, id, { ai_summary: 'Rezumat nou' }); // the kept summary is stale now, the title and the rest are not
+    const kept = (await (await openAsReader(id, copy => carryTranslations(OWNER_ID, [id], copy))).translations.get(OWNER_ID, id, 'en'))?.content ?? '';
+    expect(kept).toContain('EN[Buletin de analize]');
+    expect(kept).toContain('EN[Repaus]');
+    expect(kept).not.toContain('EN[Rezumat]');
+
+    await owner.documents.update(OWNER_ID, id, { title: 'Alt titlu', ai_summary: null }); // nothing of the title or summary, but the details are still good
+    const details = (await (await openAsReader(id, copy => carryTranslations(OWNER_ID, [id], copy))).translations.get(OWNER_ID, id, 'en'))?.content ?? '';
+    expect(details).toContain('EN[Repaus]');
+    expect(details).not.toContain('EN[Buletin de analize]');
   });
 
   it('carries a kept translation, so the reader is shown it with no call to the model', async () => {

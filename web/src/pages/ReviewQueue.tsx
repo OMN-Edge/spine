@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type Document } from '../api';
 import { documentByline, documentTitle } from '../titles';
+import { useListTitles } from '../useListTitles';
 import SpineLog from '../components/SpineLog';
 import { useI18n } from '../i18n';
 import { useScreen } from '../components/ChatProvider';
@@ -10,6 +11,7 @@ export default function ReviewQueue() {
   const { t, tn } = useI18n();
   const [docs, setDocs] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
+  const { titleOf } = useListTitles(docs.map(d => d.id), false);
 
   useScreen({ page: 'review', documentIds: docs.slice(0, 30).map(d => d.id) });
 
@@ -49,7 +51,7 @@ export default function ReviewQueue() {
                 className="flex items-center justify-between gap-3 bg-white border border-amber-200 rounded-xl p-4 hover:border-amber-300 hover:shadow-sm transition-all"
               >
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">{documentTitle(doc, t)}</p>
+                  <p className="text-sm font-medium text-gray-900 truncate">{documentTitle({ ...doc, title: titleOf(doc) }, t)}</p>
                   <p className="text-xs text-gray-500 mt-0.5 truncate">
                     {[documentByline(doc, t), t('pages {from}–{to}', { from: doc.page_start, to: doc.page_end }), doc.to_check ? tn(doc.to_check, '{n} value to check', '{n} values to check') : ''].filter(Boolean).join(' · ')}
                   </p>

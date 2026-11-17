@@ -11,6 +11,7 @@ import { countryName } from '../i18n/useTranslation';
 import { Combobox } from '../components/Combobox';
 import { languageName } from '../i18n/useTranslation';
 import { documentTitle } from '../titles';
+import { useListTitles } from '../useListTitles';
 import { describeScope, DocumentPicker } from './ShareLinks';
 
 const box = 'bg-white border border-gray-200 rounded-xl p-5 mb-6';
@@ -27,6 +28,7 @@ export default function ShareLinkDetail() {
   const { t, tn, lang } = useI18n();
   const chat = useChat();
   const [data, setData] = useState<Detail | null>(null);
+  const { titleOf } = useListTitles((data?.documents ?? []).map(d => d.id), false);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState('');
   const [busy, setBusy] = useState(false);
@@ -185,7 +187,7 @@ export default function ShareLinkDetail() {
           )
         ) : documents.length === 0 ? <p className="text-sm text-gray-400">{t('No documents in this share.')}</p> : (
           <ul className="divide-y divide-gray-100 text-sm">
-            {documents.map(d => <li key={d.id} className="py-1.5 truncate"><Link to={`/documents/${d.id}`} className="text-gray-900 hover:text-brand-700">{documentTitle(d, t)}</Link>{d.doc_date && <span className="text-gray-400"> · {d.doc_date}</span>}</li>)}
+            {documents.map(d => <li key={d.id} className="py-1.5 truncate"><Link to={`/documents/${d.id}`} className="text-gray-900 hover:text-brand-700">{documentTitle({ ...d, title: titleOf(d) }, t)}</Link>{d.doc_date && <span className="text-gray-400"> · {d.doc_date}</span>}</li>)}
           </ul>
         )}
       </section>

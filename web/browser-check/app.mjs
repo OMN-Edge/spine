@@ -10,6 +10,8 @@ import puppeteer from 'puppeteer-core';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 
 const root = path.resolve(import.meta.dirname, '../..');
+// The sample's X-ray is on the screen in the Romanian it was written in, and in English once its kept translation is shown (the screens are English): the same document.
+const hasText = (text, what) => text.includes(what) || (what === 'Radiografie pulmonară' && text.includes('Chest X-ray'));
 const data = fs.mkdtempSync(path.join(os.tmpdir(), 'spine-app-check-'));
 // Chrome refuses some ports outright (ERR_UNSAFE_PORT); these are among them, and the check must not draw one.
 const UNSAFE = new Set([3659, 4045, 4190, 5060, 5061, 6000, 6566, 6665, 6666, 6667, 6668, 6669, 6679, 6697]);
@@ -175,7 +177,7 @@ try {
     // Leaving with files of one's own asks first; the check says yes.
     d.on('dialog', dialog => void dialog.accept());
     const said = () => d.evaluate(() => document.body.innerText);
-    const waitDemo = async (what, ms = 30000) => { for (let t = 0; t < ms; t += 250) { const now = await said(); seen = () => now; if (now.includes(what)) return true; await new Promise(r => setTimeout(r, 250)); } return false; };
+    const waitDemo = async (what, ms = 30000) => { for (let t = 0; t < ms; t += 250) { const now = await said(); seen = () => now; if (hasText(now, what)) return true; await new Promise(r => setTimeout(r, 250)); } return false; };
     const press = label => d.evaluate(l => [...document.querySelectorAll('button,a')].find(e => e.offsetParent && e.innerText.trim().startsWith(l))?.click(), label);
     const go = route => d.evaluate(r => { history.pushState(null, '', r); dispatchEvent(new PopStateEvent('popstate')); }, route);
     const pause = ms => new Promise(r => setTimeout(r, ms));
@@ -194,13 +196,13 @@ try {
     const reached = asked.slice(from).filter(u => /^\/api\/(vault|shared|relay\/|demo(\/|\?|$)|documents|source-files|auth\/(login|register))/.test(u));
     check(reached.length === 0, `the demo sent the server nothing of the records${reached.length ? `: ${reached.join(', ')}` : ''}`);
     await d.reload({ waitUntil: 'networkidle0' });
-    check(await waitDemo('Try the demo', 10000) && !(await said()).includes('Radiografie pulmonară'), 'a reload ends the demo and keeps nothing');
+    check(await waitDemo('Try the demo', 10000) && !hasText(await said(), 'Radiografie pulmonară'), 'a reload ends the demo and keeps nothing');
     await press('Try the demo');
     check(await waitDemo('Radiografie pulmonară', 120000), 'the demo opens again');
     await press('Sign in');
     check(await d.waitForSelector('input[type=email]', { visible: true, timeout: 10000 }).then(() => true, () => false), 'and Sign in from the demo ends it and shows the sign-in form');
     await go('/');
-    check(await waitDemo('Try the demo', 10000) && !(await said()).includes('Radiografie pulmonară'), 'after which the front page is the front page again');
+    check(await waitDemo('Try the demo', 10000) && !hasText(await said(), 'Radiografie pulmonară'), 'after which the front page is the front page again');
 
     // Files of the visitor's own: agreed to first, a few only, the first pages of each, read through the relay with the demo's pass.
     await press('Try the demo');
@@ -254,7 +256,7 @@ try {
     await pause(1000);
     docs = await countDocs();
     const after = await said();
-    check(docs >= 3 && !after.includes('Radiografie pulmonară') && !after.includes('This browser kept'), `after a reload the account holds them (${docs} documents), not the sample records, and is not offered them again`);
+    check(docs >= 3 && !hasText(after, 'Radiografie pulmonară') && !after.includes('This browser kept'), `after a reload the account holds them (${docs} documents), not the sample records, and is not offered them again`);
     check(relay.calls.slice(callsAtAdd).filter(c => c.task !== 'embed').length === 0, 'adding them called no model');
     await ctx.close();
   }
@@ -271,7 +273,7 @@ try {
   const text = async () => (last = await p.evaluate(() => document.body.innerText));
   seen = () => last;
   const wait = ms => new Promise(r => setTimeout(r, ms));
-  const waitFor = async (what, ms = 20000) => { for (let t = 0; t < ms; t += 250) { if ((await text()).includes(what)) return true; await wait(250); } return false; };
+  const waitFor = async (what, ms = 20000) => { for (let t = 0; t < ms; t += 250) { if (hasText(await text(), what)) return true; await wait(250); } return false; };
   // The account page is reached from the account's menu in the top bar: the menu is opened and its link waited for, not looked for by text.
   const openAccount = async () => {
     await p.click('nav button[aria-label="Account and settings"]');
@@ -373,7 +375,7 @@ try {
   const guestErrors = [];
   guest.on('pageerror', e => guestErrors.push(e.message));
   const guestText = () => guest.evaluate(() => document.body.innerText);
-  const guestWait = async (what, ms = 30000) => { for (let t = 0; t < ms; t += 250) { if ((await guestText()).includes(what)) return true; await wait(250); } return false; };
+  const guestWait = async (what, ms = 30000) => { for (let t = 0; t < ms; t += 250) { if (hasText(await guestText(), what)) return true; await wait(250); } return false; };
   await guest.goto(direct, { waitUntil: 'load' });
   check(await guestWait('Chest X-ray — left lower lobe consolidation'), 'someone with no account opens the link and reads the shared records');
   check(await guestWait('Shared securely via Spine', 2000), 'the shared page carries its footer');
@@ -400,7 +402,7 @@ try {
   // The owner connects two documents by hand; a link that shares both lets its recipient see the connection, and only that one.
   await click('Timeline');
   await waitFor('Radiografie pulmonară');
-  const xray = (await p.evaluateHandle(() => [...document.querySelectorAll('a')].find(a => a.offsetParent && a.innerText.includes('Radiografie pulmonară')))).asElement();
+  const xray = (await p.evaluateHandle(() => [...document.querySelectorAll('a')].find(a => a.offsetParent && /Radiografie pulmonară|Chest X-ray/.test(a.innerText)))).asElement();
   if (!xray) console.log('     owner page:', (await text()).replace(/\s+/g, ' ').slice(0, 300));
   await xray.click();
   await waitFor('Connected documents');
@@ -435,7 +437,7 @@ try {
   g3.on('response', r => { if (r.status() === 401) g3Refused.push(new URL(r.url()).pathname); });
   g3.on('console', m => { if (process.env.SPINE_CHECK_DEBUG || /could not|warn|error|fail/i.test(m.text())) g3Console.push(m.text().slice(0, 300)); });
   const g3Text = () => g3.evaluate(() => document.body.innerText);
-  const g3Wait = async (what, ms = 30000) => { for (let t = 0; t < ms; t += 250) { if ((await g3Text()).includes(what)) return true; await wait(250); } return false; };
+  const g3Wait = async (what, ms = 30000) => { for (let t = 0; t < ms; t += 250) { if (hasText(await g3Text(), what)) return true; await wait(250); } return false; };
   await g3.goto(full, { waitUntil: 'load' });
   check(await g3Wait('Chest X-ray — left lower lobe consolidation'), 'the recipient reads a link that includes scans');
   await (await g3.evaluateHandle(() => [...document.querySelectorAll('button,a')].find(e => e.innerText.trim() === 'Trends')))?.asElement()?.click();
@@ -523,7 +525,7 @@ try {
   check(gated.length > 0 && !gated.includes('#'), 'its address has no key in it');
   const guest2 = await (await browser.createBrowserContext()).newPage();
   const guest2Text = () => guest2.evaluate(() => document.body.innerText);
-  const guest2Wait = async (what, ms = 30000) => { for (let t = 0; t < ms; t += 250) { if ((await guest2Text()).includes(what)) return true; await wait(250); } return false; };
+  const guest2Wait = async (what, ms = 30000) => { for (let t = 0; t < ms; t += 250) { if (hasText(await guest2Text(), what)) return true; await wait(250); } return false; };
   await guest2.goto(gated, { waitUntil: 'load' });
   check(await guest2Wait('Approval needed'), 'a stranger is asked to request access');
   await (await guest2.evaluateHandle(() => [...document.querySelectorAll('button')].find(b => b.innerText.startsWith('Ask for access')))).asElement().click();
@@ -672,7 +674,7 @@ try {
       q.on('pageerror', e => qErrors.push(e.message));
       q.on('console', m => { if (m.type() === 'error' || m.type() === 'debug') qErrors.push(m.text().slice(0, 200)); });
       const seen2 = () => q.evaluate(() => document.body.innerText);
-      const waitFor2 = async (what, ms = 30000) => { for (let t = 0; t < ms; t += 250) { if ((await seen2()).includes(what)) return true; await wait(250); } return false; };
+      const waitFor2 = async (what, ms = 30000) => { for (let t = 0; t < ms; t += 250) { if (hasText(await seen2(), what)) return true; await wait(250); } return false; };
       const click2 = async label => { const h = await q.evaluateHandle(l => [...document.querySelectorAll('button,a')].find(e => e.offsetParent && e.innerText.trim().toLowerCase().startsWith(l.toLowerCase())), label); await h.asElement().click(); };
       const type2 = async (sel, v) => { await q.waitForSelector(sel, { visible: true }); await q.type(sel, v); };
       const links2 = () => q.evaluate(() => [...new Set([...document.querySelectorAll('a')].filter(a => a.getAttribute('href')?.startsWith('/documents/')).map(a => a.getAttribute('href')))].length);
@@ -780,7 +782,7 @@ try {
     const ctx = await browser.createBrowserContext();
     const d = await ctx.newPage();
     const dText = () => d.evaluate(() => document.body.innerText);
-    const dWait = async (what, ms = 30000) => { for (let t = 0; t < ms; t += 250) { if ((await dText()).includes(what)) return true; await wait(250); } return false; };
+    const dWait = async (what, ms = 30000) => { for (let t = 0; t < ms; t += 250) { if (hasText(await dText(), what)) return true; await wait(250); } return false; };
     const dClick = async label => { const h = await d.evaluateHandle(l => [...document.querySelectorAll('button,a')].find(e => e.offsetParent && e.innerText.trim().toLowerCase().startsWith(l.toLowerCase())), label); await h.asElement().click(); };
     let refuse = true;
     await d.setRequestInterception(true);
@@ -831,7 +833,7 @@ try {
     const dErrors = [];
     d.on('pageerror', e => dErrors.push(e.message));
     const dText = () => d.evaluate(() => document.body.innerText);
-    const dWait = async (what, ms = 30000) => { for (let t = 0; t < ms; t += 250) { if ((await dText()).includes(what)) return true; await wait(250); } return false; };
+    const dWait = async (what, ms = 30000) => { for (let t = 0; t < ms; t += 250) { if (hasText(await dText(), what)) return true; await wait(250); } return false; };
     const dClick = async label => { const h = await d.evaluateHandle(l => [...document.querySelectorAll('button,a')].find(e => e.offsetParent && e.innerText.trim().toLowerCase().startsWith(l.toLowerCase())), label); await h.asElement().click(); };
     await d.goto(`http://localhost:${front}/login`, { waitUntil: 'networkidle0' });
     await d.type('input[type=email]', 'check@example.com'); await d.type('input[type=password]', MASTER); await dClick('Sign in');
@@ -885,7 +887,7 @@ try {
     const sentOut = [];
     for (const page of [p, e]) page.on('request', r => sentOut.push(`${r.method()} ${r.url()} ${r.postData() ?? ''}`));
     const eText = () => e.evaluate(() => document.body.innerText);
-    const eWait = async (what, ms = 30000) => { for (let t = 0; t < ms; t += 250) { if ((await eText()).includes(what)) return true; await wait(250); } return false; };
+    const eWait = async (what, ms = 30000) => { for (let t = 0; t < ms; t += 250) { if (hasText(await eText(), what)) return true; await wait(250); } return false; };
     const clickIn = async (page, label) => { const h = await page.evaluateHandle(l => [...document.querySelectorAll('button,a')].find(b => b.offsetParent && b.innerText.trim().toLowerCase().startsWith(l.toLowerCase())), label); await h.asElement().click(); };
     // A sensitive action asks for the password again if it was typed long ago.
     const confirmIfAsked = async page => {
@@ -918,7 +920,7 @@ try {
     check(waiting, 'the new device waits for the other to approve it');
     if (!waiting) console.log(`     the new device says: ${(await eText()).replace(/\s+/g, ' ').slice(0, 500)} ${JSON.stringify(eErrors)}`);
     check(await waitFor('A browser is asking to open your records', 20000), 'the first device is told that a browser is asking, and can see which');
-    check(!(await eText()).includes('Radiografie pulmonară'), 'the new device has nothing until it is approved');
+    check(!hasText(await eText(), 'Radiografie pulmonară'), 'the new device has nothing until it is approved');
     await clickIn(p, 'Approve');
     await confirmIfAsked(p);
     check(await eWait('Radiografie pulmonară', 60000), 'once approved, the new device opens the same records without a master password typed on it');
@@ -971,7 +973,7 @@ try {
     check(await waitFor('Child', 15000) && (await text()).includes('Open now'), 'another person is added next to the first');
     await (await p.evaluateHandle(() => [...document.querySelectorAll('li')].find(li => li.innerText.includes('Child'))?.querySelector('button'))).asElement().click();
     check(await waitFor('Explore with sample records', 30000), "the other person's records start empty, apart from the first person's");
-    check(!(await text()).includes('Radiografie pulmonară'), "and none of the first person's documents are in them");
+    check(!hasText(await text(), 'Radiografie pulmonară'), "and none of the first person's documents are in them");
     check((await text()).includes('Child'), "the page says whose records are open");
     check(!(await text()).includes('Open your records'), 'opening them did not ask for the master password');
     await (await p.waitForSelector('button[title="Whose records are open"]', { visible: true })).click();
@@ -1120,7 +1122,7 @@ try {
       const qErrors = [];
       q.on('pageerror', e => qErrors.push(e.message));
       const qText = () => q.evaluate(() => document.body.innerText);
-      const qWait = async (what, ms = 30000) => { for (let t = 0; t < ms; t += 250) { if ((await qText()).includes(what)) return true; await wait(250); } return false; };
+      const qWait = async (what, ms = 30000) => { for (let t = 0; t < ms; t += 250) { if (hasText(await qText(), what)) return true; await wait(250); } return false; };
       const qClick = async label => { const h = await q.evaluateHandle(l => [...document.querySelectorAll('button,a')].find(e => e.offsetParent && e.innerText.trim().toLowerCase().startsWith(l.toLowerCase())), label); await h.asElement().click(); };
       // The link, followed by someone with no session, leads to signing in; the account is new, so the vault is made on the way.
       await q.goto(inviteLink.replace(/^https?:\/\/[^/]+/, `http://localhost:${front}`), { waitUntil: 'networkidle0' });
@@ -1196,7 +1198,7 @@ try {
       q.on('pageerror', e => qErrors.push(e.message));
       q.on('console', m => { if (m.type() === 'warn' && /could not|failed/i.test(m.text())) console.log('     teenager console:', m.text().slice(0, 300)); });
       const qText = () => q.evaluate(() => document.body.innerText);
-      const qWait = async (what, ms = 30000) => { for (let t = 0; t < ms; t += 250) { if ((await qText()).includes(what)) return true; await wait(250); } return false; };
+      const qWait = async (what, ms = 30000) => { for (let t = 0; t < ms; t += 250) { if (hasText(await qText(), what)) return true; await wait(250); } return false; };
       const qClick = async label => { const h = await q.evaluateHandle(l => [...document.querySelectorAll('button,a')].find(e => e.offsetParent && e.innerText.trim().toLowerCase().startsWith(l.toLowerCase())), label); await h.asElement().click(); };
       await q.goto(selfLink.replace(/^https?:\/\/[^/]+/, `http://localhost:${front}`), { waitUntil: 'networkidle0' });
       await qWait('You have been invited', 15000);
@@ -1306,7 +1308,7 @@ try {
       const qErrors = [];
       q.on('pageerror', e => qErrors.push(e.message));
       const qText = () => q.evaluate(() => document.body.innerText);
-      const qWait = async (what, ms = 30000) => { for (let t = 0; t < ms; t += 250) { if ((await qText()).includes(what)) return true; await wait(250); } return false; };
+      const qWait = async (what, ms = 30000) => { for (let t = 0; t < ms; t += 250) { if (hasText(await qText(), what)) return true; await wait(250); } return false; };
       const qClick = async label => { const h = await q.evaluateHandle(l => [...document.querySelectorAll('button,a')].find(e => e.offsetParent && e.innerText.trim().toLowerCase().startsWith(l.toLowerCase())), label); await h.asElement().click(); };
       await q.goto(seatLink.replace(/^https?:\/\/[^/]+/, `http://localhost:${front}`), { waitUntil: 'networkidle0' });
       check(await qWait('You have been invited to a shared plan', 15000), 'the link says the person has been invited, before any sign-in');
@@ -1395,7 +1397,7 @@ try {
     const removedAt = Date.now();
     await click('Remove the sample records');
     let removedHere = false;
-    for (let t = 0; t < 30000 && !removedHere; t += 500) { await wait(500); const now = await text(); removedHere = !now.includes('Radiografie pulmonară') && !now.includes('Remove the sample records'); }
+    for (let t = 0; t < 30000 && !removedHere; t += 500) { await wait(500); const now = await text(); removedHere = !hasText(now, 'Radiografie pulmonară') && !now.includes('Remove the sample records'); }
     check(removedHere, 'and removes them');
     for (let t = 0; t < 120000 && puts.length === before; t += 1000) await wait(1000);
     console.log(`     the copy was sent again ${puts.length > before ? Math.round((puts[before] - removedAt) / 1000) + ' s' : 'never'} after the removal`);
@@ -1407,7 +1409,7 @@ try {
       // With nothing left to share the copy is not usable: the page says the link is unavailable, which is also the proof it was made again.
       const settled = () => r.evaluate(() => /Shared securely via Spine|Link unavailable/.test(document.body.innerText));
       for (let w = 0; w < 12000 && !(await settled()); w += 250) await wait(250);
-      gone = (await settled()) && !(await r.evaluate(() => document.body.innerText)).includes('Radiografie pulmonară');
+      gone = (await settled()) && !hasText(await r.evaluate(() => document.body.innerText), 'Radiografie pulmonară');
       if (!gone) await wait(4000);
     }
     if (!gone) console.log('     recipient says:', (await r.evaluate(() => document.body.innerText)).replace(/\s+/g, ' ').slice(0, 400));

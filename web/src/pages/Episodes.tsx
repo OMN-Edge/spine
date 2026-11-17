@@ -5,6 +5,7 @@ import { useI18n } from '../i18n';
 import { Combobox } from '../components/Combobox';
 import { episodeName } from '../components/episode';
 import { documentTitle } from '../titles';
+import { useListTitles } from '../useListTitles';
 
 const box = 'bg-white border border-gray-200 rounded-xl p-4';
 
@@ -22,7 +23,14 @@ export default function Episodes() {
   }, []);
   useEffect(() => { void load(); api.documents.listAll().then(setDocs).catch(() => setDocs([])); }, [load]);
 
-  const byId = useMemo(() => new Map(docs.map(d => [d.id, d])), [docs]);
+  // The documents are named in the interface language where a translation is kept. Those in an episode are translated if they are not yet; the ones the owner
+  // may add to one (every other document) show what is kept and start nothing.
+  const inEpisodes = useMemo(() => [...new Set((episodes ?? []).flatMap(e => e.document_ids))], [episodes]);
+  const inThem = useListTitles(inEpisodes);
+  const all = useListTitles(useMemo(() => docs.map(d => d.id), [docs]), false);
+  const titleOf = (d: Document) => { const own = inThem.titleOf(d); return own !== d.title ? own : all.titleOf(d); };
+  const named = docs.map(d => ({ ...d, title: titleOf(d) }));
+  const byId = new Map(named.map(d => [d.id, d]));
   const act = async (fn: () => Promise<unknown>) => {
     setNotice('');
     try { await fn(); } catch (err) { setNotice(err instanceof Error ? err.message : t('Something went wrong. Try again.')); }
@@ -86,7 +94,7 @@ export default function Episodes() {
             className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
           />
           <div className="max-h-64 overflow-auto space-y-1">
-            {docs.map(d => (
+            {named.map(d => (
               <label key={d.id} className="flex items-center gap-2 text-sm text-gray-700">
                 <input type="checkbox" checked={drafting.ids.includes(d.id)} onChange={e => setDrafting(x => (x ? { ...x, ids: e.target.checked ? [...x.ids, d.id] : x.ids.filter(i => i !== d.id) } : x))} />
                 <span className="truncate">{documentTitle(d, t)}</span>
@@ -130,7 +138,7 @@ export default function Episodes() {
         ) : (
           <div className="space-y-3">
             {confirmed.map(ep => (
-              <EpisodeCard key={ep.id} ep={ep} docs={docs} byId={byId} onChange={fn => act(fn)} />
+              <EpisodeCard key={ep.id} ep={ep} docs={named} byId={byId} onChange={fn => act(fn)} />
             ))}
           </div>
         )}

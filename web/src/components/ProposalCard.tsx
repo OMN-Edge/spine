@@ -3,6 +3,7 @@ import { api, type DetailChange, type DocRef, type DoctorEntry, type LibraryEntr
 import { announceChange } from '../dataChanged';
 import { useI18n } from '../i18n';
 import { documentTitle } from '../titles';
+import { useListTitles } from '../useListTitles';
 import { useChat } from './ChatProvider';
 import LinkWhyLine from './LinkWhy';
 import DeviceImg from './DeviceImg';
@@ -238,6 +239,7 @@ function ShareCard({ proposal, state, setState, shell }: {
   const { t, tn } = useI18n();
   const chat = useChat();
   const [docs, setDocs] = useState(proposal.documents);
+  const { titleOf } = useListTitles(docs.map(d => d.id), false);
   const [label, setLabel] = useState(proposal.label ?? '');
   const [days, setDays] = useState(proposal.expires_days);
   const [scans, setScans] = useState(proposal.include_scans);
@@ -281,7 +283,7 @@ function ShareCard({ proposal, state, setState, shell }: {
       <ul className="space-y-1">
         {docs.map(d => (
           <li key={d.id} className="flex items-center gap-2">
-            <span className="min-w-0 flex-1 truncate">{documentTitle(d, t)}{d.doc_date ? ` (${d.doc_date})` : ''}</span>
+            <span className="min-w-0 flex-1 truncate">{documentTitle({ ...d, title: titleOf(d) }, t)}{d.doc_date ? ` (${d.doc_date})` : ''}</span>
             {docs.length > 1 && state === 'waiting' && (
               <button type="button" onClick={() => setDocs(prev => prev.filter(x => x.id !== d.id))} aria-label={t('Remove from this link')} title={t('Remove from this link')} className="shrink-0 rounded px-1.5 text-gray-400 hover:bg-white hover:text-red-600">×</button>
             )}

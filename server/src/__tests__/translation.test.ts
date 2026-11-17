@@ -5,7 +5,7 @@ import { OWNER_ID, createTestUser, seedPage, seedSourceFile, seedShareLink } fro
 import { getStore } from 'spine-core/store/index.js';
 import { resetChatLlm, type ChatLlm, type TranslationBundle } from 'spine-core/llm/index.js';
 import { LlmBlockedError } from 'spine-core/llm/types.js';
-import { translateDocument } from 'spine-core/translation.js';
+import { keptTerms, translateDocument } from 'spine-core/translation.js';
 import { SUPPORTED_LANGUAGES } from 'spine-core/languages.js';
 
 /**
@@ -120,7 +120,54 @@ describe('translating a document', () => {
 
     await store.measurements.update(OWNER_ID, d.id, d.measurementId, { name: 'Hb', canonical: 'hemoglobin', valueText: '13,5', valueNum: 13.5, unit: 'g/dL', refLow: 12, refHigh: 16, flag: null, takenOn: '2026-01-01' });
     expect(await translateDocument(OWNER_ID, d.id, 'en')).toMatchObject({ status: 'translated' });
-    expect(calls).toHaveLength(10); // five translations of two calls each
+  });
+
+  it('translates again only the part that changed, and serves the others as they were kept', async () => {
+    const d = await romanian();
+    const store = getStore();
+    await translateDocument(OWNER_ID, d.id, 'en');
+    calls.length = 0;
+
+    await store.documents.update(OWNER_ID, d.id, { user_notes: 'Alte note' });
+    expect(await translateDocument(OWNER_ID, d.id, 'en')).toMatchObject({ status: 'translated', user_notes: 'EN[Alte note]', title: 'EN[Buletin de analize]', ai_summary: 'EN[Rezumat]' });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].bundle).toMatchObject({ title: null, summary: null, notes: 'Alte note', fields: [], measurements: [], doctors: [] });
+
+    calls.length = 0;
+    await store.documents.update(OWNER_ID, d.id, { title: 'Alt buletin' });
+    expect(await translateDocument(OWNER_ID, d.id, 'en')).toMatchObject({ title: 'EN[Alt buletin]', user_notes: 'EN[Alte note]' });
+    expect(calls.map(c => c.bundle)).toEqual([expect.objectContaining({ title: 'Alt buletin', summary: null, notes: null })]);
+
+    // A field changed: the details are asked for again, the title, summary and notes are not.
+    calls.length = 0;
+    await store.fields.update(OWNER_ID, d.id, d.custom, { label: 'observatie speciala', value: 'Repaus la pat' });
+    expect(await translateDocument(OWNER_ID, d.id, 'en')).toMatchObject({ title: 'EN[Alt buletin]', ai_summary: 'EN[Rezumat]' });
+    expect(calls.every(c => c.bundle.title === null && c.bundle.summary === null && c.bundle.notes === null)).toBe(true);
+    expect(JSON.stringify(calls.map(c => c.bundle))).toContain('Repaus la pat');
+  });
+
+  it('with cachedOnly, shows the parts that are still good while another is stale', async () => {
+    const d = await romanian();
+    await translateDocument(OWNER_ID, d.id, 'en');
+    await getStore().documents.update(OWNER_ID, d.id, { user_notes: 'Alte note' });
+    calls.length = 0;
+    expect(await translateDocument(OWNER_ID, d.id, 'en', { cachedOnly: true })).toMatchObject({ status: 'cached', title: 'EN[Buletin de analize]', user_notes: 'Alte note' });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('adopts a translation kept before the parts had digests, and no model is asked', async () => {
+    const d = await romanian();
+    await translateDocument(OWNER_ID, d.id, 'en');
+    const store = getStore();
+    const row = (await store.translations.get(OWNER_ID, d.id, 'en'))!;
+    const { parts, ...old } = JSON.parse(row.content) as Record<string, unknown>;
+    expect(parts).toBeTruthy();
+    await store.translations.put(OWNER_ID, d.id, 'en', row.sourceHash, JSON.stringify(old), row.createdAt);
+    calls.length = 0;
+
+    expect(await translateDocument(OWNER_ID, d.id, 'en')).toMatchObject({ status: 'cached' });
+    expect(calls).toHaveLength(0);
+    expect(JSON.parse((await store.translations.get(OWNER_ID, d.id, 'en'))!.content).parts).toEqual(parts);
   });
 
   it('is stale after the document is read again, which replaces its fields', async () => {
@@ -520,10 +567,10 @@ describe('titles of the owner’s documents in a language (the chat’s sources)
     const d = await romanian();
     const first = await titles([d.id]);
     expect(first.statusCode).toBe(200);
-    expect(first.json()).toEqual({ titles: {}, pending: true }); // translating has started in the background
+    expect(first.json()).toEqual({ titles: {}, summaries: {}, pending: true }); // translating has started in the background
 
     await translateDocument(OWNER_ID, d.id, 'en');
-    expect((await titles([d.id])).json()).toEqual({ titles: { [d.id]: 'EN[Buletin de analize]' }, pending: false });
+    expect((await titles([d.id])).json()).toEqual({ titles: { [d.id]: 'EN[Buletin de analize]' }, summaries: { [d.id]: 'EN[Rezumat]' }, pending: false });
   });
 
   it('says null for a document already in that language, and nothing for one that is not theirs', async () => {
@@ -533,22 +580,151 @@ describe('titles of the owner’s documents in a language (the chat’s sources)
     const stranger = await createTestUser('stranger@spine.test');
     const theirs = await romanian(stranger.id);
     const res = await titles([theirs.id]);
-    expect(res.json()).toEqual({ titles: {}, pending: false });
+    expect(res.json()).toEqual({ titles: {}, summaries: {}, pending: false });
     expect(calls).toHaveLength(0);
   });
 
   it('does nothing when translating is off or the language is unknown, and caps the list', async () => {
     const d = await romanian();
-    expect((await titles([d.id], 'xx')).json()).toEqual({ titles: {}, pending: false });
+    expect((await titles([d.id], 'xx')).json()).toEqual({ titles: {}, summaries: {}, pending: false });
     process.env.SPINE_TRANSLATION = 'off';
-    expect((await titles([d.id])).json()).toEqual({ titles: {}, pending: false });
+    expect((await titles([d.id])).json()).toEqual({ titles: {}, summaries: {}, pending: false });
     expect(calls).toHaveLength(0);
     process.env.SPINE_TRANSLATION = 'on';
     const many = Array.from({ length: 40 }, (_, i) => `id-${i}`);
     expect((await titles(many)).statusCode).toBe(200);
   });
 
+  it('gives the title while it still matches the document, whatever else on it changed, and not after the title itself changed', async () => {
+    const d = await romanian();
+    await translateDocument(OWNER_ID, d.id, 'en');
+    const store = getStore();
+
+    await store.documents.update(OWNER_ID, d.id, { user_notes: 'Alte note', ai_summary: 'Rezumat nou' });
+    await store.fields.update(OWNER_ID, d.id, d.custom, { label: 'observatie speciala', value: 'Repaus la pat' });
+    calls.length = 0;
+    // the summary was changed too, so it is not given (and is made again in the background); the title still is
+    const changed = (await titles([d.id])).json();
+    expect(changed).toEqual({ titles: { [d.id]: 'EN[Buletin de analize]' }, summaries: {}, pending: true });
+
+    await store.documents.update(OWNER_ID, d.id, { title: 'Alt buletin' });
+    const renamed = (await titles([d.id])).json();
+    expect(renamed.titles[d.id] ?? null).toBeNull(); // never the old title for the new one
+    expect(renamed.pending).toBe(true);
+    await vi.waitFor(async () => expect((await titles([d.id])).json().titles[d.id]).toBe('EN[Alt buletin]'));
+  });
+
+  it('gives the title of a translation kept before the parts had digests, once it is checked against the whole document', async () => {
+    const d = await romanian();
+    await translateDocument(OWNER_ID, d.id, 'en');
+    const store = getStore();
+    const row = (await store.translations.get(OWNER_ID, d.id, 'en'))!;
+    const { parts: _parts, ...old } = JSON.parse(row.content) as Record<string, unknown>;
+    await store.translations.put(OWNER_ID, d.id, 'en', row.sourceHash, JSON.stringify(old), row.createdAt);
+    expect((await titles([d.id])).json().titles[d.id]).toBe('EN[Buletin de analize]');
+    expect(JSON.parse((await store.translations.get(OWNER_ID, d.id, 'en'))!.content).parts).toBeTruthy();
+
+    await store.documents.update(OWNER_ID, d.id, { ai_summary: 'Rezumat nou' }); // the whole is stale; the title is not, and now says so on its own
+    expect((await titles([d.id])).json().titles[d.id]).toBe('EN[Buletin de analize]');
+  });
+
+  it('gives a kept title when translating is off (a sample’s, or one made earlier), and asks for no other', async () => {
+    const d = await romanian();
+    await translateDocument(OWNER_ID, d.id, 'en');
+    const other = await romanian();
+    process.env.SPINE_TRANSLATION = 'off';
+    expect((await titles([d.id, other.id])).json()).toEqual({ titles: { [d.id]: 'EN[Buletin de analize]' }, summaries: { [d.id]: 'EN[Rezumat]' }, pending: false });
+  });
+
+  it('gives the summary on its own digest too: a changed title keeps the summary, a changed summary keeps the title', async () => {
+    const d = await romanian();
+    await translateDocument(OWNER_ID, d.id, 'en');
+    const store = getStore();
+    await store.documents.update(OWNER_ID, d.id, { title: 'Alt buletin' });
+    calls.length = 0;
+    const res = (await titles([d.id])).json();
+    expect(res.summaries).toEqual({ [d.id]: 'EN[Rezumat]' });
+    expect(res.titles[d.id] ?? null).toBeNull();
+    expect(res.pending).toBe(true);
+  });
+
   it('needs a session', async () => {
     expect((await app.inject({ method: 'GET', url: '/api/translations/titles?lang=en&ids=x' })).statusCode).toBe(401);
+  });
+});
+
+describe('specialties and test names in a language (the doctors and the trends)', () => {
+  const names = (lang = 'en', who = cookie) => app.inject({ method: 'GET', url: `/api/translations/terms?lang=${lang}`, headers: { cookie: who } });
+
+  /** Names no other test of this file has, so what the route gives for them is this test's alone. */
+  async function uniquely(d: Awaited<ReturnType<typeof romanian>>, tag: string) {
+    const store = getStore();
+    await store.measurements.update(OWNER_ID, d.id, d.measurementId, { name: `Hb-${tag}`, canonical: `hemoglobin-${tag}`, valueText: '13,5', valueNum: 13.5, unit: 'g/dL', refLow: 12, refHigh: 16, flag: null, takenOn: '2026-01-01' });
+    const doctor = (await store.doctors.upsert(OWNER_ID, { name: `Dr ${tag}`, specialty: `chirurg-${tag}` }, '2026-01-01'))!;
+    await store.doctors.link(OWNER_ID, d.id, doctor, 'author');
+    return { test: `Hb-${tag}`, specialty: `chirurg-${tag}`, doctor };
+  }
+
+  it('translates what has none in one call, in the background, keeps it by the text, and then asks no model', async () => {
+    const d = await romanian();
+    const { test, specialty } = await uniquely(d, uuidv4().slice(0, 8));
+    calls.length = 0;
+    const first = (await names()).json();
+    expect(first.pending).toBe(true);
+    expect(first.specialties[specialty]).toBeUndefined(); // the original shows until it is ready
+    await vi.waitFor(async () => expect((await names()).json().specialties[specialty]).toBe(`EN[${specialty}]`));
+    const done = (await names()).json();
+    expect(done.tests[test]).toBe(`EN[${test}]`);
+    expect(done.pending).toBe(false);
+
+    const asked = calls.filter(c => c.bundle.doctors.some(x => x.specialty === specialty));
+    expect(asked).toHaveLength(1); // the specialties and the tests together, not one call each
+    expect(JSON.stringify(asked[0].bundle)).toContain(test);
+    expect(asked[0].bundle).toMatchObject({ title: null, summary: null, notes: null, fields: [] });
+
+    calls.length = 0;
+    await names(); await names();
+    expect(calls).toHaveLength(0);
+  });
+
+  it('one translation for a text, whoever has it, and an edited name is a new text with nothing stale', async () => {
+    const tag = uuidv4().slice(0, 8);
+    const [a, b] = [await romanian(), await romanian()];
+    const { specialty, doctor } = await uniquely(a, tag);
+    await getStore().doctors.link(OWNER_ID, b.id, doctor, 'author'); // two documents name the same doctor
+    await names();
+    await vi.waitFor(async () => expect((await names()).json().specialties[specialty]).toBe(`EN[${specialty}]`));
+
+    await getStore().doctors.update(OWNER_ID, doctor, { specialty: `chirurg-nou-${tag}` });
+    const edited = (await names()).json();
+    expect(edited.specialties[specialty]).toBeUndefined(); // the old words are not shown for the new text
+    expect(edited.pending).toBe(true);
+    await vi.waitFor(async () => expect((await names()).json().specialties[`chirurg-nou-${tag}`]).toBe(`EN[chirurg-nou-${tag}]`));
+  });
+
+  it('uses a wording from the model only where it is a translation, and asks again after the pause', async () => {
+    const d = await romanian();
+    const { specialty } = await uniquely(d, uuidv4().slice(0, 8));
+    answer = bundle => ({ ...mark(bundle), doctors: bundle.doctors.map(x => ({ id: x.id, specialty: `${x.specialty} -> ${'x'.repeat(200)}` })) });
+    await names();
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
+    await new Promise(r => setTimeout(r, 50));
+    expect((await names()).json().specialties[specialty]).toBeUndefined(); // a ramble is not kept; the original shows
+  });
+
+  it('asks nothing when translating is off, and is the owner’s alone for a language that is offered, with a session', async () => {
+    const d = await romanian();
+    const { specialty } = await uniquely(d, uuidv4().slice(0, 8));
+    process.env.SPINE_TRANSLATION = 'off';
+    calls.length = 0;
+    expect((await names()).json()).toMatchObject({ pending: false });
+    expect(calls).toHaveLength(0);
+    process.env.SPINE_TRANSLATION = 'on';
+
+    const stranger = await createTestUser('names-stranger@spine.test');
+    expect(await keptTerms(stranger.id, 'en')).toEqual({ specialties: {}, tests: {}, pending: false });
+    expect((await names('xx')).json()).toEqual({ specialties: {}, tests: {}, pending: false });
+    expect((await app.inject({ method: 'GET', url: '/api/translations/terms?lang=en' })).statusCode).toBe(401);
+    expect(specialty).toBeTruthy();
   });
 });

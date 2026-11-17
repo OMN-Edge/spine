@@ -24,7 +24,7 @@ import { changeLog } from './changes.js';
 import { fileRegistryRepository } from './file-registry.js';
 import { matchDecisionRepository } from './match-decisions.js';
 import { tagRepository } from './tags.js';
-import { translationRepository } from './translations.js';
+import { termTranslationRepository, translationRepository } from './translations.js';
 import { embeddingRepository } from './embeddings.js';
 import { linkRepository } from './links.js';
 import { episodeRepository } from './episodes.js';
@@ -113,6 +113,7 @@ function recordsOf(db: Database): Omit<RecordsStore, "slice"> {
     tags: tagRepository(db),
     shareLinks: shareLinkRepository(db),
     translations: translationRepository(db),
+    termTranslations: termTranslationRepository(db),
     embeddings: embeddingRepository(db),
     links: linkRepository(db),
     episodes: episodeRepository(db),

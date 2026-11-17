@@ -2,7 +2,7 @@ import type { HttpApp } from '../http.js';
 import { getStore } from '../store/index.js';
 import { requireAuth } from './middleware.js';
 import { isSupportedLanguage } from '../languages.js';
-import { translateDocument, warmTranslations } from '../translation.js';
+import { keptTerms, keptTexts, translateDocument, warmTranslations } from '../translation.js';
 import { embeddingStatus, hybridSearch, relatedTo, scheduleSync } from '../similarity/index.js';
 
 /** Related documents, and search by words and meaning together. Owner only; every call is scoped to the signed-in user. */
@@ -39,23 +39,37 @@ export async function similarityRoutes(app: HttpApp) {
     });
   });
 
-  // Titles of some of the owner's documents in a language, for lists that name documents (the chat's sources). Only what is cached comes
-  // back at once; the rest start translating in the background and `pending` tells the page to ask again shortly.
-  app.get<{ Querystring: { ids?: string; lang?: string } }>('/api/translations/titles', async (req, reply) => {
+  // Titles and summaries of some of the owner's documents in a language, for lists that name documents (the timeline, the chat's sources). Only what is
+  // kept and still matches the document's own text comes back at once; the rest start translating in the background and `pending` tells the page to ask
+  // again shortly. The model is never asked from here, and a list's cost is one row of each kind for each id.
+  app.get<{ Querystring: { ids?: string; lang?: string; warm?: string } }>('/api/translations/titles', async (req, reply) => {
     const language = req.query.lang;
-    const ids = [...new Set((req.query.ids ?? '').split(',').map(x => x.trim()).filter(Boolean))].slice(0, 20);
-    if (!isSupportedLanguage(language) || ids.length === 0) return reply.header('Cache-Control', 'no-store').send({ titles: {}, pending: false });
+    const ids = [...new Set((req.query.ids ?? '').split(',').map(x => x.trim()).filter(Boolean))].slice(0, 60);
+    if (!isSupportedLanguage(language) || ids.length === 0) return reply.header('Cache-Control', 'no-store').send({ titles: {}, summaries: {}, pending: false });
     const titles: Record<string, string | null> = {};
+    const summaries: Record<string, string> = {};
     const missing: string[] = [];
-    for (const id of ids) {
-      const done = await translateDocument(req.userId, id, language, { cachedOnly: true });
-      if (done === 'not_found') continue; // not the caller's, or gone: the same as an id that never existed
-      if (done === null) { missing.push(id); continue; }
-      if (done.status === 'off') continue; // translation is off and nothing is kept: no title to give
-      titles[id] = done.status !== 'same' ? done.title : null;
+    for (const [id, kept] of await keptTexts(req.userId, ids, language)) {
+      if (kept.state === 'ready') {
+        titles[id] = kept.title;
+        if (kept.summary !== null) summaries[id] = kept.summary;
+        if (kept.stale) missing.push(id);
+      } else if (kept.state === 'same') titles[id] = null;
+      else if (kept.state === 'missing') missing.push(id);
+      // `not_found` (not the caller's, or gone: the same as an id that never existed) and `off` (nothing kept, nothing to ask) give nothing.
     }
-    if (missing.length > 0) warmTranslations(req.userId, missing, language);
-    return reply.header('Cache-Control', 'no-store').send({ titles, pending: missing.length > 0 });
+    // `warm=0`: a list of every document asks for what is kept only, so looking at it does not start the translation of an archive.
+    const warm = req.query.warm !== '0';
+    if (warm && missing.length > 0) warmTranslations(req.userId, missing, language);
+    return reply.header('Cache-Control', 'no-store').send({ titles, summaries, pending: warm && missing.length > 0 });
+  });
+
+  // Specialties and test names in a language, as kept (`term_translations`), for the pages that list them across documents; what is not kept yet is translated in
+  // the background and `pending` tells the page to ask again.
+  app.get<{ Querystring: { lang?: string } }>('/api/translations/terms', async (req, reply) => {
+    const language = req.query.lang;
+    if (!isSupportedLanguage(language)) return reply.header('Cache-Control', 'no-store').send({ specialties: {}, tests: {}, pending: false });
+    return reply.header('Cache-Control', 'no-store').send(await keptTerms(req.userId, language));
   });
 
   // The documents that match some words, or mean something like them, merged by rank.
