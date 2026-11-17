@@ -3,6 +3,7 @@ import { api, type Episode } from '../api';
 import { useI18n } from '../i18n';
 import { Combobox } from './Combobox';
 import { episodeName } from './episode';
+import { useNames } from '../useListTitles';
 
 /**
  * The filters beyond type and dates (FR-ORG-03): the facility a document came from, the specialty of a doctor named on it, and the
@@ -15,6 +16,7 @@ export default function DocumentFilters({ value, onChange, className, wrapperCla
   wrapperClassName?: string;
 }) {
   const { t } = useI18n();
+  const names = useNames();
   const [providers, setProviders] = useState<string[]>([]);
   const [specialties, setSpecialties] = useState<string[]>([]);
   const [episodes, setEpisodes] = useState<Episode[]>([]);
@@ -39,7 +41,7 @@ export default function DocumentFilters({ value, onChange, className, wrapperCla
   return (
     <>
       {pick(t('Facility'), 'provider', t('Any facility'), providers.map(name => ({ value: name, label: name })))}
-      {pick(t('Specialty'), 'specialty', t('Any specialty'), specialties.map(name => ({ value: name, label: name })))}
+      {pick(t('Specialty'), 'specialty', t('Any specialty'), specialties.map(name => ({ value: name, label: names.specialty(name) })))}
       {pick(t('Episode'), 'episode', t('Any episode'), episodes.map(e => ({ value: e.id, label: episodeName(e, t) })))}
     </>
   );

@@ -1242,6 +1242,8 @@ export interface TranslationRepository {
   get(userId: string, documentId: string, language: string): Promise<{ sourceHash: string; content: string; createdAt: string } | null>;
   /** The languages a document has a translation kept in. */
   languagesFor(userId: string, documentId: string): Promise<string[]>;
+  /** Every translation the user keeps into a language, one for each document (the document must still be shown: `VISIBLE`). */
+  forLanguage(userId: string, language: string): Promise<Array<{ documentId: string; sourceHash: string; content: string }>>;
   /** Replaces any earlier translation into that language. Nothing is written if the document is not the user's. */
   put(userId: string, documentId: string, language: string, sourceHash: string, content: string, createdAt: string): Promise<void>;
 }

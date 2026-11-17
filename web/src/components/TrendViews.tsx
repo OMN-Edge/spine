@@ -20,10 +20,11 @@ const range = (low: number | null, high: number | null) =>
   low !== null && high !== null ? `${low}–${high}` : high !== null ? `≤ ${high}` : low !== null ? `≥ ${low}` : '';
 
 /** Every test with a value, filterable. `hrefFor` is where a test's page is: the owner's trends or a share's. */
-export function TestList({ names, hrefFor }: { names: TrendName[]; hrefFor: (canonical: string) => string }) {
+/** `label` is how a test's name is worded for the reader (the owner's pages give the translated one); the name as printed where it is not given. */
+export function TestList({ names, hrefFor, label = name => name }: { names: TrendName[]; hrefFor: (canonical: string) => string; label?: (name: string) => string }) {
   const { t, tn } = useI18n();
   const [query, setQuery] = useState('');
-  const shown = useMemo(() => names.filter(n => n.name.toLowerCase().includes(query.trim().toLowerCase())), [names, query]);
+  const shown = useMemo(() => names.filter(n => [n.name, label(n.name)].some(v => v.toLowerCase().includes(query.trim().toLowerCase()))), [names, query, label]);
   return (
     <>
       <input
@@ -36,7 +37,7 @@ export function TestList({ names, hrefFor }: { names: TrendName[]; hrefFor: (can
             <li key={n.canonical}>
               <Link to={hrefFor(n.canonical)} className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-gray-50">
                 <span className="min-w-0">
-                  <span className="block text-sm font-medium text-gray-900 truncate">{n.name}</span>
+                  <span className="block text-sm font-medium text-gray-900 truncate">{label(n.name)}</span>
                   <span className="block text-xs text-gray-400">{tn(n.count, '{n} value', '{n} values')}{n.latest_taken_on ? ` · ${t('latest {date}', { date: n.latest_taken_on })}` : ''}</span>
                 </span>
                 <span className="text-right shrink-0 flex items-center gap-2">
@@ -54,13 +55,13 @@ export function TestList({ names, hrefFor }: { names: TrendName[]; hrefFor: (can
 
 
 /** One test over time: the chart and the table of its values. `documentHref` is where a value's document is; `after` is whatever the page adds below (the owner can merge two names). */
-export function SeriesBody({ series, documentHref, after }: { series: TrendSeries; documentHref: (documentId: string) => string; after?: React.ReactNode }) {
+export function SeriesBody({ series, documentHref, after, label = name => name }: { series: TrendSeries; documentHref: (documentId: string) => string; after?: React.ReactNode; label?: (name: string) => string }) {
   const { t, tn } = useI18n();
   const notDrawn = series.points.filter(p => !p.charted).length;
   const drawn = series.points.length - notDrawn;
   return (
     <div className="max-w-3xl">
-      <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900 mb-1">{series.name}</h1>
+      <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900 mb-1">{label(series.name)}</h1>
       <p className="text-sm text-gray-500 mb-4">{tn(series.points.length, '{n} value', '{n} values')}{series.unit ? `, ${t('in {unit}', { unit: series.unit })}` : ''}</p>
 
       {drawn > 0 ? (

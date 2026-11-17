@@ -78,7 +78,7 @@ export default function Timeline() {
   useEffect(() => { setLimit(PAGE); }, [filter, zoom]);
   const ordered = shownYears.flatMap(year => byYear[year]);
   const drawn = new Set(ordered.slice(0, limit).map(d => d.id));
-  const titleOf = useListTitles(ordered.slice(0, limit).map(d => d.id));
+  const { titleOf, summaryOf } = useListTitles(ordered.slice(0, limit).map(d => d.id));
   const showMore = useCallback(() => setLimit(n => n + PAGE), []);
   const endRef = useMore(showMore, ordered.length > limit);
 
@@ -147,7 +147,7 @@ export default function Timeline() {
                 items={byYear[year].filter(d => drawn.has(d.id)).map(doc => ({
                   id: doc.id,
                   state: doc.reviewed ? 'done' : 'unreviewed',
-                  children: <DocumentCard doc={{ ...doc, title: titleOf(doc) }} to={`/documents/${doc.id}`} />,
+                  children: <DocumentCard doc={{ ...doc, title: titleOf(doc), ai_summary: summaryOf(doc) }} to={`/documents/${doc.id}`} />,
                 }))}
               />
             </div>

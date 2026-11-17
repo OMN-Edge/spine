@@ -550,39 +550,95 @@ export async function carryTranslations(userId: string, documentIds: string[], c
   }
 }
 
-/** What a list learns of a document's title in a language: `same` (already in it, or none to translate), `ready` with the title, `missing` (to be made), `off` or `not_found`. */
-export type KeptTitle = { state: 'same' | 'missing' | 'off' | 'not_found' } | { state: 'ready'; title: string };
+/** The digest of a summary as it would be translated: what a list needs to know whether the summary it holds is still good. */
+const summaryHashOf = (document: Document, language: SupportedLanguage): string =>
+  partHash('summary', language, document.language, (document.ai_summary ?? '').trim() === '' ? null : document.ai_summary);
 
 /**
- * The titles of these documents in `language`, from what is kept and nowhere else: the model is never asked. A title is given only while the
- * document's title still hashes to the one it was translated from, so it is never one that no longer matches its document, and it does not
- * matter what else on the document changed. Only the title is read (one document row and one translation row); a translation kept before the
- * parts had digests is checked once against the whole document and then written with them.
+ * What a list learns of a document's title and summary in a language: `same` (already in it, or nothing to translate), `ready` (the title and the summary,
+ * each null where it is not kept or no longer matches; `stale` says some is still to be made), `missing` (nothing yet: to be made), `off` or `not_found`.
  */
-export async function keptTitles(userId: string, documentIds: string[], language: SupportedLanguage): Promise<Map<string, KeptTitle>> {
+export type KeptText = { state: 'same' | 'missing' | 'off' | 'not_found' } | { state: 'ready'; title: string | null; summary: string | null; stale: boolean };
+
+/**
+ * The titles and summaries of these documents in `language`, from what is kept and nowhere else: the model is never asked. A text is given only
+ * while its own digest still matches the document's, so it is never one that no longer matches its document, and it does not matter what else on the
+ * document changed. Only the title and the summary are read (one document row and one translation row); a translation kept before the parts had
+ * digests is checked once against the whole document and then written with them.
+ */
+export async function keptTexts(userId: string, documentIds: string[], language: SupportedLanguage): Promise<Map<string, KeptText>> {
   const store = getStore();
-  const out = new Map<string, KeptTitle>();
+  const out = new Map<string, KeptText>();
+  const blank = (text: string | null | undefined) => (text ?? '').trim() === '';
   for (const id of documentIds) {
     const document = await store.documents.findFor(userId, id);
     if (!document) { out.set(id, { state: 'not_found' }); continue; }
+    const [hasTitle, hasSummary] = [!blank(document.title), !blank(document.ai_summary)];
     const kept = await store.translations.get(userId, id, language);
     let content: Kept | null = null;
     try { content = kept ? JSON.parse(kept.content) as Kept : null; } catch { /* unreadable: the same as none */ }
-    const title = content?.title?.trim() ?? '';
-    if (kept && content && title !== '') {
-      if (content.parts) {
-        if (content.parts.title === titleHashOf(document, language)) { out.set(id, { state: 'ready', title }); continue; }
-      } else {
+    let title: string | null = null;
+    let summary: string | null = null;
+    if (kept && content) {
+      let parts = content.parts;
+      if (!parts) {
         const source = await sourceOf(userId, document, language);
         if (kept.sourceHash === source.hash) {
           await store.translations.put(userId, id, language, source.hash, keep(source, content), kept.createdAt);
-          out.set(id, { state: 'ready', title }); continue;
+          parts = source.parts;
         }
       }
+      if (parts) {
+        if (hasTitle && parts.title === titleHashOf(document, language) && !blank(content.title)) title = content.title!.trim();
+        if (hasSummary && parts.summary === summaryHashOf(document, language) && !blank(content.summary)) summary = content.summary!.trim();
+      }
     }
-    if (!translationEnabled()) out.set(id, { state: 'off' });
-    else if (document.language === language || (document.title ?? '').trim() === '') out.set(id, { state: 'same' });
+    if (title !== null || summary !== null) out.set(id, { state: 'ready', title, summary, stale: translationEnabled() && ((hasTitle && title === null) || (hasSummary && summary === null)) });
+    else if (!translationEnabled()) out.set(id, { state: 'off' });
+    else if (document.language === language || (!hasTitle && !hasSummary)) out.set(id, { state: 'same' });
     else out.set(id, { state: 'missing' });
   }
   return out;
+}
+
+/** The wording of doctors' specialties and of test names in a language, as the kept translations of the documents have them. */
+export interface KeptNames {
+  /** By the specialty as the directory has it. */
+  specialties: Record<string, string>;
+  /** By the test's name as a document prints it. */
+  tests: Record<string, string>;
+}
+
+/**
+ * Specialties and test names in `language`, for the pages that list them across documents (the doctors, the trends), where no one translation
+ * belongs to the thing listed: a doctor and a test are in many documents. They are read from the translations kept of the documents, only from
+ * a document whose details still hash to what was translated, and where documents word one the same way differently the wording most of them
+ * have wins (a tie goes to the first alphabetically), so a list does not change from one visit to the next. Nothing is stored and no model is asked;
+ * a name appears once a document that holds it has been translated.
+ */
+export async function keptNames(userId: string, language: SupportedLanguage): Promise<KeptNames> {
+  const store = getStore();
+  const votes = { specialties: new Map<string, Map<string, number>>(), tests: new Map<string, Map<string, number>>() };
+  const vote = (kind: keyof typeof votes, original: string | null, translated: string | null | undefined) => {
+    const text = (translated ?? '').trim();
+    if (!original || !text || text === original.trim()) return;
+    const counts = votes[kind].get(original) ?? new Map<string, number>();
+    counts.set(text, (counts.get(text) ?? 0) + 1);
+    votes[kind].set(original, counts);
+  };
+  for (const row of await store.translations.forLanguage(userId, language)) {
+    const document = await store.documents.findFor(userId, row.documentId);
+    if (!document || document.language === language) continue;
+    let content: Kept;
+    try { content = JSON.parse(row.content) as Kept; } catch { continue; }
+    const source = await sourceOf(userId, document, language);
+    if (row.sourceHash !== source.hash && content.parts?.details !== source.parts.details) continue;
+    const [doctors, measurements] = [new Map((content.doctors ?? []).map(d => [d.id, d.specialty])), new Map((content.measurements ?? []).map(m => [m.id, m.name]))];
+    for (const d of source.bundle.doctors) vote('specialties', d.specialty, doctors.get(d.id));
+    for (const m of source.bundle.measurements) vote('tests', m.name, measurements.get(m.id));
+  }
+  const winners = (counts: Map<string, Map<string, number>>) => Object.fromEntries([...counts].map(([original, byText]) => [
+    original, [...byText].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0][0],
+  ]));
+  return { specialties: winners(votes.specialties), tests: winners(votes.tests) };
 }

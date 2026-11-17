@@ -2,7 +2,7 @@ import type { HttpApp } from '../http.js';
 import { getStore } from '../store/index.js';
 import { requireAuth } from './middleware.js';
 import { isSupportedLanguage } from '../languages.js';
-import { keptTitles, translateDocument, warmTranslations } from '../translation.js';
+import { keptNames, keptTexts, translateDocument, warmTranslations } from '../translation.js';
 import { embeddingStatus, hybridSearch, relatedTo, scheduleSync } from '../similarity/index.js';
 
 /** Related documents, and search by words and meaning together. Owner only; every call is scoped to the signed-in user. */
@@ -39,23 +39,36 @@ export async function similarityRoutes(app: HttpApp) {
     });
   });
 
-  // Titles of some of the owner's documents in a language, for lists that name documents (the timeline, the chat's sources). Only what is kept
-  // and still matches the document's title comes back at once; the rest start translating in the background and `pending` tells the page to
-  // ask again shortly. The model is never asked from here, and a list's cost is one row of each kind for each id.
-  app.get<{ Querystring: { ids?: string; lang?: string } }>('/api/translations/titles', async (req, reply) => {
+  // Titles and summaries of some of the owner's documents in a language, for lists that name documents (the timeline, the chat's sources). Only what is
+  // kept and still matches the document's own text comes back at once; the rest start translating in the background and `pending` tells the page to ask
+  // again shortly. The model is never asked from here, and a list's cost is one row of each kind for each id.
+  app.get<{ Querystring: { ids?: string; lang?: string; warm?: string } }>('/api/translations/titles', async (req, reply) => {
     const language = req.query.lang;
     const ids = [...new Set((req.query.ids ?? '').split(',').map(x => x.trim()).filter(Boolean))].slice(0, 60);
-    if (!isSupportedLanguage(language) || ids.length === 0) return reply.header('Cache-Control', 'no-store').send({ titles: {}, pending: false });
+    if (!isSupportedLanguage(language) || ids.length === 0) return reply.header('Cache-Control', 'no-store').send({ titles: {}, summaries: {}, pending: false });
     const titles: Record<string, string | null> = {};
+    const summaries: Record<string, string> = {};
     const missing: string[] = [];
-    for (const [id, kept] of await keptTitles(req.userId, ids, language)) {
-      if (kept.state === 'ready') titles[id] = kept.title;
-      else if (kept.state === 'same') titles[id] = null;
+    for (const [id, kept] of await keptTexts(req.userId, ids, language)) {
+      if (kept.state === 'ready') {
+        titles[id] = kept.title;
+        if (kept.summary !== null) summaries[id] = kept.summary;
+        if (kept.stale) missing.push(id);
+      } else if (kept.state === 'same') titles[id] = null;
       else if (kept.state === 'missing') missing.push(id);
-      // `not_found` (not the caller's, or gone: the same as an id that never existed) and `off` (nothing kept, nothing to ask) give no title.
+      // `not_found` (not the caller's, or gone: the same as an id that never existed) and `off` (nothing kept, nothing to ask) give nothing.
     }
-    if (missing.length > 0) warmTranslations(req.userId, missing, language);
-    return reply.header('Cache-Control', 'no-store').send({ titles, pending: missing.length > 0 });
+    // `warm=0`: a list of every document asks for what is kept only, so looking at it does not start the translation of an archive.
+    const warm = req.query.warm !== '0';
+    if (warm && missing.length > 0) warmTranslations(req.userId, missing, language);
+    return reply.header('Cache-Control', 'no-store').send({ titles, summaries, pending: warm && missing.length > 0 });
+  });
+
+  // Specialties and test names in a language, as the kept translations of the owner's documents word them, for the pages that list them across documents.
+  app.get<{ Querystring: { lang?: string } }>('/api/translations/names', async (req, reply) => {
+    const language = req.query.lang;
+    if (!isSupportedLanguage(language)) return reply.header('Cache-Control', 'no-store').send({ specialties: {}, tests: {} });
+    return reply.header('Cache-Control', 'no-store').send(await keptNames(req.userId, language));
   });
 
   // The documents that match some words, or mean something like them, merged by rank.

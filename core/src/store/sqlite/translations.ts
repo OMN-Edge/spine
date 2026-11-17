@@ -1,6 +1,7 @@
 import type { Database } from './driver.js';
 import type { TranslationRepository } from '../types.js';
 import { owner } from '../owner.js';
+import { VISIBLE } from './visibility.js';
 
 /** Every statement filters by `user_id` (SECURITY.md P12). The cache holds the owner's medical text, so it is theirs like the rest. */
 export function translationRepository(db: Database): TranslationRepository {
@@ -9,6 +10,11 @@ export function translationRepository(db: Database): TranslationRepository {
     WHERE document_id = ? AND language = ? AND user_id = ?
   `);
   const languages = db.prepare('SELECT language FROM document_translations WHERE document_id = ? AND user_id = ? ORDER BY language');
+  const inLanguage = db.prepare(`
+    SELECT t.document_id, t.source_hash, t.content FROM document_translations t JOIN documents d ON d.id = t.document_id
+    WHERE t.language = ? AND t.user_id = ? AND ${VISIBLE}
+    ORDER BY t.document_id
+  `);
   // Only for a document that is the user's.
   const upsert = db.prepare(`
     INSERT INTO document_translations (user_id, document_id, language, source_hash, content, created_at)
@@ -25,6 +31,11 @@ export function translationRepository(db: Database): TranslationRepository {
 
     async languagesFor(userId, documentId) {
       return (languages.all(documentId, owner(userId)) as Array<{ language: string }>).map(row => row.language);
+    },
+
+    async forLanguage(userId, language) {
+      return (inLanguage.all(language, owner(userId)) as Array<{ document_id: string; source_hash: string; content: string }>)
+        .map(row => ({ documentId: row.document_id, sourceHash: row.source_hash, content: row.content }));
     },
 
     async put(userId, documentId, language, sourceHash, content, createdAt) {

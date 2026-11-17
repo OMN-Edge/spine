@@ -23,9 +23,12 @@ export default function Episodes() {
   }, []);
   useEffect(() => { void load(); api.documents.listAll().then(setDocs).catch(() => setDocs([])); }, [load]);
 
-  // The documents are named in the interface language where a translation is kept (only those in an episode are asked for).
+  // The documents are named in the interface language where a translation is kept. Those in an episode are translated if they are not yet; the ones the owner
+  // may add to one (every other document) show what is kept and start nothing.
   const inEpisodes = useMemo(() => [...new Set((episodes ?? []).flatMap(e => e.document_ids))], [episodes]);
-  const titleOf = useListTitles(inEpisodes);
+  const inThem = useListTitles(inEpisodes);
+  const all = useListTitles(useMemo(() => docs.map(d => d.id), [docs]), false);
+  const titleOf = (d: Document) => { const own = inThem.titleOf(d); return own !== d.title ? own : all.titleOf(d); };
   const named = docs.map(d => ({ ...d, title: titleOf(d) }));
   const byId = new Map(named.map(d => [d.id, d]));
   const act = async (fn: () => Promise<unknown>) => {

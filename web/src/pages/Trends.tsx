@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { api, type TrendName, type TrendSeries } from '../api';
 import { SeriesBody, TestList } from '../components/TrendViews';
+import { useNames } from '../useListTitles';
 import { useI18n } from '../i18n';
 import { Combobox } from '../components/Combobox';
 import { useScreen } from '../components/ChatProvider';
@@ -47,6 +48,7 @@ function MergeTest({ canonical, others }: { canonical: string; others: TrendName
 
 function Series({ canonical, others }: { canonical: string; others: TrendName[] }) {
   const { t } = useI18n();
+  const names = useNames();
   const [series, setSeries] = useState<TrendSeries | null>(null);
   const [error, setError] = useState('');
 
@@ -57,11 +59,12 @@ function Series({ canonical, others }: { canonical: string; others: TrendName[] 
 
   if (error) return <p className="text-sm text-red-600" role="alert">{error}</p>;
   if (!series) return <p className="text-sm text-gray-400">{t('Loading…')}</p>;
-  return <SeriesBody series={series} documentHref={id => `/documents/${id}`} after={<MergeTest canonical={canonical} others={others} />} />;
+  return <SeriesBody series={series} documentHref={id => `/documents/${id}`} after={<MergeTest canonical={canonical} others={others} />} label={names.test} />;
 }
 
 export default function Trends() {
   const { t } = useI18n();
+  const wording = useNames();
   const [params] = useSearchParams();
   const name = params.get('name');
   const [names, setNames] = useState<TrendName[] | null>(null);
@@ -92,7 +95,7 @@ export default function Trends() {
                 <GuideTip tip="tip.results" topic="results">
                   {t('Each test here is drawn from every document that has it. Labs sometimes name the same test differently: open it and choose the name it should be counted with.')}
                 </GuideTip>
-                <TestList names={names} hrefFor={canonical => `/trends?name=${encodeURIComponent(canonical)}`} />
+                <TestList names={names} hrefFor={canonical => `/trends?name=${encodeURIComponent(canonical)}`} label={wording.test} />
               </>
             )}
         </>
