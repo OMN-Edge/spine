@@ -120,7 +120,54 @@ describe('translating a document', () => {
 
     await store.measurements.update(OWNER_ID, d.id, d.measurementId, { name: 'Hb', canonical: 'hemoglobin', valueText: '13,5', valueNum: 13.5, unit: 'g/dL', refLow: 12, refHigh: 16, flag: null, takenOn: '2026-01-01' });
     expect(await translateDocument(OWNER_ID, d.id, 'en')).toMatchObject({ status: 'translated' });
-    expect(calls).toHaveLength(10); // five translations of two calls each
+  });
+
+  it('translates again only the part that changed, and serves the others as they were kept', async () => {
+    const d = await romanian();
+    const store = getStore();
+    await translateDocument(OWNER_ID, d.id, 'en');
+    calls.length = 0;
+
+    await store.documents.update(OWNER_ID, d.id, { user_notes: 'Alte note' });
+    expect(await translateDocument(OWNER_ID, d.id, 'en')).toMatchObject({ status: 'translated', user_notes: 'EN[Alte note]', title: 'EN[Buletin de analize]', ai_summary: 'EN[Rezumat]' });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].bundle).toMatchObject({ title: null, summary: null, notes: 'Alte note', fields: [], measurements: [], doctors: [] });
+
+    calls.length = 0;
+    await store.documents.update(OWNER_ID, d.id, { title: 'Alt buletin' });
+    expect(await translateDocument(OWNER_ID, d.id, 'en')).toMatchObject({ title: 'EN[Alt buletin]', user_notes: 'EN[Alte note]' });
+    expect(calls.map(c => c.bundle)).toEqual([expect.objectContaining({ title: 'Alt buletin', summary: null, notes: null })]);
+
+    // A field changed: the details are asked for again, the title, summary and notes are not.
+    calls.length = 0;
+    await store.fields.update(OWNER_ID, d.id, d.custom, { label: 'observatie speciala', value: 'Repaus la pat' });
+    expect(await translateDocument(OWNER_ID, d.id, 'en')).toMatchObject({ title: 'EN[Alt buletin]', ai_summary: 'EN[Rezumat]' });
+    expect(calls.every(c => c.bundle.title === null && c.bundle.summary === null && c.bundle.notes === null)).toBe(true);
+    expect(JSON.stringify(calls.map(c => c.bundle))).toContain('Repaus la pat');
+  });
+
+  it('with cachedOnly, shows the parts that are still good while another is stale', async () => {
+    const d = await romanian();
+    await translateDocument(OWNER_ID, d.id, 'en');
+    await getStore().documents.update(OWNER_ID, d.id, { user_notes: 'Alte note' });
+    calls.length = 0;
+    expect(await translateDocument(OWNER_ID, d.id, 'en', { cachedOnly: true })).toMatchObject({ status: 'cached', title: 'EN[Buletin de analize]', user_notes: 'Alte note' });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('adopts a translation kept before the parts had digests, and no model is asked', async () => {
+    const d = await romanian();
+    await translateDocument(OWNER_ID, d.id, 'en');
+    const store = getStore();
+    const row = (await store.translations.get(OWNER_ID, d.id, 'en'))!;
+    const { parts, ...old } = JSON.parse(row.content) as Record<string, unknown>;
+    expect(parts).toBeTruthy();
+    await store.translations.put(OWNER_ID, d.id, 'en', row.sourceHash, JSON.stringify(old), row.createdAt);
+    calls.length = 0;
+
+    expect(await translateDocument(OWNER_ID, d.id, 'en')).toMatchObject({ status: 'cached' });
+    expect(calls).toHaveLength(0);
+    expect(JSON.parse((await store.translations.get(OWNER_ID, d.id, 'en'))!.content).parts).toEqual(parts);
   });
 
   it('is stale after the document is read again, which replaces its fields', async () => {
@@ -546,6 +593,44 @@ describe('titles of the owner’s documents in a language (the chat’s sources)
     process.env.SPINE_TRANSLATION = 'on';
     const many = Array.from({ length: 40 }, (_, i) => `id-${i}`);
     expect((await titles(many)).statusCode).toBe(200);
+  });
+
+  it('gives the title while it still matches the document, whatever else on it changed, and not after the title itself changed', async () => {
+    const d = await romanian();
+    await translateDocument(OWNER_ID, d.id, 'en');
+    const store = getStore();
+
+    await store.documents.update(OWNER_ID, d.id, { user_notes: 'Alte note', ai_summary: 'Rezumat nou' });
+    await store.fields.update(OWNER_ID, d.id, d.custom, { label: 'observatie speciala', value: 'Repaus la pat' });
+    calls.length = 0;
+    expect((await titles([d.id])).json()).toEqual({ titles: { [d.id]: 'EN[Buletin de analize]' }, pending: false });
+    expect(calls).toHaveLength(0);
+
+    await store.documents.update(OWNER_ID, d.id, { title: 'Alt buletin' });
+    expect((await titles([d.id])).json()).toEqual({ titles: {}, pending: true }); // never the old title for the new one
+    await vi.waitFor(async () => expect((await titles([d.id])).json().titles[d.id]).toBe('EN[Alt buletin]'));
+  });
+
+  it('gives the title of a translation kept before the parts had digests, once it is checked against the whole document', async () => {
+    const d = await romanian();
+    await translateDocument(OWNER_ID, d.id, 'en');
+    const store = getStore();
+    const row = (await store.translations.get(OWNER_ID, d.id, 'en'))!;
+    const { parts: _parts, ...old } = JSON.parse(row.content) as Record<string, unknown>;
+    await store.translations.put(OWNER_ID, d.id, 'en', row.sourceHash, JSON.stringify(old), row.createdAt);
+    expect((await titles([d.id])).json().titles[d.id]).toBe('EN[Buletin de analize]');
+    expect(JSON.parse((await store.translations.get(OWNER_ID, d.id, 'en'))!.content).parts).toBeTruthy();
+
+    await store.documents.update(OWNER_ID, d.id, { ai_summary: 'Rezumat nou' }); // the whole is stale; the title is not, and now says so on its own
+    expect((await titles([d.id])).json().titles[d.id]).toBe('EN[Buletin de analize]');
+  });
+
+  it('gives a kept title when translating is off (a sample’s, or one made earlier), and asks for no other', async () => {
+    const d = await romanian();
+    await translateDocument(OWNER_ID, d.id, 'en');
+    const other = await romanian();
+    process.env.SPINE_TRANSLATION = 'off';
+    expect((await titles([d.id, other.id])).json()).toEqual({ titles: { [d.id]: 'EN[Buletin de analize]' }, pending: false });
   });
 
   it('needs a session', async () => {

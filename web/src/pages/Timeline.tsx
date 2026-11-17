@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, type Document } from '../api';
 import { useOnDataChanged } from '../dataChanged';
@@ -12,6 +12,22 @@ import { SampleBanner, SampleOffer, useSampleRecords } from '../components/Sampl
 import { useAuth } from '../auth';
 import GuideTip, { GetStarted } from '../components/GuideTip';
 import { useGuide } from '../guide';
+import { useListTitles } from '../useListTitles';
+
+/** How many cards the timeline draws at first, and each time the end of them is reached. */
+const PAGE = 40;
+
+/** A ref for the end of a list: `more` is called when it comes into view, so a list is read down without pressing anything. */
+function useMore(more: () => void, active: boolean) {
+  const [end, setEnd] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!end || !active || typeof IntersectionObserver === 'undefined') return;
+    const watch = new IntersectionObserver(entries => { if (entries.some(e => e.isIntersecting)) more(); }, { rootMargin: '600px' });
+    watch.observe(end);
+    return () => watch.disconnect();
+  }, [end, active, more]);
+  return setEnd;
+}
 
 export default function Timeline() {
   const { t, tn } = useI18n();
@@ -56,6 +72,15 @@ export default function Timeline() {
   // '' is "All years" and also the key of the undated group, so it must not count as a year that was chosen: with any undated document
   // in the list, "All years" would otherwise show only those.
   const shownYears = zoom !== '' && years.includes(zoom) ? [zoom] : years;
+  // Every document is held, but only the first of them are drawn, and more as the page is read down: a card is the cost of a list, and a long
+  // archive on a phone is a long page. Their titles are asked for in the interface language only as they are drawn.
+  const [limit, setLimit] = useState(PAGE);
+  useEffect(() => { setLimit(PAGE); }, [filter, zoom]);
+  const ordered = shownYears.flatMap(year => byYear[year]);
+  const drawn = new Set(ordered.slice(0, limit).map(d => d.id));
+  const titleOf = useListTitles(ordered.slice(0, limit).map(d => d.id));
+  const showMore = useCallback(() => setLimit(n => n + PAGE), []);
+  const endRef = useMore(showMore, ordered.length > limit);
 
   return (
     <div>
@@ -114,19 +139,26 @@ export default function Timeline() {
               ))}
             </div>
           )}
-          {shownYears.map(year => (
+          {shownYears.filter(year => byYear[year].some(d => drawn.has(d.id))).map(year => (
             <div key={year}>
               <h2 className="text-xs font-medium text-gray-500 uppercase tracking-[0.12em] mb-3">{year || t('Unknown date')}</h2>
               {/* One spine per year: a reviewed document is a solid vertebra, an unreviewed one an empty amber outline. */}
               <SpineLog
-                items={byYear[year].map(doc => ({
+                items={byYear[year].filter(d => drawn.has(d.id)).map(doc => ({
                   id: doc.id,
                   state: doc.reviewed ? 'done' : 'unreviewed',
-                  children: <DocumentCard doc={doc} to={`/documents/${doc.id}`} />,
+                  children: <DocumentCard doc={{ ...doc, title: titleOf(doc) }} to={`/documents/${doc.id}`} />,
                 }))}
               />
             </div>
           ))}
+          {ordered.length > limit && (
+            <div ref={endRef} className="text-center">
+              <button type="button" onClick={showMore} className="text-sm text-brand-600 hover:underline">
+                {t('Show more')} ({ordered.length - limit})
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

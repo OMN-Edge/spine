@@ -500,10 +500,11 @@ The owner opens the Timeline to see their history.
 
 - Documents are grouped by year, newest first, with those without a date under "Unknown date".
 - Each year is a spine: a reviewed document is a solid vertebra, an unreviewed one an amber outline.
-- A tile shows the type, the title (never the file name), the provider, the summary, the date and its pages, and opens the document in reading mode.
-- The list can be narrowed by type and by reviewed or not. The whole archive is shown: the page fetches it in batches of 200, though the API itself returns at most 500 at a time.
+- A tile shows the type, the whole title (it wraps, and is never the file name), the provider, up to five lines of the summary, the date and its pages, and opens the document in reading mode.
+- The list can be narrowed by type and by reviewed or not. The whole archive is held: the page fetches it in batches of 200, though the API itself returns at most 500 at a time. Only the first 40 tiles are drawn, and 40 more each time the end of them comes into view (or "Show more" is pressed), so a long archive does not make a long page to build at once.
+- In a language other than the one a document is written in, a tile shows the title translated, where one is kept and the title has not changed since; the same goes for the Episodes page and the search results. Nothing is waited for: a title not yet translated shows in the original and is translated in the background (the chat's sources do the same), and the tile switches when it is ready. The titles are asked for only for the tiles drawn.
 
-Status: auto (`documents`, `document-paging`); the look, and the phone layout: hand.
+Status: auto (`documents`, `document-paging`; `translation`: the title route); the look, the phone layout and the drawing as the page is read down: hand.
 
 ### 6.3 Tags
 - Every account starts with its own set of tags (allergy, chronic, vaccine and so on), and a tag is private to its account.
@@ -734,7 +735,7 @@ The interface is in English, Romanian, French and German, and documents are tran
 
 - The whole interface changes at once. Words the app stores (document types, field names) show in the chosen language.
 - A document opens in the language it was written in, at once. If that differs from the chosen language, the title, summary, notes and doctors' specialties are translated first (one short call) and replace the original, then the fields and measurement names follow. A note says it was translated, with "Show original".
-- A translation is kept, so opening the same document again in that language is instant, for the owner or anyone else reading in it. Editing the document, reading it again, or moving its pages changes what would be translated, so the next open translates again; there is nothing to clear by hand.
+- A translation is kept, so opening the same document again in that language is instant, for the owner or anyone else reading in it. Editing the document, reading it again, or moving its pages changes what would be translated, so the next open translates again, and only the part that changed (the title, the summary, the notes, or the details: fields, results and specialties); there is nothing to clear by hand.
 - The model's answer is checked: a value that is missing or rambling is asked for again, and the original is used if it still fails. An incomplete translation is not kept. A document with no recorded language gets it from the model's answer, and its language can be corrected in Review.
 - With translation switched off, the interface is still translated and the content shows as written.
 - Messages produced by the server (errors, step names of a reading) stay in English.

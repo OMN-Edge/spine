@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type Document } from '../api';
 import { documentByline, documentTitle } from '../titles';
+import { useListTitles } from '../useListTitles';
 import SpineLog from '../components/SpineLog';
 import { msg, useI18n } from '../i18n';
 import { useScreen } from '../components/ChatProvider';
@@ -28,6 +29,7 @@ export default function Search() {
   // Documents can be found by what they mean as well as by their words, where the server has that switched on.
   const [canMeaning, setCanMeaning] = useState(false);
   const [byMeaning, setByMeaning] = useState(false);
+  const titleOf = useListTitles((docs ?? []).slice(0, 60).map(d => d.id));
   const [tags, setTags] = useState<string[]>([]);
   useEffect(() => { api.tags.list().then(list => setTags(list.map(x => x.name))).catch(() => {}); }, []);
   useEffect(() => { api.sourceFiles.capabilities().then(c => setCanMeaning(!!c.similarity?.enabled)).catch(() => {}); }, []);
@@ -130,7 +132,7 @@ export default function Search() {
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-gray-900">{documentTitle(doc, t)}</p>
+                        <p className="text-sm font-medium text-gray-900">{documentTitle({ ...doc, title: titleOf(doc) }, t)}</p>
                         <p className="text-xs text-gray-500 mt-0.5">{documentByline(doc, t)}</p>
                         {doc.snippet && doc.snippet.includes('\u0001') && <Snippet text={doc.snippet} />}
                         {doc.ai_summary && (
