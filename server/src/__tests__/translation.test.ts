@@ -659,49 +659,72 @@ describe('specialties and test names in a language (the doctors and the trends)'
   /** Names no other test of this file has, so what the route gives for them is this test's alone. */
   async function uniquely(d: Awaited<ReturnType<typeof romanian>>, tag: string) {
     const store = getStore();
-    await store.measurements.update(OWNER_ID, d.id, d.measurementId, { name: `Hb-${tag}`, canonical: 'hemoglobin', valueText: '13,5', valueNum: 13.5, unit: 'g/dL', refLow: 12, refHigh: 16, flag: null, takenOn: '2026-01-01' });
+    await store.measurements.update(OWNER_ID, d.id, d.measurementId, { name: `Hb-${tag}`, canonical: `hemoglobin-${tag}`, valueText: '13,5', valueNum: 13.5, unit: 'g/dL', refLow: 12, refHigh: 16, flag: null, takenOn: '2026-01-01' });
     const doctor = (await store.doctors.upsert(OWNER_ID, { name: `Dr ${tag}`, specialty: `chirurg-${tag}` }, '2026-01-01'))!;
     await store.doctors.link(OWNER_ID, d.id, doctor, 'author');
-    return { test: `Hb-${tag}`, specialty: `chirurg-${tag}` };
+    return { test: `Hb-${tag}`, specialty: `chirurg-${tag}`, doctor };
   }
 
-  it('gives the wording the kept translations have, from documents whose details still match, and asks no model', async () => {
+  it('translates what has none in one call, in the background, keeps it by the text, and then asks no model', async () => {
     const d = await romanian();
     const { test, specialty } = await uniquely(d, uuidv4().slice(0, 8));
-    const before = (await names()).json();
-    expect(before.specialties[specialty]).toBeUndefined(); // nothing translated yet
-    await translateDocument(OWNER_ID, d.id, 'en');
     calls.length = 0;
-    const after = (await names()).json();
-    expect(after.specialties[specialty]).toBe(`EN[${specialty}]`);
-    expect(after.tests[test]).toBe(`EN[${test}]`);
+    const first = (await names()).json();
+    expect(first.pending).toBe(true);
+    expect(first.specialties[specialty]).toBeUndefined(); // the original shows until it is ready
+    await vi.waitFor(async () => expect((await names()).json().specialties[specialty]).toBe(`EN[${specialty}]`));
+    const done = (await names()).json();
+    expect(done.tests[test]).toBe(`EN[${test}]`);
+    expect(done.pending).toBe(false);
+
+    const asked = calls.filter(c => c.bundle.doctors.some(x => x.specialty === specialty));
+    expect(asked).toHaveLength(1); // the specialties and the tests together, not one call each
+    expect(JSON.stringify(asked[0].bundle)).toContain(test);
+    expect(asked[0].bundle).toMatchObject({ title: null, summary: null, notes: null, fields: [] });
+
+    calls.length = 0;
+    await names(); await names();
     expect(calls).toHaveLength(0);
-
-    await getStore().fields.update(OWNER_ID, d.id, d.custom, { label: 'observatie speciala', value: 'Repaus la pat' }); // the details changed: what was kept is not used
-    const stale = (await names()).json();
-    expect(stale.specialties[specialty]).toBeUndefined();
-    expect(stale.tests[test]).toBeUndefined();
   });
 
-  it('where documents word one thing differently, the wording most of them have wins, and the same one every time', async () => {
+  it('one translation for a text, whoever has it, and an edited name is a new text with nothing stale', async () => {
     const tag = uuidv4().slice(0, 8);
-    const docs = [await romanian(), await romanian(), await romanian()];
-    let specialty = '';
-    for (const d of docs) specialty = (await uniquely(d, tag)).specialty;
-    answer = bundle => { const out = mark(bundle); out.doctors = out.doctors.map(x => ({ ...x, specialty: 'GP' })); return out; };
-    await translateDocument(OWNER_ID, docs[0].id, 'en');
-    await translateDocument(OWNER_ID, docs[1].id, 'en');
-    answer = mark;
-    await translateDocument(OWNER_ID, docs[2].id, 'en');
-    for (let i = 0; i < 3; i++) expect((await names()).json().specialties[specialty]).toBe('GP');
+    const [a, b] = [await romanian(), await romanian()];
+    const { specialty, doctor } = await uniquely(a, tag);
+    await getStore().doctors.link(OWNER_ID, b.id, doctor, 'author'); // two documents name the same doctor
+    await names();
+    await vi.waitFor(async () => expect((await names()).json().specialties[specialty]).toBe(`EN[${specialty}]`));
+
+    await getStore().doctors.update(OWNER_ID, doctor, { specialty: `chirurg-nou-${tag}` });
+    const edited = (await names()).json();
+    expect(edited.specialties[specialty]).toBeUndefined(); // the old words are not shown for the new text
+    expect(edited.pending).toBe(true);
+    await vi.waitFor(async () => expect((await names()).json().specialties[`chirurg-nou-${tag}`]).toBe(`EN[chirurg-nou-${tag}]`));
   });
 
-  it('is the owner’s alone, only for a language that is offered, and needs a session', async () => {
+  it('uses a wording from the model only where it is a translation, and asks again after the pause', async () => {
     const d = await romanian();
-    await translateDocument(OWNER_ID, d.id, 'en');
+    const { specialty } = await uniquely(d, uuidv4().slice(0, 8));
+    answer = bundle => ({ ...mark(bundle), doctors: bundle.doctors.map(x => ({ id: x.id, specialty: `${x.specialty} -> ${'x'.repeat(200)}` })) });
+    await names();
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
+    await new Promise(r => setTimeout(r, 50));
+    expect((await names()).json().specialties[specialty]).toBeUndefined(); // a ramble is not kept; the original shows
+  });
+
+  it('asks nothing when translating is off, and is the owner’s alone for a language that is offered, with a session', async () => {
+    const d = await romanian();
+    const { specialty } = await uniquely(d, uuidv4().slice(0, 8));
+    process.env.SPINE_TRANSLATION = 'off';
+    calls.length = 0;
+    expect((await names()).json()).toMatchObject({ pending: false });
+    expect(calls).toHaveLength(0);
+    process.env.SPINE_TRANSLATION = 'on';
+
     const stranger = await createTestUser('names-stranger@spine.test');
-    expect(await keptNames(stranger.id, 'en')).toEqual({ specialties: {}, tests: {} });
-    expect((await names('xx')).json()).toEqual({ specialties: {}, tests: {} });
+    expect(await keptNames(stranger.id, 'en')).toEqual({ specialties: {}, tests: {}, pending: false });
+    expect((await names('xx')).json()).toEqual({ specialties: {}, tests: {}, pending: false });
     expect((await app.inject({ method: 'GET', url: '/api/translations/names?lang=en' })).statusCode).toBe(401);
+    expect(specialty).toBeTruthy();
   });
 });

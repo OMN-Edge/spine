@@ -601,44 +601,78 @@ export async function keptTexts(userId: string, documentIds: string[], language:
   return out;
 }
 
-/** The wording of doctors' specialties and of test names in a language, as the kept translations of the documents have them. */
+/** The wording of doctors' specialties and of test names in a language, and whether some is still being made. */
 export interface KeptNames {
   /** By the specialty as the directory has it. */
   specialties: Record<string, string>;
-  /** By the test's name as a document prints it. */
+  /** By the test's name as the trends list it. */
   tests: Record<string, string>;
+  pending: boolean;
 }
 
+const namesRunning = new Set<string>();
+const namesFailedAt = new Map<string, number>();
+
 /**
- * Specialties and test names in `language`, for the pages that list them across documents (the doctors, the trends), where no one translation
- * belongs to the thing listed: a doctor and a test are in many documents. They are read from the translations kept of the documents, only from
- * a document whose details still hash to what was translated, and where documents word one the same way differently the wording most of them
- * have wins (a tie goes to the first alphabetically), so a list does not change from one visit to the next. Nothing is stored and no model is asked;
- * a name appears once a document that holds it has been translated.
+ * Specialties and test names in `language`, for the pages that list them across documents (the doctors, the trends), where no one document's translation
+ * is theirs: a doctor and a test are in many documents. They are kept by the text (`name_translations`), so every doctor with a specialty and every
+ * document with a test gets the same words, and an edited name is a new text with nothing stale to find. What is not kept yet is translated in the
+ * background, all of it in one short call to the model (counted by the relay like a document's), and `pending` tells the page to ask again; with
+ * translation off, or while a failure is being waited out, nothing is asked and the original shows.
  */
 export async function keptNames(userId: string, language: SupportedLanguage): Promise<KeptNames> {
   const store = getStore();
-  const votes = { specialties: new Map<string, Map<string, number>>(), tests: new Map<string, Map<string, number>>() };
-  const vote = (kind: keyof typeof votes, original: string | null, translated: string | null | undefined) => {
-    const text = (translated ?? '').trim();
-    if (!original || !text || text === original.trim()) return;
-    const counts = votes[kind].get(original) ?? new Map<string, number>();
-    counts.set(text, (counts.get(text) ?? 0) + 1);
-    votes[kind].set(original, counts);
-  };
-  for (const row of await store.translations.forLanguage(userId, language)) {
-    const document = await store.documents.findFor(userId, row.documentId);
-    if (!document || document.language === language) continue;
-    let content: Kept;
-    try { content = JSON.parse(row.content) as Kept; } catch { continue; }
-    const source = await sourceOf(userId, document, language);
-    if (row.sourceHash !== source.hash && content.parts?.details !== source.parts.details) continue;
-    const [doctors, measurements] = [new Map((content.doctors ?? []).map(d => [d.id, d.specialty])), new Map((content.measurements ?? []).map(m => [m.id, m.name]))];
-    for (const d of source.bundle.doctors) vote('specialties', d.specialty, doctors.get(d.id));
-    for (const m of source.bundle.measurements) vote('tests', m.name, measurements.get(m.id));
+  const clean = (text: string | null | undefined) => (text ?? '').trim();
+  const specialties = new Set((await store.doctors.listFor(userId)).map(d => clean(d.specialty)).filter(Boolean));
+  const tests = new Set((await store.measurements.names(userId)).map(n => clean(n.name)).filter(Boolean));
+  const out: KeptNames = { specialties: {}, tests: {}, pending: false };
+  const have = new Set<string>();
+  for (const row of await store.nameTranslations.forLanguage(userId, language)) {
+    const inUse = row.kind === 'specialty' ? specialties : tests;
+    if (!inUse.has(row.sourceText)) continue;
+    have.add(`${row.kind}\u0000${row.sourceText}`);
+    if (row.translated !== row.sourceText) (row.kind === 'specialty' ? out.specialties : out.tests)[row.sourceText] = row.translated;
   }
-  const winners = (counts: Map<string, Map<string, number>>) => Object.fromEntries([...counts].map(([original, byText]) => [
-    original, [...byText].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0][0],
-  ]));
-  return { specialties: winners(votes.specialties), tests: winners(votes.tests) };
+  const missing = [
+    ...[...specialties].filter(t => !have.has(`specialty\u0000${t}`)).map(text => ({ kind: 'specialty' as const, text })),
+    ...[...tests].filter(t => !have.has(`test\u0000${t}`)).map(text => ({ kind: 'test' as const, text })),
+  ];
+  const key = `${userId}:${language}`;
+  const paused = Date.now() - (namesFailedAt.get(key) ?? 0) < FAILURE_PAUSE_MS;
+  if (missing.length === 0 || !translationEnabled() || paused) return out;
+  out.pending = true;
+  if (!namesRunning.has(key)) {
+    namesRunning.add(key);
+    void (async () => {
+      try {
+        const llm = getChatLlm();
+        const meta = { work: crypto.randomUUID(), pages: 1 };
+        for (let i = 0; i < missing.length; i += NAMES_PER_CALL) {
+          const part = missing.slice(i, i + NAMES_PER_CALL);
+          const asked = part.map((m, n) => ({ ...m, id: String(n) }));
+          const bundle: TranslationBundle = {
+            title: null, summary: null, notes: null, fields: [],
+            measurements: asked.filter(m => m.kind === 'test').map(m => ({ id: m.id, name: m.text })),
+            doctors: asked.filter(m => m.kind === 'specialty').map(m => ({ id: m.id, specialty: m.text })),
+          };
+          const answer = await translatePiece(bundle, b => llm.translate(b, LANGUAGE_NAMES[language], null, meta));
+          if (!answer) { namesFailedAt.set(key, Date.now()); continue; }
+          const said = new Map<string, string | null>([...answer.measurements.map(m => [m.id, m.name] as const), ...answer.doctors.map(d => [d.id, d.specialty] as const)]);
+          // The model's text is kept only where it is a translation and not a ramble; a name it could not do is asked for again after the pause.
+          const rows = asked.flatMap(m => { const text = said.get(m.id); return text && sound(text, m.text) ? [{ kind: m.kind, sourceText: m.text, translated: text.trim() }] : []; });
+          if (rows.length < asked.length) namesFailedAt.set(key, Date.now());
+          await store.nameTranslations.put(userId, language, rows, new Date().toISOString());
+        }
+      } catch (err) {
+        logger.warn('names could not be translated', { language, error: describeError(err) });
+        namesFailedAt.set(key, Date.now());
+      } finally {
+        namesRunning.delete(key);
+      }
+    })();
+  }
+  return out;
 }
+
+/** Specialties and test names asked of the model in one call. */
+const NAMES_PER_CALL = 80;

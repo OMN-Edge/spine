@@ -45,8 +45,8 @@ export function useListTitles(ids: string[], warm = true) {
 }
 
 /**
- * Specialties and test names in the interface language, for the pages that list them across documents: as the kept translations of the documents
- * word them (nothing is asked of a model), so a name shows in the original until a document that holds it has been translated.
+ * Specialties and test names in the interface language, for the pages that list them across documents: as kept (one translation for each text, so
+ * every doctor and every document with it says the same), and what is not kept yet is translated in the background and asked for again shortly.
  * Each gives the original back where there is nothing to show.
  */
 export function useNames() {
@@ -54,9 +54,14 @@ export function useNames() {
   const [names, setNames] = useState<{ specialties: Record<string, string>; tests: Record<string, string> }>({ specialties: {}, tests: {} });
   useEffect(() => {
     let live = true;
+    let timer: number | undefined;
+    let tries = 0;
     setNames({ specialties: {}, tests: {} });
-    api.documents.names(lang).then(r => { if (live) setNames(r); }).catch(() => undefined);
-    return () => { live = false; };
+    const load = () => api.documents.names(lang)
+      .then(r => { if (!live) return; setNames({ specialties: r.specialties, tests: r.tests }); if (r.pending && tries++ < 8) timer = window.setTimeout(load, 3000); })
+      .catch(() => undefined);
+    void load();
+    return () => { live = false; window.clearTimeout(timer); };
   }, [lang]);
   return useMemo(() => ({
     specialty: (text: string): string => names.specialties[text] ?? text,

@@ -64,10 +64,11 @@ export async function similarityRoutes(app: HttpApp) {
     return reply.header('Cache-Control', 'no-store').send({ titles, summaries, pending: warm && missing.length > 0 });
   });
 
-  // Specialties and test names in a language, as the kept translations of the owner's documents word them, for the pages that list them across documents.
+  // Specialties and test names in a language, as kept (`name_translations`), for the pages that list them across documents; what is not kept yet is translated in
+  // the background and `pending` tells the page to ask again.
   app.get<{ Querystring: { lang?: string } }>('/api/translations/names', async (req, reply) => {
     const language = req.query.lang;
-    if (!isSupportedLanguage(language)) return reply.header('Cache-Control', 'no-store').send({ specialties: {}, tests: {} });
+    if (!isSupportedLanguage(language)) return reply.header('Cache-Control', 'no-store').send({ specialties: {}, tests: {}, pending: false });
     return reply.header('Cache-Control', 'no-store').send(await keptNames(req.userId, language));
   });
 

@@ -284,6 +284,19 @@ CREATE TABLE IF NOT EXISTS document_translations (
   PRIMARY KEY (document_id, language)
 );
 
+-- The wording of a doctor's specialty or a test's name in another language, kept so every page that lists one shows the same words. It is
+-- keyed by the text itself, not by the doctor or the test: every doctor with that specialty gets the one translation, and an edited
+-- specialty is a different key, so nothing is stale and there is nothing to invalidate.
+CREATE TABLE IF NOT EXISTS name_translations (
+  user_id TEXT NOT NULL REFERENCES users(id),
+  kind TEXT NOT NULL, -- 'specialty' or 'test'
+  language TEXT NOT NULL,
+  source_text TEXT NOT NULL,
+  translated TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, kind, language, source_text)
+);
+
 -- A document's meaning as a vector, for finding what resembles it. \`model\` names the vector space (vectors of
 -- different models are never compared, so each is kept with the model that made it), and \`text_hash\` is a digest of
 -- exactly the text that was embedded: a vector is used only while the document still produces that text, so editing
