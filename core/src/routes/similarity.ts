@@ -2,7 +2,7 @@ import type { HttpApp } from '../http.js';
 import { getStore } from '../store/index.js';
 import { requireAuth } from './middleware.js';
 import { isSupportedLanguage } from '../languages.js';
-import { keptNames, keptTexts, translateDocument, warmTranslations } from '../translation.js';
+import { keptTerms, keptTexts, translateDocument, warmTranslations } from '../translation.js';
 import { embeddingStatus, hybridSearch, relatedTo, scheduleSync } from '../similarity/index.js';
 
 /** Related documents, and search by words and meaning together. Owner only; every call is scoped to the signed-in user. */
@@ -64,12 +64,12 @@ export async function similarityRoutes(app: HttpApp) {
     return reply.header('Cache-Control', 'no-store').send({ titles, summaries, pending: warm && missing.length > 0 });
   });
 
-  // Specialties and test names in a language, as kept (`name_translations`), for the pages that list them across documents; what is not kept yet is translated in
+  // Specialties and test names in a language, as kept (`term_translations`), for the pages that list them across documents; what is not kept yet is translated in
   // the background and `pending` tells the page to ask again.
-  app.get<{ Querystring: { lang?: string } }>('/api/translations/names', async (req, reply) => {
+  app.get<{ Querystring: { lang?: string } }>('/api/translations/terms', async (req, reply) => {
     const language = req.query.lang;
     if (!isSupportedLanguage(language)) return reply.header('Cache-Control', 'no-store').send({ specialties: {}, tests: {}, pending: false });
-    return reply.header('Cache-Control', 'no-store').send(await keptNames(req.userId, language));
+    return reply.header('Cache-Control', 'no-store').send(await keptTerms(req.userId, language));
   });
 
   // The documents that match some words, or mean something like them, merged by rank.

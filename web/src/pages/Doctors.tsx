@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type DoctorEntry, type DoctorSummary } from '../api';
 import { useI18n } from '../i18n';
-import { useNames } from '../useListTitles';
+import { useTerms } from '../useListTitles';
 import GuideTip from '../components/GuideTip';
 
 const DISMISSED = 'spine.doctors-not-the-same';
@@ -65,7 +65,7 @@ function Duplicates({ onMerged }: { onMerged: () => void }) {
 
 export default function Doctors() {
   const { t, tn } = useI18n();
-  const name = useNames();
+  const name = useTerms();
   const [doctors, setDoctors] = useState<DoctorEntry[] | null>(null);
   const [query, setQuery] = useState('');
 

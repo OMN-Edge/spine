@@ -132,7 +132,7 @@ export function userRepository(db: Database): UserRepository {
     'measurement_aliases',
     'document_doctors',
     'document_translations',
-    'name_translations',
+    'term_translations',
     'document_embeddings',
     'chat_messages',
     'chat_conversations',

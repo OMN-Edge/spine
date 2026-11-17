@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, type DoctorDetail, type DoctorEntry } from '../api';
 import { ROLE_LABELS } from '../components/DoctorsPanel';
 import { documentTitle } from '../titles';
-import { useListTitles, useNames } from '../useListTitles';
+import { useListTitles, useTerms } from '../useListTitles';
 import { useI18n } from '../i18n';
 import { Combobox } from '../components/Combobox';
 
@@ -15,7 +15,7 @@ export default function DoctorPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [doctor, setDoctor] = useState<DoctorDetail | null>(null);
-  const names = useNames();
+  const names = useTerms();
   const { titleOf } = useListTitles((doctor?.documents ?? []).map(d => d.id), false);
   const [missing, setMissing] = useState(false);
   const [others, setOthers] = useState<DoctorEntry[]>([]);

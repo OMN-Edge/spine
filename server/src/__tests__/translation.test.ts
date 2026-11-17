@@ -5,7 +5,7 @@ import { OWNER_ID, createTestUser, seedPage, seedSourceFile, seedShareLink } fro
 import { getStore } from 'spine-core/store/index.js';
 import { resetChatLlm, type ChatLlm, type TranslationBundle } from 'spine-core/llm/index.js';
 import { LlmBlockedError } from 'spine-core/llm/types.js';
-import { keptNames, translateDocument } from 'spine-core/translation.js';
+import { keptTerms, translateDocument } from 'spine-core/translation.js';
 import { SUPPORTED_LANGUAGES } from 'spine-core/languages.js';
 
 /**
@@ -654,7 +654,7 @@ describe('titles of the owner’s documents in a language (the chat’s sources)
 });
 
 describe('specialties and test names in a language (the doctors and the trends)', () => {
-  const names = (lang = 'en', who = cookie) => app.inject({ method: 'GET', url: `/api/translations/names?lang=${lang}`, headers: { cookie: who } });
+  const names = (lang = 'en', who = cookie) => app.inject({ method: 'GET', url: `/api/translations/terms?lang=${lang}`, headers: { cookie: who } });
 
   /** Names no other test of this file has, so what the route gives for them is this test's alone. */
   async function uniquely(d: Awaited<ReturnType<typeof romanian>>, tag: string) {
@@ -722,9 +722,9 @@ describe('specialties and test names in a language (the doctors and the trends)'
     process.env.SPINE_TRANSLATION = 'on';
 
     const stranger = await createTestUser('names-stranger@spine.test');
-    expect(await keptNames(stranger.id, 'en')).toEqual({ specialties: {}, tests: {}, pending: false });
+    expect(await keptTerms(stranger.id, 'en')).toEqual({ specialties: {}, tests: {}, pending: false });
     expect((await names('xx')).json()).toEqual({ specialties: {}, tests: {}, pending: false });
-    expect((await app.inject({ method: 'GET', url: '/api/translations/names?lang=en' })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'GET', url: '/api/translations/terms?lang=en' })).statusCode).toBe(401);
     expect(specialty).toBeTruthy();
   });
 });

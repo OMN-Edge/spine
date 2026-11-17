@@ -602,7 +602,7 @@ export async function keptTexts(userId: string, documentIds: string[], language:
 }
 
 /** The wording of doctors' specialties and of test names in a language, and whether some is still being made. */
-export interface KeptNames {
+export interface KeptTerms {
   /** By the specialty as the directory has it. */
   specialties: Record<string, string>;
   /** By the test's name as the trends list it. */
@@ -610,24 +610,24 @@ export interface KeptNames {
   pending: boolean;
 }
 
-const namesRunning = new Set<string>();
-const namesFailedAt = new Map<string, number>();
+const termsRunning = new Set<string>();
+const termsFailedAt = new Map<string, number>();
 
 /**
  * Specialties and test names in `language`, for the pages that list them across documents (the doctors, the trends), where no one document's translation
- * is theirs: a doctor and a test are in many documents. They are kept by the text (`name_translations`), so every doctor with a specialty and every
+ * is theirs: a doctor and a test are in many documents. They are kept by the text (`term_translations`), so every doctor with a specialty and every
  * document with a test gets the same words, and an edited name is a new text with nothing stale to find. What is not kept yet is translated in the
  * background, all of it in one short call to the model (counted by the relay like a document's), and `pending` tells the page to ask again; with
  * translation off, or while a failure is being waited out, nothing is asked and the original shows.
  */
-export async function keptNames(userId: string, language: SupportedLanguage): Promise<KeptNames> {
+export async function keptTerms(userId: string, language: SupportedLanguage): Promise<KeptTerms> {
   const store = getStore();
   const clean = (text: string | null | undefined) => (text ?? '').trim();
   const specialties = new Set((await store.doctors.listFor(userId)).map(d => clean(d.specialty)).filter(Boolean));
   const tests = new Set((await store.measurements.names(userId)).map(n => clean(n.name)).filter(Boolean));
-  const out: KeptNames = { specialties: {}, tests: {}, pending: false };
+  const out: KeptTerms = { specialties: {}, tests: {}, pending: false };
   const have = new Set<string>();
-  for (const row of await store.nameTranslations.forLanguage(userId, language)) {
+  for (const row of await store.termTranslations.forLanguage(userId, language)) {
     const inUse = row.kind === 'specialty' ? specialties : tests;
     if (!inUse.has(row.sourceText)) continue;
     have.add(`${row.kind}\u0000${row.sourceText}`);
@@ -638,17 +638,17 @@ export async function keptNames(userId: string, language: SupportedLanguage): Pr
     ...[...tests].filter(t => !have.has(`test\u0000${t}`)).map(text => ({ kind: 'test' as const, text })),
   ];
   const key = `${userId}:${language}`;
-  const paused = Date.now() - (namesFailedAt.get(key) ?? 0) < FAILURE_PAUSE_MS;
+  const paused = Date.now() - (termsFailedAt.get(key) ?? 0) < FAILURE_PAUSE_MS;
   if (missing.length === 0 || !translationEnabled() || paused) return out;
   out.pending = true;
-  if (!namesRunning.has(key)) {
-    namesRunning.add(key);
+  if (!termsRunning.has(key)) {
+    termsRunning.add(key);
     void (async () => {
       try {
         const llm = getChatLlm();
         const meta = { work: crypto.randomUUID(), pages: 1 };
-        for (let i = 0; i < missing.length; i += NAMES_PER_CALL) {
-          const part = missing.slice(i, i + NAMES_PER_CALL);
+        for (let i = 0; i < missing.length; i += TERMS_PER_CALL) {
+          const part = missing.slice(i, i + TERMS_PER_CALL);
           const asked = part.map((m, n) => ({ ...m, id: String(n) }));
           const bundle: TranslationBundle = {
             title: null, summary: null, notes: null, fields: [],
@@ -656,18 +656,18 @@ export async function keptNames(userId: string, language: SupportedLanguage): Pr
             doctors: asked.filter(m => m.kind === 'specialty').map(m => ({ id: m.id, specialty: m.text })),
           };
           const answer = await translatePiece(bundle, b => llm.translate(b, LANGUAGE_NAMES[language], null, meta));
-          if (!answer) { namesFailedAt.set(key, Date.now()); continue; }
+          if (!answer) { termsFailedAt.set(key, Date.now()); continue; }
           const said = new Map<string, string | null>([...answer.measurements.map(m => [m.id, m.name] as const), ...answer.doctors.map(d => [d.id, d.specialty] as const)]);
           // The model's text is kept only where it is a translation and not a ramble; a name it could not do is asked for again after the pause.
           const rows = asked.flatMap(m => { const text = said.get(m.id); return text && sound(text, m.text) ? [{ kind: m.kind, sourceText: m.text, translated: text.trim() }] : []; });
-          if (rows.length < asked.length) namesFailedAt.set(key, Date.now());
-          await store.nameTranslations.put(userId, language, rows, new Date().toISOString());
+          if (rows.length < asked.length) termsFailedAt.set(key, Date.now());
+          await store.termTranslations.put(userId, language, rows, new Date().toISOString());
         }
       } catch (err) {
-        logger.warn('names could not be translated', { language, error: describeError(err) });
-        namesFailedAt.set(key, Date.now());
+        logger.warn('terms could not be translated', { language, error: describeError(err) });
+        termsFailedAt.set(key, Date.now());
       } finally {
-        namesRunning.delete(key);
+        termsRunning.delete(key);
       }
     })();
   }
@@ -675,4 +675,4 @@ export async function keptNames(userId: string, language: SupportedLanguage): Pr
 }
 
 /** Specialties and test names asked of the model in one call. */
-const NAMES_PER_CALL = 80;
+const TERMS_PER_CALL = 80;

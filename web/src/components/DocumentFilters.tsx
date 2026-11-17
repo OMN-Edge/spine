@@ -3,7 +3,7 @@ import { api, type Episode } from '../api';
 import { useI18n } from '../i18n';
 import { Combobox } from './Combobox';
 import { episodeName } from './episode';
-import { useNames } from '../useListTitles';
+import { useTerms } from '../useListTitles';
 
 /**
  * The filters beyond type and dates (FR-ORG-03): the facility a document came from, the specialty of a doctor named on it, and the
@@ -16,7 +16,7 @@ export default function DocumentFilters({ value, onChange, className, wrapperCla
   wrapperClassName?: string;
 }) {
   const { t } = useI18n();
-  const names = useNames();
+  const names = useTerms();
   const [providers, setProviders] = useState<string[]>([]);
   const [specialties, setSpecialties] = useState<string[]>([]);
   const [episodes, setEpisodes] = useState<Episode[]>([]);

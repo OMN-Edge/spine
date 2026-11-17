@@ -49,7 +49,7 @@ export function useListTitles(ids: string[], warm = true) {
  * every doctor and every document with it says the same), and what is not kept yet is translated in the background and asked for again shortly.
  * Each gives the original back where there is nothing to show.
  */
-export function useNames() {
+export function useTerms() {
   const { lang } = useI18n();
   const [names, setNames] = useState<{ specialties: Record<string, string>; tests: Record<string, string> }>({ specialties: {}, tests: {} });
   useEffect(() => {
@@ -57,7 +57,7 @@ export function useNames() {
     let timer: number | undefined;
     let tries = 0;
     setNames({ specialties: {}, tests: {} });
-    const load = () => api.documents.names(lang)
+    const load = () => api.documents.terms(lang)
       .then(r => { if (!live) return; setNames({ specialties: r.specialties, tests: r.tests }); if (r.pending && tries++ < 8) timer = window.setTimeout(load, 3000); })
       .catch(() => undefined);
     void load();
