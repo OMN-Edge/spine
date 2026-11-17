@@ -75,4 +75,3 @@ const PLAN_TEXT = {
   feature: msg('This is not part of your plan. See the plans on your account page.'),
 } as const;
 
-export const formatBytes = (n: number): string => (n >= 1024 ** 3 ? `${(n / 1024 ** 3).toFixed(1)} GB` : `${Math.max(1, Math.round(n / 1024 ** 2))} MB`);

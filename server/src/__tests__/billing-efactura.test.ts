@@ -342,14 +342,17 @@ describe('Spine’s own e-Factura link', () => {
       await expect(issuerOver(anaf({}).fetcher).sendToAnaf({ id: 'cs_wait', series: 'SPN', number: '1' })).rejects.toBeInstanceOf(AnafError);
     });
 
-    it('have a PDF made by the Ministry’s converter from the document’s XML, and a clear word where it is not one', async () => {
+    it('have a PDF made here from the stored document with no request to ANAF, and the Ministry’s converter kept for comparison, with a clear word where it is not one', async () => {
       const issuer = issuerOver(anaf({}).fetcher);
       await issuer.issue(draft({ id: 'cs_pdf' }));
+      const own = anaf({});
+      expect((await issuerOver(own.fetcher).pdf('cs_pdf')).subarray(0, 4).toString('latin1')).toBe('%PDF');
+      expect(own.calls).toEqual([]);
       const { calls, fetcher } = anaf({ '/transformare/FACT1': [Buffer.from('%PDF-1.4 test')] });
-      expect((await issuerOver(fetcher).pdf('cs_pdf')).toString()).toBe('%PDF-1.4 test');
+      expect((await issuerOver(fetcher).pdfByAnaf('cs_pdf')).toString()).toBe('%PDF-1.4 test');
       expect(calls[0]).toMatchObject({ method: 'POST', url: 'https://webservicesp.anaf.ro/prod/FCTEL/rest/transformare/FACT1' });
       expect(calls[0]!.body).toContain('<Invoice');
-      await expect(issuerOver(anaf({ '/transformare/FACT1': ['<html>nope</html>'] }).fetcher).pdf('cs_pdf')).rejects.toThrow(/did not return a PDF/);
+      await expect(issuerOver(anaf({ '/transformare/FACT1': ['<html>nope</html>'] }).fetcher).pdfByAnaf('cs_pdf')).rejects.toThrow(/did not return a PDF/);
     });
   });
 
@@ -431,12 +434,14 @@ describe('Spine’s own e-Factura link', () => {
       await efactura.issuer.issue({ id: 'cs_route_pdf', paidAt: '2026-11-16T09:00:00.000Z', currency: 'RON', sendEmail: false, buyer: { name: 'Ion', email: 'i@spine.test', country: 'RO', city: 'Cluj', region: 'CJ', address: 'Str. 1' }, lines: [{ name: 'Plan', amountMinor: 4900, quantity: 1, vatPercent: 0 }] });
       const link = new URL(await efactura.issuer.pdfUrl({ id: 'cs_route_pdf' }));
       expect(link.origin).toBe('https://spine.test');
-      vi.stubGlobal('fetch', vi.fn(async () => new Response(Buffer.from('%PDF-1.4 route'))));
+      const noNetwork = vi.fn(async () => { throw new Error('no network'); });
+      vi.stubGlobal('fetch', noNetwork);
       const ok = await app.inject({ method: 'GET', url: `${link.pathname}${link.search}` });
       expect(ok.statusCode).toBe(200);
       expect(ok.headers['content-type']).toBe('application/pdf');
       expect(ok.headers['cache-control']).toContain('no-store');
-      expect(ok.body).toBe('%PDF-1.4 route');
+      expect(ok.body.startsWith('%PDF')).toBe(true);
+      expect(noNetwork).not.toHaveBeenCalled();
       expect((await app.inject({ method: 'GET', url: link.pathname })).statusCode).toBe(404);
       expect((await app.inject({ method: 'GET', url: `${link.pathname}?t=1.forged` })).statusCode).toBe(404);
       expect((await app.inject({ method: 'GET', url: `${link.pathname.replace('cs_route_pdf', 'cs_other')}${link.search}` })).statusCode).toBe(404);

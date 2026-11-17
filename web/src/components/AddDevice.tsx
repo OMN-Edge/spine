@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { api, type EnrolmentOffer } from '../api';
-import { buttonClass, Notice } from './AuthCard';
+import { Notice, secondaryButtonClass } from './AuthCard';
 import { useI18n } from '../i18n';
 import { vaultState } from '../crypto/vault-state';
 import { showCode } from '../crypto/enrolment';
@@ -100,7 +100,7 @@ export default function AddDevice() {
           <button type="button" onClick={() => void cancel()} className="text-sm text-gray-500 hover:underline">{t('Cancel')}</button>
         </div>
       ) : open ? (
-        <button type="button" onClick={start} disabled={busy} className={buttonClass}>{t('Show a code')}</button>
+        <button type="button" onClick={start} disabled={busy} className={secondaryButtonClass}>{t('Show a code')}</button>
       ) : (
         <p className="text-sm text-gray-500">{t('Unlock your records first, then come back here.')}</p>
       )}

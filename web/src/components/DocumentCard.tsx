@@ -1,7 +1,8 @@
 import { Link } from 'react-router-dom';
 import { msg, useI18n } from '../i18n';
+import { useFormat } from '../format';
 import AiLabel from './AiLabel';
-import { documentTitle } from '../titles';
+import { documentTitle, pageRef } from '../titles';
 
 export const DOC_TYPE_LABELS: Record<string, string> = {
   lab_result: msg('Lab'),
@@ -30,6 +31,7 @@ export default function DocumentCard({ doc, to, owner = true }: {
   owner?: boolean;
 }) {
   const { t, tn } = useI18n();
+  const format = useFormat();
   const typeLabel = doc.doc_type ? t(DOC_TYPE_LABELS[doc.doc_type] ?? doc.doc_type) : t('Unknown');
   const typeColor = doc.doc_type ? DOC_TYPE_COLORS[doc.doc_type] ?? 'bg-gray-100 text-gray-600' : 'bg-gray-100 text-gray-600';
 
@@ -42,6 +44,7 @@ export default function DocumentCard({ doc, to, owner = true }: {
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-1">
             <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${typeColor}`}>{typeLabel}</span>
+            <span className="text-xs text-gray-500 sm:hidden">{[doc.doc_date ? format.date(doc.doc_date) : null, owner ? pageRef(doc.page_start, doc.page_end, t) : null].filter(Boolean).join(' · ')}</span>
             {owner && !doc.reviewed && (
               <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
                 {t('Unreviewed')}
@@ -59,13 +62,9 @@ export default function DocumentCard({ doc, to, owner = true }: {
             <p className="text-sm text-gray-500 mt-1 line-clamp-5"><AiLabel className="mr-1.5" />{doc.ai_summary}</p>
           )}
         </div>
-        <div className="text-right shrink-0">
-          <p className="text-sm text-gray-900">{doc.doc_date ?? '—'}</p>
-          {owner && (
-            <p className="text-xs text-gray-400 mt-0.5">
-              {doc.page_start === doc.page_end ? t('p. {n}', { n: doc.page_start }) : t('p. {from}–{to}', { from: doc.page_start, to: doc.page_end })}
-            </p>
-          )}
+        <div className="hidden text-right shrink-0 sm:block">
+          <p className="text-sm text-gray-900">{doc.doc_date ? format.date(doc.doc_date) : '—'}</p>
+          {owner && pageRef(doc.page_start, doc.page_end, t) && <p className="text-xs text-gray-400 mt-0.5">{pageRef(doc.page_start, doc.page_end, t)}</p>}
         </div>
       </div>
     </Link>

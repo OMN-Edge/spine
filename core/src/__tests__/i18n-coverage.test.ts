@@ -92,3 +92,20 @@ describe('web interface translations', () => {
     });
   }
 });
+
+/**
+ * The Romanian screens speak to the reader as "tu", everywhere: warm, and one register on a page (T-24). A string that slips back into "dumneavoastră", "vă" or a formal verb
+ * ("alegeți", "puteți") fails here, and the word for what a person keeps is "documente", not "înregistrări", which reads as recordings or registrations.
+ */
+describe('the Romanian interface', () => {
+  const ro = JSON.parse(readFileSync(join(WEB, 'i18n/ro.json'), 'utf8')) as Record<string, string>;
+  const FORMAL = /(?<![\p{L}-])(dumneavoastră|dvs|vă|Vă|vostru|voastră|puteți|aveți|sunteți|alegeți|încercați|apăsați|introduceți|deschideți)(?![\p{L}])|-vă(?![\p{L}])|(?<![\p{L}])v-\p{L}/u;
+
+  it('addresses the reader as "tu" and never as "dumneavoastră"', () => {
+    expect(Object.entries(ro).filter(([, value]) => FORMAL.test(value)).map(([key]) => key)).toEqual([]);
+  });
+
+  it('calls what a person keeps "documente", never "înregistrările"', () => {
+    expect(Object.entries(ro).filter(([, value]) => /înregistrări/i.test(value)).map(([key]) => key)).toEqual([]);
+  });
+});

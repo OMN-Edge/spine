@@ -4,7 +4,7 @@ import { buildTestApp, loginAs } from './helpers/app.js';
 import { createTestUser, TEST_PASSWORD } from './helpers/seed.js';
 import { createRelayGate } from '../plans/gate.js';
 import { watchBudget } from '../plans/budget.js';
-import { dashboardOf } from '../dashboard.js';
+import { dashboardOf, stateOf } from '../dashboard.js';
 import { resetMailer, type Mailer, type MailMessage } from '../mail/index.js';
 import { runJobs, JOBS } from '../jobs.js';
 import { forgetOperatorSettings } from '../operator-settings.js';
@@ -202,5 +202,35 @@ describe('the dashboard', () => {
     const ran: string[] = [];
     const failed = await runJobs(() => undefined, [{ name: 'a', run: async () => { throw new Error('x'); } }, { name: 'b', run: async () => { ran.push('b'); } }]);
     expect([failed, ran]).toEqual([1, ['b']]);
+  });
+
+});
+
+/** A target for a month is not failed on the first day (T-10): neutral when too early, and pro-rated to the days that have passed. */
+describe('where a guardrail stands', () => {
+  it('is neutral with less than a week of data, however far from the target', () => {
+    for (const day of [0, 1, 3, 6.9]) expect(stateOf(1, 300, true, day, true)).toBe('early');
+    expect(stateOf(null, 300, true, 1, true)).toBe('ok');
+  });
+
+  it('measures a 30-day target against the days that have passed: one sign-up on day 8 of a target of 300 is far behind, 80 is on track', () => {
+    expect(stateOf(1, 300, true, 8, true)).toBe('red');
+    expect(stateOf(80, 300, true, 8, true)).toBe('ok');
+    expect(stateOf(65, 300, true, 8, true)).toBe('amber');
+  });
+
+  it('is red on day 20 with a tenth of the target, and on track at two-thirds of it', () => {
+    expect(stateOf(30, 300, true, 20, true)).toBe('red');
+    expect(stateOf(200, 300, true, 20, true)).toBe('ok');
+  });
+
+  it('holds the whole target after the window, so day 45 is judged on 300 and not on more', () => {
+    expect(stateOf(300, 300, true, 45, true)).toBe('ok');
+    expect(stateOf(100, 300, true, 45, true)).toBe('red');
+  });
+
+  it('does not pro-rate a target that is not counted over the window, but is still neutral early on', () => {
+    expect(stateOf(10, 40, true, 3)).toBe('early');
+    expect(stateOf(10, 40, true, 20)).toBe('red');
   });
 });

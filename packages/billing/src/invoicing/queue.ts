@@ -28,6 +28,8 @@ export interface InvoicingContext {
   config: InvoicingSettings;
   /** The sale as the payment provider says it. */
   readSale: (ref: string) => Promise<Sale>;
+  /** Told once when a document is made (an invoice, or a credit note for a refund), where the issuer sends the buyer nothing itself; a failure is the host's to log, never the invoice's. */
+  made?: (document: { ref: string; userId: string | null; number: string; credit: boolean }) => Promise<void>;
   now?: () => Date;
 }
 
@@ -96,6 +98,7 @@ export async function processInvoice(ref: string, ctx: InvoicingContext): Promis
     const eu = sale ? await euMinorOf(sale) : undefined;
     await store.billing.updateInvoice(ref, { state: next, attempts: 0, last_error: null, issuer_ref: issued.id, series: issued.series, number: issued.number, next_attempt_at: now().toISOString(), ...(eu === undefined ? {} : { eu_minor: eu }) }, now().toISOString());
     await store.metrics.bump('invoice_issued', now().toISOString().slice(0, 10));
+    if (!ctx.config.mail && ctx.made) await ctx.made({ ref, userId: current.user_id, number: `${issued.series}-${issued.number}`, credit: isStorno(ref) }).catch(err => logger.warn('nobody was told of an invoice', { ref, reason: err instanceof Error ? err.message : String(err) }));
     if (next === 'done') return 'done';
     current = { ...current, state: 'issued', attempts: 0, issuer_ref: issued.id, series: issued.series, number: issued.number };
   }

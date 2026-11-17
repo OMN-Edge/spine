@@ -68,6 +68,44 @@ describe('inspecting a link', () => {
   });
 });
 
+describe('what the owner tells the doctor', () => {
+  const overview = { by: 'Ana Exemplu', note: 'For a new endocrinologist', now: { medications: ['Levothyroxine 50 µg, once a day'], allergies: ['penicillin'], conditions: [], written_on: '2026-11-17' } };
+
+  it('is kept with the link and given to the page the recipient opens, with when it was made and when it ends, and the owner’s own label stays theirs', async () => {
+    const { id } = await make({ overview });
+    const meta = (await app.inject({ method: 'GET', url: `/api/share/${id}/meta` })).json();
+    expect(meta.overview).toEqual(overview);
+    expect(new Date(meta.expires_at).getTime()).toBeGreaterThan(Date.now());
+    expect(typeof meta.created_at).toBe('string');
+    expect(JSON.stringify(meta)).not.toContain('For Dr. Invented');
+  });
+
+  it('is nothing for a link made without it, and for one whose owner left every part empty', async () => {
+    const { id } = await make();
+    expect((await app.inject({ method: 'GET', url: `/api/share/${id}/meta` })).json().overview).toBeNull();
+    const blank = await make({ overview: { by: '', note: '', now: { medications: [], allergies: [], conditions: [], written_on: '' } } });
+    expect((await app.inject({ method: 'GET', url: `/api/share/${blank.id}/meta` })).json().overview).toBeNull();
+  });
+
+  it('is refused when it is not what it should be, instead of being kept', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/share-links', headers: { cookie: owner }, payload: { scope: 'document_ids', scope_value: [docA], overview: { by: 'x'.repeat(500) } } });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toContain('overview');
+  });
+
+  it('can be changed or taken away later, and the history says that it changed but never what it said', async () => {
+    const { id } = await make({ overview });
+    expect((await patch(id, { overview: { by: null, note: 'Changed note' } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'GET', url: `/api/share/${id}/meta` })).json().overview).toEqual({ by: null, note: 'Changed note', now: null });
+    expect((await patch(id, { overview: null })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'GET', url: `/api/share/${id}/meta` })).json().overview).toBeNull();
+    const events = (await detail(id)).json().events as Array<{ kind: string; detail: string }>;
+    expect(events.some(e => e.kind === 'changed' && JSON.parse(e.detail).changes.some((c: { field: string }) => c.field === 'overview'))).toBe(true);
+    expect(JSON.stringify(events)).not.toContain('Changed note');
+    expect(JSON.stringify(events)).not.toContain('Levothyroxine');
+  });
+});
+
 describe('changing a link', () => {
   it('changes its options and name, keeps what it was in the history, and applies at once', async () => {
     const { id } = await make();

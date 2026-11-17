@@ -68,7 +68,7 @@ export async function similarityRoutes(app: HttpApp) {
   // the background and `pending` tells the page to ask again.
   app.get<{ Querystring: { lang?: string } }>('/api/translations/terms', async (req, reply) => {
     const language = req.query.lang;
-    if (!isSupportedLanguage(language)) return reply.header('Cache-Control', 'no-store').send({ specialties: {}, tests: {}, pending: false });
+    if (!isSupportedLanguage(language)) return reply.header('Cache-Control', 'no-store').send({ specialties: {}, tests: {}, tags: {}, episodes: {}, pending: false });
     return reply.header('Cache-Control', 'no-store').send(await keptTerms(req.userId, language));
   });
 

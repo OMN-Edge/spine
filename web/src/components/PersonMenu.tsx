@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { openPerson, type People } from '../profiles';
+import { openPerson, personLabel, type People } from '../profiles';
 import { useI18n } from '../i18n';
 import { TOP_BAR_CONTROL } from './LanguageSwitcher';
 
@@ -44,7 +44,7 @@ export default function PersonMenu({ people }: { people: People }) {
         <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-brand-600" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" aria-hidden="true">
           <circle cx="12" cy="8" r="3.5" /><path d="M5 20a7 7 0 0 1 14 0" />
         </svg>
-        <span className="truncate font-medium text-gray-900">{current?.name ?? t('People')}</span>
+        <span className="truncate font-medium text-gray-900">{current ? personLabel(current.name, t) : t('People')}</span>
         <span aria-hidden className="text-gray-400 text-xs">▾</span>
       </button>
       {open && (
@@ -54,7 +54,7 @@ export default function PersonMenu({ people }: { people: People }) {
               key={p.id} role="menuitemradio" aria-checked={p.id === people.current} type="button" onClick={() => void choose(p.id)}
               className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-gray-900 hover:bg-brand-50"
             >
-              <span className="truncate">{p.name}{p.shared && <span className="block text-xs text-gray-500 truncate">{t('Shared by {owner}', { owner: p.shared.owner })}</span>}</span>
+              <span className="truncate">{personLabel(p.name, t)}{p.shared && <span className="block text-xs text-gray-500 truncate">{t('Shared by {owner}', { owner: p.shared.owner })}</span>}</span>
               {p.id === people.current && <span className="text-xs text-green-700">{t('Open now')}</span>}
             </button>
           ))}

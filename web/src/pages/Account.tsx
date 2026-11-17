@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../auth';
-import { buttonClass, inputClass, Notice } from '../components/AuthCard';
+import { inputClass, Notice, secondaryButtonClass } from '../components/AuthCard';
 import TwoFactor from '../components/TwoFactor';
 import Sessions from '../components/Sessions';
 import YourData from '../components/YourData';
 import PlanCard from '../components/PlanCard';
+import AdministrationCard from '../components/AdministrationCard';
 import SeatsCard from '../components/SeatsCard';
 import Passkeys from '../components/Passkeys';
 import AddDevice from '../components/AddDevice';
@@ -85,7 +86,7 @@ export default function Account() {
             value={again} onChange={e => setAgain(e.target.value)} className={inputClass} />
           {error && <Notice kind="error">{error}</Notice>}
           {done && <Notice kind="ok">{t('Password changed. Your other sessions have been signed out.')}</Notice>}
-          <button type="submit" className={buttonClass}>{t('Change password')}</button>
+          <button type="submit" className={secondaryButtonClass}>{t('Change password')}</button>
         </form>
         <TwoFactor />
         <Passkeys />
@@ -98,6 +99,7 @@ export default function Account() {
 
         <h2 id="data" className={heading}>{t('Data and privacy')}</h2>
         <YourData />
+        <AdministrationCard />
       </div>
     </div>
   );

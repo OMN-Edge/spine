@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
-import { buttonClass, inputClass, Notice } from './AuthCard';
+import { inputClass, Notice, secondaryButtonClass } from './AuthCard';
 import { useI18n } from '../i18n';
 import { prfSupported } from '../crypto/passkey-prf';
 
@@ -66,7 +66,7 @@ export default function Passkeys() {
       )}
       <input value={name} onChange={e => setName(e.target.value)} maxLength={60} placeholder={t('Name for this passkey (optional)')} aria-label={t('Name for this passkey (optional)')} className={inputClass} />
       {error && <Notice kind="error">{error}</Notice>}
-      <button type="button" onClick={add} disabled={busy} className={buttonClass}>{t('Add a passkey on this device')}</button>
+      <button type="button" onClick={add} disabled={busy} className={secondaryButtonClass}>{t('Add a passkey on this device')}</button>
     </section>
   );
 }

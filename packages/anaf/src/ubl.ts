@@ -28,6 +28,9 @@ export interface UblSeller {
   sector?: string;
   postalCode: string;
   email?: string;
+  /** Where the company banks: shown on the invoice for a reader, not part of the XML (a card payment has no payee account). */
+  bank?: string;
+  iban?: string;
 }
 
 export interface UblBuyer {

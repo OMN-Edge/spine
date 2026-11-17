@@ -19,6 +19,8 @@ import { accountRoutes } from './routes/accounts.js';
 import { waitlistRoutes } from './routes/waitlist.js';
 import { delegationRoutes } from './routes/delegation.js';
 import { billingRoutes } from './routes/billing.js';
+import { sellerNameWarning } from './billing/invoicing/config.js';
+import { operatorInfo } from './legal.js';
 import { familyRoutes } from './routes/family.js';
 import { reminderRoutes } from './routes/reminders.js';
 import { ownAccountRoutes } from './routes/own-account.js';
@@ -99,6 +101,10 @@ useLogger({
 // credential. The settings a device is given were validated with the rest of the config above; the provider's own (endpoint, region,
 // project, no stray Google key: P3, M-8) are the relay's, which checks them and says where its calls go when it starts. P8: residency has
 // to be observable, so log what the device is told to use.
+{
+  const mismatch = sellerNameWarning(config.invoicing, operatorInfo()?.name);
+  if (mismatch) app.log.warn(mismatch);
+}
 app.log.info(
   {
     model: config.llm.model, models: config.llm.models.map(m => m.id), embeddings: config.embeddings.adapter !== 'none',

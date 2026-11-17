@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type Reminder } from '../api';
 import { useI18n } from '../i18n';
+import { useFormat } from '../format';
 import { buttonClass, inputClass } from '../components/AuthCard';
 import { useListTitles } from '../useListTitles';
 
@@ -14,6 +15,7 @@ const box = 'bg-white border border-gray-200 rounded-xl p-4';
  */
 export default function Reminders() {
   const { t } = useI18n();
+  const format = useFormat();
   const [rows, setRows] = useState<Reminder[] | null>(null);
   const { titleOf } = useListTitles((rows ?? []).map(r => r.document_id), false);
   const [notice, setNotice] = useState('');
@@ -34,7 +36,7 @@ export default function Reminders() {
   const of = (status: Reminder['status']) => rows.filter(r => r.status === status);
   const editing = (r: Reminder) => draft[r.id] ?? { text: r.text, due_on: r.due_on };
   const from = (r: Reminder) => <Link to={`/documents/${r.document_id}`} className="text-brand-700 hover:underline">{titleOf({ id: r.document_id, title: r.document_title }) || t('Document')}</Link>;
-  const day = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString();
+  const day = (iso: string) => format.date(iso);
 
   return (
     <div className="max-w-2xl">

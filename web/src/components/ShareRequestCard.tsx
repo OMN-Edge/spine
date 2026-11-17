@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api, type ShareRequest } from '../api';
 import { useI18n } from '../i18n';
+import { useFormat } from '../format';
 import { countryName } from '../i18n/useTranslation';
 
 /**
@@ -9,6 +10,7 @@ import { countryName } from '../i18n/useTranslation';
  */
 export default function ShareRequestCard({ request, onDecided }: { request: ShareRequest; onDecided: (r: ShareRequest) => void }) {
   const { t, lang } = useI18n();
+  const format = useFormat();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   // A request is approved only after the owner has checked the code with the visitor (SECURITY.md S-40).
@@ -31,7 +33,7 @@ export default function ShareRequestCard({ request, onDecided }: { request: Shar
     <div className="bg-white border border-gray-200 rounded-xl p-4">
       <p className="text-sm font-medium text-gray-900">{request.link_label ?? t('A share link')}</p>
       <dl className="mt-2 text-xs text-gray-600 space-y-1">
-        <div><dt className="inline text-gray-500">{t('Asked')}: </dt><dd className="inline">{new Date(request.requested_at).toLocaleString()}</dd></div>
+        <div><dt className="inline text-gray-500">{t('Asked')}: </dt><dd className="inline">{format.dateTime(request.requested_at)}</dd></div>
         {request.ip_address && <div><dt className="inline text-gray-500">{t('Country')}: </dt><dd className="inline">{countryName(request.ip_address, lang) ?? request.ip_address}</dd></div>}
         {request.note && <div><dt className="inline text-gray-500">{t('Their note')}: </dt><dd className="inline break-words">{request.note}</dd></div>}
       </dl>

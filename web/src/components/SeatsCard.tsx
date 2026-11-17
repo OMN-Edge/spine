@@ -3,7 +3,8 @@ import { api, type FamilyView } from '../api';
 import { planChanged } from '../billing';
 import { seatLink, pendingSeatInvite, forgetSeatInvite } from '../seat';
 import { useI18n } from '../i18n';
-import { buttonClass, Notice } from './AuthCard';
+import { useFormat } from '../format';
+import { buttonClass, Notice, secondaryButtonClass } from './AuthCard';
 
 /**
  * The accounts that share one plan (SECURITY.md M-52): for the account that pays, who holds the seats and the way to invite another; for
@@ -12,6 +13,7 @@ import { buttonClass, Notice } from './AuthCard';
  */
 export default function SeatsCard() {
   const { t } = useI18n();
+  const format = useFormat();
   const [view, setView] = useState<FamilyView | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -48,7 +50,7 @@ export default function SeatsCard() {
 
   if (!view?.enabled) return null;
   if (view.role === 'none' && !offered && !offerError) return null;
-  const day = (iso: string) => new Date(iso).toLocaleDateString();
+  const day = (iso: string) => format.date(iso);
 
   return (
     <section id="shared" className="bg-white border border-gray-200 rounded-xl p-5 mt-6 scroll-mt-6">
@@ -77,7 +79,7 @@ export default function SeatsCard() {
           {asking === 'leave' ? (
             <div className="text-sm space-y-2">
               <p>{t('Give up the seat? Your records stay with you and your account goes back to its own plan. You can take a seat in another plan only after {days} days.', { days: view.cooldown_days })}</p>
-              <button disabled={busy} onClick={() => void run(async () => { await api.family.leave(); setAsking(null); })} className={buttonClass}>{t('Yes, give it up')}</button>
+              <button disabled={busy} onClick={() => void run(async () => { await api.family.leave(); setAsking(null); })} className={secondaryButtonClass}>{t('Yes, give it up')}</button>
               <button onClick={() => setAsking(null)} className="ml-3 underline">{t('No')}</button>
             </div>
           ) : (
@@ -130,7 +132,7 @@ export default function SeatsCard() {
             </div>
           )}
           {view.seats.used < view.seats.limit
-            ? <button disabled={busy} onClick={() => void run(async () => { const made = await api.family.invite(); setLink(seatLink(window.location.origin, made.id, made.secret)); setCopied(false); })} className={buttonClass}>{t('Invite an account')}</button>
+            ? <button disabled={busy} onClick={() => void run(async () => { const made = await api.family.invite(); setLink(seatLink(window.location.origin, made.id, made.secret)); setCopied(false); })} className={secondaryButtonClass}>{t('Invite an account')}</button>
             : <p className="text-sm text-gray-500">{t('Every seat is taken.')}</p>}
         </>
       )}

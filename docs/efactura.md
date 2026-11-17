@@ -9,8 +9,9 @@ The code is a workspace package, `packages/anaf/` (`spine-anaf`), with one door 
 | File | What it does |
 |---|---|
 | `ubl.ts` | The XML: UBL 2.1 in CIUS-RO 1.0.1, an Invoice or a CreditNote. Pure, in whole cents. |
-| `anaf.ts` | The authorisation (sign-in URL, the exchange of the code, refreshing the tokens) and the calls: validare (ANAF's own check of a file before it is sent), upload, uploadb2c, stareMesaj, descarcare; and the Ministry's PDF converter. |
+| `anaf.ts` | The authorisation (sign-in URL, the exchange of the code, refreshing the tokens) and the calls: validare (ANAF's own check of a file before it is sent), upload, uploadb2c, stareMesaj, descarcare; and the Ministry's PDF converter (the operator's "ANAF's view", to compare). |
 | `issuer.ts` | The numbered documents and what ANAF is told about each; the signed links to a PDF. |
+| `document.ts` | The invoice as a person reads it: an A4 PDF made with pdfkit from the stored document, the one the XML is written from. |
 | `seal.ts` | AES-256-GCM, under a key that is in the environment and never in the database. |
 | `zip.ts` | Reads ANAF's answer (a zip of the invoice and the Ministry's signature). |
 | `index.ts` | `makeEfactura`: puts them together from the settings. |
@@ -21,7 +22,8 @@ The code is a workspace package, `packages/anaf/` (`spine-anaf`), with one door 
 2. `sendToAnaf` uploads it. A buyer in Romania with a tax number is a business (`upload`, B2B); a person is `uploadb2c`, which ANAF requires for sales to people since 31.03.2025 (the Ministry's technical page), identified by thirteen zeros where no CNP was given, as ANAF's test platform accepts. A buyer abroad is not sent: e-Factura is for Romania (the account's invoice history has the document).
 3. ANAF decides within seconds to hours. The queue asks every five minutes for up to a day (`stareMesaj`); on `ok` the signed answer is downloaded and kept (ANAF has it for 60 days only), on `nok` its errors are downloaded and shown in `/admin`. The operator's "Try again" makes the XML again from what it was made from (in case the writer was mended) and sends it as new.
 4. A refund makes a credit note (381, `standard=CN`) numbered in the same series, naming the invoice.
-5. The PDF is the Ministry's own converter's, made from the same XML (`transformare`, public); the account's invoice history opens it at a signed link that lasts ten minutes.
+5. The PDF is Spine's own (`document.ts`), made when it is asked for from the stored document, so it says what the XML says and needs no request to ANAF. The labels are English with the language of the buyer's country beneath (Romanian, French or German; English alone for any other country), the values are never translated, and the header carries Spine's name and mark. It holds what Codul fiscal art. 319 alin. (20) asks of a sale like this one: the number in the series and the date, the seller's name, address, tax id and register number (and bank and IBAN, `SPINE_SELLER_BANK` and `SPINE_SELLER_IBAN`, when set), the buyer's name and address (and tax id for a company), the service and its amount before VAT, the VAT rate and amount, and for another currency the National Bank's rate and the VAT in lei; a credit note names the invoice it reverses. The account's invoice history opens it at a signed link that lasts ten minutes. The Ministry's converter is kept for the operator to compare (`GET /api/admin/efactura/:id/anaf-pdf`).
+6. When the document is made the buyer gets a short mail (`invoice-mail.ts`: its number and a link to the account page, in the account's language, nothing attached), once for each document, where the issuer sends nothing itself.
 
 **The seller is not a VAT payer** (the accountant's word, to be confirmed): the class is "not subject to VAT" (`O`), the invoice carries no VAT identifier for anyone (BR-O-02), and the seller is named by its registration number alone (BR-CO-26). A VAT payer sets `SPINE_SELLER_VAT_ID` and a rate.
 
@@ -62,6 +64,7 @@ Not confirmed by running it:
 - The refresh round trip with real tokens (ANAF documents it; nothing here has run it).
 - Where a person's identifier goes in the XML (`PartyIdentification`, thirteen zeros) and the exemption wording for the class `O`: the accountant's and ANAF's test.
 - A partial refund still needs a credit note by hand (a storno is the whole invoice), and VAT is one rate for everyone, as with Billyou.
-- No mail to the buyer: the invoice is in the account's history and, for a business, in its SPV.
+- The footer and the terms name `SPINE_OPERATOR_NAME` and an invoice names `SPINE_SELLER_NAME`: where Spine issues the invoices and the two differ, or the first is not set, the server says so in its log at start-up (a warning, not a refusal).
+- The invoice's total can differ by a cent from what the card was charged: the XML's rules make the VAT the net amount times the rate, rounded, and a price that includes VAT does not always divide that way (49.00 at 21% gives 40.50 and 8.51). The document says what the XML says.
 
 Left out of the repository for size, and kept with the session's notes: ANAF's offline validators (`roefacturavalidator_12122024.zip`, `verifstandalone.zip`) and the XML-to-PDF applications (`GenerareFactura.zip`), all from `https://mfinante.gov.ro/ro/web/efactura/informatii-tehnice`.

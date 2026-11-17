@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type RelatedDocument, type RelatedReason } from '../api';
 import { useI18n } from '../i18n';
+import { useFormat } from '../format';
 import { documentTitle } from '../titles';
 
 /**
@@ -11,6 +12,7 @@ import { documentTitle } from '../titles';
  */
 export default function RelatedDocuments({ documentId }: { documentId: string }) {
   const { t, lang } = useI18n();
+  const format = useFormat();
   const [data, setData] = useState<{ related: RelatedDocument[]; meaning: { enabled: boolean; ready: boolean } } | null>(null);
 
   useEffect(() => {
@@ -54,7 +56,7 @@ export default function RelatedDocuments({ documentId }: { documentId: string })
               <Link to={`/documents/${r.id}`} className="block py-2 hover:bg-gray-50 rounded-lg px-1">
                 <span className="flex items-baseline justify-between gap-3">
                   <span className="text-sm text-gray-900 truncate">{documentTitle({ ...r, title: r.translated_title || r.title }, t)}</span>
-                  <span className="text-xs text-gray-400 shrink-0">{r.doc_date ?? ''}</span>
+                  <span className="text-xs text-gray-400 shrink-0">{r.doc_date ? format.date(r.doc_date) : ''}</span>
                 </span>
                 <span className="block text-xs text-gray-500 mt-0.5">
                   {r.reasons.filter(x => x.kind !== 'tags' && x.kind !== 'provider').map(why).join(' · ')}

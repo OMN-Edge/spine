@@ -64,7 +64,7 @@ export function measurementRepository(db: Database): MeasurementRepository {
       AND EXISTS (SELECT 1 FROM documents WHERE id = ? AND user_id = ?)
   `);
   const all = db.prepare(`
-    SELECT m.canonical, m.name, m.unit, m.value_text, m.taken_on, m.flag
+    SELECT m.canonical, m.name, m.unit, m.value_text, m.value_num, m.taken_on, m.flag
     FROM measurements m JOIN documents d ON d.id = m.document_id AND d.user_id = m.user_id
     WHERE m.user_id = ? AND ${VISIBLE}
     ORDER BY m.taken_on IS NULL, m.taken_on, m.rowid
@@ -207,7 +207,7 @@ export function measurementRepository(db: Database): MeasurementRepository {
     async names(userId) {
       // Oldest first, so the last row of a test is its latest value.
       const rows = all.all(owner(userId)) as Array<{
-        canonical: string; name: string; unit: string | null; value_text: string; taken_on: string | null; flag: MeasurementName['latest_flag'];
+        canonical: string; name: string; unit: string | null; value_text: string; value_num: number | null; taken_on: string | null; flag: MeasurementName['latest_flag'];
       }>;
       const byTest = new Map<string, MeasurementName>();
       for (const row of rows) {
@@ -220,6 +220,7 @@ export function measurementRepository(db: Database): MeasurementRepository {
           latest_value_text: row.value_text,
           latest_taken_on: row.taken_on,
           latest_flag: row.flag,
+          numeric_count: (seen?.numeric_count ?? 0) + (row.value_num !== null ? 1 : 0),
         });
       }
       return [...byTest.values()].sort((a, b) => a.canonical.localeCompare(b.canonical));

@@ -46,7 +46,8 @@ export function billingRepository(q: Query, begin: Begin): BillingRepository {
   };
   return {
     get: userId => find('user_id', userId),
-    subscriptions: async limit => (await many(q, `SELECT ${COLUMNS} FROM subscriptions ORDER BY updated_at DESC LIMIT $1`, [limit])).map(asSubscription),
+    subscriptions: async (limit, offset = 0) => (await many(q, `SELECT ${COLUMNS} FROM subscriptions ORDER BY updated_at DESC, user_id LIMIT $1 OFFSET $2`, [limit, offset])).map(asSubscription),
+    subscriptionCount: async () => Number((await one<{ n: number }>(q, 'SELECT COUNT(*) AS n FROM subscriptions', []))!.n),
     findBySubscription: id => find('subscription_id', id),
     findByCustomer: id => find('customer_id', id),
     async put(s) {
@@ -71,19 +72,29 @@ export function billingRepository(q: Query, begin: Begin): BillingRepository {
     async requestWithdrawal(id, userId, at) {
       return (await changed(q, `INSERT INTO withdrawal_requests (id, user_id, state, requested_at) VALUES ($1, $2, 'requested', $3) ON CONFLICT DO NOTHING`, [id, userId, at])) === 1;
     },
-    async withdrawals(state, limit) {
+    async withdrawals(state, limit, offset = 0) {
       const rows = state === null
-        ? await many(q, `SELECT ${WITHDRAWAL_COLUMNS} FROM withdrawal_requests ORDER BY requested_at DESC LIMIT $1`, [limit])
-        : await many(q, `SELECT ${WITHDRAWAL_COLUMNS} FROM withdrawal_requests WHERE state = $1 ORDER BY requested_at DESC LIMIT $2`, [state, limit]);
+        ? await many(q, `SELECT ${WITHDRAWAL_COLUMNS} FROM withdrawal_requests ORDER BY requested_at DESC, id LIMIT $1 OFFSET $2`, [limit, offset])
+        : await many(q, `SELECT ${WITHDRAWAL_COLUMNS} FROM withdrawal_requests WHERE state = $1 ORDER BY requested_at DESC, id LIMIT $2 OFFSET $3`, [state, limit, offset]);
       return rows.map(asWithdrawal);
+    },
+    async refundedWithdrawalsOf(userId) { return Number((await one<{ n: number }>(q, `SELECT COUNT(*) AS n FROM withdrawal_requests WHERE user_id = $1 AND state = 'refunded'`, [userId]))!.n); },
+    async withdrawalCount(state) {
+      return Number((await one<{ n: number }>(q, state === null ? 'SELECT COUNT(*) AS n FROM withdrawal_requests' : 'SELECT COUNT(*) AS n FROM withdrawal_requests WHERE state = $1', state === null ? [] : [state]))!.n);
     },
     async withdrawal(id) { const r = await one(q, `SELECT ${WITHDRAWAL_COLUMNS} FROM withdrawal_requests WHERE id = $1`, [id]); return r ? asWithdrawal(r) : null; },
     async openWithdrawalOf(userId) { const r = await one(q, `SELECT ${WITHDRAWAL_COLUMNS} FROM withdrawal_requests WHERE user_id = $1 AND state = 'requested'`, [userId]); return r ? asWithdrawal(r) : null; },
     async decideWithdrawal(id, d, at) { await q('UPDATE withdrawal_requests SET state = $1, decided_at = $2, refunded_minor = $3, note = $4 WHERE id = $5', [d.state, at, d.refundedMinor, d.note, id]); },
     async invoicesOf(userId) { return (await many(q, `SELECT ${INVOICE_COLUMNS} FROM invoice_queue WHERE user_id = $1 ORDER BY created_at DESC`, [userId])).map(asInvoice); },
+    async invoicesMadeOf(userId, limit, offset = 0) {
+      return (await many(q, `SELECT ${INVOICE_COLUMNS} FROM invoice_queue WHERE user_id = $1 AND number IS NOT NULL AND number <> '' AND state IN ('done', 'issued') ORDER BY created_at DESC, ref LIMIT $2 OFFSET $3`, [userId, limit, offset])).map(asInvoice);
+    },
+    async invoicesMadeCountOf(userId) {
+      return Number((await one<{ n: number }>(q, `SELECT COUNT(*) AS n FROM invoice_queue WHERE user_id = $1 AND number IS NOT NULL AND number <> '' AND state IN ('done', 'issued')`, [userId]))!.n);
+    },
     async firstPaymentAt(userId) { return (await one<{ at: string | null }>(q, `SELECT MIN(created_at) AS at FROM invoice_queue WHERE user_id = $1 AND ref NOT LIKE 'storno:%'`, [userId]))?.at ?? null; },
-    async invoicesStopped(limit) {
-      return (await many(q, `SELECT ${INVOICE_COLUMNS} FROM invoice_queue WHERE state IN ('failed', 'check') ORDER BY updated_at DESC LIMIT $1`, [limit])).map(asInvoice);
+    async invoicesStopped(limit, offset = 0) {
+      return (await many(q, `SELECT ${INVOICE_COLUMNS} FROM invoice_queue WHERE state IN ('failed', 'check') ORDER BY updated_at DESC, ref LIMIT $1 OFFSET $2`, [limit, offset])).map(asInvoice);
     },
     async invoiceCounts() {
       const counts: Record<string, number> = { pending: 0, issued: 0, done: 0, failed: 0, check: 0 };
@@ -145,9 +156,10 @@ export function billingRepository(q: Query, begin: Begin): BillingRepository {
       if (known.length === 0) return;
       await q(`UPDATE efactura_documents SET ${known.map(([k], i) => `${k} = $${i + 1}`).join(', ')}, updated_at = $${known.length + 1} WHERE draft_id = $${known.length + 2}`, [...known.map(([, v]) => v), at, draftId]);
     },
-    async efacturaDocuments(limit) {
-      return (await many(q, `SELECT ${EFACTURA_COLUMNS} FROM efactura_documents ORDER BY created_at DESC, number DESC LIMIT $1`, [limit])).map(asDocument);
+    async efacturaDocuments(limit, offset = 0) {
+      return (await many(q, `SELECT ${EFACTURA_COLUMNS} FROM efactura_documents ORDER BY created_at DESC, number DESC LIMIT $1 OFFSET $2`, [limit, offset])).map(asDocument);
     },
+    async efacturaDocumentCount() { return Number((await one<{ n: number }>(q, 'SELECT COUNT(*) AS n FROM efactura_documents', []))!.n); },
   };
 }
 

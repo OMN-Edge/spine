@@ -1,6 +1,6 @@
 # Spine: requirements
 
-What Spine must do and the technical rules it is built to. The IDs (`FR-…`, `TR-…`, `CR-…`) are the ones other documents cite: [ARCHITECTURE.md](../ARCHITECTURE.md) for how it is built, [SECURITY.md](../SECURITY.md) for the controls and known gaps, [crypto-design.md](crypto-design.md) and [key-hierarchy.md](key-hierarchy.md) for the keys, [relay.md](relay.md) for the model relay, [scenarios.md](scenarios.md) for the flows. Priority says how much a requirement matters (Must, Should, Could). Release says when it ships: Launch is the first public release, built around one loop (upload, organize, share with a doctor in their language), Soon follows it, Later waits for use.
+What Spine must do and the technical rules it is built to. The IDs (`FR-…`, `TR-…`, `CR-…`) are the ones other documents cite: [ARCHITECTURE.md](../ARCHITECTURE.md) for how it is built, [SECURITY.md](../SECURITY.md) for the controls and known gaps, [crypto-design.md](crypto-design.md) and [key-hierarchy.md](key-hierarchy.md) for the keys, [relay.md](relay.md) for the model relay, [scenarios.md](scenarios.md) for the flows, [user-stories.md](user-stories.md) for who they are for. Priority says how much a requirement matters (Must, Should, Could). Release says when it ships: Launch is the first public release, built around one loop (upload, organize, share with a doctor in their language), Soon follows it, Later waits for use.
 
 ## Purpose and scope
 

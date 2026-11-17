@@ -1,5 +1,6 @@
 import type { ModelWaiting } from '../api';
 import { useI18n } from '../i18n';
+import { useFormat } from '../format';
 
 /**
  * Work the reading service could not be asked for (a daily limit, an outage): nothing is lost and nothing is for the owner to do, since
@@ -7,7 +8,8 @@ import { useI18n } from '../i18n';
  */
 export default function ModelWaitNote({ waiting, className = '' }: { waiting: ModelWaiting; className?: string }) {
   const { t } = useI18n();
-  const time = new Date(waiting.retry_at).toLocaleString();
+  const format = useFormat();
+  const time = format.dateTime(waiting.retry_at);
   return (
     <p role="status" className={`rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-900 ${className}`}>
       {waiting.reason === 'limit'

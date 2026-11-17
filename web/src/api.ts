@@ -116,6 +116,8 @@ export interface TrendName {
   latest_value_text: string;
   latest_taken_on: string | null;
   latest_flag: Flag | null;
+  /** How many of its values are numbers: a trend needs two. */
+  numeric_count: number;
 }
 
 export interface TrendPoint {
@@ -619,10 +621,13 @@ const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, 
   signal?.addEventListener('abort', () => { clearTimeout(timer); reject(new DOMException('stopped', 'AbortError')); }, { once: true });
 });
 
+/** What every list the server pages says beside its rows: how many there are in all, and the page and the page size it used (the server's `routes/paging.ts`). */
+export interface Paged { total: number; page: number; limit: number }
+
 /** What each plan costs, as Paddle says; a plan the operator does not sell is absent. Nothing here is written in the app. */
 export interface Prices { currency: string; essential?: { year: number; month: number }; premium: { year: number; month: number }; founding: { year: number }; family?: { year: number; month: number }; /** What the things bought once cost, for the ones sold here. */ addons?: { page_topup?: number } }
 /** `prices` is null while Paddle cannot say what they are: the screens then show no amount and offer no purchase. */
-export interface Pricing { enabled: boolean; prices?: Prices | null; founding_left?: number; /** Essential is sold here. */ essential?: boolean; /** The family plan is sold here. */ family?: boolean }
+export interface Pricing { enabled: boolean; prices?: Prices | null; founding_left?: number; /** Essential is sold here. */ essential?: boolean; /** The family plan is sold here. */ family?: boolean; /** Who sells: the payment provider (Paddle, as merchant of record) or the operator (with Stripe), and the operator's name. */ seller?: 'provider' | 'operator'; seller_name?: string | null }
 /** One meter of the plan: pages for reading, messages for chat, pages for translation. `own_*` only on a plan whose seats are shared. */
 export interface MeterView { used: number; /** What each month adds where unused pages carry over (the plan allowance is then what can be added by the end of this month). */ monthly?: number; /** Null where only adding is limited and using is only counted. */ allowance: number | null; own_used?: number; own_cap?: number }
 /** What the account page shows of the plan (the server's `GET /api/billing`). */
@@ -677,7 +682,7 @@ export interface AdminDashboard {
   cohorts: Array<{ week: string; signups: number; read: number; asked: number; translated: number }>;
   costs: { month: string; euros: number; budget_euros: number | null; above_alert: number; by_plan: Record<string, number>; per_signup_trial: number | null };
   limits: Record<string, number>;
-  guardrails: Array<{ key: string; value: number | null; target: number; unit: 'percent' | 'count' | 'euros'; state: 'ok' | 'amber' | 'red'; note: string }>;
+  guardrails: Array<{ key: string; value: number | null; target: number; unit: 'percent' | 'count' | 'euros'; state: 'ok' | 'amber' | 'red' | 'early'; note: string }>;
 }
 
 /** The accounts that share one plan (the server's `GET /api/family`). */
@@ -758,7 +763,7 @@ export const api = {
     /** A request to withdraw from the purchase, which the operator decides. */
     withdraw: () => post<{ ok: boolean; requested_at: string }>('/api/billing/withdraw', {}),
     /** The account's invoices, and the address of one's PDF (asked for when it is pressed, since it does not last). */
-    invoices: () => req<{ invoices: Array<{ ref: string; number: string; at: string; credit_note: boolean }> }>('/api/billing/invoices'),
+    invoices: (page = 1, limit = 20) => req<{ invoices: Array<{ ref: string; number: string; at: string; credit_note: boolean }> } & Paged>(`/api/billing/invoices?page=${page}&limit=${limit}`),
     invoicePdf: (ref: string) => post<{ url: string }>('/api/billing/invoices/pdf', { ref }),
     /** The thing bought once: 250 more pages. */
     addon: (addon: 'page_topup') => post<{ url: string }>('/api/billing/checkout', { addon }),
@@ -778,6 +783,8 @@ export const api = {
   waitlist: (email: string, source?: string) => post<{ ok: boolean }>('/api/waitlist', { email, source }),
   /** The accounts waiting for approval (SPINE_REGISTRATION=approval); only an address in SPINE_ADMIN_EMAILS is let see them. */
   admin: {
+    /** Whether this account has a place on the operator's page: an administrator, the marketing role that reads, or neither. */
+    role: () => req<{ role: 'admin' | 'reader' | null }>('/api/admin/role'),
     /** What the operator looks at: counts and the plans accounts are on, never a person (the server's `dashboard.ts`). */
     dashboard: () => req<AdminDashboard>('/api/admin/dashboard'),
     /** The settings the admin page changes: what applies, where it comes from, and whether this account may change them. */
@@ -787,27 +794,27 @@ export const api = {
     fairUse: () => req<{ sections: FairUseSection[] }>('/api/admin/fair-use'),
     setFairUse: (path: string, value: number | null) => put<{ sections: FairUseSection[] }>('/api/admin/fair-use', { path, value }),
     /** The invoices the operator owes: how many in each state, the ones that stopped and why, and the EU consumer sales against the yearly threshold (the server's `billing/invoicing/`). */
-    invoices: () => req<{
+    invoices: (page = 1) => req<Paged & {
       counts: Record<'pending' | 'issued' | 'done' | 'failed' | 'check', number>;
       stopped: Array<{ ref: string; state: 'failed' | 'check'; attempts: number; reason: string | null; invoice: string | null; at: string; can_retry: boolean }>;
       eu: { year: number; this_year: number; last_year: number; limit: number };
-    }>('/api/admin/invoices'),
+    }>(`/api/admin/invoices?page=${page}`),
     /** Tries an invoice that stopped again, or settles it because it was made by hand. */
     mendInvoice: (ref: string, action: 'retry' | 'settle') => post<{ ok: boolean }>('/api/admin/invoices', { ref, action }),
     /** Spine's own e-Factura link (the server's `spine-anaf` package): whether ANAF has authorised it and until when, and the newest documents with ANAF's word on each. */
-    efactura: () => req<{
+    efactura: (page = 1) => req<Paged & {
       enabled: boolean; mode?: 'test' | 'prod'; series?: string; seller?: { name: string; cif: string };
       authorised?: boolean; accessExpiresAt?: string | null; refreshExpiresAt?: string | null;
       documents?: Array<{ id: string; number: string; kind: 'invoice' | 'credit'; date: string; state: 'sent' | 'ok' | 'nok' | 'abroad' | null; message: string | null }>;
-    }>('/api/admin/efactura').then(v => v as { enabled: false } | Required<Pick<typeof v, 'mode' | 'series' | 'seller' | 'authorised' | 'accessExpiresAt' | 'refreshExpiresAt' | 'documents'>> & { enabled: true }),
+    }>(`/api/admin/efactura?page=${page}`).then(v => v as { enabled: false } | Required<Pick<typeof v, 'mode' | 'series' | 'seller' | 'authorised' | 'accessExpiresAt' | 'refreshExpiresAt' | 'documents' | 'total' | 'page' | 'limit'>> & { enabled: true }),
     /** Asks ANAF's own test service whether the token is accepted, with nothing sent to e-Factura. */
     testEfactura: () => post<{ ok: boolean; status: number | null; message: string; certificateSeen: boolean }>('/api/admin/efactura/test', {}),
     /** Where to send the browser to sign in with the certificate at ANAF. */
     authoriseEfactura: () => post<{ url: string }>('/api/admin/efactura/authorise', {}),
     /** The buyers who asked to withdraw from a purchase, and the operator's decision: pay back (all, or an amount) and end the plan, or decline with a reason. */
-    withdrawals: () => req<{ requests: Array<{ id: string; email: string | null; plan: string | null; interval: string | null; requested_at: string; first_payment: string | null; used: { pages: number; questions: number; translated: number } | null; earlier_refunds: number; suggested: { refundMinor: number; keptMinor: number; currency: string; basis: 'unused' | 'time'; days: number; periodDays: number } | null }> }>('/api/admin/withdrawals'),
+    withdrawals: (page = 1) => req<Paged & { requests: Array<{ id: string; email: string | null; plan: string | null; interval: string | null; requested_at: string; first_payment: string | null; used: { pages: number; questions: number; translated: number } | null; earlier_refunds: number; suggested: { refundMinor: number; keptMinor: number; currency: string; basis: 'unused' | 'time'; days: number; periodDays: number } | null }> }>(`/api/admin/withdrawals?page=${page}`),
     /** What each account with a subscription has (the plan, who bills it, its state and end), for an administrator only. */
-    subscriptions: () => req<{ subscriptions: Array<{ email: string | null; plan: string; interval: string | null; provider: string; status: string; founding: boolean; until: string | null; ends: boolean }> }>('/api/admin/subscriptions'),
+    subscriptions: (page = 1) => req<Paged & { subscriptions: Array<{ email: string | null; plan: string; interval: string | null; provider: string; status: string; founding: boolean; until: string | null; ends: boolean }> }>(`/api/admin/subscriptions?page=${page}`),
     decideWithdrawal: (id: string, action: 'refund' | 'decline', extra: { amount?: number; note?: string } = {}) => post<{ ok: boolean }>('/api/admin/withdrawals', { id, action, ...extra }),
     /** What is sold (the server's `billing/products.ts`): each product with its prices as versions, whether each has been sent to the payment provider, and the prices named in the environment that are not yet in it. */
     catalog: () => req<CatalogView>('/api/admin/catalog'),
@@ -816,7 +823,7 @@ export const api = {
     publishCatalog: () => post<{ reports: Array<{ product: string; state: 'in_step' | 'published' | 'failed'; message: string | null }> }>('/api/admin/catalog/publish', {}),
     adoptCatalog: () => post<{ adopted: number }>('/api/admin/catalog/adopt', {}),
     checkCatalog: () => post<{ differences: Array<{ product: string; period: string; currency: string; expectedMinor: number; foundMinor: number | null; message: string | null }> }>('/api/admin/catalog/check', {}),
-    accounts: () => req<{ pending: Array<{ id: string; email: string; created_at: string; email_confirmed: boolean }> }>('/api/admin/accounts'),
+    accounts: (page = 1) => req<Paged & { pending: Array<{ id: string; email: string; created_at: string; email_confirmed: boolean }> }>(`/api/admin/accounts?page=${page}`),
     approve: (id: string) => post<{ ok: boolean }>(`/api/admin/accounts/${encodeURIComponent(id)}/approve`, {}),
     refuse: (id: string) => post<{ ok: boolean }>(`/api/admin/accounts/${encodeURIComponent(id)}/refuse`, {}),
   },
@@ -1074,7 +1081,7 @@ export const api = {
     /** Titles and summaries in a language for some of the owner's documents; `pending` while the rest are being translated (`warm: false` asks for what is kept and starts nothing). */
     titles: (ids: string[], lang: string, warm = true) => req<{ titles: Record<string, string | null>; summaries?: Record<string, string>; pending: boolean }>(`/api/translations/titles?lang=${lang}&ids=${ids.map(encodeURIComponent).join(',')}${warm ? '' : '&warm=0'}`),
     /** Specialties and test names in a language, as kept; `pending` while the rest are being translated. */
-    terms: (lang: string) => req<{ specialties: Record<string, string>; tests: Record<string, string>; pending: boolean }>(`/api/translations/terms?lang=${lang}`),
+    terms: (lang: string) => req<{ specialties: Record<string, string>; tests: Record<string, string>; tags: Record<string, string>; episodes: Record<string, string>; pending: boolean }>(`/api/translations/terms?lang=${lang}`),
     related: (id: string, lang?: string) => req<{ related: RelatedDocument[]; translation_pending?: boolean; meaning: { enabled: boolean; ready: boolean } }>(`/api/documents/${id}/related${lang ? `?lang=${lang}` : ''}`),
     /** The documents around this one: what asked for it, what it asked for, what follows it up. */
     chain: (id: string) => req<Chain>(`/api/documents/${id}/chain`),
@@ -1197,7 +1204,7 @@ export const api = {
 
   share: {
     list: () => req<ShareLink[]>('/api/share-links'),
-    create: (body: { label?: string; scope: string; scope_value?: unknown; expires_days?: number; expires_hours?: number; include_scans?: boolean; language?: string | null; require_approval?: boolean; allow_chat?: boolean }) =>
+    create: (body: { label?: string; scope: string; scope_value?: unknown; expires_days?: number; expires_hours?: number; include_scans?: boolean; language?: string | null; require_approval?: boolean; allow_chat?: boolean; overview?: import('spine-core/share-overview').ShareOverview | null }) =>
       req<{ id: string; url: string; expires_at: string; approval_mail: boolean | null }>('/api/share-links', {
         method: 'POST',
         body: JSON.stringify(body),
@@ -1214,6 +1221,8 @@ export const api = {
   publicShare: {
     documents: (shareId: string, lang?: string) => req<SharedListDocument[]>(`/api/share/${shareId}/documents${lang ? `?lang=${lang}` : ''}`),
     document: (shareId: string, id: string) => req<SharedDocument>(`/api/share/${shareId}/documents/${id}`),
+    /** The tags and episode titles of what the link shares, in the reader's language, as kept; `pending` says to ask again. */
+    terms: (shareId: string, lang: string) => req<{ tags: Record<string, string>; episodes: Record<string, string>; pending: boolean }>(`/api/share/${shareId}/terms?lang=${lang}`),
     translation: (shareId: string, id: string, lang: string, part: 'head' | 'full' = 'full') => req<TranslatedDocument>(`/api/share/${shareId}/documents/${id}/translation?lang=${lang}&part=${part}`),
     /** The language the owner started the page in, the ones it can offer, and whether translating is on. */
     /** The documents the owner linked to this one and those that read alike, each only if the link shares it too. */
@@ -1221,7 +1230,7 @@ export const api = {
     /** Values over time, from the shared documents only. */
     trends: (shareId: string) => req<TrendName[]>(`/api/share/${shareId}/trends`),
     trendSeries: (shareId: string, canonical: string) => req<TrendSeries>(`/api/share/${shareId}/trends/series?name=${encodeURIComponent(canonical)}`),
-    meta: (shareId: string) => req<{ language: string | null; languages: string[]; translation: boolean; chat: boolean; landing_url: string | null }>(`/api/share/${shareId}/meta`),
+    meta: (shareId: string) => req<{ language: string | null; languages: string[]; translation: boolean; chat: boolean; landing_url: string | null; overview: import('spine-core/share-overview').ShareOverview | null; created_at: string | null; expires_at: string | null }>(`/api/share/${shareId}/meta`),
     /** A recipient's question. `history` is the earlier turns of this page: nothing is stored on the server. */
     chat: (shareId: string, body: { question: string; history: Array<{ role: 'user' | 'assistant'; content: string }>; document_id?: string }, handlers: ChatStreamHandlers, signal?: AbortSignal) =>
       readReplyStream<{ answer: string | null; sources: ChatSource[]; documents: number }>(`/api/share/${shareId}/chat`, { ...body, stream: true }, handlers, signal),

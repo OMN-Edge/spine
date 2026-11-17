@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 import { Notice } from './AuthCard';
 import { useI18n } from '../i18n';
+import { useFormat } from '../format';
+import Pager, { usePage } from './Pager';
 
 type View = Awaited<ReturnType<typeof api.admin.efactura>>;
 
@@ -12,12 +14,14 @@ type View = Awaited<ReturnType<typeof api.admin.efactura>>;
  */
 export default function AdminEfactura() {
   const { t } = useI18n();
+  const format = useFormat();
   const [view, setView] = useState<View | null>(null);
   const [error, setError] = useState('');
   const [tested, setTested] = useState<{ ok: boolean; certificateSeen: boolean; message: string } | null>(null);
   const [testing, setTesting] = useState(false);
   const back = new URLSearchParams(window.location.search).get('efactura');
-  const load = useCallback(() => { api.admin.efactura().then(setView).catch(() => setError(t('Could not load the e-Factura link.'))); }, [t]);
+  const [page, setPage] = usePage('documents');
+  const load = useCallback(() => { api.admin.efactura(page).then(setView).catch(() => setError(t('Could not load the e-Factura link.'))); }, [t, page]);
   useEffect(load, [load]);
 
   const authorise = async () => {
@@ -29,7 +33,7 @@ export default function AdminEfactura() {
     try { setTested(await api.admin.testEfactura()); } catch (err) { setError(err instanceof Error ? err.message : t('Could not test the connection')); } finally { setTesting(false); }
   };
   if (!error && (!view || !view.enabled)) return null;
-  const day = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString() : '');
+  const day = (iso: string | null) => (iso ? format.date(iso) : '');
   const word = (state: string | null): string => {
     switch (state) {
       case 'ok': return t('Taken by ANAF');
@@ -71,6 +75,7 @@ export default function AdminEfactura() {
                   </li>
                 ))}
               </ul>
+              <Pager page={page} total={view.total} limit={view.limit} onPage={setPage} />
             </>
           )}
         </>

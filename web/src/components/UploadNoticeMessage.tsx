@@ -4,7 +4,7 @@ import { api, ApiError, type MatchQuestion } from '../api';
 import { announceChange } from '../dataChanged';
 import type { RegroupNotice, UploadNotice } from '../api';
 import { msg, useI18n } from '../i18n';
-import { documentTitle } from '../titles';
+import { documentTitle, pageRange } from '../titles';
 
 /**
  * What the app said when an upload had been read, drawn here in the person's language from the facts it stored. The buttons are
@@ -33,7 +33,7 @@ export default function UploadNoticeMessage({ notice, busy, onAsk, onLeave }: { 
       {notice.documents.length > 0 && (
         <ul className="mt-2 space-y-0.5 text-xs text-gray-600">
           {notice.documents.map(d => (
-            <li key={d.id} className="truncate">· <Link to={`/documents/${d.id}`} onClick={() => { if (window.matchMedia('(max-width: 767px)').matches) onLeave(); }} className="hover:text-brand-700 hover:underline">{notice.reading_pending && d.page_start != null ? `${d.title ? `${d.title} · ` : ''}${t('pages {pages}', { pages: d.page_start === d.page_end ? String(d.page_start) : `${d.page_start}–${d.page_end}` })}` : documentTitle(d, t)}</Link>{d.doc_date ? ` (${d.doc_date})` : ''}</li>
+            <li key={d.id} className="truncate">· <Link to={`/documents/${d.id}`} onClick={() => { if (window.matchMedia('(max-width: 767px)').matches) onLeave(); }} className="hover:text-brand-700 hover:underline">{notice.reading_pending && d.page_start != null ? `${d.title ? `${d.title} · ` : ''}${pageRange(d.page_start, d.page_end!, t)}` : documentTitle(d, t)}</Link>{d.doc_date ? ` (${d.doc_date})` : ''}</li>
           ))}
           {notice.more_documents > 0 && <li>· {tn(notice.more_documents, 'and {n} more', 'and {n} more')}</li>}
         </ul>

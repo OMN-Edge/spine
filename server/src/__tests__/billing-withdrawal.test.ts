@@ -77,7 +77,7 @@ describe('withdrawing from a purchase', () => {
     expect(res.statusCode).toBe(200);
     expect(sent).toHaveLength(1);
     expect(sent[0]!.to).toBe(b.email);
-    expect(sent[0]!.subject).toBe('Cererea dumneavoastră de retragere');
+    expect(sent[0]!.subject).toBe('Cererea ta de retragere');
     expect(await store().billing.openWithdrawalOf(b.id)).toMatchObject({ state: 'requested' });
     const again = await app.inject({ method: 'POST', url: '/api/billing/withdraw', headers: { cookie: b.cookie }, payload: {} });
     expect(again.statusCode).toBe(409);

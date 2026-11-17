@@ -2,6 +2,7 @@ import { createHmac } from 'node:crypto';
 import { AnafLink } from './anaf.js';
 import { efacturaIssuer, signedLink, type EfacturaIssuer } from './issuer.js';
 import type { UblSeller, ZeroVat } from './ubl.js';
+import type { DocumentBrand } from './document.js';
 import type { AnafStore } from './store.js';
 
 /**
@@ -42,15 +43,17 @@ export interface EfacturaExtras {
   /** For the tests; the global one otherwise. */
   fetcher?: typeof fetch;
   now?: () => Date;
+  /** The brand the invoice's PDF shows in its header. */
+  brand?: DocumentBrand;
 }
 
 export function makeEfactura(config: AnafConfig, store: AnafStore, extra: EfacturaExtras): Efactura {
-  const { pdfPath, exchangeRate, ...rest } = extra;
+  const { pdfPath, exchangeRate, brand, ...rest } = extra;
   const pdfKey = createHmac('sha256', config.key).update('spine-efactura-pdf-links').digest();
   const link = new AnafLink({ mode: config.mode, clientId: config.clientId, clientSecret: config.clientSecret, redirectUri: config.redirectUri, key: config.key, ...rest }, store);
   const issuer = efacturaIssuer({
     seller: config.seller, series: config.series, zeroVat: config.zeroVat,
-    ...(exchangeRate ? { exchangeRate } : {}),
+    ...(exchangeRate ? { exchangeRate } : {}), ...(brand ? { brand } : {}),
     pdfLink: id => `${config.publicUrl}${pdfPath}/${encodeURIComponent(id)}?t=${signedLink(pdfKey, id, (rest.now ?? (() => new Date()))())}`,
     ...rest,
   }, store, link);
@@ -65,3 +68,4 @@ export type { EfacturaIssuer } from './issuer.js';
 export type { InvoiceDraft, IssuedInvoice, Issuer } from './invoice.js';
 export type { AnafStore, AnafTokens, StoredDocument, DocumentPatch, DocumentKind } from './store.js';
 export type { UblSeller, ZeroVat } from './ubl.js';
+export type { DocumentBrand, DocumentLanguage } from './document.js';

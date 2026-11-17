@@ -30,6 +30,15 @@ describe('the subscriptions and the use shown with a withdrawal', () => {
     return user;
   }
 
+  it('says to each account whether it has a place on the operator’s page, so the account page can offer a way there to the ones that do', async () => {
+    const role = async (cookie?: string) => (await app.inject({ method: 'GET', url: '/api/admin/role', headers: cookie ? { cookie } : {} }));
+    expect((await role()).statusCode).toBe(401);
+    expect((await role(await as(ADMIN))).json()).toEqual({ role: 'admin' });
+    expect((await role(await as(MARKETING))).json()).toEqual({ role: 'reader' });
+    await createTestUser('plain-account@spine.test');
+    expect((await role(await as('plain-account@spine.test'))).json()).toEqual({ role: null });
+  });
+
   it('lists what each account pays for, to an administrator only', async () => {
     await subscriber('sub-paying', 'stripe');
     await subscriber('sub-granted', 'operator');

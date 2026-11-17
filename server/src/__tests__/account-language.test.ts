@@ -53,7 +53,7 @@ describe('at sign-up', () => {
     const res = await app.inject({ method: 'POST', url: '/api/auth/register', payload: { email: EMAIL, password: 'a-long-test-password-1', ...CONSENT, language: 'ro' } });
     expect(res.statusCode).toBe(200);
     await vi.waitFor(() => expect(sent).toHaveLength(1));
-    expect(sent[0].subject).toBe('Confirmați adresa de e-mail');
+    expect(sent[0].subject).toBe('Confirmă adresa de e-mail');
     expect(sent[0].html).toContain('<html lang="ro">');
     expect((await getAccountsStore().users.findByEmail(EMAIL))?.language).toBe('ro');
   });

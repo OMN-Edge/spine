@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, type CatalogView } from '../api';
 import { Notice } from './AuthCard';
 import { useI18n } from '../i18n';
-import { amountText, changesOf, formatMinor, providerName, stateOf, type CatalogProduct, type Draft, type Period } from './catalog-view';
+import { useFormat } from '../format';
+import { amountText, changesOf, providerName, stateOf, type CatalogProduct, type Draft, type Period } from './catalog-view';
 
 /**
  * What is sold and for how much (the server's `billing/products.ts`): an administrator edits what is commercial (the name, whether a product is on sale, each amount), publishes it to the
@@ -11,6 +12,7 @@ import { amountText, changesOf, formatMinor, providerName, stateOf, type Catalog
  */
 export default function AdminCatalog() {
   const { t } = useI18n();
+  const format = useFormat();
   const [view, setView] = useState<CatalogView | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
@@ -42,6 +44,7 @@ export default function AdminCatalog() {
         {view?.canPublish && (
           <CatalogActions
             provider={provider} adoptable={view.adoptable ?? 0} busy={busy}
+            firstRun={firstRun(view)} publishable={(view.products ?? []).some(p => p.prices.some(x => !x.sent) || p.in_step)}
             onPublish={() => void run(async () => {
               const { reports } = await api.admin.publishCatalog();
               const failed = reports.filter(r => r.state === 'failed');
@@ -50,7 +53,7 @@ export default function AdminCatalog() {
             onCheck={() => void run(async () => {
               const { differences } = await api.admin.checkCatalog();
               setNotice(differences.length
-                ? { kind: 'error', text: differences.map(d => t('{product}, {period}: here {expected}, at {provider} {found}.', { product: d.product, period: period(d.period), provider, expected: formatMinor(d.expectedMinor, view.currency ?? 'EUR'), found: d.foundMinor === null ? t('not found') : formatMinor(d.foundMinor, view.currency ?? 'EUR') })).join(' · ') }
+                ? { kind: 'error', text: differences.map(d => t('{product}, {period}: here {expected}, at {provider} {found}.', { product: d.product, period: period(d.period), provider, expected: format.money(d.expectedMinor, view.currency ?? 'EUR'), found: d.foundMinor === null ? t('not found') : format.money(d.foundMinor, view.currency ?? 'EUR') })).join(' · ') }
                 : { kind: 'ok', text: t('Everything matches {provider}.', { provider }) });
             })}
             onImport={() => void run(async () => { const r = await api.admin.adoptCatalog(); setNotice({ kind: 'ok', text: t('Imported {count} prices.', { count: String(r.adopted) }) }); })}
@@ -60,7 +63,7 @@ export default function AdminCatalog() {
           <ul className="mt-5 grid gap-4">
             {(view.products ?? []).map(p => (
               <ProductCard
-                key={p.id} product={p} currency={view.currency ?? 'EUR'} busy={busy} period={period}
+                key={p.id} product={p} currency={view.currency ?? 'EUR'} busy={busy} period={period} importable={firstRun(view)}
                 onRename={name => run(async () => { await api.admin.saveProduct(p.id, { name }); })}
                 onSale={on => run(async () => { await api.admin.saveProduct(p.id, { on_sale: on }); })}
                 onSave={changes => run(async () => { for (const c of changes) await api.admin.setPrice(p.id, c.period, c.amountMinor); })}
@@ -77,14 +80,19 @@ const pill = 'rounded-full border border-ink/20 px-4 py-1.5 text-sm text-ink/80 
 const primary = 'rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-paper hover:bg-accent/90 disabled:opacity-50';
 
 /** The three things done with the whole catalog, each one word, and a line that says what they do. */
-export function CatalogActions({ provider, adoptable, busy, onPublish, onCheck, onImport }: { provider: string; adoptable: number; busy: boolean; onPublish: () => void; onCheck: () => void; onImport: () => void }) {
+/** The first time here: prices are on sale at the provider (named in the environment) and the catalog holds none of them yet, so the one thing to do is bring them in. */
+export const firstRun = (view: { adoptable?: number; products?: Array<{ prices: unknown[] }> }): boolean => (view.adoptable ?? 0) > 0 && (view.products ?? []).every(p => p.prices.length === 0);
+
+export function CatalogActions({ provider, adoptable, busy, firstRun: first = false, publishable = true, onPublish, onCheck, onImport }: { provider: string; adoptable: number; busy: boolean; firstRun?: boolean; publishable?: boolean; onPublish: () => void; onCheck: () => void; onImport: () => void }) {
   const { t } = useI18n();
   return (
     <div className="mt-4">
+      {first && <p className="mb-3 rounded-xl bg-honey/20 px-4 py-3 text-sm text-ink">{t('{count} prices are on sale at {provider} but not in the catalog yet. Import them to edit them here.', { count: String(adoptable), provider })}</p>}
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" disabled={busy} onClick={onPublish} className={primary} title={t('Send the new prices to {provider}', { provider })}>{t('Publish')}</button>
+        {adoptable > 0 && first && <button type="button" disabled={busy} onClick={onImport} className={primary} title={t('Bring in the prices already in use at {provider}', { provider })}>{t('Import ({count})', { count: String(adoptable) })}</button>}
+        <button type="button" disabled={busy || !publishable} onClick={onPublish} className={first || !publishable ? pill : primary} title={t('Send the new prices to {provider}', { provider })}>{t('Publish')}</button>
         <button type="button" disabled={busy} onClick={onCheck} className={pill} title={t('Compare the prices with what {provider} holds', { provider })}>{t('Check')}</button>
-        {adoptable > 0 && <button type="button" disabled={busy} onClick={onImport} className={pill} title={t('Bring in the prices already in use at {provider}', { provider })}>{t('Import ({count})', { count: String(adoptable) })}</button>}
+        {adoptable > 0 && !first && <button type="button" disabled={busy} onClick={onImport} className={pill} title={t('Bring in the prices already in use at {provider}', { provider })}>{t('Import ({count})', { count: String(adoptable) })}</button>}
       </div>
       <p className="mt-2 text-xs text-ink/60">
         {t('Publish sends the new prices to {provider}. Check compares them with what {provider} holds.', { provider })}
@@ -95,11 +103,12 @@ export function CatalogActions({ provider, adoptable, busy, onPublish, onCheck, 
 }
 
 /** One product: its name and whether it is on sale, and each price as a field with where it is at the provider. One Save for the prices that were changed. */
-export function ProductCard({ product, currency, busy, period, onRename, onSale, onSave }: {
-  product: CatalogProduct; currency: string; busy: boolean; period: (p: string) => string;
+export function ProductCard({ product, currency, busy, period, importable = false, onRename, onSale, onSave }: {
+  product: CatalogProduct; currency: string; busy: boolean; period: (p: string) => string; importable?: boolean;
   onRename: (name: string) => Promise<void>; onSale: (on: boolean) => Promise<void>; onSave: (changes: Array<{ period: Period; amountMinor: number }>) => Promise<void>;
 }) {
   const { t } = useI18n();
+  const format = useFormat();
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(product.name);
   const [draft, setDraft] = useState<Draft>({});
@@ -107,7 +116,7 @@ export function ProductCard({ product, currency, busy, period, onRename, onSale,
   const outcome = changesOf(product, draft);
   const invalid = 'error' in outcome ? outcome.error : null;
   const changes = 'changes' in outcome ? outcome.changes : [];
-  const symbol = new Intl.NumberFormat(undefined, { style: 'currency', currency }).formatToParts(0).find(p => p.type === 'currency')?.value ?? currency;
+  const symbol = format.symbol(currency);
   return (
     <li className="rounded-xl border border-ink/10 bg-paper/40 p-4">
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
@@ -141,7 +150,7 @@ export function ProductCard({ product, currency, busy, period, onRename, onSale,
                 <span className="uppercase tracking-wide text-ink/60">{period(p)}</span>
                 {state === 'sent' && <span className="rounded-full bg-accent/15 px-2 py-0.5 text-accent">{t('Sent')}</span>}
                 {state === 'waiting' && <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-amber-700">{t('Not sent')}</span>}
-                {state === 'none' && <span className="text-ink/50">{t('No price')}</span>}
+                {state === 'none' && <span className="text-ink/50">{importable ? t('Not in the catalog yet') : t('No price')}</span>}
               </div>
               <label className="mt-2 flex items-center gap-1.5">
                 <span className="text-sm text-ink/60" aria-hidden="true">{symbol}</span>
@@ -152,7 +161,7 @@ export function ProductCard({ product, currency, busy, period, onRename, onSale,
                 />
               </label>
               {invalid === p && <div className="mt-1 text-xs text-red-600">{t('Not an amount')}</div>}
-              {current && current.earlier.length > 0 && <div className="mt-1.5 text-xs text-ink/55">{t('Earlier: {versions}', { versions: current.earlier.map(e => formatMinor(e.amount_minor, currency)).join(', ') })}</div>}
+              {current && current.earlier.length > 0 && <div className="mt-1.5 text-xs text-ink/55">{t('Earlier: {versions}', { versions: current.earlier.map(e => format.money(e.amount_minor, currency)).join(', ') })}</div>}
             </div>
           );
         })}

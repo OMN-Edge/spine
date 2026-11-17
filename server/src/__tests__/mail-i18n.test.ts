@@ -71,3 +71,10 @@ describe('mail in the languages of the screens', () => {
     expect(tm('de', '{email} gave up its seat in your plan', { email: 'x@y.z' })).toBe('x@y.z hat den Platz in Ihrem Tarif aufgegeben');
   });
 });
+
+describe('the Romanian mail', () => {
+  it('speaks to the reader as "tu", as the screens do, never as "dumneavoastră"', () => {
+    const formal = /(?<![\p{L}-])(dumneavoastră|dvs|vă|Vă|puteți|aveți|sunteți|confirmați|primiți)(?![\p{L}])|-vă(?![\p{L}])|(?<![\p{L}])v-\p{L}|(?<![\p{L}])vi-l/u;
+    expect(Object.entries(DICTIONARIES.ro).filter(([, value]) => formal.test(value)).map(([key]) => key)).toEqual([]);
+  });
+});

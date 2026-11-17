@@ -1,3 +1,5 @@
+import { msg } from './i18n';
+
 /**
  * How a document is named everywhere in the UI: its title (printed on it, or generated
  * when it was read), or failing that its type and provider. Never the upload's file name,
@@ -98,4 +100,33 @@ export function documentByline(doc: Nameable & { doc_date?: string | null }, t: 
   return [doc.provider, doc.doc_type ? t(DOC_TYPE_NAMES[doc.doc_type] ?? doc.doc_type) : null, doc.doc_date]
     .filter(Boolean)
     .join(' · ');
+}
+
+/**
+ * The tags an account starts with, in words (`core/src/tags.ts`). A tag the owner or the model made is the owner's own word and is shown as written; one of these is the app's and
+ * follows the reader's language, so a doctor reading German does not see "lungs" beside "Kardiologie".
+ */
+export const STARTER_TAG_NAMES: Record<string, string> = {
+  allergy: msg('Allergy'), chronic: msg('Chronic condition'), vaccine: msg('Vaccine'), medication: msg('Medication'), imaging: msg('Imaging'),
+  'follow-up-needed': msg('Follow-up needed'), cardiology: msg('Cardiology'), oncology: msg('Oncology'), lab: msg('Lab results'),
+};
+
+export function tagName(tag: string, t: (english: string) => string): string {
+  const english = STARTER_TAG_NAMES[tag];
+  return english ? t(english) : tag;
+}
+
+type Say = (english: string, values?: Record<string, string | number>) => string;
+
+/** A document's pages in words: "page 3" or "pages 3–5". Where a document has nothing else to be called by. */
+export function pageRange(from: number, to: number, t: Say): string {
+  return from === to ? t('page {n}', { n: from }) : t('pages {from}–{to}', { from, to });
+}
+
+/**
+ * The page reference a card shows: only for a document of more than one page, since "p. 1" says nothing about a one-page letter and takes the room of the summary.
+ * Null for one page, so a caller leaves it out.
+ */
+export function pageRef(from: number, to: number, t: Say): string | null {
+  return from === to ? null : pageRange(from, to, t);
 }

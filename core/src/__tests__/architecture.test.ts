@@ -210,7 +210,8 @@ describe('S15 — the ANAF link is a package that names nothing of Spine\u2019s'
       if (isTest(file)) continue;
       for (const spec of specifiers(file)) {
         if (isRelative(spec)) { if (!target(file, spec).startsWith(`${PACKAGE}src/`)) offenders.push(`${rel(file)} -> ${spec}`); continue; }
-        if (!BUILTINS.has(spec)) offenders.push(`${rel(file)} -> ${spec} (a package: add it to this check and say why, or leave it out)`);
+        // pdfkit and the font it draws with are what the invoice's PDF is made of (`document.ts`): third-party libraries that name nothing of Spine's, declared in the package's own package.json.
+        if (!BUILTINS.has(spec) && spec !== 'pdfkit') offenders.push(`${rel(file)} -> ${spec} (a package: add it to this check and say why, or leave it out)`);
       }
     }
     expect(offenders).toEqual([]);

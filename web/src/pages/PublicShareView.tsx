@@ -1,5 +1,5 @@
 import PageImageOverlay, { type Highlight } from '../components/PageImageOverlay';
-import { episodeName } from '../components/episode';
+import { episodeDates, episodeName } from '../components/episode';
 import { useState, useEffect } from 'react';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { api, type SharedDocument, type SharedListDocument, type TranslatedDocument, type TrendName, type TrendSeries } from '../api';
@@ -10,7 +10,8 @@ import { MeasurementsList } from '../components/MeasurementsPanel';
 import SpineLog from '../components/SpineLog';
 import SharedChat from '../components/SharedChat';
 import SharedConnections from '../components/SharedConnections';
-import { useI18n } from '../i18n';
+import { screensIn, useI18n } from '../i18n';
+import { useSharedTerms } from '../useListTitles';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { ThemeSwitcher } from '../components/ThemeSwitcher';
 import { useShareAccess } from '../core/share/access';
@@ -18,7 +19,9 @@ import { deviceObjectUrl } from '../core/client';
 import { Combobox } from '../components/Combobox';
 import { languageName, useTranslation } from '../i18n/useTranslation';
 import AiLabel from '../components/AiLabel';
-import { documentByline, documentTitle, fieldName, isCriticalField, isSection, valueLines } from '../titles';
+import ShareOverview from '../components/ShareOverview';
+import { useFormat } from '../format';
+import { documentByline, documentTitle, fieldName, isCriticalField, isSection, tagName, valueLines } from '../titles';
 
 /**
  * A link the owner wants to approve is not opened until this browser is let in (SECURITY.md M-19). The page asks the
@@ -35,6 +38,19 @@ function fromShare(url: string): string {
     return url;
   }
 }
+
+/**
+ * Whether a shared document matches what the reader typed, on their own device (nothing is sent anywhere): in its title, summary, notes, provider and type, as written and as translated,
+ * every word of the query needing to be in one of them, without regard to case or accents.
+ */
+export function matchesSearch(doc: SharedListDocument, query: string, original: boolean, t: (s: string) => string): boolean {
+  const words = fold(query).split(/\s+/).filter(Boolean);
+  if (words.length === 0) return true;
+  const said = doc.translation && !original ? doc.translation : null;
+  const hay = fold([doc.title, doc.ai_summary, doc.user_notes, doc.provider, doc.doc_type ? t(DOC_TYPE_LABELS[doc.doc_type] ?? doc.doc_type) : null, doc.doc_date, said?.title, said?.ai_summary, said?.user_notes].filter(Boolean).join(' '));
+  return words.every(w => hay.includes(w));
+}
+const fold = (text: string): string => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
 export default function PublicShareView() {
   const { id: shareId } = useParams<{ id: string }>();
@@ -105,7 +121,10 @@ function SharedContent({ shareId }: { shareId: string }) {
   const [metaReady, setMetaReady] = useState(false);
   const [landingUrl, setLandingUrl] = useState<string | null>(null);
   const [chatOn, setChatOn] = useState(false);
+  const [about, setAbout] = useState<{ overview: Awaited<ReturnType<typeof api.publicShare.meta>>['overview']; created_at: string | null; expires_at: string | null } | null>(null);
   const [type, setType] = useState('');
+  const [query, setQuery] = useState('');
+  const format = useFormat();
   const openId = params.get('d');
   const view = params.get('view') === 'trends' ? 'trends' : 'documents';
   // Values over time, when any of the shared documents has some.
@@ -117,7 +136,7 @@ function SharedContent({ shareId }: { shareId: string }) {
   // The page starts in the language the owner chose for this link, unless the reader has picked one here before.
   useEffect(() => {
     if (!shareId) return;
-    api.publicShare.meta(shareId).then(m => { setTranslating(m.translation); setChatOn(m.chat); setLandingUrl(m.landing_url); preferLang(m.language); }).catch(() => {}).finally(() => setMetaReady(true));
+    api.publicShare.meta(shareId).then(m => { setTranslating(m.translation); setChatOn(m.chat); setLandingUrl(m.landing_url); setAbout({ overview: m.overview ?? null, created_at: m.created_at ?? null, expires_at: m.expires_at ?? null }); preferLang(m.language); }).catch(() => {}).finally(() => setMetaReady(true));
   }, [shareId, preferLang]);
 
   // The list in the reader's language. Documents not yet translated come back as pending: ask again while any is, less often as it
@@ -159,7 +178,8 @@ function SharedContent({ shareId }: { shareId: string }) {
 
   const pending = docs.some(d => d.translation_pending);
   const translated = docs.some(d => d.translation && d.translation.status !== 'same' && d.translation.status !== 'off' && d.translation.status !== 'unavailable');
-  const shown = docs.filter(d => !type || d.doc_type === type);
+  const shown = docs.filter(d => (!type || d.doc_type === type) && matchesSearch(d, query, original, t));
+  const dated = docs.map(d => d.doc_date?.slice(0, 4)).filter((y): y is string => !!y).sort();
   const types = [...new Set(docs.map(d => d.doc_type).filter((x): x is NonNullable<typeof x> => !!x))];
   const byYear = shown.reduce<Record<string, SharedListDocument[]>>((acc, doc) => {
     (acc[doc.doc_date ? doc.doc_date.slice(0, 4) : ''] ??= []).push(doc);
@@ -177,6 +197,8 @@ function SharedContent({ shareId }: { shareId: string }) {
           </div>
           <div className="flex items-center gap-2"><LanguageSwitcher /><ThemeSwitcher /></div>
         </div>
+
+        {!openId && view === 'documents' && <ShareOverview overview={about?.overview ?? null} createdAt={about?.created_at} expiresAt={about?.expires_at} count={docs.length} years={dated.length > 0 ? [dated[0]!, dated[dated.length - 1]!] : null} />}
 
         {trendNames.length > 0 && !openId && (
           <nav className="flex gap-4 border-b border-gray-200 mb-6 text-sm" aria-label={t('Sections')}>
@@ -210,14 +232,19 @@ function SharedContent({ shareId }: { shareId: string }) {
           <p className="text-gray-400">{t('No documents in this share.')}</p>
         ) : (
           <>
-            {types.length > 1 && (
-              <div className="flex justify-end mb-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <input
+                type="search" value={query} onChange={e => setQuery(e.target.value)} aria-label={t('Search these documents')} placeholder={t('Search these documents…')}
+                className="min-w-0 flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+              {types.length > 1 && (
                 <Combobox
                   ariaLabel={t('All types')} wrapperClassName="relative w-44" value={type} onChange={setType}
                   options={[{ value: '', label: t('All types') }, ...types.map(x => ({ value: x, label: t(DOC_TYPE_LABELS[x] ?? x) }))]}
                 />
-              </div>
-            )}
+              )}
+            </div>
+            {shown.length === 0 && <p className="text-sm text-gray-500 mb-4">{t('No document matches.')}</p>}
             <div className="space-y-8">
               {years.map(year => (
                 <div key={year}>
@@ -236,7 +263,7 @@ function SharedContent({ shareId }: { shareId: string }) {
         )}
 
         <p className="text-xs text-gray-300 text-center mt-10">
-          {t('This link was shared for a specific consultation and expires automatically.')}
+          {about?.expires_at ? t('This link is open until {date}.', { date: format.date(about.expires_at) }) : t('This link was shared for a specific consultation and expires automatically.')}
         </p>
         <p className="text-xs text-gray-400 text-center mt-2">
           {t('Opening this link is recorded for the person who shared it: the time, the country it was opened from and which document you open. Your address is not kept.')}
@@ -256,7 +283,8 @@ const label = 'block text-xs font-medium text-gray-500 mb-1';
 
 /** One shared document: the document page without the editing, the details beside the scans when the link allows them. */
 function SharedDocumentView({ shareId, id, translating, original, titleOf, onBack }: { shareId: string; id: string; translating: boolean; original: boolean; titleOf: (id: string) => string | null | undefined; onBack: () => void }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
+  const words = useSharedTerms(shareId, translating && !original);
   const [data, setData] = useState<SharedDocument | null>(null);
   const [error, setError] = useState('');
   const [pageIdx, setPageIdx] = useState(0);
@@ -339,10 +367,10 @@ function SharedDocumentView({ shareId, id, translating, original, titleOf, onBac
           <div id="section-summary" className="bg-white border border-gray-200 rounded-xl p-4 transition-shadow">
             <h2 className="text-lg font-semibold text-gray-900 break-words">{documentTitle({ ...doc, title }, t)}</h2>
             <p className="text-sm text-gray-500">{documentByline(doc, t)}</p>
-            {data.episode && <p className="text-sm text-gray-500 mt-1">{t('Episode: {name}', { name: episodeName(data.episode, t) })}</p>}
+            {data.episode && <p className="text-sm text-gray-500 mt-1">{t('Episode: {name}', { name: data.episode.title && words.episode(data.episode.title) !== data.episode.title ? words.episode(data.episode.title) : doc.language && screensIn(lang) !== doc.language && !original ? episodeDates(data.episode, t) : episodeName(data.episode, t) })}</p>}
             {tags.length > 0 && (
               <div className="flex flex-wrap gap-1 mt-2">
-                {tags.map(tag => <span key={tag} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{tag}</span>)}
+                {tags.map(tag => <span key={tag} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{words.tag(tagName(tag, t))}</span>)}
               </div>
             )}
             {translating && (tr.translating || tr.active) && (

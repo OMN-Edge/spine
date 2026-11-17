@@ -3,6 +3,9 @@ import { PEOPLE_CHANGED, PROFILE_CHANGED, device, rememberProfile, type Person }
 import { vaultState } from './crypto/vault-state';
 
 export type { Person };
+
+/** What a person is called on screen: "Me" is the name an account gives its own first records, and is shown in the reader's language; any other name is the owner's own and is shown as written. */
+export const personLabel = (name: string, t: (english: string) => string): string => (name === 'Me' ? t('Me') : name);
 export interface People { profiles: Person[]; current: string }
 
 /**

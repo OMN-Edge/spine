@@ -1,9 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { planRefusal } from '../billing';
 import { api, type Document, type Episode, type ShareLink, type ShareRequest } from '../api';
 import { episodeName } from '../components/episode';
 import { useOnDataChanged } from '../dataChanged';
+import ShareOverview from '../components/ShareOverview';
+import { useProfiles } from '../profiles';
+import { buildOverview } from '../share-overview';
 import ShareRequestCard from '../components/ShareRequestCard';
 import { LANGUAGES, languageChoice, useI18n } from '../i18n';
 import { useAuth } from '../auth';
@@ -92,9 +95,11 @@ export default function ShareLinks() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   // Nothing is chosen at first: a link shares what the owner picked, never everything because nobody changed a default.
-  const [scope, setScope] = useState<ShareLink['scope'] | ''>('');
+  // Sent here from a doctor's page with the documents to share ("Share these"): they are chosen already, and the owner reviews them before anything is made.
+  const sentWith = (useLocation().state as { documentIds?: string[] } | null)?.documentIds;
+  const [scope, setScope] = useState<ShareLink['scope'] | ''>(sentWith?.length ? 'document_ids' : '');
   const [tag, setTag] = useState('');
-  const [ids, setIds] = useState<string[]>([]);
+  const [ids, setIds] = useState<string[]>(sentWith ?? []);
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [episodeIds, setEpisodeIds] = useState<string[]>([]);
   const [from, setFrom] = useState('');
@@ -102,6 +107,12 @@ export default function ShareLinks() {
   // A new link starts in the account's language, if it has one; the owner can leave it unset for the reader to choose.
   const { language: accountLanguage } = useAuth();
   const [form, setForm] = useState({ label: '', expires_hours: 168, include_scans: false, language: accountLanguage ?? '', require_approval: false, allow_chat: false });
+  // What the doctor is told about the link, in the owner's own words: whose records, a note, and what the owner takes now from their emergency card. Nothing here is sent until Create.
+  const { people } = useProfiles(true);
+  const [card, setCard] = useState<import('spine-core/emergency').CardContent | null>(null);
+  const [about, setAbout] = useState({ showName: true, name: '', note: '', includeNow: false });
+  const [cardDay, setCardDay] = useState('');
+  const [preview, setPreview] = useState(false);
   const [tags, setTags] = useState<Array<{ id: number; name: string }>>([]);
   const [docs, setDocs] = useState<Document[] | null>(null);
   const [tagged, setTagged] = useState<number | null>(null);
@@ -117,7 +128,14 @@ export default function ShareLinks() {
     api.tags.list().then(setTags).catch(() => {});
     api.episodes.list('confirmed').then(setEpisodes).catch(() => {});
     api.documents.listAll().then(setDocs).catch(() => setDocs([]));
+    api.emergency.get().then(v => { setCard(v.card); setCardDay((v.updated_at ?? '').slice(0, 10)); }).catch(() => undefined);
   }, []);
+
+  // The name starts as the card's, else the open person's, and the owner can change it or leave it out.
+  const personName = people?.profiles.find(p => p.id === people.current)?.name ?? '';
+  useEffect(() => { setAbout(a => (a.name ? a : { ...a, name: card?.name || personName })); }, [card, personName]);
+  const cardHasNow = !!card && card.medications.length + card.allergies.length + card.conditions.length > 0;
+  const overview = buildOverview(about, card, cardDay);
 
   // A link made or revoked from the chat.
   useOnDataChanged(() => { void api.share.list().then(setLinks).catch(() => undefined); });
@@ -149,6 +167,7 @@ export default function ShareLinks() {
         language: form.language || null,
         require_approval: form.require_approval,
         allow_chat: form.allow_chat,
+        overview,
       });
       setNewUrl(result.url);
       setMailNote(result.approval_mail);
@@ -174,10 +193,93 @@ export default function ShareLinks() {
       <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900 mb-2">{t('Share links')}</h1>
       <p className="text-sm text-gray-500 mb-6"><Link to="/emergency" className="text-brand-600 hover:underline">{t('Write an emergency card')}</Link> {t('for someone who has to help you quickly, opened from a code.')}</p>
 
+      {/* Existing links */}
+      {!loading && links.length > 0 && (
+        <div className="space-y-2 mb-6">
+          <h2 className="font-medium text-gray-900 mb-3">{t('Active links')}</h2>
+          {links.map(link => {
+            const expired = new Date(link.expires_at) < new Date();
+            return (
+              <div
+                key={link.id}
+                className={`bg-white border rounded-xl p-4 ${link.revoked || expired ? 'opacity-50 border-gray-200' : 'border-gray-200'}`}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{link.label ?? describeScope(link, t, tn)}</p>
+                    {link.label && <p className="text-xs text-gray-500 mt-0.5">{describeScope(link, t, tn)}</p>}
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {link.revoked ? t('Revoked') : expired ? t('Expired') : t('Expires {date}', { date: link.expires_at.slice(0, 10) })}
+                      {' · '}{tn(link.view_count, '{n} view', '{n} views')}
+                      {' · '}{link.include_scans ? t('scans included') : t('details only')}
+                      {link.language && <>{' · '}{languageName(link.language)}</>}
+                      {link.require_approval && <>{' · '}{t('needs your approval')}</>}
+                      {link.allow_chat && <>{' · '}{t('questions allowed')}</>}
+                      {link.pending_requests > 0 && <>{' · '}{t('{n} waiting', { n: link.pending_requests })}</>}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-3">
+                    <Link to={`/share-links/${link.id}`} className="text-xs text-brand-600 hover:underline">{t('Manage')}</Link>
+                    {!link.revoked && !expired && (
+                      <button onClick={() => revoke(link.id)} className="text-xs text-red-500 hover:text-red-700">
+                        {t('Revoke')}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
       {/* Create form */}
       <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6">
         <h2 className="font-medium text-gray-900 mb-4">{t('Create share link')}</h2>
         <form onSubmit={create} className="space-y-4">
+          <div>
+            <label htmlFor="s-lang" className={label}>{t('Who is this for? A doctor who reads…')}</label>
+            <Combobox
+              id="s-lang" value={form.language} onChange={v => setForm(f => ({ ...f, language: v }))} className={input}
+              options={[{ value: '', label: t('Not set: the reader chooses') }, ...LANGUAGES.map(l => ({ value: l.code, label: languageChoice(l.code) }))]}
+            />
+            <p className="text-xs text-gray-500 mt-1">{t('The reader can still switch language on the page. Extracted details and your notes are translated by the model provider.')}</p>
+          </div>
+
+
+          <fieldset className="space-y-3 rounded-lg border border-gray-200 p-3">
+            <legend className="px-1 text-xs font-medium text-gray-500">{t('What the doctor is told')}</legend>
+            <div>
+              <label htmlFor="s-note" className={label}>{t('A note for the doctor')}</label>
+              <textarea id="s-note" rows={2} maxLength={300} value={about.note} onChange={e => setAbout(a => ({ ...a, note: e.target.value }))} placeholder={t('e.g. Thyroid results, for a new endocrinologist')} className={input} />
+            </div>
+            <label className="flex items-start gap-2 text-sm text-gray-700">
+              <input type="checkbox" checked={about.showName} onChange={e => setAbout(a => ({ ...a, showName: e.target.checked }))} className="mt-0.5" />
+              <span className="min-w-0 flex-1">
+                {t('Show my name')}
+                <span className="block text-xs text-gray-500">{t('A doctor needs to know whose records these are. Leave it off for an anonymous second opinion.')}</span>
+              </span>
+            </label>
+            {about.showName && <input aria-label={t('Name shown to the doctor')} value={about.name} maxLength={120} onChange={e => setAbout(a => ({ ...a, name: e.target.value }))} className={input} />}
+            <label className={`flex items-start gap-2 text-sm ${cardHasNow ? 'text-gray-700' : 'text-gray-400'}`}>
+              <input type="checkbox" disabled={!cardHasNow} checked={about.includeNow && cardHasNow} onChange={e => setAbout(a => ({ ...a, includeNow: e.target.checked }))} className="mt-0.5" />
+              <span className="min-w-0 flex-1">
+                {t('Include what I take now and my allergies')}
+                <span className="block text-xs text-gray-500">
+                  {cardHasNow ? t('Taken from your emergency card, in your own words, with the day you wrote it.') : <>{t('Nothing is written on your emergency card yet.')} <Link to="/emergency" className="text-brand-600 hover:underline">{t('Write it')}</Link></>}
+                </span>
+              </span>
+            </label>
+            <div>
+              <button type="button" onClick={() => setPreview(p => !p)} aria-expanded={preview} className="text-sm text-brand-600 hover:underline">{preview ? t('Hide the preview') : t('Preview what they will see')}</button>
+              {preview && (
+                <div className="mt-3">
+                  <ShareOverview overview={overview} createdAt={new Date().toISOString()} expiresAt={new Date(Date.now() + form.expires_hours * 3_600_000).toISOString()} count={count ?? 0} years={null} />
+                  <p className="text-xs text-gray-500">{t('This is only a preview: nothing has been made or sent.')}</p>
+                </div>
+              )}
+            </div>
+          </fieldset>
+
           <div>
             <label htmlFor="s-label" className={label}>{t('Label (for your reference)')}</label>
             <input
@@ -281,15 +383,6 @@ export default function ShareLinks() {
             </span>
           </label>
 
-          <div>
-            <label htmlFor="s-lang" className={label}>{t('Language the page opens in')}</label>
-            <Combobox
-              id="s-lang" value={form.language} onChange={v => setForm(f => ({ ...f, language: v }))} className={input}
-              options={[{ value: '', label: t('Not set: the reader chooses') }, ...LANGUAGES.map(l => ({ value: l.code, label: languageChoice(l.code) }))]}
-            />
-            <p className="text-xs text-gray-500 mt-1">{t('The reader can still switch language on the page. Extracted details and your notes are translated by the model provider.')}</p>
-          </div>
-
           <button
             type="submit"
             disabled={creating || !ready}
@@ -334,45 +427,6 @@ export default function ShareLinks() {
         </GuideTip>
       )}
 
-      {/* Existing links */}
-      {!loading && links.length > 0 && (
-        <div className="space-y-2">
-          <h2 className="font-medium text-gray-900 mb-3">{t('Active links')}</h2>
-          {links.map(link => {
-            const expired = new Date(link.expires_at) < new Date();
-            return (
-              <div
-                key={link.id}
-                className={`bg-white border rounded-xl p-4 ${link.revoked || expired ? 'opacity-50 border-gray-200' : 'border-gray-200'}`}
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">{link.label ?? describeScope(link, t, tn)}</p>
-                    {link.label && <p className="text-xs text-gray-500 mt-0.5">{describeScope(link, t, tn)}</p>}
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      {link.revoked ? t('Revoked') : expired ? t('Expired') : t('Expires {date}', { date: link.expires_at.slice(0, 10) })}
-                      {' · '}{tn(link.view_count, '{n} view', '{n} views')}
-                      {' · '}{link.include_scans ? t('scans included') : t('details only')}
-                      {link.language && <>{' · '}{languageName(link.language)}</>}
-                      {link.require_approval && <>{' · '}{t('needs your approval')}</>}
-                      {link.allow_chat && <>{' · '}{t('questions allowed')}</>}
-                      {link.pending_requests > 0 && <>{' · '}{t('{n} waiting', { n: link.pending_requests })}</>}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-3">
-                    <Link to={`/share-links/${link.id}`} className="text-xs text-brand-600 hover:underline">{t('Manage')}</Link>
-                    {!link.revoked && !expired && (
-                      <button onClick={() => revoke(link.id)} className="text-xs text-red-500 hover:text-red-700">
-                        {t('Revoke')}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }

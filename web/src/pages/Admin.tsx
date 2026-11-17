@@ -12,6 +12,7 @@ import AdminEfactura from '../components/AdminEfactura';
 import AdminWithdrawals from '../components/AdminWithdrawals';
 import AdminSubscriptions from '../components/AdminSubscriptions';
 import { useI18n } from '../i18n';
+import { useFormat } from '../format';
 import '@fontsource/literata/400.css';
 import { LogoMark } from '../components/Logo';
 
@@ -23,6 +24,7 @@ import { LogoMark } from '../components/Logo';
  */
 export default function Admin() {
   const { t } = useI18n();
+  const format = useFormat();
   const { authenticated, email } = useAuth();
   const location = useLocation();
   const menu = [
@@ -63,7 +65,7 @@ export default function Admin() {
             <span className="rounded-full border border-ink/15 px-2.5 py-0.5 text-xs font-medium uppercase tracking-[0.12em] text-ink/70">{t('Admin')}</span>
           </span>
           <div className="flex items-center gap-4 text-sm text-ink/60">
-            {at && <span className="hidden md:inline">{t('Updated {time}', { time: at.toLocaleTimeString() })}</span>}
+            {at && <span className="hidden md:inline">{t('Updated {time}', { time: format.time(at) })}</span>}
             {email && <span className="hidden sm:inline">{email}</span>}
             <Link to="/" className="rounded-full border border-ink/20 px-4 py-1.5 font-medium text-ink hover:bg-ink/5">{t('Back to Spine')}</Link>
           </div>

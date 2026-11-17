@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type Chain, type ChainEdge, type ChainNode, type Document, type LinkKind } from '../api';
 import { useI18n } from '../i18n';
+import { useFormat } from '../format';
 import { Combobox } from './Combobox';
 import LinkWhyLine from './LinkWhy';
 import { documentTitle } from '../titles';
@@ -27,6 +28,7 @@ const RELATIONS: Record<Relation, { thisIsFrom: boolean; kind: LinkKind }> = {
 /** `quiet`: another tip is showing on the page, so the one about a suggestion waits for the next visit. */
 export default function CareChain({ documentId, quiet = false }: { documentId: string; quiet?: boolean }) {
   const { t } = useI18n();
+  const format = useFormat();
   const [chain, setChain] = useState<Chain | null>(null);
   const { titleOf } = useListTitles((chain?.nodes ?? []).map(n => n.id), false);
   const [adding, setAdding] = useState(false);
@@ -106,7 +108,7 @@ export default function CareChain({ documentId, quiet = false }: { documentId: s
                   {here
                     ? <span className="text-sm font-medium text-gray-900 truncate">{name(n)}</span>
                     : <Link to={`/documents/${n.id}`} className="text-sm text-brand-700 hover:underline truncate">{name(n)}</Link>}
-                  <span className="text-xs text-gray-400 shrink-0">{n.doc_date ?? ''}</span>
+                  <span className="text-xs text-gray-400 shrink-0">{n.doc_date ? format.date(n.doc_date) : ''}</span>
                 </div>
                 {incoming.map(e => (
                   <div key={`${e.from}|${e.kind}`} className={`mt-1 text-xs ${e.state === 'proposed' ? 'text-gray-500 italic' : 'text-gray-600'}`}>
@@ -141,6 +143,7 @@ export default function CareChain({ documentId, quiet = false }: { documentId: s
 
 function AddLink({ documentId, onDone }: { documentId: string; onDone: () => void }) {
   const { t } = useI18n();
+  const format = useFormat();
   const [relation, setRelation] = useState<Relation>('this_requested');
   const [query, setQuery] = useState('');
   const [found, setFound] = useState<Document[]>([]);
@@ -180,7 +183,7 @@ function AddLink({ documentId, onDone }: { documentId: string; onDone: () => voi
       />
       {picked ? (
         <div className="flex items-center justify-between gap-2 text-sm">
-          <span className="truncate">{documentTitle(picked, t)} <span className="text-xs text-gray-400">{picked.doc_date ?? ''}</span></span>
+          <span className="truncate">{documentTitle(picked, t)} <span className="text-xs text-gray-400">{picked.doc_date ? format.date(picked.doc_date) : ''}</span></span>
           <button type="button" onClick={() => setPicked(null)} className="text-xs text-gray-500 hover:underline shrink-0">{t('Change')}</button>
         </div>
       ) : (
@@ -192,7 +195,7 @@ function AddLink({ documentId, onDone }: { documentId: string; onDone: () => voi
                 <li key={d.id}>
                   <button type="button" onClick={() => setPicked(d)} className="w-full text-left px-2 py-1.5 text-sm hover:bg-gray-50 flex justify-between gap-3">
                     <span className="truncate">{documentTitle(d, t)}</span>
-                    <span className="text-xs text-gray-400 shrink-0">{d.doc_date ?? ''}</span>
+                    <span className="text-xs text-gray-400 shrink-0">{d.doc_date ? format.date(d.doc_date) : ''}</span>
                   </button>
                 </li>
               ))}

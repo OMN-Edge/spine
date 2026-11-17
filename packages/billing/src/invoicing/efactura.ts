@@ -1,5 +1,6 @@
 import type { AnafStore } from 'spine-anaf/index.js';
 import { AnafError, makeEfactura, type Efactura as AnafEfactura, type EfacturaIssuer, type AnafConfig } from 'spine-anaf/index.js';
+import type { DocumentBrand } from 'spine-anaf/index.js';
 import { bnrRate } from './bnr.js';
 import { InvoiceError, type InvoiceIssuer } from './issuer.js';
 
@@ -10,7 +11,7 @@ import { InvoiceError, type InvoiceIssuer } from './issuer.js';
 export const PDF_PATH = '/api/billing/invoice-pdf';
 
 /** The issuer the queue calls, with the PDF the route serves. */
-export type EfacturaForBilling = Omit<AnafEfactura, 'issuer'> & { issuer: InvoiceIssuer & Pick<EfacturaIssuer, 'pdf'> };
+export type EfacturaForBilling = Omit<AnafEfactura, 'issuer'> & { issuer: InvoiceIssuer & Pick<EfacturaIssuer, 'pdf' | 'pdfByAnaf'> };
 
 /** Every call of `issuer` answers as `InvoiceIssuer` says: an error of the ANAF folder is the same error in the billing code's class. */
 function asInvoiceIssuer(issuer: EfacturaIssuer): EfacturaForBilling['issuer'] {
@@ -25,10 +26,11 @@ function asInvoiceIssuer(issuer: EfacturaIssuer): EfacturaForBilling['issuer'] {
     reverse: wrapped(issuer.reverse.bind(issuer)),
     sendToAnaf: wrapped(issuer.sendToAnaf.bind(issuer)),
     pdf: wrapped(issuer.pdf.bind(issuer)),
+    pdfByAnaf: wrapped(issuer.pdfByAnaf.bind(issuer)),
   };
 }
 
-export function openEfactura(config: AnafConfig, store: AnafStore, extra: { fetcher?: typeof fetch; now?: () => Date } = {}): EfacturaForBilling {
+export function openEfactura(config: AnafConfig, store: AnafStore, extra: { fetcher?: typeof fetch; now?: () => Date; brand?: DocumentBrand } = {}): EfacturaForBilling {
   const made = makeEfactura(config, store, { pdfPath: PDF_PATH, exchangeRate: currency => bnrRate(currency), ...extra });
   return { ...made, issuer: asInvoiceIssuer(made.issuer) };
 }

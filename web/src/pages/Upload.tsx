@@ -3,7 +3,8 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { api, type ModelWaiting, type UploadDocument, type UploadSummary } from '../api';
 import SpineLog, { type VertebraState } from '../components/SpineLog';
 import { failureKind } from 'spine-core/failure-kind';
-import { documentTitle } from '../titles';
+import { documentTitle, pageRange } from '../titles';
+import { documentToOpen } from '../scan/open-when-read';
 import { whereTo } from '../components/aiTarget';
 import DeleteUpload from '../components/DeleteUpload';
 import ModelWaitNote from '../components/ModelWaitNote';
@@ -118,7 +119,7 @@ const STATUS_NAME: Record<string, string> = { done: msg('done'), error: msg('err
 const LISTED_DOCUMENTS = 5;
 
 const pagesOf = (doc: UploadDocument, t: I18n['t']) =>
-  doc.page_start === doc.page_end ? t('page {n}', { n: doc.page_start }) : t('pages {from}–{to}', { from: doc.page_start, to: doc.page_end });
+  pageRange(doc.page_start, doc.page_end, t);
 
 /** An upload read and cut into documents that is waiting for the owner to confirm the cut. */
 const needsGrouping = (job: JobState): boolean =>
@@ -237,7 +238,7 @@ export default function Upload() {
   const [jobs, setJobs] = useState<JobState[]>([]);
   // The Get started list leads to the first upload waiting for its grouping (`#grouping`); the page scrolls there once the uploads are listed.
   const firstWaiting = jobs.find(needsGrouping);
-  const { hash } = useLocation();
+  const { hash, state: locationState } = useLocation();
   const scrolled = useRef(false);
   useEffect(() => {
     if (hash !== '#grouping' || scrolled.current || !firstWaiting) return;
@@ -265,6 +266,8 @@ export default function Upload() {
     setJobs(prev => prev.map(j => (j.key === key ? { ...j, ...patch } : j)));
   }, []);
 
+  // A scan this page was sent from is followed, and its letter opened once it is read.
+  const openWhenRead = useRef<string | null>((locationState as { openWhenRead?: string } | null)?.openWhenRead ?? null);
   const pollStatus = useCallback((key: string, fileId: string) => {
     const interval = setInterval(async () => {
       try {
@@ -272,12 +275,14 @@ export default function Upload() {
         update(key, { status: s.status, progress: s.progress, step: s.step, error: s.error, documents: s.documents ?? [], groupingConfirmed: s.grouping_confirmed ?? true, reading: !!s.reading, waiting: s.waiting ?? null });
         // Followed until the documents have been read too, so a grouping confirmed by that is not left asking; and while it waits for the
         // reading service, so the row changes when that is over.
+        const open = openWhenRead.current === fileId ? documentToOpen(s) : null;
+        if (open) { openWhenRead.current = null; clearInterval(interval); navigate(`/documents/${open}`); return; }
         if ((s.status === 'done' && !s.reading && !s.waiting) || s.status === 'error') clearInterval(interval);
       } catch {
         clearInterval(interval);
       }
     }, 2000);
-  }, [update]);
+  }, [update, navigate]);
 
   // A failed upload run again, as it was first read; the row goes back to working and is followed like a new one.
   const retry = useCallback(async (job: JobState) => {
@@ -358,6 +363,13 @@ export default function Upload() {
       {demo && demoUploads && <DemoUploadNotice limits={demoUploads} used={ownUploads} agreed={demoAgreed} agree={agreeDemo} />}
       {!(demo && (!demoAgreed || (demoUploads && ownUploads >= demoUploads.uploads))) && (<>
 
+      {/* On a phone the camera is the way in: Scan finds the page, straightens it and saves the pages as one document. Where photos cannot be read there is no such button. */}
+      {!demo && photos?.enabled && (
+        <Link to="/scan" className="mb-3 flex w-full items-center justify-center gap-2 rounded-full bg-brand-600 px-4 py-3 font-medium text-white hover:bg-brand-700 sm:hidden">
+          <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z" /><circle cx="12" cy="13" r="3.5" /></svg>
+          {t('Take a photo')}
+        </Link>
+      )}
       <div
         onDragOver={e => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
@@ -430,7 +442,7 @@ export default function Upload() {
                 : r.reason === 'export_file_missing'
                 ? t('{name}: a file the export lists is missing from the ZIP.', { name: r.name })
                 : r.reason === 'photo_needs_ai'
-                ? t('{name} was not added: a photo can only be read by sending it to the AI model, and that is switched off on this server. A scanning app that saves a PDF works without it.', { name: r.name })
+                ? t('{name} was not added: reading photos is not available here yet. You can upload a PDF.', { name: r.name })
                 : photos?.enabled
                   ? t('{name} was not added: it is not a PDF, a photo, a Word document or a text file.', { name: r.name })
                   : t('{name} was not added: it is not a PDF, a Word document or a text file.', { name: r.name })}

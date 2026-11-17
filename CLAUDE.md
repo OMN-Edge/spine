@@ -165,6 +165,7 @@ What it must do (the `FR-`, `TR-` and `CR-` IDs cited around the repo): [docs/re
 
 | To change | Read |
 |---|---|
+| A screen or a flow: who it is for and why | [docs/user-stories.md](docs/user-stories.md) (profiles and stories), then [docs/scenarios.md](docs/scenarios.md) |
 | Anything: where the code runs, trust boundaries | [ARCHITECTURE.md](ARCHITECTURE.md) and its detail pages in [docs/architecture/](docs/architecture/README.md) |
 | Routing, auth, share links, storage, providers, static serving | [SECURITY.md](SECURITY.md): the principles and the checklist at its end |
 | The store, SQL, schema, sync | [docs/design-decisions.md](docs/design-decisions.md#records-and-the-store) |

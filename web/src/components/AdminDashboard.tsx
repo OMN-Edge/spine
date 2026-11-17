@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import type { AdminDashboard } from '../api';
 import { useI18n } from '../i18n';
+import { useFormat } from '../format';
 
 /**
  * The operator's numbers, drawn for the page of its own (`pages/Admin.tsx`) in the public pages' look: Literata headings, paper and ink, the teal
@@ -9,11 +10,12 @@ import { useI18n } from '../i18n';
  */
 export default function AdminDashboardView({ data }: { data: AdminDashboard }) {
   const { t } = useI18n();
+  const format = useFormat();
   const n = (v: number | undefined) => v ?? 0;
   const w = data.windows;
   const f = data.funnel;
   const pct = (part: number, whole: number) => (whole > 0 ? Math.round((part / whole) * 100) : 0);
-  const eur = (v: number) => new Intl.NumberFormat(undefined, { style: 'currency', currency: 'EUR' }).format(v);
+  const eur = (v: number) => format.amount(v, 'EUR');
   const LIMITS: Record<string, string> = {
     limit_pages: t('Pages for the month used up'),
     limit_messages: t('Trial questions used up'),
@@ -82,15 +84,15 @@ export default function AdminDashboardView({ data }: { data: AdminDashboard }) {
 
       {data.cohorts.length > 0 && (
         <Block title={t('Week by week')} lead={t('Each week’s new accounts, and how many of them went on to read, ask and translate.')}>
-          <div className="overflow-x-auto rounded-2xl border border-ink/10 bg-surface">
-            <table className="w-full text-left text-sm">
+          <div className="max-w-full overflow-x-auto rounded-2xl border border-ink/10 bg-surface">
+            <table className="w-full min-w-[34rem] text-left text-sm">
               <thead className="text-ink/60"><tr className="border-b border-ink/10"><Th>{t('Week of sign-up')}</Th><Th right>{t('Accounts')}</Th><Th right>{t('Read pages')}</Th><Th right>{t('Asked a question')}</Th><Th right>{t('Translated a page')}</Th></tr></thead>
               <tbody>
                 {data.cohorts.map(c => (
                   <tr key={c.week} className="border-b border-ink/5 last:border-0">
-                    <td className="px-4 py-3">{new Date(`${c.week}T00:00:00Z`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', timeZone: 'UTC' })}</td>
+                    <td className="px-4 py-3">{format.dayMonth(c.week)}</td>
                     <td className="px-4 py-3 text-right font-medium">{c.signups}</td>
-                    {[c.read, c.asked, c.translated].map((v, i) => <td key={i} className="px-4 py-3 text-right">{v} <span className="text-ink/50">{pct(v, c.signups)}%</span></td>)}
+                    {[c.read, c.asked, c.translated].map((v, i) => <td key={i} className="whitespace-nowrap px-4 py-3 text-right">{v} <span className="text-ink/50">{pct(v, c.signups)}%</span></td>)}
                   </tr>
                 ))}
               </tbody>
@@ -186,12 +188,13 @@ function Bars({ rows, max }: { rows: Array<{ label: string; value: number; note?
 }
 
 /** A guardrail's state: an icon and a word, so it is never told by colour alone. */
-function State({ state }: { state: 'ok' | 'amber' | 'red' }) {
+function State({ state }: { state: 'ok' | 'amber' | 'red' | 'early' }) {
   const { t } = useI18n();
   const look = {
     ok: { cls: 'bg-green-50 text-green-800 border-green-200', word: t('On track'), path: 'M4.5 10.5l3.5 3.5 7.5-8' },
     amber: { cls: 'bg-amber-50 text-amber-800 border-amber-200', word: t('Watch'), path: 'M10 5v6M10 14.5v.5' },
     red: { cls: 'bg-red-50 text-red-800 border-red-200', word: t('Needs a look'), path: 'M6 6l8 8M14 6l-8 8' },
+    early: { cls: 'bg-ink/5 text-ink/70 border-ink/15', word: t('Too early'), path: 'M5 10h10' },
   }[state];
   return (
     <span className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${look.cls}`}>
@@ -202,7 +205,7 @@ function State({ state }: { state: 'ok' | 'amber' | 'red' }) {
 }
 
 function Th({ children, right = false }: { children: ReactNode; right?: boolean }) {
-  return <th className={`px-4 py-3 font-normal ${right ? 'text-right' : ''}`}>{children}</th>;
+  return <th className={`whitespace-nowrap px-4 py-3 font-normal ${right ? 'text-right' : ''}`}>{children}</th>;
 }
 
 function Empty() {

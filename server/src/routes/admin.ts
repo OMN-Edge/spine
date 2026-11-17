@@ -9,6 +9,7 @@ import { dashboardOf, type Dashboard } from '../dashboard.js';
 import { changeSetting, operatorSettings } from '../operator-settings.js';
 import { changeFairUse, fairUseSections } from '../plans/fair-use-admin.js';
 import { syncFairUse } from '../plans/fair-use.js';
+import { pageInfo, pagingOf } from './paging.js';
 import { efacturaFromSettings, retryInvoice, settleInvoice } from '../billing/invoicing/queue.js';
 import { loadBillingConfig } from '../billing/config.js';
 import { billingProvider } from '../billing/provider.js';
@@ -40,6 +41,13 @@ export async function adminRoutes(app: FastifyInstance, opts: AdminRouteOptions 
     if (!user || !admins().has(user.email.toLowerCase())) return reply.status(403).send({ error: 'only an administrator can do this' });
   };
 
+  // Whether the signed-in account has a place on the operator's page (administrator, or the marketing role that only reads), so the account page can offer a way there to those who do and show nothing to anyone else.
+  app.get('/api/admin/role', { preHandler: [requireAuth] }, async (req, reply) => {
+    const user = await getAccountsStore().users.findById(req.userId);
+    const email = user?.email.toLowerCase() ?? '';
+    return reply.header('Cache-Control', 'no-store').send({ role: admins().has(email) ? 'admin' : readers().has(email) ? 'reader' : null });
+  });
+
   // The numbers the operator and the marketing role look at: counts and the plans accounts are on, never a person (`dashboard.ts`). Worked out at most once a minute.
   let memo: { at: number; value: Dashboard } | null = null;
   // The numbers walk every account, so a second request while they are being worked out waits for the same answer instead of starting another walk.
@@ -58,11 +66,12 @@ export async function adminRoutes(app: FastifyInstance, opts: AdminRouteOptions 
 
   // The invoices the operator owes (docs/billing.md): how many are in each state, the ones that stopped and why, and the EU consumer sales against the yearly threshold. A
   // reference and the service's own words, never a buyer. The operator mends one (retry, or settle by hand) with a recently typed password.
-  app.get('/api/admin/invoices', { preHandler: [requireAuth, onlyReaders] }, async (_req, reply) => {
+  app.get<{ Querystring: { page?: string; limit?: string } }>('/api/admin/invoices', { preHandler: [requireAuth, onlyReaders] }, async (req, reply) => {
     const store = getAccountsStore();
-    const [counts, stopped, eu] = await Promise.all([store.billing.invoiceCounts(), store.billing.invoicesStopped(50), euSalesTotals(store)]);
+    const paging = pagingOf(req.query);
+    const [counts, stopped, eu] = await Promise.all([store.billing.invoiceCounts(), store.billing.invoicesStopped(paging.limit, paging.offset), euSalesTotals(store)]);
     return reply.header('Cache-Control', 'no-store').send({
-      counts,
+      counts, ...pageInfo(paging, counts.failed + counts.check),
       stopped: stopped.map(r => ({ ref: r.ref, state: r.state, attempts: r.attempts, reason: r.last_error, invoice: r.series ? `${r.series}-${r.number}` : null, at: r.updated_at, can_retry: r.state !== 'issued' && !(r.ref.startsWith('storno:') && !r.issuer_ref) })),
       eu: { year: eu.year, this_year: eu.thisYear / 100, last_year: eu.lastYear / 100, limit: eu.limit / 100 },
     });
@@ -77,15 +86,26 @@ export async function adminRoutes(app: FastifyInstance, opts: AdminRouteOptions 
   // Spine's own link to ANAF's e-Factura (`SPINE_INVOICING=efactura`, docs/efactura.md): whether the operator has authorised it, until when, and the newest documents with ANAF's word on each.
   // The operator starts the authorisation here and finishes it in a browser that holds the certificate; ANAF sends the browser back to the callback, which has no session to rely on (the
   // cookie is SameSite=strict and the redirect comes from another site), so what it checks is the one-time `state` that only a recently typed password could have asked for.
-  app.get('/api/admin/efactura', { preHandler: [requireAuth, onlyReaders] }, async (_req, reply) => {
+  app.get<{ Querystring: { page?: string; limit?: string } }>('/api/admin/efactura', { preHandler: [requireAuth, onlyReaders] }, async (req, reply) => {
     const efactura = efacturaFromSettings();
     if (!efactura) return reply.header('Cache-Control', 'no-store').send({ enabled: false });
-    const [status, documents] = await Promise.all([efactura.link.status(), getAccountsStore().billing.efacturaDocuments(30)]);
+    const paging = pagingOf(req.query);
+    const [status, documents, total] = await Promise.all([efactura.link.status(), getAccountsStore().billing.efacturaDocuments(paging.limit, paging.offset), getAccountsStore().billing.efacturaDocumentCount()]);
     const { seller, series, mode, redirectUri } = efactura.config;
     return reply.header('Cache-Control', 'no-store').send({
-      enabled: true, mode, series, redirect_uri: redirectUri, seller: { name: seller.name, cif: seller.cif }, ...status,
+      enabled: true, ...pageInfo(paging, total), mode, series, redirect_uri: redirectUri, seller: { name: seller.name, cif: seller.cif }, ...status,
       documents: documents.map(d => ({ id: d.draft_id, number: `${d.series}-${String(d.number).padStart(5, '0')}`, kind: d.kind, date: d.issue_date, state: d.anaf_state, message: d.anaf_message })),
     });
+  });
+  // An invoice as the Ministry's own converter draws it from the XML ANAF takes, for the operator to compare with Spine's (`GET /api/billing/invoice-pdf/:id` is the buyer's). The service is public; it needs nothing from ANAF.
+  app.get<{ Params: { id: string } }>('/api/admin/efactura/:id/anaf-pdf', { preHandler: [requireAuth, onlyReaders], config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const efactura = efacturaFromSettings();
+    if (!efactura) return reply.status(404).send({ error: 'e-Factura is not on here' });
+    try {
+      return reply.header('Cache-Control', 'private, no-store').header('Content-Type', 'application/pdf').header('Content-Disposition', 'inline; filename="anaf-view.pdf"').send(await efactura.issuer.pdfByAnaf(req.params.id));
+    } catch (err) {
+      return reply.status(502).send({ error: err instanceof Error ? err.message : 'the Ministry’s converter did not answer' });
+    }
   });
   app.post('/api/admin/efactura/authorise', { preHandler: [requireAuth, onlyAdmins, requireRecentAuth] }, async (_req, reply) => {
     const efactura = efacturaFromSettings();
@@ -117,10 +137,10 @@ export async function adminRoutes(app: FastifyInstance, opts: AdminRouteOptions 
 
   // Buyers' requests to withdraw from a purchase. The operator decides each: pays back (all of the last payment, or an amount) and ends the plan, or declines with a reason.
   // The refund then reaches `charge.refunded`, which has the invoice reversed. The buyer is told either way.
-  app.get('/api/admin/withdrawals', { preHandler: [requireAuth, onlyReaders] }, async (_req, reply) => {
+  app.get<{ Querystring: { page?: string; limit?: string } }>('/api/admin/withdrawals', { preHandler: [requireAuth, onlyReaders] }, async (req, reply) => {
     const store = getAccountsStore();
-    const open = await store.billing.withdrawals('requested', 50);
-    const decided = await store.billing.withdrawals(null, 500);
+    const paging = pagingOf(req.query);
+    const [open, total] = await Promise.all([store.billing.withdrawals('requested', paging.limit, paging.offset), store.billing.withdrawalCount('requested')]);
     const config = loadBillingConfig();
     const rows = await Promise.all(open.map(async w => {
       const [user, sub, first] = await Promise.all([store.users.findById(w.user_id), store.billing.get(w.user_id), store.billing.firstPaymentAt(w.user_id)]);
@@ -134,10 +154,10 @@ export async function adminRoutes(app: FastifyInstance, opts: AdminRouteOptions 
       }
       return {
         id: w.id, email: user?.email ?? null, plan: sub?.plan ?? null, interval: sub?.interval ?? null, requested_at: w.requested_at, first_payment: first, used, suggested,
-        earlier_refunds: decided.filter(b => b.user_id === w.user_id && b.state === 'refunded').length,
+        earlier_refunds: await store.billing.refundedWithdrawalsOf(w.user_id),
       };
     }));
-    return reply.header('Cache-Control', 'no-store').send({ requests: rows });
+    return reply.header('Cache-Control', 'no-store').send({ requests: rows, ...pageInfo(paging, total) });
   });
   app.post<{ Body: { id?: unknown; action?: unknown; amount?: unknown; note?: unknown } }>('/api/admin/withdrawals', { preHandler: [requireAuth, onlyAdmins, requireRecentAuth] }, async (req, reply) => {
     const { id, action, amount, note } = req.body ?? {};
@@ -201,19 +221,22 @@ export async function adminRoutes(app: FastifyInstance, opts: AdminRouteOptions 
   });
 
   // What each account with a subscription has: the plan, who bills it, its state and when it ends or renews. The operator's list, so an administrator's only.
-  app.get('/api/admin/subscriptions', { preHandler: [requireAuth, onlyAdmins] }, async (_req, reply) => {
+  app.get<{ Querystring: { page?: string; limit?: string } }>('/api/admin/subscriptions', { preHandler: [requireAuth, onlyAdmins] }, async (req, reply) => {
     const store = getAccountsStore();
-    const rows = await store.billing.subscriptions(500);
+    const paging = pagingOf(req.query);
+    const [rows, total] = await Promise.all([store.billing.subscriptions(paging.limit, paging.offset), store.billing.subscriptionCount()]);
     const out = await Promise.all(rows.map(async r => ({
       email: (await store.users.findById(r.user_id))?.email ?? null, plan: r.plan, interval: r.interval, provider: r.provider, status: r.status, founding: r.founding,
       until: r.current_period_end, ends: r.cancel_scheduled,
     })));
-    return reply.header('Cache-Control', 'no-store').send({ subscriptions: out });
+    return reply.header('Cache-Control', 'no-store').send({ subscriptions: out, ...pageInfo(paging, total) });
   });
 
-  app.get('/api/admin/accounts', { preHandler: [requireAuth, onlyAdmins] }, async (_req, reply) => {
-    const waiting = (await getAccountsStore().users.list()).filter(u => u.approved === 0);
-    return reply.send({ pending: waiting.map(u => ({ id: u.id, email: u.email, created_at: u.created_at, email_confirmed: !!u.email_verified_at })) });
+  app.get<{ Querystring: { page?: string; limit?: string } }>('/api/admin/accounts', { preHandler: [requireAuth, onlyAdmins] }, async (req, reply) => {
+    const paging = pagingOf(req.query);
+    const store = getAccountsStore();
+    const [waiting, total] = await Promise.all([store.users.listWaiting(paging.limit, paging.offset), store.users.countWaiting()]);
+    return reply.send({ ...pageInfo(paging, total), pending: waiting.map(u => ({ id: u.id, email: u.email, created_at: u.created_at, email_confirmed: !!u.email_verified_at })) });
   });
 
   app.post<{ Params: { id: string } }>('/api/admin/accounts/:id/approve', { preHandler: [requireAuth, onlyAdmins, requireRecentAuth] }, async (req, reply) => {

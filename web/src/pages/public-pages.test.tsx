@@ -96,6 +96,17 @@ describe('the pages before an account', () => {
  * The plans page, drawn for each thing the server can say. Plans come from Paddle's prices, so the page shows an amount only where it was given one, and
  * says so where it was not.
  */
+describe('the front page says what Spine does for a doctor abroad', () => {
+  it('has a line in the hero, a link to the page for doctors, and a section with the same report in two languages, with nothing real in it', () => {
+    const page = text(render(<Landing />, '/'));
+    expect(page).toContain('Your records, in any doctor’s language.');
+    expect(page).toContain('A report from home, read by a doctor abroad');
+    expect(page).toContain('A letter from a clinic abroad, read in your language.');
+    for (const shown of ['Analize de laborator', 'Laborbefund', 'Hemoglobină', 'Hämoglobin', 'not certified translations']) expect(page).toContain(shown);
+    expect(render(<Landing />, '/')).toContain('href="/for-doctors"');
+  });
+});
+
 describe('the plans page', () => {
   const options = { registration: 'open' as const, instance: 'public' as const, billing: true, waitlist: false };
   const prices = { currency: 'EUR', essential: { year: 24.9, month: 2.49 }, premium: { year: 49, month: 4.99 }, founding: { year: 39 }, family: { year: 89, month: 8.99 } };
@@ -107,7 +118,8 @@ describe('the plans page', () => {
     expect(html).not.toContain('€49.00');
     expect(html).toContain('Includes a one-off import of 150 pages');
     expect(html).toContain('Includes a one-off import of 250 pages');
-    expect(html).toContain('22 of 500 places taken');
+    expect(html).toContain('Founding price for the first 500 members');
+    expect(html).not.toMatch(/of 500 taken|places left/);
     for (const total of ['100', '50', '30']) expect(html).toContain(total);
   });
 
@@ -169,6 +181,33 @@ describe('the plans page', () => {
     expect(page).toContain('Start with three months free');
     expect(page).not.toMatch(/six months/i);
     for (const total of ['100', '50', '30']) expect(page).toContain(total);
+  });
+
+  it('says the refund in plain words, and the trial as three months', () => {
+    const page = draw({ enabled: true, prices, essential: true, family: true, founding_left: 478 });
+    expect(page).toContain('minus the part of the year you already used');
+    expect(page).not.toContain('less what the law lets us keep');
+  });
+
+  it('says one thing about the trial and a different thing on each plan’s button', () => {
+    const html = render(<PricingPage pricing={{ enabled: true, prices, essential: true, family: true, founding_left: 478 }} authenticated={false} options={options} />, '/pricing');
+    const page = text(html);
+    expect(page.match(/Start with three months free/g)).toHaveLength(1);
+    const buttons = [...html.matchAll(/<a[^>]*href="(\/register[^"]*)"[^>]*>([^<]*)<\/a>/g)].map(m => [m[1], m[2]]);
+    const labels = buttons.map(b => b[1]);
+    expect(new Set(labels).size).toBe(labels.length);
+    for (const label of ['Stay free after the trial', 'Choose Essential', 'Choose Premium', 'Choose Family']) expect(page).toContain(label);
+    for (const plan of ['free', 'essential', 'premium', 'family']) expect(buttons.some(b => b[0] === `/register?plan=${plan}`)).toBe(true);
+  });
+
+  it('says nothing of the founding places taken until a hundred are, then how many, then how many are left from a hundred left', () => {
+    const founding = (left: number) => draw({ enabled: true, prices, essential: true, family: true, founding_left: left });
+    expect(founding(500)).toContain('Founding price for the first 500 members');
+    expect(founding(500)).not.toMatch(/of 500 taken|left/);
+    expect(founding(350)).toContain('150 of 500 taken');
+    expect(founding(350)).toContain('350 left');
+    expect(founding(80)).toContain('Only 80 founding places left');
+    expect(founding(80)).not.toContain('of 500 taken');
   });
 
   it('leaves out the plans the instance does not sell, and the founding offer once its places are gone', () => {

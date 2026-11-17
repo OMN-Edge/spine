@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { api } from '../api';
-import { buttonClass, inputClass, Notice } from './AuthCard';
+import { inputClass, Notice, secondaryButtonClass } from './AuthCard';
 import { useI18n } from '../i18n';
 import EmailTwoFactor from './EmailTwoFactor';
 
@@ -102,7 +102,7 @@ export default function TwoFactor() {
           <input type="password" placeholder={t('Your password')} autoComplete="current-password"
             value={password} onChange={e => setPassword(e.target.value)} className={inputClass} />
           {error && <Notice kind="error">{error}</Notice>}
-          <button type="submit" className={buttonClass}>{t('Set up')}</button>
+          <button type="submit" className={secondaryButtonClass}>{t('Set up')}</button>
         </form>
         <EmailTwoFactor onState={setEmailOn} />
       </>
@@ -122,7 +122,7 @@ export default function TwoFactor() {
         <input type="text" inputMode="numeric" placeholder={t('6-digit code')} autoComplete="one-time-code"
           autoFocus value={code} onChange={e => setCode(e.target.value)} className={inputClass} />
         {error && <Notice kind="error">{error}</Notice>}
-        <button type="submit" className={buttonClass}>{t('Turn on')}</button>
+        <button type="submit" className={secondaryButtonClass}>{t('Turn on')}</button>
         <button type="button" className="mt-2 text-sm text-gray-500 underline"
           onClick={() => { reset(); refresh(); }}>{t('Cancel')}</button>
       </form>
@@ -144,7 +144,7 @@ export default function TwoFactor() {
           <input type="checkbox" checked={saved} onChange={e => setSaved(e.target.checked)} />
           {t('I have saved them somewhere safe')}
         </label>
-        <button type="button" className={buttonClass} disabled={!saved}
+        <button type="button" className={secondaryButtonClass} disabled={!saved}
           onClick={() => { reset(); refresh(); }}>{t('Done')}</button>
       </div>
     );
@@ -184,7 +184,7 @@ export default function TwoFactor() {
       <input type="text" placeholder={t('Code')} autoComplete="one-time-code" spellCheck={false}
         value={code} onChange={e => setCode(e.target.value)} className={inputClass} />
       {error && <Notice kind="error">{error}</Notice>}
-      <button type="submit" className={buttonClass}>
+      <button type="submit" className={secondaryButtonClass}>
         {step.action === 'disable' ? t('Turn off') : t('Make new codes')}
       </button>
       <button type="button" className="mt-2 text-sm text-gray-500 underline"

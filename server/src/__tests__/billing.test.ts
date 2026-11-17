@@ -100,6 +100,17 @@ describe('plans and payment', () => {
       expect((await get('/api/pricing', {})).json()).toMatchObject({ enabled: true, founding_left: 500, essential: false, prices: { currency: 'EUR', premium: { year: 49, month: 4.99 }, founding: { year: 39 } } });
     });
 
+    it('says who sells: Paddle as the seller of record, or with Stripe the operator, under the name the footer shows', async () => {
+      on();
+      paddlePrices();
+      expect((await get('/api/pricing', {})).json()).toMatchObject({ seller: 'provider' });
+      expect((await get('/api/pricing', {})).json()).not.toHaveProperty('seller_name');
+      process.env = { ...saved, SPINE_OPERATOR_NAME: 'Exemplu Software SRL', SPINE_BILLING: 'on', SPINE_BILLING_PROVIDER: 'stripe', STRIPE_SECRET_KEY: ['sk', 'test', 'seller'].join('_'), STRIPE_WEBHOOK_SECRET: 'whsec_seller', SPINE_STRIPE_PRICE_YEAR: 'pri_year', SPINE_STRIPE_PRICE_MONTH: 'pri_month', SPINE_STRIPE_PRICE_FOUNDING: 'pri_founding', SPINE_STRIPE_PRICE_TOPUP_PAGES: 'pri_topup' };
+      resetCatalog();
+      vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
+      expect((await get('/api/pricing', {})).json()).toMatchObject({ enabled: true, seller: 'operator', seller_name: 'Exemplu Software SRL' });
+    });
+
     it('shows no price at all when Paddle cannot say what it is, and never a price of its own', async () => {
       on();
       vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));

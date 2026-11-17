@@ -30,7 +30,7 @@ const ctx = (f: Fake, at: string, over: Partial<InvoicingContext> = {}, config: 
 const T0 = '2026-11-15T12:00:00.000Z';
 const plus = (iso: string, ms: number) => new Date(Date.parse(iso) + ms).toISOString();
 let n = 0;
-const queued = async (at = T0) => { const ref = `cs_queue_${++n}`; expect(await getAccountsStore().billing.queueInvoice(ref, null, at)).toBe(true); return ref; };
+const queued = async (at = T0, userId: string | null = null) => { const ref = `cs_queue_${++n}`; expect(await getAccountsStore().billing.queueInvoice(ref, userId, at)).toBe(true); return ref; };
 
 describe('the queue of invoices', () => {
   let app: Awaited<ReturnType<typeof buildTestApp>>;
@@ -57,6 +57,25 @@ describe('the queue of invoices', () => {
     // Done is done: asked again, nothing is issued.
     expect(await processInvoice(ref, ctx(f, plus(T0, 60_000)))).toBe('done');
     expect(f.drafts).toHaveLength(1);
+  });
+
+  it('tells the account once that the invoice is made, where the issuer sends the buyer nothing itself, and never fails the invoice if the telling fails', async () => {
+    const f = fake([MADE]);
+    const ref = await queued(T0, 'user-told');
+    const told: Array<{ ref: string; userId: string | null; number: string; credit: boolean }> = [];
+    expect(await processInvoice(ref, ctx(f, T0, { made: async d => { told.push(d); } }, { mail: false }))).toBe('done');
+    expect(await processInvoice(ref, ctx(f, plus(T0, 60_000), { made: async d => { told.push(d); } }, { mail: false }))).toBe('done');
+    expect(told).toEqual([{ ref, userId: 'user-told', number: 'SPN-00001', credit: false }]);
+    // An issuer that mails the buyer itself (the service's own mail) is not told of.
+    const g = fake([MADE]);
+    const other = await queued(T0, 'user-told');
+    const none: unknown[] = [];
+    await processInvoice(other, ctx(g, T0, { made: async d => { none.push(d); } }, { mail: true }));
+    expect(none).toEqual([]);
+    // A mail that cannot be sent leaves the invoice made.
+    const h = fake([MADE]);
+    const broken = await queued(T0, 'user-told');
+    expect(await processInvoice(broken, ctx(h, T0, { made: async () => { throw new Error('mailer down'); } }, { mail: false }))).toBe('done');
   });
 
   it('sends it to e-Factura when the operator asked, and says so when ANAF refuses it', async () => {

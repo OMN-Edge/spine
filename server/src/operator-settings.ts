@@ -28,7 +28,7 @@ export const SETTINGS: readonly SettingDef[] = [
   { key: 'target.imported', label: 'Imported, share of sign-ups', help: 'Accounts that read 5 or more pages, as a share of all sign-ups.', unit: 'percent', min: 0, max: 100, fallback: 40 },
   { key: 'target.asked', label: 'Asked a question, share of sign-ups', help: 'Accounts that asked at least one question, as a share of all sign-ups.', unit: 'percent', min: 0, max: 100, fallback: 25 },
   { key: 'target.founding', label: 'Founding member places taken', help: 'How many of the 500 founding places you want taken by now.', unit: 'count', min: 0, max: 500, fallback: 25 },
-  { key: 'ai.budget', label: 'Monthly AI budget', help: 'You are told at half, four fifths and all of it, once each, by mail to SPINE_ALERT_EMAIL. Empty: not watched.', unit: 'euros', min: 1, max: 1_000_000, fallback: null, env: 'SPINE_AI_BUDGET_EUR' },
+  { key: 'ai.budget', label: 'Monthly AI budget', help: 'You are told at half, four fifths and all of it, once each, by mail to the alert address. Empty: not watched.', unit: 'euros', min: 1, max: 1_000_000, fallback: null, env: 'SPINE_AI_BUDGET_EUR' },
   { key: 'ai.account_alert', label: 'AI cost of one account that needs a look', help: 'An account whose estimated AI cost in a month reaches this is reported and counted on the dashboard.', unit: 'euros', min: 1, max: 100_000, fallback: 15, fallbackOf: () => watchOf().aiEurosPerMonth },
   { key: 'mail.nudge_days', label: 'Days between reminders to add documents', help: 'The mail “Had an appointment lately?”, at most once in this many days. Empty: none.', unit: 'days', min: 7, max: 365, fallback: null, env: 'SPINE_NUDGE_DAYS' },
 ];

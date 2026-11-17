@@ -3,13 +3,14 @@ import { AnafError } from './error.js';
 import type { InvoiceDraft, Issuer, IssuedInvoice } from './invoice.js';
 import type { DocumentStore, StoredDocument } from './store.js';
 import { AnafLink, pdfOf } from './anaf.js';
+import { renderInvoicePdf, type DocumentBrand } from './document.js';
 import { buildUbl, routeOf, UblError, type UblBuyer, type UblDocument, type UblSeller, type ZeroVat } from './ubl.js';
 
 /**
  * The operator's own invoicing, with no service between it and ANAF: Spine numbers the invoice in the operator's series, writes it as the e-Factura XML, keeps it, and
  * sends it to ANAF with the operator's authorisation (`anaf.ts`). The queue calls it as it calls any issuer: `issue` makes the numbered document, which is only the
  * store's and the XML's, so it is repeat-safe (a payment is numbered once); `sendToAnaf` is the part that talks to ANAF, and is asked again until ANAF has decided.
- * The PDF is the Ministry's own, made from the same XML. What it has not got, that a service has: a mail to the buyer (the invoice is in the account's history), and a ledger for the accountant (the documents are kept here, and in the buyer's and the seller's SPV).
+ * The PDF is made here (`document.ts`) from the stored document, the same one the XML is written from; the Ministry's converter is kept as `pdfByAnaf`, to compare. What this has not got, that a service has: a ledger for the accountant (the documents are kept here, and in the buyer's and the seller's SPV).
  */
 export interface EfacturaSettings {
   seller: UblSeller;
@@ -20,6 +21,8 @@ export interface EfacturaSettings {
   exchangeRate?: (currency: string, date: string) => Promise<number>;
   /** Where the PDF of a document can be fetched from, by id: a link that does not last (the server signs it). */
   pdfLink: (id: string) => string;
+  /** The brand the PDF's header shows (its name, site and mark); none, and the header is left out. */
+  brand?: DocumentBrand;
   now?: () => Date;
   fetcher?: typeof fetch;
 }
@@ -27,8 +30,10 @@ export interface EfacturaSettings {
 type Store = DocumentStore;
 
 export interface EfacturaIssuer extends Issuer {
-  /** The PDF of a document, as the Ministry's converter makes it. */
+  /** The PDF of a document, made from the stored document: no request to ANAF. */
   pdf(id: string): Promise<Buffer>;
+  /** The PDF as the Ministry's converter makes it from the XML, for the operator to compare. */
+  pdfByAnaf(id: string): Promise<Buffer>;
 }
 
 const printed = (d: Pick<StoredDocument, 'series' | 'number'>): string => `${d.series}-${String(d.number).padStart(5, '0')}`;
@@ -112,6 +117,12 @@ export function efacturaIssuer(settings: EfacturaSettings, store: Store, link: A
     async pdfUrl(invoice) { return settings.pdfLink(invoice.id); },
 
     async pdf(id) {
+      const d = await need(id);
+      if (!d.xml || !d.input) throw new AnafError(`invoice ${id} has no document yet`, true);
+      return renderInvoicePdf(JSON.parse(d.input) as UblDocument, { ...(settings.brand ? { brand: settings.brand } : {}), efacturaIndex: d.anaf_index });
+    },
+
+    async pdfByAnaf(id) {
       const d = await need(id);
       if (!d.xml) throw new AnafError(`invoice ${id} has no document yet`, true);
       return pdfOf(d.xml, d.kind, fetcher);

@@ -517,8 +517,8 @@ try {
 
   // A link that needs approval has no key in it; the owner's device wraps the key to the visitor's own.
   await p.waitForSelector('input[type=checkbox]');
-  const boxes = await p.$$('input[type=checkbox]');
-  await boxes[2].click();
+  // By its words, not its place: the form has other boxes (the owner's name, what they take now) before this one.
+  await p.evaluate(() => [...document.querySelectorAll('label')].find(l => l.textContent.includes('Ask me before anyone opens it')).querySelector('input[type=checkbox]').click());
   await choose('What to share', 'All history'); await click('Create link');
   check(await waitFor('Link created', 40000), 'a link that needs approval is made');
   const gated = (await text()).match(/https?:\/\/\S+\/share\/[A-Za-z0-9_-]+(#\S*)?/g)?.pop() ?? '';
@@ -591,7 +591,8 @@ try {
       // The chain leads to the named root: the document says the signature is verified.
       await (await p.evaluateHandle(() => [...document.querySelectorAll('a')].find(a => a.innerText.includes('Ana Exemplu') && a.getAttribute('href')?.startsWith('/doctors/')))).asElement().click();
       await wait(1500);
-      await (await p.evaluateHandle(() => [...document.querySelectorAll('a')].find(a => a.getAttribute('href')?.startsWith('/documents/')))).asElement().click();
+      // The doctor's own documents, not the ones listed from others since the last visit above them.
+      await (await p.evaluateHandle(() => [...document.querySelectorAll('a')].find(a => a.getAttribute('href')?.startsWith('/documents/') && !a.closest('#since-last-visit')))).asElement().click();
       check(await waitFor('Digital signature verified', 20000), 'its signer is shown as verified, because the file’s certificates chain to the named authority');
     }
     await wait(4000); // the save

@@ -4,15 +4,17 @@ import { Link } from 'react-router-dom';
 import { api, type Pricing as PricingData } from '../api';
 import { useAuth } from '../auth';
 import { useI18n } from '../i18n';
+import { useFormat } from '../format';
 import { Actions, PublicPage, usePublicOptions, type PublicOptions } from '../components/PublicPage';
 import { FamilySpines } from '../components/PublicDrawings';
 import { TRIAL_TOTALS } from 'spine-core/billing/plans';
+import { FOUNDING_PLACES, foundingStage } from '../founding';
 
 /**
  * What the plans are and cost, read before an account exists (CR-PAY-01: the price, the renewal and how to cancel are shown before any
  * purchase), in the public pages' look (`PublicPage`: paper and ink, Literata headings, the teal accent, the honey highlight). The amounts are
- * Paddle's, read by the server from the prices the checkout charges, so the page and the checkout cannot disagree about what is on offer;
- * where Paddle cannot say, the page shows none. What each plan includes is `core/src/billing/plans.ts`; change one only with the other.
+ * the payment provider's, read by the server from the prices the checkout charges, so the page and the checkout cannot disagree about what is on offer;
+ * where the provider cannot say, the page shows none. Who sells follows the provider: Paddle is the seller of record, with Stripe the operator is. What each plan includes is `core/src/billing/plans.ts`; change one only with the other.
  */
 type Period = 'year' | 'month';
 
@@ -28,13 +30,16 @@ export default function Pricing() {
 export function PricingPage({ pricing, authenticated, options, initialPeriod = 'year' }: { pricing: PricingData | null; authenticated: boolean; options: PublicOptions; initialPeriod?: Period }) {
   const { t } = useI18n();
   const [period, setPeriod] = useState<Period>(initialPeriod);
+  const format = useFormat();
   const prices = pricing?.prices;
-  // A whole amount without its cents (€49, not €49.00); any other with them.
-  const money = (n: number) => new Intl.NumberFormat(undefined, { style: 'currency', currency: prices?.currency ?? 'EUR', ...(Number.isInteger(n) ? { minimumFractionDigits: 0, maximumFractionDigits: 0 } : {}) }).format(n);
+  // A whole amount without its cents (€49, not €49.00); any other with them, written as the reader's language writes money.
+  const money = (n: number) => format.amount(n, prices?.currency ?? 'EUR');
   // Every account starts on the trial; a plan is chosen from the account page.
   const cta = authenticated
     ? { to: '/account', label: t('Choose a plan on your account page') }
     : { to: '/register', label: t('Start with three months free') };
+  // The trial is the one way in, and says so once, above the plans. A plan's own button says what it is: where it goes with the plan named, to be found on the account page.
+  const toPlan = (plan: 'free' | 'essential' | 'premium' | 'family', label: string) => ({ to: authenticated ? '/account' : `/register?plan=${plan}`, label });
 
   return (
     <PublicPage options={options}>
@@ -54,7 +59,7 @@ export function PricingPage({ pricing, authenticated, options, initialPeriod = '
 
       {pricing?.enabled && prices && (
         <>
-          <Trial />
+          <Trial cta={cta} />
 
           {pricing.founding_left ? <Founding price={money(prices.founding.year)} regular={money(prices.premium.year)} left={pricing.founding_left} /> : null}
 
@@ -72,7 +77,7 @@ export function PricingPage({ pricing, authenticated, options, initialPeriod = '
             <div className="mt-8 grid gap-5 lg:grid-cols-3">
               <PlanCard
                 name={t('Free')} tagline={t('To keep your records and show them')}
-                price={money(0)} per={t('for as long as you like')} cta={cta}
+                price={money(0)} per={t('for as long as you like')} cta={toPlan('free', t('Stay free after the trial'))}
                 features={[
                   [true, t('Your records, the timeline, search on your device and export')],
                   [true, t('The emergency card')],
@@ -86,7 +91,7 @@ export function PricingPage({ pricing, authenticated, options, initialPeriod = '
               {pricing.essential && prices.essential && (
                 <PlanCard
                   name={t('Essential')} tagline={t('To ask about a history that has grown')}
-                  {...amounts(prices.essential, period, money, t)} cta={cta}
+                  {...amounts(prices.essential, period, money, t)} cta={toPlan('essential', t('Choose Essential'))}
                   bonus={period === 'year' ? t('Includes a one-off import of {n} pages to read your whole archive', { n: 150 }) : null}
                   features={[
                     [true, t('The emergency card')],
@@ -100,7 +105,7 @@ export function PricingPage({ pricing, authenticated, options, initialPeriod = '
               )}
               <PlanCard
                 featured name={t('Premium')} tagline={t('For a doctor in another country')}
-                {...amounts(prices.premium, period, money, t)} cta={cta}
+                {...amounts(prices.premium, period, money, t)} cta={toPlan('premium', t('Choose Premium'))}
                 bonus={period === 'year' ? t('Includes a one-off import of {n} pages to read your whole archive', { n: 250 }) : null}
                 note={period === 'year' && pricing.founding_left ? t('Founding members pay {price} a year', { price: money(prices.founding.year) }) : null}
                 features={[
@@ -133,7 +138,7 @@ export function PricingPage({ pricing, authenticated, options, initialPeriod = '
                     <Check ok>{t('Records for children, kept by their guardians, with other guardians let in')}</Check>
                     <Check ok>{t('A teenager from sixteen can have an account of their own, and at eighteen the records can become theirs')}</Check>
                   </ul>
-                  <Link to={cta.to} className="mt-8 inline-block rounded-full bg-ink px-6 py-3 font-medium text-paper hover:bg-ink/85">{cta.label}</Link>
+                  <Link to={toPlan('family', t('Choose Family')).to} className="mt-8 inline-block rounded-full bg-ink px-6 py-3 font-medium text-paper hover:bg-ink/85">{t('Choose Family')}</Link>
                 </div>
                 <figure><FamilySpines /></figure>
               </div>
@@ -153,8 +158,10 @@ export function PricingPage({ pricing, authenticated, options, initialPeriod = '
             <h2 className="max-w-3xl font-display text-[clamp(1.7rem,3.2vw,2.4rem)] font-normal leading-tight">{t('How paying works')}</h2>
             <dl className="mt-8 grid gap-x-12 gap-y-8 border-t border-ink/10 pt-8 md:grid-cols-2">
               <Point title={t('Cancel whenever you like')}>{t('A subscription renews every month or every year until you cancel. You cancel from your account, on the payment provider’s page, and keep your plan until the end of what you paid for.')}</Point>
-              <Point title={t('Your money back')}>{t('In the first 14 days you can withdraw and have your money back. For a yearly plan we refund what you paid, less what the law lets us keep for the part of the service already given.')}</Point>
-              <Point title={t('Paid through Paddle')}>{t('Paddle sells the plan to you: it takes the payment, sends the invoice and adds any tax, which you see before you pay. Spine never sees your card, only which plan you have.')}</Point>
+              <Point title={t('Your money back')}>{t('In the first 14 days you can withdraw and have your money back. For a yearly plan we refund what you paid, minus the part of the year you already used.')}</Point>
+              {pricing?.seller === 'operator'
+                ? <Point title={pricing.seller_name ? t('Sold by {seller}', { seller: pricing.seller_name }) : t('Sold by the operator of this Spine')}>{t('Card payments are handled by Stripe. Spine never sees your card, only which plan you have. A price includes any VAT that is due on it.')}</Point>
+                : <Point title={t('Paid through Paddle')}>{t('Paddle sells the plan to you: it takes the payment, sends the invoice and adds any tax, which you see before you pay. Spine never sees your card, only which plan you have.')}</Point>}
               <Point title={t('Or run your own')}>{t('Spine is open-source software. Running your own copy is free, and has no plans.')}</Point>
             </dl>
           </section>
@@ -183,7 +190,7 @@ function amounts(p: { year: number; month: number }, period: Period, money: (n: 
 }
 
 /** Three months of everything, up to three totals, drawn as the three numbers they are. */
-function Trial() {
+function Trial({ cta }: { cta: { to: string; label: string } }) {
   const { t } = useI18n();
   const items: Array<[number, string]> = [[TRIAL_TOTALS.pages, t('pages of AI reading')], [TRIAL_TOTALS.messages, t('questions about your records')], [TRIAL_TOTALS.translated, t('translated pages')]];
   return (
@@ -192,6 +199,7 @@ function Trial() {
         <div>
           <h2 className="font-display text-[clamp(1.8rem,3.4vw,2.6rem)] font-normal leading-tight">{t('Every account starts with three months of everything, free.')}</h2>
           <p className="mt-4 max-w-md text-lg leading-relaxed text-band-fg/75">{t('No card. Every feature of Premium, up to these totals for the whole three months. After that you keep the free plan or choose one.')}</p>
+          <Link to={cta.to} className="mt-6 inline-block rounded-full bg-accent-light px-6 py-3 font-medium text-band hover:bg-accent-light/90">{cta.label}</Link>
         </div>
         <ul className="grid grid-cols-3 gap-3 sm:gap-5">
           {items.map(([n, label]) => (
@@ -261,10 +269,11 @@ function Check({ ok, inverted = false, children }: { ok: boolean; inverted?: boo
   );
 }
 
-/** The founding offer, while places are left: the price kept for as long as the subscription runs, and how many of the 500 are taken. */
+/** The founding offer, while places are left: the price kept for as long as the subscription runs, and what is said of the places by how many are taken (`founding.ts`). */
 function Founding({ price, regular, left }: { price: string; regular: string; left: number }) {
   const { t } = useI18n();
-  const taken = 500 - left;
+  const taken = FOUNDING_PLACES - left;
+  const stage = foundingStage(left);
   return (
     <section className="mx-auto max-w-6xl px-4 pt-14 sm:px-6">
       <div className="grid gap-8 rounded-3xl border border-accent/30 bg-accent/5 p-6 sm:p-10 md:grid-cols-[1.3fr_1fr] md:items-center">
@@ -276,10 +285,14 @@ function Founding({ price, regular, left }: { price: string; regular: string; le
           <p className="mt-4 max-w-xl leading-relaxed text-ink/75">{t('For the first 500 people only, instead of {regular}. The price stays yours for as long as your subscription runs, and you can take it during your free trial.', { regular })}</p>
         </div>
         <div>
-          <p className="flex items-baseline justify-between text-sm text-ink/70"><span>{t('{taken} of 500 places taken', { taken })}</span><span className="font-medium text-ink">{t('{left} left', { left })}</span></p>
-          <span className="mt-2 block h-3 overflow-hidden rounded-full bg-ink/10" role="presentation">
-            <span className="block h-3 rounded-full bg-accent" style={{ width: `${Math.max(2, Math.round((taken / 500) * 100))}%` }} />
-          </span>
+          {stage === 'quiet' && <p className="text-sm font-medium text-ink/80">{t('Founding price for the first 500 members')}</p>}
+          {stage === 'count' && <p className="flex items-baseline justify-between text-sm text-ink/70"><span>{t('{taken} of 500 taken', { taken })}</span><span className="font-medium text-ink">{t('{left} left', { left })}</span></p>}
+          {stage === 'scarce' && <p className="text-sm font-medium text-ink">{t('Only {left} founding places left', { left })}</p>}
+          {stage !== 'quiet' && (
+            <span className="mt-2 block h-3 overflow-hidden rounded-full bg-ink/10" role="presentation">
+              <span className="block h-3 rounded-full bg-accent" style={{ width: `${Math.max(2, Math.round((taken / FOUNDING_PLACES) * 100))}%` }} />
+            </span>
+          )}
         </div>
       </div>
     </section>

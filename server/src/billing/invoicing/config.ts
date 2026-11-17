@@ -105,13 +105,28 @@ function readEfacturaConfig(env: NodeJS.ProcessEnv, zeroVat: ZeroVat, need: (nam
   const registerNo = (env.SPINE_SELLER_REGISTER_NO ?? '').trim();
   const tradeName = (env.SPINE_SELLER_TRADE_NAME ?? '').trim();
   const email = (env.SPINE_SELLER_EMAIL ?? '').trim();
+  const bank = (env.SPINE_SELLER_BANK ?? '').trim();
+  const iban = (env.SPINE_SELLER_IBAN ?? '').replace(/\s+/g, ' ').trim().toUpperCase();
+  if (iban && !/^[A-Z]{2}\d{2}[A-Z0-9 ]{8,30}$/.test(iban)) problems.push('SPINE_SELLER_IBAN is an IBAN (RO49 AAAA 1B31 0075 9384 0000)');
   const domain = need('SPINE_DOMAIN');
   return {
     mode: mode === 'prod' ? 'prod' : 'test', clientId: need('ANAF_CLIENT_ID'), clientSecret: need('ANAF_CLIENT_SECRET'), redirectUri, key,
     seller: {
       name: need('SPINE_SELLER_NAME'), cif, street: need('SPINE_SELLER_STREET'), city: need('SPINE_SELLER_CITY'), county, postalCode: need('SPINE_SELLER_POSTAL_CODE'),
-      ...(sector ? { sector } : {}), ...(vatId ? { vatId } : {}), ...(registerNo ? { registerNo } : {}), ...(tradeName ? { tradeName } : {}), ...(email ? { email } : {}),
+      ...(sector ? { sector } : {}), ...(vatId ? { vatId } : {}), ...(registerNo ? { registerNo } : {}), ...(tradeName ? { tradeName } : {}), ...(email ? { email } : {}), ...(bank ? { bank } : {}), ...(iban ? { iban } : {}),
     },
     series: (env.SPINE_EFACTURA_SERIES ?? 'SPN').trim().toUpperCase(), zeroVat, publicUrl: `https://${domain}`,
   };
+}
+
+/**
+ * One company, two settings: the footer and the terms name `SPINE_OPERATOR_NAME`, an invoice names `SPINE_SELLER_NAME`. Where Spine issues the invoices itself and the two differ (or the
+ * operator's is not set), a buyer reads one company on the page and another on the invoice; this says so at start-up. A warning, not a refusal: a seller may trade under a group's name.
+ */
+export function sellerNameWarning(config: InvoicingConfig, operator: string | null | undefined): string | null {
+  if (!config.enabled || config.issuer !== 'efactura') return null;
+  const seller = config.direct.seller.name;
+  const fold = (name: string) => name.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\./g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+  if (!operator?.trim()) return `invoices are made out by "${seller}" (SPINE_SELLER_NAME) but SPINE_OPERATOR_NAME is not set, so the pages say nothing of who sells: set it to the same company`;
+  return fold(operator) === fold(seller) ? null : `the pages say "${operator.trim()}" (SPINE_OPERATOR_NAME) sells, and the invoices are made out by "${seller}" (SPINE_SELLER_NAME): a buyer reads two companies. Make them the same, or confirm that they are meant to differ`;
 }

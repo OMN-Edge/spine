@@ -12,6 +12,8 @@ import Forgot from './pages/Forgot';
 import Pair from './pages/Pair';
 import Reset from './pages/Reset';
 import Account from './pages/Account';
+import Invoices from './pages/Invoices';
+import { setNavOpen } from './nav-open';
 import Timeline from './pages/Timeline';
 import Upload from './pages/Upload';
 import UploadPages from './pages/UploadPages';
@@ -106,6 +108,8 @@ function Layout({ children }: { children: React.ReactNode }) {
 
   // A link was followed: the menu has done its job.
   useEffect(() => setMenuOpen(false), [location.pathname]);
+  // The floating pills hide while the menu is open (nav-open.ts).
+  useEffect(() => { setNavOpen(document.body, menuOpen); return () => setNavOpen(document.body, false); }, [menuOpen]);
 
   // Signing out drops what is on this device, so it does not go ahead over changes the vault does not have: the person is asked.
   const [losing, setLosing] = useState(false);
@@ -197,6 +201,11 @@ function Layout({ children }: { children: React.ReactNode }) {
                 {t(link.label)}{link.to === '/review' && <ReviewBadge count={waiting} />}
               </NavLink>
             ))}
+            {!demo && (
+              <NavLink to="/scan" className={({ isActive }) => `flex items-center py-3 text-base border-b border-gray-100 ${isActive ? 'text-gray-900 font-medium' : 'text-gray-600'}`}>
+                {t('Scan')}
+              </NavLink>
+            )}
             <p className="pt-4 pb-1 text-xs font-medium uppercase tracking-wide text-gray-400">{t('More')}</p>
             {more.map(link => (
               <NavLink
@@ -416,6 +425,7 @@ export default function App() {
         <Route path="/share-links/:id" element={<PrivateRoute inDemo={false}><ShareLinkDetail /></PrivateRoute>} />
         <Route path="/share-requests/:id" element={<PrivateRoute inDemo={false}><ShareRequestPage /></PrivateRoute>} />
         <Route path="/account" element={<PrivateRoute inDemo={false}><Account /></PrivateRoute>} />
+        <Route path="/account/invoices" element={<PrivateRoute inDemo={false}><Invoices /></PrivateRoute>} />
       </Routes>
       </GuideProvider>
       </ChatProvider>

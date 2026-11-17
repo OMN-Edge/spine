@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type Document } from '../api';
-import { documentByline, documentTitle } from '../titles';
+import { documentByline, documentTitle, pageRef } from '../titles';
 import { useListTitles } from '../useListTitles';
 import SpineLog from '../components/SpineLog';
 import { msg, useI18n } from '../i18n';
@@ -139,7 +139,7 @@ export default function Search() {
                           <p className="text-sm text-gray-500 mt-1 line-clamp-2">{summaryOf(doc)}</p>
                         )}
                       </div>
-                      <span className="text-xs text-gray-400 shrink-0">{t('p. {from}–{to}', { from: doc.page_start, to: doc.page_end })}</span>
+                      {pageRef(doc.page_start, doc.page_end, t) && <span className="text-xs text-gray-400 shrink-0">{pageRef(doc.page_start, doc.page_end, t)}</span>}
                     </div>
                   </Link>
                 ),

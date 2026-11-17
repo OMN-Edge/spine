@@ -7,6 +7,7 @@ import { useChat } from '../components/ChatProvider';
 import ShareRequestCard from '../components/ShareRequestCard';
 import { announceChange, useOnDataChanged } from '../dataChanged';
 import { LANGUAGES, languageChoice, useI18n } from '../i18n';
+import { useFormat } from '../format';
 import { countryName } from '../i18n/useTranslation';
 import { Combobox } from '../components/Combobox';
 import { languageName } from '../i18n/useTranslation';
@@ -26,6 +27,7 @@ const primary = 'bg-brand-600 text-white rounded-full px-4 py-2 text-sm font-med
 export default function ShareLinkDetail() {
   const { id } = useParams<{ id: string }>();
   const { t, tn, lang } = useI18n();
+  const format = useFormat();
   const chat = useChat();
   const [data, setData] = useState<Detail | null>(null);
   const { titleOf } = useListTitles((data?.documents ?? []).map(d => d.id), false);
@@ -112,7 +114,7 @@ export default function ShareLinkDetail() {
       return changes.map(c => `${fieldName(c.field)}: ${valueText(c.field, c.from)} → ${valueText(c.field, c.to)}`).join('; ');
     } catch { return t('Changed'); }
   };
-  const when = (iso: string) => new Date(iso).toLocaleString();
+  const when = (iso: string) => format.dateTime(iso);
 
   return (
     <div className="max-w-2xl mx-auto">

@@ -21,6 +21,7 @@ import { useScreen } from '../components/ChatProvider';
 import { DOC_TYPE_NAMES, documentByline, documentTitle, fieldName, isSection, labelFromName, valueLines } from '../titles';
 import { LANGUAGES, languageChoice, useI18n } from '../i18n';
 import { languageName, useTranslation } from '../i18n/useTranslation';
+import OriginalNote from '../components/OriginalNote';
 import { downloadFromDevice } from '../core/client';
 import { useAuth } from '../auth';
 
@@ -495,6 +496,7 @@ export default function DocumentPage() {
           ) : (
             <>
               <h1 className="text-lg font-semibold text-gray-900 mb-4">{t('Review')}</h1>
+              <OriginalNote documentLanguage={doc.language} />
               <div className="mb-3">
                 <label htmlFor="d-title" className={label}>{t('Title')}</label>
                 <input id="d-title" className={input} value={draft.title} onChange={e => set({ title: e.target.value })} />

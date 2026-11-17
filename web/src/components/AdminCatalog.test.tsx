@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { I18nProvider } from '../i18n';
-import { CatalogActions, ProductCard } from './AdminCatalog';
+import { CatalogActions, firstRun, ProductCard } from './AdminCatalog';
 import type { CatalogProduct } from './catalog-view';
 
 /** The parts of the Products page, drawn: what each says, which buttons there are, and that no button is long. */
@@ -92,5 +92,30 @@ describe('the buttons of the page', () => {
       expect(text.split(/\s+/).length, text).toBeLessThanOrEqual(2);
       expect(text.length, text).toBeLessThanOrEqual(14);
     }
+  });
+});
+
+describe('the first time on the page', () => {
+  const html = (props: { adoptable: number; firstRun?: boolean; publishable?: boolean }) => renderToStaticMarkup(<I18nProvider><CatalogActions provider="Stripe" busy={false} onPublish={() => undefined} onCheck={() => undefined} onImport={() => undefined} {...props} /></I18nProvider>);
+
+  it('knows it when prices are on sale at the provider and the catalog holds none', () => {
+    expect(firstRun({ adoptable: 8, products: [{ prices: [] }, { prices: [] }] })).toBe(true);
+    expect(firstRun({ adoptable: 8, products: [{ prices: [{}] }, { prices: [] }] })).toBe(false);
+    expect(firstRun({ adoptable: 0, products: [{ prices: [] }] })).toBe(false);
+  });
+
+  it('says what to do: a banner, Import as the one primary button, and Publish disabled with nothing to publish', () => {
+    const page = html({ adoptable: 8, firstRun: true, publishable: false });
+    expect(page).toContain('8 prices are on sale at Stripe but not in the catalog yet. Import them to edit them here.');
+    expect(page.match(/bg-accent px-4/g)).toHaveLength(1);
+    expect(page).toMatch(/<button[^>]*bg-accent[^>]*>Import \(8\)<\/button>/);
+    expect(page).toMatch(/<button[^>]*disabled=""[^>]*>Publish<\/button>/);
+  });
+
+  it('is gone after the import: no banner, Publish primary again when something changed', () => {
+    const page = html({ adoptable: 0, firstRun: false, publishable: true });
+    expect(page).not.toContain('not in the catalog yet');
+    expect(page).toMatch(/<button[^>]*bg-accent[^>]*>Publish<\/button>/);
+    expect(page).not.toMatch(/<button[^>]*disabled=""[^>]*>Publish<\/button>/);
   });
 });

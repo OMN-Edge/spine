@@ -51,6 +51,14 @@ export function userRepository(q: Query, begin: Begin): UserRepository {
       return many<Pick<UserRecord, 'id' | 'email' | 'created_at' | 'email_verified_at' | 'approved'>>(q, 'SELECT id, email, created_at, email_verified_at, approved FROM users ORDER BY created_at');
     },
 
+    async listWaiting(limit, offset) {
+      return many<Pick<UserRecord, 'id' | 'email' | 'created_at' | 'email_verified_at' | 'approved'>>(q, 'SELECT id, email, created_at, email_verified_at, approved FROM users WHERE approved = 0 ORDER BY created_at, id LIMIT $1 OFFSET $2', [limit, offset]);
+    },
+
+    async countWaiting() {
+      return Number((await one<{ n: number }>(q, 'SELECT COUNT(*) AS n FROM users WHERE approved = 0', []))!.n);
+    },
+
     async setPassword(id, passwordHash) {
       return begin(async run => {
         await run('UPDATE users SET password_hash = $1, auth_version = auth_version + 1 WHERE id = $2', [passwordHash, id]);

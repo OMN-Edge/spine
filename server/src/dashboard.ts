@@ -11,7 +11,8 @@ import { operatorSettings } from './operator-settings.js';
  * used), counted by account and never shown by account. What only the app could report (documents kept, the emergency card, an invitation sent) is not here:
  * the app reports no counters, so the figures that stand for those are said to be proxies. Admin only; read at most once a minute.
  */
-export type State = 'ok' | 'amber' | 'red';
+/** `early` is neutral: too little time has passed, or too few accounts exist, for a target to say anything. */
+export type State = 'ok' | 'amber' | 'red' | 'early';
 export interface Guardrail { key: string; value: number | null; target: number; unit: 'percent' | 'count' | 'euros'; state: State; note: string }
 export interface Dashboard {
   generated_at: string;
@@ -33,9 +34,19 @@ const day = (d: Date) => d.toISOString().slice(0, 10);
 /** The Monday of the week a day is in. */
 const weekOf = (iso: string): string => { const d = new Date(iso); d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); return day(d); };
 
-const stateOf = (value: number | null, target: number, higherIsBetter: boolean): State => {
+/** The 30 days a target is for, and how few days of data must be there before it says anything: a target for a month is not failed on the first day. */
+export const TARGET_DAYS = 30;
+export const TOO_EARLY_DAYS = 7;
+
+/**
+ * Where a guardrail stands. With less than a week of data it is `early`, never red; a target counted over the 30 days (`windowed`) is pro-rated to the days that have passed, so
+ * one sign-up on day 2 against a target of 300 for the month is measured against 20, not 300.
+ */
+export const stateOf = (value: number | null, target: number, higherIsBetter: boolean, elapsedDays: number = TARGET_DAYS, windowed = false): State => {
   if (value === null) return 'ok';
-  const ratio = higherIsBetter ? value / target : target / Math.max(value, 1e-9);
+  if (elapsedDays < TOO_EARLY_DAYS) return 'early';
+  const aimed = windowed ? target * Math.min(1, elapsedDays / TARGET_DAYS) : target;
+  const ratio = higherIsBetter ? value / aimed : aimed / Math.max(value, 1e-9);
   return ratio >= 1 ? 'ok' : ratio >= 0.75 ? 'amber' : 'red';
 };
 
@@ -54,6 +65,7 @@ export async function dashboardOf(store: AccountsStore, now: Date = new Date()):
   let above = 0;
   let trialSignups = 0;
   let trialEuros = 0;
+  let first: string | null = null;
   const settings = Object.fromEntries((await operatorSettings(store)).map(s => [s.key, s.value]));
   const aiEurosPerMonth = settings['ai.account_alert'] ?? Infinity;
   const cutoff = new Date(now.getTime() - 8 * 7 * DAY);
@@ -72,6 +84,7 @@ export async function dashboardOf(store: AccountsStore, now: Date = new Date()):
     if (plan === 'trial') { trialSignups++; trialEuros += cost; }
     const read = pages > 0;
     funnel.signups++;
+    if (first === null || user.created_at < first) first = user.created_at;
     if (read) funnel.read++;
     if (pages >= IMPORTED_PAGES) funnel.imported++;
     if (asked > 0) funnel.asked++;
@@ -88,12 +101,14 @@ export async function dashboardOf(store: AccountsStore, now: Date = new Date()):
   const budget = settings['ai.budget'] ?? null;
   const monthTotal = await monthlyCost(store, month);
 
+  // How long there has been anything to measure: from the first account, so a new instance is not judged on a month it has not had.
+  const elapsedDays = first === null ? 0 : Math.max(0, (now.getTime() - new Date(first).getTime()) / DAY);
   const T = { accounts: settings['target.accounts'] ?? 0, imported: settings['target.imported'] ?? 0, asked: settings['target.asked'] ?? 0, founding: settings['target.founding'] ?? 0 };
   const guardrails: Guardrail[] = [
-    { key: 'Sign-ups in the last 30 days', value: days30.signup ?? 0, target: T.accounts, unit: 'count', state: stateOf(days30.signup ?? 0, T.accounts, true), note: 'a target you set on this page' },
-    { key: 'Imported (5 or more pages read), share of sign-ups', value: pct(funnel.imported), target: T.imported, unit: 'percent', state: stateOf(pct(funnel.imported), T.imported, true), note: 'stands for 5+ documents kept, which only the app can count' },
-    { key: 'Asked a question, share of sign-ups', value: pct(funnel.asked), target: T.asked, unit: 'percent', state: stateOf(pct(funnel.asked), T.asked, true), note: 'a target you set on this page' },
-    { key: 'Founding member places taken', value: held, target: T.founding, unit: 'count', state: stateOf(held, T.founding, true), note: 'of 500' },
+    { key: 'Sign-ups in the last 30 days', value: days30.signup ?? 0, target: T.accounts, unit: 'count', state: stateOf(days30.signup ?? 0, T.accounts, true, elapsedDays, true), note: 'a target you set on this page' },
+    { key: 'Imported (5 or more pages read), share of sign-ups', value: pct(funnel.imported), target: T.imported, unit: 'percent', state: stateOf(pct(funnel.imported), T.imported, true, elapsedDays), note: 'stands for 5+ documents kept, which only the app can count' },
+    { key: 'Asked a question, share of sign-ups', value: pct(funnel.asked), target: T.asked, unit: 'percent', state: stateOf(pct(funnel.asked), T.asked, true, elapsedDays), note: 'a target you set on this page' },
+    { key: 'Founding member places taken', value: held, target: T.founding, unit: 'count', state: stateOf(held, T.founding, true, elapsedDays), note: 'of 500' },
     { key: 'Accounts above the AI alert this month', value: above, target: 0, unit: 'count', state: above === 0 ? 'ok' : 'red', note: `an account's estimated AI cost of ${aiEurosPerMonth} EUR or more: look at each` },
     ...(budget !== null ? [{ key: 'Share of the monthly AI budget used', value: Math.round((monthTotal / budget) * 100), target: 80, unit: 'percent' as const, state: (monthTotal / budget >= 1 ? 'red' : monthTotal / budget >= 0.8 ? 'amber' : 'ok') as State, note: 'the monthly AI budget you set on this page' }] : []),
   ];

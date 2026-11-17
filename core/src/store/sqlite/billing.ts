@@ -28,7 +28,8 @@ type EfacturaTokensRow = NonNullable<Awaited<ReturnType<BillingRepository['efact
 /** The account's own row is read with its id; the provider's side finds one by the provider's ids (store/types.ts, exceptions). */
 export function billingRepository(db: Database): BillingRepository {
   const get = db.prepare(`SELECT ${COLUMNS} FROM subscriptions WHERE user_id = ?`);
-  const all = db.prepare(`SELECT ${COLUMNS} FROM subscriptions ORDER BY updated_at DESC LIMIT ?`);
+  const all = db.prepare(`SELECT ${COLUMNS} FROM subscriptions ORDER BY updated_at DESC, user_id LIMIT ? OFFSET ?`);
+  const subscriptionCount = db.prepare('SELECT COUNT(*) AS n FROM subscriptions');
   const bySubscription = db.prepare(`SELECT ${COLUMNS} FROM subscriptions WHERE subscription_id = ?`);
   const byCustomer = db.prepare(`SELECT ${COLUMNS} FROM subscriptions WHERE customer_id = ?`);
   const put = db.prepare(`INSERT INTO subscriptions (${COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -46,14 +47,19 @@ export function billingRepository(db: Database): BillingRepository {
   const queue = db.prepare(`INSERT OR IGNORE INTO invoice_queue (ref, user_id, state, attempts, next_attempt_at, created_at, updated_at) VALUES (?, ?, 'pending', 0, ?, ?, ?)`);
   const due = db.prepare(`SELECT ${INVOICE_COLUMNS} FROM invoice_queue WHERE state IN ('pending', 'issued') AND next_attempt_at <= ? ORDER BY created_at LIMIT ?`);
   const requestW = db.prepare(`INSERT OR IGNORE INTO withdrawal_requests (id, user_id, state, requested_at) VALUES (?, ?, 'requested', ?)`);
-  const allW = db.prepare(`SELECT ${WITHDRAWAL_COLUMNS} FROM withdrawal_requests ORDER BY requested_at DESC LIMIT ?`);
-  const byStateW = db.prepare(`SELECT ${WITHDRAWAL_COLUMNS} FROM withdrawal_requests WHERE state = ? ORDER BY requested_at DESC LIMIT ?`);
+  const allW = db.prepare(`SELECT ${WITHDRAWAL_COLUMNS} FROM withdrawal_requests ORDER BY requested_at DESC, id LIMIT ? OFFSET ?`);
+  const refundedW = db.prepare(`SELECT COUNT(*) AS n FROM withdrawal_requests WHERE user_id = ? AND state = 'refunded'`);
+  const countW = db.prepare('SELECT COUNT(*) AS n FROM withdrawal_requests');
+  const countByStateW = db.prepare('SELECT COUNT(*) AS n FROM withdrawal_requests WHERE state = ?');
+  const byStateW = db.prepare(`SELECT ${WITHDRAWAL_COLUMNS} FROM withdrawal_requests WHERE state = ? ORDER BY requested_at DESC, id LIMIT ? OFFSET ?`);
   const oneW = db.prepare(`SELECT ${WITHDRAWAL_COLUMNS} FROM withdrawal_requests WHERE id = ?`);
   const openW = db.prepare(`SELECT ${WITHDRAWAL_COLUMNS} FROM withdrawal_requests WHERE user_id = ? AND state = 'requested'`);
   const decideW = db.prepare('UPDATE withdrawal_requests SET state = ?, decided_at = ?, refunded_minor = ?, note = ? WHERE id = ?');
   const ofUser = db.prepare(`SELECT ${INVOICE_COLUMNS} FROM invoice_queue WHERE user_id = ? ORDER BY created_at DESC`);
+  const made = db.prepare(`SELECT ${INVOICE_COLUMNS} FROM invoice_queue WHERE user_id = ? AND number IS NOT NULL AND number <> '' AND state IN ('done', 'issued') ORDER BY created_at DESC, ref LIMIT ? OFFSET ?`);
+  const madeCount = db.prepare(`SELECT COUNT(*) AS n FROM invoice_queue WHERE user_id = ? AND number IS NOT NULL AND number <> '' AND state IN ('done', 'issued')`);
   const firstPay = db.prepare(`SELECT MIN(created_at) AS at FROM invoice_queue WHERE user_id = ? AND ref NOT LIKE 'storno:%'`);
-  const stopped = db.prepare(`SELECT ${INVOICE_COLUMNS} FROM invoice_queue WHERE state IN ('failed', 'check') ORDER BY updated_at DESC LIMIT ?`);
+  const stopped = db.prepare(`SELECT ${INVOICE_COLUMNS} FROM invoice_queue WHERE state IN ('failed', 'check') ORDER BY updated_at DESC, ref LIMIT ? OFFSET ?`);
   const countsByState = db.prepare('SELECT state, COUNT(*) AS n FROM invoice_queue GROUP BY state');
   const euSales = db.prepare('SELECT SUM(eu_minor) AS n FROM invoice_queue WHERE created_at >= ? AND created_at < ?');
   const oneInvoice = db.prepare(`SELECT ${INVOICE_COLUMNS} FROM invoice_queue WHERE ref = ?`);
@@ -68,7 +74,8 @@ export function billingRepository(db: Database): BillingRepository {
   const newSeries = db.prepare('INSERT OR IGNORE INTO efactura_series (series, next_number) VALUES (?, 1)');
   const takeNumber = db.prepare('UPDATE efactura_series SET next_number = next_number + 1 WHERE series = ? RETURNING next_number - 1 AS n');
   const putDocument = db.prepare(`INSERT INTO efactura_documents (draft_id, kind, series, number, issue_date, reverses, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
-  const newestDocuments = db.prepare(`SELECT ${EFACTURA_COLUMNS} FROM efactura_documents ORDER BY created_at DESC, number DESC LIMIT ?`);
+  const newestDocuments = db.prepare(`SELECT ${EFACTURA_COLUMNS} FROM efactura_documents ORDER BY created_at DESC, number DESC LIMIT ? OFFSET ?`);
+  const countDocuments = db.prepare('SELECT COUNT(*) AS n FROM efactura_documents');
   const reserve = db.transaction((draftId: string, kind: string, series: string, issueDate: string, at: string, reverses: string | null) => {
     const existing = oneDocument.get(draftId) as EfacturaDocument | undefined;
     if (existing) return existing;
@@ -89,7 +96,8 @@ export function billingRepository(db: Database): BillingRepository {
 
   return {
     async get(userId) { return row(get, userId); },
-    async subscriptions(limit) { return (all.all(limit) as Array<Record<string, unknown>>).map(asSubscription); },
+    async subscriptions(limit, offset = 0) { return (all.all(limit, offset) as Array<Record<string, unknown>>).map(asSubscription); },
+    async subscriptionCount() { return Number((subscriptionCount.get() as { n: number }).n); },
     async findBySubscription(id) { return row(bySubscription, id); },
     async findByCustomer(id) { return row(byCustomer, id); },
     async put(s) {
@@ -101,13 +109,17 @@ export function billingRepository(db: Database): BillingRepository {
     async customerOf(userId) { return ((customer.get(userId) as { customer_id: string } | undefined)?.customer_id) ?? null; },
     async setCustomer(userId, customerId, at) { setCustomer.run(userId, customerId, at); },
     async requestWithdrawal(id, userId, at) { return requestW.run(id, userId, at).changes === 1; },
-    async withdrawals(state, limit) { return (state === null ? allW.all(limit) : byStateW.all(state, limit)) as WithdrawalRecord[]; },
+    async withdrawals(state, limit, offset = 0) { return (state === null ? allW.all(limit, offset) : byStateW.all(state, limit, offset)) as WithdrawalRecord[]; },
+    async refundedWithdrawalsOf(userId) { return Number((refundedW.get(userId) as { n: number }).n); },
+    async withdrawalCount(state) { return Number(((state === null ? countW.get() : countByStateW.get(state)) as { n: number }).n); },
     async withdrawal(id) { return (oneW.get(id) as WithdrawalRecord | undefined) ?? null; },
     async openWithdrawalOf(userId) { return (openW.get(userId) as WithdrawalRecord | undefined) ?? null; },
     async decideWithdrawal(id, d, at) { decideW.run(d.state, at, d.refundedMinor, d.note, id); },
     async invoicesOf(userId) { return ofUser.all(userId) as QueuedInvoice[]; },
+    async invoicesMadeOf(userId, limit, offset = 0) { return made.all(userId, limit, offset) as QueuedInvoice[]; },
+    async invoicesMadeCountOf(userId) { return Number((madeCount.get(userId) as { n: number }).n); },
     async firstPaymentAt(userId) { return ((firstPay.get(userId) as { at: string | null }).at) ?? null; },
-    async invoicesStopped(limit) { return stopped.all(limit) as QueuedInvoice[]; },
+    async invoicesStopped(limit, offset = 0) { return stopped.all(limit, offset) as QueuedInvoice[]; },
     async invoiceCounts() {
       const counts: Record<string, number> = { pending: 0, issued: 0, done: 0, failed: 0, check: 0 };
       for (const r of countsByState.all() as Array<{ state: string; n: number }>) counts[r.state] = Number(r.n);
@@ -133,7 +145,8 @@ export function billingRepository(db: Database): BillingRepository {
       if (known.length === 0) return;
       db.prepare(`UPDATE efactura_documents SET ${known.map(([k]) => `${k} = ?`).join(', ')}, updated_at = ? WHERE draft_id = ?`).run(...known.map(([, v]) => v as string | null), at, draftId);
     },
-    async efacturaDocuments(limit) { return newestDocuments.all(limit) as EfacturaDocument[]; },
+    async efacturaDocuments(limit, offset = 0) { return newestDocuments.all(limit, offset) as EfacturaDocument[]; },
+    async efacturaDocumentCount() { return Number((countDocuments.get() as { n: number }).n); },
   };
 }
 

@@ -114,7 +114,7 @@ export function copySlice(source: Database, dest: Database, o: SliceOptions): Sl
   insert('share_links', {
     id: o.link.id, user_id: o.userId, label: o.link.label, scope: 'document_ids', scope_value: JSON.stringify(docs),
     created_at: o.link.createdAt, expires_at: o.link.expiresAt, include_scans: o.includeScans ? 1 : 0, language: o.link.language,
-    require_approval: 0, allow_chat: o.link.allowChat ? 1 : 0,
+    require_approval: 0, allow_chat: o.link.allowChat ? 1 : 0, overview: o.link.overview ?? null,
   });
   return { images };
 }

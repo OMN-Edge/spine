@@ -60,6 +60,10 @@ export default function Register() {
     }
   };
 
+  // A plan chosen on the pricing page (`?plan=`): nothing is bought here, the trial starts and the plan is said, so the choice is not lost on the way.
+  const chosenParam = params.get('plan');
+  const chosen = chosenParam === 'free' || chosenParam === 'essential' || chosenParam === 'premium' || chosenParam === 'family' ? chosenParam : null;
+  const planName = (plan: 'essential' | 'premium' | 'family') => (plan === 'essential' ? t('Essential') : plan === 'family' ? t('Family') : t('Premium'));
   const policyMessage = (problem: 'short' | 'long' | 'easy') =>
     problem === 'short' ? t('The password must be at least 12 characters.')
       : problem === 'long' ? t('The password is too long.')
@@ -76,6 +80,7 @@ export default function Register() {
         </>
       ) : (
         <form onSubmit={submit}>
+          {chosen && <p className="text-sm text-gray-600 mb-3">{chosen === 'free' ? t('Your three months of everything start now, and you stay on the free plan after them.') : t('Your three months of everything start now. You can choose {plan} on your account page whenever you like.', { plan: planName(chosen) })}</p>}
           <input type="email" placeholder={t('Email')} autoComplete="username" autoFocus
             value={email} onChange={e => setEmail(e.target.value)} className={inputClass} />
           <input type="password" placeholder={t('Password (at least 12 characters)')} autoComplete="new-password"

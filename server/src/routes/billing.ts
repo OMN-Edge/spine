@@ -24,6 +24,8 @@ import { withdrawalReceivedMail } from '../billing/withdrawal-mail.js';
 import { getMailer } from '../mail/index.js';
 import { randomUUID } from 'node:crypto';
 import { grantOnce, mayBuy, topupLeft, type Addon } from '../plans/addons.js';
+import { operatorInfo } from '../legal.js';
+import { pageInfo, pagingOf } from './paging.js';
 
 /** The billing configuration with the catalog's prices in place of the environment's where it has them (`plans/products.ts`): what the pricing page shows and a checkout charges. */
 async function pricesConfig(): Promise<ReturnType<typeof loadBillingConfig>> {
@@ -72,7 +74,9 @@ export async function billingRoutes(app: FastifyInstance) {
     const config = await pricesConfig();
     if (!config.enabled) return reply.header('Cache-Control', 'no-store').send({ enabled: false });
     const held = await getAccountsStore().billing.foundingHeld();
-    return reply.header('Cache-Control', 'public, max-age=60').send({ enabled: true, prices: await loadPrices(config), essential: !!config.essential, family: !!config.family, founding_left: Math.max(0, FOUNDING_LIMIT - held) });
+    // Who sells: Paddle is the merchant of record; with Stripe the operator sells, and the page says in whose name (the same name as the footer's company line).
+    const seller = config.provider === 'stripe' ? { seller: 'operator' as const, seller_name: operatorInfo()?.name ?? null } : { seller: 'provider' as const };
+    return reply.header('Cache-Control', 'public, max-age=60').send({ enabled: true, prices: await loadPrices(config), essential: !!config.essential, family: !!config.family, founding_left: Math.max(0, FOUNDING_LIMIT - held), ...seller });
   });
 
   // The signed-in account's plan, what it has used and what it can change.
@@ -220,12 +224,14 @@ export async function billingRoutes(app: FastifyInstance) {
   });
 
   // The account's invoices, newest first, with a link to each PDF made when it is asked for (the service's link does not last).
-  app.get('/api/billing/invoices', { preHandler: requireAuth }, async (req, reply) => {
+  app.get<{ Querystring: { page?: string; limit?: string } }>('/api/billing/invoices', { preHandler: requireAuth }, async (req, reply) => {
     const config = loadBillingConfig();
-    if (!config.enabled || !needsDetails(config)) return reply.send({ invoices: [] });
-    const rows = await getAccountsStore().billing.invoicesOf(req.userId);
+    const paging = pagingOf(req.query, 20);
+    if (!config.enabled || !needsDetails(config)) return reply.send({ invoices: [], ...pageInfo(paging, 0) });
+    const [rows, total] = await Promise.all([getAccountsStore().billing.invoicesMadeOf(req.userId, paging.limit, paging.offset), getAccountsStore().billing.invoicesMadeCountOf(req.userId)]);
     return reply.header('Cache-Control', 'no-store').send({
-      invoices: rows.filter(r => r.number && (r.state === 'done' || r.state === 'issued')).map(r => ({ ref: r.ref, number: r.series ? `${r.series}-${r.number}` : r.number, at: r.created_at, credit_note: r.ref.startsWith('storno:') })),
+      ...pageInfo(paging, total),
+      invoices: rows.map(r => ({ ref: r.ref, number: r.series ? `${r.series}-${r.number}` : r.number, at: r.created_at, credit_note: r.ref.startsWith('storno:') })),
     });
   });
   app.post<{ Body: { ref?: unknown } }>('/api/billing/invoices/pdf', { preHandler: requireAuth, config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {

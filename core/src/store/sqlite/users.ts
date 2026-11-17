@@ -36,6 +36,8 @@ export function userRepository(db: Database): UserRepository {
   const list = db.prepare(
     'SELECT id, email, created_at, email_verified_at, approved FROM users ORDER BY created_at',
   );
+  const waiting = db.prepare('SELECT id, email, created_at, email_verified_at, approved FROM users WHERE approved = 0 ORDER BY created_at, id LIMIT ? OFFSET ?');
+  const waitingCount = db.prepare('SELECT COUNT(*) AS n FROM users WHERE approved = 0');
   const setEmailRecovery = db.prepare('UPDATE users SET email_recovery = ? WHERE id = ?');
   const setEmailSecondFactor = db.prepare('UPDATE users SET email_second_factor = ? WHERE id = ?');
   const setLanguage = db.prepare('UPDATE users SET language = ? WHERE id = ?');
@@ -255,6 +257,14 @@ export function userRepository(db: Database): UserRepository {
       return list.all() as Array<
         Pick<UserRecord, 'id' | 'email' | 'created_at' | 'email_verified_at' | 'approved'>
       >;
+    },
+
+    async listWaiting(limit, offset) {
+      return waiting.all(limit, offset) as Array<Pick<UserRecord, 'id' | 'email' | 'created_at' | 'email_verified_at' | 'approved'>>;
+    },
+
+    async countWaiting() {
+      return Number((waitingCount.get() as { n: number }).n);
     },
 
     async markVerified(id, at) {

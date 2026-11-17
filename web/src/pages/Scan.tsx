@@ -141,8 +141,9 @@ export default function Scan() {
       const stamp = new Date().toISOString().slice(0, 10);
       const sheets = pages.map((p, i) => new File([p.versions[p.filter]], `scan ${stamp} p${i + 1}.jpg`, { type: 'image/jpeg' }));
       const originals = pages.map((p, i) => new File([p.raw], `scan ${stamp} original ${i + 1}.jpg`, { type: p.raw.type || 'image/jpeg' }));
-      const tooPlain = t('Pages with no text can only be read here if image reading or local OCR is switched on.');
+      const tooPlain = t('Reading photos is not available here yet. You can upload a PDF.');
       let conversation: string | null = null;
+      let openWhenRead: string | null = null;
       if (fromChat.current) {
         const made = await api.chat.attach(sheets, fromChat.current.conversationId, { originals });
         const first = made.files[0];
@@ -151,9 +152,11 @@ export default function Scan() {
       } else {
         const r = (await api.sourceFiles.uploadScan(sheets, originals))[0] as { id?: string; reason?: string } | undefined;
         if (!r?.id) throw new Error(r?.reason === 'photo_needs_ai' ? tooPlain : t('The pages were not added.'));
+        openWhenRead = r.id;
       }
       pages.forEach(p => URL.revokeObjectURL(p.previewUrl));
-      navigate('/upload');
+      // The Upload page follows this scan and opens the letter by itself once it is read (scan/open-when-read.ts).
+      navigate('/upload', openWhenRead ? { state: { openWhenRead } } : undefined);
       if (conversation && chat) { await chat.openConversation(conversation); chat.setOpen(true); }
     } catch (err) {
       setError(err instanceof Error ? err.message : t('The pages were not added.'));
@@ -180,7 +183,7 @@ export default function Scan() {
     return (
       <div className="max-w-md mx-auto">
         <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900 mb-2">{t('Scan')}</h1>
-        <p className="text-sm text-gray-600">{t('Pages from a camera have no text, so they can only be read here if image reading or local OCR is switched on for this server. A scanning app that saves a PDF works without either.')}</p>
+        <p className="text-sm text-gray-600">{t('Reading photos is not available here yet. You can upload a PDF.')}</p>
         <Link to="/upload" className="text-sm text-brand-600 hover:underline mt-3 inline-block">{t('Back to upload')}</Link>
       </div>
     );

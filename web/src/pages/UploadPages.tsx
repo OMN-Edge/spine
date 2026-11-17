@@ -6,7 +6,7 @@ import { useOnDataChanged } from '../dataChanged';
 import SpineLog from '../components/SpineLog';
 import PagePreview from '../components/PagePreview';
 import { sourceLabel } from '../components/pageSource';
-import { documentByline, documentTitle } from '../titles';
+import { documentByline, documentTitle, pageRange } from '../titles';
 import DeleteUpload from '../components/DeleteUpload';
 import ModelWaitNote from '../components/ModelWaitNote';
 import { useI18n } from '../i18n';
@@ -377,7 +377,7 @@ export default function UploadPages() {
                       {doc.needs_reading && !doc.title && doc.title_guess ? <span className="italic" title={t('A guess from the first line of its first page. The real title comes when the document is read.')}>{doc.title_guess}</span> : documentTitle(doc, t)}
                     </Link>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      {[documentByline(doc, t), doc.page_start === doc.page_end ? t('page {n}', { n: doc.page_start }) : t('pages {from}–{to}', { from: doc.page_start, to: doc.page_end })]
+                      {[documentByline(doc, t), pageRange(doc.page_start, doc.page_end, t)]
                         .filter(Boolean).join(' · ')}
                     </p>
                   </div>

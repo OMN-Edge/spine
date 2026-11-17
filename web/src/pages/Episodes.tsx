@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type Document, type Episode } from '../api';
 import { useI18n } from '../i18n';
+import { useFormat } from '../format';
 import { Combobox } from '../components/Combobox';
 import { episodeName } from '../components/episode';
 import { documentTitle } from '../titles';
@@ -12,6 +13,7 @@ const box = 'bg-white border border-gray-200 rounded-xl p-4';
 /** Episodes: documents that belong together. The app suggests them from the data; nothing counts until the owner confirms it. */
 export default function Episodes() {
   const { t, tn } = useI18n();
+  const format = useFormat();
   const [episodes, setEpisodes] = useState<Episode[] | null>(null);
   const [docs, setDocs] = useState<Document[]>([]);
   const [notice, setNotice] = useState('');
@@ -66,7 +68,7 @@ export default function Episodes() {
         return (
           <li key={id} className="flex items-center justify-between gap-3">
             <Link to={`/documents/${id}`} className="text-brand-700 hover:underline truncate">{d ? documentTitle(d, t) : t('Document')}</Link>
-            <span className="text-xs text-gray-400 shrink-0">{d?.doc_date ?? ''}</span>
+            <span className="text-xs text-gray-400 shrink-0">{d?.doc_date ? format.date(d.doc_date) : ''}</span>
           </li>
         );
       })}
@@ -98,7 +100,7 @@ export default function Episodes() {
               <label key={d.id} className="flex items-center gap-2 text-sm text-gray-700">
                 <input type="checkbox" checked={drafting.ids.includes(d.id)} onChange={e => setDrafting(x => (x ? { ...x, ids: e.target.checked ? [...x.ids, d.id] : x.ids.filter(i => i !== d.id) } : x))} />
                 <span className="truncate">{documentTitle(d, t)}</span>
-                <span className="text-xs text-gray-400 shrink-0">{d.doc_date ?? ''}</span>
+                <span className="text-xs text-gray-400 shrink-0">{d.doc_date ? format.date(d.doc_date) : ''}</span>
               </label>
             ))}
           </div>
@@ -149,6 +151,7 @@ export default function Episodes() {
 
 function EpisodeCard({ ep, docs, byId, onChange }: { ep: Episode; docs: Document[]; byId: Map<string, Document>; onChange: (fn: () => Promise<unknown>) => void }) {
   const { t, tn } = useI18n();
+  const format = useFormat();
   const [title, setTitle] = useState(ep.title);
   useEffect(() => setTitle(ep.title), [ep.title]);
   const free = docs.filter(d => !ep.document_ids.includes(d.id));
@@ -171,7 +174,7 @@ function EpisodeCard({ ep, docs, byId, onChange }: { ep: Episode; docs: Document
             <li key={id} className="flex items-center justify-between gap-3">
               <Link to={`/documents/${id}`} className="text-brand-700 hover:underline truncate">{d ? documentTitle(d, t) : t('Document')}</Link>
               <span className="flex items-center gap-3 shrink-0">
-                <span className="text-xs text-gray-400">{d?.doc_date ?? ''}</span>
+                <span className="text-xs text-gray-400">{d?.doc_date ? format.date(d.doc_date) : ''}</span>
                 {ep.document_ids.length > 1 && (
                   <button type="button" aria-label={t('Take out of the episode')} title={t('Take out of the episode')} onClick={() => onChange(() => api.episodes.update(ep.id, { document_ids: ep.document_ids.filter(i => i !== id) }))} className="text-gray-400 hover:text-gray-700">×</button>
                 )}
@@ -185,7 +188,7 @@ function EpisodeCard({ ep, docs, byId, onChange }: { ep: Episode; docs: Document
           <Combobox
             ariaLabel={t('Add a document')} wrapperClassName="relative w-64" value=""
             onChange={v => { if (v) onChange(() => api.episodes.update(ep.id, { document_ids: [...ep.document_ids, v] })); }}
-            options={[{ value: '', label: t('Add a document…') }, ...free.map(d => ({ value: d.id, label: `${documentTitle(d, t)}${d.doc_date ? ` · ${d.doc_date}` : ''}` }))]}
+            options={[{ value: '', label: t('Add a document…') }, ...free.map(d => ({ value: d.id, label: `${documentTitle(d, t)}${d.doc_date ? ` · ${format.date(d.doc_date)}` : ''}` }))]}
           />
         )}
         <button type="button" onClick={() => onChange(() => api.episodes.remove(ep.id))} className="text-xs text-gray-400 hover:text-red-600 hover:underline">{t('Remove the episode')}</button>

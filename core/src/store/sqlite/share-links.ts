@@ -19,7 +19,7 @@ export function shareLinkRepository(db: Database): ShareLinkRepository {
   // and there is no reason to hand a client a capability digest (S-8).
   const list = db.prepare(`
     SELECT id, label, scope, scope_value, created_at, expires_at, revoked,
-           view_count, last_accessed_at, include_scans, language, require_approval, allow_chat,
+           view_count, last_accessed_at, include_scans, language, require_approval, allow_chat, overview,
            (SELECT COUNT(*) FROM share_access_requests r
              WHERE r.share_link_id = share_links.id AND r.user_id = share_links.user_id AND r.status = 'pending') AS pending_requests
     FROM share_links
@@ -28,14 +28,14 @@ export function shareLinkRepository(db: Database): ShareLinkRepository {
   `);
 
   const insert = db.prepare(`
-    INSERT INTO share_links (id, user_id, label, scope, scope_value, created_at, expires_at, include_scans, language, require_approval, allow_chat)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO share_links (id, user_id, label, scope, scope_value, created_at, expires_at, include_scans, language, require_approval, allow_chat, overview)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const revoke = db.prepare('UPDATE share_links SET revoked = 1 WHERE id = ? AND user_id = ?');
 
   const findLive = db.prepare(`
-    SELECT id, user_id, label, scope, scope_value, expires_at, include_scans, language, require_approval, allow_chat
+    SELECT id, user_id, label, scope, scope_value, created_at, expires_at, include_scans, language, require_approval, allow_chat, overview
     FROM share_links
     WHERE id = ? AND revoked = 0
   `);
@@ -83,13 +83,13 @@ export function shareLinkRepository(db: Database): ShareLinkRepository {
   const event = { run: (...args: unknown[]) => insertEvent.run(orderedRowId(), ...args) };
   const events = db.prepare('SELECT at, kind, detail FROM share_link_events WHERE share_link_id = ? AND user_id = ? ORDER BY at DESC, id DESC LIMIT ?');
   const one = db.prepare(`
-    SELECT id, label, scope, scope_value, created_at, expires_at, revoked, view_count, last_accessed_at, include_scans, language, require_approval, allow_chat,
+    SELECT id, label, scope, scope_value, created_at, expires_at, revoked, view_count, last_accessed_at, include_scans, language, require_approval, allow_chat, overview,
            (SELECT COUNT(*) FROM share_access_requests r WHERE r.share_link_id = share_links.id AND r.user_id = share_links.user_id AND r.status = 'pending') AS pending_requests
     FROM share_links WHERE id = ? AND user_id = ?
   `);
-  const current = db.prepare('SELECT label, scope, scope_value, expires_at, revoked, include_scans, language, require_approval, allow_chat FROM share_links WHERE id = ? AND user_id = ?');
+  const current = db.prepare('SELECT label, scope, scope_value, expires_at, revoked, include_scans, language, require_approval, allow_chat, overview FROM share_links WHERE id = ? AND user_id = ?');
   const write = db.prepare(`
-    UPDATE share_links SET label = ?, scope = ?, scope_value = ?, expires_at = ?, include_scans = ?, language = ?, require_approval = ?, allow_chat = ?
+    UPDATE share_links SET label = ?, scope = ?, scope_value = ?, expires_at = ?, include_scans = ?, language = ?, require_approval = ?, allow_chat = ?, overview = ?
     WHERE id = ? AND user_id = ?
   `);
   const clearRequests = db.prepare('DELETE FROM share_access_requests WHERE share_link_id = ? AND user_id = ?');
@@ -100,7 +100,7 @@ export function shareLinkRepository(db: Database): ShareLinkRepository {
   `);
   const accessRecent = db.prepare('SELECT accessed_at, ip_address, country, document_id FROM share_link_access_log WHERE share_link_id = ? AND user_id = ? ORDER BY accessed_at DESC, id DESC LIMIT 50');
   const updateTx = db.transaction((uid: string, id: string, patch: ShareLinkPatch, at: string): 'ok' | 'not_found' | 'revoked' => {
-    const row = current.get(id, uid) as { label: string | null; scope: string; scope_value: string | null; expires_at: string; revoked: number; include_scans: number; language: string | null; require_approval: number; allow_chat: number } | undefined;
+    const row = current.get(id, uid) as { label: string | null; scope: string; scope_value: string | null; expires_at: string; revoked: number; include_scans: number; language: string | null; require_approval: number; allow_chat: number; overview: string | null } | undefined;
     if (!row) return 'not_found';
     if (row.revoked) return 'revoked';
     const next = {
@@ -112,6 +112,7 @@ export function shareLinkRepository(db: Database): ShareLinkRepository {
       language: patch.language !== undefined ? patch.language : row.language,
       requireApproval: patch.requireApproval ?? !!row.require_approval,
       allowChat: patch.allowChat ?? !!row.allow_chat,
+      overview: patch.overview !== undefined ? patch.overview : row.overview,
     };
     // Small values only: what the setting was and is. The documents of a shared set are counted, never listed.
     const count = (scopeValue: string | null) => { try { const v = scopeValue ? JSON.parse(scopeValue) : null; return Array.isArray(v) ? v.length : null; } catch { return null; } };
@@ -123,11 +124,13 @@ export function shareLinkRepository(db: Database): ShareLinkRepository {
     diff('require_approval', !!row.require_approval, next.requireApproval);
     diff('allow_chat', !!row.allow_chat, next.allowChat);
     diff('language', row.language, next.language);
+    // What the overview says is the owner's own words and stays out of the log: only that it changed.
+    if (row.overview !== next.overview) changes.push({ field: 'overview', from: row.overview ? 'set' : null, to: next.overview ? 'set' : null });
     if (row.scope !== next.scope || row.scope_value !== next.scopeValue) {
       changes.push({ field: 'scope', from: row.scope === 'document_ids' ? `${count(row.scope_value) ?? 0} documents` : row.scope, to: next.scope === 'document_ids' ? `${count(next.scopeValue) ?? 0} documents` : next.scope });
     }
     if (changes.length === 0) return 'ok';
-    write.run(next.label, next.scope, next.scopeValue, next.expiresAt, next.includeScans ? 1 : 0, next.language, next.requireApproval ? 1 : 0, next.allowChat ? 1 : 0, id, uid);
+    write.run(next.label, next.scope, next.scopeValue, next.expiresAt, next.includeScans ? 1 : 0, next.language, next.requireApproval ? 1 : 0, next.allowChat ? 1 : 0, next.overview, id, uid);
     // Approval switched on: whoever was approved under the old setting asks again.
     if (next.requireApproval && !row.require_approval) clearRequests.run(id, uid);
     event.run(uid, id, at, 'changed', JSON.stringify({ changes }));
@@ -166,6 +169,7 @@ export function shareLinkRepository(db: Database): ShareLinkRepository {
         link.language,
         link.requireApproval ? 1 : 0,
         link.allowChat ? 1 : 0,
+        link.overview ?? null,
       );
       event.run(owner(userId), link.id, link.createdAt, 'created', null);
       })();
@@ -181,7 +185,7 @@ export function shareLinkRepository(db: Database): ShareLinkRepository {
 
     async findLive(id) {
       const row = findLive.get(id) as
-        | { id: string; user_id: string; label: string | null; scope: string; scope_value: string | null; expires_at: string; include_scans: number; language: string | null; require_approval: number; allow_chat: number }
+        | { id: string; user_id: string; label: string | null; scope: string; scope_value: string | null; created_at: string; expires_at: string; include_scans: number; language: string | null; require_approval: number; allow_chat: number; overview: string | null }
         | undefined;
       if (!row) return null;
       if (new Date(row.expires_at) < new Date()) return null;
@@ -197,6 +201,8 @@ export function shareLinkRepository(db: Database): ShareLinkRepository {
         language: row.language,
         requireApproval: !!row.require_approval,
         allowChat: !!row.allow_chat,
+        createdAt: row.created_at,
+        overview: row.overview,
       };
       return resolved;
     },

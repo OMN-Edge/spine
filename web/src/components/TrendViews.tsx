@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import type { Flag, TrendName, TrendSeries } from '../api';
 import TrendChart from './TrendChart';
 import { useI18n } from '../i18n';
+import { useFormat } from '../format';
+import { groupOf, unitWords, valueWords, type TestGroup } from '../trend-words';
 
 const FLAG_STYLE: Record<string, string> = {
   high: 'bg-red-100 text-red-700',
@@ -23,32 +25,41 @@ const range = (low: number | null, high: number | null) =>
 /** `label` is how a test's name is worded for the reader (the owner's pages give the translated one); the name as printed where it is not given. */
 export function TestList({ names, hrefFor, label = name => name }: { names: TrendName[]; hrefFor: (canonical: string) => string; label?: (name: string) => string }) {
   const { t, tn } = useI18n();
+  const format = useFormat();
   const [query, setQuery] = useState('');
   const shown = useMemo(() => names.filter(n => [n.name, label(n.name)].some(v => v.toLowerCase().includes(query.trim().toLowerCase()))), [names, query, label]);
+  // A trend needs two numbers. A single result and an antibiogram's words are not trends, so they are listed apart, below the ones that are.
+  const groups: Array<[TestGroup, string | null]> = [['trends', null], ['susceptibility', t('Susceptibility tests')], ['single', t('Single results')]];
+  const row = (n: TrendName) => (
+    <li key={n.canonical}>
+      <Link to={hrefFor(n.canonical)} className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-gray-50">
+        <span className="min-w-0">
+          <span className="block text-sm font-medium text-gray-900 truncate">{label(n.name)}</span>
+          <span className="block text-xs text-gray-400">{tn(n.count, '{n} value', '{n} values')}{n.latest_taken_on ? ` · ${t('latest {date}', { date: format.date(n.latest_taken_on) })}` : ''}</span>
+        </span>
+        <span className="text-right shrink-0 flex items-center gap-2">
+          <FlagBadge flag={n.latest_flag} />
+          <span className="text-sm text-gray-900">{valueWords(n.latest_value_text, t)}{n.unit && <span className="text-gray-400"> {unitWords(n.unit, t)}</span>}</span>
+        </span>
+      </Link>
+    </li>
+  );
   return (
     <>
       <input
         type="search" aria-label={t('Filter tests')} placeholder={t('Filter tests…')} value={query} onChange={e => setQuery(e.target.value)}
         className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 mb-4 focus:outline-none focus:ring-2 focus:ring-brand-500"
       />
-      {shown.length === 0 ? <p className="text-sm text-gray-400">{t('No test matches.')}</p> : (
-        <ul className="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100">
-          {shown.map(n => (
-            <li key={n.canonical}>
-              <Link to={hrefFor(n.canonical)} className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-gray-50">
-                <span className="min-w-0">
-                  <span className="block text-sm font-medium text-gray-900 truncate">{label(n.name)}</span>
-                  <span className="block text-xs text-gray-400">{tn(n.count, '{n} value', '{n} values')}{n.latest_taken_on ? ` · ${t('latest {date}', { date: n.latest_taken_on })}` : ''}</span>
-                </span>
-                <span className="text-right shrink-0 flex items-center gap-2">
-                  <FlagBadge flag={n.latest_flag} />
-                  <span className="text-sm text-gray-900">{n.latest_value_text}{n.unit && <span className="text-gray-400"> {n.unit}</span>}</span>
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
+      {shown.length === 0 ? <p className="text-sm text-gray-400">{t('No test matches.')}</p> : groups.map(([group, heading]) => {
+        const inGroup = shown.filter(n => groupOf(n) === group);
+        if (inGroup.length === 0) return null;
+        return (
+          <section key={group} className="mb-6">
+            {heading && <h2 className="text-xs font-medium text-gray-500 uppercase tracking-[0.12em] mb-2">{heading}</h2>}
+            <ul className="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100">{inGroup.map(row)}</ul>
+          </section>
+        );
+      })}
     </>
   );
 }
@@ -57,12 +68,13 @@ export function TestList({ names, hrefFor, label = name => name }: { names: Tren
 /** One test over time: the chart and the table of its values. `documentHref` is where a value's document is; `after` is whatever the page adds below (the owner can merge two names). */
 export function SeriesBody({ series, documentHref, after, label = name => name }: { series: TrendSeries; documentHref: (documentId: string) => string; after?: React.ReactNode; label?: (name: string) => string }) {
   const { t, tn } = useI18n();
+  const format = useFormat();
   const notDrawn = series.points.filter(p => !p.charted).length;
   const drawn = series.points.length - notDrawn;
   return (
     <div className="max-w-3xl">
       <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900 mb-1">{label(series.name)}</h1>
-      <p className="text-sm text-gray-500 mb-4">{tn(series.points.length, '{n} value', '{n} values')}{series.unit ? `, ${t('in {unit}', { unit: series.unit })}` : ''}</p>
+      <p className="text-sm text-gray-500 mb-4">{tn(series.points.length, '{n} value', '{n} values')}{series.unit ? `, ${t('in {unit}', { unit: unitWords(series.unit, t) })}` : ''}</p>
 
       {drawn > 0 ? (
         <div className="bg-white border border-gray-200 rounded-xl p-3 sm:p-4 mb-3">
@@ -93,9 +105,9 @@ export function SeriesBody({ series, documentHref, after, label = name => name }
           <tbody className="divide-y divide-gray-100">
             {[...series.points].reverse().map(p => (
               <tr key={p.id}>
-                <td className="px-4 py-2 whitespace-nowrap text-gray-700">{p.taken_on ?? '—'}</td>
+                <td className="px-4 py-2 whitespace-nowrap text-gray-700">{p.taken_on ? format.date(p.taken_on) : '—'}</td>
                 <td className="px-2 py-2 whitespace-nowrap">
-                  <span className="text-gray-900">{p.value_text}</span>{p.unit && <span className="text-gray-400"> {p.unit}</span>} <FlagBadge flag={p.flag as Flag | null} />
+                  <span className="text-gray-900">{valueWords(p.value_text, t)}</span>{p.unit && <span className="text-gray-400"> {unitWords(p.unit, t)}</span>} <FlagBadge flag={p.flag as Flag | null} />
                 </td>
                 <td className="px-2 py-2 whitespace-nowrap text-gray-400">{range(p.ref_low, p.ref_high)}</td>
                 <td className="px-4 py-2"><Link to={documentHref(p.document_id)} className="text-brand-600 hover:underline">{p.document_title ?? t('Document')}</Link></td>

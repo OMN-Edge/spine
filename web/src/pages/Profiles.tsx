@@ -4,7 +4,7 @@ import { sodium, toB64 } from '../crypto/sodium';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { device, UnsavedChangesError } from '../core/client';
-import { openPerson, useProfiles } from '../profiles';
+import { openPerson, personLabel, useProfiles } from '../profiles';
 import { planRefusal } from '../billing';
 import { buttonClass, inputClass, Notice } from '../components/AuthCard';
 import { DateInput } from '../components/DateInput';
@@ -14,6 +14,7 @@ import { readInviteCode } from '../crypto/delegation';
 import { pendingInvite, forgetInvite, rememberJoined, recentlyJoined, rememberTookOver, recentlyTookOver } from '../invite';
 import { ageOn, isAdult, parseBorn } from 'spine-core/family';
 import { useI18n } from '../i18n';
+import { useFormat } from '../format';
 
 /**
  * The people whose records this account keeps (FR-PRF-01): a child, a parent, oneself. Each has records, search, shares and an emergency
@@ -21,6 +22,7 @@ import { useI18n } from '../i18n';
  */
 export default function Profiles() {
   const { t, tn } = useI18n();
+  const format = useFormat();
   const ageLine = (born?: string) => { const age = ageOn(born); return age === null ? t('child') : tn(age, 'child, {n} year old', 'child, {n} years old'); };
   const navigate = useNavigate();
   const { people, refresh } = useProfiles(true);
@@ -233,7 +235,7 @@ export default function Profiles() {
           {invitation && invitation !== 'invalid' && (
             <>
               <p className="text-sm text-gray-700">{roleText(invitation.role, invitation.ownerEmail)}</p>
-              <p className="mt-1 text-xs text-gray-500">{t('It can be used until {when}.', { when: new Date(invitation.expiresAt).toLocaleDateString() })}</p>
+              <p className="mt-1 text-xs text-gray-500">{t('It can be used until {when}.', { when: format.date(invitation.expiresAt) })}</p>
               <div className="mt-3 flex items-center gap-4">
                 <button disabled={busy} onClick={() => void accept()} className="rounded-full bg-brand-600 px-4 py-1.5 text-sm text-white hover:bg-brand-700 disabled:opacity-50">{t('Accept')}</button>
                 <button disabled={busy} onClick={decline} className="text-sm text-gray-500 hover:underline">{t('Decline')}</button>
@@ -256,7 +258,7 @@ export default function Profiles() {
           <li key={p.id} className="p-4">
             <div className="flex items-center justify-between gap-3">
               <span className="text-gray-900">
-                {p.name}{p.kind === 'child' && p.shared?.role !== 'self' && <span className="ml-2 text-xs text-gray-500">{ageLine(p.born)}</span>}
+                {personLabel(p.name, t)}{p.kind === 'child' && p.shared?.role !== 'self' && <span className="ml-2 text-xs text-gray-500">{ageLine(p.born)}</span>}
                 {p.id === people.current && <span className="ml-2 text-xs text-green-700">{t('Open now')}</span>}
                 {p.shared && (
                   <span className="block text-xs text-gray-500">

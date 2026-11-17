@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { amountText, changesOf, formatMinor, MAX_MINOR, parseAmount, providerName, stateOf, type CatalogProduct } from './catalog-view';
+import { amountText, changesOf, MAX_MINOR, parseAmount, providerName, stateOf, type CatalogProduct } from './catalog-view';
 
 /** What the Products page works out before it asks the server for anything. */
 const product = (over: Partial<CatalogProduct> = {}): CatalogProduct => ({
@@ -34,12 +34,7 @@ describe('an amount typed by a person', () => {
   });
 });
 
-describe('an amount shown', () => {
-  it('has no cents where there are none, and two where there are', () => {
-    expect(formatMinor(4900, 'EUR', 'en')).toBe('€49');
-    expect(formatMinor(499, 'EUR', 'en')).toBe('€4.99');
-    expect(formatMinor(1990, 'EUR', 'en')).toBe('€19.90');
-  });
+describe('the provider shown', () => {
   it('names the provider for a person', () => {
     expect(providerName('stripe')).toBe('Stripe');
     expect(providerName('paddle')).toBe('Paddle');

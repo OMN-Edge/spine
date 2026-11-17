@@ -30,6 +30,9 @@ compare*.txt
 # security review ledger: working notes, kept local
 docs/security-review.md
 
+# UX review working directories: the screenshots `npm run screens -w spine-web` writes and the ledgers kept beside them
+ux-review/
+
 # the invented clinic archive is generated (npm run demo-archive -w spine-server), not kept
 docs/demo/clinic-archive/*.pdf
 docs/demo/clinic-archive/manifest.json

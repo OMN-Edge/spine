@@ -176,6 +176,7 @@ describe('P1 — deny by default', () => {
     'POST /api/enrol/claim',
     'GET /api/share/:link/documents/:id/translation',
     'GET /api/share/:link/trends',
+    'GET /api/share/:link/terms',
     'GET /api/share/:link/trends/series',
     // Public on purpose, and scoped by the link (its documents only, confirmed links only): share-connections.test.ts.
     'GET /api/share/:link/documents/:id/connections',

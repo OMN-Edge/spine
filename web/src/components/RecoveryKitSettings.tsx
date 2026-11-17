@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api } from '../api';
-import { buttonClass, inputClass, Notice } from './AuthCard';
+import { inputClass, Notice, secondaryButtonClass } from './AuthCard';
 import RecoveryKit from './RecoveryKit';
 import { newRecoveryKit } from '../crypto/keys';
 import { vaultState } from '../crypto/vault-state';
@@ -70,7 +70,7 @@ export default function RecoveryKitSettings() {
           <input type="password" placeholder={t('Your password')} autoComplete="current-password"
             value={password} onChange={e => setPassword(e.target.value)} className={inputClass} />
           {error && <Notice kind="error">{error}</Notice>}
-          <button type="submit" disabled={busy || !password} className={`${buttonClass} disabled:opacity-50`}>{busy ? t('Making your keys…') : t('Continue')}</button>
+          <button type="submit" disabled={busy || !password} className={`${secondaryButtonClass} disabled:opacity-50`}>{busy ? t('Making your keys…') : t('Continue')}</button>
         </form>
       )}
     </div>

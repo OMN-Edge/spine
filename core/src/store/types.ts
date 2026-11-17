@@ -107,7 +107,7 @@ export interface SliceOptions {
   documentIds: string[];
   includeText: boolean;
   includeScans: boolean;
-  link: { id: string; label: string | null; createdAt: string; expiresAt: string; language: string | null; allowChat: boolean };
+  link: { id: string; label: string | null; createdAt: string; expiresAt: string; language: string | null; allowChat: boolean; overview?: string | null };
   /** Where a page's image is in the share's own file system (when scans are included). */
   imagePathOf: (pageId: string, from: string) => string;
   /**
@@ -239,6 +239,9 @@ export interface UserRepository {
   /** Replaces the hash and bumps `auth_version`, ending the user's other sessions. */
   setPassword(id: string, passwordHash: string): Promise<number>;
   list(): Promise<Array<Pick<UserRecord, 'id' | 'email' | 'created_at' | 'email_verified_at' | 'approved'>>>;
+  /** The accounts waiting for the administrator's approval, oldest first, a page of them and how many there are in all (the admin page's list: never every account). */
+  listWaiting(limit: number, offset: number): Promise<Array<Pick<UserRecord, 'id' | 'email' | 'created_at' | 'email_verified_at' | 'approved'>>>;
+  countWaiting(): Promise<number>;
   markVerified(id: string, at: string): Promise<void>;
   /** Approves an account that was waiting, and confirms its address if it was not (the administrator vouches for it). False if it was not waiting. */
   approve(id: string, at: string): Promise<boolean>;
@@ -610,6 +613,8 @@ export interface MeasurementName {
   latest_value_text: string;
   latest_taken_on: string | null;
   latest_flag: MeasurementFlag | null;
+  /** How many of its values are numbers, which is what a trend is made of. */
+  numeric_count: number;
 }
 
 /** One value of one test, with the document it came from: one point on a chart. */
@@ -938,7 +943,8 @@ export interface ReminderDateRepository {
 export interface BillingRepository {
   get(userId: string): Promise<SubscriptionRecord | null>;
   /** The accounts that have a subscription row, the most recently changed first: the operator's list on the admin page (plan, status, end; never what an account holds). */
-  subscriptions(limit: number): Promise<SubscriptionRecord[]>;
+  subscriptions(limit: number, offset?: number): Promise<SubscriptionRecord[]>;
+  subscriptionCount(): Promise<number>;
   /** The provider's side (a webhook) names a subscription or a customer, not a user: the fifth and sixth lookups with no acting user (SECURITY.md **M-45**). */
   findBySubscription(subscriptionId: string): Promise<SubscriptionRecord | null>;
   findByCustomer(customerId: string): Promise<SubscriptionRecord | null>;
@@ -961,16 +967,22 @@ export interface BillingRepository {
   /** A buyer's request to withdraw from a purchase: one open at a time for an account (false if there is one). */
   requestWithdrawal(id: string, userId: string, at: string): Promise<boolean>;
   /** The requests in a state (every state if null), newest first. */
-  withdrawals(state: WithdrawalState | null, limit: number): Promise<WithdrawalRecord[]>;
+  withdrawals(state: WithdrawalState | null, limit: number, offset?: number): Promise<WithdrawalRecord[]>;
+  withdrawalCount(state: WithdrawalState | null): Promise<number>;
+  /** How many of the account's requests ended in a refund. */
+  refundedWithdrawalsOf(userId: string): Promise<number>;
   withdrawal(id: string): Promise<WithdrawalRecord | null>;
   /** The account's request that has not been decided, if any. */
   openWithdrawalOf(userId: string): Promise<WithdrawalRecord | null>;
   decideWithdrawal(id: string, decision: { state: 'refunded' | 'declined'; refundedMinor: number | null; note: string | null }, at: string): Promise<void>;
   /** The account's invoices (and their stornos), newest first, and when its first payment was queued (the day a purchase began). */
   invoicesOf(userId: string): Promise<QueuedInvoice[]>;
+  /** The invoices and credit notes that are made (they have a number), newest first, a page of them, and how many there are: the account's list. */
+  invoicesMadeOf(userId: string, limit: number, offset?: number): Promise<QueuedInvoice[]>;
+  invoicesMadeCountOf(userId: string): Promise<number>;
   firstPaymentAt(userId: string): Promise<string | null>;
   /** The invoices that stopped for the operator (`failed`, `check`), newest first, and how many there are in each state. */
-  invoicesStopped(limit: number): Promise<QueuedInvoice[]>;
+  invoicesStopped(limit: number, offset?: number): Promise<QueuedInvoice[]>;
   invoiceCounts(): Promise<Record<InvoiceState, number>>;
   /** What the invoices made in a calendar year count for in the EU consumer threshold (minor units of EUR). */
   euSalesMinor(year: number): Promise<number>;
@@ -994,7 +1006,8 @@ export interface BillingRepository {
   efacturaDocument(draftId: string): Promise<EfacturaDocument | null>;
   efacturaUpdateDocument(draftId: string, patch: EfacturaDocumentPatch, at: string): Promise<void>;
   /** The newest documents, for the operator's page. */
-  efacturaDocuments(limit: number): Promise<EfacturaDocument[]>;
+  efacturaDocuments(limit: number, offset?: number): Promise<EfacturaDocument[]>;
+  efacturaDocumentCount(): Promise<number>;
 }
 
 /** The authorisation ANAF gave: the access and refresh tokens sealed as one string (AES-GCM; the key is the operator's, not in the store), and when each ends. */
@@ -1318,6 +1331,8 @@ export interface ShareLinkPatch {
   language?: string | null;
   scope?: ShareLink['scope'];
   scopeValue?: string | null;
+  /** The stored text of the overview (`share-overview.ts`), or null to clear it. */
+  overview?: string | null;
 }
 
 export interface AccessSummary {
@@ -1383,6 +1398,7 @@ export interface NewShareLink {
   language: string | null;
   requireApproval: boolean;
   allowChat: boolean;
+  overview?: string | null;
 }
 
 /** A live link with its owner resolved, which is what scopes a share read. */
@@ -1398,11 +1414,15 @@ export interface ResolvedShareLink {
   language: string | null;
   requireApproval: boolean;
   allowChat: boolean;
+  /** When the link was made, for the page the recipient opens. */
+  createdAt?: string;
+  /** What the owner tells the doctor (`share-overview.ts`), as stored. */
+  overview?: string | null;
 }
 
 /** A document's details in another language, kept until what was translated changes (see the schema files). */
 /** What a doctor's specialty or a test's name is called in a language, by the text it translates. */
-export type TermKind = 'specialty' | 'test';
+export type TermKind = 'specialty' | 'test' | 'tag' | 'episode';
 export interface TermTranslationRepository {
   forLanguage(userId: string, language: string): Promise<Array<{ kind: TermKind; sourceText: string; translated: string }>>;
   /** Adds or replaces these (by kind, language and text). */

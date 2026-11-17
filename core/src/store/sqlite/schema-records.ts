@@ -229,7 +229,8 @@ CREATE TABLE IF NOT EXISTS share_links (
   include_scans INTEGER NOT NULL DEFAULT 0, -- 1: the recipient may also see the page images
   language TEXT, -- the language the recipient's page starts in, if the owner chose one
   require_approval INTEGER NOT NULL DEFAULT 0, -- 1: a visitor's browser must be approved by the owner before it reads anything
-  allow_chat INTEGER NOT NULL DEFAULT 0 -- 1: the recipient may ask questions about what the link shares
+  allow_chat INTEGER NOT NULL DEFAULT 0, -- 1: the recipient may ask questions about what the link shares
+  overview TEXT -- JSON: whose records, a note for the doctor and, if the owner ticked it, what they take now (share-overview.ts); in the copy the recipient reads
 );
 
 -- A visitor's browser asking to open a link that needs approval. \`visitor_hash\` is sha256 of a random value held in
@@ -289,7 +290,7 @@ CREATE TABLE IF NOT EXISTS document_translations (
 -- specialty is a different key, so nothing is stale and there is nothing to invalidate.
 CREATE TABLE IF NOT EXISTS term_translations (
   user_id TEXT NOT NULL REFERENCES users(id),
-  kind TEXT NOT NULL, -- 'specialty' or 'test'
+  kind TEXT NOT NULL, -- 'specialty', 'test', 'tag' (a tag the owner or the model made) or 'episode' (an episode's title)
   language TEXT NOT NULL,
   source_text TEXT NOT NULL,
   translated TEXT NOT NULL,

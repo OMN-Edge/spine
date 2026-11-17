@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 import { Notice } from './AuthCard';
 import { useI18n } from '../i18n';
+import { useFormat } from '../format';
+import Pager, { usePage } from './Pager';
 
 type Row = Awaited<ReturnType<typeof api.admin.withdrawals>>['requests'][number];
 
@@ -11,11 +13,14 @@ type Row = Awaited<ReturnType<typeof api.admin.withdrawals>>['requests'][number]
  */
 export default function AdminWithdrawals() {
   const { t, tn } = useI18n();
+  const format = useFormat();
   const [rows, setRows] = useState<Row[] | null>(null);
   const [error, setError] = useState('');
   const [amounts, setAmounts] = useState<Record<string, string>>({});
   const [reasons, setReasons] = useState<Record<string, string>>({});
-  const load = useCallback(() => { api.admin.withdrawals().then(r => setRows(r.requests)).catch(() => setError(t('Could not load the withdrawal requests.'))); }, [t]);
+  const [paging, setPaging] = useState({ total: 0, limit: 25 });
+  const [page, setPage] = usePage();
+  const load = useCallback(() => { api.admin.withdrawals(page).then(r => { setRows(r.requests); setPaging({ total: r.total, limit: r.limit }); }).catch(() => setError(t('Could not load the withdrawal requests.'))); }, [t, page]);
   useEffect(load, [load]);
 
   const decide = async (id: string, action: 'refund' | 'decline', extra: { amount?: number; note?: string } = {}) => {
@@ -28,14 +33,14 @@ export default function AdminWithdrawals() {
       <h2 className="font-display text-[clamp(1.5rem,2.6vw,2rem)] font-normal leading-tight">{t('Withdrawal requests')}</h2>
       <div className="mt-5 rounded-2xl border border-ink/10 bg-surface p-5">
       {error && <Notice kind="error">{error}</Notice>}
-      {rows && <p className="text-sm text-ink/60 mb-3">{rows.length === 0 ? t('No one has asked to withdraw.') : tn(rows.length, '{n} request is waiting.', '{n} requests are waiting.')}</p>}
+      {rows && <p className="text-sm text-ink/60 mb-3">{paging.total === 0 ? t('No one has asked to withdraw.') : tn(paging.total, '{n} request is waiting.', '{n} requests are waiting.')}</p>}
       <ul className="divide-y divide-ink/10">
         {rows?.map(row => {
           const amount = Number(amounts[row.id]);
           return (
             <li key={row.id} className="py-3 space-y-2">
               <div className="text-sm text-ink break-all">{row.email ?? '—'}{row.plan ? ` · ${row.plan}${row.interval ? ` (${row.interval})` : ''}` : ''}</div>
-              <div className="text-xs text-ink/60">{t('Requested {date}', { date: new Date(row.requested_at).toLocaleDateString() })}{row.first_payment ? ` · ${t('First payment {date}', { date: new Date(row.first_payment).toLocaleDateString() })}` : ''}</div>
+              <div className="text-xs text-ink/60">{t('Requested {date}', { date: format.date(row.requested_at) })}{row.first_payment ? ` · ${t('First payment {date}', { date: format.date(row.first_payment) })}` : ''}</div>
               <div className="text-xs text-ink/80">
                 {row.used === null ? t('What was used since the purchase is not known.') : row.used.pages + row.used.questions + row.used.translated === 0
                   ? t('Nothing used since the purchase.')
@@ -44,7 +49,7 @@ export default function AdminWithdrawals() {
               </div>
               {row.suggested && (() => {
                 const sg = row.suggested;
-                const money = (minor: number) => new Intl.NumberFormat(undefined, { style: 'currency', currency: sg.currency }).format(minor / 100);
+                const money = (minor: number) => format.money(minor, sg.currency);
                 return (
                   <div className="flex flex-wrap items-center gap-2 text-sm text-ink">
                     <span>{sg.basis === 'unused'
@@ -68,6 +73,7 @@ export default function AdminWithdrawals() {
           );
         })}
       </ul>
+      <Pager page={page} total={paging.total} limit={paging.limit} onPage={setPage} />
     </div>
     </section>
   );

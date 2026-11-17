@@ -8,3 +8,8 @@ export function episodeName(ep: Pick<Episode, 'title' | 'provider' | 'first_date
   const dates = ep.first_date && ep.last_date && ep.first_date !== ep.last_date ? `${ep.first_date} – ${ep.last_date}` : ep.first_date ?? '';
   return [ep.provider, dates].filter(Boolean).join(' · ') || t('Episode');
 }
+
+/** What an episode is without the owner's own title, which is in the language they wrote it in: the provider and the dates, or just "Episode". */
+export function episodeDates(ep: Pick<Episode, 'provider' | 'first_date' | 'last_date'>, t: Translate): string {
+  return episodeName({ ...ep, title: '' }, t);
+}

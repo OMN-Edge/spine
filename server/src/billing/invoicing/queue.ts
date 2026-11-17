@@ -8,6 +8,9 @@ import { processInvoice, reverseRefunded as reverse, type InvoicingContext } fro
 import { billingProvider, type Enabled } from '../provider.js';
 import { loadBillingConfig } from '../config.js';
 import '../host.js';
+import { invoiceBrand } from './brand.js';
+import { invoiceReadyMail } from '../invoice-mail.js';
+import { getMailer } from '../../mail/index.js';
 import { loadInvoicingConfig, type InvoicingConfig } from './config.js';
 
 /**
@@ -24,7 +27,7 @@ function build(config: Active): NonNullable<typeof made> {
   const key = JSON.stringify([config.issuer, config.issuer === 'billyou' ? config.billyou : { ...config.direct, key: config.direct.key.toString('base64') }, config.vatPercent]);
   if (made?.key === key) return made;
   if (config.issuer === 'efactura') {
-    const efactura = openEfactura(config.direct, getAccountsStore().billing);
+    const efactura = openEfactura(config.direct, getAccountsStore().billing, { brand: invoiceBrand() });
     return (made = { key, issuer: efactura.issuer, efactura });
   }
   const issuer = billyouIssuer({ apiKey: config.billyou.apiKey, seriesId: config.billyou.seriesId, exchangeRate: currency => bnrRate(currency), ...(config.billyou.zeroVat ? { zeroVat: config.billyou.zeroVat } : {}) });
@@ -47,7 +50,7 @@ export function contextFromSettings(env: NodeJS.ProcessEnv = process.env): Invoi
   const config = loadInvoicingConfig(billing, env);
   if (!billing.enabled || !config.enabled) return null;
   const provider = billingProvider(billing as Enabled);
-  return { issuer: issuerFor(config), config, readSale: ref => provider.readSale(ref) };
+  return { issuer: issuerFor(config), config, readSale: ref => provider.readSale(ref), made: tellOfInvoice };
 }
 
 
@@ -78,4 +81,13 @@ export async function processDueInvoices(limit = 20): Promise<number> {
 /** A payment was refunded at the provider: the invoice made for it is reversed (`spine-billing`), in the context from the settings unless one is given. */
 export async function reverseRefunded(refs: string[], full: boolean, refundId: string, context?: InvoicingContext | null): Promise<void> {
   return reverse(refs, full, refundId, context === undefined ? contextFromSettings() : context);
+}
+
+/** Tells the account that an invoice or a credit note is ready, by a short mail with a link and nothing attached (and nothing of the records); no mail where none is set up or the account is gone. */
+async function tellOfInvoice(document: { userId: string | null; number: string; credit: boolean }): Promise<void> {
+  const mailer = getMailer();
+  if (!mailer.enabled || !document.userId) return;
+  const user = await getAccountsStore().users.findById(document.userId);
+  if (!user) return;
+  await mailer.send(invoiceReadyMail({ email: user.email, language: user.language }, document.number, document.credit));
 }

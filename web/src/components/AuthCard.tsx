@@ -44,6 +44,10 @@ export const inputClass =
 export const buttonClass =
   'w-full bg-brand-600 text-white rounded-full px-4 py-2 font-medium hover:bg-brand-700 disabled:opacity-50';
 
+/** A button that is not the one thing to do in its section: outlined, so a page of settings does not shout (T-23). */
+export const secondaryButtonClass =
+  'w-full border border-gray-300 text-gray-800 rounded-full px-4 py-2 font-medium hover:bg-gray-50 disabled:opacity-50';
+
 export function Notice({ kind, children }: { kind: 'error' | 'ok'; children: ReactNode }) {
   return (
     <p className={`text-sm mb-3 ${kind === 'error' ? 'text-red-600' : 'text-green-700'}`}>{children}</p>

@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { api, type DetailChange, type DocRef, type DoctorEntry, type LibraryEntry, type Proposal, type TestEntry } from '../api';
 import { announceChange } from '../dataChanged';
 import { useI18n } from '../i18n';
-import { documentTitle } from '../titles';
+import { useFormat } from '../format';
+import { documentTitle, pageRange } from '../titles';
 import { useListTitles } from '../useListTitles';
 import { useChat } from './ChatProvider';
 import LinkWhyLine from './LinkWhy';
@@ -22,6 +23,7 @@ const field = 'w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs fo
 
 export default function ProposalCard({ proposal }: { proposal: Proposal }) {
   const { t, tn } = useI18n();
+  const format = useFormat();
   const currentId = useChat()?.currentId ?? null;
   const [state, setState] = useState<State>('waiting');
   const [error, setError] = useState('');
@@ -62,7 +64,7 @@ export default function ProposalCard({ proposal }: { proposal: Proposal }) {
   );
 
   const docList = (docs: DocRef[]) => (
-    <ul className="space-y-0.5">{docs.map(d => <li key={d.id} className="truncate">· {d.title || d.doc_type || d.page_start == null ? title(d) : t('pages {pages}', { pages: d.page_start === d.page_end ? String(d.page_start) : `${d.page_start}–${d.page_end}` })}{d.doc_date ? ` (${d.doc_date})` : ''}</li>)}</ul>
+    <ul className="space-y-0.5">{docs.map(d => <li key={d.id} className="truncate">· {d.title || d.doc_type || d.page_start == null ? title(d) : pageRange(d.page_start, d.page_end!, t)}{d.doc_date ? ` (${format.date(d.doc_date)})` : ''}</li>)}</ul>
   );
 
   const detailName = (what: 'title' | 'doc_date' | 'provider' | 'doc_type') =>
@@ -211,8 +213,8 @@ export default function ProposalCard({ proposal }: { proposal: Proposal }) {
         <ul className="space-y-1 break-words">
           {proposal.label && <li><span className="text-gray-500">{t('Name')}:</span> <del className="text-gray-400">{proposal.label.from ?? t('(empty)')}</del> → <strong className="font-semibold">{proposal.label.to ?? t('(empty)')}</strong></li>}
           {proposal.expires && <li><span className="text-gray-500">{t('Works until')}:</span> <del className="text-gray-400">{proposal.link.expires_at.slice(0, 10)}</del> → <strong className="font-semibold">{new Date(Date.now() + proposal.expires.to_days * 86_400_000).toISOString().slice(0, 10)}</strong> <span className="text-gray-400">({tn(proposal.expires.to_days, '{n} day from now', '{n} days from now')})</span></li>}
-          {proposal.added.map(d => <li key={`+${d.id}`}><span className="rounded bg-green-100 px-1 text-green-800">+</span> {title(d)}{d.doc_date ? ` (${d.doc_date})` : ''}</li>)}
-          {proposal.removed.map(d => <li key={`-${d.id}`}><span className="rounded bg-red-100 px-1 text-red-800">−</span> {title(d)}{d.doc_date ? ` (${d.doc_date})` : ''}</li>)}
+          {proposal.added.map(d => <li key={`+${d.id}`}><span className="rounded bg-green-100 px-1 text-green-800">+</span> {title(d)}{d.doc_date ? ` (${format.date(d.doc_date)})` : ''}</li>)}
+          {proposal.removed.map(d => <li key={`-${d.id}`}><span className="rounded bg-red-100 px-1 text-red-800">−</span> {title(d)}{d.doc_date ? ` (${format.date(d.doc_date)})` : ''}</li>)}
           {proposal.total_after !== null && <li className="text-gray-500">{tn(proposal.total_after, 'It will share {n} document.', 'It will share {n} documents.')}</li>}
           <li className="text-gray-500">{t('What it exposes (scans, approval, questions) is not changed here; use the link’s page for that.')}</li>
         </ul>,
@@ -237,6 +239,7 @@ function ShareCard({ proposal, state, setState, shell }: {
   shell: (heading: string, body: React.ReactNode, footer?: React.ReactNode) => React.ReactElement;
 }) {
   const { t, tn } = useI18n();
+  const format = useFormat();
   const chat = useChat();
   const [docs, setDocs] = useState(proposal.documents);
   const { titleOf } = useListTitles(docs.map(d => d.id), false);
@@ -283,7 +286,7 @@ function ShareCard({ proposal, state, setState, shell }: {
       <ul className="space-y-1">
         {docs.map(d => (
           <li key={d.id} className="flex items-center gap-2">
-            <span className="min-w-0 flex-1 truncate">{documentTitle({ ...d, title: titleOf(d) }, t)}{d.doc_date ? ` (${d.doc_date})` : ''}</span>
+            <span className="min-w-0 flex-1 truncate">{documentTitle({ ...d, title: titleOf(d) }, t)}{d.doc_date ? ` (${format.date(d.doc_date)})` : ''}</span>
             {docs.length > 1 && state === 'waiting' && (
               <button type="button" onClick={() => setDocs(prev => prev.filter(x => x.id !== d.id))} aria-label={t('Remove from this link')} title={t('Remove from this link')} className="shrink-0 rounded px-1.5 text-gray-400 hover:bg-white hover:text-red-600">×</button>
             )}

@@ -24,10 +24,6 @@ export function amountText(minor: number): string {
   return minor % 100 === 0 ? String(minor / 100) : (minor / 100).toFixed(2);
 }
 
-export function formatMinor(minor: number, currency: string, locale?: string): string {
-  return new Intl.NumberFormat(locale, { style: 'currency', currency, minimumFractionDigits: minor % 100 === 0 ? 0 : 2 }).format(minor / 100);
-}
-
 export type Draft = Partial<Record<Period, string>>;
 
 /** The prices a person changed in a product's fields: the periods whose typed amount is a different amount from the current one, or an error naming the first period whose text is not an amount. */
