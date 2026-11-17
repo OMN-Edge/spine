@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import '@fontsource/literata/400.css';
 import '@fontsource/literata/500.css';
-import { api, type AuthOptions } from '../api';
+import { api, demoLanguageOf, type AuthOptions } from '../api';
 import { useAuth } from '../auth';
 import { LogoMark } from './Logo';
 import { useI18n } from '../i18n';
@@ -154,7 +154,7 @@ export function Actions({ options, className = '' }: { options: PublicOptions; c
   const outline = 'rounded-full border border-ink/25 px-6 py-3 font-medium text-ink hover:bg-ink/5 disabled:opacity-50';
   const tryDemo = async () => {
     setStarting(true); setFailed(false);
-    try { await startDemo(lang === 'ro' ? 'ro' : 'en'); navigate('/'); } catch (err) { console.warn('the demo could not start:', (err as Error)?.message); setFailed(true); }
+    try { await startDemo(demoLanguageOf(lang)); navigate('/'); } catch (err) { console.warn('the demo could not start:', (err as Error)?.message); setFailed(true); }
     setStarting(false);
   };
   return (

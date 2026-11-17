@@ -19,6 +19,10 @@ Guards that keep the fixes of the pre-release review from coming back, and where
 
 The structural rules (layering, what the shared code may import, what ships in an image, that every process starts) are in [structure-rules.md](structure-rules.md); `architecture.test.ts` and `npm run smoke -w spine-server` check them.
 
+## Do the suggested links and episodes mean something?
+
+`server/src/__integration__/linking-quality.it.ts` uploads an invented clinic archive (`docs/demo/clinic-archive/`, forty documents drawn like a clinic's, with a written list of what is related and what must never be) through the real routes, with the real model and embeddings, and marks the result: the links inside a story, the links between stories that are not real follow-ups, the pairs that share only a day, a clinic or a lab, a document linked to its own copy, how much of each story the links hold together, and whether each episode is one story and no longer than a care cycle. It also checks what was read from each document against the values it was drawn from. The report is printed before the rules are asserted. `QUALITY_LIMIT=3` runs the first few documents only, to see the flow work before it is run on all of them, `QUALITY_ONLY=a,b` runs the named documents (their keys in `core/src/testing/clinic/specs.ts`), and `QUALITY_DEBUG=1` prints each confirmation of the upload loop (about twenty minutes and a few hundred model calls).
+
 ## Every check, and what each one answers
 
 | Command | Question | Needs |

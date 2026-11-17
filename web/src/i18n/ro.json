@@ -904,10 +904,7 @@
  "dates {n} days apart": "datele sunt la {n} zile distanță",
  "Episodes": "Episoade",
  "Episode": "Episod",
- "Looking…": "Se caută…",
- "Look for episodes": "Caută episoade",
  "New episode": "Episod nou",
- "An episode groups documents that belong together, such as a visit and its tests. Spine suggests groups from the provider, the dates and the links between documents; it says nothing about the care. Nothing counts until you confirm it.": "Un episod grupează documente care merg împreună, de exemplu o vizită și analizele ei. Spine propune grupuri după furnizor, date și legăturile dintre documente; nu spune nimic despre îngrijire. Nimic nu contează până nu confirmați.",
  "Title (optional)": "Titlu (opțional)",
  "Create the episode": "Creează episodul",
  "{n} suggested episode|{n} suggested episodes": "{n} episod propus|{n} episoade propuse|{n} de episoade propuse",
@@ -1938,5 +1935,8 @@
   "pages read for you so far": "pagini citite pentru tine până acum",
   "questions answered about your records so far": "întrebări la care s-a răspuns despre actele tale până acum",
   "pages translated so far": "pagini traduse până acum",
- "The screens, the mail Spine sends you, translations of your documents and new share links start in this language.": "Ecranele, mesajele pe care vi le trimite Spine, traducerile documentelor dumneavoastră și linkurile noi de partajare pornesc în această limbă."
+ "The screens, the mail Spine sends you, translations of your documents and new share links start in this language.": "Ecranele, mesajele pe care vi le trimite Spine, traducerile documentelor dumneavoastră și linkurile noi de partajare pornesc în această limbă.",
+ "Search again": "Caută din nou",
+ "An episode groups documents that belong together, such as a visit and its tests. Spine suggests groups from the links between documents, a few weeks at most from one document to the next; it says nothing about the care. Nothing counts until you confirm it.": "O grupare de documente care aparțin împreună, de exemplu o consultație și analizele ei. Spine sugerează grupuri din legăturile dintre documente, la cel mult câteva săptămâni de la un document la următorul; nu spune nimic despre îngrijire. Nimic nu contează până nu confirmi.",
+ "Search again looks at every document for links once more (it uses AI) and then groups them. What you confirmed or dismissed stays.": "Caută din nou verifică încă o dată legăturile fiecărui document (folosește AI) și apoi le grupează. Ce ai confirmat sau respins rămâne."
 }

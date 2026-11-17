@@ -29,9 +29,21 @@ export default function Episodes() {
     await load();
   };
 
+  // Every document is looked at for links once more, which takes as long as the model does; the page asks until it is over, then groups what is there.
   const look = async () => {
     setLooking(true);
-    await act(() => api.episodes.propose());
+    setNotice('');
+    try {
+      const started = await api.episodes.search();
+      if (started.searching) {
+        for (let i = 0; i < 400; i++) {
+          await new Promise(r => setTimeout(r, 3000));
+          if (!(await api.episodes.searching()).searching) break;
+        }
+        await api.episodes.propose();
+      }
+    } catch (err) { setNotice(err instanceof Error ? err.message : t('Something went wrong. Try again.')); }
+    await load();
     setLooking(false);
   };
 
@@ -58,11 +70,12 @@ export default function Episodes() {
       <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
         <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900">{t('Episodes')}</h1>
         <div className="flex gap-3 text-sm">
-          <button type="button" onClick={look} disabled={looking} className="text-brand-600 hover:text-brand-800 disabled:text-gray-400">{looking ? t('Looking…') : t('Look for episodes')}</button>
+          <button type="button" onClick={look} disabled={looking} className="text-brand-600 hover:text-brand-800 disabled:text-gray-400">{looking ? t('Searching…') : t('Search again')}</button>
           <button type="button" onClick={() => setDrafting(d => (d ? null : { title: '', ids: [] }))} className="text-brand-600 hover:text-brand-800">{drafting ? t('Cancel') : t('New episode')}</button>
         </div>
       </div>
-      <p className="text-sm text-gray-500 mb-6">{t('An episode groups documents that belong together, such as a visit and its tests. Spine suggests groups from the provider, the dates and the links between documents; it says nothing about the care. Nothing counts until you confirm it.')}</p>
+      <p className="text-sm text-gray-500 mb-6">{t('An episode groups documents that belong together, such as a visit and its tests. Spine suggests groups from the links between documents, a few weeks at most from one document to the next; it says nothing about the care. Nothing counts until you confirm it.')}</p>
+      <p className="text-xs text-gray-400 -mt-4 mb-6">{t('Search again looks at every document for links once more (it uses AI) and then groups them. What you confirmed or dismissed stays.')}</p>
       {notice && <p className="text-sm text-red-600 mb-3" role="alert">{notice}</p>}
 
       {drafting && (

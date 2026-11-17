@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { HELP_TOPICS, START_TOPICS, helpTopic } from 'spine-core/help';
-import { api } from '../api';
+import { api, demoLanguageOf } from '../api';
 import { announceChange, useOnDataChanged } from '../dataChanged';
 import { useGuide } from '../guide';
 import { useI18n } from '../i18n';
@@ -38,7 +38,7 @@ export function ChatWelcome({ suggestions, onAsk, onHelp, onLeave, busy }: {
     setLoading(true); setError('');
     try {
       const state = await api.demo.state();
-      if (!state.loaded) await api.demo.load(lang === 'ro' ? 'ro' : 'en');
+      if (!state.loaded) await api.demo.load(demoLanguageOf(lang));
       announceChange();
       finish();
       navigate('/');

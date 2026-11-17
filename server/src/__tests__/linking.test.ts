@@ -285,6 +285,112 @@ describe('finding links', () => {
   });
 });
 
+describe('searching again for everything, from the episodes page', () => {
+  const search = () => post('/api/episodes/search', {});
+  const links = async () => (await getStore().links.all(OWNER_ID));
+
+  it('looks at every visible document once more, and replaces the app\u2019s old suggestions that the model no longer holds, keeping what the owner confirmed and dismissed', async () => {
+    process.env.SPINE_LINKING = 'on';
+    const consult = await doc('Cardiology visit', 'consultation_note', '2026-03-02');
+    const lab = await doc('Blood count', 'lab_result', '2026-03-20');
+    const lipid = await doc('Lipid panel', 'lab_result', '2026-03-25');
+    const urine = await doc('Urine test', 'lab_result', '2026-04-01');
+    const store = getStore();
+    const at = '2026-05-01T00:00:00Z';
+    // an old suggestion (the model will no longer hold it), one the owner confirmed, and a pair the owner dismissed
+    await store.links.add(OWNER_ID, { from_document_id: consult.id, to_document_id: lab.id, kind: 'requests', source: 'auto', state: 'proposed', reason: null }, at);
+    await store.links.add(OWNER_ID, { from_document_id: consult.id, to_document_id: lipid.id, kind: 'requests', source: 'owner', state: 'confirmed', reason: null }, at);
+    await store.links.add(OWNER_ID, { from_document_id: consult.id, to_document_id: urine.id, kind: 'requests', source: 'auto', state: 'dismissed', reason: null }, at);
+
+    relation = null; // the judge says nothing is linked
+    const res = await search();
+    expect(res.statusCode).toBe(202);
+    expect(res.json()).toEqual({ searching: true, documents: 4 });
+    await settleLinking(OWNER_ID);
+    expect((await get('/api/episodes/search')).json()).toEqual({ searching: false });
+
+    const held = await links();
+    expect(held.some(l => l.state === 'proposed' && l.source === 'auto')).toBe(false); // the old suggestion is gone
+    expect(held.find(l => l.to_document_id === lipid.id)).toMatchObject({ state: 'confirmed', source: 'owner' });
+    expect(held.find(l => l.to_document_id === urine.id)).toMatchObject({ state: 'dismissed' });
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.flatMap(c => c.candidates).length).toBeGreaterThan(0);
+  });
+
+  it('proposes again what the model still holds, and never offers the dismissed pair', async () => {
+    process.env.SPINE_LINKING = 'on';
+    const { consult, lab } = await consultAndLab();
+    const urine = await doc('Urine test', 'lab_result', '2026-04-10');
+    await getStore().links.add(OWNER_ID, { from_document_id: consult.id, to_document_id: urine.id, kind: 'requests', source: 'auto', state: 'dismissed', reason: null }, '2026-05-01T00:00:00Z');
+    relation = 'same_episode'; // a relation that reads the same from both documents
+    expect((await search()).statusCode).toBe(202);
+    await settleLinking(OWNER_ID);
+    const held = await links();
+    expect(held.some(l => [l.from_document_id, l.to_document_id].includes(consult.id) && [l.from_document_id, l.to_document_id].includes(lab.id) && l.state === 'proposed')).toBe(true);
+    expect(held.filter(l => [l.from_document_id, l.to_document_id].includes(urine.id) && l.state !== 'dismissed')).toEqual([]);
+  });
+
+  it('asks the model about no document that has no candidate, so an archive of unrelated documents costs nothing', async () => {
+    process.env.SPINE_LINKING = 'on';
+    await doc('Old lab', 'lab_result', '2020-01-01');
+    await doc('Vaccine', 'vaccination', '2026-03-03');
+    expect((await search()).json()).toMatchObject({ searching: true, documents: 2 });
+    await settleLinking(OWNER_ID);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('only groups, and answers at once, where looking for links is off', async () => {
+    process.env.SPINE_LINKING = 'off';
+    await consultAndLab();
+    const res = await search();
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ searching: false, documents: 0 });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('is the owner\u2019s own: another account\u2019s documents are not looked at, and it needs a sign-in', async () => {
+    process.env.SPINE_LINKING = 'on';
+    await consultAndLab(otherId);
+    expect((await app.inject({ method: 'POST', url: '/api/episodes/search', payload: {} })).statusCode).toBe(401);
+    expect((await search()).json()).toMatchObject({ documents: 0 });
+  });
+});
+
+describe('a document held twice', () => {
+  /** A consultation, the lab it asked for and a copy of that lab (scanned again), all of one clinic. */
+  async function withCopy() {
+    const store = getStore();
+    const consult = await seedDocument({ userId: OWNER_ID, docType: 'consultation_note', docDate: '2026-03-02', provider: 'Clinica Copii', aiSummary: 'Visit with chest pain, asks lipid tests.' });
+    const make = async () => {
+      const d = await seedDocument({ userId: OWNER_ID, docType: 'lab_result', docDate: '2026-03-12', provider: 'Laborator Copii', aiSummary: 'Lipid panel: total cholesterol 5.9 mmol/L high, LDL 3.8 high, glucose normal.' });
+      await store.documents.update(OWNER_ID, d.id, { title: 'Buletin de analize' });
+      return asDocument(d.id);
+    };
+    const first = await make(); const second = await make();
+    const [early, late] = first.id < second.id ? [first, second] : [second, first];
+    return { consult, early, late };
+  }
+
+  it('is not offered as a candidate to the document it copies, and only the earliest copy is offered to others', async () => {
+    const { consult, early, late } = await withCopy();
+    const { candidatesFor } = await import('spine-core/linking/index.js');
+    const visible = await getStore().documents.listFor(OWNER_ID, { limit: 100, offset: 0 });
+    expect((await candidatesFor(getStore(), OWNER_ID, early, visible)).map(d => d.id)).not.toContain(late.id);
+    const forConsult = (await candidatesFor(getStore(), OWNER_ID, await asDocument(consult.id), visible)).map(d => d.id);
+    expect(forConsult).toContain(early.id);
+    expect(forConsult).not.toContain(late.id);
+  });
+
+  it('is not looked at for links of its own: the later copy asks no model and proposes nothing, the earliest does', async () => {
+    const { consult, early, late } = await withCopy();
+    expect(await findLinks(OWNER_ID, late.id)).toBe(0);
+    expect(calls).toHaveLength(0);
+    expect(await findLinks(OWNER_ID, early.id)).toBeGreaterThanOrEqual(1);
+    expect((await linksOf(early.id)).some(l => [l.from_document_id, l.to_document_id].includes(consult.id))).toBe(true);
+    expect(await linksOf(late.id)).toEqual([]);
+  });
+});
+
 describe('the chain', () => {
   it('is the connected documents, by date, without dismissed links', async () => {
     const a = await doc('Visit', 'consultation_note', '2026-03-02');
@@ -302,6 +408,36 @@ describe('the chain', () => {
     expect(chain.nodes.map(n => n.id)).toEqual([a.id, b.id, c.id]);
     expect(chain.edges.map(e => [e.kind, e.state])).toEqual(expect.arrayContaining([['requests', 'proposed'], ['follow_up', 'confirmed']]));
     expect(chain.edges).toHaveLength(2);
+  });
+
+  it('follows a suggestion one step only, so a chain of guesses does not reach across the archive', async () => {
+    const a = await doc('Visit A', 'consultation_note', '2026-01-10');
+    const b = await doc('Lab B', 'lab_result', '2026-01-20');
+    const c = await doc('Visit C', 'consultation_note', '2026-04-10');
+    const d = await doc('Lab D', 'lab_result', '2026-09-01');
+    const store = getStore();
+    const now = '2026-10-01T00:00:00Z';
+    for (const [x, y, kind] of [[a, b, 'requests'], [b, c, 'follow_up'], [c, d, 'requests']] as const) {
+      await store.links.add(OWNER_ID, { from_document_id: x.id, to_document_id: y.id, kind, source: 'auto', state: 'proposed', reason: null }, now);
+    }
+    expect((await chainOf(OWNER_ID, a.id))!.nodes.map(n => n.id)).toEqual([a.id, b.id]);
+    expect((await chainOf(OWNER_ID, b.id))!.nodes.map(n => n.id)).toEqual([a.id, b.id, c.id]);
+    expect((await chainOf(OWNER_ID, d.id))!.nodes.map(n => n.id)).toEqual([c.id, d.id]);
+  });
+
+  it('follows what the owner confirmed onward, but not a suggestion made about a document further along', async () => {
+    const a = await doc('Visit A', 'consultation_note', '2026-01-10');
+    const b = await doc('Lab B', 'lab_result', '2026-01-20');
+    const c = await doc('Control C', 'consultation_note', '2026-04-10');
+    const guess = await doc('Guess', 'lab_result', '2026-04-12');
+    const store = getStore();
+    const now = '2026-10-01T00:00:00Z';
+    await store.links.add(OWNER_ID, { from_document_id: a.id, to_document_id: b.id, kind: 'requests', source: 'auto', state: 'confirmed', reason: null }, now);
+    await store.links.add(OWNER_ID, { from_document_id: b.id, to_document_id: c.id, kind: 'follow_up', source: 'owner', state: 'confirmed', reason: null }, now);
+    await store.links.add(OWNER_ID, { from_document_id: c.id, to_document_id: guess.id, kind: 'requests', source: 'auto', state: 'proposed', reason: null }, now);
+    expect((await chainOf(OWNER_ID, a.id))!.nodes.map(n => n.id)).toEqual([a.id, b.id, c.id]);
+    // on the document the suggestion is about, it shows
+    expect((await chainOf(OWNER_ID, c.id))!.nodes.map(n => n.id)).toEqual([a.id, b.id, c.id, guess.id].sort((x, y) => [a, b, c, guess].findIndex(d => d.id === x) - [a, b, c, guess].findIndex(d => d.id === y)));
   });
 
   it('is capped', async () => {

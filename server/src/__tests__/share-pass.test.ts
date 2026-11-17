@@ -4,13 +4,14 @@ import { buildTestApp, loginAs } from './helpers/app.js';
 import { createTestUser } from './helpers/seed.js';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { verifyToken } from '../relay/token.js';
+import { testSecret } from './helpers/secrets.js';
 
 /**
  * SECURITY.md S-48. A share's id is in the address of every link, in the web server's log and in the server's tables, so it is not a secret and
  * not a proof of the key. A recipient's browser asks for the pass for its model calls with a value only the key makes, which the owner's device
  * sent with the copy; an id alone gets none, in approval mode too, where the id is meant to open nothing.
  */
-const SECRET = 'share-pass-test-relay-secret-share-pass-test';
+const SECRET = testSecret('share-pass');
 const id = () => randomBytes(16).toString('base64url');
 const check = () => randomBytes(32).toString('base64url');
 const inHours = (h: number) => new Date(Date.now() + h * 3_600_000).toISOString();

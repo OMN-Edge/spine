@@ -11,8 +11,9 @@ import { standInClients, type StandInCall } from '../testing/stand-in.js';
 import type { TaskClients } from 'spine-core/llm/tasks.js';
 import { createRelay } from '../relay/relay.js';
 import { issueToken, verifyToken } from '../relay/token.js';
+import { testSecret } from './helpers/secrets.js';
 
-const SECRET = 'relay-test-secret-relay-test-secret-0123';
+const SECRET = testSecret('relay-test');
 const MODEL = 'gemini-test-flash';
 const TASK = '/v1/task/continuation';
 

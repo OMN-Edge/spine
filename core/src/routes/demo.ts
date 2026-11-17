@@ -1,5 +1,5 @@
 import type { HttpApp } from '../http.js';
-import { DEMO_LANGUAGES, type DemoLanguage } from '../demo/records.js';
+import { DEMO_LANGUAGES, type DemoLanguage } from '../demo/archive.js';
 import { demoState, loadDemo, removeDemo } from '../demo/index.js';
 import { requireAuth } from './middleware.js';
 

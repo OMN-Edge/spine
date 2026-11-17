@@ -680,6 +680,10 @@ export interface EmergencyView {
   scans: Array<{ id: string; at: string; country: string | null }>;
 }
 
+/** The language the sample records are named in: the screen's, where the sample has it, else English. */
+export type DemoLanguage = 'en' | 'ro' | 'fr' | 'de';
+export const demoLanguageOf = (lang: string): DemoLanguage => (lang === 'ro' || lang === 'fr' || lang === 'de' ? lang : 'en');
+
 export const api = {
   emergency: {
     get: () => req<EmergencyView>('/api/emergency'),
@@ -1162,7 +1166,7 @@ export const api = {
   /** Sample records to explore before uploading anything real. */
   demo: {
     state: () => req<{ loaded: boolean; processing: boolean }>('/api/demo'),
-    load: (language: 'en' | 'ro') => post<{ loaded: boolean; processing: boolean }>('/api/demo', { language }),
+    load: (language: DemoLanguage) => post<{ loaded: boolean; processing: boolean }>('/api/demo', { language }),
     remove: () => del<{ removed: boolean }>('/api/demo'),
   },
 
@@ -1173,6 +1177,9 @@ export const api = {
   },
 
   episodes: {
+    /** Looks at every document for links once more, then for episodes; asks again with `searching` until it is over. */
+    search: () => post<{ searching: boolean; documents: number; proposed?: number }>('/api/episodes/search', {}),
+    searching: () => req<{ searching: boolean }>('/api/episodes/search'),
     /** Proposed and confirmed by default; `all` includes the ones the owner said are not episodes. */
     list: (state?: 'proposed' | 'confirmed' | 'dismissed' | 'all') => req<Episode[]>(`/api/episodes${state ? `?state=${state}` : ''}`),
     create: (title: string, documentIds: string[]) => post<Episode>('/api/episodes', { title, document_ids: documentIds }),

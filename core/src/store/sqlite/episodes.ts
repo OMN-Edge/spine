@@ -14,7 +14,7 @@ export function episodeRepository(db: Database): EpisodeRepository {
     SELECT d.id, d.doc_date, d.provider FROM episode_documents ed
     JOIN documents d ON d.id = ed.document_id AND d.user_id = ed.user_id
     WHERE ed.episode_id = ? AND ed.user_id = ? AND ${VISIBLE}
-    ORDER BY d.doc_date IS NULL, d.doc_date, d.id
+    ORDER BY d.doc_date IS NULL, d.doc_date, d.title, d.id
   `);
   const owned = db.prepare('SELECT 1 FROM documents WHERE id = ? AND user_id = ?');
   const addMember = db.prepare('INSERT OR IGNORE INTO episode_documents (episode_id, document_id, user_id) VALUES (?, ?, ?)');

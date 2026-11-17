@@ -16,6 +16,10 @@ import { asHttp, asPlugin } from '../../http-host.js';
 import { useShareHost, type ShareHost } from 'spine-core/share-host.js';
 import { TRUSTED_PROXIES } from '../../trust-proxy.js';
 import { OWNER_EMAIL, TEST_PASSWORD, createTestUser } from './seed.js';
+import { testSecret } from './secrets.js';
+
+/** One for the whole run: a server that is restarted in a test (an app built again) has the same secret, as a real restart does. */
+const SESSION_FOR_THIS_RUN = testSecret('session');
 
 /**
  * The share host a device would bring, as far as the routes can tell: it takes the copy and says nothing went wrong. What a real one
@@ -69,7 +73,7 @@ export interface TestAppOptions {
 
 export async function buildTestApp(options: TestAppOptions = {}) {
   process.env.SPINE_DB_PATH = ':memory:';
-  process.env.SESSION_SECRET = 'test-secret-must-be-at-least-32-chars-long!!';
+  process.env.SESSION_SECRET = SESSION_FOR_THIS_RUN;
 
   // Reset the store singleton so each test file gets a fresh in-memory DB
   const { resetStore, hasStoreFactory, useStoreFactory, createStore } = await import('spine-core/store/index.js');

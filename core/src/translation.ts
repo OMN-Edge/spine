@@ -220,6 +220,34 @@ function overlaid(base: TranslationBundle, extra: TranslationBundle): Translatio
   };
 }
 
+/**
+ * Keeps a translation that was written by hand, as the one the model would have made: the sample records are shown in the reader's language with no model call. It is stored under the
+ * digest of what would be translated, so it is served as a translation made and is replaced, as any is, if the document changes. Texts are given by the text they translate (the original
+ * value, test name or specialty); one not given stays as it is.
+ */
+export async function storeTranslation(
+  userId: string,
+  documentId: string,
+  language: SupportedLanguage,
+  by: { title: string | null; summary: string | null; fields: Record<string, string>; measurements: Record<string, string>; doctors: Record<string, string> },
+): Promise<boolean> {
+  const store = getStore();
+  const document = await store.documents.findFor(userId, documentId);
+  if (!document) return false;
+  const source = await sourceOf(userId, document, language);
+  const bundle: TranslationBundle = {
+    title: source.bundle.title === null ? null : by.title ?? source.bundle.title,
+    summary: source.bundle.summary === null ? null : by.summary ?? source.bundle.summary,
+    notes: null,
+    fields: source.bundle.fields.map(f => ({ id: f.id, label: f.label, value: by.fields[f.value] ?? f.value })),
+    measurements: source.bundle.measurements.map(m => ({ id: m.id, name: by.measurements[m.name] ?? m.name })),
+    doctors: source.bundle.doctors.map(d => ({ id: d.id, specialty: d.specialty === null ? null : by.doctors[d.specialty] ?? d.specialty })),
+    source_language: document.language,
+  };
+  await store.translations.put(userId, documentId, language, source.hash, JSON.stringify(bundle), new Date().toISOString());
+  return true;
+}
+
 /** A document the model could not translate completely is not asked again for a while: each view would be another call. */
 const FAILURE_PAUSE_MS = 10 * 60_000;
 const failures = new Map<string, number>();
@@ -258,7 +286,19 @@ export async function translateDocument(
     title: source.bundle.title, ai_summary: source.bundle.summary, user_notes: source.bundle.notes, ...original,
   });
 
-  if (!translationEnabled()) return unchanged('off');
+  if (!translationEnabled()) {
+    // Off means no model is asked; what is already kept (or was given with the document, as the sample records' is) is still the reader's translation.
+    if (document.language !== language && !isEmpty(source.bundle)) {
+      const kept = await store.translations.get(userId, documentId, language);
+      if (kept && kept.sourceHash === source.hash) {
+        try {
+          const bundle = JSON.parse(kept.content) as TranslationBundle;
+          if (isEmpty(leftOver(source.bundle, bundle))) return shape(source, bundle, language, 'cached');
+        } catch { /* an unreadable row is the same as none */ }
+      }
+    }
+    return unchanged('off');
+  }
   if (document.language === language || isEmpty(source.bundle)) return unchanged('same');
 
   /** What is kept and still good, when it does not cover the whole document: only the rest is asked for. */

@@ -8,8 +8,9 @@ import { createTestUser } from './helpers/seed.js';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { verifyToken } from '../relay/token.js';
 import { sweepShares } from '../routes/shared.js';
+import { testSecret } from './helpers/secrets.js';
 
-const SECRET = 'shared-test-relay-secret-shared-test-relay';
+const SECRET = testSecret('shared');
 const id = () => randomBytes(16).toString('base64url');
 const inHours = (h: number) => new Date(Date.now() + h * 3_600_000).toISOString();
 const visitorKey = () => randomBytes(32).toString('base64url');
