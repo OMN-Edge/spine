@@ -53,10 +53,10 @@ export default function DocumentCard({ doc, to, owner = true }: {
               </span>
             )}
           </div>
-          <p className="text-sm font-medium text-gray-900 truncate">{documentTitle(doc, t)}</p>
+          <p className="text-sm font-medium text-gray-900 break-words">{documentTitle(doc, t)}</p>
           {doc.title && doc.provider && <p className="text-xs text-gray-500 truncate">{doc.provider}</p>}
           {doc.ai_summary && (
-            <p className="text-sm text-gray-500 mt-1 line-clamp-2"><AiLabel className="mr-1.5" />{doc.ai_summary}</p>
+            <p className="text-sm text-gray-500 mt-1 line-clamp-5"><AiLabel className="mr-1.5" />{doc.ai_summary}</p>
           )}
         </div>
         <div className="text-right shrink-0">
