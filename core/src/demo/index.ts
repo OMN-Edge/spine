@@ -66,6 +66,18 @@ async function finish(userId: string, lang: DemoLanguage, archive: DemoArchive, 
       if (!id) continue;
       for (const [language, t] of Object.entries(record.translations)) await storeTranslation(userId, id, language as 'en' | 'fr' | 'de', t);
     }
+    // The doctors' specialties and the tests' names are kept by their text too (`term_translations`), for the pages that list them across documents,
+    // from the same hand-written wording, so those pages show them in the reader's language with no model, as the documents are.
+    const terms = new Map<string, Map<string, { kind: 'specialty' | 'test'; sourceText: string; translated: string }>>();
+    for (const record of archive.records) {
+      for (const [language, t] of Object.entries(record.translations)) {
+        const held = terms.get(language) ?? new Map();
+        for (const [sourceText, translated] of Object.entries(t.doctors)) held.set(`specialty\u0000${sourceText}`, { kind: 'specialty', sourceText, translated });
+        for (const [sourceText, translated] of Object.entries(t.measurements)) held.set(`test\u0000${sourceText}`, { kind: 'test', sourceText, translated });
+        terms.set(language, held);
+      }
+    }
+    for (const [language, held] of terms) await store.termTranslations.put(userId, language, [...held.values()], new Date().toISOString());
   });
 }
 

@@ -80,6 +80,12 @@ describe.skipIf(!hasPoppler)('POST /api/demo', () => {
     expect(Object.values(english.measurements).sort()).toEqual(['Anti-TPO antibodies', 'FT4 (free thyroxine)', 'TSH (thyroid-stimulating hormone)']);
     expect(((await call('GET', `/api/documents/${lab.id}/translation?lang=fr`)).json() as { title: string }).title).toMatch(/Bilan des hormones thyroïdiennes/);
     expect(((await call('GET', `/api/documents/${lab.id}/translation?lang=de`)).json() as { title: string }).title).toMatch(/Schilddrüsenwerte/);
+    // the specialties and the tests' names are kept in the same words, for the pages that list them across documents, with no model asked
+    const terms = (await call('GET', '/api/translations/terms?lang=en')).json() as { specialties: Record<string, string>; tests: Record<string, string>; pending: boolean };
+    expect(terms.pending).toBe(false);
+    expect(Object.values(terms.tests)).toEqual(expect.arrayContaining(['TSH (thyroid-stimulating hormone)', 'FT4 (free thyroxine)']));
+    expect(Object.keys(terms.specialties).length).toBeGreaterThan(0);
+    expect(Object.values(terms.specialties).every(t => /^[A-Za-z' ,.\-()]+$/.test(t))).toBe(true);
     // and the Romanian original is what a Romanian reader has, with nothing to translate
     expect(((await call('GET', `/api/documents/${lab.id}/translation?lang=ro`)).json() as { status: string }).status).toBe('same');
 
