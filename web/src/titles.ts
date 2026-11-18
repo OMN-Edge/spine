@@ -96,8 +96,8 @@ export function documentTitle(doc: Nameable, t: Translate = asWritten): string {
 }
 
 /** The line under a title: who, what and when, skipping what is unknown. */
-export function documentByline(doc: Nameable & { doc_date?: string | null }, t: Translate = asWritten): string {
-  return [doc.provider, doc.doc_type ? t(DOC_TYPE_NAMES[doc.doc_type] ?? doc.doc_type) : null, doc.doc_date]
+export function documentByline(doc: Nameable & { doc_date?: string | null }, t: Translate = asWritten, date: (iso: string) => string = iso => iso): string {
+  return [doc.provider, doc.doc_type ? t(DOC_TYPE_NAMES[doc.doc_type] ?? doc.doc_type) : null, doc.doc_date ? date(doc.doc_date) : null]
     .filter(Boolean)
     .join(' · ');
 }

@@ -268,7 +268,7 @@ describe('letting another account into a profile', () => {
     });
 
     it('is not refused for what a plan holds: a free account takes in a second person, and more than it could store', async () => {
-      Object.assign(process.env, { SPINE_BILLING: 'on', PADDLE_ENVIRONMENT: 'sandbox', PADDLE_API_KEY: 'k', PADDLE_WEBHOOK_SECRET: 's', SPINE_CHECKOUT_URL: 'https://pay.example/', SPINE_PADDLE_PRICE_YEAR: 'a', SPINE_PADDLE_PRICE_MONTH: 'b', SPINE_PADDLE_PRICE_FOUNDING: 'c' });
+      Object.assign(process.env, { SPINE_BILLING: 'on', STRIPE_SECRET_KEY: ['sk', 'test', 'x'].join('_'), STRIPE_WEBHOOK_SECRET: 's', SPINE_STRIPE_PRICE_YEAR: 'a', SPINE_STRIPE_PRICE_MONTH: 'b', SPINE_STRIPE_PRICE_FOUNDING: 'c' });
       const family = await makeVault('promo-family@spine.test');
       const free = await createTestUser('promo-free@spine.test', { createdAt: '2020-01-01T00:00:00.000Z' });
       const freeCookie = await loginAs(app, free.email, free.password);
@@ -333,7 +333,7 @@ describe('letting another account into a profile', () => {
   });
 
   it('is part of the plan, where there are plans', async () => {
-    Object.assign(process.env, { SPINE_BILLING: 'on', PADDLE_ENVIRONMENT: 'sandbox', PADDLE_API_KEY: 'k', PADDLE_WEBHOOK_SECRET: 's', SPINE_CHECKOUT_URL: 'https://pay.example/', SPINE_PADDLE_PRICE_YEAR: 'a', SPINE_PADDLE_PRICE_MONTH: 'b', SPINE_PADDLE_PRICE_FOUNDING: 'c' });
+    Object.assign(process.env, { SPINE_BILLING: 'on', STRIPE_SECRET_KEY: ['sk', 'test', 'x'].join('_'), STRIPE_WEBHOOK_SECRET: 's', SPINE_STRIPE_PRICE_YEAR: 'a', SPINE_STRIPE_PRICE_MONTH: 'b', SPINE_STRIPE_PRICE_FOUNDING: 'c' });
     const free = await createTestUser('free-owner@spine.test', { createdAt: '2020-01-01T00:00:00.000Z' });
     const cookie = await loginAs(app, free.email, free.password);
     await app.inject({ method: 'PUT', url: '/api/vault/keys', headers: { cookie }, payload: { auth_value: fakeAuthValue(), keys: fakeVaultKeys() } });

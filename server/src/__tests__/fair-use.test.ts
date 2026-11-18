@@ -19,8 +19,8 @@ import { resetMailer, type MailMessage } from '../mail/index.js';
 
 const LONG_AGO = '2020-01-01T00:00:00.000Z';
 const BILLING = {
-  SPINE_BILLING: 'on', PADDLE_ENVIRONMENT: 'sandbox', PADDLE_API_KEY: 'pdl_test_key', PADDLE_WEBHOOK_SECRET: 'whsec_test', SPINE_CHECKOUT_URL: 'https://pay.spine.example/',
-  SPINE_PADDLE_PRICE_YEAR: 'pri_year', SPINE_PADDLE_PRICE_MONTH: 'pri_month', SPINE_PADDLE_PRICE_FOUNDING: 'pri_founding',
+  SPINE_BILLING: 'on', STRIPE_SECRET_KEY: ['sk', 'test', 'x'].join('_'), STRIPE_WEBHOOK_SECRET: 'whsec_test',
+  SPINE_STRIPE_PRICE_YEAR: 'pri_year', SPINE_STRIPE_PRICE_MONTH: 'pri_month', SPINE_STRIPE_PRICE_FOUNDING: 'pri_founding',
 };
 const sha256 = (v: string) => createHash('sha256').update(v).digest('hex');
 const GB = 1024 ** 3;
@@ -187,7 +187,7 @@ describe('the hidden fair-use ceilings', () => {
     it('are the last twelve months for an operator’s grant, which has no billing year, and for a lapsed record', () => {
       const granted = { provider: 'operator', interval: null, current_period_end: null } as never;
       expect(windowMonths(granted, new Date('2027-06-15T00:00:00Z'))).toHaveLength(12);
-      const lapsed = { provider: 'paddle', interval: 'year', current_period_end: '2027-01-01T00:00:00Z' } as never;
+      const lapsed = { provider: 'stripe', interval: 'year', current_period_end: '2027-01-01T00:00:00Z' } as never;
       expect(windowMonths(lapsed, new Date('2027-06-15T00:00:00Z'))[0]).toBe('2026-07');
     });
 

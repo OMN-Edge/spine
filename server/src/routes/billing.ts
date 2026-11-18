@@ -13,7 +13,7 @@ import { vaultBytesFor, liveSharesFor } from '../plans/entitlements.js';
 import { importGrant, pagesAllowed } from '../plans/carry.js';
 import { TOTALS, totalKey } from '../plans/totals.js';
 import { standingOf } from '../plans/seat.js';
-import { inviteToken, MAX_REWARDED, BONUS_PAGES } from '../plans/invitations.js';
+import { inviteToken, keptBonus, MAX_REWARDED, BONUS_PAGES, REWARD_PAGES } from '../plans/invitations.js';
 import { billingDetailsSchema } from 'spine-core/billing/billing-details.js';
 import { loadInvoicingConfig } from '../billing/invoicing/config.js';
 import { contextFromSettings, efacturaFromSettings, invoiceNewPayment, reverseRefunded } from '../billing/invoicing/queue.js';
@@ -54,7 +54,7 @@ async function withdrawalOf(userId: string, config: ReturnType<typeof loadBillin
   const store = getAccountsStore();
   const [sub, open, first] = await Promise.all([store.billing.get(userId), store.billing.openWithdrawalOf(userId), store.billing.firstPaymentAt(userId)]);
   const until = first ? new Date(Date.parse(first) + WITHDRAWAL_DAYS * 86_400_000).toISOString() : null;
-  const running = config.enabled && config.provider === 'stripe' && sub?.provider === 'stripe' && !!sub.subscription_id && subscriptionEntitles(sub, new Date());
+  const running = config.enabled && sub?.provider === 'stripe' && !!sub.subscription_id && subscriptionEntitles(sub, new Date());
   return { allowed: !!running && !open && (until === null || Date.parse(until) > Date.now()), until, requested: !!open };
 }
 
@@ -74,8 +74,8 @@ export async function billingRoutes(app: FastifyInstance) {
     const config = await pricesConfig();
     if (!config.enabled) return reply.header('Cache-Control', 'no-store').send({ enabled: false });
     const held = await getAccountsStore().billing.foundingHeld();
-    // Who sells: Paddle is the merchant of record; with Stripe the operator sells, and the page says in whose name (the same name as the footer's company line).
-    const seller = config.provider === 'stripe' ? { seller: 'operator' as const, seller_name: operatorInfo()?.name ?? null } : { seller: 'provider' as const };
+    // Who sells: the operator, and the page says in whose name (the same name as the footer's company line).
+    const seller = { seller: 'operator' as const, seller_name: operatorInfo()?.name ?? null };
     return reply.header('Cache-Control', 'public, max-age=60').send({ enabled: true, prices: await loadPrices(config), essential: !!config.essential, family: !!config.family, founding_left: Math.max(0, FOUNDING_LIMIT - held), ...seller });
   });
 
@@ -155,11 +155,11 @@ export async function billingRoutes(app: FastifyInstance) {
         page_topup: { buyable: !!config.addons.pageTopup && mayBuy('page_topup', e.plan), pages_left: topup },
       },
       // The link this account can send: both sides get pages when someone makes an account with it, and it is rewarded for at most `max` of them.
-      invite: { token: inviteToken(req.userId), pages: BONUS_PAGES, rewarded: Math.min(MAX_REWARDED, await store.usage.aiUsed(req.userId, 'bonus:rewarded')), max: MAX_REWARDED },
-      features: { translation: e.translation, chat: e.chat, linking: e.linking, related: e.related, approval_mode: e.approvalMode, delegation: e.delegation },
+      invite: { token: inviteToken(req.userId), pages: BONUS_PAGES, reward_pages: REWARD_PAGES, rewarded: Math.min(MAX_REWARDED, await store.usage.aiUsed(req.userId, 'bonus:rewarded')), max: MAX_REWARDED },
+      features: { translation: e.translation, chat: e.chat, linking: e.linking, related: e.related, files_export: e.filesExport, approval_mode: e.approvalMode, delegation: e.delegation },
       people: { limit: e.profiles },
       // What the app holds itself to, because the server cannot count into sealed records (`core/src/plan-limits.ts`).
-      limits: { pages: e.keptPages },
+      limits: { pages: e.keptPages === null ? null : e.keptPages + (await keptBonus(store, req.userId)), pages_bonus: e.keptPages === null ? 0 : await keptBonus(store, req.userId) },
       seats: { limit: e.seats },
       prices: await loadPrices(config),
       essential: !!config.essential,

@@ -474,10 +474,4 @@ describe('the catalog sent to Stripe', () => {
     expect(`${calls[0]!.method} ${new URL(calls[0]!.url).pathname}`).toBe('POST /v1/prices/price_have');
     expect(Object.fromEntries(calls[0]!.form)).toEqual({ active: 'false' });
   });
-
-  it('is not there for Paddle, which is the merchant of record and has its prices made in its own dashboard', () => {
-    const problems: string[] = [];
-    const paddle = readBillingConfig({ SPINE_BILLING: 'on', SPINE_BILLING_PROVIDER: 'paddle', PADDLE_API_KEY: 'pdl_k', PADDLE_WEBHOOK_SECRET: 'pdl_s', SPINE_PADDLE_PRICE_YEAR: 'pri_y', SPINE_PADDLE_PRICE_MONTH: 'pri_m', SPINE_PADDLE_PRICE_FOUNDING: 'pri_f', SPINE_CHECKOUT_URL: 'https://pay.example.org' }, 'public', problems) as Enabled;
-    expect(billingProvider(paddle).catalog).toBeUndefined();
-  });
 });

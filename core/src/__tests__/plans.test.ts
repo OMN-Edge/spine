@@ -5,7 +5,7 @@ import type { SubscriptionRecord } from '../store/types.js';
 
 const DAY = 86_400_000;
 const sub = (over: Partial<SubscriptionRecord>): SubscriptionRecord => ({
-  user_id: 'u', provider: 'paddle', customer_id: 'ctm', subscription_id: 'sub', interval: 'year', plan: 'premium', status: 'active', founding: false,
+  user_id: 'u', provider: 'stripe', customer_id: 'ctm', subscription_id: 'sub', interval: 'year', plan: 'premium', status: 'active', founding: false,
   current_period_end: null, cancel_scheduled: false, updated_at: '2026-01-01T00:00:00.000Z', ...over,
 });
 const now = new Date('2026-06-15T12:00:00.000Z');
@@ -51,6 +51,14 @@ describe('which plan an account has', () => {
 });
 
 describe('what a plan includes', () => {
+  it('puts the file export (one PDF of a chosen set, for an insurer) in Premium, Family and the trial, and not in Free or Essential', () => {
+    expect(PLANS.premium.filesExport).toBe(true);
+    expect(PLANS.family.filesExport).toBe(true);
+    expect(PLANS.trial.filesExport).toBe(true);
+    expect(PLANS.free.filesExport).toBe(false);
+    expect(PLANS.essential.filesExport).toBe(false);
+  });
+
   it('counts the trial once and the other plans by month', () => {
     const trial = entitlementsOf(created(1), null, now);
     expect(trial).toMatchObject({ plan: 'trial', allowance: { pages: 100, import: 0, messages: 50, translated: 30 }, vaultBytes: 5 * 1024 ** 3, liveShares: null, linkViews: Infinity, linkBytes: Infinity, keptPages: null, translation: true, approvalMode: true });
@@ -73,7 +81,7 @@ describe('what a plan includes', () => {
     expect(PLANS.trial.allowance).toMatchObject({ pages: 100, messages: 50, translated: 30 });
   });
 
-  it('writes no amount in the code: what a plan costs is Paddle\'s', () => {
+  it('writes no amount in the code: what a plan costs is Stripe\'s', () => {
     expect(readFileSync(new URL('../billing/plans.ts', import.meta.url), 'utf8')).not.toMatch(/PRICES|\b\d+\.\d\d\b|€/);
   });
 });

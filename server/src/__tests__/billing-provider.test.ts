@@ -13,7 +13,7 @@ interface Delivery { headers: Record<string, string>; body: string }
 interface Adapter {
   name: string;
   env: Record<string, string>;
-  /** The id a completed payment is applied by (Paddle's transaction, Stripe's checkout session). */
+  /** The id a completed payment is applied by (Stripe's checkout session). */
   transactionId: string;
   /** Stands in for what the adapter asks of the provider's own API while it reads a delivery, if anything. */
   prepare?: () => void;
@@ -21,34 +21,7 @@ interface Adapter {
   deliver(kind: 'subscription' | 'payment' | 'other' | 'unsigned' | 'wrong-secret' | 'not-json'): Delivery;
 }
 
-const PADDLE_SECRET = 'whsec_contract_test_secret';
-const sign = (body: string, secret = PADDLE_SECRET, ts = Math.floor(Date.now() / 1000)) => `ts=${ts};h1=${createHmac('sha256', secret).update(`${ts}:${body}`).digest('hex')}`;
-const paddleBody = (type: string, data: Record<string, unknown>) => JSON.stringify({ event_id: `evt_${type}`, event_type: type, occurred_at: '2026-03-04T05:06:07.000Z', data });
-
-const ADAPTERS: Adapter[] = [{
-  name: 'paddle',
-  transactionId: 'txn_1',
-  env: {
-    SPINE_BILLING: 'on', PADDLE_ENVIRONMENT: 'sandbox', PADDLE_API_KEY: 'pdl_test_key', PADDLE_WEBHOOK_SECRET: PADDLE_SECRET, SPINE_CHECKOUT_URL: 'https://pay.spine.example/',
-    SPINE_PADDLE_PRICE_YEAR: 'pri_year', SPINE_PADDLE_PRICE_MONTH: 'pri_month', SPINE_PADDLE_PRICE_FOUNDING: 'pri_founding',
-  },
-  deliver(kind): Delivery {
-    const subscription = paddleBody('subscription.updated', {
-      id: 'sub_1', status: 'active', customer_id: 'ctm_1', custom_data: { user_id: 'user-1' }, items: [{ price: { id: 'pri_month' } }], billing_cycle: { interval: 'month' },
-      current_billing_period: { ends_at: '2026-04-04T05:06:07Z' }, scheduled_change: { action: 'cancel' },
-    });
-    const payment = paddleBody('transaction.completed', { id: 'txn_1', subscription_id: 'sub_1', customer_id: 'ctm_1', custom_data: { user_id: 'user-1' }, items: [{ price: { id: 'pri_year' } }] });
-    const other = paddleBody('customer.created', { id: 'ctm_9' });
-    switch (kind) {
-      case 'subscription': return { headers: { 'paddle-signature': sign(subscription) }, body: subscription };
-      case 'payment': return { headers: { 'paddle-signature': sign(payment) }, body: payment };
-      case 'other': return { headers: { 'paddle-signature': sign(other) }, body: other };
-      case 'unsigned': return { headers: {}, body: subscription };
-      case 'wrong-secret': return { headers: { 'paddle-signature': sign(subscription, 'someone_elses_secret') }, body: subscription };
-      case 'not-json': return { headers: { 'paddle-signature': sign('not json') }, body: 'not json' };
-    }
-  },
-}, (() => {
+const ADAPTERS: Adapter[] = [(() => {
   const SECRET = 'whsec_contract_test_stripe_secret';
   const unix = (iso: string) => Math.floor(Date.parse(iso) / 1000);
   const stripeSign = (body: string, secret = SECRET, ts = Math.floor(Date.now() / 1000)) => `t=${ts},v1=${createHmac('sha256', secret).update(`${ts}.${body}`).digest('hex')}`;
@@ -126,28 +99,23 @@ describe.each(ADAPTERS)('the $name adapter', adapter => {
 });
 
 describe('choosing the provider', () => {
-  const env = ADAPTERS[0]!.env;
-  const stripeEnv = ADAPTERS[1]!.env;
+  const stripeEnv = ADAPTERS[0]!.env;
 
-  it('is paddle when nothing is said, and an unknown name stops the start rather than being guessed', () => {
+  it('is stripe when nothing is said, and an unknown name stops the start rather than being guessed', () => {
     const none: string[] = [];
-    const config = readBillingConfig(env, 'public', none);
+    const { SPINE_BILLING_PROVIDER: _said, ...unsaid } = stripeEnv;
+    expect(readBillingConfig(unsaid, 'public', none)).toMatchObject({ enabled: true, provider: 'stripe', environment: 'sandbox', prices: { year: 'pri_year', month: 'pri_month', founding: 'pri_founding' } });
     expect(none).toEqual([]);
-    expect(config).toMatchObject({ enabled: true, provider: 'paddle' });
 
     const unknown: string[] = [];
-    readBillingConfig({ ...env, SPINE_BILLING_PROVIDER: 'cheques' }, 'public', unknown);
-    expect(unknown).toContain('SPINE_BILLING_PROVIDER is "cheques"; expected paddle or stripe');
+    readBillingConfig({ ...stripeEnv, SPINE_BILLING_PROVIDER: 'cheques' }, 'public', unknown);
+    expect(unknown).toContain('SPINE_BILLING_PROVIDER is "cheques"; the only provider is stripe');
     expect(() => { if (unknown.length) throw new ConfigError(unknown); }).toThrow(/SPINE_BILLING_PROVIDER/);
   });
 
-  it('is stripe when it is said, and each provider has its own settings', () => {
-    const none: string[] = [];
-    expect(readBillingConfig(stripeEnv, 'public', none)).toMatchObject({ enabled: true, provider: 'stripe', environment: 'sandbox', checkoutUrl: null, prices: { year: 'pri_year', month: 'pri_month', founding: 'pri_founding' } });
-    expect(none).toEqual([]);
-    // Paddle's settings do not stand in for Stripe's, nor the other way round.
+  it('needs Stripe’s own settings', () => {
     const missing: string[] = [];
-    readBillingConfig({ SPINE_BILLING: 'on', SPINE_BILLING_PROVIDER: 'stripe', PADDLE_API_KEY: 'x', PADDLE_WEBHOOK_SECRET: 'y', SPINE_PADDLE_PRICE_YEAR: 'p' }, 'public', missing);
+    readBillingConfig({ SPINE_BILLING: 'on' }, 'public', missing);
     expect(missing).toEqual(expect.arrayContaining(['SPINE_BILLING=on needs STRIPE_SECRET_KEY', 'SPINE_BILLING=on needs STRIPE_WEBHOOK_SECRET', 'SPINE_BILLING=on needs SPINE_STRIPE_PRICE_YEAR']));
   });
 });

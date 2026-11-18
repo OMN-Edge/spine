@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { v4 as uuidv4 } from 'uuid';
 import { buildTestApp, loginSession } from './helpers/app.js';
 import { getStore } from 'spine-core/store/index.js';
 import { createTestUser, seedDocument, TEST_PASSWORD } from './helpers/seed.js';
@@ -65,6 +66,25 @@ describe('inspecting a link', () => {
     expect((await detail(id, other)).statusCode).toBe(404);
     expect((await patch(id, { label: 'mine now' }, other)).statusCode).toBe(404);
     expect((await app.inject({ method: 'GET', url: `/api/share-links/${id}` })).statusCode).toBe(401);
+  });
+});
+
+describe('the documents a scope picks, for the file export', () => {
+  const pick = (payload: unknown, cookie = owner) => app.inject({ method: 'POST', url: '/api/share-links/scope-documents', headers: { cookie }, payload: payload as object });
+
+  it('are the ones a link of that scope would share, with nothing made', async () => {
+    const before = (await app.inject({ method: 'GET', url: '/api/share-links', headers: { cookie: owner } })).json().length;
+    const res = await pick({ scope: 'document_ids', scope_value: [docA, docB] });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as Array<{ id: string }>).map(d => d.id).sort()).toEqual([docA, docB].sort());
+    expect((res.json() as Array<Record<string, unknown>>)[0]).toHaveProperty('page_start');
+    expect((await app.inject({ method: 'GET', url: '/api/share-links', headers: { cookie: owner } })).json().length).toBe(before);
+  });
+
+  it('are refused as a link would refuse them: a document that is not the owner’s, or a scope that is not one', async () => {
+    expect((await pick({ scope: 'document_ids', scope_value: [uuidv4()] })).statusCode).toBe(400);
+    expect((await pick({ scope: 'everything-else' })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'POST', url: '/api/share-links/scope-documents', payload: { scope: 'all' } })).statusCode).toBe(401);
   });
 });
 

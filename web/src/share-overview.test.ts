@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildOverview } from './share-overview';
 
 /** What the owner chose to tell the doctor, as the link carries it (T-02, T-29). */
-const CARD = { v: 1 as const, name: 'Ana Exemplu', born: '', blood_type: '', allergies: ['penicillin'], conditions: [], medications: ['Levothyroxine 50 µg, once a day'], contacts: [], details: [], notes: '', language: '' };
+const CARD = { v: 1 as const, name: 'Ana Exemplu', born: '', blood_type: '', allergies: ['penicillin'], conditions: [], medications: ['Levothyroxine 50 µg, once a day'], contacts: [], details: [], notes: '', language: '', second: null };
 const about = (over: Partial<Parameters<typeof buildOverview>[0]> = {}) => ({ showName: true, name: 'Ana Exemplu', note: '', includeNow: false, ...over });
 
 describe('building the overview of a link', () => {

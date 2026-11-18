@@ -76,23 +76,16 @@ spec:
             # The operator's page, /admin: who may use it, and who may only read the numbers (docs/billing.md). Set the first before the first sign-in there.
             # - { name: SPINE_ADMIN_EMAILS, value: "you@example.com" }
             # - { name: SPINE_MARKETING_EMAILS, value: "marketing@example.com" }
-            # Plans (docs/billing.md; the prices are Paddle's, and every amount is read from them). The relay and the hourly job need only SPINE_BILLING=on.
+            # Plans (docs/billing.md; the prices are Stripe's, and every amount is read from them). The relay and the hourly job need only SPINE_BILLING=on.
             # - { name: SPINE_BILLING, value: "on" }
-            # - { name: PADDLE_ENVIRONMENT, value: production }
-            # - { name: SPINE_CHECKOUT_URL, value: "https://pay.spinevault.eu/" }
-            # - { name: SPINE_PADDLE_PRICE_YEAR, value: pri_... }
-            # - { name: SPINE_PADDLE_PRICE_MONTH, value: pri_... }
-            # - { name: SPINE_PADDLE_PRICE_FOUNDING, value: pri_... }
-            # - { name: SPINE_PADDLE_PRICE_ESSENTIAL_YEAR, value: pri_... }     # Essential, family and the top-up are sold only where named
-            # - { name: SPINE_PADDLE_PRICE_ESSENTIAL_MONTH, value: pri_... }
-            # - { name: SPINE_PADDLE_PRICE_FAMILY_YEAR, value: pri_... }
-            # - { name: SPINE_PADDLE_PRICE_FAMILY_MONTH, value: pri_... }
-            # - { name: SPINE_PADDLE_PRICE_TOPUP_PAGES, value: pri_... }
-            # - { name: PADDLE_API_KEY, valueFrom: { secretKeyRef: { name: spine-paddle-api-key, key: latest } } }
-            # - { name: PADDLE_WEBHOOK_SECRET, valueFrom: { secretKeyRef: { name: spine-paddle-webhook-secret, key: latest } } }
-            # Or Stripe instead of Paddle (docs/billing.md): one provider at a time. Its prices are Stripe's (SPINE_STRIPE_PRICE_MONTH, _FOUNDING, _ESSENTIAL_YEAR, _ESSENTIAL_MONTH, _FAMILY_YEAR, _FAMILY_MONTH and _TOPUP_PAGES are as Paddle's), and there is no checkout address.
-            # - { name: SPINE_BILLING_PROVIDER, value: stripe }
             # - { name: SPINE_STRIPE_PRICE_YEAR, value: price_... }
+            # - { name: SPINE_STRIPE_PRICE_MONTH, value: price_... }
+            # - { name: SPINE_STRIPE_PRICE_FOUNDING, value: price_... }
+            # - { name: SPINE_STRIPE_PRICE_ESSENTIAL_YEAR, value: price_... }     # Essential, family and the top-up are sold only where named
+            # - { name: SPINE_STRIPE_PRICE_ESSENTIAL_MONTH, value: price_... }
+            # - { name: SPINE_STRIPE_PRICE_FAMILY_YEAR, value: price_... }
+            # - { name: SPINE_STRIPE_PRICE_FAMILY_MONTH, value: price_... }
+            # - { name: SPINE_STRIPE_PRICE_TOPUP_PAGES, value: price_... }
             # - { name: STRIPE_SECRET_KEY, valueFrom: { secretKeyRef: { name: spine-stripe-secret-key, key: latest } } }
             # - { name: STRIPE_WEBHOOK_SECRET, valueFrom: { secretKeyRef: { name: spine-stripe-webhook-secret, key: latest } } }
             - { name: SESSION_SECRET, valueFrom: { secretKeyRef: { name: spine-session-secret, key: latest } } }

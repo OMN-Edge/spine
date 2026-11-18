@@ -1,8 +1,7 @@
 import type { IncomingHttpHeaders } from 'node:http';
-import { paddleProvider } from './providers/paddle.js';
 import { stripeProvider } from './providers/stripe.js';
 
-export type ProviderId = 'paddle' | 'stripe';
+export type ProviderId = 'stripe';
 
 /** What an adapter needs of the application's settings: which provider, its key and the secret its messages are signed with. The application reads them (this package reads no environment). */
 export interface ProviderSettings {
@@ -10,8 +9,6 @@ export interface ProviderSettings {
   environment: 'sandbox' | 'production';
   apiKey: string;
   webhookSecret: string;
-  /** The address of the page that opens Paddle's checkout (an origin of its own); null for a provider whose checkout is its own page. */
-  checkoutUrl: string | null;
 }
 export type Enabled = ProviderSettings;
 
@@ -97,8 +94,7 @@ export interface PriceReading { amount: number; currency: string; interval: stri
 export interface ProviderPriceInput { key: string; productId: string; period: 'month' | 'year' | 'once'; currency: string; amountMinor: number }
 
 /**
- * What a provider can be told about the catalog (`products.ts`): a product and a price are made once for a key, and asked again they are found, never made twice. A provider that is
- * the merchant of record (Paddle, here) has none: its prices are made in its own dashboard.
+ * What a provider can be told about the catalog (`products.ts`): a product and a price are made once for a key, and asked again they are found, never made twice. 
  */
 export interface ProviderCatalog {
   /** The provider's id of the product for `key`: made if it is not there, and its name and description made the same if they differ. */
@@ -133,14 +129,11 @@ export interface BillingProvider {
   lastPaid(subscriptionId: string): Promise<{ amountMinor: number; currency: string } | null>;
   /** What the provider says about one price the operator named (`catalog.ts` keeps it for a while and checks the set). */
   readPrice(id: string): Promise<PriceReading>;
-  /** Where the catalog's products and prices are sent; absent where the provider is the merchant of record. */
+  /** Where the catalog's products and prices are sent. */
   readonly catalog?: ProviderCatalog;
 }
 
 /** The active provider, from the settings. The one place that knows which adapters exist. */
 export function billingProvider(config: ProviderSettings, presentation: Presentation): BillingProvider {
-  switch (config.provider) {
-    case 'paddle': return paddleProvider(config);
-    case 'stripe': return stripeProvider(config, presentation);
-  }
+  return stripeProvider(config, presentation);
 }

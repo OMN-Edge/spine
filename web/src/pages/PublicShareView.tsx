@@ -213,7 +213,7 @@ function SharedContent({ shareId }: { shareId: string }) {
 
         {translating && (pending || translated) && !openId && view === 'documents' && (
           <p className="text-xs text-gray-500 mb-4" role="status">
-            {pending ? t('Translating into your language…') : t('Translated into {language}.', { language: languageName(lang) })}{' '}
+            {pending ? t('Translating into your language…') : t('Translated into {language}.', { language: languageName(lang, lang) })}{' '}
             {translated && (
               <button type="button" onClick={() => setOriginal(o => !o)} className="text-brand-600 hover:underline">
                 {original ? t('Show translation') : t('Show original')}
@@ -234,8 +234,8 @@ function SharedContent({ shareId }: { shareId: string }) {
           <>
             <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
               <input
-                type="search" value={query} onChange={e => setQuery(e.target.value)} aria-label={t('Search these documents')} placeholder={t('Search these documents…')}
-                className="min-w-0 flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+                type="search" value={query} onChange={e => setQuery(e.target.value)} aria-label={t('Search these documents')} placeholder={t('Search')}
+                className="min-w-0 w-full sm:w-auto sm:flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
               />
               {types.length > 1 && (
                 <Combobox
@@ -284,6 +284,7 @@ const label = 'block text-xs font-medium text-gray-500 mb-1';
 /** One shared document: the document page without the editing, the details beside the scans when the link allows them. */
 function SharedDocumentView({ shareId, id, translating, original, titleOf, onBack }: { shareId: string; id: string; translating: boolean; original: boolean; titleOf: (id: string) => string | null | undefined; onBack: () => void }) {
   const { t, lang } = useI18n();
+  const format = useFormat();
   const words = useSharedTerms(shareId, translating && !original);
   const [data, setData] = useState<SharedDocument | null>(null);
   const [error, setError] = useState('');
@@ -366,8 +367,8 @@ function SharedDocumentView({ shareId, id, translating, original, titleOf, onBac
         <div className={`w-full shrink-0 flex flex-col gap-4 ${data.scans && pages.length > 0 ? 'md:w-96' : 'md:max-w-2xl'}`}>
           <div id="section-summary" className="bg-white border border-gray-200 rounded-xl p-4 transition-shadow">
             <h2 className="text-lg font-semibold text-gray-900 break-words">{documentTitle({ ...doc, title }, t)}</h2>
-            <p className="text-sm text-gray-500">{documentByline(doc, t)}</p>
-            {data.episode && <p className="text-sm text-gray-500 mt-1">{t('Episode: {name}', { name: data.episode.title && words.episode(data.episode.title) !== data.episode.title ? words.episode(data.episode.title) : doc.language && screensIn(lang) !== doc.language && !original ? episodeDates(data.episode, t) : episodeName(data.episode, t) })}</p>}
+            <p className="text-sm text-gray-500">{documentByline(doc, t, format.date)}</p>
+            {data.episode && <p className="text-sm text-gray-500 mt-1">{t('Episode: {name}', { name: data.episode.title && words.episode(data.episode.title) !== data.episode.title ? words.episode(data.episode.title) : doc.language && screensIn(lang) !== doc.language && !original ? episodeDates(data.episode, t, format.date) : episodeName(data.episode, t, format.date) })}</p>}
             {tags.length > 0 && (
               <div className="flex flex-wrap gap-1 mt-2">
                 {tags.map(tag => <span key={tag} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{words.tag(tagName(tag, t))}</span>)}
@@ -375,7 +376,7 @@ function SharedDocumentView({ shareId, id, translating, original, titleOf, onBac
             )}
             {translating && (tr.translating || tr.active) && (
               <p className="text-xs text-gray-500 mt-2" role="status">
-                {tr.translating ? t('Translating…') : t('Machine translation from {language}. The original document prevails: check it before relying on a detail.', { language: languageName(tr.translation?.source_language ?? doc.language) || t('the original language') })}{' '}
+                {tr.translating ? t('Translating…') : t('Machine translation from {language}. The original document prevails: check it before relying on a detail.', { language: languageName(tr.translation?.source_language ?? doc.language, lang) || t('the original language') })}{' '}
                 {tr.active && (
                   <button type="button" onClick={() => setShowOriginal(o => !o)} className="text-brand-600 hover:underline">
                     {showOriginal ? t('Show translation') : t('Show original')}

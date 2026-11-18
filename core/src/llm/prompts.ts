@@ -272,7 +272,7 @@ ${known}${notes}
 Return ONLY valid JSON (no markdown):
 {
   "language": "the language the document is written in, as a two-letter code (ro, en, fr, de, hu, ...), or null if you cannot tell",
-  "title": "the document's own title as printed on it (e.g. \"Bilet de externare\", \"Buletin de analize\"), in its original language; if it has none, a short descriptive title in the document's language, under 60 characters",
+  "title": "the document's own title as printed on it (e.g. \"Bilet de externare\", \"Buletin de analize\"), in its original language; if it has none, a short descriptive title in the document's language, under 60 characters. A printed title that only names a kind of document and would be the same on many (\"Raport medical\", \"Rezultat\", \"Bilet de trimitere\") is kept and followed by what tells this one apart, after a colon: the specialty, the reason for the visit or the main tests or subject, in a few words (e.g. \"Raport medical: endocrinologie, TSH și FT4\", \"Buletin de analize: hemoleucogramă\"). Never put the date, the clinic or the patient's name in it: they are shown beside it",
   "doc_date": "YYYY-MM-DD or null if not found",
   "provider": "clinic/hospital/laboratory name or null",
   "doc_type": "one of the types above",

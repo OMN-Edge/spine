@@ -13,6 +13,7 @@ import Pair from './pages/Pair';
 import Reset from './pages/Reset';
 import Account from './pages/Account';
 import Invoices from './pages/Invoices';
+import FieldsToCheck from './pages/FieldsToCheck';
 import { setNavOpen } from './nav-open';
 import Timeline from './pages/Timeline';
 import Upload from './pages/Upload';
@@ -407,6 +408,7 @@ export default function App() {
         <Route path="/upload" element={<PrivateRoute inDemo={!!demoUploads}><Upload /></PrivateRoute>} />
         <Route path="/uploads/:id" element={<PrivateRoute><UploadPages /></PrivateRoute>} />
         <Route path="/review" element={<PrivateRoute><ReviewQueue /></PrivateRoute>} />
+        <Route path="/review/fields" element={<PrivateRoute><FieldsToCheck /></PrivateRoute>} />
         <Route path="/documents/:id" element={<PrivateRoute><DocumentPage /></PrivateRoute>} />
         <Route path="/review/:id" element={<ReviewRedirect />} />
         <Route path="/trends" element={<PrivateRoute><Trends /></PrivateRoute>} />

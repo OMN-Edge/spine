@@ -190,7 +190,7 @@ export function createRelay(config: RelayConfig) {
     res.setHeader('strict-transport-security', 'max-age=31536000; includeSubDomains');
     res.setHeader('referrer-policy', 'no-referrer');
     if (req.method === 'OPTIONS') {
-      res.writeHead(204, { 'access-control-allow-methods': 'POST', 'access-control-allow-headers': 'authorization, content-type, x-spine-work, x-spine-pages, x-spine-import', 'access-control-max-age': '600' });
+      res.writeHead(204, { 'access-control-allow-methods': 'POST', 'access-control-allow-headers': 'authorization, content-type, x-spine-work, x-spine-pages', 'access-control-max-age': '600' });
       return void res.end();
     }
     if (req.method === 'GET' && req.url === '/healthz') return reply(res, 200, 'ok');
@@ -221,13 +221,12 @@ export function createRelay(config: RelayConfig) {
     if (Number.isFinite(declared) && declared > bodyLimit(who.userId)) return refuse(413, 'too large', 'too_large');
     if (!(await spend(who.userId))) return refuse(429, 'the daily allowance of model calls is used up');
     // What the device says about the call for the plan's counts (plans/gate.ts): a random id for the piece of work it belongs to, how many pages
-    // it covers, and that it is part of an archive import. Shapes are checked; none is logged.
+    // it covers. Shapes are checked; none is logged.
     const asked = String(req.headers['x-spine-work'] ?? '');
     const pagesSaid = Number(req.headers['x-spine-pages']);
     const call = {
       work: /^[A-Za-z0-9_-]{8,64}$/.test(asked) ? asked : null,
       pages: Number.isInteger(pagesSaid) && pagesSaid >= 1 && pagesSaid <= 1000 ? pagesSaid : null,
-      bulk: req.headers['x-spine-import'] === '1',
     };
     const refusal = await config.gate?.admit(who.userId, relayTask, call);
     if (refusal) return refuse(refusal.status, refusal.error, refusal.code);

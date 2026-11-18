@@ -37,7 +37,7 @@ describe('an amount typed by a person', () => {
 describe('the provider shown', () => {
   it('names the provider for a person', () => {
     expect(providerName('stripe')).toBe('Stripe');
-    expect(providerName('paddle')).toBe('Paddle');
+    expect(providerName('stripe')).toBe('Stripe');
     expect(providerName(undefined)).toBe('');
   });
   it('says where a price is: none, sent, or waiting to be sent', () => {

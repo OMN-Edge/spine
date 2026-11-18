@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, type Episode } from '../api';
 import { useI18n } from '../i18n';
+import { useFormat } from '../format';
 import { Combobox } from './Combobox';
 import { episodeName } from './episode';
 import { useTerms } from '../useListTitles';
@@ -16,6 +17,7 @@ export default function DocumentFilters({ value, onChange, className, wrapperCla
   wrapperClassName?: string;
 }) {
   const { t } = useI18n();
+  const format = useFormat();
   const names = useTerms();
   const [providers, setProviders] = useState<string[]>([]);
   const [specialties, setSpecialties] = useState<string[]>([]);
@@ -42,7 +44,7 @@ export default function DocumentFilters({ value, onChange, className, wrapperCla
     <>
       {pick(t('Facility'), 'provider', t('Any facility'), providers.map(name => ({ value: name, label: name })))}
       {pick(t('Specialty'), 'specialty', t('Any specialty'), specialties.map(name => ({ value: name, label: names.specialty(name) })))}
-      {pick(t('Episode'), 'episode', t('Any episode'), episodes.map(e => ({ value: e.id, label: episodeName(e, t) })))}
+      {pick(t('Episode'), 'episode', t('Any episode'), episodes.map(e => ({ value: e.id, label: episodeName(e, t, format.date) })))}
     </>
   );
 }

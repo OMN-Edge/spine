@@ -161,11 +161,6 @@ class CoreWorker {
     await this.send({ type: 'planLimits', pages: limits.pages });
   }
 
-  /** Says that the uploads that follow are an archive being imported (or that they are not), so reading draws on the import allowance. */
-  async setImportMode(on: boolean): Promise<void> {
-    await this.send({ type: 'importMode', on });
-  }
-
   /** Tries to save now; throws if the vault did not take it. */
   async save(): Promise<void> {
     await this.send({ type: 'save' });

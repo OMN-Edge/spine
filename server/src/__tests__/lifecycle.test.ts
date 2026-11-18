@@ -8,7 +8,7 @@ import { nudgeMail, planThatFits, sendLifecycleMail, sendWelcome, trialEndsMail,
 import { JOBS } from '../jobs.js';
 import { settingOf } from '../operator-settings.js';
 
-const BILLING = { SPINE_BILLING: 'on', PADDLE_ENVIRONMENT: 'sandbox', PADDLE_API_KEY: 'pdl_test_key', PADDLE_WEBHOOK_SECRET: 'whsec_test', SPINE_CHECKOUT_URL: 'https://pay.spine.example/', SPINE_PADDLE_PRICE_YEAR: 'pri_year', SPINE_PADDLE_PRICE_MONTH: 'pri_month', SPINE_PADDLE_PRICE_FOUNDING: 'pri_founding' };
+const BILLING = { SPINE_BILLING: 'on', STRIPE_SECRET_KEY: ['sk', 'test', 'x'].join('_'), STRIPE_WEBHOOK_SECRET: 'whsec_test', SPINE_STRIPE_PRICE_YEAR: 'pri_year', SPINE_STRIPE_PRICE_MONTH: 'pri_month', SPINE_STRIPE_PRICE_FOUNDING: 'pri_founding' };
 const DAY = 24 * 3600e3;
 
 /** The mail about using Spine: a welcome, a reminder now and then, and two weeks before a trial ends what was done and the plan that fits. No medical content, ever. */
@@ -107,7 +107,7 @@ describe('the mail about using Spine', () => {
 
   it('runs in a job that has plans on and none of the payment provider’s settings, as the hourly job and the relay are deployed', async () => {
     Object.assign(process.env, { SPINE_BILLING: 'on', SPINE_NUDGE_DAYS: '30' });
-    for (const k of ['PADDLE_ENVIRONMENT', 'PADDLE_API_KEY', 'PADDLE_WEBHOOK_SECRET', 'SPINE_CHECKOUT_URL', 'SPINE_PADDLE_PRICE_YEAR', 'SPINE_PADDLE_PRICE_MONTH', 'SPINE_PADDLE_PRICE_FOUNDING']) delete process.env[k];
+    for (const k of ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'SPINE_STRIPE_PRICE_YEAR', 'SPINE_STRIPE_PRICE_MONTH', 'SPINE_STRIPE_PRICE_FOUNDING']) delete process.env[k];
     const old = await createTestUser('life-job@spine.test', { createdAt: new Date(Date.now() - 100 * DAY).toISOString() });
     await expect(sendLifecycleMail(store())).resolves.toBeGreaterThanOrEqual(1);
     expect(to(old.email)).toHaveLength(1);

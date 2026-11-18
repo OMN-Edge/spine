@@ -155,3 +155,13 @@ describe('task specs', () => {
     expect(Object.keys(specs.extraction.jsonSchema.properties as object)).toContain('doc_type');
   });
 });
+
+describe('the title the extraction asks for', () => {
+  it('keeps a printed title and tells a generic one apart by what is in it, without the date, the clinic or the patient', async () => {
+    const { buildExtractionPrompt } = await import('../llm/prompts.js');
+    const prompt = buildExtractionPrompt('Raport medical\nEndocrinologie');
+    expect(prompt).toContain('only names a kind of document');
+    expect(prompt).toContain('Raport medical: endocrinologie, TSH și FT4');
+    expect(prompt).toContain('Never put the date, the clinic or the patient');
+  });
+});

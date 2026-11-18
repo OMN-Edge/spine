@@ -72,6 +72,7 @@ export interface AccountsStore {
   vault: VaultRepository;
   shared: SharedRepository;
   enrolments: EnrolmentRepository;
+  invitations: InvitationRepository;
   cookieSessions: CookieSessionRepository;
   maintenance: MaintenanceRepository;
   billing: BillingRepository;
@@ -107,7 +108,9 @@ export interface SliceOptions {
   documentIds: string[];
   includeText: boolean;
   includeScans: boolean;
-  link: { id: string; label: string | null; createdAt: string; expiresAt: string; language: string | null; allowChat: boolean; overview?: string | null };
+  link: { id: string; label: string | null; createdAt: string; expiresAt: string; language: string | null; allowChat: boolean;
+    /** What the owner tells the doctor (`share-overview.ts`): required, so a copy made without it cannot be written by mistake (the doctor would see no name and no note). */
+    overview: string | null };
   /** Where a page's image is in the share's own file system (when scans are included). */
   imagePathOf: (pageId: string, from: string) => string;
   /**
@@ -762,6 +765,19 @@ export interface SessionRecord {
 }
 
 /** An offer to let a new device in, as the signed-in side sees it. Never the sealed key. */
+/**
+ * Who invited an account, kept only until the account first buys a plan (the inviter is then rewarded, `server/src/plans/invitations.ts`) or the link is too old.
+ * The row is the invitee's (`user_id`); the inviter has no list of the people they invited, and is told nothing of who bought. Deleting either account deletes the row.
+ */
+export interface InvitationRepository {
+  /** Notes that `inviterId` invited the account, once: false where the account already has a row. */
+  record(userId: string, inviterId: string, at: string): Promise<boolean>;
+  /** The account's inviter, if it has one made at `notBefore` or later, and forgets it: only one call gets the answer. */
+  take(userId: string, notBefore: string): Promise<string | null>;
+  /** Forgets every link made before `before`; answers how many. */
+  sweep(before: string): Promise<number>;
+}
+
 export interface EnrolmentOffer {
   id: string;
   state: 'offered' | 'requested' | 'approved' | 'denied';
@@ -872,8 +888,8 @@ export interface FileRegistryRepository {
 /** What an account pays for (`billing/plans.ts` says what that gives). One row per account; none means it has never subscribed. */
 export interface SubscriptionRecord {
   user_id: string;
-  /** Who bills it: `paddle` or `stripe`, or `operator` for an account the operator granted (CLI `grant-plan`). */
-  provider: 'paddle' | 'stripe' | 'operator';
+  /** Who bills it: `stripe`, or `operator` for an account the operator granted (CLI `grant-plan`). */
+  provider: 'stripe' | 'operator';
   customer_id: string | null;
   subscription_id: string | null;
   interval: 'month' | 'year' | null;

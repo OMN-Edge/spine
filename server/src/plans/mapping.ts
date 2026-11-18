@@ -3,6 +3,8 @@ import type { SubscriptionRecord } from 'spine-core/store/types.js';
 import type { PlanMapping } from 'spine-billing/events.js';
 import type { Enabled } from '../billing/provider.js';
 import type { Addon } from './addons.js';
+import { getAccountsStore } from 'spine-core/store/index.js';
+import { rewardInviter } from './invitations.js';
 import { catalogProducts, configuredPrices } from './products.js';
 
 /**
@@ -21,6 +23,8 @@ export function spinePlans(config: Enabled, catalog: Map<string, string> = new M
     capped: priceIds => has(priceIds, 'founding'),
     // the row is one Spine's store gave, whose provider and plan are Spine's own names; the package types them as text
     entitles: (subscription, now) => subscriptionEntitles(subscription as SubscriptionRecord, now),
+    // The first plan an invited account buys rewards whoever invited it (`invitations.ts`); asked again, there is nothing left to reward.
+    bought: async userId => { await rewardInviter(getAccountsStore(), userId).catch(() => undefined); },
   };
 }
 

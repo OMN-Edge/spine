@@ -19,10 +19,14 @@ export default function DoctorPage() {
   const navigate = useNavigate();
   const [doctor, setDoctor] = useState<DoctorDetail | null>(null);
   const names = useTerms();
-  const { titleOf } = useListTitles((doctor?.documents ?? []).map(d => d.id), false);
   const [missing, setMissing] = useState(false);
   const [others, setOthers] = useState<DoctorEntry[]>([]);
   const [archive, setArchive] = useState<Document[]>([]);
+  // The titles in the reader's language for this doctor's documents and for the others' since the last visit, which the list below names too.
+  const [showOther, setShowOther] = useState(false);
+  const news = doctor ? sinceLastVisit(doctor.documents, archive) : null;
+  const newsIds = news ? [...news.documents.slice(0, 10), ...(showOther ? news.other.slice(0, 10) : [])].map(d => d.id) : [];
+  const { titleOf } = useListTitles([...(doctor?.documents ?? []).map(d => d.id), ...newsIds], false);
   const [form, setForm] = useState<{ name: string; specialty: string; clinic: string; license_code: string } | null>(null); // non-null while editing
   const [mergeFrom, setMergeFrom] = useState('');
   const [message, setMessage] = useState('');
@@ -106,8 +110,7 @@ export default function DoctorPage() {
       </div>
 
       {(() => {
-        const news = sinceLastVisit(doctor.documents, archive);
-        if (!news.since || news.documents.length === 0) return null;
+        if (!news || !news.since || news.documents.length + news.other.length === 0) return null;
         return (
           <div className="bg-white border border-gray-200 rounded-xl p-4" id="since-last-visit">
             <h2 className="font-medium text-gray-900 mb-1 text-sm">{t('From others since your last visit here')}</h2>
@@ -122,7 +125,24 @@ export default function DoctorPage() {
                 </li>
               ))}
             </ul>
-            <button type="button" onClick={() => navigate('/share', { state: { documentIds: news.documents.map(d => d.id) } })} className="mt-3 rounded-full border border-gray-300 px-4 py-1.5 text-sm text-gray-800 hover:bg-gray-50">{t('Share these')}</button>
+            {news.other.length > 0 && (
+              <>
+                <button type="button" onClick={() => setShowOther(v => !v)} aria-expanded={showOther} className="mt-3 text-sm text-brand-700 hover:underline">{showOther ? t('Hide other documents') : t('Other documents ({count})', { count: news.other.length })}</button>
+                {showOther && (
+                  <ul className="divide-y divide-gray-100 mt-1">
+                    {news.other.slice(0, 10).map(d => (
+                      <li key={d.id}>
+                        <Link to={`/documents/${d.id}`} className="flex items-baseline justify-between gap-3 py-2 hover:bg-gray-50">
+                          <span className="text-sm text-gray-900 truncate">{documentTitle({ ...d, title: titleOf(d) ?? d.title }, t)}</span>
+                          <span className="text-xs text-gray-400 shrink-0">{d.doc_date ? format.date(d.doc_date) : ''}</span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            )}
+            {news.documents.length > 0 && <button type="button" onClick={() => navigate('/share', { state: { documentIds: news.documents.map(d => d.id) } })} className="mt-3 rounded-full border border-gray-300 px-4 py-1.5 text-sm text-gray-800 hover:bg-gray-50">{t('Share these')}</button>}
           </div>
         );
       })()}

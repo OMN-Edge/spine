@@ -10,7 +10,7 @@ describe('the note above the review form', () => {
   it('says the original is being corrected, in its language, and that the reader’s version is made again after the save', () => {
     const text = note('ro');
     expect(text).toContain('You are correcting the original, in');
-    expect(text).toContain('Română');
+    expect(text).toContain('in Romanian');
     expect(text).toContain('English version is a translation and is made again after you save.');
   });
 

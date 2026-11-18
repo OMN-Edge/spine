@@ -58,7 +58,7 @@ describe('the copy a share is made of', () => {
     const dest = openDatabase(':memory:', openNative, undefined, 'full');
     const result = copySlice(source, dest, {
       userId: OWNER_ID, documentIds: shared, includeText: options.includeText, includeScans: options.includeScans,
-      link: { id: 'link-1', label: 'for the cardiologist', createdAt: '2026-10-01T00:00:00.000Z', expiresAt: '2026-10-08T00:00:00.000Z', language: 'en', allowChat: options.allowChat ?? false },
+      link: { id: 'link-1', label: 'for the cardiologist', createdAt: '2026-10-01T00:00:00.000Z', expiresAt: '2026-10-08T00:00:00.000Z', language: 'en', allowChat: options.allowChat ?? false, overview: null },
       imagePathOf: id => `/share/pages/${id}.png`,
     });
     const all = (sql: string) => dest.prepare(sql).all() as Array<Record<string, unknown>>;

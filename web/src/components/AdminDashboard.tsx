@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { PLAN_NAMES } from './AdminSubscriptions';
 import type { AdminDashboard } from '../api';
 import { useI18n } from '../i18n';
 import { useFormat } from '../format';
@@ -39,7 +40,7 @@ export default function AdminDashboardView({ data }: { data: AdminDashboard }) {
         <div className="mt-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <Tile label={t('Sign-ups today')} value={n(w.today.signup)} sub={t('{week} in 7 days · {month} in 30 days', { week: n(w.days7.signup), month: n(w.days30.signup) })} />
           <Tile label={t('Payments today')} value={n(w.today.paid_event)} sub={t('{week} in 7 days · {month} in 30 days', { week: n(w.days7.paid_event), month: n(w.days30.paid_event) })} />
-          <Tile label={t('Accounts')} value={data.accounts.total} sub={Object.entries(data.accounts.by_plan).map(([k, v]) => `${k} ${v}`).join(' · ')} />
+          <Tile label={t('Accounts')} value={data.accounts.total} sub={Object.entries(data.accounts.by_plan).map(([k, v]) => `${t(PLAN_NAMES[k] ?? k)} ${v}`).join(' · ')} />
           <Tile label={t('Founding places taken')} value={`${data.accounts.founding.held}`} sub={t('of {limit}', { limit: data.accounts.founding.limit })}>
             <Meter part={data.accounts.founding.held} whole={data.accounts.founding.limit} />
           </Tile>
@@ -111,7 +112,7 @@ export default function AdminDashboardView({ data }: { data: AdminDashboard }) {
               <div><dt className="text-ink/60">{t('Accounts above the alert')}</dt><dd className="mt-1 text-lg">{data.costs.above_alert}</dd></div>
             </dl>
             <div className="mt-5">
-              <Bars rows={Object.entries(data.costs.by_plan).sort((a, b) => b[1] - a[1]).map(([k, v]) => ({ label: k, value: v, shown: eur(v) }))} max={Math.max(...Object.values(data.costs.by_plan), 0)} />
+              <Bars rows={Object.entries(data.costs.by_plan).sort((a, b) => b[1] - a[1]).map(([k, v]) => ({ label: t(PLAN_NAMES[k] ?? k), value: v, shown: eur(v) }))} max={Math.max(...Object.values(data.costs.by_plan), 0)} />
             </div>
           </div>
         </Block>

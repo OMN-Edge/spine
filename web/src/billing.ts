@@ -70,7 +70,7 @@ const PLAN_TEXT = {
   approval: msg('Approving visitors before they see a link is part of the paid plan. See your account page.'),
   people: msg('Your plan keeps the records of one person. A plan for the family adds more; see your account page.'),
   fairUse: msg('This account has reached its fair-use limit. Contact support.'),
-  pages: msg('Your plan keeps up to 50 pages, and that many are kept. The paid plans keep as many as you like; see your account page.'),
+  pages: msg('Your plan keeps a limited number of pages, and that many are kept. Invitations add more, and the paid plans keep as many as you like; see your account page.'),
   peopleTaken: msg('Every person your plan holds is taken, across all the accounts that share it. Remove one, or ask the account that pays about a larger plan.'),
   feature: msg('This is not part of your plan. See the plans on your account page.'),
 } as const;

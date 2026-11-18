@@ -9,6 +9,9 @@ import { documentTitle } from '../titles';
 import { useListTitles } from '../useListTitles';
 import GuideTip from './GuideTip';
 
+/** How many suggestions are listed before "Show all". */
+const SUGGESTED_SHOWN = 5;
+
 /** How the document being added relates to this one. `from` is the earlier of the two in the stored link. */
 type Relation = 'this_requested' | 'requested_this' | 'this_follows' | 'followed_by_this' | 'same_episode';
 
@@ -23,7 +26,7 @@ const RELATIONS: Record<Relation, { thisIsFrom: boolean; kind: LinkKind }> = {
 
 /**
  * The consultations and tests around this document: what asked for it, what it asked for, what followed up. The app suggests
- * links and the owner confirms or dismisses them, or adds one by hand. Each link is shown under the later document, in words.
+ * links and the owner confirms or dismisses them, or adds one by hand. What the owner confirmed is the chain, each link under the later document, in words with both documents' dates; what is only suggested is one list below it, each suggestion said once.
  */
 /** `quiet`: another tip is showing on the page, so the one about a suggestion waits for the next visit. */
 export default function CareChain({ documentId, quiet = false }: { documentId: string; quiet?: boolean }) {
@@ -33,6 +36,7 @@ export default function CareChain({ documentId, quiet = false }: { documentId: s
   const { titleOf } = useListTitles((chain?.nodes ?? []).map(n => n.id), false);
   const [adding, setAdding] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [showAllSuggested, setShowAllSuggested] = useState(false);
 
   const load = useCallback(() => api.documents.chain(documentId).then(c => { setChain(c); setFailed(false); return c; }).catch(() => { setFailed(true); return null; }), [documentId]);
 
@@ -63,17 +67,27 @@ export default function CareChain({ documentId, quiet = false }: { documentId: s
 
   const byId = new Map(chain.nodes.map(n => [n.id, n]));
   const name = (n: ChainNode | undefined) => (n ? documentTitle({ ...n, title: titleOf(n) }, t) : '');
+  // A document is told apart by more than its title (several are "Medical report"): its date and, where there is one, who wrote it or where it came from.
+  const label = (n: ChainNode | undefined) => (n ? [name(n), n.doc_date ? format.date(n.doc_date) : null].filter(Boolean).join(' · ') : '');
   const phrase = (e: ChainEdge): string => {
-    const other = name(byId.get(e.from));
-    // A suggestion claims no relation: that is for the owner to confirm (FR-ORG-08).
-    if (e.state === 'proposed') return t('possibly connected to {document}', { document: other });
+    const other = label(byId.get(e.from));
     switch (e.kind) {
       case 'requests': return t('requested by {document}', { document: other });
       case 'follow_up': return t('follow-up of {document}', { document: other });
       case 'same_episode': return t('same episode as {document}', { document: other });
     }
   };
-  const hasChain = chain.nodes.length > 1;
+  // The chain is what the owner has confirmed. What the app only suggests is one list of its own below it, each suggestion said once with both documents and their dates, not hung under whichever one is later.
+  const confirmed = chain.edges.filter(e => e.state !== 'proposed');
+  const suggested = chain.edges.filter(e => e.state === 'proposed');
+  const inChain = new Set([documentId, ...confirmed.flatMap(e => [e.from, e.to])]);
+  const nodes = chain.nodes.filter(n => inChain.has(n.id));
+  const hasChain = nodes.length > 1;
+  // The document open is named "this document" in a suggestion, so a row says only what is new: the other document and its date.
+  const side = (id: string, n: ChainNode | undefined) => (id === documentId
+    ? <span className="text-gray-600">{t('this document')}</span>
+    : <Link to={`/documents/${id}`} className="text-brand-700 hover:underline">{label(n)}</Link>);
+  const shown = showAllSuggested ? suggested : suggested.slice(0, SUGGESTED_SHOWN);
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-4">
@@ -90,17 +104,12 @@ export default function CareChain({ documentId, quiet = false }: { documentId: s
       </div>
 
       {failed && <p className="text-xs text-red-600 mb-2">{t('Something went wrong. Try again.')}</p>}
-      {!quiet && chain.edges.some(e => e.state === 'proposed') && (
-        <GuideTip tip="tip.connections" topic="connections">
-          {t('Spine thinks some of these documents belong together, such as a consultation and the tests it asked for. Beneath each suggestion is what the documents share. It stays a suggestion until you confirm it; “Not related” means it is not suggested again.')}
-        </GuideTip>
-      )}
 
       {hasChain ? (
         <ol className="border-l-2 border-gray-200 ml-1 space-y-3">
-          {chain.nodes.map(n => {
+          {nodes.map(n => {
             const here = n.id === documentId;
-            const incoming = chain.edges.filter(e => e.to === n.id);
+            const incoming = confirmed.filter(e => e.to === n.id);
             return (
               <li key={n.id} className="pl-4 relative">
                 <span className={`absolute -left-[7px] top-1.5 w-3 h-3 rounded-full border-2 border-white ${here ? 'bg-brand-600' : 'bg-gray-400'}`} />
@@ -111,29 +120,55 @@ export default function CareChain({ documentId, quiet = false }: { documentId: s
                   <span className="text-xs text-gray-400 shrink-0">{n.doc_date ? format.date(n.doc_date) : ''}</span>
                 </div>
                 {incoming.map(e => (
-                  <div key={`${e.from}|${e.kind}`} className={`mt-1 text-xs ${e.state === 'proposed' ? 'text-gray-500 italic' : 'text-gray-600'}`}>
+                  <div key={`${e.from}|${e.kind}`} className="mt-1 text-xs text-gray-600">
                     <span>{phrase(e)}</span>
-                    {e.state === 'proposed' && (
-                      <span className="ml-2 not-italic">
-                        <span className="text-gray-400">{t('suggested')}</span>{' '}
-                        <button type="button" onClick={() => decide(e, 'confirmed')} className="text-green-700 hover:underline">{t('Confirm')}</button>{' · '}
-                        <button type="button" onClick={() => decide(e, 'dismissed')} className="text-gray-500 hover:underline">{t('Not related')}</button>
-                      </span>
-                    )}
-                    {e.state === 'confirmed' && (
-                      <button type="button" onClick={() => decide(e, 'dismissed')} className="ml-2 not-italic text-gray-400 hover:text-gray-600 hover:underline">{t('Remove')}</button>
-                    )}
-                    {e.why && e.state === 'proposed' && <div className="text-gray-400"><LinkWhyLine why={e.why} /></div>}
+                    <button type="button" onClick={() => decide(e, 'dismissed')} className="ml-2 text-gray-400 hover:text-gray-600 hover:underline">{t('Remove')}</button>
                   </div>
                 ))}
               </li>
             );
           })}
         </ol>
-      ) : (
+      ) : suggested.length === 0 && (
         <p className="text-xs text-gray-400">
           {chain.searching ? t('Looking for links…') : chain.enabled ? t('No linked documents yet.') : t('No linked documents. Looking for links is switched off on this server; you can still add one.')}
         </p>
+      )}
+
+      {suggested.length > 0 && (
+        <section className={hasChain ? 'mt-5 border-t border-gray-100 pt-4' : ''} aria-label={t('Suggested connections')}>
+          <h3 className="text-xs font-medium uppercase tracking-wide text-gray-500">{t('Suggested connections ({count})', { count: String(suggested.length) })}</h3>
+          {!quiet && (
+            <GuideTip tip="tip.connections" topic="connections">
+              {t('Spine thinks some of these documents belong together, such as a consultation and the tests it asked for. Under each suggestion is what the documents share. It stays a suggestion until you confirm it; “Not related” means it is not suggested again.')}
+            </GuideTip>
+          )}
+          <ul className="mt-2 divide-y divide-gray-100">
+            {shown.map(e => {
+              const from = byId.get(e.from), to = byId.get(e.to);
+              return (
+                <li key={`${e.from}|${e.to}|${e.kind}`} className="py-2 text-sm">
+                  <p className="text-gray-900">
+                    {side(e.from, from)}
+                    <span className="mx-1.5 text-gray-400" aria-label={e.kind === 'same_episode' ? t('same episode') : e.kind === 'follow_up' ? t('followed up by') : t('asked for')}>→</span>
+                    {side(e.to, to)}
+                  </p>
+                  <p className="text-xs text-gray-500">{e.kind === 'requests' ? t('The first asked for the second.') : e.kind === 'follow_up' ? t('The second follows up the first.') : t('Part of the same episode.')}</p>
+                  {e.why && <div className="text-xs text-gray-400"><LinkWhyLine why={e.why} /></div>}
+                  <div className="mt-1 flex gap-3 text-xs">
+                    <button type="button" onClick={() => decide(e, 'confirmed')} className="text-green-700 hover:underline">{t('Confirm')}</button>
+                    <button type="button" onClick={() => decide(e, 'dismissed')} className="text-gray-500 hover:underline">{t('Not related')}</button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          {suggested.length > SUGGESTED_SHOWN && (
+            <button type="button" onClick={() => setShowAllSuggested(v => !v)} className="mt-1 text-xs text-gray-500 hover:text-gray-700 hover:underline">
+              {showAllSuggested ? t('Show fewer') : t('Show all {n} suggestions ({more} more)', { n: suggested.length, more: suggested.length - SUGGESTED_SHOWN })}
+            </button>
+          )}
+        </section>
       )}
 
       {adding && <AddLink documentId={documentId} onDone={() => { setAdding(false); void load(); }} />}

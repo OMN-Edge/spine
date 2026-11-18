@@ -27,6 +27,12 @@ describe('the texts people agree to', () => {
   });
 });
 
+describe('the legal texts', () => {
+  it('name no payment provider but the one the service sells through', () => {
+    for (const name of ['refunds', 'privacy', 'terms']) expect(read(`docs/legal/${name}.md`)).not.toMatch(/paddle/i);
+  });
+});
+
 describe('documents', () => {
   it('cite no line numbers (they go stale with the next edit)', () => {
     const docs = files.filter(f => f.endsWith('.md') && (!f.includes('/') || f.startsWith('docs/')) && f !== 'docs/sidecar.md' && !f.startsWith('Spine Functional'));

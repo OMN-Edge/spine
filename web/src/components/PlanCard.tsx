@@ -11,6 +11,7 @@ import BillingDetailsForm from './BillingDetailsForm';
 import InviteLink from './InviteLink';
 import InvoiceList, { type InvoiceRow } from './InvoiceList';
 import { offerPlans, trialDaysLeft } from '../plan-offer';
+import { extraPages, importLeft } from '../reading-estimate';
 
 /** How many invoices the plan card lists; the rest are on their own page. */
 const RECENT_INVOICES = 5;
@@ -73,7 +74,7 @@ export default function PlanCard() {
   const { plan, subscription, ai, vault, shares, prices, founding_left: foundingLeft, family } = billing;
   const sub = subscription;
   const name = plan === 'family' ? t('Family') : plan === 'premium' ? t('Premium') : plan === 'essential' ? t('Essential') : plan === 'trial' ? t('Free trial') : t('Free');
-  // The amounts are Paddle's, in the currency of its prices; where it cannot say what they are, nothing is offered for sale.
+  // The amounts are Stripe's, in the currency of its prices; where it cannot say what they are, nothing is offered for sale.
   const money = (n: number) => format.amount(n, prices?.currency ?? 'EUR');
   const paid = plan === 'essential' || plan === 'premium' || plan === 'family';
   // The trial's questions and translated pages are totals for the whole trial, shown from the first day.
@@ -82,7 +83,7 @@ export default function PlanCard() {
   const trialUsedUp = (!!chat && chat.used >= chat.allowance!) || (!!translation && translation.used >= translation.allowance!) || (!!ai && ai.reading.allowance !== null && plan === 'trial' && ai.reading.used >= ai.reading.allowance);
   // Only adding has an allowance (the pages read); using is not limited, so questions, translation and link traffic are not shown here (the "Your archive" section says what was done).
   const bar = (used: number, of: number) => (
-    <span className="block h-1.5 mt-1 rounded bg-gray-100" role="presentation"><span className="block h-1.5 rounded bg-brand-500" style={{ width: `${of > 0 ? Math.min(100, Math.round((used / of) * 100)) : 0}%` }} /></span>
+    <span className="block h-1.5 mt-1 rounded bg-gray-200" role="presentation"><span className="block h-1.5 rounded bg-brand-500" style={{ width: `${of > 0 ? Math.min(100, Math.max(used > 0 ? 3 : 0, Math.round((used / of) * 100))) : 0}%` }} /></span>
   );
   const r = ai?.reading;
   const reading = {
@@ -132,7 +133,13 @@ export default function PlanCard() {
         )}
         {chat && <li className={chat.used >= chat.allowance! ? 'text-amber-700' : undefined}>{t('Questions in the trial: {used} of {allowance}', { used: chat.used, allowance: chat.allowance! })}{bar(chat.used, chat.allowance!)}</li>}
         {translation && <li className={translation.used >= translation.allowance! ? 'text-amber-700' : undefined}>{t('Translated pages in the trial: {used} of {allowance}', { used: translation.used, allowance: translation.allowance! })}{bar(translation.used, translation.allowance!)}</li>}
-        {!!billing.addons?.page_topup.pages_left && <li>{t('Extra pages: {n} left', { n: billing.addons.page_topup.pages_left })}</li>}
+        {extraPages(billing) > 0 && (
+          <li>
+            {t('Extra pages: {n} left', { n: extraPages(billing) })}
+            {importLeft(billing) > 0 && <span className="block text-xs text-gray-500">{t('{n} of them are the one-off allowance for your archive that comes with the yearly plan. They are used after this month’s pages.', { n: importLeft(billing) })}</span>}
+          </li>
+        )}
+        {!!billing.limits?.pages_bonus && <li>{t('Pages you can keep: {n}, with {bonus} from invitations', { n: billing.limits.pages!, bonus: billing.limits.pages_bonus })}</li>}
         {vault && <li>{t('Storage: {used} of {limit} used', { used: format.bytes(vault.used_bytes), limit: format.bytes(vault.limit_bytes) })}{bar(vault.used_bytes, vault.limit_bytes)}</li>}
         {billing.people && <li>{t('People: up to {n}', { n: billing.people.limit })}</li>}
         {/* Share links are limited only on the free plan; on a paid plan nothing about them is a limit to show. */}
@@ -156,7 +163,7 @@ export default function PlanCard() {
         <div className="space-y-3 mb-3">
           {billing.essential && prices.essential && (
             <div className="space-y-1">
-              <p className="text-sm text-gray-700">{t('Essential: five pages a month and questions about your records; with the yearly plan, a one-off import of 150 pages.')}</p>
+              <p className="text-sm text-gray-700">{t('Essential: five pages a month and questions about your records; with the yearly plan, 150 extra pages once, for your medical archive.')}</p>
               <button disabled={busy} onClick={() => go(() => api.billing.checkout('year', 'essential'))} className={buttonClass}>{t('Essential for {price} a year', { price: money(prices.essential.year) })}</button>
               <button disabled={busy} onClick={() => go(() => api.billing.checkout('month', 'essential'))} className="block text-sm text-brand-600 hover:underline">{t('or {price} a month', { price: money(prices.essential.month) })}</button>
             </div>
@@ -181,7 +188,7 @@ export default function PlanCard() {
       )}
       {billing.invite && (
         <div className="space-y-1 mb-3">
-          <p className="text-sm text-gray-700">{t('Invite someone: when they make an account with your link, you each get {n} more pages.', { n: billing.invite.pages })}</p>
+          <p className="text-sm text-gray-700">{t('Invite someone: when they make an account with your link they get {n} more pages, and you get {reward} when they choose a plan.', { n: billing.invite.pages, reward: billing.invite.reward_pages })}</p>
           <InviteLink url={`${window.location.origin}/register?ref=invite&by=${billing.invite.token}`} />
           <p className="text-xs text-gray-500">{t('You can be rewarded for {max} invitations; {done} so far.', { max: billing.invite.max, done: billing.invite.rewarded })}</p>
         </div>

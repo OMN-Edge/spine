@@ -8,8 +8,8 @@ import { msg } from '../i18n';
 type Row = Awaited<ReturnType<typeof api.admin.subscriptions>>['subscriptions'][number];
 
 /** The plan, the biller and the state of a subscription in words, not as the codes the server holds them in. */
-const PLAN_NAMES: Record<string, string> = { essential: msg('Essential'), premium: msg('Premium'), family: msg('Family'), free: msg('Free'), trial: msg('Free trial') };
-const BILLERS: Record<string, string> = { operator: msg('You (granted)'), stripe: msg('Stripe'), paddle: msg('Paddle') };
+export const PLAN_NAMES: Record<string, string> = { essential: msg('Essential'), premium: msg('Premium'), family: msg('Family'), free: msg('Free'), trial: msg('Free trial') };
+const BILLERS: Record<string, string> = { operator: msg('You (granted)'), stripe: msg('Stripe') };
 const STATES: Record<string, string> = { active: msg('Active'), trialing: msg('Trial'), past_due: msg('Payment late'), canceled: msg('Cancelled'), paused: msg('Paused'), incomplete: msg('Not completed'), unpaid: msg('Unpaid') };
 
 /**

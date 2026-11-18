@@ -67,6 +67,13 @@ describe('the Billyou issuer', () => {
     expect(other.calls[1]!.init.method).toBe('POST');
   });
 
+  it('uses the client that holds a company’s tax id although its name and contact differ, since Billyou refuses a second client under one tax id', async () => {
+    const held = scripted([{ body: { success: true, data: [{ _id: 'c_9', name: 'Beispiel GmbH', taxId: 'DE 987654321', contactEmails: [{ email: 'old@spine.test' }] }] } }, MADE_INVOICE, NO_PAYMENTS, RECORDED]);
+    await billyouIssuer(settings(held.fetcher)).issue({ ...draft, sendEmail: false, buyer: { ...draft.buyer, name: 'Beispiel Gesellschaft', country: 'de', taxId: 'de987654321' } });
+    expect(held.calls).toHaveLength(4);
+    expect(JSON.parse(String(held.calls[1]!.init.body)).clientId).toBe('c_9');
+  });
+
   it('gives a company’s tax id to the client, and asks for no mail where none was asked for', async () => {
     const { calls, fetcher } = scripted([NO_CLIENTS, MADE_CLIENT, MADE_INVOICE, NO_PAYMENTS, RECORDED]);
     await billyouIssuer(settings(fetcher)).issue({ ...draft, sendEmail: false, buyer: { ...draft.buyer, taxId: 'DE123456789' } });

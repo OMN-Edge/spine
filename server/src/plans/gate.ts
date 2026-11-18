@@ -18,8 +18,6 @@ export interface RelayCall {
   work?: string | null;
   /** How many pages the call reads or translates, as the device says; otherwise guessed from the size of the request. */
   pages?: number | null;
-  /** The person said they are importing an archive (`x-spine-import`): reading is drawn from the one-off import allowance while it lasts. */
-  bulk?: boolean;
   /** Bytes the relay answered with, for the estimate of what the call cost. */
   outBytes?: number;
 }
@@ -28,8 +26,8 @@ export interface RelayCall {
  * What the relay asks before it runs a task and tells after (`relay.ts`): whether the account's plan includes it and has room left, and what the
  * call cost. The relay sees the request, so the cost is measured, not claimed. Off, the relay has no gate and nothing here runs.
  *
- * **Only adding is limited** (`billing/plans.ts`): the pages read are counted exactly and stop at the plan's allowance (`pages`), and, while it lasts,
- * an archive import draws from its own one-off allowance (`import`); the small calls around reading are not pages and are not counted as pages. **Using is
+ * **Only adding is limited** (`billing/plans.ts`): the pages read are counted exactly and stop at the plan's allowance (`pages`), then at the extra pages: a
+ * yearly plan's one-off import allowance (`import`, given once) and what a top-up or an invitation added; the small calls around reading are not pages and are not counted as pages. **Using is
  * not**: a chat question counts once (`messages`, whatever number of calls it takes) and a document's translation counts its pages once (`translated`), a
  * share link's included, and both are counted and never refused for want of an allowance, except on the trial, whose totals for both are visible and stop the
  * next question or translation once used. Behind the counts are the hidden fair-use ceilings
@@ -125,6 +123,9 @@ export function createRelayGate(store: () => AccountsStore, now: () => Date = ()
     return null;
   };
 
+  /** Whether the one-off import has pages left for this account (a yearly plan's, in the plan's pool and the account's own cap). */
+  const importRoom = async (e: Entitlements, fair: FairUse, userId: string, holder: string): Promise<boolean> => e.allowance.import > 0 && !(await roomIn(e, fair, 'import', userId, holder));
+
   /** The count a task adds to, when it is one a person sees counted. */
   const countOf = (task: RelayTask): Count | null => (task === 'extraction' || task === 'page' ? 'pages' : task === 'translation' ? 'translated' : task === 'chat' || task === 'agent' ? 'messages' : null);
 
@@ -148,9 +149,9 @@ export function createRelayGate(store: () => AccountsStore, now: () => Date = ()
     const count = countOf(task);
     // Adding is limited: a page is read while the plan, or an import in progress, has pages left. Using is counted and not limited by the plan.
     if (count === 'pages') {
-      const importing = !!call.bulk && e.allowance.import > 0 && !(await roomIn(e, fair, 'import', who.userId, standing.holder));
-      // What a top-up bought is added once the month's pages (and what has carried) are used.
-      if (!importing) { const pages = await roomIn(e, fair, 'pages', who.userId, standing.holder); if (pages && !((await topupLeft(store(), who.userId)) > 0)) return pages; }
+      // The extra pages are used once the month's pages (and what has carried) are: the one-off import of a yearly plan first, then what a top-up bought.
+      const pages = await roomIn(e, fair, 'pages', who.userId, standing.holder);
+      if (pages && !(await importRoom(e, fair, who.userId, standing.holder)) && !((await topupLeft(store(), who.userId)) > 0)) return pages;
     }
     // The yearly ceiling on questions and translated pages, over the billing year or the last twelve months; a question or translation already begun is finished.
     if (count === 'messages' || count === 'translated') {
@@ -196,13 +197,13 @@ export function createRelayGate(store: () => AccountsStore, now: () => Date = ()
       await add(e, fair, backstop, who.userId, standing.holder, taskCost(task, requestBytes));
       const count = countOf(task);
       if (count === 'pages') {
-        // An import's pages are charged to the import allowance while it has room, and to the month's pages when it has not.
-        const importing = !!call.bulk && e.allowance.import > 0 && !(await roomIn(e, fair, 'import', who.userId, standing.holder));
         const read = pagesOf(task, call, requestBytes);
-        // With the month's pages used up, a top-up pays for what is added (and counts as nothing of the month's).
-        const topup = !importing && !!(await roomIn(e, fair, 'pages', who.userId, standing.holder)) && (await topupLeft(store(), who.userId)) > 0;
+        // With the month's pages used up, the one-off import pays for what is added while it has room, then a top-up (neither counts as the month's).
+        const monthUsed = !!(await roomIn(e, fair, 'pages', who.userId, standing.holder));
+        const imported = monthUsed && (await importRoom(e, fair, who.userId, standing.holder));
+        const topup = monthUsed && !imported && (await topupLeft(store(), who.userId)) > 0;
         if (topup) await useTopup(store(), who.userId, read);
-        else await add(e, fair, importing ? 'import' : 'pages', who.userId, standing.holder, read);
+        else await add(e, fair, imported ? 'import' : 'pages', who.userId, standing.holder, read);
         await store().usage.aiAdd(who.userId, totalKey('pages'), read);
       } else if (count === 'translated' || count === 'messages') {
         // Counted once for a piece of work however many calls it takes: the first call of an id counts, the others do not; no id, every call.

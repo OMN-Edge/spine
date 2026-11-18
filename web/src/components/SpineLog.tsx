@@ -103,7 +103,7 @@ export default function SpineLog({ items, loose = false }: { items: SpineLogItem
         const last = index === items.length - 1;
         const discWidth = ((bodyWidth(index) + bodyWidth(index + 1)) / 2) * 0.85;
         return (
-          <li key={item.id} className="relative flex items-center gap-3">
+          <li key={item.id} className="relative flex items-center gap-2 sm:gap-3">
             {/* the axis: from this row's centre (or the gap above) to the gap below (or the centre) */}
             {!loose && items.length > 1 && (
               <span

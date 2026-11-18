@@ -36,7 +36,7 @@ export function relayAllowances(env: NodeJS.ProcessEnv = process.env) {
  * from every pass holder and calls vendor libraries; none of these is its to hold (SECURITY.md S-62). Their names, never their values, for the
  * ones that are set here.
  */
-export const SERVER_ONLY_SECRETS = ['SESSION_SECRET', 'BREVO_API_KEY', 'PADDLE_API_KEY', 'PADDLE_WEBHOOK_SECRET', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'BILLYOU_API_KEY', 'ANAF_CLIENT_SECRET', 'SPINE_EFACTURA_KEY'] as const;
+export const SERVER_ONLY_SECRETS = ['SESSION_SECRET', 'BREVO_API_KEY', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'BILLYOU_API_KEY', 'ANAF_CLIENT_SECRET', 'SPINE_EFACTURA_KEY'] as const;
 export function serverSecretsHeld(env: NodeJS.ProcessEnv = process.env): string[] {
   return SERVER_ONLY_SECRETS.filter(name => (env[name] ?? '').trim() !== '');
 }

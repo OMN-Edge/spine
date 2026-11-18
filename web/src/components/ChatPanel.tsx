@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
 import { type ChatSource, type ChatStep } from '../api';
+import { useFormat } from '../format';
 import { useI18n } from '../i18n';
 import { pageName, useChat } from './ChatProvider';
 import Markdown from './Markdown';
@@ -29,6 +30,7 @@ function suggestionsFor(page: string, t: (s: string) => string): string[] {
  */
 export default function ChatPanel() {
   const { t, tn } = useI18n();
+  const format = useFormat();
   const nameOf = useSourceName();
   const chat = useChat();
   const navigate = useNavigate();
@@ -111,7 +113,7 @@ export default function ChatPanel() {
     return (
       <>
       {offerWelcome && (
-        <div className="[body[data-nav-open]_&]:hidden fixed bottom-40 right-5 z-30 flex max-w-[16rem] items-start gap-1 sm:bottom-16 rounded-2xl rounded-br-md border border-brand-200 bg-white py-2 pl-3.5 pr-1.5 text-sm text-gray-800 shadow-md">
+        <div className="[body[data-nav-open]_&]:hidden fixed bottom-40 right-5 z-30 hidden max-w-[16rem] items-start gap-1 sm:bottom-16 sm:flex rounded-2xl rounded-br-md border border-brand-200 bg-white py-2 pl-3.5 pr-1.5 text-sm text-gray-800 shadow-md">
           <button type="button" onClick={() => { chat.startNew(); chat.setOpen(true); }} className="text-left">
             {t('Getting started')} <span className="text-brand-600">· {t('take a look')}</span>
           </button>
@@ -121,7 +123,7 @@ export default function ChatPanel() {
       {chat.unread > 0 && waiting && (
         <button
           type="button" onClick={() => { chat.setOpen(true); void chat.openConversation(waiting.id); }}
-          className="[body[data-nav-open]_&]:hidden fixed bottom-40 right-5 z-30 max-w-[16rem] sm:bottom-16 rounded-2xl rounded-br-md border border-brand-200 bg-white px-3.5 py-2 text-left text-sm text-gray-800 shadow-md transition hover:shadow-lg"
+          className="[body[data-nav-open]_&]:hidden fixed bottom-40 right-5 z-30 hidden max-w-[16rem] sm:bottom-16 sm:block rounded-2xl rounded-br-md border border-brand-200 bg-white px-3.5 py-2 text-left text-sm text-gray-800 shadow-md transition hover:shadow-lg"
         >
           {t(waiting.title)} <span className="text-brand-600">· {t('take a look')}</span>
         </button>
@@ -134,6 +136,8 @@ export default function ChatPanel() {
           <path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8L12 3zM18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8L18 15z" />
         </svg>
         {t('Ask')}
+        {/* On a phone the note beside the button would cover a card: a dot says there is one, and the button opens it. */}
+        {offerWelcome && <span className="sm:hidden h-2 w-2 rounded-full bg-brand-600" aria-hidden="true" />}
         {chat.unread > 0 && <span className="ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-600 px-1 text-[10px] font-semibold text-white" aria-hidden="true">{chat.unread}</span>}
       </button>
       </>
@@ -188,7 +192,7 @@ export default function ChatPanel() {
                   <li key={c.id} className={`group flex items-center gap-1 rounded-lg ${c.id === chat.currentId ? 'bg-brand-50' : 'hover:bg-gray-50'}`}>
                     <button type="button" onClick={async () => { await chat.openConversation(c.id); setView('chat'); }} className="min-w-0 flex-1 px-3 py-2 text-left">
                       <span className={`block truncate text-sm text-gray-900 ${c.unread ? 'font-semibold' : ''}`}>{c.unread && <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-brand-600 align-middle" aria-label={t('Unread')} />}{c.origin ? t(c.title) : c.title}</span>
-                      <span className="block text-xs text-gray-400">{c.updated_at.slice(0, 10)} · {tn(c.message_count, '{n} message', '{n} messages')}</span>
+                      <span className="block text-xs text-gray-400">{format.date(c.updated_at)} · {tn(c.message_count, '{n} message', '{n} messages')}</span>
                     </button>
                     {confirming === c.id ? (
                       <span className="flex shrink-0 items-center gap-2 pr-2 text-xs">

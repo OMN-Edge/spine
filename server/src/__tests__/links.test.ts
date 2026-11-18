@@ -8,8 +8,8 @@ import { fakeAuthValue, fakeVaultKeys } from 'spine-core/testing/vault.js';
 
 const LONG_AGO = '2020-01-01T00:00:00.000Z';
 const BILLING = {
-  SPINE_BILLING: 'on', PADDLE_ENVIRONMENT: 'sandbox', PADDLE_API_KEY: 'pdl_test_key', PADDLE_WEBHOOK_SECRET: 'whsec_test', SPINE_CHECKOUT_URL: 'https://pay.spine.example/',
-  SPINE_PADDLE_PRICE_YEAR: 'pri_year', SPINE_PADDLE_PRICE_MONTH: 'pri_month', SPINE_PADDLE_PRICE_FOUNDING: 'pri_founding',
+  SPINE_BILLING: 'on', STRIPE_SECRET_KEY: ['sk', 'test', 'x'].join('_'), STRIPE_WEBHOOK_SECRET: 'whsec_test',
+  SPINE_STRIPE_PRICE_YEAR: 'pri_year', SPINE_STRIPE_PRICE_MONTH: 'pri_month', SPINE_STRIPE_PRICE_FOUNDING: 'pri_founding',
 };
 
 /** What the plan lets share links send in a month: SECURITY.md M-45 and M-52, docs/scenarios.md 13.2d. */

@@ -54,7 +54,7 @@ spine/
 │       ├── testing/        # (in no build; the tests and the server's type-check read the source) helpers the tests of core and server share (seed data, a scripted model, a software authenticator, the store contract suite)
 │       └── __tests__/      # Vitest tests of core (the units; the tests that drive the whole composed app are in server/)
 ├── packages/anaf/          # `spine-anaf`: Spine's own link to ANAF, a package that names nothing of Spine's (S15): the authorisation (anaf.ts), e-Factura (ubl.ts the XML, issuer.ts the numbering and the calls, seal.ts, zip.ts), the store it asks for (store.ts); built before the server (`npm run build:anaf`): docs/efactura.md
-├── packages/billing/       # `spine-billing`: what an application paid by a provider needs, naming no plan and nothing of Spine's (S16): providers/{stripe,paddle}.ts, provider.ts (the interface, the events, `Presentation`), events.ts (a provider's message applied to an account, with a `PlanMapping`), products.ts (the product catalog and its sync), withdrawal-share.ts, invoicing/ (issuer.ts, queue.ts, billyou.ts, bnr.ts, threshold.ts, efactura.ts the door to `spine-anaf`), store.ts and host.ts (what it asks of the application); built before the server (`npm run build:billing`)
+├── packages/billing/       # `spine-billing`: what an application paid by a provider needs, naming no plan and nothing of Spine's (S16): providers/stripe.ts, provider.ts (the interface, the events, `Presentation`), events.ts (a provider's message applied to an account, with a `PlanMapping`), products.ts (the product catalog and its sync), withdrawal-share.ts, invoicing/ (issuer.ts, queue.ts, billyou.ts, bnr.ts, threshold.ts, efactura.ts the door to `spine-anaf`), store.ts and host.ts (what it asks of the application); built before the server (`npm run build:billing`)
 ├── server/                 # `spine-server`: Node.js + Fastify. Only what the server runs; the records routes are registered by the device, not here
 │   └── src/
 │       ├── index.ts        # registers the account routes, the vault, sealed shares and the relay pass; sets the accounts-only store scope
@@ -86,7 +86,6 @@ spine/
 │       ├── testing/        # stand-in.ts (a model for tests) and stand-in-relay.ts (the relay's entry point with it, for check:app): in no build
 │       └── __tests__/      # Vitest tests that drive the composed app, plus helpers/app.ts (buildTestApp) and helpers/seed.ts
 ├── web/                    # React + Vite + Tailwind; pages/Admin.tsx is `/admin`, the operator's page outside the app, and pages/Pricing.tsx the public plans
-├── checkout/               # Paddle's checkout page, served from an origin of its own so its script never runs beside the vault (docs/billing.md)
 ├── deploy/                 # gcp/ (one VM, docs/deploy-gcp.md) and cloud-run/ (services, job and build, docs/deploy-cloud-run.md): settings with no secret in them
 ├── nginx/                  # Site config template (spine.conf), security.txt template, /source /docs /security redirects
 └── systemd/                # spine-web.service, spine-backup.{service,timer}

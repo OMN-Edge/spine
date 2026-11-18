@@ -20,13 +20,6 @@ export interface RelayHooks { tokenProvider?: () => Promise<string>; fetchImpl?:
 let hooks: RelayHooks = {};
 export function useRelayHooks(next: RelayHooks): void { hooks = next; }
 
-/**
- * Whether the person said they are importing an archive: every call then says so (`x-spine-import`), and the relay draws reading from the one-off
- * import allowance while it lasts (plans/gate.ts). Off whenever a core starts, and only the Upload page turns it on.
- */
-let importing = false;
-export function useImportMode(on: boolean): void { importing = on; }
-
 /** An error the relay answered with, said in the interface's terms. */
 async function refusal(res: Response): Promise<Error> {
   const body = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
@@ -41,7 +34,7 @@ export async function postToRelay(endpoint: string, path: string, body: unknown,
   if (!token) throw new LlmConfigError('this device has no pass for the model service');
   const res = await (hooks.fetchImpl ?? fetch)(`https://${endpoint}${path}`, {
     method: 'POST',
-    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', ...(meta.work ? { 'x-spine-work': meta.work } : {}), ...(meta.pages ? { 'x-spine-pages': String(Math.max(1, Math.min(1000, Math.round(meta.pages)))) } : {}), ...(importing ? { 'x-spine-import': '1' } : {}) },
+    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', ...(meta.work ? { 'x-spine-work': meta.work } : {}), ...(meta.pages ? { 'x-spine-pages': String(Math.max(1, Math.min(1000, Math.round(meta.pages)))) } : {}) },
     body: JSON.stringify(body),
     signal,
   }).catch((err: unknown) => {

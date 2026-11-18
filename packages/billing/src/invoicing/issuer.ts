@@ -1,5 +1,5 @@
 /**
- * An invoice issuer, as far as Spine uses one: when a payment provider is not the seller of record (Stripe is not; Paddle is, and sends its own invoice), the
+ * An invoice issuer, as far as Spine uses one: the
  * operator issues the invoice and sends it to ANAF (e-Factura) through a Romanian invoicing service. One issuer is active at a time, behind this interface, so
  * a service can be swapped without touching the billing code. **A prototype**: nothing calls it yet (docs/billing.md, "Invoices").
  *

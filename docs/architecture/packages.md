@@ -13,7 +13,7 @@ Spine's accounts, billing and invoicing are wanted by other applications, and th
 
 ## Two ways to be paid, and only one of them uses the invoicing
 
-A payment provider is either the **seller** (Stripe: the operator owns the VAT and issues the invoice) or the **merchant of record** (Paddle: the provider is the seller and issues the invoice). The invoicing and the ANAF service are for the first only; with the second there is nothing for them to do. So Paddle is not a backend of the ANAF service: it is a mode of the billing package, with no invoicing port and no catalog sync. The neutral layer is the event (`ProviderEvent` in `packages/billing/src/provider.ts`), and it does not try to hide who invoices.
+The payment provider is Stripe, and the operator is the seller: the operator owns the VAT and issues the invoice, through the invoicing and the ANAF service. The adapter sits behind an interface (`BillingProvider` in `packages/billing/src/provider.ts`), so the billing package names no provider outside `providers/`. The neutral layer is the event (`ProviderEvent`), which a provider's adapter turns its messages into. Paddle, a merchant of record that would have been the seller and sent its own invoices, was an adapter once and was removed before launch: it did not fit an operator who invoices through ANAF.
 
 ## Where each file of billing goes
 
@@ -21,7 +21,7 @@ The billing folder today (`server/src/billing/`) holds two kinds of code, and th
 
 | Generic (the billing package) | Spine's own (stays with the application) |
 |---|---|
-| `provider.ts` and `providers/` (the `BillingProvider` interface, Stripe, Paddle), `config.ts` (the provider's settings) | `core/src/billing/plans.ts` (`entitlementsOf`: what each plan includes, and the one place a limit is written) |
+| `provider.ts` and `providers/` (the `BillingProvider` interface and Stripe), `config.ts` (the provider's settings) | `core/src/billing/plans.ts` (`entitlementsOf`: what each plan includes, and the one place a limit is written) |
 | `events.ts` (`applyProviderEvent`: who a message is for, whether it is news, the row it leaves, the second subscription, a capped offer's places), which asks a `PlanMapping` what a price is for | `spinePlans` (`server/src/plans/mapping.ts`: what Spine's prices are for), `seat.ts` (the family seats, `standingOf`), `entitlements.ts` (vault bytes and live shares) |
 | `withdrawal-share.ts`, `withdrawal-mail.ts`, the withdrawal routes | the meters and what they allow: `gate.ts`, `budget.ts`, `cost.ts`, `fair-use.ts`, `fair-use-admin.ts`, `carry.ts`, `window.ts`, `watch.ts`, `totals.ts`, `links.ts`, `addons.ts`, `invitations.ts` |
 | `invoicing/` (the queue, the issuers, `bnr.ts`, the threshold and the alert) | the plan's words on the account page and the pricing page |

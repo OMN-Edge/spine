@@ -40,7 +40,7 @@ const env = {
   SPINE_RELAY_URL: relayUrl, SPINE_RELAY_SECRET: RELAY_SECRET, SPINE_DOMAIN: `localhost:${front}`, SPINE_DEMO_UPLOADS: 'on',
   // Billing as the branch runs it: Stripe (test mode, the sandbox's prices) through spine-billing, invoices by Spine's own e-Factura module on ANAF's test platform.
   // The seller and the ANAF application are invented; nothing is signed in to ANAF and nothing is bought.
-  SPINE_BILLING: 'on', SPINE_BILLING_PROVIDER: 'stripe', STRIPE_WEBHOOK_SECRET: ['whsec', 'ux', 'review'].join('_'), SPINE_CHECKOUT_URL: 'http://localhost:1/',
+  SPINE_BILLING: 'on', SPINE_BILLING_PROVIDER: 'stripe', STRIPE_WEBHOOK_SECRET: ['whsec', 'ux', 'review'].join('_'),
   SPINE_STRIPE_PRICE_YEAR: 'price_1Uc8gEFMVsdHvrD5AjN1GbjV', SPINE_STRIPE_PRICE_MONTH: 'price_1Uc8gFFMVsdHvrD5bIDdTjJi', SPINE_STRIPE_PRICE_FOUNDING: 'price_1Uc8gGFMVsdHvrD5qBOUHZtJ',
   SPINE_STRIPE_PRICE_ESSENTIAL_YEAR: 'price_1Uc8gHFMVsdHvrD5nw1UUExc', SPINE_STRIPE_PRICE_ESSENTIAL_MONTH: 'price_1Uc8gIFMVsdHvrD517DjA5lm',
   SPINE_STRIPE_PRICE_FAMILY_YEAR: 'price_1Uc8gIFMVsdHvrD5zfMT5vZm', SPINE_STRIPE_PRICE_FAMILY_MONTH: 'price_1Uc8gJFMVsdHvrD5mS4mJLkV', SPINE_STRIPE_PRICE_TOPUP_PAGES: 'price_1Uc8gNFMVsdHvrD5aCq547Tq',
@@ -59,6 +59,8 @@ const env = {
 const cli = (...args) => execFileSync('node', ['dist/cli.js', ...args], { cwd: path.join(root, 'server'), env, encoding: 'utf8' });
 const password = cli('create-user', 'owner@example.com').match(/password \(shown once\): (\S+)/)[1];
 try { cli('grant-plan', 'owner@example.com', '--plan=family', '--days=30'); } catch (e) { log('grant-plan failed', e.message); }
+// Sixty invoices and sixty subscriptions, so the paged lists (25 to a page) show their pager.
+execFileSync('node', ['browser-check/seed-lists.mjs', 'owner@example.com'], { cwd: path.join(root, 'web'), env, encoding: 'utf8' });
 const fresh = cli('create-user', 'fresh@example.com').match(/password \(shown once\): (\S+)/)[1];
 
 const CSP = fs.readFileSync(path.join(root, 'Caddyfile'), 'utf8').match(/Content-Security-Policy "([^"]+)"/)[1].replace('{$SPINE_RELAY_URL:}', relayUrl);
@@ -210,8 +212,8 @@ try {
     }
     await p.evaluate(() => [...document.querySelectorAll('a')].find(a => a.getAttribute('href')?.startsWith('/documents/'))?.click()); await wait(3000);
     await h.shot(`acc-${tag}-document`);
-    const routes = tag === 'ro' ? ['/account', '/share', '/emergency', '/review', '/episodes'] : ['/review', '/episodes', '/trends', '/doctors', '/library', '/search', '/upload', '/scan', '/reminders', '/profiles', '/emergency', '/share', '/account', '/family'];
-    for (const r of routes) { await h.go(r); await wait(2500); await h.shot(`acc-${tag}-${r.slice(1)}`); }
+    const routes = tag === 'ro' ? ['/account', '/share', '/emergency', '/review', '/episodes'] : ['/review', '/episodes', '/trends', '/doctors', '/library', '/search', '/upload', '/scan', '/reminders', '/profiles', '/emergency', '/share', '/account', '/review/fields', '/account/invoices', '/family'];
+    for (const r of routes) { await h.go(r); await wait(2500); await h.shot(`acc-${tag}-${r.slice(1).replace(/\//g, '-')}`); }
     if (tag === 'd') {
       // a share link made
       await h.go('/share'); await wait(1500);

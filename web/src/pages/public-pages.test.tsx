@@ -93,7 +93,7 @@ describe('the pages before an account', () => {
 });
 
 /**
- * The plans page, drawn for each thing the server can say. Plans come from Paddle's prices, so the page shows an amount only where it was given one, and
+ * The plans page, drawn for each thing the server can say. Plans come from Stripe's prices, so the page shows an amount only where it was given one, and
  * says so where it was not.
  */
 describe('the front page says what Spine does for a doctor abroad', () => {
@@ -116,8 +116,8 @@ describe('the plans page', () => {
     const html = draw({ enabled: true, prices, essential: true, family: true, founding_left: 478 });
     for (const shown of ['Free', 'Essential', 'Premium', 'Family', '€24.90', '€49', '€89', '€39']) expect(html).toContain(shown);
     expect(html).not.toContain('€49.00');
-    expect(html).toContain('Includes a one-off import of 150 pages');
-    expect(html).toContain('Includes a one-off import of 250 pages');
+    expect(html).toContain('Includes 150 extra pages, once, to read your medical archive');
+    expect(html).toContain('Includes 250 extra pages, once, to read your medical archive');
     expect(html).toContain('Founding price for the first 500 members');
     expect(html).not.toMatch(/of 500 taken|places left/);
     for (const total of ['100', '50', '30']) expect(html).toContain(total);
@@ -134,7 +134,7 @@ describe('the plans page', () => {
     const family = text(html.slice(html.indexOf('id="family"')));
     expect(family).toContain('€89');
     expect(family).toContain('emergency card');
-    expect(family).toContain('Includes a one-off import of 500 pages');
+    expect(family).toContain('Includes 500 extra pages, once, to read your medical archive');
     expect(html.match(/Premium for up to six people/g)).toHaveLength(1);
   });
 
@@ -218,7 +218,7 @@ describe('the plans page', () => {
     expect(html).toContain('Premium');
   });
 
-  it('shows no amount where Paddle could not say, and says that no plans exist where there are none', () => {
+  it('shows no amount where Stripe could not say, and says that no plans exist where there are none', () => {
     const none = draw({ enabled: true, prices: null });
     expect(none).toContain('The prices cannot be shown right now');
     expect(none).not.toMatch(/€\s?\d/);

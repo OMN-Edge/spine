@@ -11,8 +11,8 @@ import { fakeAuthValue, fakeVaultKeys } from 'spine-core/testing/vault.js';
 
 const LONG_AGO = '2020-01-01T00:00:00.000Z';
 const BILLING = {
-  SPINE_BILLING: 'on', PADDLE_ENVIRONMENT: 'sandbox', PADDLE_API_KEY: 'pdl_test_key', PADDLE_WEBHOOK_SECRET: 'whsec_test', SPINE_CHECKOUT_URL: 'https://pay.spine.example/',
-  SPINE_PADDLE_PRICE_YEAR: 'pri_year', SPINE_PADDLE_PRICE_MONTH: 'pri_month', SPINE_PADDLE_PRICE_FOUNDING: 'pri_founding',
+  SPINE_BILLING: 'on', STRIPE_SECRET_KEY: ['sk', 'test', 'x'].join('_'), STRIPE_WEBHOOK_SECRET: 'whsec_test',
+  SPINE_STRIPE_PRICE_YEAR: 'pri_year', SPINE_STRIPE_PRICE_MONTH: 'pri_month', SPINE_STRIPE_PRICE_FOUNDING: 'pri_founding',
 };
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 const profileHeaders = { 'content-type': 'application/octet-stream', 'x-spine-kind': 'profile', 'x-spine-profile': 'profile-0001', 'x-spine-wrapped-key': 'k'.repeat(100), 'x-spine-base-seq': '0' };
@@ -109,12 +109,12 @@ describe('seats in a shared plan', () => {
       expect(await store().usage.aiUsed(payer.id, month)).toBe(0);
     });
 
-    it('gives both sides their invitation pages when a seat is taken, once', async () => {
+    it('gives nobody invitation pages for a seat: a seat is not a purchase', async () => {
       on();
       const payer = await account('family');
       const member = await account();
       await join(payer, member);
-      expect([await topupLeft(store(), payer.id), await topupLeft(store(), member.id)]).toEqual([10, 10]);
+      expect([await topupLeft(store(), payer.id), await topupLeft(store(), member.id)]).toEqual([0, 0]);
     });
 
     it('holds each account to Premium’s pages of the plan’s, so one cannot add the whole pool, and leaves using to the pool', async () => {
@@ -122,8 +122,9 @@ describe('seats in a shared plan', () => {
       const payer = await account('family');
       const member = await account();
       await join(payer, member);
-      // Taking the seat gave both their invitation pages, which are outside the plan's own pages: set them aside to see the plan's.
-      for (const who of [payer, member]) await store().usage.aiAdd(who.id, 'once:topup:used', 10);
+      // The one-off import is the plan's too and is used after the month's pages: this is about the pages of the month.
+      for (const who of [payer, member]) await store().usage.aiAdd(who.id, 'once:import', PLANS.premium.allowance.import);
+      await store().usage.aiAdd(payer.id, 'pool:once:import', PLANS.family.allowance.import);
       const gate = createRelayGate(() => store());
       const month = new Date().toISOString().slice(0, 7);
       // The member adds all the pages one account may: they are stopped, and the payer and the pool have more.
@@ -141,24 +142,28 @@ describe('seats in a shared plan', () => {
       // The payer’s own part is Premium’s too: the pool is not theirs to add alone.
       const spent = await account('family');
       await store().usage.aiAdd(spent.id, `${month}:pages`, PLANS.premium.allowance.pages);
+      await store().usage.aiAdd(spent.id, 'once:import', PLANS.premium.allowance.import);
+      await store().usage.aiAdd(spent.id, 'pool:once:import', PLANS.family.allowance.import);
       expect(await gate.admit(spent.id, 'extraction')).toMatchObject({ code: 'allowance_used' });
     });
 
-    it('shares the import allowance as a pool, with each account held to Premium’s part of it', async () => {
+    it('shares the import allowance as a pool, used after the month’s pages, with each account held to Premium’s part of it', async () => {
       on();
       const payer = await account('family');
       const member = await account();
       await join(payer, member);
       const gate = createRelayGate(() => store());
       const month = new Date().toISOString().slice(0, 7);
-      await gate.settle(member.id, 'extraction', 0, { bulk: true, pages: 5 });
+      await store().usage.aiAdd(member.id, `${month}:pages`, PLANS.premium.allowance.pages);
+      await store().usage.aiAdd(payer.id, `pool:${month}:pages`, PLANS.family.allowance.pages);
+      await store().usage.aiAdd(payer.id, `${month}:pages`, PLANS.premium.allowance.pages);
+      await gate.settle(member.id, 'extraction', 0, { pages: 5 });
       expect(await store().usage.aiUsed(member.id, 'once:import')).toBe(5);
       expect(await store().usage.aiUsed(payer.id, 'pool:once:import')).toBe(5);
-      // The member has used all that one account may: their pages go to the month, while the payer’s still have the pool.
+      // The member has used all that one account may: the allowance is no longer theirs to draw, while the payer's still has the pool.
       await store().usage.aiAdd(member.id, 'once:import', PLANS.premium.allowance.import);
-      await gate.settle(member.id, 'extraction', 0, { bulk: true, pages: 2 });
-      expect(await store().usage.aiUsed(member.id, `${month}:pages`)).toBe(2);
-      await gate.settle(payer.id, 'extraction', 0, { bulk: true, pages: 3 });
+      expect(await gate.admit(member.id, 'extraction')).toMatchObject({ code: 'allowance_used' });
+      await gate.settle(payer.id, 'extraction', 0, { pages: 3 });
       expect(await store().usage.aiUsed(payer.id, 'once:import')).toBe(3);
     });
 

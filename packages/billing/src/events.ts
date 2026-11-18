@@ -27,6 +27,8 @@ export interface PlanMapping {
   capped(priceIds: string[]): boolean;
   /** Whether the subscription gives its plan at `now` (it has not ended, nor has its grace). */
   entitles(subscription: SubscriptionRecord, now: Date): boolean;
+  /** Told that an account has a subscription that gives its plan (each time a message says so: it must be safe to be told twice). Optional: the application's own consequences of a purchase. */
+  bought?(userId: string): Promise<void>;
 }
 
 /** The account's row after a subscription message. Fields the message lacks keep what was known. */
@@ -98,6 +100,7 @@ export async function applyProviderEvent(provider: ProviderId, event: ProviderEv
     await noteSecondSubscription(store, previous, provider, event.subscriptionId, plans, at);
     await store.billing.put(next);
     await takeFoundingPlace(store, userId, next);
+    if (plans.entitles(next, new Date(at))) await plans.bought?.(userId);
     return 'applied';
   }
   // A purchase completed: link the account to the provider's customer and subscription at once, with a short placeholder end that the
@@ -114,5 +117,6 @@ export async function applyProviderEvent(provider: ProviderId, event: ProviderEv
   await noteSecondSubscription(store, previous, provider, subscriptionId, plans, at);
   await store.billing.put(next);
   await takeFoundingPlace(store, userId, next);
+  if (plans.entitles(next, new Date(at))) await plans.bought?.(userId);
   return 'applied';
 }

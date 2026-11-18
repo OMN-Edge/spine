@@ -14,7 +14,7 @@ import { FOUNDING_PLACES, foundingStage } from '../founding';
  * What the plans are and cost, read before an account exists (CR-PAY-01: the price, the renewal and how to cancel are shown before any
  * purchase), in the public pages' look (`PublicPage`: paper and ink, Literata headings, the teal accent, the honey highlight). The amounts are
  * the payment provider's, read by the server from the prices the checkout charges, so the page and the checkout cannot disagree about what is on offer;
- * where the provider cannot say, the page shows none. Who sells follows the provider: Paddle is the seller of record, with Stripe the operator is. What each plan includes is `core/src/billing/plans.ts`; change one only with the other.
+ * where the provider cannot say, the page shows none. The operator sells. What each plan includes is `core/src/billing/plans.ts`; change one only with the other.
  */
 type Period = 'year' | 'month';
 
@@ -92,7 +92,7 @@ export function PricingPage({ pricing, authenticated, options, initialPeriod = '
                 <PlanCard
                   name={t('Essential')} tagline={t('To ask about a history that has grown')}
                   {...amounts(prices.essential, period, money, t)} cta={toPlan('essential', t('Choose Essential'))}
-                  bonus={period === 'year' ? t('Includes a one-off import of {n} pages to read your whole archive', { n: 150 }) : null}
+                  bonus={period === 'year' ? t('Includes {n} extra pages, once, to read your medical archive', { n: 150 }) : null}
                   features={[
                     [true, t('The emergency card')],
                     [true, t('About 5 pages of AI reading a month, kept for up to three months')],
@@ -106,7 +106,7 @@ export function PricingPage({ pricing, authenticated, options, initialPeriod = '
               <PlanCard
                 featured name={t('Premium')} tagline={t('For a doctor in another country')}
                 {...amounts(prices.premium, period, money, t)} cta={toPlan('premium', t('Choose Premium'))}
-                bonus={period === 'year' ? t('Includes a one-off import of {n} pages to read your whole archive', { n: 250 }) : null}
+                bonus={period === 'year' ? t('Includes {n} extra pages, once, to read your medical archive', { n: 250 }) : null}
                 note={period === 'year' && pricing.founding_left ? t('Founding members pay {price} a year', { price: money(prices.founding.year) }) : null}
                 features={[
                   [true, t('Translation of your documents and of what a doctor opens')],
@@ -134,7 +134,7 @@ export function PricingPage({ pricing, authenticated, options, initialPeriod = '
                     <Check ok>{t('Every Premium feature, for each person')}</Check>
                     <Check ok>{t('Each person has their own account, records, password and emergency card')}</Check>
                     <Check ok>{t('Shared by all: 25 GB of storage and 60 pages of AI reading a month, with each account held to 30')}</Check>
-                    {period === 'year' && <Check ok>{t('Includes a one-off import of {n} pages to read your whole archive', { n: 500 })}</Check>}
+                    {period === 'year' && <Check ok>{t('Includes {n} extra pages, once, to read your medical archive', { n: 500 })}</Check>}
                     <Check ok>{t('Records for children, kept by their guardians, with other guardians let in')}</Check>
                     <Check ok>{t('A teenager from sixteen can have an account of their own, and at eighteen the records can become theirs')}</Check>
                   </ul>
@@ -159,9 +159,7 @@ export function PricingPage({ pricing, authenticated, options, initialPeriod = '
             <dl className="mt-8 grid gap-x-12 gap-y-8 border-t border-ink/10 pt-8 md:grid-cols-2">
               <Point title={t('Cancel whenever you like')}>{t('A subscription renews every month or every year until you cancel. You cancel from your account, on the payment provider’s page, and keep your plan until the end of what you paid for.')}</Point>
               <Point title={t('Your money back')}>{t('In the first 14 days you can withdraw and have your money back. For a yearly plan we refund what you paid, minus the part of the year you already used.')}</Point>
-              {pricing?.seller === 'operator'
-                ? <Point title={pricing.seller_name ? t('Sold by {seller}', { seller: pricing.seller_name }) : t('Sold by the operator of this Spine')}>{t('Card payments are handled by Stripe. Spine never sees your card, only which plan you have. A price includes any VAT that is due on it.')}</Point>
-                : <Point title={t('Paid through Paddle')}>{t('Paddle sells the plan to you: it takes the payment, sends the invoice and adds any tax, which you see before you pay. Spine never sees your card, only which plan you have.')}</Point>}
+              <Point title={pricing?.seller_name ? t('Sold by {seller}', { seller: pricing.seller_name }) : t('Sold by the operator of this Spine')}>{t('Card payments are handled by Stripe. Spine never sees your card, only which plan you have. A price includes any VAT that is due on it.')}</Point>
               <Point title={t('Or run your own')}>{t('Spine is open-source software. Running your own copy is free, and has no plans.')}</Point>
             </dl>
           </section>
@@ -222,7 +220,7 @@ function PeriodSwitch({ period, onChange }: { period: Period; onChange: (p: Peri
   );
   return (
     <div role="radiogroup" aria-label={t('How often you pay')} className="inline-flex items-center gap-1 rounded-full border border-ink/15 bg-surface p-1">
-      {button('year', <>{t('Yearly')} <span className={`ml-1 rounded-full px-2 py-0.5 text-xs ${period === 'year' ? 'bg-honey text-band' : 'bg-honey/30 text-ink'}`}>{t('archive import included')}</span></>)}
+      {button('year', <>{t('Yearly')} <span className={`ml-1 rounded-full px-2 py-0.5 text-xs ${period === 'year' ? 'bg-honey text-band' : 'bg-honey/30 text-ink'}`}>{t('extra pages for your archive')}</span></>)}
       {button('month', t('Monthly'))}
     </div>
   );

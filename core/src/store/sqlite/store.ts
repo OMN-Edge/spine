@@ -18,6 +18,7 @@ import { regroupPlanRepository } from './regroup-plans.js';
 import { sessionRepository } from './sessions.js';
 import { cookieSessionRepository } from './cookie-sessions.js';
 import { enrolmentRepository } from './enrolments.js';
+import { invitationRepository } from './invitations.js';
 import { usageRepository } from './usage.js';
 import { billingRepository, catalogRepository, metricsRepository, settingsRepository, waitlistRepository } from './billing.js';
 import { changeLog } from './changes.js';
@@ -85,6 +86,7 @@ function accountsOver(db: Database, depth: number): AccountsStore {
     sessions: sessionRepository(db),
     cookieSessions: cookieSessionRepository(db),
     enrolments: enrolmentRepository(db),
+    invitations: invitationRepository(db),
     usage: usageRepository(db),
     vault: vaultRepository(db),
     shared: sharedRepository(db),

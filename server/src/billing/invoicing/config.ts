@@ -3,8 +3,7 @@ import type { BillingConfig } from '../config.js';
 import type { UblSeller, ZeroVat } from 'spine-anaf/index.js';
 
 /**
- * Whether the operator issues an invoice for each payment, and through which: **off unless `SPINE_INVOICING` names one** (`billyou`, a service, or `efactura`, Spine's own link to ANAF), and only with a payment provider
- * that is not the seller of record (Stripe; Paddle sends its own invoices). On, every setting of the service and the VAT the operator charges is given, or the
+ * Whether the operator issues an invoice for each payment, and through which: **off unless `SPINE_INVOICING` names one** (`billyou`, a service, or `efactura`, Spine's own link to ANAF), and only with billing on (Stripe takes the payment and the operator is the seller). On, every setting of the service and the VAT the operator charges is given, or the
  * process does not start (P3): the VAT is the accountant's word and is never assumed (`docs/billing.md`, "Invoices").
  */
 export interface EfacturaConfig {
@@ -45,7 +44,7 @@ export function readInvoicingConfig(env: NodeJS.ProcessEnv, billing: BillingConf
     problems.push(`SPINE_INVOICING is "${issuer}"; expected off, billyou or efactura`);
     return { enabled: false };
   }
-  if (!billing.enabled || billing.provider !== 'stripe') problems.push('SPINE_INVOICING needs SPINE_BILLING=on with SPINE_BILLING_PROVIDER=stripe: Paddle is the seller and sends its own invoices');
+  if (!billing.enabled) problems.push('SPINE_INVOICING needs SPINE_BILLING=on: the operator issues an invoice for each payment');
 
   const need = (name: string): string => {
     const value = (env[name] ?? '').trim();

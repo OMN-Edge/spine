@@ -86,6 +86,13 @@ export function copySlice(source: Database, dest: Database, o: SliceOptions): Sl
     }
     for (const l of tagLinks) insert('document_tags', cut('document_tags', l));
 
+    // The owner's kept wording of the texts that are now in the copy, and of no other (a tag or an episode the link does not show stays out).
+    const kept = new Set<string>();
+    const hold = (kind: string, text: unknown) => { const clean = typeof text === 'string' ? text.trim() : ''; if (clean) kept.add(`${kind}\u0000${clean}`); };
+    for (const d of rows(`SELECT specialty FROM doctors WHERE user_id = ? AND id IN (${marks(doctorIds.length)})`, o.userId, ...doctorIds)) hold('specialty', d.specialty);
+    for (const t of rows(`SELECT name FROM tags WHERE user_id = ? AND id IN (${marks(tagIds.length)})`, o.userId, ...tagIds)) hold('tag', t.name);
+    for (const m of rows(`SELECT name FROM measurements WHERE user_id = ? AND document_id IN (${inDocs})`, o.userId, ...docs)) hold('test', m.name);
+
     // Only the confirmed links between two documents both shared.
     for (const l of rows(`SELECT * FROM document_links WHERE user_id = ? AND state = 'confirmed' AND from_document_id IN (${inDocs}) AND to_document_id IN (${inDocs})`, o.userId, ...docs, ...docs)) {
       insert('document_links', cut('document_links', l));
@@ -102,6 +109,11 @@ export function copySlice(source: Database, dest: Database, o: SliceOptions): Sl
         insert('episodes', cut('episodes', e));
         for (const m of byEpisode.get(e.id as string) ?? []) insert('episode_documents', cut('episode_documents', m));
       }
+    }
+
+    for (const e of rows(`SELECT title FROM episodes WHERE user_id = ? AND state = 'confirmed' AND id IN (${marks(whole.length)})`, o.userId, ...whole)) hold('episode', e.title);
+    for (const row of rows('SELECT * FROM term_translations WHERE user_id = ?', o.userId)) {
+      if (kept.has(`${row.kind}\u0000${row.source_text}`)) insert('term_translations', cut('term_translations', row));
     }
 
     for (const e of rows(`SELECT * FROM document_embeddings WHERE user_id = ? AND document_id IN (${inDocs})`, o.userId, ...docs)) {

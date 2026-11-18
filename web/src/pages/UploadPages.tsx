@@ -9,6 +9,9 @@ import { sourceLabel } from '../components/pageSource';
 import { documentByline, documentTitle, pageRange } from '../titles';
 import DeleteUpload from '../components/DeleteUpload';
 import ModelWaitNote from '../components/ModelWaitNote';
+import { useFormat } from '../format';
+import { useBilling } from '../billing';
+import { readingEstimate } from '../reading-estimate';
 import { useI18n } from '../i18n';
 import DeviceImg from '../components/DeviceImg';
 
@@ -23,6 +26,8 @@ import DeviceImg from '../components/DeviceImg';
  */
 export default function UploadPages() {
   const { t, tn, tx } = useI18n();
+  const billing = useBilling();
+  const format = useFormat();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [layout, setLayout] = useState<UploadLayout | null>(null);
@@ -268,7 +273,7 @@ export default function UploadPages() {
       <Link to="/upload" className="text-sm text-gray-500 hover:text-gray-700">← {t('Uploads')}</Link>
       <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900 mt-2">{t('Pages and grouping')}</h1>
       <p className="text-sm text-gray-500 mt-1 mb-6">
-        {t('Uploaded {date}', { date: layout.uploaded_at.slice(0, 10) })} · {tn(layout.pages.length, '{n} page', '{n} pages')} ·{' '}
+        {t('Uploaded {date}', { date: format.date(layout.uploaded_at) })} · {tn(layout.pages.length, '{n} page', '{n} pages')} ·{' '}
         {tn(layout.documents.length, '{n} document', '{n} documents')}.{' '}
         {unconfirmed ? t('Split a document between two pages, join it to the one before, or drag a page to another place or document. Nothing is read until you confirm the grouping.') : t('Split a document between two pages, join it to the one before, or drag a page to another place or document. Nothing is read again until you press Done.')}
       </p>
@@ -303,6 +308,17 @@ export default function UploadPages() {
             {t('Look at which pages the documents hold. Split, join or move pages if it is wrong. Until you confirm it, these documents stay out of your timeline, search, shares and trends, and cannot be marked reviewed.')}
           </p>
           <p className="text-amber-900 mt-1">{t('Nothing is read from the documents until you confirm, so changing the grouping costs nothing.')}</p>
+          {(() => {
+            const estimate = readingEstimate(billing, layout.pages.filter(p => !p.hidden).length);
+            if (!estimate) return null;
+            return (
+              <p className="text-amber-900 mt-1" id="reading-estimate">
+                {estimate.short === 0
+                  ? tn(estimate.pages, 'Reading this uses about {n} page of the {left} you can add.', 'Reading this uses about {n} pages of the {left} you can add.', { left: estimate.left })
+                  : tn(estimate.pages, 'Reading this takes about {n} page and you can add {left} now. The rest waits until you have more pages.', 'Reading this takes about {n} pages and you can add {left} now. The rest waits until you have more pages.', { left: estimate.left })}
+              </p>
+            );
+          })()}
           {reading?.status === 'running' && (
             <p className="mt-2 text-brand-800" role="status">{t('Reading the documents… {read} of {total}', { read: reading.read, total: reading.documents })}</p>
           )}
@@ -377,7 +393,7 @@ export default function UploadPages() {
                       {doc.needs_reading && !doc.title && doc.title_guess ? <span className="italic" title={t('A guess from the first line of its first page. The real title comes when the document is read.')}>{doc.title_guess}</span> : documentTitle(doc, t)}
                     </Link>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      {[documentByline(doc, t), pageRange(doc.page_start, doc.page_end, t)]
+                      {[documentByline(doc, t, format.date), pageRange(doc.page_start, doc.page_end, t)]
                         .filter(Boolean).join(' · ')}
                     </p>
                   </div>
@@ -489,14 +505,15 @@ export default function UploadPages() {
                 </div>
 
                 <div className="mt-3 pt-3 border-t border-gray-100 flex flex-wrap items-start gap-x-6 gap-y-2">
-                  <Link to={`/documents/${doc.id}`} className="text-xs text-brand-600 hover:underline">{t('View document')}</Link>
+                  {doc.needs_reading
+                    ? <span className="text-xs text-gray-400" aria-disabled="true">{t('Not read yet')}</span>
+                    : <Link to={`/documents/${doc.id}`} className="text-xs text-brand-600 hover:underline">{t('View document')}</Link>}
                   {!doc.hidden && (
                     <button type="button" disabled={!!busy} onClick={() => setDocumentHidden(doc, true)} className="text-xs text-gray-500 hover:text-gray-800 hover:underline disabled:opacity-50">
                       {t('Hide document')}
                     </button>
                   )}
                   {pending.includes(doc.id) && <span className="text-xs text-amber-700">{t('Changed, waiting for Done')}</span>}
-                  {unconfirmed && doc.needs_reading && <span className="text-xs text-gray-500">{t('Not read yet')}</span>}
                 </div>
                 </div>
               </div>

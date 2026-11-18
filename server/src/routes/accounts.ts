@@ -178,7 +178,7 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
               if (keys) await tx.vault.putKeys(id, keys, createdAt);
             });
             await countSignup(req.body?.ref);
-            // A link of an account that invited them: both get their pages (`plans/invitations.ts`; nothing keeps who invited whom).
+            // A link of an account that invited them: they get their pages, and who invited them is kept until they buy a plan (`plans/invitations.ts`).
             if (req.body?.by !== undefined) await grantInvitation(store, req.body.by, id).catch(() => undefined);
             if (verifyByMail) {
               const token = await issueUserToken(id, 'verify', VERIFY_TTL_MS);

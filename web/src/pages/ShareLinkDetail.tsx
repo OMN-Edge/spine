@@ -121,7 +121,7 @@ export default function ShareLinkDetail() {
       <p className="mb-2 text-sm"><Link to="/share" className="text-brand-600">← {t('All share links')}</Link></p>
       <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900">{link.label ?? describeScope(link, t, tn)}</h1>
       <p className="text-sm text-gray-500 mb-6">
-        {link.revoked ? t('Revoked') : expired ? t('Expired') : t('Active')} · {t('Expires {date}', { date: link.expires_at.slice(0, 10) })} · {t('Made {date}', { date: link.created_at.slice(0, 10) })}
+        {link.revoked ? t('Revoked') : expired ? t('Expired') : t('Active')} · {t('Expires {date}', { date: format.date(link.expires_at) })} · {t('Made {date}', { date: format.date(link.created_at) })}
       </p>
 
       {requests.some(r => r.status === 'pending') && (
@@ -139,7 +139,7 @@ export default function ShareLinkDetail() {
             <input id="d-label" value={form.label} maxLength={80} disabled={!editable} onChange={e => setForm(f => ({ ...f, label: e.target.value }))} className={`${input} w-full`} />
           </div>
           <div>
-            <label htmlFor="d-days" className="block text-xs font-medium text-gray-500 mb-1">{t('Works until {date}', { date: link.expires_at.slice(0, 10) })}</label>
+            <label htmlFor="d-days" className="block text-xs font-medium text-gray-500 mb-1">{t('Works until {date}', { date: format.date(link.expires_at) })}</label>
             <span className="text-sm text-gray-600">{t('Change to')}{' '}
               <Combobox
                 id="d-days" value={String(form.hours)} disabled={!editable} onChange={v => setForm(f => ({ ...f, hours: parseInt(v) }))} wrapperClassName="relative inline-block w-48 align-middle"

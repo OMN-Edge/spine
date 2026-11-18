@@ -21,7 +21,7 @@ const draw = (view: BillingView) => { shown.view = view; return text(renderToSta
 
 const paid = (sub: Partial<NonNullable<BillingView['subscription']>> = {}, extra: Partial<BillingView> = {}): BillingView => ({
   enabled: true, plan: 'premium', can_manage: true,
-  subscription: { status: 'active', interval: 'month', founding: false, ends_at: null, renews_at: '2026-12-15T00:00:00.000Z', provider: 'paddle', ...sub },
+  subscription: { status: 'active', interval: 'month', founding: false, ends_at: null, renews_at: '2026-12-15T00:00:00.000Z', provider: 'stripe', ...sub },
   ...extra,
 });
 const ACTIONS = ['Update payment method', 'Cancel subscription', 'Manage billing, invoices and cancellation'];

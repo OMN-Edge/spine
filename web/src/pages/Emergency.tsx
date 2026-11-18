@@ -2,14 +2,14 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, ApiError, type EmergencyView } from '../api';
 import { DETAIL_LABELS } from '../detailLabels';
-import { cardText, DETAIL_KINDS, EMPTY_CARD, publicCard, type CardContent, type CardDetail } from 'spine-core/emergency';
+import { CARD_LANGUAGES, cardText, DETAIL_KINDS, EMPTY_CARD, publicCard, type CardContent, type CardDetail } from 'spine-core/emergency';
 import { BLOOD_TYPES, proposalsFrom, type Proposals } from '../emergency-fill';
 import PrintCard, { printCard } from '../components/PrintCard';
 import CardQr from '../components/CardQr';
 import { buttonClass, inputClass, Notice } from '../components/AuthCard';
 import { Combobox } from '../components/Combobox';
 import { DateInput } from '../components/DateInput';
-import { useI18n } from '../i18n';
+import { languageChoice, useI18n } from '../i18n';
 import { useFormat } from '../format';
 
 /** One item to a line; the card keeps them as a list. */
@@ -26,6 +26,9 @@ export default function Emergency() {
   const [view, setView] = useState<EmergencyView | null>(null);
   const [card, setCard] = useState<CardContent>(EMPTY_CARD);
   const [text, setText] = useState({ allergies: '', conditions: '', medications: '' });
+  // The second language's words, one to a line like the first's; kept with the card when saved.
+  const [second, setSecond] = useState<{ language: string; allergies: string; conditions: string; medications: string; notes: string } | null>(null);
+  const [translating, setTranslating] = useState(false);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -36,10 +39,14 @@ export default function Emergency() {
     setView(v);
     setCard(v.card);
     setText({ allergies: v.card.allergies.join('\n'), conditions: v.card.conditions.join('\n'), medications: v.card.medications.join('\n') });
+    setSecond(v.card.second ? { language: v.card.second.language, allergies: v.card.second.allergies.join('\n'), conditions: v.card.second.conditions.join('\n'), medications: v.card.second.medications.join('\n'), notes: v.card.second.notes } : null);
   };
   useEffect(() => { api.emergency.get().then(show).catch(() => setError(t('Could not load the card'))); }, [t]);
 
-  const current = (): CardContent => ({ ...card, allergies: lines(text.allergies), conditions: lines(text.conditions), medications: lines(text.medications) });
+  const current = (): CardContent => ({
+    ...card, allergies: lines(text.allergies), conditions: lines(text.conditions), medications: lines(text.medications),
+    second: second && second.language ? { language: second.language as CardContent['language'] & ('en' | 'ro' | 'fr' | 'de'), allergies: lines(second.allergies), conditions: lines(second.conditions), medications: lines(second.medications), notes: second.notes } : null,
+  });
   const run = async (what: () => Promise<EmergencyView>, failed: string) => {
     setError(''); setSaved(false); setBusy(true);
     try { show(await what()); return true; } catch (err) {
@@ -48,6 +55,19 @@ export default function Emergency() {
       void api.emergency.get().then(show).catch(() => undefined);
       return false;
     } finally { setBusy(false); }
+  };
+  // Asks for the card's words in the language chosen: the card is saved first (it is what is translated), the answer is shown for the owner to correct, and nothing of it is kept until they save.
+  const translate = async () => {
+    if (!second?.language) return;
+    setError(''); setTranslating(true);
+    try {
+      await api.emergency.save(current());
+      const done = await api.emergency.translate(second.language);
+      setSecond({ language: done.second.language, allergies: done.second.allergies.join('\n'), conditions: done.second.conditions.join('\n'), medications: done.second.medications.join('\n'), notes: done.second.notes });
+      setSaved(false);
+    } catch (err) {
+      setError(err instanceof ApiError && err.code === 'translation_off' ? t('Translation is switched off here: write the second language yourself.') : t('The card could not be translated right now. You can write the second language yourself.'));
+    } finally { setTranslating(false); }
   };
   const save = async () => { if (await run(() => api.emergency.save(current()), t('Could not save the card'))) setSaved(true); };
   const set = <K extends keyof CardContent>(key: K, value: CardContent[K]) => { setSaved(false); setCard(c => ({ ...c, [key]: value })); };
@@ -116,6 +136,21 @@ export default function Emergency() {
           {card.details.length < 8 && <button type="button" className="text-sm text-brand-600 hover:underline" onClick={() => set('details', [...card.details, { kind: 'national_id', label: '', value: '', on_card: false }])}>{t('Add a detail')}</button>}
         </fieldset>
         <label className="block text-sm text-gray-700">{t('Notes')}<textarea className={`${inputClass} h-20`} maxLength={500} value={card.notes} onChange={e => set('notes', e.target.value)} /></label>
+        <fieldset className="rounded-lg border border-gray-200 p-3 space-y-3">
+          <legend className="px-1 text-sm text-gray-700">{t('A second language')}</legend>
+          <p className="text-xs text-gray-500">{t('So a paramedic who does not read your language can read the card. Your allergies, conditions, medicines and notes are translated once by the model when you ask, shown here for you to correct, and kept as your words. Names and phone numbers are not translated.')}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Combobox ariaLabel={t('Second language')} wrapperClassName="relative w-48" value={second?.language ?? ''} onChange={v => { setSaved(false); setSecond(v ? { language: v, allergies: second?.allergies ?? '', conditions: second?.conditions ?? '', medications: second?.medications ?? '', notes: second?.notes ?? '' } : null); }}
+              options={[{ value: '', label: t('None') }, ...CARD_LANGUAGES.filter(l => l !== card.language).map(l => ({ value: l, label: languageChoice(l) }))]} />
+            {second?.language && <button type="button" disabled={translating || busy} onClick={() => void translate()} className="rounded-full border border-gray-300 px-4 py-1.5 text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-50">{translating ? t('Translating…') : t('Translate the card')}</button>}
+          </div>
+          {second?.language && (['allergies', 'medications', 'conditions'] as const).map(key => (
+            <label key={key} className="block text-sm text-gray-700">{t(key === 'allergies' ? 'Allergies' : key === 'medications' ? 'Medications' : 'Conditions')} ({languageChoice(second.language as 'en')})
+              <textarea className={`${inputClass} h-16`} placeholder={t('One to a line')} value={second[key]} onChange={e => { setSaved(false); setSecond(x => (x ? { ...x, [key]: e.target.value } : x)); }} />
+            </label>
+          ))}
+          {second?.language && <label className="block text-sm text-gray-700">{t('Notes')} ({languageChoice(second.language as 'en')})<textarea className={`${inputClass} h-16`} maxLength={500} value={second.notes} onChange={e => { setSaved(false); setSecond(x => (x ? { ...x, notes: e.target.value } : x)); }} /></label>}
+        </fieldset>
         {error && <Notice kind="error">{error}</Notice>}
         {saved && <Notice kind="ok">{t('Saved')}</Notice>}
         <button disabled={busy} onClick={() => void save()} className={buttonClass}>{t('Save the card')}</button>

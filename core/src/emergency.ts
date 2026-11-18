@@ -22,6 +22,29 @@ export const detailSchema = z.object({
 });
 export type CardDetail = z.infer<typeof detailSchema>;
 
+/** The words the card's own headings are written in, in each language of the screens (the offline code's headings are English, as they always were). */
+export const CARD_LABELS = {
+  en: { allergies: 'Allergies', medicines: 'Medicines', conditions: 'Conditions', notes: 'Notes' },
+  ro: { allergies: 'Alergii', medicines: 'Medicamente', conditions: 'Afecțiuni', notes: 'Note' },
+  fr: { allergies: 'Allergies', medicines: 'Médicaments', conditions: 'Affections', notes: 'Notes' },
+  de: { allergies: 'Allergien', medicines: 'Medikamente', conditions: 'Erkrankungen', notes: 'Hinweise' },
+} as const;
+export type CardLanguage = keyof typeof CARD_LABELS;
+export const CARD_LANGUAGES = Object.keys(CARD_LABELS) as CardLanguage[];
+
+/**
+ * The card's second language: what the owner wrote, in another, so a paramedic who does not read the first can read the card. Translated once by the model when the owner asks, shown to the owner
+ * to correct, and kept as their words from then on. The headings are fixed (`CARD_LABELS`); the names and the phone numbers are not translated.
+ */
+export const secondSchema = z.object({
+  language: z.enum(['en', 'ro', 'fr', 'de']),
+  allergies: items(120, 20),
+  conditions: items(120, 20),
+  medications: items(120, 30),
+  notes: line(500),
+});
+export type CardSecond = z.infer<typeof secondSchema>;
+
 export const cardSchema = z.object({
   v: z.literal(1).default(1),
   name: line(120),
@@ -38,6 +61,8 @@ export const cardSchema = z.object({
   notes: line(500),
   /** The language the owner wrote it in (a code like `ro`), so a reader can be told. */
   language: line(5),
+  /** The same in a second language, if the owner made one. */
+  second: secondSchema.nullable().default(null),
 });
 
 export type CardContent = z.infer<typeof cardSchema>;
@@ -49,7 +74,7 @@ export class CardError extends Error {
   }
 }
 
-export const EMPTY_CARD: CardContent = { v: 1, name: '', born: '', blood_type: '', allergies: [], conditions: [], medications: [], contacts: [], details: [], notes: '', language: '' };
+export const EMPTY_CARD: CardContent = { v: 1, name: '', born: '', blood_type: '', allergies: [], conditions: [], medications: [], contacts: [], details: [], notes: '', language: '', second: null };
 
 /** The card as stored, from anything a request or an old row held; throws `CardError` in words when it cannot be. */
 export function normaliseCard(input: unknown): CardContent {
@@ -60,7 +85,7 @@ export function normaliseCard(input: unknown): CardContent {
 
 /** Whether there is anything on it to show. */
 export const cardIsEmpty = (c: CardContent): boolean =>
-  !c.name && !c.born && !c.blood_type && !c.notes && c.allergies.length + c.conditions.length + c.medications.length + c.contacts.length + c.details.length === 0;
+  !c.name && !c.born && !c.blood_type && !c.notes && !c.second && c.allergies.length + c.conditions.length + c.medications.length + c.contacts.length + c.details.length === 0;
 
 /**
  * The card as others read it: the official details the owner turned on, and no others. Everything that leaves the device (the sealed card,
@@ -101,6 +126,8 @@ function fit(c: CardContent, limit: number): { text: string; omitted: number } {
     ['Contact', c.contacts.map(x => [x.name, x.relation && `(${x.relation})`, x.phone].filter(Boolean).join(' '))],
     ['ID', c.details.filter(d => d.on_card).map(d => `${detailLabel(d)} ${d.value}`)],
     ['Notes', c.notes ? [c.notes] : []],
+    // The second language comes after everything urgent of the first: it is kept where there is room, and counted where there is not.
+    ...(c.second ? ((): Array<[string, string[]]> => { const L = CARD_LABELS[c.second.language]; return [[L.allergies, c.second.allergies], [L.medicines, c.second.medications], [L.conditions, c.second.conditions], [L.notes, c.second.notes ? [c.second.notes] : []]]; })() : []),
   ];
   const lines = [...head];
   let omitted = 0;

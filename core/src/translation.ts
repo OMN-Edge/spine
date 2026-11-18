@@ -686,3 +686,33 @@ export async function keptTerms(userId: string, language: SupportedLanguage, onl
 
 /** Specialties and test names asked of the model in one call. */
 const TERMS_PER_CALL = 80;
+
+
+/**
+ * The words of the emergency card (its allergies, conditions, medicines and notes) in another language, in one short call the relay counts: the owner's own texts, asked of the model once
+ * when they ask for a second language, and then theirs to correct. What the model gives back is used only where it is a translation and not a ramble; a line it could not do is left out for the
+ * owner to write. Null where it could not be asked (translation off, or a failure), with the reason in the log.
+ */
+export async function translateCardWords(
+  words: { allergies: string[]; conditions: string[]; medications: string[]; notes: string },
+  language: SupportedLanguage,
+): Promise<{ allergies: string[]; conditions: string[]; medications: string[]; notes: string } | 'off' | null> {
+  if (!translationEnabled()) return 'off';
+  const ask = (list: string[], prefix: string) => list.map((text, n) => ({ id: `${prefix}${n}`, name: text }));
+  const bundle: TranslationBundle = {
+    title: null, summary: null, notes: words.notes.trim() ? words.notes : null, fields: [], doctors: [],
+    measurements: [...ask(words.allergies, 'a'), ...ask(words.conditions, 'c'), ...ask(words.medications, 'm')],
+  };
+  if (!bundle.notes && bundle.measurements.length === 0) return { allergies: [], conditions: [], medications: [], notes: '' };
+  try {
+    const llm = getChatLlm();
+    const answer = await translatePiece(bundle, b => llm.translate(b, LANGUAGE_NAMES[language], null, { work: crypto.randomUUID(), pages: 1 }));
+    if (!answer) return null;
+    const said = new Map(answer.measurements.map(m => [m.id, m.name]));
+    const back = (list: string[], prefix: string) => list.flatMap((original, n) => { const text = said.get(`${prefix}${n}`); return text && sound(text, original) ? [text.trim()] : []; });
+    return { allergies: back(words.allergies, 'a'), conditions: back(words.conditions, 'c'), medications: back(words.medications, 'm'), notes: sound(answer.notes, words.notes) && answer.notes ? answer.notes.trim() : '' };
+  } catch (err) {
+    logger.warn('the card could not be translated', { language, error: describeError(err) });
+    return null;
+  }
+}

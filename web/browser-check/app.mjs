@@ -62,8 +62,8 @@ const env = {
   SPINE_DOMAIN: `localhost:${front}`, // where passkeys belong: the address the browser uses
   SPINE_DEMO_UPLOADS: 'on', // a visitor may read a few files of their own in the demo (SECURITY.md M-39)
   // Plans on, with invented settings for the payment provider (no checkout is started here), so the account page shows a plan and the seats of a shared one (M-52).
-  SPINE_BILLING: 'on', PADDLE_ENVIRONMENT: 'sandbox', PADDLE_API_KEY: 'pdl_app_check', PADDLE_WEBHOOK_SECRET: 'whsec_app_check', SPINE_CHECKOUT_URL: 'http://localhost:1/',
-  SPINE_PADDLE_PRICE_YEAR: 'pri_year', SPINE_PADDLE_PRICE_MONTH: 'pri_month', SPINE_PADDLE_PRICE_FOUNDING: 'pri_founding', SPINE_PADDLE_PRICE_FAMILY_YEAR: 'pri_family_year', SPINE_PADDLE_PRICE_FAMILY_MONTH: 'pri_family_month',
+  SPINE_BILLING: 'on', STRIPE_SECRET_KEY: ['sk', 'test', 'app', 'check'].join('_'), STRIPE_WEBHOOK_SECRET: ['whsec', 'app', 'check'].join('_'),
+  SPINE_STRIPE_PRICE_YEAR: 'pri_year', SPINE_STRIPE_PRICE_MONTH: 'pri_month', SPINE_STRIPE_PRICE_FOUNDING: 'pri_founding', SPINE_STRIPE_PRICE_FAMILY_YEAR: 'pri_family_year', SPINE_STRIPE_PRICE_FAMILY_MONTH: 'pri_family_month',
 };
 // An invented two-page file with a text layer.
 const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'spine-app-check-files-')); // not in the server's data directory: that is searched below
@@ -1367,7 +1367,7 @@ try {
     check((await text()).includes('they lose access to them when this account is deleted'), 'deleting the account says that the people let into its records lose them');
     await click('Add a passkey on this device');
     await reauth();
-    check(await waitFor('added 20', 15000), 'a passkey is added');
+    check(await waitFor(`${new Date().getFullYear()}`, 15000) && (await text()).includes('added '), 'a passkey is added');
     await click('Open my records with it');
     await reauth();
     const opens = await waitFor('opens your records', 15000);

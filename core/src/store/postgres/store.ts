@@ -8,7 +8,7 @@ import { sharedRepository } from './shared.js';
 import { delegationRepository } from './delegations.js';
 import { familyRepository } from './family.js';
 import { reminderDateRepository } from './reminder-dates.js';
-import { cookieSessionRepository, enrolmentRepository, sessionRepository, usageRepository } from './small.js';
+import { cookieSessionRepository, enrolmentRepository, invitationRepository, sessionRepository, usageRepository } from './small.js';
 import { userRepository } from './users.js';
 import { vaultRepository } from './vault.js';
 
@@ -71,6 +71,7 @@ function accountsOver(q: Query, begin: Begin): Omit<AccountsStore, 'close'> {
     sessions: sessionRepository(q),
     cookieSessions: cookieSessionRepository(q),
     enrolments: enrolmentRepository(q),
+    invitations: invitationRepository(q),
     usage: usageRepository(q),
     vault: vaultRepository(q, begin),
     shared: sharedRepository(q, begin),

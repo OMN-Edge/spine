@@ -86,6 +86,18 @@ export async function shareRoutes(app: HttpApp) {
     if (!shareHost()) return reply.status(503).send({ error: 'this process cannot publish shares', code: 'no_share_host' });
   });
 
+  // The documents a scope picks, as the share form would share them: the same validation and the same resolution as making the link (`share-scope.ts`, `listForShare`), with nothing made.
+  // The file export uses it so it takes exactly what a link of that scope would.
+  app.post<{ Body: { scope?: unknown; scope_value?: unknown } }>('/api/share-links/scope-documents', async (req, reply) => {
+    const checked = await checkScope(req.userId, req.body?.scope, req.body?.scope_value);
+    if ('error' in checked) return reply.status(400).send({ error: checked.error });
+    const docs = await getStore().documents.listForShare({
+      id: 'scope-preview', userId: req.userId, scope: checked.resolved.scope, scopeValue: serializeScopeValue(checked.resolved), expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      includeScans: false, language: null, requireApproval: false, allowChat: false,
+    });
+    return reply.header('Cache-Control', 'no-store').send(docs.map(d => ({ id: d.id, title: d.title, doc_date: d.doc_date, provider: d.provider, doc_type: d.doc_type, ai_summary: d.ai_summary, language: d.language, page_start: d.page_start, page_end: d.page_end })));
+  });
+
   // A link follows the records for as long as it lasts: after the owner's records change, the device asks for the copies to be looked at
   // again, and one that would now hold something different is made again under the same key (a deleted document leaves the copy, a new one
   // inside the link's scope joins it). Nothing is sent for a copy that would be the same.

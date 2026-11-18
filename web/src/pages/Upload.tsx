@@ -5,15 +5,17 @@ import SpineLog, { type VertebraState } from '../components/SpineLog';
 import { failureKind } from 'spine-core/failure-kind';
 import { documentTitle, pageRange } from '../titles';
 import { documentToOpen } from '../scan/open-when-read';
+import { documentIsReady } from '../processing';
+import { batchSummary, isBatch } from '../batch';
 import { whereTo } from '../components/aiTarget';
 import DeleteUpload from '../components/DeleteUpload';
 import ModelWaitNote from '../components/ModelWaitNote';
 import { routeFiles } from '../scan/route';
 import { msg, useI18n } from '../i18n';
+import { useFormat } from '../format';
 import type { I18n } from '../i18n';
 import { useAuth } from '../auth';
 import GuideTip from '../components/GuideTip';
-import ImportAllowance from '../components/ImportAllowance';
 
 interface UploadResult {
   id?: string;
@@ -127,6 +129,7 @@ const needsGrouping = (job: JobState): boolean =>
 
 function UploadRow({ job, anchor, onRetry, onDeleted }: { job: JobState; /** The first upload waiting for its grouping: where the Get started list leads. */ anchor?: boolean; onRetry: () => void; onDeleted: () => void }) {
   const i18n = useI18n();
+  const format = useFormat();
   const { t, tn } = i18n;
   const [showAll, setShowAll] = useState(false);
   const listed = showAll ? job.documents : job.documents.slice(0, LISTED_DOCUMENTS);
@@ -141,7 +144,7 @@ function UploadRow({ job, anchor, onRetry, onDeleted }: { job: JobState; /** The
       </div>
       {(job.documents.length > 0 || !!job.hiddenDocuments) && (
         <p className="text-xs text-gray-400 mt-0.5">
-          {job.uploadedAt && <>{t('Uploaded {date}', { date: job.uploadedAt.slice(0, 10) })} · </>}
+          {job.uploadedAt && <>{t('Uploaded {date}', { date: format.date(job.uploadedAt) })} · </>}
           {job.documents.length > 0 && <>{tn(job.documents.length, '{n} document', '{n} documents')}</>}
           {job.documents.length === 1 && <> · {pagesOf(job.documents[0], t)}</>}
           {!!job.hiddenDocuments && <>{job.documents.length > 0 && ' · '}{t('{n} hidden', { n: job.hiddenDocuments })}</>}
@@ -154,7 +157,9 @@ function UploadRow({ job, anchor, onRetry, onDeleted }: { job: JobState; /** The
               <span className="min-w-0 truncate text-gray-700">
                 {documentTitle(doc, t)} <span className="text-gray-400">· {pagesOf(doc, t)}</span>
               </span>
-              <Link to={`/documents/${doc.id}`} className="shrink-0 text-brand-600 hover:underline">{t('View document')}</Link>
+              {documentIsReady(doc, job)
+                ? <Link to={`/documents/${doc.id}`} className="shrink-0 text-brand-600 hover:underline">{t('View document')}</Link>
+                : <span className="shrink-0 text-gray-400" aria-disabled="true">{t('Being read…')}</span>}
             </li>
           ))}
           {job.documents.length > LISTED_DOCUMENTS && (
@@ -181,9 +186,9 @@ function UploadRow({ job, anchor, onRetry, onDeleted }: { job: JobState; /** The
           {job.status === 'error' && (
             <button type="button" onClick={onRetry} className="text-brand-600 hover:underline">{t('Try again')}</button>
           )}
-          {job.documents.length === 1 && (
-            <Link to={`/documents/${job.documents[0].id}`} className="text-brand-600 hover:underline">{t('View document')}</Link>
-          )}
+          {job.documents.length === 1 && (documentIsReady(job.documents[0], job)
+            ? <Link to={`/documents/${job.documents[0].id}`} className="text-brand-600 hover:underline">{t('View document')}</Link>
+            : <span className="text-gray-400" aria-disabled="true">{t('Being read…')}</span>)}
           {(job.documents.length > 0 || !!job.hiddenDocuments) && (
             <Link to={`/uploads/${job.fileId}`} className="text-brand-600 hover:underline">{t('Pages and grouping')}</Link>
           )}
@@ -227,7 +232,7 @@ function DemoUploadNotice({ limits, used, agreed, agree }: { limits: { uploads: 
 
 export default function Upload() {
   const i18n = useI18n();
-  const { t } = i18n;
+  const { t, tn } = i18n;
   const navigate = useNavigate();
   const { demo, demoUploads, demoAgreed, agreeDemo } = useAuth();
   // The visitor's own files in the demo; the sample records are not among them.
@@ -249,6 +254,8 @@ export default function Upload() {
   const [refused, setRefused] = useState<Array<{ name: string; reason: string }>>([]);
   // What each zip turned out to be.
   const [zips, setZips] = useState<ZipSummary[]>([]);
+  // The rows of the last drop or zip, counted together in one block (batch.ts).
+  const [batchKeys, setBatchKeys] = useState<string[]>([]);
   // Pictures are offered where something can read them: local OCR on this device (scanned pages), or the model where the operator has
   // allowed images to leave. The demo has no Scan and no OCR, so there only the model reads them.
   const [photos, setPhotos] = useState<{ enabled: boolean; where: string; onDevice: boolean } | null>(null);
@@ -334,6 +341,7 @@ export default function Upload() {
       }
     });
 
+    if (replace) setBatchKeys(newJobs.map(j => j.key));
     setJobs(prev => [...newJobs.reverse(), ...prev]);
     countOwn();
   }, [pollStatus, update, t, countOwn]);
@@ -358,7 +366,6 @@ export default function Upload() {
   return (
     <div className="max-w-2xl mx-auto">
       <h1 className="mb-6 text-[1.75rem] leading-tight font-light tracking-tight text-gray-900">{t('Upload')}</h1>
-      <ImportAllowance />
 
       {demo && demoUploads && <DemoUploadNotice limits={demoUploads} used={ownUploads} agreed={demoAgreed} agree={agreeDemo} />}
       {!(demo && (!demoAgreed || (demoUploads && ownUploads >= demoUploads.uploads))) && (<>
@@ -388,7 +395,7 @@ export default function Upload() {
         <p className="hidden text-sm text-gray-400 sm:block">{t('or click to browse')} — {t('up to 200 MB per file')}</p>
         {photos?.onDevice
           ? <p className="text-xs text-gray-400 mt-2">{t('A photo goes to Scan to be straightened, and is read on this device: nothing of it is sent to a model.')}</p>
-          : photos?.enabled && photos.where && <p className="text-xs text-gray-400 mt-2">{t('A photo is sent to {where} to be read. A PDF with a text layer sends no image.', { where: photos.where })}</p>}
+          : photos?.enabled && photos.where && <p className="text-xs text-gray-400 mt-2">{t('A photo is read by an AI model, through a relay that keeps nothing. A PDF with a text layer sends no image.')}</p>}
         <input
           ref={fileRef}
           type="file"
@@ -458,6 +465,25 @@ export default function Upload() {
           </GuideTip>
         </div>
       )}
+      {(() => {
+        const batch = jobs.filter(j => batchKeys.includes(j.key));
+        if (!isBatch(batch)) return null;
+        const s = batchSummary(batch);
+        const parts = [
+          tn(s.files, '{n} file', '{n} files'), tn(s.documents, '{n} document', '{n} documents'), tn(s.pages, '{n} page', '{n} pages'),
+          s.working > 0 ? t('{n} being read', { n: s.working }) : null,
+          s.checking > 0 ? t('{n} waiting for your grouping check', { n: s.checking }) : null,
+          s.failed > 0 ? t('{n} could not be read', { n: s.failed }) : null,
+          s.duplicates > 0 ? t('{n} already in your archive', { n: s.duplicates }) : null,
+        ].filter(Boolean);
+        return (
+          <div className="mt-8 rounded-xl border border-gray-200 bg-white p-4" role="status" aria-live="polite" id="batch">
+            <p className="text-sm font-medium text-gray-900">{s.working > 0 ? t('Reading this batch…') : t('This batch has been read.')}</p>
+            <p className="mt-1 text-sm text-gray-600">{parts.join(' · ')}</p>
+            <span className="mt-3 block h-2 overflow-hidden rounded-full bg-gray-100" role="presentation"><span className="block h-2 rounded-full bg-brand-500" style={{ width: `${Math.round(((s.files - s.working) / s.files) * 100)}%` }} /></span>
+          </div>
+        );
+      })()}
       {jobs.length > 0 && (
         <div className="mt-8">
           <SpineLog

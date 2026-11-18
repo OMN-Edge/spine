@@ -33,8 +33,8 @@ A person is often more than one profile: someone who moved as a child (P1) may n
 *My insurer wants my medical history for the last five years and the documents for this treatment, attached to a claim form.*
 
 - **They need:** a chosen set of documents (a period, a condition, one treatment) as files they can attach to a claim portal or an email, with a list of what is included (date, provider, type); sometimes a translation for an insurer in another country; certainty about what they are handing over and nothing more.
-- **Served by:** a share link scoped to a date range, an episode, a tag or chosen documents (7.1), which an insurer's assessor can open in their own language (11.2); exporting one document or everything (9.5).
-- **Missing:** an insurer's portal takes files, not links. There is no export of a chosen set as one PDF (or a zip of PDFs) with a cover list of what is in it; the existing export is a Spine archive meant for restoring, not for a third party. A machine translation is not a certified one, and the export must say so where it carries one.
+- **Served by:** a share link scoped to a date range, an episode, a tag or chosen documents (7.1), which an insurer's assessor can open in their own language (11.2); exporting one document or everything (9.5), and one PDF of a chosen set with a cover list and optional translated summaries (7.1).
+- **Missing:** a way to send the insurer's own form; the PDF is the documents, not the claim.
 
 ### S3 — A letter in a foreign language, while travelling (P3, P2)
 *I was treated in a clinic abroad and given a discharge letter I cannot read. I want to know what it says, keep it, and show it to my doctor at home.*
@@ -47,8 +47,8 @@ A person is often more than one profile: someone who moved as a child (P1) may n
 *I asked my old clinics for my records. One sent a zip of scans, another a 60-page PDF in no order, with handwritten letters and prescriptions from when I was a child.*
 
 - **They need:** to put the whole pile in at once and see it become documents; pages from many documents sorted into the right ones; handwriting read where it can be and flagged where it cannot, never guessed silently; old and undated documents placed sensibly; to know before they start whether their plan covers it.
-- **Served by:** a zip or a long PDF (2.2b, 2.6), sorting a mixed export (12.4), the grouping check (2.5), scans and faded pages cleaned up with handwriting kept (2.8, FR-ING-09), low-confidence fields flagged for checking (FR-EXT-04, 3.2), the one-off import allowance (13.2e).
-- **Missing:** a progress view for hundreds of pages that says what is done, what waits for the owner and what could not be read; a way to work through the flagged handwritten fields as a queue; testing on real handwritten pages (requirements: "The model tested on handwritten pages").
+- **Served by:** a zip or a long PDF with its progress counts (2.2b, 2.6), the queue of values to check (3.5), sorting a mixed export (12.4), the grouping check (2.5), scans and faded pages cleaned up with handwriting kept (2.8, FR-ING-09), low-confidence fields flagged for checking (FR-EXT-04, 3.2), the one-off import allowance (13.2e).
+- **Missing:** testing on real handwritten pages (requirements: "The model tested on handwritten pages") with invented handwritten samples; the pages and the allowance a batch will use before any page is read.
 
 ### S5 — A new doctor abroad (P2, P6)
 *I moved and registered with a doctor here. She asked for my history; it is all in my first language.*
@@ -61,8 +61,8 @@ A person is often more than one profile: someone who moved as a child (P1) may n
 *I collapsed on a trip. The paramedic needs my allergies, conditions and medicines, and I cannot tell them.*
 
 - **They need:** an emergency card someone can read with no account and no signal, in the reader's language.
-- **Served by:** the emergency card, its code, the copy that works with no signal, and printing (14.1–14.3), starting from the records without filling anything, a blood type to choose and a preview before it is turned on (14.1).
-- **Missing:** the card is written in one language: a second language, with the owner's words translated once and kept, is not built.
+- **Served by:** the emergency card, its code, the copy that works with no signal, and printing (14.1–14.3), starting from the records without filling anything, a blood type to choose, a preview before it is turned on, and a second language (14.1).
+- **Missing:** a language other than the four of the screens for the card; the card's headings are fixed in those four.
 
 ### S7 — A parent keeping a child's records (P5)
 *My son has asthma and sees two specialists; my partner takes him to some appointments.*

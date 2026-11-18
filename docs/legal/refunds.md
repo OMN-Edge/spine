@@ -4,11 +4,11 @@ This page says how refunds work for the paid plans and the page top-up of this S
 
 ## Who sells, and who pays you back
 
-Paddle sells the plans and the top-up to you as the seller of record: it takes the payment, issues the invoice and accounts for tax, and its own terms apply to the purchase. A refund is paid back by Paddle to the way you paid. Where {{operator}} sells them instead, through Stripe, we pay the refund back to the way you paid, and the invoice is reversed with a credit invoice (a storno), which is sent to you in the same way.
+{{operator}} sells the plans and the top-up, through Stripe: we pay a refund back to the way you paid, and the invoice is reversed with a credit invoice (a storno), which is sent to you in the same way.
 
 ## The fourteen days
 
-Where we sell, you can withdraw from your account page: within the fourteen days press "Withdraw from this purchase". We confirm by email at once, and answer within fourteen days. If we accept, we end your plan and pay back to the way you paid; for a plan you have already used we pay back less the part of the service already given, as the law allows. Where Paddle sells, you ask Paddle or us.
+You can withdraw from your account page: within the fourteen days press "Withdraw from this purchase". We confirm by email at once, and answer within fourteen days. If we accept, we end your plan and pay back to the way you paid; for a plan you have already used we pay back less the part of the service already given, as the law allows.
 
 For a digital service you have fourteen days to withdraw from a purchase, counted from the day you buy. You do not have to give a reason. On the order page you ask for the service to start at once and accept that you lose the right once the service has been fully provided.
 

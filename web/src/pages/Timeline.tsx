@@ -136,11 +136,11 @@ export default function Timeline() {
       ) : (
         <div className="space-y-8">
           {years.length > 1 && (
-            <div className="flex flex-wrap gap-1" role="group" aria-label={t('Year')}>
+            <div className="flex gap-1 overflow-x-auto sm:flex-wrap sm:overflow-visible" role="group" aria-label={t('Year')}>
               {['', ...years.filter(y => y)].map(y => (
                 <button
                   key={y || 'all'} type="button" aria-pressed={zoom === y} onClick={() => setZoom(y)}
-                  className={`text-xs px-2.5 py-1 rounded-full border ${zoom === y ? 'bg-brand-600 border-brand-600 text-white' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}
+                  className={`shrink-0 text-xs px-2.5 py-1 rounded-full border ${zoom === y ? 'bg-brand-600 border-brand-600 text-white' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}
                 >
                   {y || t('All years')}
                 </button>

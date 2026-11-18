@@ -2,9 +2,16 @@ import { useEffect, useState } from 'react';
 import type { TranslatedDocument } from '../api';
 import { LANGUAGES, useI18n } from './index';
 
-/** A language's name for a person: its own name where the interface knows it, else the code. */
-export const languageName = (code: string | null | undefined): string =>
-  LANGUAGES.find(l => l.code === code)?.name ?? (code ? code.toUpperCase() : '');
+/**
+ * A language's name for a person. Given the interface language, it is named in that language ("aus dem Rumänischen" reads "Rumänisch", not "Română"), as a sentence needs;
+ * without it, by its own name where the interface knows it (a list of languages to choose from), else the code.
+ */
+export const languageName = (code: string | null | undefined, inLanguage?: string): string => {
+  if (code && inLanguage) {
+    try { const name = new Intl.DisplayNames([inLanguage], { type: 'language' }).of(code); if (name && name !== code) return name; } catch { /* the name below */ }
+  }
+  return LANGUAGES.find(l => l.code === code)?.name ?? (code ? code.toUpperCase() : '');
+};
 
 /** A country's name in the interface language, from its ISO code ("RO" is "Romania"); null when there is none. */
 export const countryName = (code: string | null | undefined, lang: string): string | null => {

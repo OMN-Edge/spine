@@ -73,6 +73,13 @@ CREATE TABLE IF NOT EXISTS device_enrolments (
 );
 CREATE INDEX IF NOT EXISTS idx_device_enrolments_user ON device_enrolments(user_id);
 
+-- Who invited an account, until it first buys a plan or ninety days pass (store/types.ts, InvitationRepository). The invitee's row; deleted with either account.
+CREATE TABLE IF NOT EXISTS invitations (
+  user_id TEXT PRIMARY KEY REFERENCES users(id),
+  inviter_id TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS user_recovery_codes (
   user_id TEXT NOT NULL REFERENCES users(id),
   code_hash TEXT NOT NULL,
@@ -197,7 +204,7 @@ CREATE INDEX IF NOT EXISTS idx_shared_opens_user ON shared_opens(user_id);
 -- operator's CLI. No card number and no address is ever here: the provider keeps those; this keeps only which plan, until when.
 CREATE TABLE IF NOT EXISTS subscriptions (
   user_id TEXT PRIMARY KEY REFERENCES users(id),
-  provider TEXT NOT NULL, -- 'paddle' | 'stripe' | 'operator'
+  provider TEXT NOT NULL, -- 'stripe' | 'operator'
   customer_id TEXT,
   subscription_id TEXT,
   billing_interval TEXT, -- 'month' | 'year'

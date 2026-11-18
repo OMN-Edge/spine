@@ -4,7 +4,7 @@
   "private": true,
   "license": "AGPL-3.0-only",
   "type": "module",
-  "description": "What an application that is paid by a provider needs: the provider's adapters (Stripe, Paddle), its messages applied to an account, the product catalog and its sync, withdrawals, and the invoices issued for payments (Billyou, or e-Factura through spine-anaf). Names no plan and nothing of Spine's.",
+  "description": "What an application that is paid by a provider needs: the provider's adapters (Stripe), its messages applied to an account, the product catalog and its sync, withdrawals, and the invoices issued for payments (Billyou, or e-Factura through spine-anaf). Names no plan and nothing of Spine's.",
   "engines": {
     "node": ">=22"
   },

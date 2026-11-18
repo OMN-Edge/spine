@@ -120,7 +120,7 @@ export default function Episodes() {
           <div className="space-y-3">
             {proposed.map(ep => (
               <div key={ep.id} className={`${box} border-amber-200`}>
-                <p className="text-sm font-medium text-gray-900">{episodeName(ep, t)}</p>
+                <p className="text-sm font-medium text-gray-900">{episodeName(ep, t, format.date)}</p>
                 <p className="text-xs text-gray-500">{tn(ep.document_ids.length, '{n} document', '{n} documents')}</p>
                 {documentsOf(ep)}
                 <div className="mt-3 flex gap-4 text-sm">
@@ -159,7 +159,7 @@ function EpisodeCard({ ep, docs, byId, onChange }: { ep: Episode; docs: Document
     <div className={box}>
       <div className="flex items-center gap-2">
         <input
-          value={title} maxLength={120} aria-label={t('Title')} placeholder={episodeName({ ...ep, title: '' }, t)}
+          value={title} maxLength={120} aria-label={t('Title')} placeholder={episodeName({ ...ep, title: '' }, t, format.date)}
           onChange={e => setTitle(e.target.value)}
           onBlur={() => { if (title.trim() !== ep.title) onChange(() => api.episodes.update(ep.id, { title: title.trim() })); }}
           className="flex-1 min-w-0 text-sm font-medium text-gray-900 border border-transparent hover:border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-brand-500"

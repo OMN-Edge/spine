@@ -2,9 +2,9 @@ import type { SubscriptionRecord } from '../store/types.js';
 
 /**
  * What each plan includes, and the one function that says what an account has now. Pure: the relay, the routes and the account page all
- * ask it, so a limit is written once. Prices are Paddle's: the operator creates them there and names their ids in the environment.
+ * ask it, so a limit is written once. Prices are Stripe's: the operator creates them there and names their ids in the environment.
  *
- * **No amount is written here**: what a plan costs is what Paddle says about the price the operator named in the environment (`server/src/billing/catalog.ts`).
+ * **No amount is written here**: what a plan costs is what Stripe says about the price the operator named in the environment (`server/src/billing/catalog.ts`).
  *
  * With billing off (`SPINE_BILLING`, the default, and every self-hosted instance) nothing here applies: `entitlementsOf` is not asked.
  */
@@ -17,7 +17,7 @@ export const PAGE = 1000;
 export const TRIAL_MONTHS = 3;
 /** The first this many paying accounts keep the founding price for as long as they stay subscribed. */
 export const FOUNDING_LIMIT = 500;
-/** A payment that failed leaves the account its plan this long (Paddle retries and reminds meanwhile). */
+/** A payment that failed leaves the account its plan this long (Stripe retries and reminds meanwhile). */
 export const PAST_DUE_GRACE_DAYS = 7;
 /** An account that left a family (or was removed) cannot take a seat in another for this long, so seats cannot be passed around; coming back to the same family is allowed. */
 export const SEAT_COOLDOWN_DAYS = 30;
@@ -85,6 +85,8 @@ export interface Entitlements {
   linking: boolean;
   /** Related documents by meaning (embeddings). */
   related: boolean;
+  /** Downloading a chosen set of documents as one PDF for an insurer or a doctor who wants files (a device-side export, so the page holds to it; nothing it costs the server). */
+  filesExport: boolean;
   /** A share link that waits for the owner to approve a visitor. */
   approvalMode: boolean;
   /**
@@ -132,16 +134,16 @@ export const TRIAL_TOTALS = { pages: 100, messages: 50, translated: 30 } as cons
  */
 export const PLANS: Record<PlanId, Omit<Entitlements, 'plan'>> = {
   // The trial has Premium's features, with visible totals for the whole trial: pages (the import is part of them), questions and translated pages.
-  trial: { allowance: allowances({ pages: TRIAL_TOTALS.pages, import: 0 }, { messages: TRIAL_TOTALS.messages, translated: TRIAL_TOTALS.translated }), memberCap: null, aiPeriod: 'trial', carryMonths: 1, vaultBytes: 5 * GB, liveShares: null, linkViews: UNLIMITED, linkBytes: UNLIMITED, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 6, keptPages: null, seats: 1, delegation: true },
+  trial: { allowance: allowances({ pages: TRIAL_TOTALS.pages, import: 0 }, { messages: TRIAL_TOTALS.messages, translated: TRIAL_TOTALS.translated }), memberCap: null, aiPeriod: 'trial', carryMonths: 1, vaultBytes: 5 * GB, liveShares: null, linkViews: UNLIMITED, linkBytes: UNLIMITED, translation: true, chat: true, linking: true, related: true, filesExport: true, approvalMode: true, profiles: 6, keptPages: null, seats: 1, delegation: true },
   // The free plan keeps and shows up to fifty pages, and reads three a month, which carry for three months (nine at most).
-  free: { allowance: allowances({ pages: 3, import: 0 }, false), memberCap: null, aiPeriod: 'month', carryMonths: CARRY_MONTHS, vaultBytes: GB, liveShares: 1, linkViews: 20, linkBytes: 250 * 1024 ** 2, translation: false, chat: false, linking: false, related: false, approvalMode: false, profiles: 1, keptPages: 50, seats: 1, delegation: false },
+  free: { allowance: allowances({ pages: 3, import: 0 }, false), memberCap: null, aiPeriod: 'month', carryMonths: CARRY_MONTHS, vaultBytes: GB, liveShares: 1, linkViews: 20, linkBytes: 250 * 1024 ** 2, translation: false, chat: false, linking: false, related: false, filesExport: false, approvalMode: false, profiles: 1, keptPages: 50, seats: 1, delegation: false },
   // Essential is for a history that has outgrown fifty pages and for asking questions: five pages a month and an import of 150, no translation.
-  essential: { allowance: allowances({ pages: 5, import: ESSENTIAL_IMPORT_PAGES }, true), memberCap: null, aiPeriod: 'month', carryMonths: CARRY_MONTHS, vaultBytes: 2 * GB, liveShares: null, linkViews: UNLIMITED, linkBytes: UNLIMITED, translation: false, chat: true, linking: true, related: true, approvalMode: true, profiles: 1, keptPages: null, seats: 1, delegation: false },
-  premium: { allowance: PREMIUM_ALLOWANCE, memberCap: null, aiPeriod: 'month', carryMonths: CARRY_MONTHS, vaultBytes: 5 * GB, liveShares: null, linkViews: UNLIMITED, linkBytes: UNLIMITED, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 1, keptPages: null, seats: 1, delegation: false },
+  essential: { allowance: allowances({ pages: 5, import: ESSENTIAL_IMPORT_PAGES }, true), memberCap: null, aiPeriod: 'month', carryMonths: CARRY_MONTHS, vaultBytes: 2 * GB, liveShares: null, linkViews: UNLIMITED, linkBytes: UNLIMITED, translation: false, chat: true, linking: true, related: true, filesExport: false, approvalMode: true, profiles: 1, keptPages: null, seats: 1, delegation: false },
+  premium: { allowance: PREMIUM_ALLOWANCE, memberCap: null, aiPeriod: 'month', carryMonths: CARRY_MONTHS, vaultBytes: 5 * GB, liveShares: null, linkViews: UNLIMITED, linkBytes: UNLIMITED, translation: true, chat: true, linking: true, related: true, filesExport: true, approvalMode: true, profiles: 1, keptPages: null, seats: 1, delegation: false },
   // Premium for up to six people, who may be children and may have accounts of their own: six accounts at most (the seats), six people in
   // all (each account's own included), and one pool for the lot (twice Premium's pages and 25 GB of storage, shared), with each account
   // held to Premium's pages. A larger plan would be another entry here.
-  family: { allowance: allowances({ pages: 60, import: 2 * IMPORT_PAGES }, true), memberCap: FAMILY_ACCOUNT, aiPeriod: 'month', carryMonths: CARRY_MONTHS, vaultBytes: 25 * GB, liveShares: null, linkViews: UNLIMITED, linkBytes: UNLIMITED, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 6, keptPages: null, seats: 6, delegation: true },
+  family: { allowance: allowances({ pages: 60, import: 2 * IMPORT_PAGES }, true), memberCap: FAMILY_ACCOUNT, aiPeriod: 'month', carryMonths: CARRY_MONTHS, vaultBytes: 25 * GB, liveShares: null, linkViews: UNLIMITED, linkBytes: UNLIMITED, translation: true, chat: true, linking: true, related: true, filesExport: true, approvalMode: true, profiles: 6, keptPages: null, seats: 6, delegation: true },
 };
 
 const addMonths = (iso: string, months: number): Date => {

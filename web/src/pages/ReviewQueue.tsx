@@ -5,10 +5,12 @@ import { documentByline, documentTitle, pageRef } from '../titles';
 import { useListTitles } from '../useListTitles';
 import SpineLog from '../components/SpineLog';
 import { useI18n } from '../i18n';
+import { useFormat } from '../format';
 import { useScreen } from '../components/ChatProvider';
 
 export default function ReviewQueue() {
   const { t, tn } = useI18n();
+  const format = useFormat();
   const [docs, setDocs] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const { titleOf } = useListTitles(docs.map(d => d.id), false);
@@ -34,6 +36,10 @@ export default function ReviewQueue() {
         </p>
       )}
 
+      {docs.some(d => (d.to_check ?? 0) > 0) && (
+        <p className="mb-6"><Link to="/review/fields" className="inline-block rounded-full border border-gray-300 bg-white px-4 py-1.5 text-sm text-gray-800 hover:bg-gray-50">{t('Check the {n} values read with low confidence', { n: docs.reduce((n, d) => n + (d.to_check ?? 0), 0) })}</Link></p>
+      )}
+
       {docs.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
           <p>{t('All caught up. No documents need review.')}</p>
@@ -53,7 +59,7 @@ export default function ReviewQueue() {
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-gray-900 truncate">{documentTitle({ ...doc, title: titleOf(doc) }, t)}</p>
                   <p className="text-xs text-gray-500 mt-0.5 truncate">
-                    {[documentByline(doc, t), pageRef(doc.page_start, doc.page_end, t) ?? '', doc.to_check ? tn(doc.to_check, '{n} value to check', '{n} values to check') : ''].filter(Boolean).join(' · ')}
+                    {[documentByline(doc, t, format.date), pageRef(doc.page_start, doc.page_end, t) ?? '', doc.to_check ? tn(doc.to_check, '{n} value to check', '{n} values to check') : ''].filter(Boolean).join(' · ')}
                   </p>
                 </div>
                 <span className="shrink-0 text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">

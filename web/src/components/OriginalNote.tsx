@@ -13,7 +13,7 @@ export default function OriginalNote({ documentLanguage }: { documentLanguage: s
   if (!editsOriginal(documentLanguage, lang)) return null;
   return (
     <p role="note" className="mb-3 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-900">
-      {t('You are correcting the original, in {language}. The {reader} version is a translation and is made again after you save.', { language: languageName(documentLanguage!), reader: languageName(screensIn(lang)) })}
+      {t('You are correcting the original, in {language}. The {reader} version is a translation and is made again after you save.', { language: languageName(documentLanguage!, lang), reader: languageName(screensIn(lang), lang) })}
     </p>
   );
 }

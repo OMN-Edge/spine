@@ -8,7 +8,7 @@ import { InvoiceError } from './issuer.js';
  * What the run showed: a repeated `Idempotency-Key` returns the first invoice (not in the reference, found by trying); `unitPrice` is without VAT; a Romanian
  * client must have a valid CUI or CNP (thirteen zeros are taken for a person who gave none), a client abroad takes "-" for its tax id; a 0% line needs a `taxCategory`; e-Factura is only for a Romanian client (a
  * foreign one's invoice is `not-required`, and asking is refused with `NON_ROMANIAN_CLIENT`); a series' number comes in `serialNumber` ("TEST-00001").
- * The payment is recorded on the invoice (`POST /invoices/{id}/payments`, listed by its `reference`), or Billyou shows it unpaid. Not seen: a submission accepted by ANAF (the sandbox simulates one and refused it for the account's own address), and the sandbox's own mail.
+ * The payment is recorded on the invoice (`POST /invoices/{id}/payments`, listed by its `reference`), or Billyou shows it unpaid. A submission accepted by the sandbox's simulated e-Factura was seen on 2026-11-18 (after Billyou gave the account its address); not seen: the sandbox's own mail, and a submission to ANAF's test platform ("Sandbox ANAF", which needs the SPV authorisation).
  */
 export interface BillyouSettings {
   apiKey: string;
@@ -82,7 +82,10 @@ export function billyouIssuer(settings: BillyouSettings): InvoiceIssuer {
     // A person gives no tax id: abroad it is "-"; in Romania thirteen zeros, which Billyou takes for an individual who gave no CNP (the sandbox accepted it; ANAF's own way for e-Factura is the accountant's to confirm).
     const taxId = buyer.taxId ?? (buyer.country.toUpperCase() === 'RO' ? '0000000000000' : '-');
     const found = (await call('GET', `/clients?search=${encodeURIComponent(buyer.email)}`)).data as unknown as Array<{ _id: string; name: string; taxId: string; contactEmails?: Array<{ email: string }> }> | undefined;
-    const same = Array.isArray(found) ? found.find(c => c.name.trim().toLowerCase() === buyer.name.trim().toLowerCase() && c.taxId === taxId && c.contactEmails?.some(e => e.email.toLowerCase() === buyer.email.toLowerCase())) : undefined;
+    const clients = Array.isArray(found) ? found : [];
+    // A tax id a company gave is one company however its contact is written, and Billyou refuses a second client under it (`CLIENT_DUPLICATE_TAX_ID`, 2026-11-18): the holder of it is the client. The sandbox does not apply the search (every client comes back), so what comes back is always checked.
+    const company = buyer.taxId ? clients.find(c => c.taxId.replace(/\s/g, '').toUpperCase() === taxId.replace(/\s/g, '').toUpperCase()) : undefined;
+    const same = company ?? clients.find(c => c.name.trim().toLowerCase() === buyer.name.trim().toLowerCase() && c.taxId === taxId && c.contactEmails?.some(e => e.email.toLowerCase() === buyer.email.toLowerCase()));
     if (same) return same._id;
     const made = await call('POST', '/clients', {
       name: buyer.name,

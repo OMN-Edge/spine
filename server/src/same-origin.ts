@@ -2,8 +2,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 
 /**
  * Where a request that changes something may come from (SECURITY.md S-50). The session cookie is SameSite strict, but a sibling subdomain counts
- * as the same site, so a script on the checkout's origin (which the docs put at `pay.<your domain>`, and which belongs to the payment provider's
- * page) could make a request the cookie goes with. A browser says where a request came from (`Sec-Fetch-Site`, and `Origin`), and a state-changing
+ * as the same site, so a script on a sibling subdomain (one that is not the app's own) could make a request the cookie goes with. A browser says where a request came from (`Sec-Fetch-Site`, and `Origin`), and a state-changing
  * request to the API that did not come from the app's own origin is refused. A client that is not a browser sends neither header and is not a
  * way to use someone's cookie, so it is not asked. The payment provider's notification is its own, checked by its signature.
  */

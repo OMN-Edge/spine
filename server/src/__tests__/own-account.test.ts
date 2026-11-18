@@ -63,14 +63,14 @@ describe('the texts a person agrees to', () => {
     expect(legalText('privacy', {})!.markdown).not.toContain('{{');
   });
 
-  it('has a refund policy that says what the terms say: Paddle sells, fourteen days, and no records are asked for', () => {
+  it('has a refund policy that says what the terms say: Stripe through the operator, fourteen days, and no records are asked for', () => {
     const terms = legalText('terms', {})!.markdown;
     const refunds = legalText('refunds', { SPINE_OPERATOR_NAME: 'Example SRL', SPINE_OPERATOR_CONTACT: 'billing@example.test' })!.markdown;
     expect(refunds).toContain('Example SRL');
     expect(refunds).toContain('billing@example.test');
     expect(terms).toMatch(/fourteen days/);
     expect(refunds).toMatch(/fourteen days/);
-    expect(refunds).toMatch(/Paddle sells/);
+    expect(refunds).toMatch(/Example SRL sells the plans and the top-up, through Stripe/);
     expect(refunds).toMatch(/Do not send us any document/);
   });
 });

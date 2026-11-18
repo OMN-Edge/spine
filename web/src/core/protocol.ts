@@ -27,8 +27,6 @@ export type ToWorker =
   /** Save now. Fails if the vault did not take it. */
   /** What the plan limits that only the app can count (`spine-core/plan-limits`): the limit on pages kept, or null for none. */
   | { id: number; type: 'planLimits'; pages: number | null }
-  /** The person is importing an archive: reading calls say so, and are drawn from the plan's one-off import allowance while it lasts. */
-  | { id: number; type: 'importMode'; on: boolean }
   | { id: number; type: 'save' }
   /** The reader of a streamed reply went away: stop writing it. */
   | { id: number; type: 'abort'; target: number };

@@ -120,7 +120,7 @@ export default function ProposalCard({ proposal }: { proposal: Proposal }) {
     }
 
     case 'confirm_grouping':
-      return shell(t('Confirm the grouping of “{name}”', { name: proposal.upload.file_name ?? proposal.upload.uploaded_at.slice(0, 10) }),
+      return shell(t('Confirm the grouping of “{name}”', { name: proposal.upload.file_name ?? format.date(proposal.upload.uploaded_at) }),
         <div className="space-y-1">
           <p>{t('Their fields and results are read now, once, and then they appear in the timeline and search:')}</p>{docList(proposal.documents)}
           <p className="text-gray-500">{t('Reading takes a while; I will not ask for anything else meanwhile.')}</p>
@@ -178,7 +178,7 @@ export default function ProposalCard({ proposal }: { proposal: Proposal }) {
         confirmBar(proposal.calls));
 
     case 'analyse_pages':
-      return shell(t('Find which pages of “{name}” belong together', { name: proposal.upload.file_name ?? proposal.upload.uploaded_at.slice(0, 10) }),
+      return shell(t('Find which pages of “{name}” belong together', { name: proposal.upload.file_name ?? format.date(proposal.upload.uploaded_at) }),
         <div className="space-y-1">
           <p>{t('The text of its {n} pages is compared on this device, then the AI model is asked to check each group of pages that look alike. The text goes to the model provider, as it did when the pages were read.', { n: proposal.pages })}</p>
           <p className="text-gray-500">{t('Nothing is changed. It runs in the background, and I will message you when the suggestions are ready.')}</p>
@@ -212,7 +212,7 @@ export default function ProposalCard({ proposal }: { proposal: Proposal }) {
       return shell(t('Change the link “{name}”', { name: proposal.link.label ?? t('A share link') }),
         <ul className="space-y-1 break-words">
           {proposal.label && <li><span className="text-gray-500">{t('Name')}:</span> <del className="text-gray-400">{proposal.label.from ?? t('(empty)')}</del> → <strong className="font-semibold">{proposal.label.to ?? t('(empty)')}</strong></li>}
-          {proposal.expires && <li><span className="text-gray-500">{t('Works until')}:</span> <del className="text-gray-400">{proposal.link.expires_at.slice(0, 10)}</del> → <strong className="font-semibold">{new Date(Date.now() + proposal.expires.to_days * 86_400_000).toISOString().slice(0, 10)}</strong> <span className="text-gray-400">({tn(proposal.expires.to_days, '{n} day from now', '{n} days from now')})</span></li>}
+          {proposal.expires && <li><span className="text-gray-500">{t('Works until')}:</span> <del className="text-gray-400">{format.date(proposal.link.expires_at)}</del> → <strong className="font-semibold">{format.date(new Date(Date.now() + proposal.expires.to_days * 86_400_000).toISOString())}</strong> <span className="text-gray-400">({tn(proposal.expires.to_days, '{n} day from now', '{n} days from now')})</span></li>}
           {proposal.added.map(d => <li key={`+${d.id}`}><span className="rounded bg-green-100 px-1 text-green-800">+</span> {title(d)}{d.doc_date ? ` (${format.date(d.doc_date)})` : ''}</li>)}
           {proposal.removed.map(d => <li key={`-${d.id}`}><span className="rounded bg-red-100 px-1 text-red-800">−</span> {title(d)}{d.doc_date ? ` (${format.date(d.doc_date)})` : ''}</li>)}
           {proposal.total_after !== null && <li className="text-gray-500">{tn(proposal.total_after, 'It will share {n} document.', 'It will share {n} documents.')}</li>}
@@ -259,7 +259,7 @@ function ShareCard({ proposal, state, setState, shell }: {
         label: label.trim() || undefined, scope: 'document_ids', scope_value: docs.map(d => d.id), expires_days: days,
         include_scans: scans, require_approval: approval, allow_chat: ask, language: proposal.language,
       });
-      setMade({ url: result.url, expires: result.expires_at.slice(0, 10) });
+      setMade({ url: result.url, expires: format.date(result.expires_at) });
       setState('done');
       announceChange();
     } catch (err) {

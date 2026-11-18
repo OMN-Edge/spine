@@ -7,8 +7,11 @@ import { useOnDataChanged } from '../dataChanged';
 import ShareOverview from '../components/ShareOverview';
 import { useProfiles } from '../profiles';
 import { buildOverview } from '../share-overview';
+import { makeShareSheet, sheetFonts, sheetLanguage } from '../share-sheet';
+import ClaimExport from '../components/ClaimExport';
 import ShareRequestCard from '../components/ShareRequestCard';
 import { LANGUAGES, languageChoice, useI18n } from '../i18n';
+import { useFormat } from '../format';
 import { useAuth } from '../auth';
 import { Combobox } from '../components/Combobox';
 import GuideTip from '../components/GuideTip';
@@ -37,6 +40,7 @@ export function describeScope(link: ShareLink, t: ReturnType<typeof useI18n>['t'
 /** The documents to pick from, searchable, with the ones already chosen ticked. */
 export function DocumentPicker({ docs, chosen, onChange }: { docs: Document[]; chosen: string[]; onChange: (ids: string[]) => void }) {
   const { t } = useI18n();
+  const format = useFormat();
   const { titleOf } = useListTitles(docs.map(d => d.id), false);
   const [query, setQuery] = useState('');
   const [type, setType] = useState('');
@@ -79,7 +83,7 @@ export function DocumentPicker({ docs, chosen, onChange }: { docs: Document[]; c
               <input type="checkbox" checked={picked.has(d.id)} onChange={() => toggle(d.id)} className="mt-1" />
               <span className="min-w-0 flex-1">
                 <span className="block text-sm text-gray-900 truncate">{documentTitle({ ...d, title: titleOf(d) }, t)}</span>
-                <span className="block text-xs text-gray-500 truncate">{documentByline(d, t)}</span>
+                <span className="block text-xs text-gray-500 truncate">{documentByline(d, t, format.date)}</span>
               </span>
             </label>
           </li>
@@ -90,7 +94,8 @@ export function DocumentPicker({ docs, chosen, onChange }: { docs: Document[]; c
 }
 
 export default function ShareLinks() {
-  const { t, tn } = useI18n();
+  const { t, tn, lang } = useI18n();
+  const format = useFormat();
   const [links, setLinks] = useState<ShareLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -117,6 +122,9 @@ export default function ShareLinks() {
   const [docs, setDocs] = useState<Document[] | null>(null);
   const [tagged, setTagged] = useState<number | null>(null);
   const [newUrl, setNewUrl] = useState('');
+  // A PDF sheet with the link and a code to scan, made on the device with the link when the owner ticks the box.
+  const [makeSheet, setMakeSheet] = useState(false);
+  const [sheetUrl, setSheetUrl] = useState('');
   // Whether the owner is told of a request by mail; without a mailer it waits on this page.
   const [mailNote, setMailNote] = useState<boolean | null>(null);
   const [requests, setRequests] = useState<ShareRequest[]>([]);
@@ -171,6 +179,14 @@ export default function ShareLinks() {
       });
       setNewUrl(result.url);
       setMailNote(result.approval_mail);
+      if (sheetUrl) URL.revokeObjectURL(sheetUrl);
+      setSheetUrl('');
+      if (makeSheet) {
+        try {
+          const pdf = await makeShareSheet({ url: result.url, language: sheetLanguage(form.language, lang), expiresAt: result.expires_at, by: overview?.by, note: overview?.note, needsApproval: form.require_approval }, await sheetFonts());
+          setSheetUrl(URL.createObjectURL(new Blob([pdf as BlobPart], { type: 'application/pdf' })));
+        } catch { setError(t('The link was made, but its PDF could not be.')); }
+      }
       setLinks(await api.share.list());
     } catch (err) {
       // The server rejects a scope it cannot fully resolve (P2), so the reason
@@ -209,7 +225,7 @@ export default function ShareLinks() {
                     <p className="text-sm font-medium text-gray-900">{link.label ?? describeScope(link, t, tn)}</p>
                     {link.label && <p className="text-xs text-gray-500 mt-0.5">{describeScope(link, t, tn)}</p>}
                     <p className="text-xs text-gray-500 mt-0.5">
-                      {link.revoked ? t('Revoked') : expired ? t('Expired') : t('Expires {date}', { date: link.expires_at.slice(0, 10) })}
+                      {link.revoked ? t('Revoked') : expired ? t('Expired') : t('Expires {date}', { date: format.date(link.expires_at) })}
                       {' · '}{tn(link.view_count, '{n} view', '{n} views')}
                       {' · '}{link.include_scans ? t('scans included') : t('details only')}
                       {link.language && <>{' · '}{languageName(link.language)}</>}
@@ -320,7 +336,7 @@ export default function ShareLinks() {
               {episodes.map(e => (
                 <label key={e.id} className="flex items-center gap-2 text-sm text-gray-700">
                   <input type="checkbox" checked={episodeIds.includes(e.id)} onChange={ev => setEpisodeIds(prev => (ev.target.checked ? [...prev, e.id] : prev.filter(x => x !== e.id)))} />
-                  <span className="truncate">{episodeName(e, t)}</span>
+                  <span className="truncate">{episodeName(e, t, format.date)}</span>
                   <span className="text-xs text-gray-400 shrink-0">{tn(e.document_ids.length, '{n} document', '{n} documents')}</span>
                 </label>
               ))}
@@ -383,6 +399,14 @@ export default function ShareLinks() {
             </span>
           </label>
 
+          <label className="flex items-start gap-2 text-sm text-gray-700">
+            <input type="checkbox" checked={makeSheet} onChange={e => setMakeSheet(e.target.checked)} className="mt-0.5" />
+            <span>
+              {t('Also make a PDF with the link and a code to scan')}
+              <span className="block text-xs text-gray-500">{t('One page to print or send, in the language of the link. It holds the link itself, so keep it as private as the link. It is made on your device.')}</span>
+            </span>
+          </label>
+
           <button
             type="submit"
             disabled={creating || !ready}
@@ -391,6 +415,10 @@ export default function ShareLinks() {
             {creating ? t('Creating…') : t('Create link')}
           </button>
         </form>
+
+        <div className="mt-4">
+          <ClaimExport scope={scope} scopeValue={scope === 'tag' ? tag : scope === 'document_ids' ? ids : scope === 'episode' ? episodeIds : scope === 'date_range' ? { from, to } : undefined} ready={ready} language={form.language} name={overview?.by} />
+        </div>
 
         {error && (
           <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
@@ -407,6 +435,7 @@ export default function ShareLinks() {
                 {t('Copy')}
               </button>
             </div>
+            {sheetUrl && <p className="mt-2 text-sm"><a href={sheetUrl} download="spine-share-link.pdf" className="text-brand-700 underline">{t('Download the PDF')}</a></p>}
             {mailNote === false && <p className="text-xs text-amber-700 mt-2">{t('No email is set up on this server, so requests are not emailed. They wait on this page.')}</p>}
           </div>
         )}

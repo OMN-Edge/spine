@@ -6,12 +6,12 @@ import { SERVER_ONLY_SECRETS, serverSecretsHeld } from '../relay/serve.js';
 /** SECURITY.md S-62: the relay's process holds nothing that only the server uses, and says so when it does. */
 describe('the secrets the relay does not need', () => {
   it('names each payment provider’s key and webhook secret beside the session secret and the mail key', () => {
-    expect([...SERVER_ONLY_SECRETS].sort()).toEqual(['ANAF_CLIENT_SECRET', 'BILLYOU_API_KEY', 'BREVO_API_KEY', 'PADDLE_API_KEY', 'PADDLE_WEBHOOK_SECRET', 'SESSION_SECRET', 'SPINE_EFACTURA_KEY', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET']);
+    expect([...SERVER_ONLY_SECRETS].sort()).toEqual(['ANAF_CLIENT_SECRET', 'BILLYOU_API_KEY', 'BREVO_API_KEY', 'SESSION_SECRET', 'SPINE_EFACTURA_KEY', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET']);
   });
 
   it('reports the ones that are set, by name and never by value, and not the blank ones', () => {
-    const env = { SESSION_SECRET: '', BREVO_API_KEY: ' ', PADDLE_API_KEY: 'pdl_live_apikey_value', PADDLE_WEBHOOK_SECRET: 'whsec_value', STRIPE_SECRET_KEY: 'sk_live_value', STRIPE_WEBHOOK_SECRET: '', SPINE_RELAY_SECRET: 'x'.repeat(40) };
-    expect(serverSecretsHeld(env)).toEqual(['PADDLE_API_KEY', 'PADDLE_WEBHOOK_SECRET', 'STRIPE_SECRET_KEY']);
+    const env = { SESSION_SECRET: '', BREVO_API_KEY: ' ', STRIPE_SECRET_KEY: 'sk_live_value', STRIPE_WEBHOOK_SECRET: '', SPINE_RELAY_SECRET: 'x'.repeat(40) };
+    expect(serverSecretsHeld(env)).toEqual(['STRIPE_SECRET_KEY']);
     expect(JSON.stringify(serverSecretsHeld(env))).not.toContain('value');
     expect(serverSecretsHeld({})).toEqual([]);
   });

@@ -33,7 +33,9 @@ export default function UploadNoticeMessage({ notice, busy, onAsk, onLeave }: { 
       {notice.documents.length > 0 && (
         <ul className="mt-2 space-y-0.5 text-xs text-gray-600">
           {notice.documents.map(d => (
-            <li key={d.id} className="truncate">· <Link to={`/documents/${d.id}`} onClick={() => { if (window.matchMedia('(max-width: 767px)').matches) onLeave(); }} className="hover:text-brand-700 hover:underline">{notice.reading_pending && d.page_start != null ? `${d.title ? `${d.title} · ` : ''}${pageRange(d.page_start, d.page_end!, t)}` : documentTitle(d, t)}</Link>{d.doc_date ? ` (${d.doc_date})` : ''}</li>
+            <li key={d.id} className="truncate">· {notice.reading_pending
+              ? <span className="text-gray-500">{notice.reading_pending && d.page_start != null ? `${d.title ? `${d.title} · ` : ''}${pageRange(d.page_start, d.page_end!, t)}` : documentTitle(d, t)}</span>
+              : <Link to={`/documents/${d.id}`} onClick={() => { if (window.matchMedia('(max-width: 767px)').matches) onLeave(); }} className="hover:text-brand-700 hover:underline">{notice.reading_pending && d.page_start != null ? `${d.title ? `${d.title} · ` : ''}${pageRange(d.page_start, d.page_end!, t)}` : documentTitle(d, t)}</Link>}</li>
           ))}
           {notice.more_documents > 0 && <li>· {tn(notice.more_documents, 'and {n} more', 'and {n} more')}</li>}
         </ul>

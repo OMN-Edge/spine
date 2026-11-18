@@ -624,10 +624,10 @@ const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, 
 /** What every list the server pages says beside its rows: how many there are in all, and the page and the page size it used (the server's `routes/paging.ts`). */
 export interface Paged { total: number; page: number; limit: number }
 
-/** What each plan costs, as Paddle says; a plan the operator does not sell is absent. Nothing here is written in the app. */
+/** What each plan costs, as Stripe says; a plan the operator does not sell is absent. Nothing here is written in the app. */
 export interface Prices { currency: string; essential?: { year: number; month: number }; premium: { year: number; month: number }; founding: { year: number }; family?: { year: number; month: number }; /** What the things bought once cost, for the ones sold here. */ addons?: { page_topup?: number } }
-/** `prices` is null while Paddle cannot say what they are: the screens then show no amount and offer no purchase. */
-export interface Pricing { enabled: boolean; prices?: Prices | null; founding_left?: number; /** Essential is sold here. */ essential?: boolean; /** The family plan is sold here. */ family?: boolean; /** Who sells: the payment provider (Paddle, as merchant of record) or the operator (with Stripe), and the operator's name. */ seller?: 'provider' | 'operator'; seller_name?: string | null }
+/** `prices` is null while Stripe cannot say what they are: the screens then show no amount and offer no purchase. */
+export interface Pricing { enabled: boolean; prices?: Prices | null; founding_left?: number; /** Essential is sold here. */ essential?: boolean; /** The family plan is sold here. */ family?: boolean; /** Who sells: the operator, and the operator's name. */ seller?: 'operator'; seller_name?: string | null }
 /** One meter of the plan: pages for reading, messages for chat, pages for translation. `own_*` only on a plan whose seats are shared. */
 export interface MeterView { used: number; /** What each month adds where unused pages carry over (the plan allowance is then what can be added by the end of this month). */ monthly?: number; /** Null where only adding is limited and using is only counted. */ allowance: number | null; own_used?: number; own_cap?: number }
 /** What the account page shows of the plan (the server's `GET /api/billing`). */
@@ -635,7 +635,7 @@ export interface BillingView {
   enabled: boolean;
   plan?: 'trial' | 'free' | 'essential' | 'premium' | 'family';
   trial_ends_at?: string | null;
-  subscription?: { status: string; interval: 'month' | 'year' | null; founding: boolean; ends_at: string | null; renews_at: string | null; provider: 'paddle' | 'stripe' | 'operator' } | null;
+  subscription?: { status: string; interval: 'month' | 'year' | null; founding: boolean; ends_at: string | null; renews_at: string | null; provider: 'stripe' | 'operator' } | null;
   can_manage?: boolean;
   /** What the AI has done, in three meters: each in its own unit, the plan's (a pool on a plan with seats), and an account's own against its cap there. */
   /** What the plan lets the share links send in a month: times opened, and bytes (with what the owner's own devices read). */
@@ -649,10 +649,10 @@ export interface BillingView {
   /** The things bought once: whether this account may buy each now, and what is left of it. */
   addons?: { page_topup: { buyable: boolean; pages_left: number } };
   /** The link this account can send, what each side gets, and how many of the most it has been rewarded for. */
-  invite?: { token: string; pages: number; rewarded: number; max: number };
-  features?: { translation: boolean; chat: boolean; linking: boolean; related: boolean; approval_mode: boolean; delegation: boolean };
+  invite?: { token: string; pages: number; reward_pages: number; rewarded: number; max: number };
+  features?: { translation: boolean; chat: boolean; linking: boolean; related: boolean; files_export: boolean; approval_mode: boolean; delegation: boolean };
   people?: { limit: number };
-  limits?: { pages: number | null };
+  limits?: { pages: number | null; /** The pages of it that invitations added to the plan's own. */ pages_bonus?: number };
   /** A purchase asks for the billing details first (the operator issues the invoices). */
   billing_details?: boolean;
   /** Whether to offer withdrawing from the purchase (the fourteen days), until when, and whether a request is open. */
@@ -739,6 +739,8 @@ export const api = {
   emergency: {
     get: () => req<EmergencyView>('/api/emergency'),
     save: (card: import('spine-core/emergency').CardContent) => put<EmergencyView>('/api/emergency', card),
+    /** The card's allergies, conditions, medicines and notes in a second language, for the owner to correct; nothing is saved by asking. */
+    translate: (language: string) => post<{ second: NonNullable<import('spine-core/emergency').CardContent['second']> }>('/api/emergency/translate', { language }),
     publish: () => post<EmergencyView>('/api/emergency/publish', undefined),
     unpublish: () => del<EmergencyView>('/api/emergency/publish'),
     /** The owner looked and it is still right. */
@@ -1209,6 +1211,8 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(body),
       }),
+    /** The documents a scope picks, as a link of that scope would share them, with nothing made (the file export takes exactly these). */
+    scopeDocuments: (scope: string, scopeValue: unknown) => req<Array<{ id: string; title: string | null; doc_date: string | null; provider: string | null; doc_type: string | null; ai_summary: string | null; language: string | null; page_start: number; page_end: number }>>('/api/share-links/scope-documents', { method: 'POST', body: JSON.stringify({ scope, scope_value: scopeValue }) }),
     revoke: (id: string) => req(`/api/share-links/${id}`, { method: 'DELETE' }),
     detail: (id: string) => req<ShareLinkDetail>(`/api/share-links/${id}`),
     change: (id: string, change: ShareLinkChange) => req<{ ok: true }>(`/api/share-links/${id}`, { method: 'PATCH', body: JSON.stringify(change) }),

@@ -6,6 +6,7 @@ import { buildTestApp, loginAs, loginSession, testShareHost } from './helpers/ap
 import { createTestUser, OWNER_ID } from './helpers/seed.js';
 import { resetMailer, type MailMessage } from '../mail/index.js';
 import { remindCardReviews } from '../routes/shared.js';
+import { resetChatLlm, type ChatLlm, type TranslationBundle } from 'spine-core/llm/index.js';
 
 const records = holdsRecordsInThisRun();
 const CARD_ID = 'c0ffee00-0000-4000-8000-000000000001';
@@ -47,6 +48,43 @@ describe.runIf(records)('the owner’s emergency card', () => {
     expect(saved.offline.text).toContain('Allergies: penicillin');
     expect((await call('PUT', '/api/emergency', { name: 'x'.repeat(500) })).statusCode).toBe(400);
     expect((await call('GET', '/api/emergency')).json().card.name).toBe('Jane Example');
+  });
+
+  describe('in a second language', () => {
+    const asked: Array<{ bundle: TranslationBundle; target: string }> = [];
+    const fake = { translate: async (bundle: TranslationBundle, target: string) => { asked.push({ bundle, target }); return { ...bundle, notes: bundle.notes && `DE[${bundle.notes}]`, measurements: bundle.measurements.map(m => ({ id: m.id, name: `DE[${m.name}]` })) }; } } as unknown as ChatLlm;
+    beforeEach(() => { asked.length = 0; resetChatLlm(fake); process.env.SPINE_TRANSLATION = 'on'; });
+    afterAll(() => { resetChatLlm(); delete process.env.SPINE_TRANSLATION; });
+
+    it('is the card’s own words translated once, for the owner to correct, and nothing is saved by asking', async () => {
+      await call('PUT', '/api/emergency', { ...CARD_BODY, conditions: ['hipotiroidism'], medications: ['Levotiroxină 50 µg'], notes: 'Port stimulator' });
+      const res = await call('POST', '/api/emergency/translate', { language: 'de' });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().second).toEqual({ language: 'de', allergies: ['DE[penicillin]'], conditions: ['DE[hipotiroidism]'], medications: ['DE[Levotiroxină 50 µg]'], notes: 'DE[Port stimulator]' });
+      expect(asked).toHaveLength(1);
+      expect(asked[0]!.target).toBe('German');
+      // Names and phone numbers are not sent to the model.
+      expect(JSON.stringify(asked[0]!.bundle)).not.toContain('Jane Example');
+      expect(JSON.stringify(asked[0]!.bundle)).not.toContain('+40 700');
+      expect((await call('GET', '/api/emergency')).json().card.second).toBeNull();
+    });
+
+    it('is kept with the card once the owner saves it, and is in the code that works with no signal', async () => {
+      const second = { language: 'de', allergies: ['Penicillin'], conditions: [], medications: [], notes: '' };
+      const saved = (await call('PUT', '/api/emergency', { ...CARD_BODY, second })).json();
+      expect(saved.card.second).toMatchObject({ language: 'de', allergies: ['Penicillin'] });
+      expect(saved.offline.text).toContain('Allergies: penicillin');
+      expect(saved.offline.text).toContain('Allergien: Penicillin');
+    });
+
+    it('is refused for a language the headings are not written in, and says so where translating is off', async () => {
+      expect((await call('POST', '/api/emergency/translate', { language: 'xx' })).statusCode).toBe(400);
+      process.env.SPINE_TRANSLATION = 'off';
+      const off = await call('POST', '/api/emergency/translate', { language: 'de' });
+      expect(off.statusCode).toBe(409);
+      expect(off.json().code).toBe('translation_off');
+      expect((await app.inject({ method: 'POST', url: '/api/emergency/translate', payload: { language: 'de' } })).statusCode).toBe(401);
+    });
   });
 
   it('is not sent anywhere until it is turned on, and not turned on while empty', async () => {

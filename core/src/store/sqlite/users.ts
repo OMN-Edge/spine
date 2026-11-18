@@ -166,6 +166,7 @@ export function userRepository(db: Database): UserRepository {
     'vault_keys',
     'user_recovery_codes',
     'user_totp',
+    'invitations',
   ];
   const deleteFrom = OWNED_TABLES.filter(table => tables.has(table)).map(table => db.prepare(`DELETE FROM ${table} WHERE user_id = ?`));
   // Grants and invitations name the account as the owner or as the delegate, not as `user_id`.
@@ -175,6 +176,8 @@ export function userRepository(db: Database): UserRepository {
   const deleteSeats = db.prepare('DELETE FROM family_members WHERE member_id = ? OR organizer_id = ?');
   const deleteSeatInvites = db.prepare('DELETE FROM family_invites WHERE organizer_id = ?');
   const deleteSeatLeft = db.prepare('DELETE FROM family_left WHERE member_id = ? OR organizer_id = ?');
+  // An account that invited others: the links to them go with it.
+  const deleteInviterLinks = tables.has('invitations') ? db.prepare('DELETE FROM invitations WHERE inviter_id = ?') : null;
   const deleteUser = db.prepare('DELETE FROM users WHERE id = ?');
   // What a wipe keeps: the account and how it signs in, its plan, and what it used (the counts are the plan's and the instance's).
   const KEPT_BY_WIPE = new Set(['model_usage', 'ai_usage', 'subscriptions', 'billing_customers', 'user_devices', 'user_passkeys', 'user_recovery_codes', 'user_totp']);
@@ -195,6 +198,7 @@ export function userRepository(db: Database): UserRepository {
     deleteSeats.run(id, id);
     deleteSeatInvites.run(id);
     deleteSeatLeft.run(id, id);
+    deleteInviterLinks?.run(id);
     deleteUser.run(id);
   });
 
