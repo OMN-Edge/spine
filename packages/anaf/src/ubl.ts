@@ -31,6 +31,9 @@ export interface UblSeller {
   /** Where the company banks: shown on the invoice for a reader, not part of the XML (a card payment has no payee account). */
   bank?: string;
   iban?: string;
+  /** For the page only: a phone number, and every account the company banks with (one for each currency, say), each with its bank and BIC. Where there are accounts they are shown instead of `bank` and `iban`. */
+  phone?: string;
+  accounts?: Array<{ iban: string; bank?: string; bic?: string; currency?: string }>;
 }
 
 export interface UblBuyer {

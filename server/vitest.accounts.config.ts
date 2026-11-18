@@ -11,7 +11,7 @@ export default mergeConfig(base, defineConfig({
     setupFiles: ['../core/src/testing/use-accounts-store.ts'],
     include: [
       'accounts', 'auth', 'sessions', 'second-factor', 'email-second-factor', 'totp', 'passkeys', 'vault', 'relay-routes', 'shared', 'share-shell', 'own-account',
-      'backup', 'cli', 'config', 'mail', 'billing', 'billing-invoice-queue', 'billing-details', 'billing-invoicing-operator', 'billing-invoicing-admin', 'billing-efactura', 'billing-withdrawal', 'paging', 'growth', 'signup-caps', 'objects', 'emergency', 'delegation', 'family', 'links', 'reminder-dates', 'fair-use', 'carry', 'shared-limits', 'jobs',
+      'backup', 'cli', 'config', 'mail', 'billing', 'billing-invoice-queue', 'billing-details', 'billing-invoicing-operator', 'billing-invoicing-admin', 'billing-efactura', 'billing-withdrawal', 'billing-own-pdf', 'paging', 'growth', 'signup-caps', 'objects', 'emergency', 'delegation', 'family', 'links', 'reminder-dates', 'fair-use', 'carry', 'shared-limits', 'jobs',
     ].map(name => `src/__tests__/${name}.test.ts`),
   },
 }));

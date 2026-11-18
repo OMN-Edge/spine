@@ -54,6 +54,14 @@ describe('the page reference of a document', () => {
   });
 });
 
+describe('the cards of an upload', () => {
+  it('leave out the page of a one-page document, as every other card does', () => {
+    const upload = read('pages/Upload.tsx');
+    expect(upload).toContain("import { documentTitle, pageRef } from '../titles'");
+    expect(upload).not.toMatch(/\bpageRange\(/);
+  });
+});
+
 describe('the timeline on a phone', () => {
   it('opens its filters from one button that says how many are on, closes them on Apply, and leaves room under the list for the pills', () => {
     const timeline = read('pages/Timeline.tsx');

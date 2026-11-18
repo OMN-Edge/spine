@@ -980,6 +980,9 @@ export interface BillingRepository {
   /** The invoices that are waiting (to be issued, or to be sent to e-Factura) and whose time has come, oldest first. */
   invoicesDue(now: string, limit: number): Promise<QueuedInvoice[]>;
   invoice(ref: string): Promise<QueuedInvoice | null>;
+  /** The invoice as a person reads it (JSON), kept once for a payment whose invoice a service issued, and read for Spine's own PDF; the first one kept stands, since an invoice does not change. */
+  keepInvoiceDocument(ref: string, document: string, at: string): Promise<void>;
+  invoiceDocument(ref: string): Promise<string | null>;
   /** A buyer's request to withdraw from a purchase: one open at a time for an account (false if there is one). */
   requestWithdrawal(id: string, userId: string, at: string): Promise<boolean>;
   /** The requests in a state (every state if null), newest first. */

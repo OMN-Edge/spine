@@ -70,6 +70,15 @@ function buyerOf(draft: InvoiceDraft['buyer']): UblBuyer {
   };
 }
 
+/** The document an invoice is, from a draft, the number a service gave it and the seller: what Spine's own PDF is made from where the service issued the invoice (`kind` is a credit note's, with `reverses` naming the invoice). */
+export function documentOfDraft(input: { draft: InvoiceDraft; id: string; issueDate: string; seller: UblSeller; zeroVat: ZeroVat; rate?: number | undefined; note?: string | undefined }): UblDocument {
+  const { draft } = input;
+  return {
+    kind: 'invoice', id: input.id, issueDate: input.issueDate, currency: draft.currency.toUpperCase(), ...(input.rate ? { rate: input.rate } : {}),
+    seller: input.seller, buyer: buyerOf(draft.buyer), lines: netLines(draft.lines), zeroVat: input.zeroVat, paid: true, ...(input.note ? { note: input.note } : {}),
+  };
+}
+
 export function efacturaIssuer(settings: EfacturaSettings, store: Store, link: AnafLink): EfacturaIssuer {
   const now = () => (settings.now ?? (() => new Date()))();
   const fetcher: typeof fetch = (input, init) => (settings.fetcher ?? fetch)(input, init);

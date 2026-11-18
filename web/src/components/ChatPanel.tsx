@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
-import { type ChatSource, type ChatStep } from '../api';
+import { api, type ChatSource, type ChatStep, type TrendName } from '../api';
 import { useFormat } from '../format';
 import { useI18n } from '../i18n';
 import { pageName, useChat } from './ChatProvider';
@@ -13,15 +13,10 @@ import AttachmentMessage from './AttachmentMessage';
 import { ChatWelcome, HelpMessage } from './ChatWelcome';
 import { routeFiles } from '../scan/route';
 import { useGuide } from '../guide';
+import { suggestionsFor } from '../chat-suggestions';
 import AnswerSources, { chipClass, numbered, sourceFor, useSourceName } from './AnswerSources';
 
 const hrefOf = (s: ChatSource) => `/documents/${s.id}${s.section ? `?section=${s.section}` : ''}`;
-
-/** Questions worth asking from where the person is. */
-function suggestionsFor(page: string, t: (s: string) => string): string[] {
-  if (page === 'document') return [t('Explain this document in plain words'), t('Is anything outside the reference range?')];
-  return [t('What was my last hemoglobin, and how did it change?'), t('Which tests did the cardiologist ask for, and where are the results?'), t('Prepare a link to share my latest cardiology visit and its tests')];
-}
 
 /**
  * The chat, on every page: a button in the corner that opens a panel beside the page. It knows what page the person is on
@@ -50,6 +45,22 @@ export default function ChatPanel() {
   const [entered, setEntered] = useState(false);
   const end = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
+  // On a phone the button is a round icon that steps aside while the page is read downwards, so it never rests on a card's text; scrolling up brings it back.
+  // What the person has, for the questions the chat offers outside a document.
+  const [tests, setTests] = useState<TrendName[]>([]);
+  useEffect(() => { if (chat?.open) void api.trends.names().then(setTests).catch(() => undefined); }, [chat?.open]);
+  const [tucked, setTucked] = useState(false);
+  useEffect(() => {
+    let last = window.scrollY;
+    const onScroll = () => {
+      const y = window.scrollY;
+      if (Math.abs(y - last) < 8) return;
+      setTucked(y > last && y > 80);
+      last = y;
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   // The box grows with what is typed (up to a limit, then it scrolls) and shrinks back once the message is sent.
   useEffect(() => {
@@ -130,15 +141,15 @@ export default function ChatPanel() {
       )}
       <button
         type="button" onClick={() => chat.setOpen(true)} aria-label={chat.unread > 0 ? t('Ask your records') + ` (${chat.unread})` : t('Ask your records')}
-        className="[body[data-nav-open]_&]:hidden fixed bottom-24 right-5 z-30 flex items-center sm:bottom-5 gap-2 rounded-full border border-gray-200 bg-white/95 py-2.5 pl-3.5 pr-4 text-sm text-gray-700 shadow-md backdrop-blur transition hover:shadow-lg hover:text-gray-900"
+        className={`[body[data-nav-open]_&]:hidden fixed bottom-24 right-5 z-30 flex items-center sm:bottom-5 gap-2 rounded-full border border-gray-200 bg-white/95 p-3 sm:py-2.5 sm:pl-3.5 sm:pr-4 text-sm text-gray-700 shadow-md backdrop-blur transition hover:shadow-lg hover:text-gray-900 ${tucked ? 'max-sm:pointer-events-none max-sm:translate-y-24 max-sm:opacity-0' : ''}`}
       >
         <svg viewBox="0 0 24 24" className="h-4 w-4 text-brand-600" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8L12 3zM18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8L18 15z" />
         </svg>
-        {t('Ask')}
+        <span className="hidden sm:inline">{t('Ask')}</span>
         {/* On a phone the note beside the button would cover a card: a dot says there is one, and the button opens it. */}
-        {offerWelcome && <span className="sm:hidden h-2 w-2 rounded-full bg-brand-600" aria-hidden="true" />}
-        {chat.unread > 0 && <span className="ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-600 px-1 text-[10px] font-semibold text-white" aria-hidden="true">{chat.unread}</span>}
+        {offerWelcome && <span className="sm:hidden absolute right-0.5 top-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-brand-600" aria-hidden="true" />}
+        {chat.unread > 0 && <span className="max-sm:absolute max-sm:-right-1 max-sm:-top-1 sm:ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-600 px-1 text-[10px] font-semibold text-white" aria-hidden="true">{chat.unread}</span>}
       </button>
       </>
     );
@@ -225,7 +236,7 @@ export default function ChatPanel() {
         <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
           {turns.length === 0 && !busy && (
             <div className="space-y-4">
-              <ChatWelcome suggestions={suggestionsFor(chat.page, t)} busy={busy} onAsk={q => void chat.send(q)} onHelp={topic => void chat.help(topic)} onLeave={follow} />
+              <ChatWelcome suggestions={suggestionsFor(chat.page, t, tests)} busy={busy} onAsk={q => void chat.send(q)} onHelp={topic => void chat.help(topic)} onLeave={follow} />
               <p className="text-xs leading-relaxed text-gray-400">{t('Answers come only from your own documents, with links to where they came from. They are a reading of what the documents say, not medical advice: ask your doctor what they mean for you.')}</p>
               <p className="text-xs leading-relaxed text-gray-400">{t('Each question sends your words and the summaries and results of the matching documents (and the text of a few pages when you ask it to sort an upload) to the AI model this server uses. Your conversations are kept in your archive, in History, until you delete them.')}</p>
             </div>

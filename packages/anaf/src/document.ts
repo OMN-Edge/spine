@@ -39,10 +39,10 @@ export function languageOf(country: string): DocumentLanguage {
 }
 
 const LABELS = {
-  en: { noVat: 'No VAT charged', invoice: 'Invoice', credit: 'Credit note', issued: 'Issue date', currency: 'Currency', payment: 'Payment', card: 'Card', seller: 'Seller', buyer: 'Buyer', cif: 'Tax ID', reg: 'Trade reg. no.', bank: 'Bank', iban: 'IBAN', person: 'Private person', item: 'Description', qty: 'Qty', unit: 'Unit price excl. VAT', net: 'Amount excl. VAT', vat: 'VAT', subtotal: 'Total excl. VAT', total: 'Total', paid: 'Paid by card on', refunded: 'Refunded to the payment method', due: 'Amount due', rate: 'National Bank of Romania rate', vatLei: 'VAT in lei', reverses: 'Reverses invoice', efactura: 'Sent to the RO e-Factura system, index', tradeName: 'is a trade name of' },
-  ro: { noVat: 'Fără TVA', invoice: 'Factură', credit: 'Factură storno', issued: 'Data emiterii', currency: 'Moneda', payment: 'Plata', card: 'Card', seller: 'Furnizor', buyer: 'Cumpărător', cif: 'CIF', reg: 'Nr. Reg. Com.', bank: 'Banca', iban: 'IBAN', person: 'Persoană fizică', item: 'Denumire', qty: 'Cant.', unit: 'Preț unitar fără TVA', net: 'Valoare fără TVA', vat: 'TVA', subtotal: 'Total fără TVA', total: 'Total', paid: 'Achitată cu cardul la', refunded: 'Rambursat pe metoda de plată', due: 'Rest de plată', rate: 'Cursul BNR', vatLei: 'TVA în lei', reverses: 'Stornează factura', efactura: 'Transmisă în sistemul RO e-Factura, index', tradeName: 'este o denumire comercială a' },
-  fr: { noVat: 'Sans TVA', invoice: 'Facture', credit: 'Avoir', issued: 'Date d’émission', currency: 'Devise', payment: 'Paiement', card: 'Carte', seller: 'Vendeur', buyer: 'Acheteur', cif: 'N° fiscal', reg: 'N° registre du commerce', bank: 'Banque', iban: 'IBAN', person: 'Particulier', item: 'Désignation', qty: 'Qté', unit: 'Prix unitaire HT', net: 'Montant HT', vat: 'TVA', subtotal: 'Total HT', total: 'Total', paid: 'Payée par carte le', refunded: 'Remboursé sur le moyen de paiement', due: 'Reste à payer', rate: 'Cours de la Banque nationale de Roumanie', vatLei: 'TVA en lei', reverses: 'Annule la facture', efactura: 'Transmise au système RO e-Factura, index', tradeName: 'est un nom commercial de' },
-  de: { noVat: 'Ohne MwSt.', invoice: 'Rechnung', credit: 'Gutschrift', issued: 'Rechnungsdatum', currency: 'Währung', payment: 'Zahlung', card: 'Karte', seller: 'Verkäufer', buyer: 'Käufer', cif: 'Steuer-Nr.', reg: 'Handelsreg.-Nr.', bank: 'Bank', iban: 'IBAN', person: 'Privatperson', item: 'Bezeichnung', qty: 'Menge', unit: 'Einzelpreis netto', net: 'Betrag netto', vat: 'MwSt.', subtotal: 'Summe netto', total: 'Gesamt', paid: 'Mit Karte bezahlt am', refunded: 'Auf die Zahlungsart erstattet', due: 'Offener Betrag', rate: 'Kurs der Rumänischen Nationalbank', vatLei: 'MwSt. in Lei', reverses: 'Storniert Rechnung', efactura: 'An das System RO e-Factura übermittelt, Index', tradeName: 'ist ein Handelsname von' },
+  en: { noVat: 'No VAT charged', unsigned: 'Valid without stamp or signature (Fiscal Code art. 319 para. (29))', invoice: 'Invoice', credit: 'Credit note', issued: 'Issue date', currency: 'Currency', payment: 'Payment', card: 'Card', seller: 'Seller', buyer: 'Buyer', cif: 'Tax ID', reg: 'Trade reg. no.', bank: 'Bank', iban: 'IBAN', person: 'Private person', item: 'Description', qty: 'Qty', unit: 'Unit price excl. VAT', net: 'Amount excl. VAT', vat: 'VAT', subtotal: 'Total excl. VAT', total: 'Total', paid: 'Paid by card on', refunded: 'Refunded to the payment method', due: 'Amount due', rate: 'National Bank of Romania rate', vatLei: 'VAT in lei', reverses: 'Reverses invoice', efactura: 'Sent to the RO e-Factura system, index', tradeName: 'is a trade name of' },
+  ro: { noVat: 'Fără TVA', unsigned: 'Factură valabilă fără ștampilă și semnătură (Codul fiscal art. 319 alin. (29))', invoice: 'Factură', credit: 'Factură storno', issued: 'Data emiterii', currency: 'Moneda', payment: 'Plata', card: 'Card', seller: 'Furnizor', buyer: 'Cumpărător', cif: 'CIF', reg: 'Nr. Reg. Com.', bank: 'Banca', iban: 'IBAN', person: 'Persoană fizică', item: 'Denumire', qty: 'Cant.', unit: 'Preț unitar fără TVA', net: 'Valoare fără TVA', vat: 'TVA', subtotal: 'Total fără TVA', total: 'Total', paid: 'Achitată cu cardul la', refunded: 'Rambursat pe metoda de plată', due: 'Rest de plată', rate: 'Cursul BNR', vatLei: 'TVA în lei', reverses: 'Stornează factura', efactura: 'Transmisă în sistemul RO e-Factura, index', tradeName: 'este o denumire comercială a' },
+  fr: { noVat: 'Sans TVA', unsigned: 'Valable sans cachet ni signature (Code fiscal art. 319 al. (29))', invoice: 'Facture', credit: 'Avoir', issued: 'Date d’émission', currency: 'Devise', payment: 'Paiement', card: 'Carte', seller: 'Vendeur', buyer: 'Acheteur', cif: 'N° fiscal', reg: 'N° registre du commerce', bank: 'Banque', iban: 'IBAN', person: 'Particulier', item: 'Désignation', qty: 'Qté', unit: 'Prix unitaire HT', net: 'Montant HT', vat: 'TVA', subtotal: 'Total HT', total: 'Total', paid: 'Payée par carte le', refunded: 'Remboursé sur le moyen de paiement', due: 'Reste à payer', rate: 'Cours de la Banque nationale de Roumanie', vatLei: 'TVA en lei', reverses: 'Annule la facture', efactura: 'Transmise au système RO e-Factura, index', tradeName: 'est un nom commercial de' },
+  de: { noVat: 'Ohne MwSt.', unsigned: 'Gültig ohne Stempel und Unterschrift (Steuergesetzbuch Art. 319 Abs. (29))', invoice: 'Rechnung', credit: 'Gutschrift', issued: 'Rechnungsdatum', currency: 'Währung', payment: 'Zahlung', card: 'Karte', seller: 'Verkäufer', buyer: 'Käufer', cif: 'Steuer-Nr.', reg: 'Handelsreg.-Nr.', bank: 'Bank', iban: 'IBAN', person: 'Privatperson', item: 'Bezeichnung', qty: 'Menge', unit: 'Einzelpreis netto', net: 'Betrag netto', vat: 'MwSt.', subtotal: 'Summe netto', total: 'Gesamt', paid: 'Mit Karte bezahlt am', refunded: 'Auf die Zahlungsart erstattet', due: 'Offener Betrag', rate: 'Kurs der Rumänischen Nationalbank', vatLei: 'MwSt. in Lei', reverses: 'Storniert Rechnung', efactura: 'An das System RO e-Factura übermittelt, Index', tradeName: 'ist ein Handelsname von' },
 } as const;
 type Labels = (typeof LABELS)['en'];
 
@@ -142,17 +142,19 @@ export function renderInvoicePdf(doc: UblDocument, options: DocumentOptions = {}
     }
     return ly;
   };
+  // Every account the company banks with; the single bank and IBAN of an older settings stand as the one.
+  const accounts = s.accounts ?? (s.iban ? [{ iban: s.iban, ...(s.bank ? { bank: s.bank } : {}) }] : []);
   const sellerLines = [
     s.name,
     `${both('cif')}: ${s.vatId ?? s.cif}`,
     ...(s.registerNo ? [`${both('reg')}: ${s.registerNo}`] : []),
     s.street,
-    `${s.city}${s.postalCode ? `, ${s.postalCode}` : ''}, România`,
-    ...(s.bank ? [`${both('bank')}: ${s.bank}`] : []),
-    ...(s.iban ? [`${one.iban}: ${s.iban}`] : []),
+    `${[s.city, s.postalCode, s.county ? `RO-${s.county}` : '', 'România'].filter(Boolean).join(', ')}`,
+    ...accounts.flatMap(a => [`${one.iban}: ${a.iban}${a.currency ? ` (${a.currency})` : ''}`, ...(a.bank || a.bic ? [[a.bank, a.bic ? `BIC ${a.bic}` : ''].filter(Boolean).join(' · ')] : [])]),
     ...(s.email ? [s.email] : []),
+    ...(s.phone ? [s.phone] : []),
   ];
-  const place = [b.city, b.postalCode].filter(Boolean).join(', ');
+  const place = [b.city, b.country.toUpperCase() === 'RO' && b.county ? `RO-${b.county}` : '', b.postalCode].filter(Boolean).join(', ');
   const buyerLines = [
     b.name,
     ...(b.taxId ? [`${both('cif')}: ${b.taxId}`] : [two ? `${one.person} / ${two.person}` : one.person]),
@@ -237,6 +239,8 @@ export function renderInvoicePdf(doc: UblDocument, options: DocumentOptions = {}
     const fy = PAGE.h - 70;
     pdf.moveTo(X, fy).lineTo(X + W, fy).lineWidth(0.4).strokeColor(RULE).stroke();
     const foot: string[] = [];
+    foot.push(one.unsigned);
+    if (two) foot.push(two.unsigned);
     if (brand && brand.name !== s.name) foot.push(`${brand.name} ${one.tradeName} ${s.name}${two ? ` · ${two.tradeName} ${s.name}` : ''}`);
     if (options.efacturaIndex) foot.push(`${both('efactura')} ${options.efacturaIndex}`);
     foot.push([s.name, `${one.cif} ${s.vatId ?? s.cif}`, s.registerNo, `${s.street}, ${s.city}`, s.email].filter(Boolean).join(' · '));

@@ -7,6 +7,7 @@ import AdminDashboardView from '../components/AdminDashboard';
 import AdminSettings from '../components/AdminSettings';
 import AdminFairUse from '../components/AdminFairUse';
 import AdminInvoices from '../components/AdminInvoices';
+import AdminSeller from '../components/AdminSeller';
 import AdminCatalog from '../components/AdminCatalog';
 import AdminEfactura from '../components/AdminEfactura';
 import AdminWithdrawals from '../components/AdminWithdrawals';
@@ -87,7 +88,7 @@ export default function Admin() {
             <Route index element={<AdminDashboardView data={data} />} />
             <Route path="subscriptions" element={<><AdminSubscriptions /><div className="mt-14"><AdminWithdrawals /></div></>} />
             <Route path="products" element={<AdminCatalog />} />
-            <Route path="invoices" element={<><AdminInvoices /><div className="mt-14"><AdminEfactura /></div></>} />
+            <Route path="invoices" element={<><AdminInvoices /><div className="mt-14"><AdminSeller /></div><div className="mt-14"><AdminEfactura /></div></>} />
             <Route path="accounts" element={<AdminAccounts />} />
             <Route path="settings" element={<><AdminSettings onChanged={() => void reload()} /><div className="mt-14"><AdminFairUse /></div></>} />
             <Route path="*" element={<Navigate to="/admin" replace />} />

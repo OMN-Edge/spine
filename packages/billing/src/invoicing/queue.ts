@@ -30,6 +30,8 @@ export interface InvoicingContext {
   readSale: (ref: string) => Promise<Sale>;
   /** Told once when a document is made (an invoice, or a credit note for a refund), where the issuer sends the buyer nothing itself; a failure is the host's to log, never the invoice's. */
   made?: (document: { ref: string; userId: string | null; number: string; credit: boolean }) => Promise<void>;
+  /** Told once when a document is made, with what it was made from (`draft`, for an invoice) or whose it reverses (`reverses`, the payment's reference, for a credit note) and the number the issuer gave it, so the host can keep the document as a person reads it. A failure is the host's to log, never the invoice's. */
+  keep?: (document: { ref: string; credit: boolean; draft: InvoiceDraft | null; reverses: string | null; issued: IssuedInvoice }) => Promise<void>;
   now?: () => Date;
 }
 
@@ -72,6 +74,7 @@ export async function processInvoice(ref: string, ctx: InvoicingContext): Promis
   if (current.state === 'pending') {
     let issued: IssuedInvoice | null;
     let sale: Sale | null = null;
+    let draft: InvoiceDraft | null = null;
     try {
       if (isStorno(ref)) {
         // A storno of an invoice that is made: its own refs are the original's until it is made, and the service's word that it was reversed already is the end of it.
@@ -83,7 +86,8 @@ export async function processInvoice(ref: string, ctx: InvoicingContext): Promis
         }
       } else {
         sale = await ctx.readSale(ref);
-        issued = await ctx.issuer.issue(draftOf(ref, sale, ctx.config));
+        draft = draftOf(ref, sale, ctx.config);
+        issued = await ctx.issuer.issue(draft);
       }
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
@@ -98,6 +102,7 @@ export async function processInvoice(ref: string, ctx: InvoicingContext): Promis
     const eu = sale ? await euMinorOf(sale) : undefined;
     await store.billing.updateInvoice(ref, { state: next, attempts: 0, last_error: null, issuer_ref: issued.id, series: issued.series, number: issued.number, next_attempt_at: now().toISOString(), ...(eu === undefined ? {} : { eu_minor: eu }) }, now().toISOString());
     await store.metrics.bump('invoice_issued', now().toISOString().slice(0, 10));
+    if (ctx.keep) await ctx.keep({ ref, credit: isStorno(ref), draft, reverses: isStorno(ref) ? ref.slice('storno:'.length) : null, issued }).catch(err => logger.warn('an invoice document could not be kept', { ref, reason: err instanceof Error ? err.message : String(err) }));
     if (!ctx.config.mail && ctx.made) await ctx.made({ ref, userId: current.user_id, number: `${issued.series}-${issued.number}`, credit: isStorno(ref) }).catch(err => logger.warn('nobody was told of an invoice', { ref, reason: err instanceof Error ? err.message : String(err) }));
     if (next === 'done') return 'done';
     current = { ...current, state: 'issued', attempts: 0, issuer_ref: issued.id, series: issued.series, number: issued.number };

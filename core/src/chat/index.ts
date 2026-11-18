@@ -9,6 +9,7 @@ import { documentsForQuestion } from './retrieval.js';
 import { DOCUMENT_SECTIONS, describeScreen, resolveScreen, sectionRecords, type DocumentSection, type ScreenContext } from './screen.js';
 import { chainOf } from '../linking/index.js';
 import type { ChatRecord, ChatTurn } from '../llm/types.js';
+import type { SupportedLanguage } from '../languages.js';
 import type { Proposal } from './proposals.js';
 import type { Document, Measurement } from '../types.js';
 
@@ -88,29 +89,28 @@ function resultLine(m: Measurement): string {
 const headline = (doc: Document): string =>
   [doc.title, doc.doc_type?.replace(/_/g, ' '), doc.provider, doc.doc_date].filter(Boolean).join(' · ') || 'document';
 
-export async function askQuestion(userId: string, question: string, history: ChatTurn[], screen: ScreenContext | null = null, progress: ChatProgress = {}): Promise<ChatReply | null> {
-  // The agent decides what to look up; the fixed pipeline below is the fallback for a model that cannot use tools, for
-  // and for an agent that fails.
+export async function askQuestion(userId: string, question: string, history: ChatTurn[], screen: ScreenContext | null = null, progress: ChatProgress = {}, language?: SupportedLanguage): Promise<ChatReply | null> {
+  // The agent decides what to look up; the fixed pipeline below is the fallback for a model that cannot use tools and for an agent that fails.
   // Every call of this question carries one random id, so the plan counts it as one message however many calls the assistant makes.
   const model = getChatLlm().agentModel?.(crypto.randomUUID()) ?? null;
   // It runs on an empty archive too: the question may be about Spine itself (explain_spine), which a new person asks first.
   if (model) {
     try {
-      return await askAgent(model, userId, question, trimHistory(history), screen, progress);
+      return await askAgent(model, userId, question, trimHistory(history), screen, progress, language);
     } catch (err) {
       // The person left: nothing to answer for.
       if (progress.signal?.aborted) throw err;
       progress.reset?.();
       logger.warn('the chat agent failed; answering without tools', { error: describeError(err) });
-      const fallback = await askWithoutTools(userId, question, history, screen);
+      const fallback = await askWithoutTools(userId, question, history, screen, language);
       return fallback && { ...fallback, limited: true };
     }
   }
-  return askWithoutTools(userId, question, history, screen);
+  return askWithoutTools(userId, question, history, screen, language);
 }
 
 /** The fixed pipeline: our code finds the documents, the model reads what it is handed. */
-async function askWithoutTools(userId: string, question: string, history: ChatTurn[], screen: ScreenContext | null): Promise<ChatReply | null> {
+async function askWithoutTools(userId: string, question: string, history: ChatTurn[], screen: ScreenContext | null, language?: SupportedLanguage): Promise<ChatReply | null> {
   const store = getStore();
   const turns = trimHistory(history);
   const onScreen = await resolveScreen(userId, screen);
@@ -194,7 +194,7 @@ async function askWithoutTools(userId: string, question: string, history: ChatTu
     });
   });
 
-  const answer = await getChatLlm().answerQuestion(question, records, turns);
+  const answer = await getChatLlm().answerQuestion(question, records, turns, language);
   if (!answer) return null;
 
   const byLabel = new Map([...docs.values()].map(d => [labelOf.get(d.id)!, d]));

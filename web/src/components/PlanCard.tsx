@@ -83,7 +83,7 @@ export default function PlanCard() {
   const trialUsedUp = (!!chat && chat.used >= chat.allowance!) || (!!translation && translation.used >= translation.allowance!) || (!!ai && ai.reading.allowance !== null && plan === 'trial' && ai.reading.used >= ai.reading.allowance);
   // Only adding has an allowance (the pages read); using is not limited, so questions, translation and link traffic are not shown here (the "Your archive" section says what was done).
   const bar = (used: number, of: number) => (
-    <span className="block h-1.5 mt-1 rounded bg-gray-200" role="presentation"><span className="block h-1.5 rounded bg-brand-500" style={{ width: `${of > 0 ? Math.min(100, Math.max(used > 0 ? 3 : 0, Math.round((used / of) * 100))) : 0}%` }} /></span>
+    <span className="block h-1.5 mt-1 rounded bg-gray-200" role="presentation"><span className="block h-1.5 rounded bg-brand-500" style={{ width: `${of > 0 ? Math.min(100, Math.max(1.5, Math.round((used / of) * 100))) : 0}%` }} /></span>
   );
   const r = ai?.reading;
   const reading = {

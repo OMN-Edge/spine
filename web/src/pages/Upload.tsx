@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { api, type ModelWaiting, type UploadDocument, type UploadSummary } from '../api';
 import SpineLog, { type VertebraState } from '../components/SpineLog';
 import { failureKind } from 'spine-core/failure-kind';
-import { documentTitle, pageRange } from '../titles';
+import { documentTitle, pageRef } from '../titles';
 import { documentToOpen } from '../scan/open-when-read';
 import { documentIsReady } from '../processing';
 import { batchSummary, isBatch } from '../batch';
@@ -120,8 +120,9 @@ const STATUS_NAME: Record<string, string> = { done: msg('done'), error: msg('err
 /** How many documents an upload lists on its card before "Show all". */
 const LISTED_DOCUMENTS = 5;
 
+/** The pages of a document, or nothing for one of a single page, which "page 1" says nothing about. */
 const pagesOf = (doc: UploadDocument, t: I18n['t']) =>
-  pageRange(doc.page_start, doc.page_end, t);
+  pageRef(doc.page_start, doc.page_end, t);
 
 /** An upload read and cut into documents that is waiting for the owner to confirm the cut. */
 const needsGrouping = (job: JobState): boolean =>
@@ -146,7 +147,7 @@ function UploadRow({ job, anchor, onRetry, onDeleted }: { job: JobState; /** The
         <p className="text-xs text-gray-400 mt-0.5">
           {job.uploadedAt && <>{t('Uploaded {date}', { date: format.date(job.uploadedAt) })} · </>}
           {job.documents.length > 0 && <>{tn(job.documents.length, '{n} document', '{n} documents')}</>}
-          {job.documents.length === 1 && <> · {pagesOf(job.documents[0], t)}</>}
+          {job.documents.length === 1 && pagesOf(job.documents[0], t) && <> · {pagesOf(job.documents[0], t)}</>}
           {!!job.hiddenDocuments && <>{job.documents.length > 0 && ' · '}{t('{n} hidden', { n: job.hiddenDocuments })}</>}
         </p>
       )}
@@ -155,7 +156,7 @@ function UploadRow({ job, anchor, onRetry, onDeleted }: { job: JobState; /** The
           {listed.map(doc => (
             <li key={doc.id} className="flex items-baseline justify-between gap-3 text-xs">
               <span className="min-w-0 truncate text-gray-700">
-                {documentTitle(doc, t)} <span className="text-gray-400">· {pagesOf(doc, t)}</span>
+                {documentTitle(doc, t)}{pagesOf(doc, t) && <span className="text-gray-400"> · {pagesOf(doc, t)}</span>}
               </span>
               {documentIsReady(doc, job)
                 ? <Link to={`/documents/${doc.id}`} className="shrink-0 text-brand-600 hover:underline">{t('View document')}</Link>

@@ -69,6 +69,8 @@ export interface BillingStore {
     /** The invoices that are waiting and whose time has come, oldest first. */
     invoicesDue(now: string, limit: number): Promise<QueuedInvoice[]>;
     invoice(ref: string): Promise<QueuedInvoice | null>;
+    keepInvoiceDocument(ref: string, document: string, at: string): Promise<void>;
+    invoiceDocument(ref: string): Promise<string | null>;
     updateInvoice(ref: string, patch: InvoicePatch, at: string): Promise<void>;
     /** What the invoices made in a calendar year count for in the EU consumer threshold (minor units of EUR). */
     euSalesMinor(year: number): Promise<number>;

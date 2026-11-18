@@ -416,4 +416,22 @@ describe('a chain of connected documents reaches only documents that are shown',
     expect(out).toMatch(/Shown neighbour/);
     expect(out).not.toMatch(/Set aside middle|Beyond the middle|Unconfirmed upload doc/);
   });
+  it('is told the language the person reads in, so an answer follows it and not the records', async () => {
+    const systemOf = (m: ScriptedModel) => String(m.seen[0]![0]!.content);
+    model = new ScriptedModel([{ say: 'ok' }]);
+    resetChatLlm(llmWith(model));
+    expect((await ask({ question: 'Explain this document in plain words', language: 'en' })).statusCode).toBe(200);
+    expect(systemOf(model)).toMatch(/Write in English, the language the person reads the app in, whatever language the records are in/);
+    expect(systemOf(model)).toMatch(/never as 2026-03-09/);
+    // Another of the languages the app has, and a language it has not (the question's own language applies then).
+    model = new ScriptedModel([{ say: 'ok' }]);
+    resetChatLlm(llmWith(model));
+    await ask({ question: 'Explică documentul', language: 'ro' });
+    expect(systemOf(model)).toMatch(/Write in Romanian/);
+    model = new ScriptedModel([{ say: 'ok' }]);
+    resetChatLlm(llmWith(model));
+    await ask({ question: 'What is this?', language: 'klingon' });
+    expect(systemOf(model)).toMatch(/Write in the language of the question/);
+    expect(systemOf(model)).not.toMatch(/Write in (English|Romanian|German)/);
+  });
 });

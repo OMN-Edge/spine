@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# What a running host looks like, for the security review's pass 11b (docs/security-review.md): on the host, ./scripts/host-report.sh > report.txt; from another machine, ./scripts/host-report.sh outside spine.example.com relay.example.com
+# What a running host looks like, for the security review's pass 11b (the reviewer's ledger, `.workspace/security/LEDGER.md`): on the host, ./scripts/host-report.sh > report.txt; from another machine, ./scripts/host-report.sh outside spine.example.com relay.example.com
 # For a Linux host with systemd and the units install.sh makes (spine-web, spine-relay, spine-backup); GNU stat and ss are used.
 # Reads only: it changes nothing, prints no value from .env or relay.env (only their modes) and blanks email addresses. The restore drill works on a copy in a temporary directory.
 set -uo pipefail

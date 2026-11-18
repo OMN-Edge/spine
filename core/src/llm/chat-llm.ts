@@ -176,8 +176,8 @@ export function buildChatLlm(clients: TaskClients, config: ChatLlmConfig): ChatL
       return { coherent: validated.coherent, confidence: validated.confidence, groups: validated.coherent ? [] : groups, order: validated.coherent ? order : [], title: validated.title?.trim() || null, reason: validated.reason.trim() };
     },
 
-    async answerQuestion(question, records, history): Promise<ChatAnswer | null> {
-      const validated = await invokeValidated(clients, config, log, 'chat', buildChatPrompt(question, records, history), TASK_SCHEMAS.chat);
+    async answerQuestion(question, records, history, language): Promise<ChatAnswer | null> {
+      const validated = await invokeValidated(clients, config, log, 'chat', buildChatPrompt(question, records, history, language), TASK_SCHEMAS.chat);
       if (!validated?.answer.trim()) return null;
       // A section label (D1.results) is a record of its own; its document (D1) may be cited too.
       const labels = new Set(records.flatMap(r => [r.label, r.label.split('.')[0]]));

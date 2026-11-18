@@ -6,7 +6,7 @@ import { episodeName } from '../components/episode';
 import { useOnDataChanged } from '../dataChanged';
 import ShareOverview from '../components/ShareOverview';
 import { useProfiles } from '../profiles';
-import { buildOverview } from '../share-overview';
+import { buildOverview, defaultShareName } from '../share-overview';
 import { makeShareSheet, sheetFonts, sheetLanguage } from '../share-sheet';
 import ClaimExport from '../components/ClaimExport';
 import ShareRequestCard from '../components/ShareRequestCard';
@@ -141,7 +141,7 @@ export default function ShareLinks() {
 
   // The name starts as the card's, else the open person's, and the owner can change it or leave it out.
   const personName = people?.profiles.find(p => p.id === people.current)?.name ?? '';
-  useEffect(() => { setAbout(a => (a.name ? a : { ...a, name: card?.name || personName })); }, [card, personName]);
+  useEffect(() => { setAbout(a => (a.name ? a : { ...a, name: defaultShareName(card?.name, personName) })); }, [card, personName]);
   const cardHasNow = !!card && card.medications.length + card.allergies.length + card.conditions.length > 0;
   const overview = buildOverview(about, card, cardDay);
 
@@ -275,7 +275,7 @@ export default function ShareLinks() {
                 <span className="block text-xs text-gray-500">{t('A doctor needs to know whose records these are. Leave it off for an anonymous second opinion.')}</span>
               </span>
             </label>
-            {about.showName && <input aria-label={t('Name shown to the doctor')} value={about.name} maxLength={120} onChange={e => setAbout(a => ({ ...a, name: e.target.value }))} className={input} />}
+            {about.showName && <input aria-label={t('Name shown to the doctor')} placeholder={t('Your name, as the doctor knows it')} value={about.name} maxLength={120} onChange={e => setAbout(a => ({ ...a, name: e.target.value }))} className={input} />}
             <label className={`flex items-start gap-2 text-sm ${cardHasNow ? 'text-gray-700' : 'text-gray-400'}`}>
               <input type="checkbox" disabled={!cardHasNow} checked={about.includeNow && cardHasNow} onChange={e => setAbout(a => ({ ...a, includeNow: e.target.checked }))} className="mt-0.5" />
               <span className="min-w-0 flex-1">

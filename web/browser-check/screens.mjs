@@ -4,7 +4,7 @@
 // (1440) and phone (390@2x) widths, in English and Romanian (the share link in German too).
 // `npm run screens -- <outdir>` in web/ (needs `npm run build`, Google Chrome, and a Stripe test key in .env: billing runs as the branch does,
 // Stripe in test mode with Spine's own e-Factura invoicing on ANAF's test platform; the key is refused unless it is a test one). The default
-// <outdir> is ux-review/<today>/shots, which git ignores. SECTIONS=pub,demo,onb,acc runs only some; CHROME and CHROME_FLAGS as for check:app.
+// <outdir> is .workspace/ux/<today>/shots, which git does not track. SECTIONS=pub,demo,onb,acc runs only some; CHROME and CHROME_FLAGS as for check:app.
 // The Stripe prices are the sandbox's own; SPINE_STRIPE_PRICE_* in .env or the environment replace them. No record here is a real person's.
 import { spawn, execFileSync } from 'node:child_process';
 import http from 'node:http';
@@ -14,7 +14,7 @@ import path from 'node:path';
 import puppeteer from 'puppeteer-core';
 
 const root = path.resolve(import.meta.dirname, '../..');
-const out = path.resolve(process.argv[2] ?? path.join(root, 'ux-review', new Date().toISOString().slice(0, 10), 'shots'));
+const out = path.resolve(process.argv[2] ?? path.join(root, '.workspace', 'ux', new Date().toISOString().slice(0, 10), 'shots'));
 fs.mkdirSync(out, { recursive: true });
 const only = process.env.ONLY ? new Set(process.env.ONLY.split(',')) : null;
 const data = fs.mkdtempSync(path.join(os.tmpdir(), 'spine-ux-'));
@@ -146,7 +146,8 @@ try {
     await h.go('/'); await wait(1000);
     // the chat
     const chat = await p.evaluate(() => { const b = [...document.querySelectorAll('button')].find(b => (b.getAttribute('aria-label') ?? '').startsWith('Ask your records')); b?.click(); return b?.outerHTML.slice(0, 120); });
-    log('chat button', chat); await wait(1500); await h.shot(`demo-${tag}-chat`, '', false);
+    // The sample archive has no chat (asking needs a model, which a sample cannot bring): no button, and no shot of one.
+    log('chat button', chat ?? 'none: the demo has no chat'); if (chat) { await wait(1500); await h.shot(`demo-${tag}-chat`, '', false); }
     await ctx.close();
   }
 
@@ -243,6 +244,8 @@ try {
       await p.setViewport(PHONE); for (const r of ['/admin', '/admin/accounts']) { await h.go(r); await wait(2000); await h.shot(`adm-m-${r === '/admin' ? 'overview' : r.slice(7)}`); } await p.setViewport(DESKTOP);
       await h.go('/episodes'); await p.evaluate(() => [...document.querySelectorAll('a,button')].find(a => /episode/i.test(a.getAttribute('href') ?? ''))?.click()); await wait(1500);
       await h.go('/'); await wait(1000);
+      // A touch viewport reloads the page (Puppeteer), which locks the records again: open them with the master password before asking.
+      if (await p.$('input[type=password]')) { await p.type('input[type=password]', MASTER); await p.evaluate(() => document.querySelector('form button[type=submit]')?.click()); await wait(8000); }
       await p.evaluate(() => { const b = [...document.querySelectorAll('button')].find(b => (b.getAttribute('aria-label') ?? '').startsWith('Ask your records')); b?.click(); }); await wait(1500); await h.shot('acc-d-chat', '', false);
       await p.keyboard.press('Escape');
     }

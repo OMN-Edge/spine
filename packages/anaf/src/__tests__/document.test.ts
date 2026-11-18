@@ -36,6 +36,18 @@ describe('the invoice document', () => {
     }
   });
 
+  it('shows the seller\'s county, phone and every account with its bank and BIC, and that it is valid without a stamp', async () => {
+    const seller = { ...SELLER, county: 'CJ', city: 'Cluj-Napoca', phone: '+40 700 000 000', accounts: [{ iban: 'RO49AAAA1B31007593840000', bank: 'Banca Exemplu', bic: 'EXMPRO22', currency: 'RON' }, { iban: 'RO12BBBB1B31007593840001', bank: 'Banca Exemplu', bic: 'EXMPRO22', currency: 'EUR' }] };
+    const text = spaced(await textOf(await renderInvoicePdf(doc({ seller }))));
+    for (const shown of ['RO-CJ', '+40 700 000 000', 'RO49AAAA1B31007593840000 (RON)', 'RO12BBBB1B31007593840001 (EUR)', 'BIC EXMPRO22', 'Valid without stamp or signature', 'Gültig ohne Stempel und Unterschrift']) expect(text).toContain(shown);
+  });
+
+  it('stands a single bank and IBAN as the one account where there is no list of them', async () => {
+    const text = spaced(await textOf(await renderInvoicePdf(doc({ seller: { ...SELLER, bank: 'Banca Exemplu', iban: 'RO49AAAA1B31007593840000' } }))));
+    expect(text).toContain('RO49AAAA1B31007593840000');
+    expect(text).toContain('Banca Exemplu');
+  });
+
   it('is English first and the buyer’s language beneath: German for a buyer in Germany, Romanian for one in Romania, and English alone for any other country', async () => {
     const german = await textOf(await renderInvoicePdf(doc()));
     expect(german).toContain('Invoice');

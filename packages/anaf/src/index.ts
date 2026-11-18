@@ -63,9 +63,10 @@ export function makeEfactura(config: AnafConfig, store: AnafStore, extra: Efactu
 export { AnafLink } from './anaf.js';
 export type { AnafStatus, AnafSettings } from './anaf.js';
 export { AnafError } from './error.js';
-export { linkIsValid } from './issuer.js';
+export { linkIsValid, signedLink, documentOfDraft } from './issuer.js';
+export { renderInvoicePdf } from './document.js';
 export type { EfacturaIssuer } from './issuer.js';
 export type { InvoiceDraft, IssuedInvoice, Issuer } from './invoice.js';
 export type { AnafStore, AnafTokens, StoredDocument, DocumentPatch, DocumentKind } from './store.js';
-export type { UblSeller, ZeroVat } from './ubl.js';
+export type { UblSeller, UblDocument, ZeroVat } from './ubl.js';
 export type { DocumentBrand, DocumentLanguage } from './document.js';

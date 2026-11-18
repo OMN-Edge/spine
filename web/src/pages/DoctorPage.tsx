@@ -127,7 +127,7 @@ export default function DoctorPage() {
             </ul>
             {news.other.length > 0 && (
               <>
-                <button type="button" onClick={() => setShowOther(v => !v)} aria-expanded={showOther} className="mt-3 text-sm text-brand-700 hover:underline">{showOther ? t('Hide other documents') : t('Other documents ({count})', { count: news.other.length })}</button>
+                <button type="button" onClick={() => setShowOther(v => !v)} aria-expanded={showOther} className="mt-3 block text-sm text-brand-700 hover:underline">{showOther ? t('Hide other documents') : t('Other documents ({count})', { count: news.other.length })}</button>
                 {showOther && (
                   <ul className="divide-y divide-gray-100 mt-1">
                     {news.other.slice(0, 10).map(d => (

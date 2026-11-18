@@ -18,6 +18,8 @@ import { euSalesTotals } from 'spine-billing/invoicing/threshold.js';
 import { usedSince } from '../usage-report.js';
 import { suggestedRefund } from 'spine-billing/withdrawal-share.js';
 import { adminCatalogRoutes } from './admin-catalog.js';
+import { changeSeller, sellerOf } from '../billing/invoicing/seller.js';
+import { loadInvoicingConfig } from '../billing/invoicing/config.js';
 
 /**
  * Approving the accounts that asked for one under `SPINE_REGISTRATION=approval`, from the app. Who may is `SPINE_ADMIN_EMAILS`, checked on every
@@ -205,6 +207,20 @@ export async function adminRoutes(app: FastifyInstance, opts: AdminRouteOptions 
     logger.info('an operator setting was changed', { event: 'operator_setting', key: req.body?.key, account: req.userId });
     const settings = await operatorSettings(getAccountsStore());
     return reply.send({ settings: settings.map(({ fallbackOf: _f, ...s }) => s) });
+  });
+
+  // Who the invoices are made out by (`billing/invoicing/seller.ts`): read by the marketing role too, changed by an administrator. It is what Spine's own PDF of an invoice a service issued shows.
+  app.get('/api/admin/seller', { preHandler: [requireAuth, onlyReaders] }, async (req, reply) => {
+    const user = await getAccountsStore().users.findById(req.userId);
+    let issuer: string | null = null;
+    try { const config = loadInvoicingConfig(loadBillingConfig()); issuer = config.enabled ? config.issuer : null; } catch { issuer = null; }
+    return reply.header('Cache-Control', 'no-store').send({ seller: await sellerOf(getAccountsStore()), issuer, can_edit: !!user && admins().has(user.email.toLowerCase()) });
+  });
+  app.put<{ Body: unknown }>('/api/admin/seller', { preHandler: [requireAuth, onlyAdmins, requireRecentAuth] }, async (req, reply) => {
+    const problem = await changeSeller(getAccountsStore(), req.body, new Date().toISOString());
+    if (problem) return reply.status(400).send({ error: problem });
+    logger.info('the seller on invoices was changed', { event: 'invoice_seller', account: req.userId });
+    return reply.send({ seller: await sellerOf(getAccountsStore()) });
   });
 
   // The hidden fair-use ceilings (`plans/fair-use-admin.ts`): an administrator only, for both reading and changing, because they are never shown to anyone

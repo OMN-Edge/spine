@@ -666,6 +666,13 @@ export interface BillingView {
   founding_left?: number;
 }
 
+/** Who the invoices are made out by (the server's `billing/invoicing/seller.ts`). */
+export interface InvoiceSeller {
+  name: string; cif: string; street: string; city: string; county: string; postalCode: string;
+  sector?: string; vatId?: string; registerNo?: string; email?: string; phone?: string;
+  accounts?: Array<{ iban: string; bank?: string; bic?: string; currency?: string }>;
+}
+
 /** One setting the admin page changes (the server's `operator-settings.ts`); its words are the server's, in English. */
 export interface OperatorSetting { key: string; label: string; help: string; unit: 'count' | 'percent' | 'euros' | 'days'; min: number; max: number; fallback: number | null; env?: string; value: number | null; source: 'admin' | 'environment' | 'default'; updated_at: string | null }
 
@@ -791,6 +798,9 @@ export const api = {
     dashboard: () => req<AdminDashboard>('/api/admin/dashboard'),
     /** The settings the admin page changes: what applies, where it comes from, and whether this account may change them. */
     settings: () => req<{ settings: OperatorSetting[]; can_edit: boolean }>('/api/admin/settings'),
+    /** Who the invoices are made out by, whether this account may change it, and which issuer the operator runs. */
+    seller: () => req<{ seller: InvoiceSeller | null; issuer: string | null; can_edit: boolean }>('/api/admin/seller'),
+    saveSeller: (seller: InvoiceSeller) => put<{ seller: InvoiceSeller | null }>('/api/admin/seller', seller),
     setSetting: (key: string, value: number | null) => put<{ settings: OperatorSetting[] }>('/api/admin/settings', { key, value }),
     /** The hidden fair-use ceilings, for an administrator only (the server's `plans/fair-use-admin.ts`). */
     fairUse: () => req<{ sections: FairUseSection[] }>('/api/admin/fair-use'),
@@ -1028,8 +1038,8 @@ export const api = {
      * The reply arrives as lines (steps, pieces of the answer, then the whole reply), so the page can show it as it is written.
      * Refusals before the first byte are ordinary errors; a failure after it comes as an `error` line.
      */
-    ask: (question: string, conversationId: string | null, screen: Record<string, unknown> | undefined, handlers: ChatStreamHandlers, signal?: AbortSignal): Promise<ChatReply> =>
-      readReplyStream<ChatReply>('/api/chat', { question, conversation_id: conversationId ?? undefined, screen, stream: true }, handlers, signal),
+    ask: (question: string, conversationId: string | null, screen: Record<string, unknown> | undefined, handlers: ChatStreamHandlers, signal?: AbortSignal, language?: string): Promise<ChatReply> =>
+      readReplyStream<ChatReply>('/api/chat', { question, conversation_id: conversationId ?? undefined, screen, language, stream: true }, handlers, signal),
     conversations: () => req<ConversationSummary[]>('/api/chat/conversations'),
     conversation: (id: string) => req<ConversationSummary & { messages: StoredMessage[] }>(`/api/chat/conversations/${id}`),
     unread: () => req<{ count: number }>('/api/chat/unread'),

@@ -12,6 +12,7 @@ import { invoiceBrand } from './brand.js';
 import { invoiceReadyMail } from '../invoice-mail.js';
 import { getMailer } from '../../mail/index.js';
 import { loadInvoicingConfig, type InvoicingConfig } from './config.js';
+import { keepDocument } from './own-pdf.js';
 
 /**
  * The queue of invoices (`spine-billing`, `invoicing/queue.ts`) with Spine's settings: which issuer the operator named, made once for the process, the context a pass runs in, and the
@@ -50,7 +51,7 @@ export function contextFromSettings(env: NodeJS.ProcessEnv = process.env): Invoi
   const config = loadInvoicingConfig(billing, env);
   if (!billing.enabled || !config.enabled) return null;
   const provider = billingProvider(billing as Enabled);
-  return { issuer: issuerFor(config), config, readSale: ref => provider.readSale(ref), made: tellOfInvoice };
+  return { issuer: issuerFor(config), config, readSale: ref => provider.readSale(ref), made: tellOfInvoice, keep: keepDocument(config) };
 }
 
 

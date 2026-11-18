@@ -71,6 +71,13 @@ describe('the plan tile', () => {
     for (const action of ACTIONS) expect(page).not.toContain(action);
   });
 
+  it('draws a usage bar with a thin fill at zero, so an empty meter is told from a missing one', () => {
+    const meter = { used: 0, allowance: 50 } as never;
+    shown.view = { enabled: true, plan: 'trial', trial_ends_at: inDays(87), can_manage: false, subscription: null, essential: true, prices, founding_left: 12, ai: { period: 'trial', reading: { used: 0, allowance: 100 } as never, chat: meter, translation: meter, import: meter } };
+    const html = renderToStaticMarkup(<MemoryRouter><PlanCard /></MemoryRouter>);
+    expect(html).toContain('width:1.5%');
+  });
+
   it('offers the plans, and no payment actions, once the trial is nearly over', () => {
     const page = draw({ enabled: true, plan: 'trial', trial_ends_at: inDays(10), can_manage: false, subscription: null, essential: true, prices, founding_left: 12 });
     expect(page).toContain('Premium for €39 a year (founding price, €49 after)');

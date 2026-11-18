@@ -272,6 +272,12 @@ CREATE TABLE IF NOT EXISTS efactura_series (
   series TEXT PRIMARY KEY,
   next_number BIGINT NOT NULL
 );
+-- The invoice as a person reads it, kept for each payment whose invoice the operator issues through a service (Spine's own e-Factura keeps its documents in efactura_documents): the buyer, the lines, the date and the number the service gave, as JSON. It is what Spine's own PDF is made from, so a buyer who later changes their billing details does not change an invoice already issued. Kept ten years with the invoice, not removed with the account.
+CREATE TABLE IF NOT EXISTS invoice_documents (
+  ref TEXT PRIMARY KEY,
+  document TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS efactura_documents (
   draft_id TEXT PRIMARY KEY,
   kind TEXT NOT NULL,

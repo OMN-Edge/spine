@@ -77,9 +77,9 @@ One constraint shapes the AI path: the client cannot hold Spine's model API key,
 
 | ID | Requirement | Priority | Release |
 | --- | --- | --- | --- |
-| FR-CHAT-01 | Answer questions only from the user's own documents, citing the source page for every claim | Must | Soon |
-| FR-CHAT-02 | Decline clinical interpretation ("is this result bad?") and point the user to a doctor; applies to the ingestion chat too | Must | Launch |
-| FR-CHAT-03 | Find related documents and episodes on request | Should | Soon |
+| FR-CHAT-01 | Answer questions only from the user's own documents, citing the source page for every claim | Must | Soon | Partly built: an answer cites the document and the part of it it came from (summary, results, fields …), not the page; citations are checked against what the model was shown (**M-18**) |
+| FR-CHAT-02 | Decline clinical interpretation ("is this result bad?") and point the user to a doctor; applies to the ingestion chat too | Must | Launch | Built: the prompt, the panel's note, and `chat-qa.it.ts` (**M-18**) |
+| FR-CHAT-03 | Find related documents and episodes on request | Should | Soon | Partly built: related documents (`get_connected_documents`, search by type, dates, tag or provider); no tool reads episodes |
 
 ### Follow-up reminders
 

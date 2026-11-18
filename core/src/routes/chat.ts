@@ -9,6 +9,7 @@ import { MAX_MESSAGES } from '../store/types.js';
 import { askQuestion, MAX_QUESTION, MAX_TURNS, type ChatProgress, type ChatReply } from '../chat/index.js';
 import { checkScreen, type ScreenContext } from '../chat/screen.js';
 import type { ChatTurn } from '../llm/types.js';
+import { isSupportedLanguage } from '../languages.js';
 import { logger } from '../logger.js';
 import { helpTopic } from '../help.js';
 import { describeError } from '../failure.js';
@@ -175,9 +176,11 @@ export async function chatRoutes(app: HttpApp) {
   // reply exactly as the plain form would have sent it, or `error`. Everything is checked before the first byte, so a refusal is
   // an ordinary 4xx either way. The answer is kept only once it is complete, as before: a question the person walked away from
   // leaves nothing behind.
-  app.post<{ Body: { question?: unknown; conversation_id?: unknown; screen?: unknown; stream?: unknown } }>('/api/chat', async (req, reply) => {
+  app.post<{ Body: { question?: unknown; conversation_id?: unknown; screen?: unknown; stream?: unknown; language?: unknown } }>('/api/chat', async (req, reply) => {
     if (!chatEnabled()) return reply.status(409).send({ error: 'asking questions is switched off' });
     const { question, conversation_id: conversationId, screen, stream } = req.body ?? {};
+    // The language the person reads in (one of the fixed list), so the answer follows it and not the records'; anything else is no language.
+    const language = isSupportedLanguage(req.body?.language) ? req.body.language : undefined;
     if (typeof question !== 'string' || !question.trim() || question.length > MAX_QUESTION) {
       return reply.status(400).send({ error: `question is required, at most ${MAX_QUESTION} characters` });
     }
@@ -211,7 +214,7 @@ export async function chatRoutes(app: HttpApp) {
     const answerAndKeep = async (progress: ChatProgress): Promise<Outcome> => {
       let answered;
       try {
-        answered = await askQuestion(req.userId, question.trim(), history, where, progress);
+        answered = await askQuestion(req.userId, question.trim(), history, where, progress, language);
       } catch (err) {
         // The person went away: nothing to say and nothing to keep.
         if (progress.signal?.aborted) return null;

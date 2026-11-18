@@ -190,9 +190,9 @@ function SharedContent({ shareId }: { shareId: string }) {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className={`mx-auto px-4 sm:px-6 py-8 ${openId ? 'max-w-6xl' : 'max-w-3xl'}`}>
-        <div className="mb-6 flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900">{t('Medical history')}</h1>
+        <div className="mb-6 flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+          <div className="min-w-0">
+            <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900 break-words [hyphens:auto]">{t('Medical history')}</h1>
             <p className="text-sm text-gray-400 mt-1">{t('Read-only shared view')} · {tn(docs.length, '{n} document', '{n} documents')}</p>
           </div>
           <div className="flex items-center gap-2"><LanguageSwitcher /><ThemeSwitcher /></div>

@@ -110,6 +110,8 @@ export function billingRepository(q: Query, begin: Begin): BillingRepository {
     async invoicesDue(now, limit) {
       return (await many(q, `SELECT ${INVOICE_COLUMNS} FROM invoice_queue WHERE state IN ('pending', 'issued') AND next_attempt_at <= $1 ORDER BY created_at LIMIT $2`, [now, limit])).map(asInvoice);
     },
+    async keepInvoiceDocument(ref, document, at) { await q('INSERT INTO invoice_documents (ref, document, created_at) VALUES ($1, $2, $3) ON CONFLICT (ref) DO NOTHING', [ref, document, at]); },
+    async invoiceDocument(ref) { return (await one<{ document: string }>(q, 'SELECT document FROM invoice_documents WHERE ref = $1', [ref]))?.document ?? null; },
     async invoice(ref) {
       const r = await one(q, `SELECT ${INVOICE_COLUMNS} FROM invoice_queue WHERE ref = $1`, [ref]);
       return r ? asInvoice(r) : null;

@@ -17,7 +17,8 @@ import { inviteToken, keptBonus, MAX_REWARDED, BONUS_PAGES, REWARD_PAGES } from 
 import { billingDetailsSchema } from 'spine-core/billing/billing-details.js';
 import { loadInvoicingConfig } from '../billing/invoicing/config.js';
 import { contextFromSettings, efacturaFromSettings, invoiceNewPayment, reverseRefunded } from '../billing/invoicing/queue.js';
-import { linkIsValid } from 'spine-anaf/index.js';
+import { linkIsValid, signedLink } from 'spine-anaf/index.js';
+import { ownPdf, pdfKeyOf } from '../billing/invoicing/own-pdf.js';
 import { PDF_PATH } from 'spine-billing/invoicing/efactura.js';
 import { alertOperator } from '../billing/invoicing/alert.js';
 import { withdrawalReceivedMail } from '../billing/withdrawal-mail.js';
@@ -243,6 +244,10 @@ export async function billingRoutes(app: FastifyInstance) {
     try {
       const ctx = contextFromSettings();
       if (!ctx) return reply.status(404).send({ error: 'not found' });
+      // An invoice a service issued is read in Spine's own PDF where its copy was kept (`billing/invoicing/own-pdf.ts`), the service's where not (made before a seller was saved).
+      if (!efacturaFromSettings() && await getAccountsStore().billing.invoiceDocument(ref)) {
+        return reply.send({ url: `${PDF_PATH}/${encodeURIComponent(ref)}?t=${signedLink(pdfKeyOf(process.env.SESSION_SECRET ?? ''), ref, new Date())}` });
+      }
       return reply.send({ url: await ctx.issuer.pdfUrl({ id: row.issuer_ref }) });
     } catch (err) {
       logger.warn('an invoice PDF could not be fetched', { reason: err instanceof Error ? err.message : String(err) });
@@ -250,13 +255,15 @@ export async function billingRoutes(app: FastifyInstance) {
     }
   });
 
-  // The PDF of an invoice Spine made itself (`SPINE_INVOICING=efactura`), at a link that the account's own request for it signed and that ends in ten minutes: a link carries no cookie.
+  // The PDF of an invoice Spine made itself (`SPINE_INVOICING=efactura`), or of the copy it kept of one a service issued, at a link that the account's own request for it signed and that ends in ten minutes: a link carries no cookie.
   app.get<{ Params: { id: string }; Querystring: { t?: string } }>(`${PDF_PATH}/:id`, { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (req, reply) => {
     const efactura = efacturaFromSettings();
     const { id } = req.params;
-    if (!efactura || typeof req.query.t !== 'string' || !linkIsValid(efactura.pdfKey, id, req.query.t, new Date())) return reply.status(404).send({ error: 'not found' });
+    const key = efactura?.pdfKey ?? pdfKeyOf(process.env.SESSION_SECRET ?? '');
+    if (typeof req.query.t !== 'string' || !linkIsValid(key, id, req.query.t, new Date())) return reply.status(404).send({ error: 'not found' });
     try {
-      const pdf = await efactura.issuer.pdf(id);
+      const pdf = efactura ? await efactura.issuer.pdf(id) : await ownPdf(id);
+      if (!pdf) return reply.status(404).send({ error: 'not found' });
       return reply.header('Cache-Control', 'private, no-store').header('Content-Type', 'application/pdf').header('Content-Disposition', 'inline; filename="invoice.pdf"').send(pdf);
     } catch (err) {
       logger.warn('an invoice PDF could not be made', { reason: err instanceof Error ? err.message : String(err) });
