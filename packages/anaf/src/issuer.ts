@@ -4,6 +4,7 @@ import type { InvoiceDraft, Issuer, IssuedInvoice } from './invoice.js';
 import type { DocumentStore, StoredDocument } from './store.js';
 import { AnafLink, pdfOf } from './anaf.js';
 import { renderInvoicePdf, type DocumentBrand } from './document.js';
+import type { VatTreatment } from './vat.js';
 import { buildUbl, routeOf, UblError, type UblBuyer, type UblDocument, type UblSeller, type ZeroVat } from './ubl.js';
 
 /**
@@ -15,6 +16,8 @@ import { buildUbl, routeOf, UblError, type UblBuyer, type UblDocument, type UblS
 export interface EfacturaSettings {
   /** Who the invoices are made out by, read when one is made (it is copied into the document, so a later change leaves an issued invoice as it was); null where none is set. */
   seller: () => Promise<UblSeller | null>;
+  /** The VAT for a buyer's country on a day (`vat.ts`), read when an invoice is made; absent, every line keeps the percent the draft gave and the class is `zeroVat`. */
+  vat?: (country: string, onDate: string) => Promise<VatTreatment>;
   /** The series' name ("SPN"); the invoice is printed as "SPN-00001". */
   series: string;
   zeroVat: ZeroVat;
@@ -109,7 +112,9 @@ export function efacturaIssuer(settings: EfacturaSettings, store: Store, link: A
       const issueDate = paidDay > today ? today : paidDay;
       const doc = await store.efacturaReserve(draft.id, 'invoice', settings.series, issueDate, now().toISOString(), null);
       if (doc.xml) return issued(doc);
-      const taxed = draft.lines.some(l => l.vatPercent > 0);
+      const treatment = settings.vat ? await settings.vat(draft.buyer.country, doc.issue_date) : null;
+      const lines = treatment ? draft.lines.map(l => ({ ...l, vatPercent: treatment.percent })) : draft.lines;
+      const taxed = lines.some(l => l.vatPercent > 0);
       let rate: number | undefined;
       if (taxed && draft.currency.toUpperCase() !== 'RON') {
         if (!settings.exchangeRate) throw new AnafError('an invoice with VAT in another currency needs the National Bank\'s rate', false);
@@ -118,9 +123,11 @@ export function efacturaIssuer(settings: EfacturaSettings, store: Store, link: A
       // No seller yet: the invoice is numbered and waits, and is made once an administrator has saved one.
       const seller = await settings.seller();
       if (!seller) throw new AnafError('no seller is set: an administrator saves it on the invoices page', true);
+      // A seller that charges VAT is identified by its VAT id on the invoice: without one the invoice waits, and is made once it is saved.
+      if (taxed && !seller.vatId) throw new AnafError('the company is registered for VAT and the seller has no VAT id: an administrator saves it on the invoices page', true);
       const input: UblDocument = {
         kind: 'invoice', id: printed(doc), issueDate: doc.issue_date, currency: draft.currency.toUpperCase(), ...(rate ? { rate } : {}),
-        seller, buyer: buyerOf(draft.buyer), lines: netLines(draft.lines), zeroVat: settings.zeroVat, paid: true,
+        seller, buyer: buyerOf(draft.buyer), lines: netLines(lines), zeroVat: treatment?.zeroVat ?? settings.zeroVat, paid: true,
       };
       const xml = written(input);
       await store.efacturaUpdateDocument(draft.id, { xml, input: JSON.stringify(input) }, now().toISOString());

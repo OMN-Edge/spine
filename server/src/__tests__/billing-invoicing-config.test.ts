@@ -11,7 +11,7 @@ const read = (env: Record<string, string>) => {
   const invoicing = readInvoicingConfig({ ...STRIPE, ...env } as never, billing, problems);
   return { invoicing, problems };
 };
-const BILLYOU = { SPINE_INVOICING: 'billyou', SPINE_INVOICING_VAT_PERCENT: '21', BILLYOU_API_KEY: 'k', BILLYOU_SERIES_ID: 's1' };
+const BILLYOU = { SPINE_INVOICING: 'billyou', BILLYOU_API_KEY: 'k', BILLYOU_SERIES_ID: 's1' };
 
 describe('the invoicing settings', () => {
   it('are off unless a service is named', () => {
@@ -19,27 +19,27 @@ describe('the invoicing settings', () => {
     expect(read({ SPINE_INVOICING: 'off' }).invoicing).toEqual({ enabled: false });
   });
 
-  it('read a Billyou account, with e-Factura off and the service’s mail on unless said', () => {
+  it('read a Billyou account, with e-Factura off and the service’s mail on unless said, and no VAT of their own: the buyer’s is decided when an invoice is made', () => {
     const { invoicing, problems } = read(BILLYOU);
     expect(problems).toEqual([]);
-    expect(invoicing).toMatchObject({ enabled: true, issuer: 'billyou', vatPercent: 21, efactura: false, mail: true, billyou: { apiKey: 'k', seriesId: 's1', zeroVat: null } });
+    expect(invoicing).toMatchObject({ enabled: true, issuer: 'billyou', vatPercent: 0, efactura: false, mail: true, billyou: { apiKey: 'k', seriesId: 's1', zeroVat: { taxCategory: 'O' } } });
     expect(read({ ...BILLYOU, SPINE_INVOICING_EFACTURA: 'on', SPINE_INVOICING_MAIL: 'off' }).invoicing).toMatchObject({ efactura: true, mail: false });
   });
 
-  it('stop the start without the VAT, without a service’s settings, and with billing off', () => {
-    expect(read({ SPINE_INVOICING: 'billyou' }).problems).toEqual(expect.arrayContaining([expect.stringContaining('SPINE_INVOICING_VAT_PERCENT'), expect.stringContaining('BILLYOU_API_KEY'), expect.stringContaining('BILLYOU_SERIES_ID')]));
-    expect(read({ ...BILLYOU, SPINE_INVOICING_VAT_PERCENT: 'abc' }).problems.join()).toContain('expected a number');
+  it('stop the start without a service’s settings, and with billing off', () => {
+    expect(read({ SPINE_INVOICING: 'billyou' }).problems).toEqual(expect.arrayContaining([expect.stringContaining('BILLYOU_API_KEY'), expect.stringContaining('BILLYOU_SERIES_ID')]));
     expect(read({ SPINE_INVOICING: 'nobody' }).problems.join()).toContain('expected off, billyou or efactura');
     const problems: string[] = [];
     readInvoicingConfig({ ...BILLYOU } as never, { enabled: false } as never, problems);
     expect(problems.join()).toContain('SPINE_INVOICING needs SPINE_BILLING=on');
   });
 
-  it('need the tax class of a line with no VAT, and an exemption code with the exempt class', () => {
-    expect(read({ ...BILLYOU, SPINE_INVOICING_VAT_PERCENT: '0' }).problems.join()).toContain('SPINE_INVOICING_ZERO_VAT');
-    expect(read({ ...BILLYOU, SPINE_INVOICING_VAT_PERCENT: '0', SPINE_INVOICING_ZERO_VAT: 'o' }).invoicing).toMatchObject({ billyou: { zeroVat: { taxCategory: 'O' } } });
-    expect(read({ ...BILLYOU, SPINE_INVOICING_VAT_PERCENT: '0', SPINE_INVOICING_ZERO_VAT: 'E' }).problems.join()).toContain('SPINE_INVOICING_EXEMPTION_CODE');
-    expect(read({ ...BILLYOU, SPINE_INVOICING_VAT_PERCENT: '0', SPINE_INVOICING_ZERO_VAT: 'E', SPINE_INVOICING_EXEMPTION_CODE: 'VATEX-EU-132' }).invoicing).toMatchObject({ billyou: { zeroVat: { taxCategory: 'E', vatExemptionCode: 'VATEX-EU-132' } } });
+  it('read no VAT percentage, tax class or exemption code: the VAT follows the buyer’s country and the company’s registration, and only the wording of the art. 310 mention is set', () => {
+    // The old settings are ignored, not an error.
+    expect(read({ ...BILLYOU, SPINE_INVOICING_VAT_PERCENT: 'abc', SPINE_INVOICING_ZERO_VAT: 'E' })).toMatchObject({ problems: [], invoicing: { vatPercent: 0, billyou: { zeroVat: { taxCategory: 'O' } } } });
+    expect((read(BILLYOU).invoicing as { exemptNote?: string }).exemptNote).toBeUndefined();
+    expect((read({ ...BILLYOU, SPINE_INVOICING_VAT_NOTE: 'off' }).invoicing as { exemptNote?: string }).exemptNote).toBe('');
+    expect((read({ ...BILLYOU, SPINE_INVOICING_VAT_NOTE: 'Scutit de TVA' }).invoicing as { exemptNote?: string }).exemptNote).toBe('Scutit de TVA');
   });
 });
 

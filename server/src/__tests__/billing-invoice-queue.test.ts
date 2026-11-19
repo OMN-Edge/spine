@@ -59,6 +59,18 @@ describe('the queue of invoices', () => {
     expect(f.drafts).toHaveLength(1);
   });
 
+  it('puts the VAT the buyer\u2019s own on the lines where the context gives it, by the day of the payment, and the config\u2019s where it does not', async () => {
+    const f = fake([MADE, { ...MADE, id: 'inv_2' }]);
+    const asked: Array<[string, string]> = [];
+    const vat = async (country: string, day: string) => { asked.push([country, day]); return { percent: country === 'RO' ? 21 : 0 }; };
+    const first = await queued();
+    expect(await processInvoice(first, ctx(f, T0, { vat, readSale: async () => ({ ...SALE, buyer: { ...SALE.buyer, country: 'RO' } }) }))).toBe('done');
+    const second = await queued();
+    expect(await processInvoice(second, ctx(f, T0, { vat }))).toBe('done');
+    expect(asked).toEqual([['RO', '2026-11-15'], ['FR', '2026-11-15']]);
+    expect(f.drafts.map(d => d.lines[0]!.vatPercent)).toEqual([21, 0]);
+  });
+
   it('tells the account once that the invoice is made, where the issuer sends the buyer nothing itself, and never fails the invoice if the telling fails', async () => {
     const f = fake([MADE]);
     const ref = await queued(T0, 'user-told');

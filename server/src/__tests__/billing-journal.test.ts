@@ -74,7 +74,7 @@ describe('the month’s invoices for the accountant', () => {
     expect(made.ok).toBe(true);
     if (!made.ok) return;
     expect(made.journal.rows.map(r => r.number)).toEqual(['SPN-00001', 'BY-0007', 'SPN-00002', 'SPN-00003']);
-    expect(made.journal).toMatchObject({ month: '2026-11', preparedOn: '2026-12-01', seller: { name: 'Omni Edge SRL' } });
+    expect(made.journal).toMatchObject({ period: '2026-11', preparedOn: '2026-12-01', seller: { name: 'Omni Edge SRL' } });
   });
 
   it('gives a credit note its amounts negative and the invoice it reverses, each row its rate of its own day, and a person with no tax number the thirteen zeros', async () => {
@@ -98,6 +98,17 @@ describe('the month’s invoices for the accountant', () => {
     expect(made.journal.rows.find(r => r.number === 'BY-0007')).toMatchObject({ rate: 1, ronMinor: 1190 });
   });
 
+  it('is made for a quarter as well, the three months together, which is what a One Stop Shop declaration is for', async () => {
+    stubBank();
+    const made = await buildJournal('2026-Q4');
+    if (!made.ok) throw new Error(made.error);
+    // October's document is now in, and the December copy (dated the 2nd) too.
+    expect(made.journal.rows.map(r => r.number)).toEqual(['SPN-00000', 'SPN-00001', 'BY-0007', 'SPN-00002', 'SPN-00003', 'BY-0008']);
+    expect(made.journal.period).toBe('2026-Q4');
+    expect(await buildJournal('2026-Q5')).toMatchObject({ ok: false });
+    expect((await app.inject({ method: 'GET', url: '/api/admin/invoices/export?period=2026-Q4&format=csv', headers: { cookie: await as(ADMIN) } })).headers['content-disposition']).toBe('attachment; filename="centralizator-facturi-2026-Q4.csv"');
+  });
+
   it('is an empty month for a month with nothing, and refuses what is not a month', async () => {
     stubBank();
     expect(await buildJournal('2026-09')).toMatchObject({ ok: true, journal: { rows: [] } });
@@ -109,13 +120,13 @@ describe('the month’s invoices for the accountant', () => {
     const get = async (query: string, email: string | null = ADMIN) => app.inject({ method: 'GET', url: `/api/admin/invoices/export?${query}`, ...(email ? { headers: { cookie: await as(email) } } : {}) });
 
     it('is for administrators: no one signed out, and not the marketing role that may only read the page', async () => {
-      expect((await get('month=2026-11', null)).statusCode).toBe(401);
-      expect((await get('month=2026-11', 'reader-journal@spine.test')).statusCode).toBe(403);
+      expect((await get('period=2026-11', null)).statusCode).toBe(401);
+      expect((await get('period=2026-11', 'reader-journal@spine.test')).statusCode).toBe(403);
     });
 
     it('is a CSV a Romanian spreadsheet opens: a mark, semicolons, comma decimals, a line for each document, and a name that is a formula made harmless', async () => {
       stubBank();
-      const res = await get('month=2026-11&format=csv');
+      const res = await get('period=2026-11&format=csv');
       expect(res.statusCode).toBe(200);
       expect(res.headers['content-type']).toBe('text/csv; charset=utf-8');
       expect(res.headers['content-disposition']).toBe('attachment; filename="centralizator-facturi-2026-11.csv"');
@@ -124,14 +135,14 @@ describe('the month’s invoices for the accountant', () => {
       expect(text.startsWith('﻿Tip;Număr;Data;Client;')).toBe(true);
       const lines = text.trim().split('\r\n');
       expect(lines).toHaveLength(5);
-      expect(lines[1]).toBe('Factură;SPN-00001;05.11.2026;Ion Popescu;RO;0000000000000;EUR;11,90;0,00;11,90;5,0000;59,50;;cs_a;acceptată');
+      expect(lines[1]).toBe('Factură;SPN-00001;05.11.2026;Ion Popescu;RO;0000000000000;EUR;11,90;0;0,00;11,90;5,0000;59,50;;cs_a;acceptată');
       expect(lines[3]).toContain(`"'=HYPERLINK(""http://evil.test"")"`);
-      expect(lines[4]).toBe('Notă de credit;SPN-00003;18.11.2026;Ion Popescu;RO;0000000000000;EUR;-11,90;0,00;-11,90;5,1500;-61,29;SPN-00001;SPN-00001;acceptată');
+      expect(lines[4]).toBe('Notă de credit;SPN-00003;18.11.2026;Ion Popescu;RO;0000000000000;EUR;-11,90;0;0,00;-11,90;5,1500;-61,29;SPN-00001;SPN-00001;acceptată');
     });
 
     it('is a PDF to print and sign', async () => {
       stubBank();
-      const res = await app.inject({ method: 'GET', url: '/api/admin/invoices/export?month=2026-11&format=pdf', headers: { cookie: await as(ADMIN) } });
+      const res = await app.inject({ method: 'GET', url: '/api/admin/invoices/export?period=2026-11&format=pdf', headers: { cookie: await as(ADMIN) } });
       expect(res.statusCode).toBe(200);
       expect(res.headers['content-type']).toBe('application/pdf');
       expect(res.rawPayload.subarray(0, 5).toString()).toBe('%PDF-');
@@ -139,10 +150,10 @@ describe('the month’s invoices for the accountant', () => {
     });
 
     it('refuses a month that is not one, a month that has not begun, and a format it does not make', async () => {
-      expect((await get('month=2026-13')).statusCode).toBe(400);
-      expect((await get('month=')).statusCode).toBe(400);
-      expect((await get('month=2099-01')).statusCode).toBe(400);
-      expect((await get('month=2026-11&format=xls')).statusCode).toBe(400);
+      expect((await get('period=2026-13')).statusCode).toBe(400);
+      expect((await get('period=')).statusCode).toBe(400);
+      expect((await get('period=2099-01')).statusCode).toBe(400);
+      expect((await get('period=2026-11&format=xls')).statusCode).toBe(400);
     });
   });
 });

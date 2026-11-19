@@ -666,6 +666,9 @@ export interface BillingView {
   founding_left?: number;
 }
 
+/** Whether the company is registered for VAT, from which day (`YYYY-MM-DD`), and whether it has joined the One Stop Shop (the server's `billing/invoicing/vat.ts`). */
+export interface InvoiceVat { registered: boolean; from: string | null; oss: boolean }
+
 /** Who the invoices are made out by (the server's `billing/invoicing/seller.ts`). */
 export interface InvoiceSeller {
   name: string; cif: string; street: string; city: string; county: string; postalCode: string;
@@ -800,12 +803,15 @@ export const api = {
     settings: () => req<{ settings: OperatorSetting[]; can_edit: boolean }>('/api/admin/settings'),
     /** Who the invoices are made out by, whether this account may change it, and which issuer the operator runs. */
     seller: () => req<{ seller: InvoiceSeller | null; issuer: string | null; can_edit: boolean }>('/api/admin/seller'),
-    /** The month's invoices and credit notes as a file for the accountant (the server's `routes/admin.ts`, `billing/invoicing/journal.ts`). */
-    invoiceExport: async (month: string, format: 'csv' | 'pdf'): Promise<Blob> => {
-      const res = await appFetch(`/api/admin/invoices/export?month=${encodeURIComponent(month)}&format=${format}`);
+    /** The invoices and credit notes of a month (`YYYY-MM`) or a quarter (`YYYY-Qn`) as a file for the accountant (the server's `routes/admin.ts`, `billing/invoicing/journal.ts`). */
+    invoiceExport: async (period: string, format: 'csv' | 'pdf'): Promise<Blob> => {
+      const res = await appFetch(`/api/admin/invoices/export?period=${encodeURIComponent(period)}&format=${format}`);
       if (!res.ok) throw new ApiError(((await res.json().catch(() => ({}))) as { error?: string }).error ?? res.statusText, res.status);
       return res.blob();
     },
+    /** Whether the company is registered for VAT (the server's `billing/invoicing/vat.ts`). */
+    vat: () => req<{ vat: InvoiceVat; issuer: string | null; seller_has_vat_id: boolean; romania_rate: number; oss_available: boolean; can_edit: boolean }>('/api/admin/vat'),
+    saveVat: (vat: InvoiceVat) => put<{ vat: InvoiceVat }>('/api/admin/vat', vat),
     saveSeller: (seller: InvoiceSeller) => put<{ seller: InvoiceSeller | null }>('/api/admin/seller', seller),
     setSetting: (key: string, value: number | null) => put<{ settings: OperatorSetting[] }>('/api/admin/settings', { key, value }),
     /** The hidden fair-use ceilings, for an administrator only (the server's `plans/fair-use-admin.ts`). */

@@ -13,6 +13,9 @@ import { InvoiceError, type InvoiceDraft, type InvoiceIssuer, type IssuedInvoice
 /** What the queue needs of the application's invoicing settings: the VAT the operator charges in an invoice's lines, whether the issuer mails the buyer, and whether the invoice is then sent to e-Factura. */
 export interface InvoicingSettings { vatPercent: number; mail: boolean; efactura: boolean }
 
+/** The VAT an invoice to a buyer in a country, dated a day, carries: percent and the class of a line with none (`spine-anaf`, `vat.ts`). */
+export type VatFor = (country: string, onDate: string) => Promise<{ percent: number }>;
+
 /** After this many tries an invoice is left for the operator. With the waits below that is about a day. */
 export const MAX_ATTEMPTS = 10;
 /** What a storno says it is for. */
@@ -28,6 +31,8 @@ export interface InvoicingContext {
   config: InvoicingSettings;
   /** The sale as the payment provider says it. */
   readSale: (ref: string) => Promise<Sale>;
+  /** Where the invoice's VAT is the buyer's own (the buyer's country and the company's registration), the percent to put on each line, by the day the invoice is dated (the day of the payment, never after today); absent, `config.vatPercent` stands. Spine's own e-Factura link decides it itself, when it makes the invoice. */
+  vat?: VatFor;
   /** Told once when a document is made (an invoice, or a credit note for a refund), where the issuer sends the buyer nothing itself; a failure is the host's to log, never the invoice's. */
   made?: (document: { ref: string; userId: string | null; number: string; credit: boolean }) => Promise<void>;
   /** Told once when a document is made, with what it was made from (`draft`, for an invoice) or whose it reverses (`reverses`, the payment's reference, for a credit note) and the number the issuer gave it, so the host can keep the document as a person reads it. A failure is the host's to log, never the invoice's. */
@@ -87,6 +92,11 @@ export async function processInvoice(ref: string, ctx: InvoicingContext): Promis
       } else {
         sale = await ctx.readSale(ref);
         draft = draftOf(ref, sale, ctx.config);
+        if (ctx.vat) {
+          const day = new Date(Math.min(Date.parse(sale.paidAt), now().getTime())).toISOString().slice(0, 10);
+          const { percent } = await ctx.vat(sale.buyer.country, day);
+          draft = { ...draft, lines: draft.lines.map(l => ({ ...l, vatPercent: percent })) };
+        }
         issued = await ctx.issuer.issue(draft);
       }
     } catch (err) {

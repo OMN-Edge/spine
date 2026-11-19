@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { csvText, journalCsv, journalTotals, monthName, renderJournalPdf, type Journal, type JournalRow } from '../journal.js';
+import { csvText, journalByCountry, journalCsv, journalTotals, monthName, periodName, renderJournalPdf, type Journal, type JournalRow } from '../journal.js';
 
 /** The month's summary (`journal.ts`): the cells a spreadsheet must not run, the totals, and a PDF that goes on to a second page. */
 const row = (over: Partial<JournalRow> = {}): JournalRow => ({
-  kind: 'invoice', number: 'SPN-00001', date: '2026-11-05', buyer: 'Ion Popescu', country: 'RO', taxId: '', currency: 'EUR', netMinor: 1190, vatMinor: 0, grossMinor: 1190,
+  kind: 'invoice', number: 'SPN-00001', date: '2026-11-05', buyer: 'Ion Popescu', country: 'RO', taxId: '', currency: 'EUR', vatPercent: 0, netMinor: 1190, vatMinor: 0, grossMinor: 1190,
   rate: 5, ronMinor: 5950, reverses: null, reference: null, anaf: null, ...over,
 });
-const journal = (rows: JournalRow[]): Journal => ({ month: '2026-11', preparedOn: '2026-12-01', seller: { name: 'Omni Edge SRL', cif: '12345678', street: 'Str. Exemplului 1', city: 'Sector 1', postalCode: '010101' }, rows });
+const journal = (rows: JournalRow[]): Journal => ({ period: '2026-11', preparedOn: '2026-12-01', seller: { name: 'Omni Edge SRL', cif: '12345678', street: 'Str. Exemplului 1', city: 'Sector 1', postalCode: '010101' }, rows });
 
 describe('a cell of the file', () => {
   it('is quoted where it holds the separator, a quote or a line break, and a formula is made a text by a single quote', () => {
@@ -27,6 +27,21 @@ describe('the totals of a month', () => {
   });
 });
 
+describe('the sums by country and rate', () => {
+  it('are kept apart by the buyer\u2019s country, the rate and the currency, credit notes taken off, the way the One Stop Shop declaration asks', () => {
+    const rows = [
+      row({ country: 'DE', vatPercent: 19, netMinor: 1000, vatMinor: 190, grossMinor: 1190 }), row({ country: 'DE', vatPercent: 19, netMinor: 1000, vatMinor: 190, grossMinor: 1190 }),
+      row({ kind: 'credit', country: 'DE', vatPercent: 19, netMinor: -1000, vatMinor: -190, grossMinor: -1190 }), row({ country: 'FR', vatPercent: 20, netMinor: 500, vatMinor: 100, grossMinor: 600 }),
+      row({ country: 'RO', vatPercent: 21, netMinor: 1000, vatMinor: 210, grossMinor: 1210 }),
+    ];
+    expect(journalByCountry(rows)).toEqual([
+      { country: 'DE', vatPercent: 19, currency: 'EUR', documents: 3, netMinor: 1000, vatMinor: 190, grossMinor: 1190 },
+      { country: 'FR', vatPercent: 20, currency: 'EUR', documents: 1, netMinor: 500, vatMinor: 100, grossMinor: 600 },
+      { country: 'RO', vatPercent: 21, currency: 'EUR', documents: 1, netMinor: 1000, vatMinor: 210, grossMinor: 1210 },
+    ]);
+  });
+});
+
 describe('the file', () => {
   it('has the mark, the header and one line for each document, and no line of totals', () => {
     const text = journalCsv(journal([row(), row({ number: 'SPN-00002' })]));
@@ -35,8 +50,10 @@ describe('the file', () => {
     expect(text).not.toMatch(/^Total/m);
   });
 
-  it('names the month in Romanian', () => {
+  it('names the month or the quarter in Romanian', () => {
     expect(monthName('2026-11')).toBe('noiembrie 2026');
+    expect(periodName('2026-Q4')).toBe('trimestrul 4 2026');
+    expect(periodName('2026-11')).toBe('noiembrie 2026');
   });
 });
 

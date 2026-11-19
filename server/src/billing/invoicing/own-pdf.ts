@@ -1,11 +1,12 @@
 import { createHmac } from 'node:crypto';
 import { getAccountsStore } from 'spine-core/store/index.js';
-import { documentOfDraft, renderInvoicePdf, type UblDocument, type ZeroVat } from 'spine-anaf/index.js';
+import { documentOfDraft, renderInvoicePdf, vatTreatment, type UblDocument } from 'spine-anaf/index.js';
 import { bnrRate } from 'spine-billing/invoicing/bnr.js';
 import type { InvoicingContext } from 'spine-billing/invoicing/queue.js';
 import { logger } from 'spine-core/logger.js';
 import { invoiceBrand } from './brand.js';
 import { sellerOf } from './seller.js';
+import { vatOf } from './vat.js';
 import type { InvoicingConfig } from './config.js';
 
 /**
@@ -18,12 +19,6 @@ type Active = Extract<InvoicingConfig, { enabled: true }>;
 
 /** The date an invoice is dated by: the day of the payment, never after today (as the service does). */
 const dateOf = (paidAt: string, now: number): string => new Date(Math.min(Date.parse(paidAt), now)).toISOString().slice(0, 10);
-
-const zeroVatOf = (config: Active): ZeroVat => {
-  if (config.issuer !== 'billyou' || !config.billyou.zeroVat) return { category: 'O' };
-  const { taxCategory, vatExemptionCode, note } = config.billyou.zeroVat;
-  return { category: taxCategory, ...(vatExemptionCode ? { exemptionCode: vatExemptionCode } : {}), ...(note ? { note } : {}) };
-};
 
 /** What the queue calls when a document is made: keeps the copy the PDF is made from. */
 export function keepDocument(config: Active, now: () => Date = () => new Date()): NonNullable<InvoicingContext['keep']> {
@@ -39,7 +34,9 @@ export function keepDocument(config: Active, now: () => Date = () => new Date())
       // VAT in another currency is also stated in lei (BR-RO-030); none charged, nothing to state.
       const taxed = draft.lines.some(l => l.vatPercent > 0);
       const rate = taxed && draft.currency.toUpperCase() !== 'RON' ? await bnrRate(draft.currency, fetch, Date.now(), date).catch(err => { logger.warn('the rate for an invoice could not be read', { reason: err instanceof Error ? err.message : String(err) }); return undefined; }) : undefined;
-      const document = documentOfDraft({ draft, id: printed, issueDate: date, seller, zeroVat: zeroVatOf(config), rate, note: `Payment ${ref}` });
+      // The mention for a line with no VAT is the buyer's own (exempt in Romania, not taxable outside the EU), as for Spine's own link.
+      const { zeroVat } = vatTreatment(draft.buyer.country, date, { ...(await vatOf(store)), oss: false }, { exemptNote: config.exemptNote });
+      const document = documentOfDraft({ draft, id: printed, issueDate: date, seller, zeroVat, rate, note: `Payment ${ref}` });
       await store.billing.keepInvoiceDocument(ref, JSON.stringify(document), now().toISOString());
       return;
     }

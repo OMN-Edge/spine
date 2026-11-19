@@ -21,6 +21,8 @@ export interface JournalRow {
   /** The buyer's tax id, or what stands for a person who gave none. */
   taxId: string;
   currency: string;
+  /** The rate of the VAT on the document, in percent (0 where there is none). */
+  vatPercent: number;
   /** Negative for a credit note. */
   netMinor: number;
   vatMinor: number;
@@ -38,8 +40,8 @@ export interface JournalRow {
 }
 
 export interface Journal {
-  /** `YYYY-MM`. */
-  month: string;
+  /** `YYYY-MM` for a month, `YYYY-Qn` for a quarter (what the One Stop Shop declaration is for). */
+  period: string;
   seller: Pick<UblSeller, 'name' | 'cif' | 'vatId' | 'registerNo' | 'street' | 'city' | 'postalCode'>;
   /** The day it was drawn up, `YYYY-MM-DD`. */
   preparedOn: string;
@@ -59,7 +61,7 @@ export function journalRowOf(doc: UblDocument, extra: { rate: number | null; ana
   const reference = extra.reference ?? /^Payment (\S+)$/.exec(doc.note ?? '')?.[1] ?? null;
   return {
     kind: doc.kind === 'credit' ? 'credit' : 'invoice', number: doc.id, date: doc.issueDate, buyer: doc.buyer.name, country: doc.buyer.country.toUpperCase(), taxId,
-    currency: doc.currency.toUpperCase(), netMinor: sign * t.netMinor, vatMinor: sign * t.vatMinor, grossMinor: gross,
+    currency: doc.currency.toUpperCase(), vatPercent: t.groups.find(g => g.category === 'S')?.percent ?? 0, netMinor: sign * t.netMinor, vatMinor: sign * t.vatMinor, grossMinor: gross,
     rate, ronMinor: rate === null ? null : Math.sign(gross) * Math.round(Math.abs(gross) * rate), reverses: doc.reverses ?? null, reference, anaf: extra.anaf ?? null,
   };
 }
@@ -92,7 +94,7 @@ export function csvText(value: string): string {
   return /[;"\r\n]/.test(guarded) ? `"${guarded.replace(/"/g, '""')}"` : guarded;
 }
 
-const HEADER = ['Tip', 'Număr', 'Data', 'Client', 'Țară', 'CUI/CNP', 'Valută', 'Valoare fără TVA', 'TVA', 'Total', 'Curs BNR', 'Total în lei', 'Anulează factura', 'Referință plată', 'Stare ANAF'];
+const HEADER = ['Tip', 'Număr', 'Data', 'Client', 'Țară', 'CUI/CNP', 'Valută', 'Valoare fără TVA', 'Cota TVA', 'TVA', 'Total', 'Curs BNR', 'Total în lei', 'Anulează factura', 'Referință plată', 'Stare ANAF'];
 const KIND = { invoice: 'Factură', credit: 'Notă de credit' } as const;
 const STATE: Record<string, string> = { ok: 'acceptată', sent: 'trimisă', nok: 'refuzată', abroad: 'cumpărător în afara României' };
 
@@ -104,7 +106,7 @@ export function journalCsv(journal: Journal): string {
   const lines = [HEADER.join(';')];
   for (const r of journal.rows) {
     lines.push([
-      KIND[r.kind], r.number, dotted(r.date), csvText(r.buyer), r.country, csvText(r.taxId), r.currency, plain(r.netMinor), plain(r.vatMinor), plain(r.grossMinor),
+      KIND[r.kind], r.number, dotted(r.date), csvText(r.buyer), r.country, csvText(r.taxId), r.currency, plain(r.netMinor), String(r.vatPercent).replace('.', ','), plain(r.vatMinor), plain(r.grossMinor),
       r.rate === null ? '' : r.rate.toFixed(4).replace('.', ','), r.ronMinor === null ? '' : plain(r.ronMinor), csvText(r.reverses ?? ''), csvText(r.reference ?? ''), r.anaf ? (STATE[r.anaf] ?? r.anaf) : '',
     ].join(';'));
   }
@@ -119,6 +121,24 @@ const RULE = '#e7e5e4';
 const TINT = '#f0fdfa';
 const PAGE = { w: 841.89, h: 595.28, margin: 36 };
 
+/** What a period is called in Romanian: "noiembrie 2026" for a month, "trimestrul 4 2026" for a quarter. */
+export const periodName = (period: string): string => {
+  const q = /^(\d{4})-Q([1-4])$/.exec(period);
+  return q ? `trimestrul ${q[2]} ${q[1]}` : monthName(period);
+};
+
+/** The sums for each country and rate of VAT, in the document's currency: what the One Stop Shop declaration asks of a quarter, the base and the VAT by country of the buyer and by rate. */
+export function journalByCountry(rows: JournalRow[]): { country: string; vatPercent: number; currency: string; documents: number; netMinor: number; vatMinor: number; grossMinor: number }[] {
+  const by = new Map<string, { country: string; vatPercent: number; currency: string; documents: number; netMinor: number; vatMinor: number; grossMinor: number }>();
+  for (const r of rows) {
+    const key = `${r.country}|${r.vatPercent}|${r.currency}`;
+    const t = by.get(key) ?? { country: r.country, vatPercent: r.vatPercent, currency: r.currency, documents: 0, netMinor: 0, vatMinor: 0, grossMinor: 0 };
+    t.documents++; t.netMinor += r.netMinor; t.vatMinor += r.vatMinor; t.grossMinor += r.grossMinor;
+    by.set(key, t);
+  }
+  return [...by.values()].sort((a, b) => a.country.localeCompare(b.country) || a.vatPercent - b.vatPercent || a.currency.localeCompare(b.currency));
+}
+
 /** The month's name in Romanian ("noiembrie 2026"). */
 export const monthName = (month: string): string => new Intl.DateTimeFormat('ro-RO', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${month}-01T00:00:00Z`));
 
@@ -126,7 +146,7 @@ export const monthName = (month: string): string => new Intl.DateTimeFormat('ro-
 export function renderJournalPdf(journal: Journal, options: { brand?: DocumentBrand } = {}): Promise<Buffer> {
   const color = options.brand?.color ?? '#0f766e';
   const s = journal.seller;
-  const pdf = new PDFDocument({ size: [PAGE.w, PAGE.h], margin: 0, bufferPages: true, info: { Title: `Centralizator facturi emise ${journal.month}`, Author: s.name } });
+  const pdf = new PDFDocument({ size: [PAGE.w, PAGE.h], margin: 0, bufferPages: true, info: { Title: `Centralizator facturi emise ${journal.period}`, Author: s.name } });
   const chunks: Buffer[] = [];
   const done = new Promise<Buffer>((resolve, reject) => {
     pdf.on('data', (c: Buffer) => chunks.push(c));
@@ -139,8 +159,8 @@ export function renderJournalPdf(journal: Journal, options: { brand?: DocumentBr
   const W = PAGE.w - 2 * PAGE.margin;
   // Columns: the shares of the width, left or right aligned.
   const cols: Array<{ title: string; share: number; right?: boolean }> = [
-    { title: 'Nr.', share: 0.04 }, { title: 'Data', share: 0.08 }, { title: 'Document', share: 0.15 }, { title: 'Client', share: 0.27 }, { title: 'Valută', share: 0.06 },
-    { title: 'Fără TVA', share: 0.1, right: true }, { title: 'TVA', share: 0.08, right: true }, { title: 'Total', share: 0.1, right: true }, { title: 'Total în lei', share: 0.12, right: true },
+    { title: 'Nr.', share: 0.04 }, { title: 'Data', share: 0.08 }, { title: 'Document', share: 0.15 }, { title: 'Client', share: 0.26 }, { title: 'Valută', share: 0.06 },
+    { title: 'Fără TVA', share: 0.09, right: true }, { title: 'Cota', share: 0.05, right: true }, { title: 'TVA', share: 0.08, right: true }, { title: 'Total', share: 0.09, right: true }, { title: 'Total în lei', share: 0.1, right: true },
   ];
   const widths = cols.map(c => c.share * W);
   /** A cell cut short, with an ellipsis, so that it stays on its line (the buyer's name is long, and a line that wraps would run into the next). */
@@ -159,7 +179,7 @@ export function renderJournalPdf(journal: Journal, options: { brand?: DocumentBr
   };
 
   pdf.font('b').fontSize(16).fillColor(INK).text('Centralizator facturi emise', X, 34, { lineBreak: false });
-  pdf.font('r').fontSize(10).fillColor(MUTED).text(`Luna ${monthName(journal.month)}`, X, 56, { lineBreak: false });
+  pdf.font('r').fontSize(10).fillColor(MUTED).text(`${/-Q/.test(journal.period) ? 'Perioada' : 'Luna'} ${periodName(journal.period)}`, X, 56, { lineBreak: false });
   pdf.font('b').fontSize(10).fillColor(color).text(s.name, X, 34, { width: W, align: 'right', lineBreak: false });
   pdf.font('r').fontSize(8).fillColor(MUTED).text([s.vatId ?? `CIF ${s.cif}`, s.registerNo, `${s.street}, ${s.postalCode} ${s.city}`].filter(Boolean).join(' · '), X, 50, { width: W, align: 'right', lineBreak: false });
   pdf.font('r').fontSize(7.5).fillColor(MUTED).text('Întocmit potrivit OMFP 2634/2015, anexa 1, pct. 10 și 20: listează documentele justificative (facturi și note de credit) ale lunii; nu le înlocuiește.', X, 74, { width: W, lineBreak: false });
@@ -170,7 +190,7 @@ export function renderJournalPdf(journal: Journal, options: { brand?: DocumentBr
     if (y > rowsLimit) { pdf.addPage({ size: [PAGE.w, PAGE.h], margin: 0 }); y = header(36); }
     const cells = [
       String(n + 1), dotted(r.date), `${KIND[r.kind]} ${r.number}${r.reverses ? ` (storno ${r.reverses})` : ''}`, `${r.buyer} · ${r.country}${r.taxId ? ` · ${r.taxId}` : ''}`, r.currency,
-      spaced(r.netMinor), spaced(r.vatMinor), spaced(r.grossMinor), r.ronMinor === null ? '—' : spaced(r.ronMinor),
+      spaced(r.netMinor), `${r.vatPercent}%`, spaced(r.vatMinor), spaced(r.grossMinor), r.ronMinor === null ? '—' : spaced(r.ronMinor),
     ];
     let x = X;
     cells.forEach((cell, i) => { pdf.font('r').fontSize(7.5).fillColor(INK).text(fit(cell, widths[i]! - 8), x + 4, y, { width: widths[i]! - 8, align: cols[i]!.right ? 'right' : 'left', lineBreak: false }); x += widths[i]!; });
@@ -187,6 +207,17 @@ export function renderJournalPdf(journal: Journal, options: { brand?: DocumentBr
   for (const t of journalTotals(journal.rows)) {
     pdf.font('r').fontSize(8).fillColor(INK).text(`${t.currency}: ${t.invoices} facturi, ${t.credits} note de credit · fără TVA ${spaced(t.netMinor)} · TVA ${spaced(t.vatMinor)} · total ${spaced(t.grossMinor)}${t.ronMinor === null ? '' : ` · în lei ${spaced(t.ronMinor)}`}`, X, y, { lineBreak: false });
     y += 13;
+  }
+  const countries = journalByCountry(journal.rows).filter(c => c.vatMinor !== 0 || c.vatPercent > 0);
+  if (countries.length > 0) {
+    y += 10;
+    if (y > PAGE.h - 60 - countries.length * 12) { pdf.addPage({ size: [PAGE.w, PAGE.h], margin: 0 }); y = 36; }
+    pdf.font('b').fontSize(8.5).fillColor(INK).text('TVA pe țări și cote (baza și TVA ale clienților, pentru declarația OSS)', X, y, { lineBreak: false });
+    y += 15;
+    for (const c of countries) {
+      pdf.font('r').fontSize(8).fillColor(INK).text(`${c.country} · ${c.vatPercent}% · ${c.currency}: ${c.documents} documente · baza ${spaced(c.netMinor)} · TVA ${spaced(c.vatMinor)} · total ${spaced(c.grossMinor)}`, X, y, { lineBreak: false });
+      y += 12;
+    }
   }
   y += 14;
   pdf.font('r').fontSize(8).fillColor(MUTED).text(`Întocmit la ${dotted(journal.preparedOn)}`, X, y, { lineBreak: false });

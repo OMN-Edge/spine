@@ -191,7 +191,8 @@ export function buildUbl(doc: UblDocument): string {
   const b = doc.buyer;
   const buyerInRo = b.country.toUpperCase() === 'RO';
 
-  const sellerVat = s.vatId ? `<cac:PartyTaxScheme><cbc:CompanyID>${esc(s.vatId)}</cbc:CompanyID><cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:PartyTaxScheme>` : '';
+  // The VAT id is left out of an invoice that has a line of the class "not subject to VAT" (BR-O-02), whatever the seller is.
+  const sellerVat = s.vatId && !t.groups.some(g => g.category === 'O') ? `<cac:PartyTaxScheme><cbc:CompanyID>${esc(s.vatId)}</cbc:CompanyID><cac:TaxScheme><cbc:ID>VAT</cbc:ID></cac:TaxScheme></cac:PartyTaxScheme>` : '';
   const seller = [
     '<cac:AccountingSupplierParty><cac:Party>',
     ...(s.tradeName ? [`<cac:PartyName><cbc:Name>${esc(clip(s.tradeName, 200))}</cbc:Name></cac:PartyName>`] : []),

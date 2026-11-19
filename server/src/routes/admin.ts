@@ -20,9 +20,10 @@ import { suggestedRefund } from 'spine-billing/withdrawal-share.js';
 import { adminCatalogRoutes } from './admin-catalog.js';
 import { changeSeller, sellerOf } from '../billing/invoicing/seller.js';
 import { loadInvoicingConfig } from '../billing/invoicing/config.js';
-import { buildJournal } from '../billing/invoicing/journal.js';
+import { buildJournal, periodBounds } from '../billing/invoicing/journal.js';
+import { changeVat, vatOf } from '../billing/invoicing/vat.js';
 import { invoiceBrand } from '../billing/invoicing/brand.js';
-import { journalCsv, renderJournalPdf } from 'spine-anaf/index.js';
+import { EU_VAT_RATES, journalCsv, renderJournalPdf } from 'spine-anaf/index.js';
 
 /**
  * Approving the accounts that asked for one under `SPINE_REGISTRATION=approval`, from the app. Who may is `SPINE_ADMIN_EMAILS`, checked on every
@@ -229,21 +230,39 @@ export async function adminRoutes(app: FastifyInstance, opts: AdminRouteOptions 
 
   // The month's invoices and credit notes in one document for the accountant (`billing/invoicing/journal.ts`): a CSV a spreadsheet opens, or a PDF to print and sign. An administrator only:
   // it lists every buyer of the month by name. Nothing is kept of it; it is drawn from the documents each time.
-  app.get<{ Querystring: { month?: string; format?: string } }>('/api/admin/invoices/export', { preHandler: [requireAuth, onlyAdmins], config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
+  app.get<{ Querystring: { period?: string; format?: string } }>('/api/admin/invoices/export', { preHandler: [requireAuth, onlyAdmins], config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
     let config;
     try { config = loadInvoicingConfig(loadBillingConfig()); } catch { config = { enabled: false as const }; }
     if (!config.enabled) return reply.status(404).send({ error: 'the operator does not issue invoices here' });
-    const month = req.query.month ?? '';
+    const period = req.query.period ?? '';
     const format = req.query.format ?? 'csv';
     if (format !== 'csv' && format !== 'pdf') return reply.status(400).send({ error: 'the format is csv or pdf' });
-    if (month > new Date().toISOString().slice(0, 7)) return reply.status(400).send({ error: 'that month has not begun' });
-    const made = await buildJournal(month);
-    if (!made.ok) return reply.status(made.error === 'the month is YYYY-MM' ? 400 : 409).send({ error: made.error });
-    logger.info('the month\'s invoices were exported', { event: 'invoice_export', month, format, account: req.userId, rows: made.journal.rows.length });
-    const name = `centralizator-facturi-${month}.${format}`;
+    const made = await buildJournal(period);
+    if (!made.ok) return reply.status(made.error.startsWith('the period') ? 400 : 409).send({ error: made.error });
+    if (periodBounds(period).from > new Date().toISOString().slice(0, 10)) return reply.status(400).send({ error: 'that period has not begun' });
+    logger.info('the period\'s invoices were exported', { event: 'invoice_export', period, format, account: req.userId, rows: made.journal.rows.length });
+    const name = `centralizator-facturi-${period}.${format}`;
     reply.header('Cache-Control', 'private, no-store').header('Content-Disposition', `attachment; filename="${name}"`);
     if (format === 'csv') return reply.header('Content-Type', 'text/csv; charset=utf-8').send(journalCsv(made.journal));
     return reply.header('Content-Type', 'application/pdf').send(await renderJournalPdf(made.journal, { brand: invoiceBrand() }));
+  });
+
+  // Whether the company is registered for VAT, from which day, and whether it has joined the One Stop Shop (`billing/invoicing/vat.ts`): what decides the VAT on each invoice Spine's own e-Factura link makes.
+  // Read by the marketing role too, changed by an administrator who has typed the password lately.
+  app.get('/api/admin/vat', { preHandler: [requireAuth, onlyReaders] }, async (req, reply) => {
+    const user = await getAccountsStore().users.findById(req.userId);
+    let issuer: string | null = null;
+    try { const config = loadInvoicingConfig(loadBillingConfig()); issuer = config.enabled ? config.issuer : null; } catch { issuer = null; }
+    const seller = await sellerOf(getAccountsStore());
+    return reply.header('Cache-Control', 'no-store').send({ vat: await vatOf(getAccountsStore()), issuer, seller_has_vat_id: !!seller?.vatId, romania_rate: EU_VAT_RATES.RO, oss_available: issuer === 'efactura', can_edit: !!user && admins().has(user.email.toLowerCase()) });
+  });
+  app.put<{ Body: unknown }>('/api/admin/vat', { preHandler: [requireAuth, onlyAdmins, requireRecentAuth] }, async (req, reply) => {
+    let issuer: string | null = null;
+    try { const config = loadInvoicingConfig(loadBillingConfig()); issuer = config.enabled ? config.issuer : null; } catch { issuer = null; }
+    const problem = await changeVat(getAccountsStore(), req.body, new Date().toISOString(), { oss: issuer === 'efactura' });
+    if (problem) return reply.status(400).send({ error: problem });
+    logger.info('the VAT settings were changed', { event: 'invoice_vat', account: req.userId });
+    return reply.send({ vat: await vatOf(getAccountsStore()) });
   });
 
   // The hidden fair-use ceilings (`plans/fair-use-admin.ts`): an administrator only, for both reading and changing, because they are never shown to anyone

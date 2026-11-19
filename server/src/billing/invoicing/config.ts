@@ -1,5 +1,6 @@
 import { ConfigError } from 'spine-core/config.js';
 import type { BillingConfig } from '../config.js';
+import { EXEMPT_NOTE } from 'spine-anaf/index.js';
 import type { ZeroVat } from 'spine-anaf/index.js';
 
 /**
@@ -23,7 +24,7 @@ export interface EfacturaConfig {
 
 export type InvoicingConfig =
   | { enabled: false }
-  | { enabled: true; issuer: 'efactura'; vatPercent: number; efactura: true; mail: false; direct: EfacturaConfig }
+  | { enabled: true; issuer: 'efactura'; vatPercent: number; efactura: true; mail: false; direct: EfacturaConfig; /** The wording of the art. 310 mention where it is not the law's own: set, `''` for none; unset, the law's. */ exemptNote?: string }
   | {
       enabled: true;
       issuer: 'billyou';
@@ -33,7 +34,8 @@ export type InvoicingConfig =
       efactura: boolean;
       /** Whether the service mails each invoice to the buyer. */
       mail: boolean;
-      billyou: { apiKey: string; seriesId: string; zeroVat: { taxCategory: 'O' | 'Z' | 'E' | 'AE'; vatExemptionCode?: string; note?: string } | null };
+      billyou: { apiKey: string; seriesId: string; zeroVat: { taxCategory: 'O' | 'Z' | 'E' | 'AE' } | null };
+      exemptNote?: string;
     };
 
 export function readInvoicingConfig(env: NodeJS.ProcessEnv, billing: BillingConfig, problems: string[]): InvoicingConfig {
@@ -57,26 +59,17 @@ export function readInvoicingConfig(env: NodeJS.ProcessEnv, billing: BillingConf
     return raw === 'on';
   };
 
-  const rawVat = need('SPINE_INVOICING_VAT_PERCENT');
-  const vatPercent = Number(rawVat);
-  if (rawVat && (!Number.isFinite(vatPercent) || vatPercent < 0 || vatPercent > 100)) problems.push(`SPINE_INVOICING_VAT_PERCENT is "${rawVat}"; expected a number from 0 to 100`);
-
-  const zero = (env.SPINE_INVOICING_ZERO_VAT ?? '').trim().toUpperCase();
-  if (vatPercent === 0 && !['O', 'Z', 'E', 'AE'].includes(zero)) problems.push('SPINE_INVOICING_VAT_PERCENT=0 needs SPINE_INVOICING_ZERO_VAT, the tax class of a line with no VAT: O (outside scope), Z (zero-rated), E (exempt) or AE (reverse charge)');
-  const code = (env.SPINE_INVOICING_EXEMPTION_CODE ?? '').trim();
-  if (zero === 'E' && !code) problems.push('SPINE_INVOICING_ZERO_VAT=E needs SPINE_INVOICING_EXEMPTION_CODE (the VATEX code of the exemption)');
-  // The mention on an invoice with a line that has no VAT, the accountant's "scutit de tva" and the article of the regime for companies not registered for VAT (art. 310, 2026-11-19); `off` leaves it out.
+  // The VAT of an invoice is the buyer's own: where the buyer is and whether the company is registered for VAT (the settings on the invoices page, `vat.ts`), for a service as for Spine's own link. Only the wording
+  // of the art. 310 mention can be set here: unset, the law's own; `off`, none.
   const rawNote = (env.SPINE_INVOICING_VAT_NOTE ?? '').trim();
-  const note = vatPercent === 0 && rawNote.toLowerCase() !== 'off' ? (rawNote || 'Scutit de TVA conform art. 310 din Codul fiscal').slice(0, 200) : undefined;
+  const exemptNote = rawNote.toLowerCase() === 'off' ? '' : rawNote ? rawNote.slice(0, 200) : undefined;
+  const wording = exemptNote === undefined ? {} : { exemptNote };
   if (issuer === 'efactura') {
-    const direct = readEfacturaConfig(env, vatPercent === 0 && ['O', 'Z', 'E', 'AE'].includes(zero) ? { category: zero as ZeroVat['category'], ...(code ? { exemptionCode: code } : {}), ...(note ? { note } : {}) } : { category: 'O' }, need, problems);
-    return { enabled: true, issuer: 'efactura', vatPercent: Number.isFinite(vatPercent) ? vatPercent : 0, efactura: true, mail: false, direct };
+    const direct = readEfacturaConfig(env, { category: 'O', ...(exemptNote === undefined ? { note: EXEMPT_NOTE } : exemptNote ? { note: exemptNote } : {}) }, need, problems);
+    return { enabled: true, issuer: 'efactura', vatPercent: 0, efactura: true, mail: false, direct, ...wording };
   }
-  const billyou = {
-    apiKey: need('BILLYOU_API_KEY'), seriesId: need('BILLYOU_SERIES_ID'),
-    zeroVat: vatPercent === 0 && ['O', 'Z', 'E', 'AE'].includes(zero) ? { taxCategory: zero as 'O' | 'Z' | 'E' | 'AE', ...(code ? { vatExemptionCode: code } : {}), ...(note ? { note } : {}) } : null,
-  };
-  return { enabled: true, issuer, vatPercent: Number.isFinite(vatPercent) ? vatPercent : 0, efactura: flag('SPINE_INVOICING_EFACTURA', false), mail: flag('SPINE_INVOICING_MAIL', true), billyou };
+  const billyou = { apiKey: need('BILLYOU_API_KEY'), seriesId: need('BILLYOU_SERIES_ID'), zeroVat: { taxCategory: 'O' as const } };
+  return { enabled: true, issuer, vatPercent: 0, efactura: flag('SPINE_INVOICING_EFACTURA', false), mail: flag('SPINE_INVOICING_MAIL', true), billyou, ...wording };
 }
 
 /** The settings on their own, for the webhook and the hourly job (read each time: cheap, and a test changes the environment). */

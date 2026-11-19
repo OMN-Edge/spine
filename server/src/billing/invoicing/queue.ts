@@ -14,6 +14,8 @@ import { getMailer } from '../../mail/index.js';
 import { loadInvoicingConfig, type InvoicingConfig } from './config.js';
 import { keepDocument } from './own-pdf.js';
 import { sellerOf } from './seller.js';
+import { vatOf } from './vat.js';
+import { vatTreatment } from 'spine-anaf/index.js';
 
 /**
  * The queue of invoices (`spine-billing`, `invoicing/queue.ts`) with Spine's settings: which issuer the operator named, made once for the process, the context a pass runs in, and the
@@ -29,10 +31,15 @@ function build(config: Active): NonNullable<typeof made> {
   const key = JSON.stringify([config.issuer, config.issuer === 'billyou' ? config.billyou : { ...config.direct, key: config.direct.key.toString('base64') }, config.vatPercent]);
   if (made?.key === key) return made;
   if (config.issuer === 'efactura') {
-    const efactura = openEfactura({ ...config.direct, seller: () => sellerOf(getAccountsStore()) }, getAccountsStore().billing, { brand: invoiceBrand() });
+    const { exemptNote } = config;
+    const efactura = openEfactura({
+      ...config.direct, seller: () => sellerOf(getAccountsStore()),
+      // The VAT of each invoice: the buyer's country and the company's registration (`vat.ts`), read when it is made.
+      vat: async (country, date) => vatTreatment(country, date, await vatOf(getAccountsStore()), { exemptNote }),
+    }, getAccountsStore().billing, { brand: invoiceBrand() });
     return (made = { key, issuer: efactura.issuer, efactura });
   }
-  const issuer = billyouIssuer({ apiKey: config.billyou.apiKey, seriesId: config.billyou.seriesId, exchangeRate: (currency, date) => bnrRate(currency, fetch, Date.now(), date), ...(config.billyou.zeroVat ? { zeroVat: { taxCategory: config.billyou.zeroVat.taxCategory, ...(config.billyou.zeroVat.vatExemptionCode ? { vatExemptionCode: config.billyou.zeroVat.vatExemptionCode } : {}) } } : {}) });
+  const issuer = billyouIssuer({ apiKey: config.billyou.apiKey, seriesId: config.billyou.seriesId, exchangeRate: (currency, date) => bnrRate(currency, fetch, Date.now(), date), ...(config.billyou.zeroVat ? { zeroVat: config.billyou.zeroVat } : {}) });
   return (made = { key, issuer, efactura: null });
 }
 
@@ -52,7 +59,10 @@ export function contextFromSettings(env: NodeJS.ProcessEnv = process.env): Invoi
   const config = loadInvoicingConfig(billing, env);
   if (!billing.enabled || !config.enabled) return null;
   const provider = billingProvider(billing as Enabled);
-  return { issuer: issuerFor(config), config, readSale: ref => provider.readSale(ref), made: tellOfInvoice, keep: keepDocument(config) };
+  // Through a service the VAT is put on the lines here, from the buyer's country and the company's registration, as Spine's own link does when it makes the invoice (`vat.ts`); the service takes only Romania's rates,
+  // so the One Stop Shop is not used with it (what a buyer in another EU country is charged is then Romania's).
+  const vat = config.issuer === 'billyou' ? async (country: string, date: string) => vatTreatment(country, date, { ...(await vatOf(getAccountsStore())), oss: false }, { exemptNote: config.exemptNote }) : undefined;
+  return { issuer: issuerFor(config), config, readSale: ref => provider.readSale(ref), made: tellOfInvoice, keep: keepDocument(config), ...(vat ? { vat } : {}) };
 }
 
 

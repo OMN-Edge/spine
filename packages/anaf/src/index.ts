@@ -3,6 +3,7 @@ import { AnafLink } from './anaf.js';
 import { efacturaIssuer, signedLink, type EfacturaIssuer } from './issuer.js';
 import type { UblSeller, ZeroVat } from './ubl.js';
 import type { DocumentBrand } from './document.js';
+import type { VatTreatment } from './vat.js';
 import type { AnafStore } from './store.js';
 
 /**
@@ -22,6 +23,8 @@ export interface AnafConfig {
   key: Buffer;
   /** Who the invoices are made out by, read each time one is made: null where none is set yet, and the invoice then waits. */
   seller: () => Promise<UblSeller | null>;
+  /** The VAT an invoice to a buyer in a country, dated a day, carries (`vat.ts`); where there is none, the lines' own percent and `zeroVat` stand. */
+  vat?: (country: string, onDate: string) => Promise<VatTreatment>;
   series: string;
   zeroVat: ZeroVat;
   /** The address the host is served from, for the links to an invoice's PDF. */
@@ -53,7 +56,7 @@ export function makeEfactura(config: AnafConfig, store: AnafStore, extra: Efactu
   const pdfKey = createHmac('sha256', config.key).update('spine-efactura-pdf-links').digest();
   const link = new AnafLink({ mode: config.mode, clientId: config.clientId, clientSecret: config.clientSecret, redirectUri: config.redirectUri, key: config.key, ...rest }, store);
   const issuer = efacturaIssuer({
-    seller: config.seller, series: config.series, zeroVat: config.zeroVat,
+    seller: config.seller, series: config.series, zeroVat: config.zeroVat, ...(config.vat ? { vat: config.vat } : {}),
     ...(exchangeRate ? { exchangeRate } : {}), ...(brand ? { brand } : {}),
     pdfLink: id => `${config.publicUrl}${pdfPath}/${encodeURIComponent(id)}?t=${signedLink(pdfKey, id, (rest.now ?? (() => new Date()))())}`,
     ...rest,
@@ -66,7 +69,8 @@ export type { AnafStatus, AnafSettings } from './anaf.js';
 export { AnafError } from './error.js';
 export { linkIsValid, signedLink, documentOfDraft } from './issuer.js';
 export { renderInvoicePdf } from './document.js';
-export { journalCsv, journalRowOf, journalTotals, monthName, renderJournalPdf, type Journal, type JournalRow } from './journal.js';
+export { EU_VAT_RATES, EXEMPT_NOTE, NOT_REGISTERED, NOT_TAXABLE_NOTE, isEuCountry, vatTreatment, type VatSettings, type VatTreatment } from './vat.js';
+export { journalByCountry, journalCsv, journalRowOf, journalTotals, monthName, periodName, renderJournalPdf, type Journal, type JournalRow } from './journal.js';
 export type { EfacturaIssuer } from './issuer.js';
 export type { InvoiceDraft, IssuedInvoice, Issuer } from './invoice.js';
 export type { AnafStore, AnafTokens, StoredDocument, DocumentPatch, DocumentKind } from './store.js';

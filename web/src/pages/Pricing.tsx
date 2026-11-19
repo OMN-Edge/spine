@@ -59,6 +59,7 @@ export function PricingPage({ pricing, authenticated, options, initialPeriod = '
 
       {pricing?.enabled && prices && (
         <>
+          <p className="mx-auto max-w-6xl px-4 pt-6 text-sm text-ink/60 sm:px-6">{t('Prices include VAT where it applies.')}</p>
           <Trial cta={cta} />
 
           {pricing.founding_left ? <Founding price={money(prices.founding.year)} regular={money(prices.premium.year)} left={pricing.founding_left} /> : null}

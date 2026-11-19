@@ -6,7 +6,7 @@ import type { UserRecord } from './store/index.js';
  * sign-in, because the consent they gave was to the old words.
  */
 export const HEALTH_CONSENT_VERSION = '2026-11-24';
-export const TERMS_VERSION = '2026-11-22';
+export const TERMS_VERSION = '2026-11-25';
 
 export type ConsentNeed = { health: boolean; terms: boolean };
 

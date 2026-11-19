@@ -12,17 +12,20 @@ import { sellerOf } from './seller.js';
  */
 export type JournalAnswer = { ok: true; journal: Journal } | { ok: false; error: string };
 
-/** `YYYY-MM` of a date, and the first day of the next month. */
-const bounds = (month: string): { from: string; to: string } => {
-  const [y, m] = month.split('-').map(Number) as [number, number];
-  return { from: `${month}-01`, to: m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01` };
+/** The first day of a period and of the one after it: a month (`YYYY-MM`) or a quarter (`YYYY-Qn`, which the One Stop Shop declaration is made for). */
+export const periodBounds = (period: string): { from: string; to: string } => {
+  const first = (y: number, m: number): string => `${y + Math.floor((m - 1) / 12)}-${String(((m - 1) % 12) + 1).padStart(2, '0')}-01`;
+  const q = /^(\d{4})-Q([1-4])$/.exec(period);
+  if (q) { const y = Number(q[1]); const m = (Number(q[2]) - 1) * 3 + 1; return { from: first(y, m), to: first(y, m + 3) }; }
+  const [y, m] = period.split('-').map(Number) as [number, number];
+  return { from: first(y, m), to: first(y, m + 1) };
 };
 const day = (iso: string): string => new Date(iso).toLocaleDateString('en-CA', { timeZone: 'Europe/Bucharest' });
 const shifted = (date: string, days: number): string => new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString();
 
-export async function buildJournal(month: string, now: () => Date = () => new Date(), rateOf: typeof bnrRate = bnrRate): Promise<JournalAnswer> {
-  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return { ok: false, error: 'the month is YYYY-MM' };
-  const { from, to } = bounds(month);
+export async function buildJournal(period: string, now: () => Date = () => new Date(), rateOf: typeof bnrRate = bnrRate): Promise<JournalAnswer> {
+  if (!/^\d{4}-((0[1-9]|1[0-2])|Q[1-4])$/.test(period)) return { ok: false, error: 'the period is YYYY-MM or YYYY-Qn' };
+  const { from, to } = periodBounds(period);
   const store = getAccountsStore();
   const documents: Array<{ doc: UblDocument; anaf: string | null; reference: string | null }> = [];
   for (const d of await store.billing.efacturaDocumentsDatedBetween(from, to)) {
@@ -49,5 +52,5 @@ export async function buildJournal(month: string, now: () => Date = () => new Da
   const rows: JournalRow[] = [];
   for (const { doc, anaf, reference } of documents) rows.push(journalRowOf(doc, { rate: doc.rate ?? await rateFor(doc), anaf, reference }));
   rows.sort((a, b) => a.date.localeCompare(b.date) || a.number.localeCompare(b.number));
-  return { ok: true, journal: { month, seller, preparedOn: day(now().toISOString()), rows } };
+  return { ok: true, journal: { period, seller, preparedOn: day(now().toISOString()), rows } };
 }

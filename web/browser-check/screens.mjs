@@ -44,7 +44,7 @@ const env = {
   SPINE_STRIPE_PRICE_YEAR: 'price_1Uc8gEFMVsdHvrD5AjN1GbjV', SPINE_STRIPE_PRICE_MONTH: 'price_1Uc8gFFMVsdHvrD5bIDdTjJi', SPINE_STRIPE_PRICE_FOUNDING: 'price_1Uc8gGFMVsdHvrD5qBOUHZtJ',
   SPINE_STRIPE_PRICE_ESSENTIAL_YEAR: 'price_1Uc8gHFMVsdHvrD5nw1UUExc', SPINE_STRIPE_PRICE_ESSENTIAL_MONTH: 'price_1Uc8gIFMVsdHvrD517DjA5lm',
   SPINE_STRIPE_PRICE_FAMILY_YEAR: 'price_1Uc8gIFMVsdHvrD5zfMT5vZm', SPINE_STRIPE_PRICE_FAMILY_MONTH: 'price_1Uc8gJFMVsdHvrD5mS4mJLkV', SPINE_STRIPE_PRICE_TOPUP_PAGES: 'price_1Uc8gNFMVsdHvrD5aCq547Tq',
-  SPINE_INVOICING: 'efactura', SPINE_INVOICING_VAT_PERCENT: '21', SPINE_EFACTURA_MODE: 'test', ANAF_CLIENT_ID: 'ux-review-client', ANAF_CLIENT_SECRET: ['ux', 'review', 'anaf'].join('-'),
+  SPINE_INVOICING: 'efactura', SPINE_EFACTURA_MODE: 'test', ANAF_CLIENT_ID: 'ux-review-client', ANAF_CLIENT_SECRET: ['ux', 'review', 'anaf'].join('-'),
   SPINE_EFACTURA_REDIRECT_URI: 'https://spine.example/api/admin/efactura/callback', SPINE_EFACTURA_KEY: Buffer.alloc(32, 7).toString('base64'), SPINE_EFACTURA_SERIES: 'TST',
   SPINE_OPERATOR_CONTACT: 'contact@example.com',
   SPINE_REGISTRATION: 'approval', SPINE_ADMIN_EMAILS: 'owner@example.com',
@@ -245,6 +245,9 @@ try {
       } catch (e) { log('share flow failed', e.message); }
       await h.go('/review'); await p.evaluate(() => [...document.querySelectorAll('a')].find(a => a.getAttribute('href')?.startsWith('/documents/') || a.getAttribute('href')?.startsWith('/uploads/'))?.click()); await wait(2500); await h.shot('acc-d-review-item');
       for (const r of ['/admin', '/admin/subscriptions', '/admin/products', '/admin/invoices', '/admin/accounts', '/admin/settings']) { await h.go(r); await wait(2500); await h.shot(`adm-d-${r === '/admin' ? 'overview' : r.slice(7)}`); }
+      // The VAT switch ticked: the day invoices carry VAT from, the One Stop Shop box and Romania's rate appear.
+      await h.go('/admin/invoices'); await wait(2000);
+      await p.evaluate(() => [...document.querySelectorAll('label')].find(l => l.textContent?.includes('The company is registered for VAT'))?.querySelector('input')?.click()); await wait(800); await h.shot('adm-d-invoices-vat');
       await p.setViewport(PHONE); for (const r of ['/admin', '/admin/accounts']) { await h.go(r); await wait(2000); await h.shot(`adm-m-${r === '/admin' ? 'overview' : r.slice(7)}`); } await p.setViewport(DESKTOP);
       await h.go('/episodes'); await p.evaluate(() => [...document.querySelectorAll('a,button')].find(a => /episode/i.test(a.getAttribute('href') ?? ''))?.click()); await wait(1500);
       await h.go('/'); await wait(1000);

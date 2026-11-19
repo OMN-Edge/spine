@@ -6,6 +6,8 @@ import path from 'path';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { forgetRates } from 'spine-billing/invoicing/bnr.js';
 import { buildTestApp } from './helpers/app.js';
+import { changeSeller } from '../billing/invoicing/seller.js';
+import { changeVat } from '../billing/invoicing/vat.js';
 
 /** From a payment to an invoice, through the route: Stripe's signed message, the sale read back from Stripe, the invoice made at Billyou (both scripted). */
 const SECRET = 'whsec_invoicing_route';
@@ -66,6 +68,10 @@ describe('a payment on its way to an invoice', () => {
       if (url.endsWith('/payments')) return { json: { success: true, data: { data: [], paymentStatus: 'paid' } } };
       return { status: 404, json: { success: false } };
     });
+    // The company is registered for VAT, without the One Stop Shop (a service takes only Romania's rates): a buyer in France is charged 21%.
+    const store = getAccountsStore();
+    expect(await changeSeller(store, { name: 'Exemplu SRL', cif: '12345678', vatId: 'RO12345678', street: 's', city: 'c', county: 'CJ', postalCode: '1' }, '2026-01-01T00:00:00.000Z')).toBeNull();
+    expect(await changeVat(store, { registered: true, from: '2026-01-01', oss: false }, '2026-01-01T00:00:00.000Z')).toBeNull();
     const res = await deliver();
     expect(res.statusCode).toBe(200);
     expect(await getAccountsStore().billing.invoice('cs_route')).toMatchObject({ state: 'done', issuer_ref: 'i_1', series: 'SPN', number: '00001' });
