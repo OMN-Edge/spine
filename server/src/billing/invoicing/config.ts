@@ -33,7 +33,7 @@ export type InvoicingConfig =
       efactura: boolean;
       /** Whether the service mails each invoice to the buyer. */
       mail: boolean;
-      billyou: { apiKey: string; seriesId: string; zeroVat: { taxCategory: 'O' | 'Z' | 'E' | 'AE'; vatExemptionCode?: string } | null };
+      billyou: { apiKey: string; seriesId: string; zeroVat: { taxCategory: 'O' | 'Z' | 'E' | 'AE'; vatExemptionCode?: string; note?: string } | null };
     };
 
 export function readInvoicingConfig(env: NodeJS.ProcessEnv, billing: BillingConfig, problems: string[]): InvoicingConfig {
@@ -65,13 +65,16 @@ export function readInvoicingConfig(env: NodeJS.ProcessEnv, billing: BillingConf
   if (vatPercent === 0 && !['O', 'Z', 'E', 'AE'].includes(zero)) problems.push('SPINE_INVOICING_VAT_PERCENT=0 needs SPINE_INVOICING_ZERO_VAT, the tax class of a line with no VAT: O (outside scope), Z (zero-rated), E (exempt) or AE (reverse charge)');
   const code = (env.SPINE_INVOICING_EXEMPTION_CODE ?? '').trim();
   if (zero === 'E' && !code) problems.push('SPINE_INVOICING_ZERO_VAT=E needs SPINE_INVOICING_EXEMPTION_CODE (the VATEX code of the exemption)');
+  // The mention on an invoice with a line that has no VAT, the accountant's "scutit de tva" and the article of the regime for companies not registered for VAT (art. 310, 2026-11-19); `off` leaves it out.
+  const rawNote = (env.SPINE_INVOICING_VAT_NOTE ?? '').trim();
+  const note = vatPercent === 0 && rawNote.toLowerCase() !== 'off' ? (rawNote || 'Scutit de TVA conform art. 310 din Codul fiscal').slice(0, 200) : undefined;
   if (issuer === 'efactura') {
-    const direct = readEfacturaConfig(env, vatPercent === 0 && ['O', 'Z', 'E', 'AE'].includes(zero) ? { category: zero as ZeroVat['category'], ...(code ? { exemptionCode: code } : {}) } : { category: 'O' }, need, problems);
+    const direct = readEfacturaConfig(env, vatPercent === 0 && ['O', 'Z', 'E', 'AE'].includes(zero) ? { category: zero as ZeroVat['category'], ...(code ? { exemptionCode: code } : {}), ...(note ? { note } : {}) } : { category: 'O' }, need, problems);
     return { enabled: true, issuer: 'efactura', vatPercent: Number.isFinite(vatPercent) ? vatPercent : 0, efactura: true, mail: false, direct };
   }
   const billyou = {
     apiKey: need('BILLYOU_API_KEY'), seriesId: need('BILLYOU_SERIES_ID'),
-    zeroVat: vatPercent === 0 && ['O', 'Z', 'E', 'AE'].includes(zero) ? { taxCategory: zero as 'O' | 'Z' | 'E' | 'AE', ...(code ? { vatExemptionCode: code } : {}) } : null,
+    zeroVat: vatPercent === 0 && ['O', 'Z', 'E', 'AE'].includes(zero) ? { taxCategory: zero as 'O' | 'Z' | 'E' | 'AE', ...(code ? { vatExemptionCode: code } : {}), ...(note ? { note } : {}) } : null,
   };
   return { enabled: true, issuer, vatPercent: Number.isFinite(vatPercent) ? vatPercent : 0, efactura: flag('SPINE_INVOICING_EFACTURA', false), mail: flag('SPINE_INVOICING_MAIL', true), billyou };
 }

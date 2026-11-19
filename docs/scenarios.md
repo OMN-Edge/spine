@@ -988,6 +988,11 @@ With `SPINE_INVOICING=efactura`, `/admin` has an e-Factura panel: whether ANAF h
 
 Status: auto (`billing-efactura`, `billing-efactura-ubl`, and `document.test.ts` in the ANAF package: every amount of the XML, the languages, the contents the law asks, the credit note, a second page).
 
+### 13.2t The accountant's monthly summary
+On `/admin/invoices` an administrator sees "Monthly summary for the accountant": a month (the one that has just ended is chosen) and two buttons, "Download the spreadsheet (CSV)" and "Download the PDF to sign". The CSV opens in a Romanian spreadsheet (semicolons, a comma for decimals, the diacritics kept, no formula run from a buyer's name) with a line for each invoice and credit note dated in the month; the PDF is the same list on landscape pages, with the totals for each currency and a line for the signature of the person who drew it up. Both carry the National Bank's rate of each invoice's own day and the total in lei, a credit note's amounts negative, and the invoice it reverses. A month with nothing gives an empty list and says so. Someone who may only read the page (the marketing role) does not see it, and the server refuses them. Docs: `docs/efactura.md`, "The month's summary for the accountant", which names the order that allows a monthly centralizer (OMFP 2634/2015, annex 1, points 10, 20 and 45).
+
+Status: auto (`billing-journal`, `journal.test.ts` in the ANAF package, `AdminInvoiceExport.test.ts`).
+
 ### 13.2p The operator sees the invoices that stopped
 Every list on `/admin` is a page of twenty-five, newest first (accounts waiting, subscriptions, withdrawal requests, e-Factura documents, the invoices that stopped), with "1–25 of 312" and Previous and Next under it; the pages replace each other, so a list never makes the page longer, and the page is kept in the address (`?page=3`). The server never sends more than a hundred rows (`routes/paging.ts`), and the oldest row is as reachable as the newest.
 

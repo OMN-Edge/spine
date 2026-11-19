@@ -65,6 +65,8 @@ export function billingRepository(db: Database): BillingRepository {
   const oneInvoice = db.prepare(`SELECT ${INVOICE_COLUMNS} FROM invoice_queue WHERE ref = ?`);
   const keepDocument = db.prepare('INSERT OR IGNORE INTO invoice_documents (ref, document, created_at) VALUES (?, ?, ?)');
   const oneInvoiceDocument = db.prepare('SELECT document FROM invoice_documents WHERE ref = ?');
+  const madeBetween = db.prepare('SELECT ref, document FROM invoice_documents WHERE created_at >= ? AND created_at < ? ORDER BY created_at, ref');
+  const datedBetween = db.prepare('SELECT draft_id, kind, series, number, issue_date, reverses, input, anaf_index, anaf_state FROM efactura_documents WHERE issue_date >= ? AND issue_date < ? ORDER BY issue_date, number');
 
   const tokens = db.prepare('SELECT sealed, access_expires_at, refresh_expires_at, authorised_at, updated_at FROM efactura_auth WHERE id = 1');
   const saveTokens = db.prepare(`INSERT INTO efactura_auth (id, sealed, access_expires_at, refresh_expires_at, authorised_at, updated_at) VALUES (1, ?, ?, ?, ?, ?)
@@ -133,6 +135,7 @@ export function billingRepository(db: Database): BillingRepository {
     async invoice(ref) { return (oneInvoice.get(ref) as QueuedInvoice | undefined) ?? null; },
     async keepInvoiceDocument(ref, document, at) { keepDocument.run(ref, document, at); },
     async invoiceDocument(ref) { return ((oneInvoiceDocument.get(ref) as { document: string } | undefined)?.document) ?? null; },
+    async invoiceDocumentsMadeBetween(from, to) { return madeBetween.all(from, to) as Array<{ ref: string; document: string }>; },
     async updateInvoice(ref, patch: InvoicePatch, at) {
       const known = Object.entries(patch).filter(([k]) => INVOICE_FIELDS.includes(k));
       if (known.length === 0) return;
@@ -150,6 +153,7 @@ export function billingRepository(db: Database): BillingRepository {
       db.prepare(`UPDATE efactura_documents SET ${known.map(([k]) => `${k} = ?`).join(', ')}, updated_at = ? WHERE draft_id = ?`).run(...known.map(([, v]) => v as string | null), at, draftId);
     },
     async efacturaDocuments(limit, offset = 0) { return newestDocuments.all(limit, offset) as EfacturaDocument[]; },
+    async efacturaDocumentsDatedBetween(from, to) { return datedBetween.all(from, to) as Awaited<ReturnType<BillingRepository['efacturaDocumentsDatedBetween']>>; },
     async efacturaDocumentCount() { return Number((countDocuments.get() as { n: number }).n); },
   };
 }

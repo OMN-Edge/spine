@@ -8,7 +8,13 @@
 export const CUSTOMIZATION_ID = 'urn:cen.eu:en16931:2017#compliant#urn:efactura.mfinante.ro:CIUS-RO:1.0.1';
 
 /** The classes of "no VAT" an invoice can carry (EN 16931): outside scope, zero-rated, exempt (with a reason code), reverse charge. */
-export type ZeroVat = { category: 'O' | 'Z' | 'E' | 'AE'; exemptionCode?: string };
+export type ZeroVat = { category: 'O' | 'Z' | 'E' | 'AE'; exemptionCode?: string; /** The mention an invoice with a line that has no VAT carries (BT-22), in the accountant's words ("Scutit de TVA"). */ note?: string };
+
+/** What the document says in its line of text (BT-22 and the PDF): its own note, and the mention for no VAT where a line has none. */
+export function noteOf(doc: Pick<UblDocument, 'lines' | 'zeroVat' | 'note'>): string | undefined {
+  const parts = [doc.note, doc.lines.some(l => l.vatPercent === 0) ? doc.zeroVat.note : undefined].filter((p): p is string => !!p);
+  return parts.length > 0 ? parts.join(' · ') : undefined;
+}
 
 export interface UblSeller {
   name: string;
@@ -242,7 +248,7 @@ export function buildUbl(doc: UblDocument): string {
     `<cbc:IssueDate>${doc.issueDate}</cbc:IssueDate>`,
     ...(credit ? [] : [`<cbc:DueDate>${doc.issueDate}</cbc:DueDate>`]),
     credit ? '<cbc:CreditNoteTypeCode>381</cbc:CreditNoteTypeCode>' : '<cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>',
-    ...(doc.note ? [`<cbc:Note>${esc(clip(doc.note, 300))}</cbc:Note>`] : []),
+    ...(noteOf(doc) ? [`<cbc:Note>${esc(clip(noteOf(doc)!, 300))}</cbc:Note>`] : []),
     `<cbc:DocumentCurrencyCode>${cur}</cbc:DocumentCurrencyCode>`,
     // BR-RO-030: an invoice in another currency states its VAT in RON as well.
     ...(inRon ? [] : ['<cbc:TaxCurrencyCode>RON</cbc:TaxCurrencyCode>']),

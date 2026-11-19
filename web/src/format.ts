@@ -61,6 +61,11 @@ export function formatBytes(bytes: number, lang: InterfaceLanguage): string {
 }
 
 /** The sign a currency is written with in the language ("€", "lei"), or its code where there is none. */
+/** A month and its year, spelled out ("November 2026", "noiembrie 2026"), for a choice of month. */
+export function formatMonth(month: string, lang: InterfaceLanguage): string {
+  return new Intl.DateTimeFormat(LOCALE[lang], { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${month}-01T00:00:00Z`));
+}
+
 export function currencySymbol(currency: string, lang: InterfaceLanguage): string {
   return new Intl.NumberFormat(LOCALE[lang], { style: 'currency', currency, currencyDisplay: 'narrowSymbol' }).formatToParts(0).find(p => p.type === 'currency')?.value ?? currency;
 }
@@ -79,6 +84,7 @@ export function useFormat() {
     dateTime: (v: string | Date) => formatDateTime(v, screens),
     time: (v: string | Date) => formatTime(v, screens),
     dayMonth: (v: string | Date) => formatDayMonth(v, screens),
+    month: (m: string) => formatMonth(m, screens),
     number: (n: number) => formatNumber(n, screens),
     amount: (n: number, currency: string) => formatAmount(n, currency, screens),
     money: (minor: number, currency: string) => formatMoney(minor, currency, screens),

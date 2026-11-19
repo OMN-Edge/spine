@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 import PDFDocument from 'pdfkit';
-import { totalsOf, type UblDocument } from './ubl.js';
+import { noteOf, totalsOf, type UblDocument } from './ubl.js';
 
 /**
  * The invoice as a person reads it: an A4 page made from the same stored document the XML is written from (`UblDocument`), so the two cannot disagree, and with no
@@ -230,7 +230,7 @@ export function renderInvoicePdf(doc: UblDocument, options: DocumentOptions = {}
     pdf.font('b').fontSize(8.5).fillColor(INK).text(`${both('reverses')} ${doc.reverses}`, X, y, { width: W, lineBreak: false });
     y += 14;
   }
-  if (doc.note) pdf.font('r').fontSize(8).fillColor(MUTED).text(doc.note, X, y, { width: W });
+  if (noteOf(doc)) pdf.font('r').fontSize(8).fillColor(MUTED).text(noteOf(doc)!, X, y, { width: W });
 
   // The footer on every page: whose trade name it is, ANAF's index, the company line.
   const pages = pdf.bufferedPageRange();

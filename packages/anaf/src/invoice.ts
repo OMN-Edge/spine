@@ -47,7 +47,8 @@ export interface Issuer {
   readonly repeatSafe: boolean;
   issue(draft: InvoiceDraft): Promise<IssuedInvoice>;
   pdfUrl(invoice: Pick<IssuedInvoice, 'id'>): Promise<string>;
-  reverse(invoice: Pick<IssuedInvoice, 'id' | 'series' | 'number'>, reason: string): Promise<IssuedInvoice | null>;
+  /** `on` is the day the refund was made (an ISO time): a credit note is dated by it, not by the day it happens to be made. */
+  reverse(invoice: Pick<IssuedInvoice, 'id' | 'series' | 'number'>, reason: string, on?: string): Promise<IssuedInvoice | null>;
   /** `code` 0 is ANAF still deciding (asked again later), 1 accepted, 2 refused, -1 nothing to send. */
   sendToAnaf(invoice: Pick<IssuedInvoice, 'id' | 'series' | 'number'>): Promise<{ sent: boolean; code: number; text: string }>;
 }

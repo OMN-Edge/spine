@@ -79,7 +79,7 @@ export async function processInvoice(ref: string, ctx: InvoicingContext): Promis
       if (isStorno(ref)) {
         // A storno of an invoice that is made: its own refs are the original's until it is made, and the service's word that it was reversed already is the end of it.
         if (!current.issuer_ref) throw new InvoiceError('there is no invoice to reverse', false);
-        issued = await ctx.issuer.reverse({ id: current.issuer_ref, series: current.series ?? '', number: current.number ?? '' }, STORNO_REASON);
+        issued = await ctx.issuer.reverse({ id: current.issuer_ref, series: current.series ?? '', number: current.number ?? '' }, STORNO_REASON, current.created_at);
         if (!issued) {
           await store.billing.updateInvoice(ref, { state: 'done', last_error: 'the service had reversed it already' }, now().toISOString());
           return 'done';

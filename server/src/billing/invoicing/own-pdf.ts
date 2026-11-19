@@ -21,8 +21,8 @@ const dateOf = (paidAt: string, now: number): string => new Date(Math.min(Date.p
 
 const zeroVatOf = (config: Active): ZeroVat => {
   if (config.issuer !== 'billyou' || !config.billyou.zeroVat) return { category: 'O' };
-  const { taxCategory, vatExemptionCode } = config.billyou.zeroVat;
-  return { category: taxCategory, ...(vatExemptionCode ? { exemptionCode: vatExemptionCode } : {}) };
+  const { taxCategory, vatExemptionCode, note } = config.billyou.zeroVat;
+  return { category: taxCategory, ...(vatExemptionCode ? { exemptionCode: vatExemptionCode } : {}), ...(note ? { note } : {}) };
 };
 
 /** What the queue calls when a document is made: keeps the copy the PDF is made from. */
@@ -38,7 +38,7 @@ export function keepDocument(config: Active, now: () => Date = () => new Date())
       const date = dateOf(draft.paidAt, now().getTime());
       // VAT in another currency is also stated in lei (BR-RO-030); none charged, nothing to state.
       const taxed = draft.lines.some(l => l.vatPercent > 0);
-      const rate = taxed && draft.currency.toUpperCase() !== 'RON' ? await bnrRate(draft.currency).catch(err => { logger.warn('the rate for an invoice could not be read', { reason: err instanceof Error ? err.message : String(err) }); return undefined; }) : undefined;
+      const rate = taxed && draft.currency.toUpperCase() !== 'RON' ? await bnrRate(draft.currency, fetch, Date.now(), date).catch(err => { logger.warn('the rate for an invoice could not be read', { reason: err instanceof Error ? err.message : String(err) }); return undefined; }) : undefined;
       const document = documentOfDraft({ draft, id: printed, issueDate: date, seller, zeroVat: zeroVatOf(config), rate, note: `Payment ${ref}` });
       await store.billing.keepInvoiceDocument(ref, JSON.stringify(document), now().toISOString());
       return;

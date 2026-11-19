@@ -45,7 +45,7 @@ describe('a payment on its way to an invoice', () => {
       if (url.startsWith('https://api.stripe.com/v1/checkout/sessions/cs_route')) {
         return json({ id: 'cs_route', currency: 'eur', created: 1_794_000_000, customer_details: { name: 'Eva Test', email: 'eva@spine.test', address: { country: 'FR', city: 'Paris', state: 'Ile-de-France' } }, line_items: { data: [{ description: 'Spine Premium', amount_total: 5929, quantity: 1 }] } });
       }
-      if (url.startsWith('https://curs.bnr.ro')) return new Response('<DataSet><Body><Cube><Rate currency="EUR">4.9772</Rate></Cube></Body></DataSet>');
+      if (url.startsWith('https://curs.bnr.ro')) return new Response('<DataSet><Body><Cube date="2026-01-01"><Rate currency="EUR">4.9772</Rate></Cube></Body></DataSet>');
       const b = billyou(url, init?.method ?? 'GET', init?.body ? JSON.parse(init.body) : undefined);
       return json(b.json, b.status);
     }));

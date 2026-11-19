@@ -58,6 +58,31 @@ describe('the National Bank’s rates', () => {
     forgetRates();
   });
 
+  it('are the rate of the day the invoice is dated: the newest published on or before it, from that year\u2019s file, and the latest for a day not before the latest', async () => {
+    forgetRates();
+    const cube = (date: string, eur: string) => `<Cube date="${date}"><Rate currency="EUR">${eur}</Rate></Cube>`;
+    const year = (...cubes: string[]) => `<?xml version="1.0"?><DataSet xmlns="http://www.bnr.ro/xsd"><Body>${cubes.join('')}</Body></DataSet>`;
+    const urls: string[] = [];
+    const files: Record<string, string> = {
+      'https://curs.bnr.ro/nbrfxrates.xml': year(cube('2026-11-19', '5.1000')),
+      'https://curs.bnr.ro/files/xml/years/nbrfxrates2026.xml': year(cube('2026-01-02', '4.9000'), cube('2026-11-13', '5.3498'), cube('2026-11-16', '5.2000'), cube('2026-11-19', '5.1000')),
+      'https://curs.bnr.ro/files/xml/years/nbrfxrates2025.xml': year(cube('2025-12-30', '4.8500'), cube('2025-12-31', '4.8600')),
+    };
+    const fetcher = (async (url: string) => { urls.push(String(url)); return new Response(files[String(url)] ?? 'missing', { status: files[String(url)] ? 200 : 404 }); }) as unknown as typeof fetch;
+    // Today's and a later day: the latest file alone.
+    expect(await bnrRate('EUR', fetcher, 1_000, '2026-11-19')).toBe(5.1);
+    expect(urls).toEqual(['https://curs.bnr.ro/nbrfxrates.xml']);
+    // A Saturday takes Friday's; a day with its own rate, its own; the year's file is read once.
+    expect(await bnrRate('EUR', fetcher, 2_000, '2026-11-14')).toBe(5.3498);
+    expect(await bnrRate('EUR', fetcher, 3_000, '2026-11-16')).toBe(5.2);
+    expect(urls.filter(u => u.includes('2026.xml'))).toHaveLength(1);
+    // The first days of a year before its first publication take the year before's last.
+    files['https://curs.bnr.ro/files/xml/years/nbrfxrates2026.xml'] = year(cube('2026-01-05', '4.9500'), cube('2026-11-19', '5.1000'));
+    forgetRates();
+    expect(await bnrRate('EUR', fetcher, 4_000, '2026-01-01')).toBe(4.86);
+    forgetRates();
+  });
+
   it('say that the file has moved, not that a rate is missing, when the bank answers with its web page', async () => {
     forgetRates();
     const page = (async () => new Response('<!doctype html><html><title>BNR</title></html>')) as unknown as typeof fetch;

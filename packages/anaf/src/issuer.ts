@@ -141,10 +141,10 @@ export function efacturaIssuer(settings: EfacturaSettings, store: Store, link: A
       return pdfOf(d.xml, d.kind, fetcher);
     },
 
-    async reverse(invoice, reason) {
+    async reverse(invoice, reason, on) {
       const original = await need(invoice.id);
       if (original.kind !== 'invoice' || !original.input) throw new AnafError(`${invoice.id} is not an invoice that can be reversed`, false);
-      const doc = await store.efacturaReserve(`credit:${invoice.id}`, 'credit', settings.series, romanianDate(now()), now().toISOString(), invoice.id);
+      const doc = await store.efacturaReserve(`credit:${invoice.id}`, 'credit', settings.series, romanianDate(on ? new Date(on) : now()), now().toISOString(), invoice.id);
       if (doc.xml) return issued(doc);
       const before = JSON.parse(original.input) as UblDocument;
       const input: UblDocument = { ...before, kind: 'credit', id: printed(doc), issueDate: doc.issue_date, reverses: before.id, note: reason.slice(0, 300) };

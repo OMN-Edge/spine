@@ -226,6 +226,17 @@ describe('Spine’s own e-Factura link', () => {
       expect((await store().efacturaDocument('cs_future'))!.issue_date).toBe('2026-11-16');
     });
 
+    it('date a credit note by the day of the refund, not the day it is made: the accountant\u2019s rule, so a refund retried later keeps its own day', async () => {
+      const issuer = issuerOver(anaf({}).fetcher);
+      const made = await issuer.issue(draft({ id: 'cs_refday' }));
+      // 22:30 UTC on the 12th is the 13th in Romania; the credit note is made on the 16th (T0).
+      await issuer.reverse({ id: 'cs_refday', series: made.series, number: made.number }, 'Rambursare', '2026-11-12T22:30:00.000Z');
+      expect((await store().efacturaDocument('credit:cs_refday'))!.issue_date).toBe('2026-11-13');
+      const plain = await issuer.issue(draft({ id: 'cs_refnow' }));
+      await issuer.reverse({ id: 'cs_refnow', series: plain.series, number: plain.number }, 'Rambursare');
+      expect((await store().efacturaDocument('credit:cs_refnow'))!.issue_date).toBe('2026-11-16');
+    });
+
     it('refuse a draft that cannot be written as an invoice, as one that will not pass by waiting', async () => {
       const issuer = issuerOver(anaf({}).fetcher);
       await expect(issuer.issue(draft({ id: 'cs_nocounty', buyer: { name: 'Ion', email: 'i@spine.test', country: 'RO' } }))).rejects.toMatchObject({ name: 'AnafError', retry: false, message: expect.stringContaining('county') });
@@ -489,6 +500,17 @@ describe('Spine’s own e-Factura link', () => {
       const env = { ...process.env, ...ENV, ...over } as NodeJS.ProcessEnv;
       try { loadInvoicingConfig(loadBillingConfig(env), env); return ''; } catch (err) { return (err as Error).message; }
     };
+    it('carry the mention for no VAT ("Scutit de TVA conform art. 310 din Codul fiscal") unless it is turned off or worded otherwise', () => {
+      const note = (over: Record<string, string | undefined> = {}) => {
+        const env = { ...process.env, ...ENV, ...over } as NodeJS.ProcessEnv;
+        const config = loadInvoicingConfig(loadBillingConfig(env), env);
+        return config.enabled && config.issuer === 'efactura' ? config.direct.zeroVat.note : 'not efactura';
+      };
+      expect(note()).toBe('Scutit de TVA conform art. 310 din Codul fiscal');
+      expect(note({ SPINE_INVOICING_VAT_NOTE: 'Scutit de TVA' })).toBe('Scutit de TVA');
+      expect(note({ SPINE_INVOICING_VAT_NOTE: 'off' })).toBeUndefined();
+    });
+
     it('are read whole, with the sealing key checked before the process starts', () => {
       expect(problemsWith({})).toBe('');
       const config = loadInvoicingConfig(loadBillingConfig(), process.env);

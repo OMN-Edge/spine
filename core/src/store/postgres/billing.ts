@@ -112,6 +112,7 @@ export function billingRepository(q: Query, begin: Begin): BillingRepository {
     },
     async keepInvoiceDocument(ref, document, at) { await q('INSERT INTO invoice_documents (ref, document, created_at) VALUES ($1, $2, $3) ON CONFLICT (ref) DO NOTHING', [ref, document, at]); },
     async invoiceDocument(ref) { return (await one<{ document: string }>(q, 'SELECT document FROM invoice_documents WHERE ref = $1', [ref]))?.document ?? null; },
+    async invoiceDocumentsMadeBetween(from, to) { return many<{ ref: string; document: string }>(q, 'SELECT ref, document FROM invoice_documents WHERE created_at >= $1 AND created_at < $2 ORDER BY created_at, ref', [from, to]); },
     async invoice(ref) {
       const r = await one(q, `SELECT ${INVOICE_COLUMNS} FROM invoice_queue WHERE ref = $1`, [ref]);
       return r ? asInvoice(r) : null;
@@ -160,6 +161,9 @@ export function billingRepository(q: Query, begin: Begin): BillingRepository {
     },
     async efacturaDocuments(limit, offset = 0) {
       return (await many(q, `SELECT ${EFACTURA_COLUMNS} FROM efactura_documents ORDER BY created_at DESC, number DESC LIMIT $1 OFFSET $2`, [limit, offset])).map(asDocument);
+    },
+    async efacturaDocumentsDatedBetween(from, to) {
+      return (await many(q, 'SELECT draft_id, kind, series, number, issue_date, reverses, input, anaf_index, anaf_state FROM efactura_documents WHERE issue_date >= $1 AND issue_date < $2 ORDER BY issue_date, number', [from, to])) as Awaited<ReturnType<BillingRepository['efacturaDocumentsDatedBetween']>>;
     },
     async efacturaDocumentCount() { return Number((await one<{ n: number }>(q, 'SELECT COUNT(*) AS n FROM efactura_documents', []))!.n); },
   };

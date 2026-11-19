@@ -20,6 +20,9 @@ import { suggestedRefund } from 'spine-billing/withdrawal-share.js';
 import { adminCatalogRoutes } from './admin-catalog.js';
 import { changeSeller, sellerOf } from '../billing/invoicing/seller.js';
 import { loadInvoicingConfig } from '../billing/invoicing/config.js';
+import { buildJournal } from '../billing/invoicing/journal.js';
+import { invoiceBrand } from '../billing/invoicing/brand.js';
+import { journalCsv, renderJournalPdf } from 'spine-anaf/index.js';
 
 /**
  * Approving the accounts that asked for one under `SPINE_REGISTRATION=approval`, from the app. Who may is `SPINE_ADMIN_EMAILS`, checked on every
@@ -222,6 +225,25 @@ export async function adminRoutes(app: FastifyInstance, opts: AdminRouteOptions 
     if (problem) return reply.status(400).send({ error: problem });
     logger.info('the seller on invoices was changed', { event: 'invoice_seller', account: req.userId });
     return reply.send({ seller: await sellerOf(getAccountsStore()) });
+  });
+
+  // The month's invoices and credit notes in one document for the accountant (`billing/invoicing/journal.ts`): a CSV a spreadsheet opens, or a PDF to print and sign. An administrator only:
+  // it lists every buyer of the month by name. Nothing is kept of it; it is drawn from the documents each time.
+  app.get<{ Querystring: { month?: string; format?: string } }>('/api/admin/invoices/export', { preHandler: [requireAuth, onlyAdmins], config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
+    let config;
+    try { config = loadInvoicingConfig(loadBillingConfig()); } catch { config = { enabled: false as const }; }
+    if (!config.enabled) return reply.status(404).send({ error: 'the operator does not issue invoices here' });
+    const month = req.query.month ?? '';
+    const format = req.query.format ?? 'csv';
+    if (format !== 'csv' && format !== 'pdf') return reply.status(400).send({ error: 'the format is csv or pdf' });
+    if (month > new Date().toISOString().slice(0, 7)) return reply.status(400).send({ error: 'that month has not begun' });
+    const made = await buildJournal(month);
+    if (!made.ok) return reply.status(made.error === 'the month is YYYY-MM' ? 400 : 409).send({ error: made.error });
+    logger.info('the month\'s invoices were exported', { event: 'invoice_export', month, format, account: req.userId, rows: made.journal.rows.length });
+    const name = `centralizator-facturi-${month}.${format}`;
+    reply.header('Cache-Control', 'private, no-store').header('Content-Disposition', `attachment; filename="${name}"`);
+    if (format === 'csv') return reply.header('Content-Type', 'text/csv; charset=utf-8').send(journalCsv(made.journal));
+    return reply.header('Content-Type', 'application/pdf').send(await renderJournalPdf(made.journal, { brand: invoiceBrand() }));
   });
 
   // The hidden fair-use ceilings (`plans/fair-use-admin.ts`): an administrator only, for both reading and changing, because they are never shown to anyone

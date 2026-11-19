@@ -29,6 +29,15 @@ function validate(xml: string, root: 'Invoice' | 'CreditNote'): string {
 }
 
 describe('the invoice as e-Factura takes it', () => {
+  it('carries the mention for no VAT in its line of text where a line has none, with the document\u2019s own note after it, and not where every line is taxed', () => {
+    const mention = { category: 'O' as const, note: 'Scutit de TVA' };
+    expect(buildUbl(draft({ zeroVat: mention }))).toContain('<cbc:Note>Scutit de TVA</cbc:Note>');
+    expect(buildUbl(draft({ zeroVat: mention, note: 'Rambursare' }))).toContain('<cbc:Note>Rambursare · Scutit de TVA</cbc:Note>');
+    const taxed = buildUbl(draft({ seller: { ...SELLER, vatId: 'RO12345678' }, zeroVat: mention, lines: [{ name: 'Plan', quantity: 1, netMinor: 10000, vatPercent: 21 }] }));
+    expect(taxed).not.toContain('Scutit de TVA');
+    expect(buildUbl(draft({}))).not.toContain('<cbc:Note>');
+  });
+
   it('writes a seller that is not a VAT payer by its registration number alone, in the class "not subject to VAT" (BR-O-02, BR-CO-26)', () => {
     const xml = buildUbl(draft());
     expect(xml).toContain('<cbc:CustomizationID>urn:cen.eu:en16931:2017#compliant#urn:efactura.mfinante.ro:CIUS-RO:1.0.1</cbc:CustomizationID>');

@@ -540,7 +540,7 @@ export class ApiError extends Error {
 /** What the sign-in page needs before anyone is signed in. `approval`: people ask for an account and the administrator approves it. `private`: a private deployment. */
 export interface AuthOptions { registration: 'operator' | 'open' | 'approval'; recovery: boolean; instance: 'public' | 'private'; billing: boolean; waitlist: boolean; operator?: Operator | null }
 
-/** Who runs this instance (`SPINE_OPERATOR_*`), for the footer; null where the operator has not said. */
+/** Who runs this instance (the seller saved on the invoices page, where billing is on), for the footer; null where there is none. */
 export interface Operator { name: string; ids: string[]; address: string | null; contact: string | null }
 
 async function req<T>(url: string, options?: RequestInit, retried = false): Promise<T> {
@@ -800,6 +800,12 @@ export const api = {
     settings: () => req<{ settings: OperatorSetting[]; can_edit: boolean }>('/api/admin/settings'),
     /** Who the invoices are made out by, whether this account may change it, and which issuer the operator runs. */
     seller: () => req<{ seller: InvoiceSeller | null; issuer: string | null; can_edit: boolean }>('/api/admin/seller'),
+    /** The month's invoices and credit notes as a file for the accountant (the server's `routes/admin.ts`, `billing/invoicing/journal.ts`). */
+    invoiceExport: async (month: string, format: 'csv' | 'pdf'): Promise<Blob> => {
+      const res = await appFetch(`/api/admin/invoices/export?month=${encodeURIComponent(month)}&format=${format}`);
+      if (!res.ok) throw new ApiError(((await res.json().catch(() => ({}))) as { error?: string }).error ?? res.statusText, res.status);
+      return res.blob();
+    },
     saveSeller: (seller: InvoiceSeller) => put<{ seller: InvoiceSeller | null }>('/api/admin/seller', seller),
     setSetting: (key: string, value: number | null) => put<{ settings: OperatorSetting[] }>('/api/admin/settings', { key, value }),
     /** The hidden fair-use ceilings, for an administrator only (the server's `plans/fair-use-admin.ts`). */

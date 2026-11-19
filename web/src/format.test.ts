@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { currencySymbol, startsWithCapital, formatAmount, formatBytes, formatDate, formatDateTime, formatDayMonth, formatMoney, formatNumber, formatTime } from './format';
+import { currencySymbol, formatMonth, startsWithCapital, formatAmount, formatBytes, formatDate, formatDateTime, formatDayMonth, formatMoney, formatNumber, formatTime } from './format';
 
 /** Dates, times, money and sizes in the language of the screens (T-05), and a check that no screen writes one with the browser's own. */
 /** The spaces Intl writes between a number and its sign are not ordinary ones. */
@@ -83,6 +83,15 @@ describe('the screens', () => {
       });
     }
     expect(offenders).toEqual([]);
+  });
+});
+
+describe('a month', () => {
+  it('is spelled out with its year in each language', () => {
+    expect(formatMonth('2026-11', 'en')).toBe('November 2026');
+    expect(formatMonth('2026-11', 'ro')).toBe('noiembrie 2026');
+    expect(formatMonth('2026-03', 'de')).toBe('März 2026');
+    expect(formatMonth('2026-03', 'fr')).toBe('mars 2026');
   });
 });
 

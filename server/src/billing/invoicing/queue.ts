@@ -32,7 +32,7 @@ function build(config: Active): NonNullable<typeof made> {
     const efactura = openEfactura({ ...config.direct, seller: () => sellerOf(getAccountsStore()) }, getAccountsStore().billing, { brand: invoiceBrand() });
     return (made = { key, issuer: efactura.issuer, efactura });
   }
-  const issuer = billyouIssuer({ apiKey: config.billyou.apiKey, seriesId: config.billyou.seriesId, exchangeRate: currency => bnrRate(currency), ...(config.billyou.zeroVat ? { zeroVat: config.billyou.zeroVat } : {}) });
+  const issuer = billyouIssuer({ apiKey: config.billyou.apiKey, seriesId: config.billyou.seriesId, exchangeRate: (currency, date) => bnrRate(currency, fetch, Date.now(), date), ...(config.billyou.zeroVat ? { zeroVat: { taxCategory: config.billyou.zeroVat.taxCategory, ...(config.billyou.zeroVat.vatExemptionCode ? { vatExemptionCode: config.billyou.zeroVat.vatExemptionCode } : {}) } } : {}) });
   return (made = { key, issuer, efactura: null });
 }
 

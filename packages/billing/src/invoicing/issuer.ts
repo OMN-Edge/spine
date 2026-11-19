@@ -67,7 +67,8 @@ export interface InvoiceIssuer {
   /** Where the invoice's PDF can be fetched, a link that does not last (the service says for how long). */
   pdfUrl(invoice: Pick<IssuedInvoice, 'id'>): Promise<string>;
   /** Reverses an invoice with a storno (a new invoice that is its exact negative), once: null where the service says it was reversed already. */
-  reverse(invoice: Pick<IssuedInvoice, 'id' | 'series' | 'number'>, reason: string): Promise<IssuedInvoice | null>;
+  /** `on` is when the refund was made (ISO): where the issuer dates the storno itself, by that day and not the day it is made (an issuer whose service dates it has no say). */
+  reverse(invoice: Pick<IssuedInvoice, 'id' | 'series' | 'number'>, reason: string, on?: string): Promise<IssuedInvoice | null>;
   /** Sends an invoice already issued to ANAF's e-Factura, where `issue` did not (or the first try failed): the issuer's own word for how far it got: `code` 0 is the authority still deciding (asked again later), 1 accepted, 2 refused, -1 not applicable. */
   sendToAnaf(invoice: Pick<IssuedInvoice, 'id' | 'series' | 'number'>): Promise<{ sent: boolean; code: number; text: string }>;
 }

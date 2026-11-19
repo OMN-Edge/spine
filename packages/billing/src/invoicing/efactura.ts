@@ -31,6 +31,6 @@ function asInvoiceIssuer(issuer: EfacturaIssuer): EfacturaForBilling['issuer'] {
 }
 
 export function openEfactura(config: AnafConfig, store: AnafStore, extra: { fetcher?: typeof fetch; now?: () => Date; brand?: DocumentBrand } = {}): EfacturaForBilling {
-  const made = makeEfactura(config, store, { pdfPath: PDF_PATH, exchangeRate: currency => bnrRate(currency), ...extra });
+  const made = makeEfactura(config, store, { pdfPath: PDF_PATH, exchangeRate: (currency, date) => bnrRate(currency, fetch, Date.now(), date), ...extra });
   return { ...made, issuer: asInvoiceIssuer(made.issuer) };
 }

@@ -66,6 +66,7 @@ export type { AnafStatus, AnafSettings } from './anaf.js';
 export { AnafError } from './error.js';
 export { linkIsValid, signedLink, documentOfDraft } from './issuer.js';
 export { renderInvoicePdf } from './document.js';
+export { journalCsv, journalRowOf, journalTotals, monthName, renderJournalPdf, type Journal, type JournalRow } from './journal.js';
 export type { EfacturaIssuer } from './issuer.js';
 export type { InvoiceDraft, IssuedInvoice, Issuer } from './invoice.js';
 export type { AnafStore, AnafTokens, StoredDocument, DocumentPatch, DocumentKind } from './store.js';

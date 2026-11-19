@@ -983,6 +983,8 @@ export interface BillingRepository {
   /** The invoice as a person reads it (JSON), kept once for a payment whose invoice a service issued, and read for Spine's own PDF; the first one kept stands, since an invoice does not change. */
   keepInvoiceDocument(ref: string, document: string, at: string): Promise<void>;
   invoiceDocument(ref: string): Promise<string | null>;
+  /** The kept documents made from `from` up to but not including `to` (ISO times), oldest first: for the month's summary, which keeps the ones whose own date is in the month. */
+  invoiceDocumentsMadeBetween(from: string, to: string): Promise<Array<{ ref: string; document: string }>>;
   /** A buyer's request to withdraw from a purchase: one open at a time for an account (false if there is one). */
   requestWithdrawal(id: string, userId: string, at: string): Promise<boolean>;
   /** The requests in a state (every state if null), newest first. */
@@ -1026,6 +1028,8 @@ export interface BillingRepository {
   efacturaUpdateDocument(draftId: string, patch: EfacturaDocumentPatch, at: string): Promise<void>;
   /** The newest documents, for the operator's page. */
   efacturaDocuments(limit: number, offset?: number): Promise<EfacturaDocument[]>;
+  /** The documents dated from `from` up to but not including `to` (`YYYY-MM-DD`), by date and number: for the month's summary (without the XML and ANAF's signed answer, which are large). */
+  efacturaDocumentsDatedBetween(from: string, to: string): Promise<Array<Pick<EfacturaDocument, 'draft_id' | 'kind' | 'series' | 'number' | 'issue_date' | 'reverses' | 'input' | 'anaf_index' | 'anaf_state'>>>;
   efacturaDocumentCount(): Promise<number>;
 }
 
