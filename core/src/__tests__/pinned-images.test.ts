@@ -10,13 +10,13 @@ import path from 'node:path';
 const repo = path.resolve(__dirname, '../../..');
 const FILES = ['Dockerfile', 'relay.Dockerfile', 'compose.yaml', '.gitlab-ci.yml', '.github/workflows/ci.yml'];
 
-/** Every image reference in a file: FROM lines (not the build stages they name), and the `image:`, `container:` and `image: name:` keys. */
+/** Every image reference in a file: FROM lines (not the build stages they name, and not a `--platform` flag), and the `image:`, `container:` and `image: name:` keys. */
 function imagesIn(file: string): Array<{ line: number; ref: string }> {
   const lines = fs.readFileSync(path.join(repo, file), 'utf8').split('\n');
   const stages = new Set<string>();
   const out: Array<{ line: number; ref: string }> = [];
   lines.forEach((text, i) => {
-    const from = text.match(/^\s*FROM\s+(\S+)(?:\s+AS\s+(\S+))?/i);
+    const from = text.match(/^\s*FROM\s+(?:--\S+\s+)*(\S+)(?:\s+AS\s+(\S+))?/i);
     if (from) {
       if (!stages.has(from[1])) out.push({ line: i + 1, ref: from[1] });
       if (from[2]) stages.add(from[2]);
@@ -44,6 +44,7 @@ describe('the container images the build and the pipelines use', () => {
       '.gitlab-ci.yml: node:22',
       '.gitlab-ci.yml: semgrep/semgrep',
       '.gitlab-ci.yml: zricethezav/gitleaks:v8.24.2',
+      'Dockerfile: node:22-bookworm-slim',
       'Dockerfile: node:22-bookworm-slim',
       'Dockerfile: node:22-bookworm-slim',
       'compose.yaml: caddy:2',

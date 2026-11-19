@@ -1,7 +1,9 @@
 # The Spine server and the built web app. It holds accounts, the sealed vault and shares; records are read and kept on the device.
 # Pinned by digest (the multi-architecture index, 2026-10-25), so a rebuild is the same Node and the same Debian. To move it: read the new digest of
 # node:22-bookworm-slim from the registry (Docker-Content-Digest of its index), put it here, build both images, and run the checks.
-FROM node:22-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d AS build
+# The build runs on the machine's own architecture (`--platform=$BUILDPLATFORM`): what it makes is JavaScript and the same on every one (docs/verify-build.md), and the web app's bundler
+# (esbuild, a Go program) crashes when an Apple-silicon machine runs it emulated as amd64 to build for Cloud Run. Only the packages the server runs are installed for the target (`deps`).
+FROM --platform=$BUILDPLATFORM node:22-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d AS build
 # better-sqlite3 compiles when no prebuilt binary fits the platform
 RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
@@ -24,14 +26,25 @@ ENV SPINE_COMMIT=$SPINE_COMMIT
 RUN npm run build
 # Every entry point is started once, as it will be, before the image is made. Test support is not built into core/dist or server/dist at all.
 RUN npm run smoke -w spine-server
-# What the server runs, without the build tools or the web app's own packages (they are in web/dist now)
-RUN rm -rf node_modules && npm ci --omit=dev --workspace spine-server
+
+# What the server runs, without the build tools or the web app's own packages (they are in web/dist now), installed for the architecture the image is for
+# (better-sqlite3 compiles when no prebuilt binary fits it)
+FROM node:22-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d AS deps
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY core/package.json core/
+COPY packages/anaf/package.json packages/anaf/
+COPY packages/billing/package.json packages/billing/
+COPY server/package.json server/
+COPY web/package.json web/
+RUN npm ci --omit=dev --workspace spine-server
 
 FROM node:22-bookworm-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d
 # The server parses and renders nothing (the device's core does, in the browser), so there is no poppler or Tesseract here: they exist only for the tests that run the whole app on Node.
 RUN mkdir /data /backups && chown node:node /data /backups
 WORKDIR /app
-COPY --from=build /app/node_modules node_modules
+COPY --from=deps /app/node_modules node_modules
 COPY --from=build /app/core/package.json core/
 COPY --from=build /app/core/dist core/dist
 COPY --from=build /app/packages/anaf/package.json packages/anaf/
