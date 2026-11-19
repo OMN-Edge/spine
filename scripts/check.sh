@@ -20,7 +20,8 @@ browser() { npm ci && npm run build && npm run check:browser -w spine-web && npx
 browser-chrome() { npm ci && npm run build && npm run check:browser -w spine-web; }
 # In CI WebKit's system libraries are installed with apt (`--with-deps`), which took fourteen minutes once on a slow mirror; where the job runs in Playwright's own image
 # (SPINE_BROWSER_IMAGE is set: .github/workflows/ci.yml) they and the browser are already there.
-browser-webkit() { npm ci && npm run build && if [ -n "${CI:-}" ] && [ -z "${SPINE_BROWSER_IMAGE:-}" ]; then npx playwright-core install --with-deps webkit; else npx playwright-core install webkit; fi && npm run check:webkit -w spine-web; }
+# Playwright's image has no compiler, and nothing the WebKit check runs needs better-sqlite3 (the server's native SQLite: the device uses WebAssembly), so there the install skips the packages' install scripts.
+browser-webkit() { if [ -n "${SPINE_BROWSER_IMAGE:-}" ]; then npm ci --ignore-scripts; else npm ci; fi && npm run build && if [ -n "${CI:-}" ] && [ -z "${SPINE_BROWSER_IMAGE:-}" ]; then npx playwright-core install --with-deps webkit; else npx playwright-core install webkit; fi && npm run check:webkit -w spine-web; }
 browser-app() { npm ci && npm run build && npm run check:app -w spine-web; }
 scan() {
   command -v gitleaks >/dev/null || { echo "gitleaks is not installed (brew install gitleaks)" >&2; exit 1; }
