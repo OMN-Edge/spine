@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { offerPlans, trialDaysLeft } from './plan-offer';
+import { offerPlans, trialDaysLeft, wantsToBuy } from './plan-offer';
 
 /** The account page asks for money late in the trial, not on its first day (T-07). */
 const now = new Date('2026-11-17T10:00:00Z');
@@ -29,5 +29,14 @@ describe('when the plans are offered', () => {
   it('counts the days left, never below nought', () => {
     expect(trialDaysLeft(days(87), now)).toBe(87);
     expect(trialDaysLeft(days(-3), now)).toBe(0);
+  });
+});
+
+describe('a plan chosen on the pricing page', () => {
+  it('shows the buttons whatever day of the trial it is, because the account page was reached by pressing a plan', () => {
+    expect(wantsToBuy('?buy')).toBe(true);
+    expect(wantsToBuy('?buy=1')).toBe(true);
+    expect(wantsToBuy('')).toBe(false);
+    expect(wantsToBuy('?other=1')).toBe(false);
   });
 });
