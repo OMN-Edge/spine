@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 import { Notice } from './AuthCard';
 import { useI18n } from '../i18n';
+import { useFormat } from '../format';
 
 type Row = Awaited<ReturnType<typeof api.auth.sessions.list>>[number];
 
@@ -16,6 +17,7 @@ function browserOf(agent: string): string {
 /** Where the account is signed in, with a way to end each one (SECURITY.md S-33). */
 export default function Sessions() {
   const { t } = useI18n();
+  const format = useFormat();
   const [rows, setRows] = useState<Row[] | null>(null);
   const [error, setError] = useState('');
 
@@ -29,7 +31,7 @@ export default function Sessions() {
     try { await fn(); load(); } catch { setError(t('Could not end the sign-in')); }
   };
 
-  const when = (iso: string) => new Date(iso).toLocaleString();
+  const when = (iso: string) => format.dateTime(iso);
   const others = (rows ?? []).filter(r => !r.current).length;
 
   return (

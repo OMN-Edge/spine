@@ -20,7 +20,9 @@ import { useGuide } from '../guide';
 import { useScreen } from '../components/ChatProvider';
 import { DOC_TYPE_NAMES, documentByline, documentTitle, fieldName, isSection, labelFromName, valueLines } from '../titles';
 import { LANGUAGES, languageChoice, useI18n } from '../i18n';
+import { useFormat } from '../format';
 import { languageName, useTranslation } from '../i18n/useTranslation';
+import OriginalNote from '../components/OriginalNote';
 import { downloadFromDevice } from '../core/client';
 import { useAuth } from '../auth';
 
@@ -124,6 +126,7 @@ function EmptyPage({ canRead }: { canRead: boolean }) {
 
 export default function DocumentPage() {
   const { t, lang } = useI18n();
+  const format = useFormat();
   // The demo has no model to read a page with.
   const { demo } = useAuth();
   const { id } = useParams<{ id: string }>();
@@ -236,6 +239,16 @@ export default function DocumentPage() {
 
   if (loading) return <p className="text-gray-400 text-sm">{t('Loading…')}</p>;
   if (!doc) return <p className="text-red-500 text-sm">{t('Document not found')}</p>;
+  // Opened by its address while it is being read: there is nothing to show yet, so it says so and opens itself when the reading ends (the page asks again every few seconds above).
+  if (beingRead && draft === null && !doc.title) {
+    return (
+      <div className="max-w-md" role="status">
+        <p className="text-gray-900 font-medium">{t('This document is being read.')}</p>
+        <p className="text-sm text-gray-500 mt-1">{t('It opens here as soon as it is ready.')}</p>
+        <Link to="/upload" className="mt-3 inline-block text-sm text-brand-600 hover:underline">{t('Back to upload')}</Link>
+      </div>
+    );
+  }
   const shown = tr.showing ? tr.translation : null;
   const title = shown?.title ?? doc.title;
   const summary = shown?.ai_summary ?? doc.ai_summary;
@@ -429,18 +442,18 @@ export default function DocumentPage() {
                   {reviewed ? t('Reviewed') : t('Unreviewed')}
                 </span>
               </div>
-              <p className="text-sm text-gray-500">{documentByline(doc, t)}</p>
+              <p className="text-sm text-gray-500">{documentByline(doc, t, format.date)}</p>
               {doc.episode && (
                 <p className="text-xs mt-1">
                   <Link to={doc.episode.state === 'confirmed' ? `/?episode=${doc.episode.id}` : '/episodes'} className="text-brand-600 hover:underline">
-                    {doc.episode.state === 'confirmed' ? t('Episode: {name}', { name: episodeName(doc.episode, t) }) : t('May belong to an episode: {name}', { name: episodeName(doc.episode, t) })}
+                    {doc.episode.state === 'confirmed' ? t('Episode: {name}', { name: episodeName(doc.episode, t, format.date) }) : t('May belong to an episode: {name}', { name: episodeName(doc.episode, t, format.date) })}
                   </Link>
                 </p>
               )}
               {needsTranslation && (tr.translating || tr.active) && (
                 <p className="text-xs text-gray-500 mt-1 flex flex-wrap items-center gap-1.5" role="status">
                   {tr.translating && <span aria-hidden="true" className="inline-block h-3 w-3 rounded-full border-2 border-brand-500 border-t-transparent animate-spin" />}
-                  {tr.translating ? t('Translating…') : t('Translated from {language}.', { language: languageName(tr.translation?.source_language ?? doc.language) || t('the original language') })}{' '}
+                  {tr.translating ? t('Translating…') : t('Translated from {language}.', { language: languageName(tr.translation?.source_language ?? doc.language, lang) || t('the original language') })}{' '}
                   {tr.active && (
                     <button type="button" onClick={() => tr.setShowOriginal(o => !o)} className="text-brand-600 hover:underline">
                       {tr.showOriginal ? t('Show translation') : t('Show original')}
@@ -495,6 +508,7 @@ export default function DocumentPage() {
           ) : (
             <>
               <h1 className="text-lg font-semibold text-gray-900 mb-4">{t('Review')}</h1>
+              <OriginalNote documentLanguage={doc.language} />
               <div className="mb-3">
                 <label htmlFor="d-title" className={label}>{t('Title')}</label>
                 <input id="d-title" className={input} value={draft.title} onChange={e => set({ title: e.target.value })} />

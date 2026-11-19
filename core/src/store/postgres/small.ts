@@ -1,4 +1,4 @@
-import type { CookieSessionRepository, EnrolmentClaim, EnrolmentOffer, EnrolmentRepository, SessionRecord, SessionRepository, UsageRepository } from '../types.js';
+import type { CookieSessionRepository, InvitationRepository, EnrolmentClaim, EnrolmentOffer, EnrolmentRepository, SessionRecord, SessionRepository, UsageRepository } from '../types.js';
 import { owner } from '../owner.js';
 import { monthsBefore } from '../months.js';
 import { changed, many, one, type Query } from './query.js';
@@ -112,5 +112,18 @@ export function enrolmentRepository(q: Query): EnrolmentRepository {
       return { status: 'approved', userId: found.user_id, authVersion: found.auth_version, wrapped: found.wrapped };
     },
     async sweep(now) { return changed(q, `DELETE FROM device_enrolments WHERE expires_at <= $1 OR state = 'used'`, [now]); },
+  };
+}
+
+/** Who invited an account, until it buys or the link is old (`store/types.ts`). */
+export function invitationRepository(q: Query): InvitationRepository {
+  return {
+    async record(userId, inviterId, at) { return (await changed(q, 'INSERT INTO invitations (user_id, inviter_id, created_at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING', [owner(userId), inviterId, at])) > 0; },
+    async take(userId, notBefore) {
+      // The row is deleted by the call that finds it: a second call, or a second payment, finds nothing.
+      const gone = await one<{ inviter_id: string; created_at: string }>(q, 'DELETE FROM invitations WHERE user_id = $1 RETURNING inviter_id, created_at', [owner(userId)]);
+      return gone && gone.created_at >= notBefore ? gone.inviter_id : null;
+    },
+    async sweep(before) { return changed(q, 'DELETE FROM invitations WHERE created_at < $1', [before]); },
   };
 }

@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { INTERFACE_LANGUAGES } from 'spine-core/languages.js';
-import { accessRequestMail, approvedMail, cardOpenedMail, cardReviewMail, remindersDueMail, resetMail, verificationMail } from '../accounts.js';
-import { signInCodeMail } from '../email-code.js';
-import { CHANGES, newSignInMail, securityChangeMail, type Change } from '../notify.js';
+import { accessRequestMail, approvedMail, cardOpenedMail, cardReviewMail, remindersDueMail, resetMail, verificationMail } from '../identity/index.js';
+import { signInCodeMail } from '../identity/index.js';
+import { withdrawalAcceptedMail, withdrawalDeclinedMail, withdrawalReceivedMail } from '../billing/withdrawal-mail.js';
+import { nudgeMail, trialEndsMail, welcomeMail } from '../lifecycle.js';
+import { CHANGES, newSignInMail, securityChangeMail, type Change } from '../identity/index.js';
 import { missing, recipientLanguage, tm, tmn } from '../mail/i18n.js';
 import { DICTIONARIES } from '../mail/translations.js';
 
@@ -19,6 +21,8 @@ function everyMail(language: string) {
     ...[1, 2, 5, 20, 21].map(n => remindersDueMail(to, n)),
     accessRequestMail(to, 'https://x.example/share-requests/1', at, null), accessRequestMail(to, 'https://x.example/share-requests/1', at, '203.0.113.9'),
     newSignInMail(to, at), signInCodeMail(to, '123456'),
+    withdrawalReceivedMail(to, at), withdrawalAcceptedMail(to, '4.99 EUR'), withdrawalDeclinedMail(to, 'The service was fully used.'), withdrawalDeclinedMail(to, null),
+    welcomeMail(to), nudgeMail(to, 'user-1'), ...(['free', 'essential', 'premium'] as const).map(fits => trialEndsMail(to, 'user-1', { endsOn: '2027-01-15', pages: 12, questions: 3, translated: 1, fits })),
     ...(Object.keys(CHANGES) as Change[]).map(c => securityChangeMail(to, c, at, { email: 'b@example.org' })),
   ];
 }
@@ -65,5 +69,12 @@ describe('mail in the languages of the screens', () => {
     expect(tmn('fr', 3, one, other)).toBe('3 rappels arrivent à échéance');
     expect(tmn('en', 1, one, other)).toBe(one);
     expect(tm('de', '{email} gave up its seat in your plan', { email: 'x@y.z' })).toBe('x@y.z hat den Platz in Ihrem Tarif aufgegeben');
+  });
+});
+
+describe('the Romanian mail', () => {
+  it('speaks to the reader as "tu", as the screens do, never as "dumneavoastră"', () => {
+    const formal = /(?<![\p{L}-])(dumneavoastră|dvs|vă|Vă|puteți|aveți|sunteți|confirmați|primiți)(?![\p{L}])|-vă(?![\p{L}])|(?<![\p{L}])v-\p{L}|(?<![\p{L}])vi-l/u;
+    expect(Object.entries(DICTIONARIES.ro).filter(([, value]) => formal.test(value)).map(([key]) => key)).toEqual([]);
   });
 });

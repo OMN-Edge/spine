@@ -7,6 +7,7 @@ import { useChat } from '../components/ChatProvider';
 import ShareRequestCard from '../components/ShareRequestCard';
 import { announceChange, useOnDataChanged } from '../dataChanged';
 import { LANGUAGES, languageChoice, useI18n } from '../i18n';
+import { useFormat } from '../format';
 import { countryName } from '../i18n/useTranslation';
 import { Combobox } from '../components/Combobox';
 import { languageName } from '../i18n/useTranslation';
@@ -26,6 +27,7 @@ const primary = 'bg-brand-600 text-white rounded-full px-4 py-2 text-sm font-med
 export default function ShareLinkDetail() {
   const { id } = useParams<{ id: string }>();
   const { t, tn, lang } = useI18n();
+  const format = useFormat();
   const chat = useChat();
   const [data, setData] = useState<Detail | null>(null);
   const { titleOf } = useListTitles((data?.documents ?? []).map(d => d.id), false);
@@ -112,14 +114,14 @@ export default function ShareLinkDetail() {
       return changes.map(c => `${fieldName(c.field)}: ${valueText(c.field, c.from)} → ${valueText(c.field, c.to)}`).join('; ');
     } catch { return t('Changed'); }
   };
-  const when = (iso: string) => new Date(iso).toLocaleString();
+  const when = (iso: string) => format.dateTime(iso);
 
   return (
     <div className="max-w-2xl mx-auto">
       <p className="mb-2 text-sm"><Link to="/share" className="text-brand-600">← {t('All share links')}</Link></p>
       <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900">{link.label ?? describeScope(link, t, tn)}</h1>
       <p className="text-sm text-gray-500 mb-6">
-        {link.revoked ? t('Revoked') : expired ? t('Expired') : t('Active')} · {t('Expires {date}', { date: link.expires_at.slice(0, 10) })} · {t('Made {date}', { date: link.created_at.slice(0, 10) })}
+        {link.revoked ? t('Revoked') : expired ? t('Expired') : t('Active')} · {t('Expires {date}', { date: format.date(link.expires_at) })} · {t('Made {date}', { date: format.date(link.created_at) })}
       </p>
 
       {requests.some(r => r.status === 'pending') && (
@@ -137,7 +139,7 @@ export default function ShareLinkDetail() {
             <input id="d-label" value={form.label} maxLength={80} disabled={!editable} onChange={e => setForm(f => ({ ...f, label: e.target.value }))} className={`${input} w-full`} />
           </div>
           <div>
-            <label htmlFor="d-days" className="block text-xs font-medium text-gray-500 mb-1">{t('Works until {date}', { date: link.expires_at.slice(0, 10) })}</label>
+            <label htmlFor="d-days" className="block text-xs font-medium text-gray-500 mb-1">{t('Works until {date}', { date: format.date(link.expires_at) })}</label>
             <span className="text-sm text-gray-600">{t('Change to')}{' '}
               <Combobox
                 id="d-days" value={String(form.hours)} disabled={!editable} onChange={v => setForm(f => ({ ...f, hours: parseInt(v) }))} wrapperClassName="relative inline-block w-48 align-middle"

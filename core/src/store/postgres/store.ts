@@ -2,13 +2,13 @@ import type { AccountsStore, StoreConfig } from '../types.js';
 import { accountsSchema } from './schema-accounts.js';
 import type { PgPool, PgQueryable } from './pool.js';
 import type { Begin, Query } from './query.js';
-import { billingRepository, metricsRepository, waitlistRepository } from './billing.js';
+import { billingRepository, catalogRepository, metricsRepository, settingsRepository, waitlistRepository } from './billing.js';
 import { maintenanceRepository } from './maintenance.js';
 import { sharedRepository } from './shared.js';
 import { delegationRepository } from './delegations.js';
 import { familyRepository } from './family.js';
 import { reminderDateRepository } from './reminder-dates.js';
-import { cookieSessionRepository, enrolmentRepository, sessionRepository, usageRepository } from './small.js';
+import { cookieSessionRepository, enrolmentRepository, invitationRepository, sessionRepository, usageRepository } from './small.js';
 import { userRepository } from './users.js';
 import { vaultRepository } from './vault.js';
 
@@ -71,13 +71,16 @@ function accountsOver(q: Query, begin: Begin): Omit<AccountsStore, 'close'> {
     sessions: sessionRepository(q),
     cookieSessions: cookieSessionRepository(q),
     enrolments: enrolmentRepository(q),
+    invitations: invitationRepository(q),
     usage: usageRepository(q),
     vault: vaultRepository(q, begin),
     shared: sharedRepository(q, begin),
     maintenance: maintenanceRepository(q),
-    billing: billingRepository(q),
+    billing: billingRepository(q, begin),
     metrics: metricsRepository(q),
     waitlist: waitlistRepository(q),
+    settings: settingsRepository(q),
+    catalog: catalogRepository(q),
     delegations: delegationRepository(q, begin),
     family: familyRepository(q, begin),
     reminderDates: reminderDateRepository(q, begin),

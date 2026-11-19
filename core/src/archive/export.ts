@@ -171,6 +171,26 @@ export async function exportDocument(userId: string, documentId: string): Promis
   };
 }
 
+/**
+ * One document's own pages as a PDF, the pages the owner has not set aside, in the order they read: what an insurer's portal or a doctor who wants files takes. Only for an upload that
+ * is a PDF (a photo set is made into one on upload); another kind of original has no pages to cut and is 'not_pdf'.
+ */
+export async function exportDocumentPdf(userId: string, documentId: string): Promise<Buffer | 'not_found' | 'no_pages' | 'not_pdf' | 'cannot_trim'> {
+  const store = getStore();
+  const doc = await store.documents.findFor(userId, documentId);
+  if (!doc) return 'not_found';
+  const upload = await store.sourceFiles.findFor(userId, doc.source_file_id);
+  if (!upload) return 'not_found';
+  const pages = (await store.pages.listForDocument(userId, documentId)).sort((a, b) => a.page_number - b.page_number);
+  if (pages.length === 0) return 'no_pages';
+  if (upload.mime_type !== 'application/pdf') return 'not_pdf';
+  try {
+    return await extractPdfPages(upload.file_path, pages.map(p => p.source_page));
+  } catch {
+    return 'cannot_trim';
+  }
+}
+
 /** Everything the person has: each finished upload with its pages, documents and edits. */
 export async function exportArchive(userId: string): Promise<ExportZip | 'empty'> {
   const store = getStore();

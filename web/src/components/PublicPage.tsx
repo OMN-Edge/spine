@@ -5,6 +5,7 @@ import '@fontsource/literata/400.css';
 import '@fontsource/literata/500.css';
 import { api, demoLanguageOf, type AuthOptions } from '../api';
 import { useAuth } from '../auth';
+import CompanyLine from './CompanyLine';
 import { LogoMark } from './Logo';
 import { useI18n } from '../i18n';
 import { LanguageSwitcher } from './LanguageSwitcher';
@@ -96,10 +97,12 @@ export function PublicPage({ options, children }: { options: PublicOptions; chil
             <Link to="/privacy" className="hover:text-ink hover:underline">{t('Privacy notice')}</Link>
             <Link to="/terms" className="hover:text-ink hover:underline">{t('Terms of use')}</Link>
             <Link to="/purpose" className="hover:text-ink hover:underline">{t('What Spine is for')}</Link>
+            <Link to="/refunds" className="hover:text-ink hover:underline">{t('Refund policy')}</Link>
             <Link to="/trust" className="hover:text-ink hover:underline">{t('How to check this app')}</Link>
             <span className="font-mono text-xs text-ink/50" title={BUILD_COMMIT}>{BUILD_COMMIT.slice(0, 7)}{BUILD_COMMIT.endsWith('-dirty') ? '-dirty' : ''}</span>
           </nav>
         </div>
+        <CompanyLine className="mx-auto max-w-6xl px-4 pb-8 text-ink/50 sm:px-6" />
       </footer>
     </div>
   );

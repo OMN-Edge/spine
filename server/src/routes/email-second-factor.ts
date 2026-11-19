@@ -1,13 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { requireAuth } from 'spine-core/routes/middleware.js';
-import { emailCodeMatches, emailSecondFactorRequired, hashEmailCode, newEmailCode, signInCodeMail } from '../email-code.js';
+import { emailCodeMatches, emailSecondFactorRequired, hashEmailCode, newEmailCode, signInCodeMail } from '../identity/index.js';
 import { getMailer } from '../mail/index.js';
-import { mailAfter, securityChangeMail } from '../notify.js';
+import { mailAfter, securityChangeMail } from '../identity/index.js';
 import { windowLimiter } from '../rate-limit.js';
-import { hasSecondFactor, passwordIsRight } from '../second-factor.js';
-import { endOtherSessions } from '../sessions.js';
-import { type SessionData } from '../session-auth.js';
+import { hasSecondFactor, passwordIsRight } from '../identity/index.js';
+import { endOtherSessions } from '../identity/index.js';
+import { type SessionData } from '../identity/index.js';
 import { PENDING_LOGIN_MS, SECOND_FACTOR_ATTEMPTS } from './auth.js';
 
 /**

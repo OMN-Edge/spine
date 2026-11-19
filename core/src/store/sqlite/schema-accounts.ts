@@ -91,6 +91,13 @@ CREATE TABLE IF NOT EXISTS device_enrolments (
 );
 CREATE INDEX IF NOT EXISTS idx_device_enrolments_user ON device_enrolments(user_id);
 
+-- Who invited an account, until it first buys a plan or ninety days pass (store/types.ts, InvitationRepository). The invitee's row; deleted with either account.
+CREATE TABLE IF NOT EXISTS invitations (
+  user_id TEXT PRIMARY KEY REFERENCES users(id),
+  inviter_id TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS user_recovery_codes (
   user_id TEXT NOT NULL REFERENCES users(id),
   code_hash TEXT NOT NULL,
@@ -227,11 +234,11 @@ CREATE INDEX IF NOT EXISTS idx_shared_opens_user ON shared_opens(user_id);
 -- operator's CLI. No card number and no address is ever here: the provider keeps those; this keeps only which plan, until when.
 CREATE TABLE IF NOT EXISTS subscriptions (
   user_id TEXT PRIMARY KEY REFERENCES users(id),
-  provider TEXT NOT NULL, -- 'paddle' | 'operator'
+  provider TEXT NOT NULL, -- 'stripe' | 'operator'
   customer_id TEXT,
   subscription_id TEXT,
   billing_interval TEXT, -- 'month' | 'year'
-  plan TEXT NOT NULL DEFAULT 'premium', -- 'premium' | 'family'
+  plan TEXT NOT NULL DEFAULT 'premium', -- 'essential' | 'premium' | 'family'
   status TEXT NOT NULL,
   founding INTEGER NOT NULL DEFAULT 0,
   current_period_end TEXT,
@@ -246,6 +253,89 @@ CREATE TABLE IF NOT EXISTS billing_events (
   id TEXT PRIMARY KEY,
   at TEXT NOT NULL
 );
+
+-- The payment provider's customer record for an account, made when the account gave its billing details (docs/billing.md): only the provider's id. The name, address and
+-- county are at the provider and are read from there (SECURITY.md M-45). Removed with the account.
+CREATE TABLE IF NOT EXISTS billing_customers (
+  user_id TEXT PRIMARY KEY,
+  customer_id TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+-- Payments whose invoice the operator issues (Stripe is not the seller): the provider's reference for the payment, where its invoice has got to, and the
+-- issuing service's number once it is made. No name, address or amount: they are read from the provider each time. Kept, since an invoice is owed for a deleted account too.
+CREATE TABLE IF NOT EXISTS invoice_queue (
+  ref TEXT PRIMARY KEY,
+  user_id TEXT,
+  state TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  next_attempt_at TEXT NOT NULL,
+  last_error TEXT,
+  issuer_ref TEXT,
+  series TEXT,
+  number TEXT,
+  -- The state to go back to when the operator retries one that stopped (where it had got to), and what the invoice counts for in the EU consumer threshold (minor units of EUR; negative for a storno).
+  resume TEXT,
+  eu_minor BIGINT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_invoice_queue_due ON invoice_queue(state, next_attempt_at);
+
+-- The operator's e-Factura link (anaf/): ANAF's authorisation sealed with a key that is not here, the authorisation being asked for, the
+-- numbered documents and each series' next number. Nothing here is an account's, and the documents are kept (an invoice is kept ten years).
+CREATE TABLE IF NOT EXISTS efactura_auth (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  sealed TEXT NOT NULL,
+  access_expires_at TEXT NOT NULL,
+  refresh_expires_at TEXT NOT NULL,
+  authorised_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS efactura_pending (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  state TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS efactura_series (
+  series TEXT PRIMARY KEY,
+  next_number INTEGER NOT NULL
+);
+-- The invoice as a person reads it, kept for each payment whose invoice the operator issues through a service (Spine's own e-Factura keeps its documents in efactura_documents): the buyer, the lines, the date and the number the service gave, as JSON. It is what Spine's own PDF is made from, so a buyer who later changes their billing details does not change an invoice already issued. Kept ten years with the invoice, not removed with the account.
+CREATE TABLE IF NOT EXISTS invoice_documents (
+  ref TEXT PRIMARY KEY,
+  document TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS efactura_documents (
+  draft_id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL,
+  series TEXT NOT NULL,
+  number INTEGER NOT NULL,
+  issue_date TEXT NOT NULL,
+  reverses TEXT,
+  xml TEXT,
+  input TEXT,
+  anaf_index TEXT,
+  anaf_state TEXT,
+  anaf_message TEXT,
+  signed TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE (series, number)
+);
+
+-- A buyer's withdrawal from a purchase (the EU's fourteen days): who, when, and what the operator decided and refunded. Kept with the account's accounting, not removed with it.
+CREATE TABLE IF NOT EXISTS withdrawal_requests (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  state TEXT NOT NULL,
+  requested_at TEXT NOT NULL,
+  decided_at TEXT,
+  refunded_minor BIGINT,
+  note TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_withdrawal_open ON withdrawal_requests(user_id) WHERE state = 'requested';
 
 -- AI processing an account has used in a period ('trial', or 'YYYY-MM'), in thousandths of a page. Only a number, never what was read.
 CREATE TABLE IF NOT EXISTS ai_usage (
@@ -283,6 +373,45 @@ CREATE TABLE IF NOT EXISTS metrics (
   n INTEGER NOT NULL,
   PRIMARY KEY (name, day)
 );
+
+-- The few settings the operator changes from the admin page, by name (server/src/operator-settings.ts lists them and checks each value): the
+-- dashboard's targets, the AI budget, the reminder interval. Not an account's data.
+CREATE TABLE IF NOT EXISTS operator_settings (
+  key TEXT NOT NULL PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+-- The operator's product catalog (packages/billing/src/products.ts): what is sold, each price as a version that is never changed (a new amount is a new version), and the
+-- provider's own ids for each version once it has been sent there. Not an account's data. A version a subscriber bought stays, so an old subscription still says what it was.
+CREATE TABLE IF NOT EXISTS catalog_products (
+  id TEXT NOT NULL PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  on_sale INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS catalog_prices (
+  id TEXT NOT NULL PRIMARY KEY,
+  product_id TEXT NOT NULL,
+  period TEXT NOT NULL,
+  currency TEXT NOT NULL,
+  amount_minor INTEGER NOT NULL,
+  version INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE (product_id, period, currency, version)
+);
+CREATE TABLE IF NOT EXISTS catalog_links (
+  price_id TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  provider_product_id TEXT NOT NULL,
+  provider_price_id TEXT NOT NULL,
+  synced_at TEXT NOT NULL,
+  archived_at TEXT,
+  PRIMARY KEY (price_id, provider)
+);
+CREATE INDEX IF NOT EXISTS idx_catalog_links_provider_price ON catalog_links(provider, provider_price_id);
+
 
 -- The windows a limiter counts in, shared by every instance of the server (SPINE_LIMITS=store): what is limited (an address, an account), when its
 -- window began, how long it is, and how many requests it has had. Not an account's data: nothing here names a person beyond the key a limiter chose.

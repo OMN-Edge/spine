@@ -6,6 +6,8 @@ export interface ComboOption {
   label: string;
   /** Shown beside the label, and searched too (a specialty, a count). */
   hint?: string;
+  /** What the closed control shows where the label is too long for it (a language's name without its English one); the list keeps the label. */
+  short?: string;
 }
 
 const fold = (text: string) => text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -46,7 +48,7 @@ export function Combobox({ id, ariaLabel, options, value, onChange, placeholder,
   const [at, setAt] = useState(0);
 
   const chosen = options.find(o => o.value === value);
-  const shown = chosen?.label ?? value;
+  const shown = chosen?.short ?? chosen?.label ?? value;
   const typed = query.trim();
   const searchable = newLabel !== undefined || options.length > SEARCH_ABOVE;
 

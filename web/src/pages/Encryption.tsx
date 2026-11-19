@@ -6,7 +6,7 @@ import { Actions, P, PageIntro, PublicPage, Section, TextLink, usePublicOptions 
  * The cryptography, for a reader who wants the specifics: the algorithms, how the keys fit together, what "sealed" means and what is
  * not encrypted. Every figure here is the code's: web/src/crypto/keys.ts (Argon2id at 64 MiB and 3 passes, a 16-byte salt, the root split
  * with crypto_kdf, the key hierarchy), seal.ts (XChaCha20-Poly1305, a random 24-byte nonce in front, the context as associated data),
- * delegation.ts and core/share/keys.ts (sealed boxes, 256-bit share keys), enrolment.ts (80-bit codes), server/src/passwords.ts (the
+ * delegation.ts and core/share/keys.ts (sealed boxes, 256-bit share keys), enrolment.ts (80-bit codes), server/src/identity/passwords.ts (the
  * sign-in value hashed again with Argon2id at 19 MiB and 2 passes) and docs/key-hierarchy.md. Change one with the code it describes.
  */
 export default function Encryption() {

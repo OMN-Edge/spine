@@ -6,10 +6,10 @@ import { tmpdir } from 'os';
 import path from 'path';
 import { afterEach } from 'vitest';
 import { runCli, type CliIo } from '../cli.js';
-import { deleteAccount } from '../accounts.js';
+import { deleteAccount } from '../identity/index.js';
 import { getStore, resetStore, getAccountsStore } from 'spine-core/store/index.js';
-import { verifyPassword, MIN_PASSWORD_LENGTH } from '../passwords.js';
-import { hashUserToken } from '../user-tokens.js';
+import { verifyPassword, MIN_PASSWORD_LENGTH } from '../identity/index.js';
+import { hashUserToken } from '../identity/index.js';
 import { seedDocument, seedSourceFile, createTestUser, OWNER_ID } from './helpers/seed.js';
 import { buildTestApp, loginAs } from './helpers/app.js';
 

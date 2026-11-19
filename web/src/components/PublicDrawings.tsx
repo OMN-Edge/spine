@@ -276,3 +276,34 @@ export function EmergencyCardDrawing() {
     </svg>
   );
 }
+
+/**
+ * The same invented lab report twice: as the clinic at home wrote it, and as a doctor abroad reads it. What is shown is written out here, not translated by a model at draw time: the values
+ * and the names are invented, and each line is the line the translation would give. It says what Spine's translation is for, in the one picture.
+ */
+export function TranslationDrawing() {
+  const { t } = useI18n();
+  const report = (title: string, language: string, lines: Array<[string, string, string]>, flag: string) => (
+    <figure className="flex-1 rounded-2xl border border-ink/12 bg-surface p-5 shadow-[0_18px_40px_-28px_rgb(0_0_0/0.35)]">
+      <figcaption className="text-xs font-medium uppercase tracking-[0.14em] text-accent">{language}</figcaption>
+      <p className="mt-3 font-display text-xl">{title}</p>
+      <p className="text-xs text-ink/55">17.03.2026</p>
+      <dl className="mt-4 space-y-2 text-sm">
+        {lines.map(([name, value, range]) => (
+          <div key={name} className="flex items-baseline justify-between gap-3 border-b border-ink/8 pb-2 last:border-0">
+            <dt className="text-ink/80">{name}</dt>
+            <dd className="text-right"><span className="font-medium">{value}</span> <span className="text-xs text-ink/50">{range}</span></dd>
+          </div>
+        ))}
+      </dl>
+      <p className="mt-4 text-xs text-ink/60">{flag}</p>
+    </figure>
+  );
+  return (
+    <div className="flex flex-col items-stretch gap-4 md:flex-row md:items-center" role="img" aria-label={t('A lab report in Romanian, and the same report as a German doctor reads it')}>
+      {report('Analize de laborator', t('Written by the clinic, in Romanian'), [['Hemoglobină', '11,2 g/dL', '(12–16)'], ['Feritină', '18 ng/mL', '(30–400)'], ['TSH', '2,1 mUI/L', '(0,4–4)']], 'Valorile marcate sunt în afara intervalului tipărit pe document.')}
+      <svg viewBox="0 0 40 24" aria-hidden="true" className="mx-auto h-6 w-10 shrink-0 rotate-90 text-accent md:rotate-0" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M4 12h30M26 5l8 7-8 7" /></svg>
+      {report('Laborbefund', t('As a doctor in Germany reads it'), [['Hämoglobin', '11,2 g/dL', '(12–16)'], ['Ferritin', '18 ng/mL', '(30–400)'], ['TSH', '2,1 mIU/L', '(0,4–4)']], 'Die markierten Werte liegen außerhalb des auf dem Dokument gedruckten Bereichs.')}
+    </div>
+  );
+}

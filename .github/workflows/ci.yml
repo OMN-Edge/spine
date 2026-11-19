@@ -77,4 +77,4 @@ jobs:
           --config p/typescript --config p/nodejs --config p/security-audit
           --exclude-rule javascript.express.security.audit.xss.direct-response-write.direct-response-write
           --exclude __tests__ --exclude __integration__
-          core/src server/src web/src
+          core/src packages/anaf/src packages/billing/src server/src web/src

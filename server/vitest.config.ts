@@ -4,12 +4,17 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const core = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../core/src');
+const here = path.dirname(fileURLToPath(import.meta.url));
+const core = path.resolve(here, '../core/src');
+const anaf = path.resolve(here, '../packages/anaf/src');
+const billing = path.resolve(here, '../packages/billing/src');
 
 export default defineConfig({
   // The tests run against the core's source, so a change there needs no build; the built server reaches the same files as `spine-core`.
   resolve: {
     alias: [
+      { find: /^spine-anaf\/(.*)\.js$/, replacement: `${anaf}/$1.ts` },
+      { find: /^spine-billing\/(.*)\.js$/, replacement: `${billing}/$1.ts` },
       { find: /^spine-core\/(.*)\.js$/, replacement: `${core}/$1.ts` },
       { find: /^spine-core\/(.*)$/, replacement: `${core}/$1` },
     ],

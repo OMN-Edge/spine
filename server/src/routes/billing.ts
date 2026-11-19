@@ -2,23 +2,67 @@ import type { FastifyInstance } from 'fastify';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { requireAuth } from 'spine-core/routes/middleware.js';
 import { logger } from 'spine-core/logger.js';
-import { COUNTS, FOUNDING_LIMIT, PRICES, linkKey, meterKey, subscriptionEntitles, trialEnd, type Count } from 'spine-core/billing/plans.js';
-import type { SubscriptionRecord } from 'spine-core/store/types.js';
+import { COUNTS, FOUNDING_LIMIT, linkKey, meterKey, subscriptionEntitles, trialEnd, type Count } from 'spine-core/billing/plans.js';
 import { loadBillingConfig } from '../billing/config.js';
-import { applySubscriptionEvent, createCheckout, parseEvent, planOfItems, portalUrl, userOf, verifySignature, type PaddleEvent } from '../billing/paddle.js';
-import { vaultBytesFor, liveSharesFor } from '../billing/entitlements.js';
-import { pagesAllowed } from '../billing/carry.js';
-import { TOTALS, totalKey } from '../billing/totals.js';
-import { standingOf } from '../billing/seat.js';
+import { loadPrices } from '../billing/catalog.js';
+import { billingProvider, MANAGE_ACTIONS, type Buyer, type ManageAction } from '../billing/provider.js';
+import { applyProviderEvent, type Outcome } from 'spine-billing/events.js';
+import { plansFor } from '../plans/mapping.js';
+import { withCatalog } from '../plans/products.js';
+import { vaultBytesFor, liveSharesFor } from '../plans/entitlements.js';
+import { importGrant, pagesAllowed } from '../plans/carry.js';
+import { TOTALS, totalKey } from '../plans/totals.js';
+import { standingOf } from '../plans/seat.js';
+import { inviteToken, keptBonus, MAX_REWARDED, BONUS_PAGES, REWARD_PAGES } from '../plans/invitations.js';
+import { billingDetailsSchema } from 'spine-core/billing/billing-details.js';
+import { loadInvoicingConfig } from '../billing/invoicing/config.js';
+import { contextFromSettings, efacturaFromSettings, invoiceNewPayment, reverseRefunded } from '../billing/invoicing/queue.js';
+import { linkIsValid, signedLink } from 'spine-anaf/index.js';
+import { ownPdf, pdfKeyOf } from '../billing/invoicing/own-pdf.js';
+import { PDF_PATH } from 'spine-billing/invoicing/efactura.js';
+import { alertOperator } from '../billing/invoicing/alert.js';
+import { withdrawalReceivedMail } from '../billing/withdrawal-mail.js';
+import { getMailer } from '../mail/index.js';
+import { randomUUID } from 'node:crypto';
+import { grantOnce, mayBuy, topupLeft, type Addon } from '../plans/addons.js';
+import { currentOperator } from '../operator.js';
+import { pageInfo, pagingOf } from './paging.js';
+
+/** The billing configuration with the catalog's prices in place of the environment's where it has them (`plans/products.ts`): what the pricing page shows and a checkout charges. */
+async function pricesConfig(): Promise<ReturnType<typeof loadBillingConfig>> {
+  const config = loadBillingConfig();
+  return config.enabled ? withCatalog(config) : config;
+}
 
 const day = (now = new Date()) => now.toISOString().slice(0, 10);
 
-/** How long a purchase counts before the provider's own subscription message arrives to say what was bought (it follows within seconds). */
-const PLACEHOLDER_MS = 3 * 24 * 3600e3;
-/** The placeholder is older than any message, so the subscription message that replaces it is never taken for a stale one. */
-const BEFORE_ANY_MESSAGE = '1970-01-01T00:00:00.000Z';
+/** Who is buying, for a provider that fills in its form and attaches a purchase to the customer it already has for the account. */
+async function buyerOf(userId: string): Promise<Buyer | undefined> {
+  const store = getAccountsStore();
+  const [user, sub, held] = await Promise.all([store.users.findById(userId), store.billing.get(userId), store.billing.customerOf(userId)]);
+  // The customer the account gave its billing details as, else the one a subscription already has (which holds none).
+  return user ? { customerId: held ?? sub?.customer_id ?? null, email: user.email, language: user.language, hasDetails: held !== null } : undefined;
+}
 
-type Outcome = 'applied' | 'ignored' | 'unresolved';
+/** The days a buyer has to withdraw from a purchase (EU consumer law, for a digital service). */
+const WITHDRAWAL_DAYS = 14;
+
+/**
+ * Whether the account may ask to withdraw from its purchase: where the operator is the seller (Stripe), with a subscription that runs, no request open already, and, where
+ * the first payment's day is known (the invoices record it), within fourteen days of it. The operator decides each request; this only says whether to offer the button.
+ */
+async function withdrawalOf(userId: string, config: ReturnType<typeof loadBillingConfig>): Promise<{ allowed: boolean; until: string | null; requested: boolean }> {
+  const store = getAccountsStore();
+  const [sub, open, first] = await Promise.all([store.billing.get(userId), store.billing.openWithdrawalOf(userId), store.billing.firstPaymentAt(userId)]);
+  const until = first ? new Date(Date.parse(first) + WITHDRAWAL_DAYS * 86_400_000).toISOString() : null;
+  const running = config.enabled && sub?.provider === 'stripe' && !!sub.subscription_id && subscriptionEntitles(sub, new Date());
+  return { allowed: !!running && !open && (until === null || Date.parse(until) > Date.now()), until, requested: !!open };
+}
+
+/** Whether a purchase here needs the billing details first: where the operator issues the invoice (`SPINE_INVOICING`), the invoice needs a buyer the provider's page does not describe. */
+function needsDetails(config: ReturnType<typeof loadBillingConfig>): boolean {
+  return config.enabled && loadInvoicingConfig(config).enabled;
+}
 
 /**
  * Plans and payment (SECURITY.md **M-45**, `docs/billing.md`). The server holds which plan an account has, never a card: the person pays on
@@ -28,15 +72,17 @@ type Outcome = 'applied' | 'ignored' | 'unresolved';
 export async function billingRoutes(app: FastifyInstance) {
   // What the pricing page shows, before an account exists: the prices and how many founding places are left.
   app.get('/api/pricing', async (_req, reply) => {
-    const config = loadBillingConfig();
+    const config = await pricesConfig();
     if (!config.enabled) return reply.header('Cache-Control', 'no-store').send({ enabled: false });
-    const held = await getAccountsStore().billing.foundingHeld(new Date().toISOString());
-    return reply.header('Cache-Control', 'public, max-age=60').send({ enabled: true, prices: PRICES, family: !!config.family, founding_left: Math.max(0, FOUNDING_LIMIT - held) });
+    const held = await getAccountsStore().billing.foundingHeld();
+    // Who sells: the operator, and the page says in whose name (the same name as the footer's company line).
+    const seller = { seller: 'operator' as const, seller_name: (await currentOperator())?.name ?? null };
+    return reply.header('Cache-Control', 'public, max-age=60').send({ enabled: true, prices: await loadPrices(config), essential: !!config.essential, family: !!config.family, founding_left: Math.max(0, FOUNDING_LIMIT - held), ...seller });
   });
 
   // The signed-in account's plan, what it has used and what it can change.
   app.get('/api/billing', { preHandler: requireAuth }, async (req, reply) => {
-    const config = loadBillingConfig();
+    const config = await pricesConfig();
     if (!config.enabled) return reply.header('Cache-Control', 'no-store').send({ enabled: false });
     const store = getAccountsStore();
     const user = await store.users.findById(req.userId);
@@ -53,10 +99,12 @@ export async function billingRoutes(app: FastifyInstance) {
     const read = async (meter: Count) => {
       const own = await store.usage.aiUsed(req.userId, meterKey(meter, e, now));
       const plan = pooled ? await store.usage.aiUsed(standing.holder, meterKey(meter, e, now, true)) : own;
-      const cap = e.memberCap ? finite(e.memberCap[meter]) : null;
+      // The one-off import is for a yearly plan only (`plans/carry.ts`): a monthly plan shows none.
+      const grant = (n: number) => (meter === 'import' ? importGrant(n, standing.subscription?.interval ?? null) : n);
+      const cap = e.memberCap ? finite(grant(e.memberCap[meter])) : null;
       // The pages carry from month to month on a paid plan: the allowance is what can be added by the end of this month, and `monthly` what each month adds.
       const carries = meter === 'pages' && e.carryMonths > 1 && e.aiPeriod === 'month';
-      const allowance = carries ? await pagesAllowed(store, pooled ? standing.holder : req.userId, e, e.allowance.pages, now, pooled) : finite(e.allowance[meter]);
+      const allowance = carries ? await pagesAllowed(store, pooled ? standing.holder : req.userId, e, e.allowance.pages, now, pooled) : finite(grant(e.allowance[meter]));
       const ownCap = carries && e.memberCap ? await pagesAllowed(store, req.userId, e, e.memberCap.pages, now, false) : cap;
       return {
         used: plan,
@@ -65,16 +113,17 @@ export async function billingRoutes(app: FastifyInstance) {
         ...(ownCap !== null ? { own_used: own, own_cap: ownCap } : {}),
       };
     };
-    // What links send, and what the owner's own devices read: the plan's views and bytes of the month (billing/links.ts).
+    // What links send, and what the owner's own devices read: the plan's views and bytes of the month (plans/links.ts).
     const linkUse = async (what: 'views' | 'egress') => store.usage.aiUsed(pooled ? standing.holder : req.userId, linkKey(what, now, pooled));
     const totals = Object.fromEntries(await Promise.all(TOTALS.map(async c => [c, await store.usage.aiUsed(req.userId, totalKey(c))] as const)));
+    const topup = await topupLeft(store, req.userId);
     const [meters, vault, shares, vaultLimit, sharesLimit, held, pool, linkViews, linkBytes] = await Promise.all([
       Promise.all(COUNTS.map(async m => [m, await read(m)] as const)).then(Object.fromEntries),
       store.vault.usage(req.userId),
       store.shared.usage(req.userId, now.toISOString()),
       vaultBytesFor(req.userId),
       liveSharesFor(req.userId),
-      store.billing.foundingHeld(now.toISOString()),
+      store.billing.foundingHeld(),
       pooled ? store.family.pool(standing.holder, now.toISOString()) : Promise.resolve(null),
       linkUse('views'), linkUse('egress'),
     ]);
@@ -86,7 +135,11 @@ export async function billingRoutes(app: FastifyInstance) {
       subscription: sub && subscriptionEntitles(sub, now)
         ? { status: sub.status, interval: sub.interval, founding: sub.founding, ends_at: sub.cancel_scheduled ? sub.current_period_end : null, renews_at: sub.cancel_scheduled ? null : sub.current_period_end, provider: sub.provider }
         : null,
-      can_manage: !!sub?.customer_id && sub.provider === 'paddle',
+      can_manage: !!sub?.customer_id && sub.provider === config.provider,
+      // Whether a purchase asks for the billing details first (the operator issues the invoices).
+      billing_details: needsDetails(config),
+      // Whether to offer withdrawing from the purchase (the fourteen days), and until when.
+      withdrawal: await withdrawalOf(req.userId, config),
       // Reading is by the month (the trial's, once); chat and translation are always by the month.
       // What a person sees counted: pages read, questions asked, pages translated, and the archive import. Only adding has an allowance; using is counted.
       ai: { period: e.aiPeriod, reading: meters.pages, chat: meters.messages, translation: meters.translated, import: meters.import },
@@ -98,34 +151,166 @@ export async function billingRoutes(app: FastifyInstance) {
       vault: { used_bytes: pool ? pool.bytes : vault.bytes, limit_bytes: pooled ? Math.min(e.vaultBytes ?? vaultLimit, vaultLimit * standing.entitlements.seats) : vaultLimit },
       // Only the free plan limits how many are live; null is no limit but the instance's.
       shares: { live: pool ? pool.links : shares.bundles, limit: e.liveShares === null ? null : sharesLimit },
-      features: { translation: e.translation, chat: e.chat, linking: e.linking, related: e.related, approval_mode: e.approvalMode, delegation: e.delegation },
+      // What is bought once: which of them this account may buy now (and the operator sells), and what is left of it.
+      addons: {
+        page_topup: { buyable: !!config.addons.pageTopup && mayBuy('page_topup', e.plan), pages_left: topup },
+      },
+      // The link this account can send: both sides get pages when someone makes an account with it, and it is rewarded for at most `max` of them.
+      invite: { token: inviteToken(req.userId), pages: BONUS_PAGES, reward_pages: REWARD_PAGES, rewarded: Math.min(MAX_REWARDED, await store.usage.aiUsed(req.userId, 'bonus:rewarded')), max: MAX_REWARDED },
+      features: { translation: e.translation, chat: e.chat, linking: e.linking, related: e.related, files_export: e.filesExport, approval_mode: e.approvalMode, delegation: e.delegation },
       people: { limit: e.profiles },
       // What the app holds itself to, because the server cannot count into sealed records (`core/src/plan-limits.ts`).
-      limits: { documents: e.documents },
+      limits: { pages: e.keptPages === null ? null : e.keptPages + (await keptBonus(store, req.userId)), pages_bonus: e.keptPages === null ? 0 : await keptBonus(store, req.userId) },
       seats: { limit: e.seats },
-      prices: PRICES,
+      prices: await loadPrices(config),
+      essential: !!config.essential,
       family: !!config.family,
       founding_left: Math.max(0, FOUNDING_LIMIT - held),
     });
   });
 
-  // Starts a purchase: a transaction at the provider for the price the account is offered, and where to send the person to pay it.
-  app.post<{ Body: { interval?: unknown; plan?: unknown } }>('/api/billing/checkout', { preHandler: requireAuth, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
+  // The billing details an invoice needs (where the operator issues invoices): read to fill the form, and kept as the provider's customer, never here.
+  app.get('/api/billing/details', { preHandler: requireAuth }, async (req, reply) => {
     const config = loadBillingConfig();
     if (!config.enabled) return reply.status(404).send({ error: 'this instance has no plans' });
+    if (!needsDetails(config)) return reply.send({ required: false, details: null });
+    const customer = await getAccountsStore().billing.customerOf(req.userId);
+    try {
+      return reply.send({ required: true, details: customer ? await billingProvider(config).readBuyer(customer) : null });
+    } catch (err) {
+      logger.warn('billing details could not be read', { reason: err instanceof Error ? err.message : String(err) });
+      return reply.status(502).send({ error: 'the payment provider could not be reached; try again in a moment' });
+    }
+  });
+
+  app.put<{ Body: unknown }>('/api/billing/details', { preHandler: requireAuth, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const config = loadBillingConfig();
+    if (!config.enabled || !needsDetails(config)) return reply.status(404).send({ error: 'billing details are not asked for here' });
+    const parsed = billingDetailsSchema.safeParse(req.body);
+    if (!parsed.success) {
+      const first = parsed.error.issues[0]!;
+      return reply.status(400).send({ error: first.message, field: first.path.join('.') || null });
+    }
+    const store = getAccountsStore();
+    const user = await store.users.findById(req.userId);
+    if (!user) return reply.status(404).send({ error: 'not found' });
+    try {
+      const customerId = await billingProvider(config).saveBuyer({ userId: req.userId, email: user.email, customerId: await store.billing.customerOf(req.userId), details: parsed.data });
+      await store.billing.setCustomer(req.userId, customerId, new Date().toISOString());
+      return reply.send({ ok: true });
+    } catch (err) {
+      logger.warn('billing details could not be saved', { reason: err instanceof Error ? err.message : String(err) });
+      return reply.status(502).send({ error: 'the payment provider could not be reached; try again in a moment' });
+    }
+  });
+
+  // Withdrawing from a purchase (the EU's fourteen days): the buyer asks, and is sent the confirmation of the request; the operator decides on the admin page.
+  app.post('/api/billing/withdraw', { preHandler: requireAuth, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const config = loadBillingConfig();
+    if (!config.enabled) return reply.status(404).send({ error: 'this instance has no plans' });
+    const state = await withdrawalOf(req.userId, config);
+    if (state.requested) return reply.status(409).send({ error: 'a request is open already', code: 'withdrawal_open' });
+    if (!state.allowed) return reply.status(409).send({ error: 'this purchase cannot be withdrawn from here', code: 'withdrawal_not_allowed' });
+    const store = getAccountsStore();
+    const user = await store.users.findById(req.userId);
+    if (!user) return reply.status(404).send({ error: 'not found' });
+    const at = new Date().toISOString();
+    if (!(await store.billing.requestWithdrawal(randomUUID(), req.userId, at))) return reply.status(409).send({ error: 'a request is open already', code: 'withdrawal_open' });
+    await store.metrics.bump('withdrawal_requested', day());
+    // The confirmation of the request, on a durable medium, and the operator told: neither says more than that a request was made.
+    const mailer = getMailer();
+    if (mailer.enabled) await mailer.send(withdrawalReceivedMail({ email: user.email, language: user.language }, at)).catch(err => logger.warn('the withdrawal confirmation could not be sent', { reason: err instanceof Error ? err.message : String(err) }));
+    await alertOperator('a withdrawal request', [`Account ${req.userId} asked to withdraw from its purchase on ${at.slice(0, 10)}.`, 'Decide within 14 days: refund (and end the plan) or decline, on /admin.']);
+    return reply.send({ ok: true, requested_at: at });
+  });
+
+  // The account's invoices, newest first, with a link to each PDF made when it is asked for (the service's link does not last).
+  app.get<{ Querystring: { page?: string; limit?: string } }>('/api/billing/invoices', { preHandler: requireAuth }, async (req, reply) => {
+    const config = loadBillingConfig();
+    const paging = pagingOf(req.query, 20);
+    if (!config.enabled || !needsDetails(config)) return reply.send({ invoices: [], ...pageInfo(paging, 0) });
+    const [rows, total] = await Promise.all([getAccountsStore().billing.invoicesMadeOf(req.userId, paging.limit, paging.offset), getAccountsStore().billing.invoicesMadeCountOf(req.userId)]);
+    return reply.header('Cache-Control', 'no-store').send({
+      ...pageInfo(paging, total),
+      invoices: rows.map(r => ({ ref: r.ref, number: r.series ? `${r.series}-${r.number}` : r.number, at: r.created_at, credit_note: r.ref.startsWith('storno:') })),
+    });
+  });
+  app.post<{ Body: { ref?: unknown } }>('/api/billing/invoices/pdf', { preHandler: requireAuth, config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const ref = req.body?.ref;
+    if (typeof ref !== 'string' || ref.length === 0 || ref.length > 200) return reply.status(400).send({ error: 'ref is needed' });
+    const row = await getAccountsStore().billing.invoice(ref);
+    // Only the account's own: a reference of another's is the same as none.
+    if (!row || row.user_id !== req.userId || !row.issuer_ref) return reply.status(404).send({ error: 'not found' });
+    try {
+      const ctx = contextFromSettings();
+      if (!ctx) return reply.status(404).send({ error: 'not found' });
+      // An invoice a service issued is read in Spine's own PDF where its copy was kept (`billing/invoicing/own-pdf.ts`), the service's where not (made before a seller was saved).
+      if (!efacturaFromSettings() && await getAccountsStore().billing.invoiceDocument(ref)) {
+        return reply.send({ url: `${PDF_PATH}/${encodeURIComponent(ref)}?t=${signedLink(pdfKeyOf(process.env.SESSION_SECRET ?? ''), ref, new Date())}` });
+      }
+      return reply.send({ url: await ctx.issuer.pdfUrl({ id: row.issuer_ref }) });
+    } catch (err) {
+      logger.warn('an invoice PDF could not be fetched', { reason: err instanceof Error ? err.message : String(err) });
+      return reply.status(502).send({ error: 'the invoice could not be fetched; try again in a moment' });
+    }
+  });
+
+  // The PDF of an invoice Spine made itself (`SPINE_INVOICING=efactura`), or of the copy it kept of one a service issued, at a link that the account's own request for it signed and that ends in ten minutes: a link carries no cookie.
+  app.get<{ Params: { id: string }; Querystring: { t?: string } }>(`${PDF_PATH}/:id`, { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const efactura = efacturaFromSettings();
+    const { id } = req.params;
+    const key = efactura?.pdfKey ?? pdfKeyOf(process.env.SESSION_SECRET ?? '');
+    if (typeof req.query.t !== 'string' || !linkIsValid(key, id, req.query.t, new Date())) return reply.status(404).send({ error: 'not found' });
+    try {
+      const pdf = efactura ? await efactura.issuer.pdf(id) : await ownPdf(id);
+      if (!pdf) return reply.status(404).send({ error: 'not found' });
+      return reply.header('Cache-Control', 'private, no-store').header('Content-Type', 'application/pdf').header('Content-Disposition', 'inline; filename="invoice.pdf"').send(pdf);
+    } catch (err) {
+      logger.warn('an invoice PDF could not be made', { reason: err instanceof Error ? err.message : String(err) });
+      return reply.status(502).send({ error: 'the invoice could not be made; try again in a moment' });
+    }
+  });
+
+  // Starts a purchase: a transaction at the provider for the price the account is offered, and where to send the person to pay it.
+  app.post<{ Body: { interval?: unknown; plan?: unknown; addon?: unknown } }>('/api/billing/checkout', { preHandler: requireAuth, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const config = await pricesConfig();
+    if (!config.enabled) return reply.status(404).send({ error: 'this instance has no plans' });
+    const wanted = req.body?.addon;
+    if (wanted !== undefined) {
+      // The thing bought once, a top-up of pages, for the plans it is meant for; an account with a subscription needs nothing more to buy it.
+      if (wanted !== 'page_topup') return reply.status(400).send({ error: 'addon must be page_topup' });
+      const addon: Addon = wanted;
+      const price = config.addons.pageTopup;
+      if (!price) return reply.status(400).send({ error: 'this is not sold here', code: 'plan_not_offered' });
+      const standing = await standingOf(getAccountsStore(), req.userId, new Date());
+      if (!standing || !mayBuy(addon, standing.entitlements.plan)) return reply.status(409).send({ error: 'this is not for the account’s plan', code: 'plan_not_offered' });
+      const buyer = await buyerOf(req.userId);
+      if (needsDetails(config) && !buyer?.hasDetails) return reply.status(409).send({ error: 'the billing details are needed first', code: 'billing_details_required' });
+      try {
+        const url = await billingProvider(config).createCheckout(price, req.userId, addon, buyer);
+        await getAccountsStore().metrics.bump(`checkout_started_${addon}`, day());
+        return reply.send({ url });
+      } catch (err) {
+        logger.warn('a checkout could not be started', { reason: err instanceof Error ? err.message : String(err) });
+        return reply.status(502).send({ error: 'the payment provider could not be reached; try again in a moment' });
+      }
+    }
     const interval = req.body?.interval;
     if (interval !== 'month' && interval !== 'year') return reply.status(400).send({ error: 'interval must be month or year' });
-    const plan = req.body?.plan === 'family' ? 'family' : 'premium';
+    const plan = req.body?.plan === 'family' ? 'family' : req.body?.plan === 'essential' ? 'essential' : 'premium';
     if (plan === 'family' && !config.family) return reply.status(400).send({ error: 'the family plan is not sold here', code: 'plan_not_offered' });
+    if (plan === 'essential' && !config.essential) return reply.status(400).send({ error: 'the Essential plan is not sold here', code: 'plan_not_offered' });
     const store = getAccountsStore();
     const now = new Date();
     const sub = await store.billing.get(req.userId);
     if (subscriptionEntitles(sub, now)) return reply.status(409).send({ error: 'this account already has a plan; change it from the billing page', code: 'already_subscribed' });
     // The founding price goes to the first places on the yearly plan; it is locked for as long as the subscription runs.
-    const founding = plan === 'premium' && interval === 'year' && (await store.billing.foundingHeld(now.toISOString())) < FOUNDING_LIMIT;
-    const price = plan === 'family' ? config.family![interval] : founding ? config.prices.founding : interval === 'year' ? config.prices.year : config.prices.month;
+    const founding = plan === 'premium' && interval === 'year' && (await store.billing.foundingHeld()) < FOUNDING_LIMIT;
+    const price = plan === 'family' ? config.family![interval] : plan === 'essential' ? config.essential![interval] : founding ? config.prices.founding : interval === 'year' ? config.prices.year : config.prices.month;
+    const buyer = await buyerOf(req.userId);
+    if (needsDetails(config) && !buyer?.hasDetails) return reply.status(409).send({ error: 'the billing details are needed first', code: 'billing_details_required' });
     try {
-      const url = await createCheckout(config, price, req.userId);
+      const url = await billingProvider(config).createCheckout(price, req.userId, undefined, buyer);
       await store.metrics.bump('checkout_started', day(now));
       return reply.send({ url });
     } catch (err) {
@@ -134,14 +319,16 @@ export async function billingRoutes(app: FastifyInstance) {
     }
   });
 
-  // The provider's page for the card, invoices, switching and cancelling. Spine holds none of that.
-  app.post('/api/billing/portal', { preHandler: requireAuth, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
+  // The provider's page for the card, invoices, switching and cancelling, opened where the person asked: the overview, or straight to cancelling or to the card. Spine holds none of that.
+  app.post<{ Body: { action?: unknown } | null }>('/api/billing/portal', { preHandler: requireAuth, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
     const config = loadBillingConfig();
     if (!config.enabled) return reply.status(404).send({ error: 'this instance has no plans' });
+    const action = req.body?.action ?? 'overview';
+    if (typeof action !== 'string' || !MANAGE_ACTIONS.includes(action as ManageAction)) return reply.status(400).send({ error: 'action must be overview, cancel or payment_method' });
     const sub = await getAccountsStore().billing.get(req.userId);
-    if (!sub?.customer_id || sub.provider !== 'paddle') return reply.status(404).send({ error: 'there is nothing to manage' });
+    if (!sub?.customer_id || sub.provider !== config.provider) return reply.status(404).send({ error: 'there is nothing to manage' });
     try {
-      return reply.send({ url: await portalUrl(config, sub.customer_id, sub.subscription_id) });
+      return reply.send({ url: await billingProvider(config).manageUrl(sub.customer_id, sub.subscription_id, action as ManageAction) });
     } catch (err) {
       logger.warn('a billing portal could not be opened', { reason: err instanceof Error ? err.message : String(err) });
       return reply.status(502).send({ error: 'the payment provider could not be reached; try again in a moment' });
@@ -155,60 +342,48 @@ export async function billingRoutes(app: FastifyInstance) {
       const config = loadBillingConfig();
       if (!config.enabled) return reply.status(404).send({ error: 'not found' });
       const raw = typeof req.body === 'string' ? req.body : '';
-      if (!verifySignature(config.webhookSecret, req.headers['paddle-signature'] as string | undefined, raw)) return reply.status(401).send({ error: 'bad signature' });
-      const event = parseEvent(raw);
-      if (!event) return reply.status(400).send({ error: 'not an event' });
+      const provider = billingProvider(config);
+      const read = await provider.readWebhook(req.headers, raw);
+      if (!read.ok) return reply.status(read.status).send({ error: read.error });
+      const event = read.event;
 
       const store = getAccountsStore();
-      const outcome = await applyEvent(event, config).catch(err => {
-        logger.error('a payment event could not be applied', { type: event.event_type, reason: err instanceof Error ? err.message : String(err) });
+      // A payment the operator invoices (the provider is not the seller): queued by the provider's reference for it, however the event goes on, and tried at once.
+      if (event.kind === 'payment' && event.saleRef) {
+        const payer = event.userId ?? (event.subscriptionId ? (await store.billing.findBySubscription(event.subscriptionId))?.user_id ?? null : null);
+        await invoiceNewPayment(event.saleRef, payer);
+      }
+      // A refund reverses the invoice made for the payment; it changes no plan.
+      if (event.kind === 'refund') {
+        await reverseRefunded(event.saleRefs, event.full, event.id);
+        await store.billing.recordEvent(event.id, new Date().toISOString());
+        return reply.send({ ok: true });
+      }
+      // What is bought once is not a subscription's message: it is applied once per transaction, and nothing else about the account changes.
+      const plans = await plansFor(config);
+      const addon = event.kind === 'payment' ? plans.addonOf(event.priceIds) : null;
+      if (addon && event.kind === 'payment') {
+        const buyer = event.userId;
+        if (!buyer || !event.transactionId || !(await store.users.findById(buyer))) return reply.send({ ok: true });
+        const granted = await grantOnce(store, buyer, addon, event.transactionId).catch(err => {
+          logger.error('a purchase could not be applied', { reason: err instanceof Error ? err.message : String(err) });
+          return null;
+        });
+        if (granted === null) return reply.status(409).send({ error: 'not applied yet' });
+        if (granted) { await store.metrics.bump(`addon_${addon}`, day()); await store.metrics.bump('paid_event', day()); }
+        return reply.send({ ok: true });
+      }
+      const outcome = await applyProviderEvent(provider.id, event, plans).catch(err => {
+        logger.error('a payment event could not be applied', { type: event.kind, reason: err instanceof Error ? err.message : String(err) });
         return 'unresolved' as Outcome;
       });
       // Not yet understood (a subscription message ahead of the purchase's): not acknowledged, so the provider sends it again.
       if (outcome === 'unresolved') return reply.status(409).send({ error: 'not applied yet' });
       // Applied twice is harmless (the state is written whole, newest event wins); what must happen once, like a count, happens on the first.
-      const first = await store.billing.recordEvent(event.event_id, new Date().toISOString());
+      const first = await store.billing.recordEvent(event.id, new Date().toISOString());
       if (first && outcome === 'applied') await store.metrics.bump('paid_event', day());
       if (first) await store.billing.pruneEvents(new Date(Date.now() - 45 * 24 * 3600e3).toISOString());
       return reply.send({ ok: true });
     });
   });
-}
-
-async function applyEvent(event: PaddleEvent, config: Extract<ReturnType<typeof loadBillingConfig>, { enabled: true }>): Promise<Outcome> {
-  const type = event.event_type;
-  const isSubscription = type.startsWith('subscription.');
-  if (!isSubscription && type !== 'transaction.completed') return 'ignored';
-
-  const store = getAccountsStore();
-  const d = event.data;
-  const subscriptionId = isSubscription ? d.id : d.subscription_id;
-  // Who it is for: the id Spine put in the purchase, or the account this subscription or customer was already linked to.
-  let userId = userOf(event);
-  if (!userId && subscriptionId) userId = (await store.billing.findBySubscription(subscriptionId))?.user_id ?? null;
-  if (!userId && d.customer_id) userId = (await store.billing.findByCustomer(d.customer_id))?.user_id ?? null;
-  if (!userId) return isSubscription ? 'unresolved' : 'ignored';
-  if (!(await store.users.findById(userId))) return 'ignored'; // the account is gone
-
-  const previous = await store.billing.get(userId);
-  const at = event.occurred_at && !Number.isNaN(Date.parse(event.occurred_at)) ? new Date(event.occurred_at).toISOString() : new Date().toISOString();
-  // A message older than what is known (they can arrive out of order) says nothing new.
-  if (previous && previous.updated_at > at) return 'ignored';
-
-  if (isSubscription) {
-    await store.billing.put(applySubscriptionEvent(previous, userId, event, config, at));
-    return 'applied';
-  }
-  // A purchase completed: link the account to the provider's customer and subscription at once, with a short placeholder end that the
-  // subscription message replaces, so a message that is lost cannot leave a plan with no end.
-  if (!subscriptionId) return 'ignored';
-  const next: SubscriptionRecord = previous && previous.subscription_id === subscriptionId
-    ? { ...previous, customer_id: previous.customer_id ?? d.customer_id ?? null } // a renewal says nothing the subscription messages do not
-    : {
-        user_id: userId, provider: 'paddle', customer_id: d.customer_id ?? null, subscription_id: subscriptionId, interval: previous?.interval ?? null, plan: planOfItems(d.items, config),
-        status: 'active', founding: (d.items ?? []).some(i => i.price?.id === config.prices.founding), current_period_end: new Date(Date.parse(at) + PLACEHOLDER_MS).toISOString(),
-        cancel_scheduled: false, updated_at: BEFORE_ANY_MESSAGE,
-      };
-  await store.billing.put(next);
-  return 'applied';
 }

@@ -6,7 +6,7 @@ import { startCore, type Core } from './boot';
 import { openFreshness } from '../crypto/freshness';
 import { startShareCore, type ShareCore } from './boot-share';
 import { applyRelayConfig, relayFetch, relayToken, useTokenUrl } from './native/relay-auth';
-import { useImportMode, useRelayHooks } from 'spine-core/llm/adapters/relay';
+import { useRelayHooks } from 'spine-core/llm/adapters/relay';
 import { usePlanLimits } from 'spine-core/plan-limits';
 import { useDemoSource } from 'spine-core/demo/archive';
 import { deviceSettings } from './native/settings';
@@ -277,11 +277,8 @@ self.onmessage = async (event: MessageEvent<ToWorker>) => {
       // Reading a share: no vault, no account; the key is the access.
       core = await startShareCore(m.shareId, m.key);
       reply({ id: m.id, ok: true });
-    } else if (m.type === 'importMode') {
-      useImportMode(m.on);
-      reply({ id: m.id, ok: true });
     } else if (m.type === 'planLimits') {
-      usePlanLimits({ documents: m.documents });
+      usePlanLimits({ pages: m.pages });
       reply({ id: m.id, ok: true });
     } else if (m.type === 'lock') {
       // Refuses (code `unsaved`) rather than dropping what could not be saved; the page asks the person, and may say `force`.

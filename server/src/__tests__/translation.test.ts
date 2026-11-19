@@ -530,7 +530,7 @@ describe('the routes', () => {
     expect((await get(`/api/share/${shareId}/documents/${d.id}/translation?lang=en`, null)).json()).toMatchObject({ status: 'cached' });
 
     const meta = (await get(`/api/share/${shareId}/meta`, null)).json();
-    expect(meta).toEqual({ language: 'en', languages: [...SUPPORTED_LANGUAGES], translation: true, chat: false, landing_url: '/' });
+    expect(meta).toMatchObject({ language: 'en', languages: [...SUPPORTED_LANGUAGES], translation: true, chat: false, landing_url: '/', overview: null });
     const plain = await link('document_ids', [d.id]);
     expect((await get(`/api/share/${plain.id}/meta`, null)).json().language).toBeNull();
     expect((await get(`/api/share/${uuidv4()}/meta`, null)).statusCode).toBe(410);
@@ -702,6 +702,38 @@ describe('specialties and test names in a language (the doctors and the trends)'
     await vi.waitFor(async () => expect((await names()).json().specialties[`chirurg-nou-${tag}`]).toBe(`EN[chirurg-nou-${tag}]`));
   });
 
+  it('translates the words the owner wrote, a tag and an episode title, as terms too, and never a tag the app made', async () => {
+    const tag = uuidv4().slice(0, 8);
+    const d = await romanian();
+    const store = getStore();
+    await store.tags.setForDocument(OWNER_ID, d.id, [`plamani-${tag}`, 'cardiology']);
+    await store.episodes.create(OWNER_ID, { id: uuidv4(), title: `Pneumonie din martie ${tag}`, state: 'confirmed', source: 'owner', documentIds: [d.id] }, '2026-03-01');
+    calls.length = 0;
+    await names();
+    await vi.waitFor(async () => expect((await names()).json().tags[`plamani-${tag}`]).toBe(`EN[plamani-${tag}]`));
+    const done = (await names()).json();
+    expect(done.episodes[`Pneumonie din martie ${tag}`]).toBe(`EN[Pneumonie din martie ${tag}]`);
+    // The tags an account starts with are the interface's own words: the model is not asked for them.
+    expect(done.tags.cardiology).toBeUndefined();
+    expect(JSON.stringify(calls.map(c => c.bundle))).not.toContain('"cardiology"');
+  });
+
+  it('gives a share’s reader the tags and episode titles of what it shares, and of nothing else', async () => {
+    const tag = uuidv4().slice(0, 8);
+    const [shared, other] = [await romanian(), await romanian()];
+    const store = getStore();
+    await store.tags.setForDocument(OWNER_ID, shared.id, [`partajat-${tag}`]);
+    await store.tags.setForDocument(OWNER_ID, other.id, [`privat-${tag}`]);
+    const made = await app.inject({ method: 'POST', url: '/api/share-links', headers: { cookie }, payload: { scope: 'document_ids', scope_value: [shared.id] } });
+    const id = made.json().id as string;
+    const get = () => app.inject({ method: 'GET', url: `/api/share/${id}/terms?lang=en` });
+    await get();
+    await vi.waitFor(async () => expect((await get()).json().tags[`partajat-${tag}`]).toBe(`EN[partajat-${tag}]`));
+    expect((await get()).json().tags[`privat-${tag}`]).toBeUndefined();
+    expect((await app.inject({ method: 'GET', url: '/api/share/nonexistent/terms?lang=en' })).statusCode).toBe(410);
+    expect((await app.inject({ method: 'GET', url: `/api/share/${id}/terms?lang=xx` })).json()).toEqual({ specialties: {}, tests: {}, tags: {}, episodes: {}, pending: false });
+  });
+
   it('uses a wording from the model only where it is a translation, and asks again after the pause', async () => {
     const d = await romanian();
     const { specialty } = await uniquely(d, uuidv4().slice(0, 8));
@@ -722,8 +754,8 @@ describe('specialties and test names in a language (the doctors and the trends)'
     process.env.SPINE_TRANSLATION = 'on';
 
     const stranger = await createTestUser('names-stranger@spine.test');
-    expect(await keptTerms(stranger.id, 'en')).toEqual({ specialties: {}, tests: {}, pending: false });
-    expect((await names('xx')).json()).toEqual({ specialties: {}, tests: {}, pending: false });
+    expect(await keptTerms(stranger.id, 'en')).toEqual({ specialties: {}, tests: {}, tags: {}, episodes: {}, pending: false });
+    expect((await names('xx')).json()).toEqual({ specialties: {}, tests: {}, tags: {}, episodes: {}, pending: false });
     expect((await app.inject({ method: 'GET', url: '/api/translations/terms?lang=en' })).statusCode).toBe(401);
     expect(specialty).toBeTruthy();
   });

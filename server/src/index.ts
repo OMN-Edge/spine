@@ -44,7 +44,7 @@ import { disk, quotaWarning } from './disk-space.js';
 import { loadConfig, loadRegistrationMode, sessionLimits, vaultLimits, type Config } from './config.js';
 import { useLogger } from 'spine-core/logger.js';
 import { useAccountsStore } from './store.js';
-import { useSessionAuth } from './session-auth.js';
+import { useSessionAuth } from './identity/index.js';
 import { asHttp } from './http-host.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

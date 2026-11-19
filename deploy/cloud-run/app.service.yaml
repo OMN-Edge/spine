@@ -43,7 +43,6 @@ spec:
               path: /healthz
             periodSeconds: 30
           env:
-            - { name: PORT, value: "8080" }
             - { name: SPINE_HOST, value: "0.0.0.0" }
             - { name: SPINE_DOMAIN, value: spinevault.eu }
             # Nothing on this instance's disk: the accounts in Postgres, the sealed bytes in a bucket
@@ -60,13 +59,31 @@ spec:
             - { name: SPINE_JOBS, value: external }
             - { name: SPINE_FAIR_USE_FILE, value: /secrets/fair-use/fair-use.json }
             - { name: SPINE_RELAY_URL, value: "https://relay.spinevault.eu" }
-            - { name: SPINE_OPERATOR_NAME, value: CHANGE }
             - { name: SPINE_OPERATOR_CONTACT, value: privacy@spinevault.eu }
+            # Where vulnerability reports go (/.well-known/security.txt), when that is not the contact above.
+            # - { name: SPINE_OPERATOR_SECURITY_CONTACT, value: CHANGE }
+            # Where requests about a person's data go (the privacy notice), when that is not the contact above.
+            # - { name: SPINE_OPERATOR_PRIVACY_CONTACT, value: CHANGE }
             - { name: SPINE_REPO_URL, value: "https://github.com/OMN-Edge/spine" }
             - { name: SPINE_MAILER, value: brevo }
             - { name: SPINE_MAIL_SENDER, value: "Account Notices <notices@spinevault.eu>" }
             - { name: SPINE_REGISTRATION, value: open }
             - { name: SPINE_VAULT_MAX_MB, value: "25600" }
+            # The operator's page, /admin: who may use it, and who may only read the numbers (docs/billing.md). Set the first before the first sign-in there.
+            # - { name: SPINE_ADMIN_EMAILS, value: "you@example.com" }
+            # - { name: SPINE_MARKETING_EMAILS, value: "marketing@example.com" }
+            # Plans (docs/billing.md; the prices are Stripe's, and every amount is read from them). The relay and the hourly job need only SPINE_BILLING=on.
+            # - { name: SPINE_BILLING, value: "on" }
+            # - { name: SPINE_STRIPE_PRICE_YEAR, value: price_... }
+            # - { name: SPINE_STRIPE_PRICE_MONTH, value: price_... }
+            # - { name: SPINE_STRIPE_PRICE_FOUNDING, value: price_... }
+            # - { name: SPINE_STRIPE_PRICE_ESSENTIAL_YEAR, value: price_... }     # Essential, family and the top-up are sold only where named
+            # - { name: SPINE_STRIPE_PRICE_ESSENTIAL_MONTH, value: price_... }
+            # - { name: SPINE_STRIPE_PRICE_FAMILY_YEAR, value: price_... }
+            # - { name: SPINE_STRIPE_PRICE_FAMILY_MONTH, value: price_... }
+            # - { name: SPINE_STRIPE_PRICE_TOPUP_PAGES, value: price_... }
+            # - { name: STRIPE_SECRET_KEY, valueFrom: { secretKeyRef: { name: spine-stripe-secret-key, key: latest } } }
+            # - { name: STRIPE_WEBHOOK_SECRET, valueFrom: { secretKeyRef: { name: spine-stripe-webhook-secret, key: latest } } }
             - { name: SESSION_SECRET, valueFrom: { secretKeyRef: { name: spine-session-secret, key: latest } } }
             - { name: SPINE_DATABASE_URL, valueFrom: { secretKeyRef: { name: spine-database-url, key: latest } } }
             - { name: SPINE_RELAY_SECRET, valueFrom: { secretKeyRef: { name: spine-relay-secret, key: latest } } }

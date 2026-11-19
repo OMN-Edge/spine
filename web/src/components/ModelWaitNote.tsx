@@ -1,5 +1,6 @@
 import type { ModelWaiting } from '../api';
 import { useI18n } from '../i18n';
+import { useFormat } from '../format';
 
 /**
  * Work the reading service could not be asked for (a daily limit, an outage): nothing is lost and nothing is for the owner to do, since
@@ -7,12 +8,15 @@ import { useI18n } from '../i18n';
  */
 export default function ModelWaitNote({ waiting, className = '' }: { waiting: ModelWaiting; className?: string }) {
   const { t } = useI18n();
-  const time = new Date(waiting.retry_at).toLocaleString();
+  const format = useFormat();
+  const time = format.dateTime(waiting.retry_at);
   return (
     <p role="status" className={`rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-900 ${className}`}>
       {waiting.reason === 'limit'
         ? t('The limit on reading for today has been reached. This is read by itself when it starts again, at {time}.', { time })
-        : t('The reading service could not be reached. This is tried again by itself at {time}.', { time })}
+        : waiting.reason === 'plan'
+          ? t('The reading your plan gives is used up. This is kept and read when there is room again, or at once if you choose a plan on your account page; you can fill in its details by hand meanwhile. Tried again by itself at {time}.', { time })
+          : t('The reading service could not be reached. This is tried again by itself at {time}.', { time })}
     </p>
   );
 }

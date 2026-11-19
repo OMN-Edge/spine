@@ -7,6 +7,7 @@ import { visitorCode } from '../share-code.js';
 import { warmTranslations } from '../translation.js';
 import { ownerCanBeMailed, shareHost } from '../share-host.js';
 import { logger } from '../logger.js';
+import { overviewText, readOverview } from '../share-overview.js';
 import { describeError } from '../failure.js';
 import {
   resolveScope,
@@ -85,6 +86,18 @@ export async function shareRoutes(app: HttpApp) {
     if (!shareHost()) return reply.status(503).send({ error: 'this process cannot publish shares', code: 'no_share_host' });
   });
 
+  // The documents a scope picks, as the share form would share them: the same validation and the same resolution as making the link (`share-scope.ts`, `listForShare`), with nothing made.
+  // The file export uses it so it takes exactly what a link of that scope would.
+  app.post<{ Body: { scope?: unknown; scope_value?: unknown } }>('/api/share-links/scope-documents', async (req, reply) => {
+    const checked = await checkScope(req.userId, req.body?.scope, req.body?.scope_value);
+    if ('error' in checked) return reply.status(400).send({ error: checked.error });
+    const docs = await getStore().documents.listForShare({
+      id: 'scope-preview', userId: req.userId, scope: checked.resolved.scope, scopeValue: serializeScopeValue(checked.resolved), expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      includeScans: false, language: null, requireApproval: false, allowChat: false,
+    });
+    return reply.header('Cache-Control', 'no-store').send(docs.map(d => ({ id: d.id, title: d.title, doc_date: d.doc_date, provider: d.provider, doc_type: d.doc_type, ai_summary: d.ai_summary, language: d.language, page_start: d.page_start, page_end: d.page_end })));
+  });
+
   // A link follows the records for as long as it lasts: after the owner's records change, the device asks for the copies to be looked at
   // again, and one that would now hold something different is made again under the same key (a deleted document leaves the copy, a new one
   // inside the link's scope joins it). Nothing is sent for a copy that would be the same.
@@ -126,9 +139,12 @@ export async function shareRoutes(app: HttpApp) {
       language?: unknown;
       require_approval?: unknown;
       allow_chat?: unknown;
+      overview?: unknown;
     };
   }>('/api/share-links', async (req, reply) => {
-    const { label, scope, scope_value, include_scans = false, language = null, require_approval = false, allow_chat = false } = req.body ?? {};
+    const { label, scope, scope_value, include_scans = false, language = null, require_approval = false, allow_chat = false, overview: overviewBody } = req.body ?? {};
+    const said = readOverview(overviewBody);
+    if ('error' in said) return reply.status(400).send({ error: said.error });
 
     if (!scope) return reply.status(400).send({ error: 'scope required' });
     const lifetime = lifetimeMs(req.body ?? {});
@@ -162,6 +178,7 @@ export async function shareRoutes(app: HttpApp) {
       language,
       requireApproval: require_approval,
       allowChat: allow_chat,
+      overview: overviewText(said.overview),
     });
 
     // A link that starts in a language: have its documents translated into it already, so the first reader
@@ -262,7 +279,7 @@ export async function shareRoutes(app: HttpApp) {
 
   // Change a link after it was made. The same checks as making one; a revoked link stays revoked. `expires_days` or `expires_hours` counts from now,
   // so it extends or shortens.
-  const PATCHABLE = ['label', 'expires_days', 'expires_hours', 'include_scans', 'require_approval', 'allow_chat', 'language', 'scope', 'scope_value'];
+  const PATCHABLE = ['label', 'overview', 'expires_days', 'expires_hours', 'include_scans', 'require_approval', 'allow_chat', 'language', 'scope', 'scope_value'];
   app.patch<{ Params: { id: string }; Body: Record<string, unknown> }>('/api/share-links/:id', async (req, reply) => {
     const body = req.body ?? {};
     const unknown = Object.keys(body).filter(k => !PATCHABLE.includes(k));
@@ -274,6 +291,11 @@ export async function shareRoutes(app: HttpApp) {
     if (body.label !== undefined) {
       if (body.label !== null && (typeof body.label !== 'string' || body.label.length > 80)) return reply.status(400).send({ error: 'label must be text of at most 80 characters' });
       patch.label = typeof body.label === 'string' && body.label.trim() ? body.label.trim() : null;
+    }
+    if (body.overview !== undefined) {
+      const said = readOverview(body.overview);
+      if ('error' in said) return reply.status(400).send({ error: said.error });
+      patch.overview = overviewText(said.overview);
     }
     if (body.expires_days !== undefined || body.expires_hours !== undefined) {
       const lifetime = lifetimeMs(body);
@@ -309,7 +331,7 @@ export async function shareRoutes(app: HttpApp) {
     // so an address handed out earlier stops opening; the new address is in the answer.
     const link = (await store.shareLinks.findFor(req.userId, req.params.id))!;
     const approvalChanged = patch.requireApproval !== undefined && patch.requireApproval !== before.require_approval;
-    const contentChanged = ['label', 'includeScans', 'allowChat', 'language', 'scope', 'scopeValue'].some(k => (patch as Record<string, unknown>)[k] !== undefined);
+    const contentChanged = ['label', 'overview', 'includeScans', 'allowChat', 'language', 'scope', 'scopeValue'].some(k => (patch as Record<string, unknown>)[k] !== undefined);
     try {
       if (contentChanged || approvalChanged) {
         const { key, digest } = await host.publish({ link, userId: req.userId, documentIds: await sharedDocumentIds(req.userId, link), newKey: approvalChanged });

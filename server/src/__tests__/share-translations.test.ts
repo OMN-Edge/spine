@@ -52,7 +52,7 @@ async function documentWithAHiddenPage() {
 async function openAsReader(documentId: string, finish?: (copy: Store) => Promise<void>): Promise<Store> {
   const { changes } = await owner.slice({
     userId: OWNER_ID, documentIds: [documentId], includeText: false, includeScans: false,
-    link: { id: 'link-tr', label: null, createdAt: '2026-11-01T00:00:00.000Z', expiresAt: '2026-11-08T00:00:00.000Z', language: 'en', allowChat: false },
+    link: { id: 'link-tr', label: null, createdAt: '2026-11-01T00:00:00.000Z', expiresAt: '2026-11-08T00:00:00.000Z', language: 'en', allowChat: false, overview: null },
     imagePathOf: () => '', finish,
   });
   const reader = createSqliteStoreWith({ adapter: 'sqlite', location: ':memory:' }, () => openDatabase(':memory:', openNative, undefined, 'full'), `${accountsSchema}\n${recordsSchema}`);

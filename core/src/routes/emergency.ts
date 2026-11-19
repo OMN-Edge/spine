@@ -2,7 +2,8 @@ import type { HttpApp } from '../http.js';
 import { getStore } from '../store/index.js';
 import { requireAuth } from './middleware.js';
 import { shareHost } from '../share-host.js';
-import { CardError, EMPTY_CARD, cardIsEmpty, cardText, normaliseCard, publicCard, type CardContent } from '../emergency.js';
+import { translateCardWords } from '../translation.js';
+import { CARD_LANGUAGES, CardError, EMPTY_CARD, cardIsEmpty, cardText, normaliseCard, publicCard, type CardContent } from '../emergency.js';
 
 /**
  * The owner's emergency card (FR-EMG, CR-EMG-01, SECURITY.md **M-47**): what is written on it, turning it on and off, and who opened it.
@@ -34,6 +35,18 @@ export async function emergencyRoutes(app: HttpApp) {
   };
 
   app.get('/api/emergency', async (req, reply) => reply.header('Cache-Control', 'no-store').send(await view(req.userId)));
+
+  // The card's words in a second language, for the owner to read and correct before they are kept (nothing is saved here): the allergies, conditions, medicines and notes, in one short call.
+  app.post<{ Body: { language?: unknown } }>('/api/emergency/translate', async (req, reply) => {
+    const language = req.body?.language;
+    if (typeof language !== 'string' || !(CARD_LANGUAGES as string[]).includes(language)) return reply.status(400).send({ error: `language must be one of ${CARD_LANGUAGES.join(', ')}` });
+    const row = await getStore().emergency.get(req.userId);
+    const card = row ? normaliseCard(JSON.parse(row.content || '{}')) : EMPTY_CARD;
+    const done = await translateCardWords({ allergies: card.allergies, conditions: card.conditions, medications: card.medications, notes: card.notes }, language as (typeof CARD_LANGUAGES)[number]);
+    if (done === 'off') return reply.status(409).send({ error: 'translation is switched off here', code: 'translation_off' });
+    if (!done) return reply.status(502).send({ error: 'the card could not be translated right now' });
+    return reply.header('Cache-Control', 'no-store').send({ second: { language, ...done } });
+  });
 
   // Writes what is on the card. A card that is on is sent again, so the address already handed out shows the new words.
   app.put<{ Body: unknown }>('/api/emergency', async (req, reply) => {

@@ -37,7 +37,7 @@ export interface SpineLogItem {
   children: ReactNode;
 }
 
-const COLUMN = 48; // width of the spine column, in px
+const COLUMN = 48; // width of the spine column, in px; half of it on a phone (w-6), where the cards need the width more than the picture does
 const BODY_HEIGHT = 22; // with the widths below, wide and low like the front page's drawing, but tall enough to hold its own beside a card
 const GAP = 12; // between rows; the disc sits in it
 const DISC_HEIGHT = 6;
@@ -76,7 +76,7 @@ function Vertebra({ item, index, loose }: { item: SpineLogItem; index: number; l
 
   return (
     <svg
-      width={COLUMN} height={height} viewBox={`0 0 ${COLUMN} ${height}`} className="block" aria-hidden="true" focusable="false"
+      width={COLUMN} height={height} viewBox={`0 0 ${COLUMN} ${height}`} className="block max-sm:h-auto max-sm:w-6" aria-hidden="true" focusable="false"
       style={loose ? { transform: `translateX(${pick(LOOSE_SHIFT, index)}px) rotate(${pick(LOOSE_TILT, index)}deg)` } : undefined}
     >
       <defs>
@@ -97,20 +97,20 @@ function Vertebra({ item, index, loose }: { item: SpineLogItem; index: number; l
 
 export default function SpineLog({ items, loose = false }: { items: SpineLogItem[]; loose?: boolean }) {
   return (
-    <ol className="flex flex-col" style={{ gap: GAP }}>
+    <ol className="flex flex-col [--axis:12px] sm:[--axis:24px]" style={{ gap: GAP }}>
       {items.map((item, index) => {
         const first = index === 0;
         const last = index === items.length - 1;
         const discWidth = ((bodyWidth(index) + bodyWidth(index + 1)) / 2) * 0.85;
         return (
-          <li key={item.id} className="relative flex items-center gap-3">
+          <li key={item.id} className="relative flex items-center gap-2 sm:gap-3">
             {/* the axis: from this row's centre (or the gap above) to the gap below (or the centre) */}
             {!loose && items.length > 1 && (
               <span
                 aria-hidden="true"
                 className="absolute border-l-2 border-dotted border-brand-300"
                 style={{
-                  left: AXIS - 1,
+                  left: 'calc(var(--axis) - 1px)',
                   top: first ? '50%' : -GAP / 2,
                   bottom: last ? '50%' : -GAP / 2,
                 }}
@@ -120,9 +120,9 @@ export default function SpineLog({ items, loose = false }: { items: SpineLogItem
             {!loose && !last && (
               <span
                 aria-hidden="true"
-                className="absolute rounded-full bg-brand-200"
+                className="absolute rounded-full bg-brand-200 max-sm:hidden"
                 style={{
-                  left: AXIS - discWidth / 2,
+                  left: `calc(var(--axis) - ${discWidth / 2}px)`,
                   width: discWidth,
                   height: DISC_HEIGHT,
                   bottom: -(GAP + DISC_HEIGHT) / 2,
@@ -139,8 +139,7 @@ export default function SpineLog({ items, loose = false }: { items: SpineLogItem
                     'aria-valuemax': 100,
                     'aria-valuenow': item.state === 'done' ? 100 : item.progress,
                   })}
-              className="relative shrink-0"
-              style={{ width: COLUMN }}
+              className="relative w-6 shrink-0 sm:w-12"
             >
               <Vertebra item={item} index={index} loose={loose} />
             </div>

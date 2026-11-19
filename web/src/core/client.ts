@@ -156,14 +156,9 @@ class CoreWorker {
     window.dispatchEvent(new Event(PROFILE_CHANGED));
   }
 
-  /** Tells the core what the plan limits that only the app can count (the number of documents), so it holds to it. */
-  async setPlanLimits(limits: { documents: number | null }): Promise<void> {
-    await this.send({ type: 'planLimits', documents: limits.documents });
-  }
-
-  /** Says that the uploads that follow are an archive being imported (or that they are not), so reading draws on the import allowance. */
-  async setImportMode(on: boolean): Promise<void> {
-    await this.send({ type: 'importMode', on });
+  /** Tells the core what the plan limits that only the app can count (the number of pages kept), so it holds to it. */
+  async setPlanLimits(limits: { pages: number | null }): Promise<void> {
+    await this.send({ type: 'planLimits', pages: limits.pages });
   }
 
   /** Tries to save now; throws if the vault did not take it. */
@@ -260,12 +255,12 @@ export const reader = new CoreWorker();
 export const deviceFetch = (url: string, init?: RequestInit) => device.fetch(url, init);
 
 /**
- * Requests the server answers: the account (and the administrator's list of waiting accounts), the vault's objects, the plan and payment
+ * Requests the server answers: the account (and the administrator's list of waiting accounts and numbers, and the link that stops the reminders), the vault's objects, the plan and payment
  * (`/api/billing`, `/api/pricing`), the accounts that share one (`/api/family`) and the waitlist, the grants that let another account in, and a share's sealed copy and handshake (`/api/shared/`, which is
  * ciphertext and metadata). What a recipient reads of a share (`/api/share/<id>/...`) is answered by the reader's core; every other
  * `/api` call is the owner's core.
  */
-const SERVER_SIDE = /^\/(api\/(auth|account|admin|legal|vault|shared|enrol|delegations|delegated|relay|demo-relay)\/|api\/(billing|pricing|family|reminder-dates|waitlist|delegations|trust-anchors)(\/|\?|$)|share\/)/;
+const SERVER_SIDE = /^\/(api\/(auth|account|admin|legal|mail|vault|shared|enrol|delegations|delegated|relay|demo-relay)\/|api\/(billing|pricing|family|reminder-dates|waitlist|delegations|trust-anchors)(\/|\?|$)|share\/)/;
 
 /** Whether a request goes to the server rather than to one of the cores. Every route the server registers must (`routing.test.ts`). */
 export const goesToServer = (url: string): boolean => SERVER_SIDE.test(url) || !url.startsWith('/api/');

@@ -8,7 +8,7 @@ const OWNER_ID = 'user-reset-proof';
 const OWNER_EMAIL = 'proof@spine.test';
 import { fakeAuthValue, fakeVaultKeys } from 'spine-core/testing/vault.js';
 import { getAccountsStore } from 'spine-core/store/index.js';
-import { issueUserToken } from '../accounts.js';
+import { issueUserToken } from '../identity/index.js';
 import { resetMessage } from '../reset-proof.js';
 import { resetMailer } from '../mail/index.js';
 

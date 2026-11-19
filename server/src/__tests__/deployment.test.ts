@@ -62,7 +62,7 @@ describe('where the app may write, as installed', () => {
 
     it('give the relay none of the server’s secrets, and the server a stand-alone setup: no disk, shared limits, the jobs outside', () => {
       const relay = file('deploy/cloud-run/relay.service.yaml');
-      for (const secret of ['SESSION_SECRET', 'BREVO_API_KEY', 'PADDLE_API_KEY', 'PADDLE_WEBHOOK_SECRET']) expect(relay, secret).not.toMatch(new RegExp(`name: ${secret}\\b`));
+      for (const secret of ['SESSION_SECRET', 'BREVO_API_KEY', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET']) expect(relay, secret).not.toMatch(new RegExp(`name: ${secret}\\b`));
       const app = file('deploy/cloud-run/app.service.yaml');
       for (const [name, value] of [['SPINE_STORE', 'postgres'], ['SPINE_OBJECTS', 'gcs'], ['SPINE_LIMITS', 'store'], ['SPINE_JOBS', 'external'], ['SPINE_SERVER_HEADERS', 'on']]) {
         expect(app, name).toMatch(new RegExp(`name: ${name}, value: "?${value}"? `));
@@ -72,5 +72,14 @@ describe('where the app may write, as installed', () => {
       expect(app).toMatch(/name: SPINE_TRUSTED_HOPS, value: "1"/);
       expect(app).toMatch(/path: \/healthz/);
     });
+  });
+
+  it('on Cloud Run, the services do not set PORT (the platform reserves it and refuses the revision) and the job\'s Cloud SQL annotation is on its execution template', () => {
+    // Found on the first real deployment (2026-11-15): `gcloud run services replace` refused PORT as a reserved name, and `jobs replace` refused
+    // metadata under the task template, because the annotation belongs on the execution template.
+    for (const name of ['app.service.yaml', 'relay.service.yaml']) expect(file(`deploy/cloud-run/${name}`), name).not.toMatch(/name: PORT\b/);
+    const job = file('deploy/cloud-run/jobs.job.yaml');
+    expect(job).toMatch(/^spec:\n {2}template:\n {4}metadata:\n {6}annotations:\n {8}run\.googleapis\.com\/cloudsql-instances:/m);
+    expect(job).not.toMatch(/^ {6}template:\n {8}metadata:/m);
   });
 });

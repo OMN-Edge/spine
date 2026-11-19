@@ -4,7 +4,8 @@ import { parseSender } from '../mail/adapters/brevo.js';
 import { MailerConfigError, MailerDisabledError } from '../mail/types.js';
 import { publicUrl, ConfigError } from 'spine-core/config.js';
 import { loadConfig, loadMailConfig, loadRegistrationMode } from '../config.js';
-import { resetMail, verificationMail } from '../accounts.js';
+import { resetMail, verificationMail } from '../identity/index.js';
+import { invoiceReadyMail } from '../billing/invoice-mail.js';
 
 describe('createMailer — the registry', () => {
   it('lists the adapters that exist', () => {
@@ -172,5 +173,21 @@ describe('the mail text', () => {
     expect(messages[0].text).toContain('https://x.example/verify#t');
     expect(messages[1].text).toContain('https://x.example/reset#t');
     expect(Object.keys(messages[0]).sort()).toEqual(['html', 'subject', 'text', 'to']);
+  });
+});
+
+describe('the mail about an invoice', () => {
+  it('names the document and links to the account page, in the account’s language, with nothing attached, no amount and nothing clinical', () => {
+    for (const language of ['en', 'ro', 'fr', 'de']) {
+      for (const credit of [false, true]) {
+        const m = invoiceReadyMail({ email: 'a@b.co', language }, 'SPN-00042', credit);
+        expect(`${m.subject} ${m.text}`).toContain('SPN-00042');
+        expect(m.text).toContain('/account');
+        expect(`${m.subject} ${m.text}`).not.toMatch(/medic|health|record|document|patient|clinic|doctor|€|EUR|RON/i);
+        expect(Object.keys(m).sort()).toEqual(['html', 'subject', 'text', 'to']);
+      }
+    }
+    expect(invoiceReadyMail({ email: 'a@b.co', language: 'de' }, 'SPN-00042', false).subject).toBe('Ihre Rechnung SPN-00042 liegt bereit');
+    expect(invoiceReadyMail({ email: 'a@b.co', language: 'ro' }, 'SPN-00042', true).subject).toBe('Nota ta de credit SPN-00042 este gata');
   });
 });

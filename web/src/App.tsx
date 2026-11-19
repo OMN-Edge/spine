@@ -6,10 +6,15 @@ import Login from './pages/Login';
 import Landing from './pages/Landing';
 import Register from './pages/Register';
 import Verify from './pages/Verify';
+import Unsubscribe from './pages/Unsubscribe';
+import Admin from './pages/Admin';
 import Forgot from './pages/Forgot';
 import Pair from './pages/Pair';
 import Reset from './pages/Reset';
 import Account from './pages/Account';
+import Invoices from './pages/Invoices';
+import FieldsToCheck from './pages/FieldsToCheck';
+import { setNavOpen } from './nav-open';
 import Timeline from './pages/Timeline';
 import Upload from './pages/Upload';
 import UploadPages from './pages/UploadPages';
@@ -26,7 +31,7 @@ import Profiles from './pages/Profiles';
 import Invite from './pages/Invite';
 import Family from './pages/Family';
 import { pendingInvite } from './invite';
-import { useDocumentLimit } from './billing';
+import { usePageLimit } from './billing';
 import { pendingSeatInvite } from './seat';
 import { useProfiles } from './profiles';
 import ForDoctors from './pages/ForDoctors';
@@ -40,6 +45,7 @@ import LegalPage from './pages/LegalPage';
 import ConsentGate from './pages/ConsentGate';
 import VaultSetup from './pages/VaultSetup';
 import { vaultState } from './crypto/vault-state';
+import CompanyLine from './components/CompanyLine';
 import UnlockScreen from './components/UnlockScreen';
 import SyncNotice from './components/SyncNotice';
 import SaveStatus from './components/SaveStatus';
@@ -89,8 +95,8 @@ function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const chat = useChat();
-  // The plan's limit on documents is held to by the core, which the server cannot tell by counting (`core/src/plan-limits.ts`).
-  useDocumentLimit(!demo);
+  // The plan's limit on pages kept is held to by the core, which the server cannot tell by counting (`core/src/plan-limits.ts`).
+  usePageLimit(!demo);
   // Whose records are open, always shown, with the others to switch to and the page where people are added and let in.
   const { people } = useProfiles(!demo);
   // A person whose records were open was taken over by them (SECURITY.md M-51): another person is open now, and the page says why.
@@ -103,6 +109,8 @@ function Layout({ children }: { children: React.ReactNode }) {
 
   // A link was followed: the menu has done its job.
   useEffect(() => setMenuOpen(false), [location.pathname]);
+  // The floating pills hide while the menu is open (nav-open.ts).
+  useEffect(() => { setNavOpen(document.body, menuOpen); return () => setNavOpen(document.body, false); }, [menuOpen]);
 
   // Signing out drops what is on this device, so it does not go ahead over changes the vault does not have: the person is asked.
   const [losing, setLosing] = useState(false);
@@ -194,6 +202,11 @@ function Layout({ children }: { children: React.ReactNode }) {
                 {t(link.label)}{link.to === '/review' && <ReviewBadge count={waiting} />}
               </NavLink>
             ))}
+            {!demo && (
+              <NavLink to="/scan" className={({ isActive }) => `flex items-center py-3 text-base border-b border-gray-100 ${isActive ? 'text-gray-900 font-medium' : 'text-gray-600'}`}>
+                {t('Scan')}
+              </NavLink>
+            )}
             <p className="pt-4 pb-1 text-xs font-medium uppercase tracking-wide text-gray-400">{t('More')}</p>
             {more.map(link => (
               <NavLink
@@ -236,7 +249,7 @@ function Layout({ children }: { children: React.ReactNode }) {
       )}
       {demo && <DemoBanner />}
       {/* With the chat open beside it, the page gives it room instead of sitting under it. */}
-      <main className={`max-w-6xl mx-auto px-4 sm:px-6 py-6 pb-24 sm:py-8 transition-[margin] duration-200 ${chat?.enabled && chat.open ? 'sm:mr-[26.5rem] sm:max-w-none' : ''}`}>{children}</main>
+      <main className={`max-w-6xl mx-auto px-4 sm:px-6 py-6 pb-24 sm:py-8 transition-[margin] duration-200 ${chat?.enabled && chat.open ? 'sm:mr-[26.5rem] sm:max-w-none' : ''}`}>{children}<CompanyLine className="mt-12 text-gray-500" /></main>
       <ChatPanel />
     </div>
   );
@@ -373,9 +386,12 @@ export default function App() {
         <Route path="/login" element={<NotInDemo><Login /></NotInDemo>} />
         <Route path="/register" element={<NotInDemo><Register /></NotInDemo>} />
         <Route path="/verify" element={<Verify />} />
+        <Route path="/unsubscribe" element={<Unsubscribe />} />
+        <Route path="/admin/*" element={<Admin />} />
         <Route path="/privacy" element={<LegalPage doc="privacy" />} />
         <Route path="/terms" element={<LegalPage doc="terms" />} />
         <Route path="/purpose" element={<LegalPage doc="purpose" />} />
+        <Route path="/refunds" element={<LegalPage doc="refunds" />} />
         <Route path="/trust" element={<Trust />} />
         <Route path="/pricing" element={<Pricing />} />
         <Route path="/for-doctors" element={<ForDoctors />} />
@@ -392,6 +408,7 @@ export default function App() {
         <Route path="/upload" element={<PrivateRoute inDemo={!!demoUploads}><Upload /></PrivateRoute>} />
         <Route path="/uploads/:id" element={<PrivateRoute><UploadPages /></PrivateRoute>} />
         <Route path="/review" element={<PrivateRoute><ReviewQueue /></PrivateRoute>} />
+        <Route path="/review/fields" element={<PrivateRoute><FieldsToCheck /></PrivateRoute>} />
         <Route path="/documents/:id" element={<PrivateRoute><DocumentPage /></PrivateRoute>} />
         <Route path="/review/:id" element={<ReviewRedirect />} />
         <Route path="/trends" element={<PrivateRoute><Trends /></PrivateRoute>} />
@@ -410,6 +427,7 @@ export default function App() {
         <Route path="/share-links/:id" element={<PrivateRoute inDemo={false}><ShareLinkDetail /></PrivateRoute>} />
         <Route path="/share-requests/:id" element={<PrivateRoute inDemo={false}><ShareRequestPage /></PrivateRoute>} />
         <Route path="/account" element={<PrivateRoute inDemo={false}><Account /></PrivateRoute>} />
+        <Route path="/account/invoices" element={<PrivateRoute inDemo={false}><Invoices /></PrivateRoute>} />
       </Routes>
       </GuideProvider>
       </ChatProvider>

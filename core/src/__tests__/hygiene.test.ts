@@ -27,6 +27,12 @@ describe('the texts people agree to', () => {
   });
 });
 
+describe('the legal texts', () => {
+  it('name no payment provider but the one the service sells through', () => {
+    for (const name of ['refunds', 'privacy', 'terms']) expect(read(`docs/legal/${name}.md`)).not.toMatch(/paddle/i);
+  });
+});
+
 describe('documents', () => {
   it('cite no line numbers (they go stale with the next edit)', () => {
     const docs = files.filter(f => f.endsWith('.md') && (!f.includes('/') || f.startsWith('docs/')) && f !== 'docs/sidecar.md' && !f.startsWith('Spine Functional'));
@@ -102,7 +108,7 @@ describe('code', () => {
   // a function that must run at start and has no caller is exactly this (resumeStalledJobs was one for a long time). Each one below is
   // on purpose: a helper for tests, or an entry point for tests that wait for the work.
   const TEST_ONLY = new Set([
-    'resetEmbedder', 'resetAiReadings', 'resetChatLlm', 'resetParser', 'resetRegroupJobs', 'resetServerClock', 'resetMailer', 'resetFairUse', 'resetWatch', // between tests
+    'resetEmbedder', 'resetAiReadings', 'resetChatLlm', 'resetParser', 'resetRegroupJobs', 'resetServerClock', 'resetMailer', 'resetFairUse', 'resetCatalog', 'resetWatch', // between tests
     'settleLinking', 'settleSync', 'readUpload', // the same work as the started one, waiting for it
     'createStore', 'hasStoreFactory', 'currentClockOffset', 'useNodeTools', 'asPlugin', 'SLICE_BUILT', 'SLICE_NEVER', 'isListed', // test setup and contract suites
     'base32Decode', 'newRecoveryKey', // pure helpers with their own tests
@@ -110,7 +116,8 @@ describe('code', () => {
     'NOTICE_TITLES', // marks strings for the translation dictionaries only
     'TOOL_KINDS', 'ENTRYPOINTS', // lists that a test holds the code to (every chat tool is read or action; every process is started)
     'openWasm', // the WebAssembly driver as a factory, for the suite that runs on it
-  ]);
+    'forgetRates', // forgets the National Bank's rates kept for an hour, so a test that scripts the bank's file starts without the last one
+      ]);
   it('has no production export that nothing refers to, except the listed test helpers', () => {
     const exported = /^export\s+(?:async\s+)?(?:function\*?|const|class|let|enum)\s+([A-Za-z_$][\w$]*)/gm;
     const loose: string[] = [];

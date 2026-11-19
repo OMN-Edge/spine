@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { buildTestApp } from './helpers/app.js';
 import { createTestUser } from './helpers/seed.js';
 import { getAccountsStore } from 'spine-core/store/index.js';
-import { sweepUnverified } from '../accounts.js';
+import { sweepUnverified } from '../identity/index.js';
 import { resetMailer } from '../mail/index.js';
 
 /**

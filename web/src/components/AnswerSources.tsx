@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type ChatSource } from '../api';
 import { useI18n } from '../i18n';
+import { useFormat } from '../format';
 import { documentTitle } from '../titles';
 
 /** What a cited section is called on the page. */
@@ -73,6 +74,7 @@ export default function AnswerSources({ sources, hrefOf, onFollow, titleOf, owne
   owner?: boolean;
 }) {
   const { t } = useI18n();
+  const format = useFormat();
   const fetched = useOwnerTitles(owner ? sources.map(s => s.id) : []);
   const nameOf = useSourceName(owner ? fetched : titleOf);
   if (sources.length === 0) return null;
@@ -84,7 +86,7 @@ export default function AnswerSources({ sources, hrefOf, onFollow, titleOf, owne
           <li key={source.label}>
             <Link to={hrefOf(source)} onClick={onFollow} className="flex items-start gap-2 text-xs text-gray-800 hover:text-brand-700">
               <span className={`mt-px ${chipClass}`}>{n + 1}</span>
-              <span className="min-w-0 break-words">{nameOf(source)}{source.doc_date ? <span className="text-gray-500"> · {source.doc_date}</span> : null}</span>
+              <span className="min-w-0 break-words">{nameOf(source)}{source.doc_date ? <span className="text-gray-500"> · {format.date(source.doc_date)}</span> : null}</span>
             </Link>
           </li>
         ))}

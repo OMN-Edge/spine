@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from './api';
-import { useI18n } from './i18n';
+import { startsWithCapital } from './format';
+import { screensIn, useI18n } from './i18n';
 
 /** The most titles one request asks for (the core's limit); a longer list is asked for in turns. */
 const CHUNK = 60;
@@ -51,20 +52,48 @@ export function useListTitles(ids: string[], warm = true) {
  */
 export function useTerms() {
   const { lang } = useI18n();
-  const [names, setNames] = useState<{ specialties: Record<string, string>; tests: Record<string, string> }>({ specialties: {}, tests: {} });
+  const [names, setNames] = useState<{ specialties: Record<string, string>; tests: Record<string, string>; tags: Record<string, string>; episodes: Record<string, string> }>({ specialties: {}, tests: {}, tags: {}, episodes: {} });
   useEffect(() => {
     let live = true;
     let timer: number | undefined;
     let tries = 0;
-    setNames({ specialties: {}, tests: {} });
+    setNames({ specialties: {}, tests: {}, tags: {}, episodes: {} });
     const load = () => api.documents.terms(lang)
-      .then(r => { if (!live) return; setNames({ specialties: r.specialties, tests: r.tests }); if (r.pending && tries++ < 8) timer = window.setTimeout(load, 3000); })
+      .then(r => { if (!live) return; setNames({ specialties: r.specialties, tests: r.tests, tags: r.tags ?? {}, episodes: r.episodes ?? {} }); if (r.pending && tries++ < 8) timer = window.setTimeout(load, 3000); })
       .catch(() => undefined);
     void load();
     return () => { live = false; window.clearTimeout(timer); };
   }, [lang]);
   return useMemo(() => ({
-    specialty: (text: string): string => names.specialties[text] ?? text,
+    specialty: (text: string): string => startsWithCapital(names.specialties[text] ?? text, screensIn(lang)),
     test: (text: string): string => names.tests[text] ?? text,
+    tag: (text: string): string => names.tags[text] ?? text,
+    episode: (text: string): string => names.episodes[text] ?? text,
+  }), [names]);
+}
+
+
+/**
+ * The tags and episode titles of a shared page in the reader's language (`GET /api/share/:link/terms`), asked again while the model is still translating them. The owner's own words are
+ * kept as they wrote them wherever there is nothing to show; the tags the app made are the interface's own and are not here.
+ */
+export function useSharedTerms(shareId: string | undefined, enabled: boolean) {
+  const { lang } = useI18n();
+  const [names, setNames] = useState<{ tags: Record<string, string>; episodes: Record<string, string> }>({ tags: {}, episodes: {} });
+  useEffect(() => {
+    setNames({ tags: {}, episodes: {} });
+    if (!shareId || !enabled) return;
+    let live = true;
+    let timer: number | undefined;
+    let tries = 0;
+    const load = () => api.publicShare.terms(shareId, lang)
+      .then(r => { if (!live) return; setNames({ tags: r.tags, episodes: r.episodes }); if (r.pending && tries++ < 8) timer = window.setTimeout(load, 3000); })
+      .catch(() => undefined);
+    void load();
+    return () => { live = false; window.clearTimeout(timer); };
+  }, [shareId, lang, enabled]);
+  return useMemo(() => ({
+    tag: (text: string): string => names.tags[text] ?? text,
+    episode: (text: string): string => names.episodes[text] ?? text,
   }), [names]);
 }

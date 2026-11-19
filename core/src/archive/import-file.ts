@@ -1,4 +1,4 @@
-import { requireDocumentRoom } from '../plan-limits.js';
+import { requirePageRoom } from '../plan-limits.js';
 import { v4 as uuidv4 } from 'uuid';
 import { getStore } from '../store/index.js';
 import { rasterizePdf } from '../ingestion/rasterize.js';
@@ -49,6 +49,8 @@ async function restore(
     const images = isPhoto ? await normalisePhoto(sourceFileId, filePath) : await rasterizePdf(sourceFileId, filePath);
     if (images.length !== file.page_count) throw new Error(`the file has ${images.length} pages but the export describes ${file.page_count}`);
     await store.sourceFiles.setPageCount(userId, sourceFileId, images.length);
+    // A file restored must fit the plan's limit on pages (`plan-limits.ts`), so one that does not leaves none behind.
+    await requirePageRoom(userId, images.length);
 
     // The manifest must describe each page of the file once, and place each once.
     const bySource = new Map(file.pages.map(p => [p.source_page, p]));
@@ -83,8 +85,6 @@ async function restore(
       for (const page of file.pages) if (page.hidden) await tx.pages.setHidden(userId, idBySource.get(page.source_page)!, true);
 
       const now = new Date().toISOString();
-      // A file restored must fit the plan's limit on documents as a whole (`plan-limits.ts`), so one that does not leaves none behind.
-      await requireDocumentRoom(userId, file.documents.length);
       for (const [index, d] of file.documents.entries()) {
         const docId = uuidv4();
         documentIds.push(setAside.has(index) ? null : docId);

@@ -82,11 +82,18 @@ export default function Timeline() {
   const showMore = useCallback(() => setLimit(n => n + PAGE), []);
   const endRef = useMore(showMore, ordered.length > limit);
 
+  // On a phone five dropdowns would fill the first screen: one Filter button says how many are on and opens them, and Apply closes them (T-21).
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const activeFilters = Object.values(filter).filter(Boolean).length;
+
   return (
-    <div>
+    <div className="max-md:pb-20">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900">{t('Timeline')}</h1>
-        <div className="flex flex-wrap gap-2">
+        <button type="button" onClick={() => setFiltersOpen(o => !o)} aria-expanded={filtersOpen} aria-controls="timeline-filters" className="md:hidden rounded-full border border-gray-300 bg-white px-4 py-1.5 text-sm text-gray-700 hover:bg-gray-50">
+          {activeFilters > 0 ? t('Filter ({count})', { count: String(activeFilters) }) : t('Filter')}
+        </button>
+        <div id="timeline-filters" className={`${filtersOpen ? 'flex' : 'hidden'} w-full flex-col gap-2 md:flex md:w-auto md:flex-row md:flex-wrap`}>
           <DocumentFilters value={filter} onChange={(key, v) => setFilter(f => ({ ...f, [key]: v || undefined! }))} wrapperClassName="relative w-40" />
           <Combobox
             ariaLabel={t('All types')} wrapperClassName="relative w-40" value={filter.doc_type ?? ''}
@@ -98,6 +105,7 @@ export default function Timeline() {
             onChange={v => setFilter(f => ({ ...f, reviewed: v || undefined! }))}
             options={[{ value: '', label: t('Any review state') }, { value: 'false', label: t('Unreviewed') }, { value: 'true', label: t('Reviewed') }]}
           />
+          <button type="button" onClick={() => setFiltersOpen(false)} className="md:hidden rounded-full bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700">{t('Apply')}</button>
         </div>
       </div>
 
@@ -128,11 +136,11 @@ export default function Timeline() {
       ) : (
         <div className="space-y-8">
           {years.length > 1 && (
-            <div className="flex flex-wrap gap-1" role="group" aria-label={t('Year')}>
+            <div className="flex gap-1 overflow-x-auto sm:flex-wrap sm:overflow-visible" role="group" aria-label={t('Year')}>
               {['', ...years.filter(y => y)].map(y => (
                 <button
                   key={y || 'all'} type="button" aria-pressed={zoom === y} onClick={() => setZoom(y)}
-                  className={`text-xs px-2.5 py-1 rounded-full border ${zoom === y ? 'bg-brand-600 border-brand-600 text-white' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}
+                  className={`shrink-0 text-xs px-2.5 py-1 rounded-full border ${zoom === y ? 'bg-brand-600 border-brand-600 text-white' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}
                 >
                   {y || t('All years')}
                 </button>

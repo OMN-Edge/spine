@@ -33,7 +33,7 @@ export const ownHost = (env: NodeJS.ProcessEnv = settings() as NodeJS.ProcessEnv
 
 export function robotsTxt(withSitemap: boolean): string {
   // The API and a share's pages are no one's to read; the rest is open.
-  return ['User-agent: *', 'Disallow: /api/', 'Disallow: /share/', ...(withSitemap ? [`Sitemap: ${publicUrl('/sitemap.xml')}`] : []), ''].join('\n');
+  return ['User-agent: *', 'Disallow: /api/', 'Disallow: /share/', 'Disallow: /admin', ...(withSitemap ? [`Sitemap: ${publicUrl('/sitemap.xml')}`] : []), ''].join('\n');
 }
 
 export function sitemapXml(pages: SeoPage[], billing: boolean): string {

@@ -8,19 +8,19 @@ import { linkKey } from 'spine-core/billing/plans.js';
 import { logger } from 'spine-core/logger.js';
 import { buildTestApp, loginAs } from './helpers/app.js';
 import { createTestUser } from './helpers/seed.js';
-import { createRelayGate, FAIR_USE_MESSAGE } from '../billing/gate.js';
-import { fairUseOf, resetFairUse } from '../billing/fair-use.js';
-import { watchAccount, resetWatch } from '../billing/watch.js';
-import { standingOf } from '../billing/seat.js';
-import { windowMonths } from '../billing/window.js';
-import { costKey, tokenKey } from '../billing/cost.js';
+import { createRelayGate, FAIR_USE_MESSAGE } from '../plans/gate.js';
+import { fairUseOf, resetFairUse } from '../plans/fair-use.js';
+import { watchAccount, resetWatch } from '../plans/watch.js';
+import { standingOf } from '../plans/seat.js';
+import { windowMonths } from '../plans/window.js';
+import { costKey, tokenKey } from '../plans/cost.js';
 import { usageReport, formatReport } from '../usage-report.js';
 import { resetMailer, type MailMessage } from '../mail/index.js';
 
 const LONG_AGO = '2020-01-01T00:00:00.000Z';
 const BILLING = {
-  SPINE_BILLING: 'on', PADDLE_ENVIRONMENT: 'sandbox', PADDLE_API_KEY: 'pdl_test_key', PADDLE_WEBHOOK_SECRET: 'whsec_test', SPINE_CHECKOUT_URL: 'https://pay.spine.example/',
-  SPINE_PADDLE_PRICE_YEAR: 'pri_year', SPINE_PADDLE_PRICE_MONTH: 'pri_month', SPINE_PADDLE_PRICE_FOUNDING: 'pri_founding',
+  SPINE_BILLING: 'on', STRIPE_SECRET_KEY: ['sk', 'test', 'x'].join('_'), STRIPE_WEBHOOK_SECRET: 'whsec_test',
+  SPINE_STRIPE_PRICE_YEAR: 'pri_year', SPINE_STRIPE_PRICE_MONTH: 'pri_month', SPINE_STRIPE_PRICE_FOUNDING: 'pri_founding',
 };
 const sha256 = (v: string) => createHash('sha256').update(v).digest('hex');
 const GB = 1024 ** 3;
@@ -66,7 +66,9 @@ describe('the hidden fair-use ceilings', () => {
       const f = fairUseOf('family');
       expect(f.monthly).toMatchObject({ messages: 1200, translatedPages: 1600, linkViews: 10000, linkBytes: 100 * GB });
       expect(f.yearly).toEqual({ messages: 4800, translatedPages: 6000, linkBytes: 200 * GB });
-      expect(fairUseOf('trial')).toEqual(p);
+      // Essential asks questions and does not translate; the trial has visible totals for both and no hidden ceiling for them.
+      expect(fairUseOf('essential')).toEqual({ monthly: { ...p.monthly, translatedPages: 0 }, yearly: { ...p.yearly, translatedPages: 0 } });
+      expect(fairUseOf('trial').monthly).toMatchObject({ messages: 1e9, translatedPages: 1e9, linkViews: 5000, readingMultiple: 2 });
       // Link opens are monthly only.
       expect(Object.keys(p.yearly)).not.toContain('linkViews');
     });
@@ -185,7 +187,7 @@ describe('the hidden fair-use ceilings', () => {
     it('are the last twelve months for an operator’s grant, which has no billing year, and for a lapsed record', () => {
       const granted = { provider: 'operator', interval: null, current_period_end: null } as never;
       expect(windowMonths(granted, new Date('2027-06-15T00:00:00Z'))).toHaveLength(12);
-      const lapsed = { provider: 'paddle', interval: 'year', current_period_end: '2027-01-01T00:00:00Z' } as never;
+      const lapsed = { provider: 'stripe', interval: 'year', current_period_end: '2027-01-01T00:00:00Z' } as never;
       expect(windowMonths(lapsed, new Date('2027-06-15T00:00:00Z'))[0]).toBe('2026-07');
     });
 
@@ -270,7 +272,8 @@ describe('the hidden fair-use ceilings', () => {
       for (const url of ['/api/billing', '/api/family', '/api/pricing']) {
         const body = (await app.inject({ method: 'GET', url, headers: { cookie } })).body;
         expect(body, url).not.toMatch(/fair|ceiling|abuse|yearly/i);
-        for (const number of ['2400', '3000', '5000', '600', '800', '107374182400']) expect(body, `${url} ${number}`).not.toContain(number);
+        // A ceiling's number as a number of its own, not the digits inside a random id or a timestamp's milliseconds (which held "800" in one run of eighty).
+        for (const number of ['2400', '3000', '5000', '600', '800', '107374182400']) expect(body, `${url} ${number}`).not.toMatch(new RegExp(`(?<![\\w.-])${number}(?![\\w.-])`));
       }
       const root = path.resolve(import.meta.dirname, '../../..');
       const pricing = fs.readFileSync(path.join(root, 'web/src/pages/Pricing.tsx'), 'utf8');

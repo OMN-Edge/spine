@@ -1,15 +1,15 @@
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { linkKey, PLANS } from 'spine-core/billing/plans.js';
-import { fairUseOf } from '../billing/fair-use.js';
+import { fairUseOf } from '../plans/fair-use.js';
 import { buildTestApp, loginAs } from './helpers/app.js';
 import { createTestUser } from './helpers/seed.js';
 import { fakeAuthValue, fakeVaultKeys } from 'spine-core/testing/vault.js';
 
 const LONG_AGO = '2020-01-01T00:00:00.000Z';
 const BILLING = {
-  SPINE_BILLING: 'on', PADDLE_ENVIRONMENT: 'sandbox', PADDLE_API_KEY: 'pdl_test_key', PADDLE_WEBHOOK_SECRET: 'whsec_test', SPINE_CHECKOUT_URL: 'https://pay.spine.example/',
-  SPINE_PADDLE_PRICE_YEAR: 'pri_year', SPINE_PADDLE_PRICE_MONTH: 'pri_month', SPINE_PADDLE_PRICE_FOUNDING: 'pri_founding',
+  SPINE_BILLING: 'on', STRIPE_SECRET_KEY: ['sk', 'test', 'x'].join('_'), STRIPE_WEBHOOK_SECRET: 'whsec_test',
+  SPINE_STRIPE_PRICE_YEAR: 'pri_year', SPINE_STRIPE_PRICE_MONTH: 'pri_month', SPINE_STRIPE_PRICE_FOUNDING: 'pri_founding',
 };
 
 /** What the plan lets share links send in a month: SECURITY.md M-45 and M-52, docs/scenarios.md 13.2d. */
@@ -75,8 +75,8 @@ describe('the views and bytes of share links', () => {
 
   it('limits only the free plan: a paid plan’s links are counted and open for whoever needs them, behind a ceiling no use reaches', async () => {
     on();
-    expect(PLANS.free).toMatchObject({ linkViews: 20, linkBytes: 1024 ** 3, liveShares: 1 });
-    for (const plan of ['trial', 'premium', 'family'] as const) expect([plan, PLANS[plan].linkViews, PLANS[plan].linkBytes, PLANS[plan].liveShares]).toEqual([plan, Infinity, Infinity, null]);
+    expect(PLANS.free).toMatchObject({ linkViews: 20, linkBytes: 250 * 1024 ** 2, liveShares: 1 });
+    for (const plan of ['trial', 'essential', 'premium', 'family'] as const) expect([plan, PLANS[plan].linkViews, PLANS[plan].linkBytes, PLANS[plan].liveShares]).toEqual([plan, Infinity, Infinity, null]);
     const paid = await account('premium');
     await share(paid, 'aaaaaaaaaaaaaaaaaaaaaaa6');
     // Past what the free plan allows, a paid plan’s link still opens, and the views are counted.

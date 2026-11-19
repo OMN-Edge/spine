@@ -10,7 +10,7 @@ import type { TotpRouteOptions } from '../../routes/totp.js';
 import type { PasskeyRouteOptions } from '../../routes/passkeys.js';
 import type { VaultRouteOptions } from '../../routes/vault.js';
 import { holdsRecordsInThisRun } from 'spine-core/testing/store-kind.js';
-import { useSessionAuth } from '../../session-auth.js';
+import { useSessionAuth } from '../../identity/index.js';
 import { sessionPersistence } from '../../session-store.js';
 import { asHttp, asPlugin } from '../../http-host.js';
 import { useShareHost, type ShareHost } from 'spine-core/share-host.js';

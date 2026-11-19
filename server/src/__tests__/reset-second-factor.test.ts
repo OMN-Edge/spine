@@ -7,9 +7,9 @@ const OWNER_ID = 'user-reset-2fa';
 const OWNER_EMAIL = 'twofa@spine.test';
 import { fakeAuthValue, fakeVaultKeys } from 'spine-core/testing/vault.js';
 import { getAccountsStore } from 'spine-core/store/index.js';
-import { issueUserToken } from '../accounts.js';
+import { issueUserToken } from '../identity/index.js';
 import { resetMailer, type MailMessage, type Mailer } from '../mail/index.js';
-import { base32Decode, hotp, stepAt } from '../totp.js';
+import { base32Decode, hotp, stepAt } from '../identity/index.js';
 import { generateKeyPairSync, sign, type KeyObject } from 'crypto';
 import { resetMessage } from '../reset-proof.js';
 

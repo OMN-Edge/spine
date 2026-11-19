@@ -54,7 +54,7 @@ export interface Document {
 }
 
 /** Work that waits for the reading service (a daily limit, an outage) and is done by itself at `retry_at`. */
-export interface ModelWaiting { reason: 'limit' | 'unavailable'; retry_at: string }
+export interface ModelWaiting { reason: 'limit' | 'plan' | 'unavailable'; retry_at: string }
 
 export type Flag = 'low' | 'high' | 'normal';
 export type DoctorRole = 'author' | 'prescriber' | 'referrer' | 'other';
@@ -116,6 +116,8 @@ export interface TrendName {
   latest_value_text: string;
   latest_taken_on: string | null;
   latest_flag: Flag | null;
+  /** How many of its values are numbers: a trend needs two. */
+  numeric_count: number;
 }
 
 export interface TrendPoint {
@@ -536,7 +538,10 @@ export class ApiError extends Error {
 }
 
 /** What the sign-in page needs before anyone is signed in. `approval`: people ask for an account and the administrator approves it. `private`: a private deployment. */
-export interface AuthOptions { registration: 'operator' | 'open' | 'approval'; recovery: boolean; instance: 'public' | 'private'; billing: boolean; waitlist: boolean }
+export interface AuthOptions { registration: 'operator' | 'open' | 'approval'; recovery: boolean; instance: 'public' | 'private'; billing: boolean; waitlist: boolean; operator?: Operator | null }
+
+/** Who runs this instance (the seller saved on the invoices page, where billing is on), for the footer; null where there is none. */
+export interface Operator { name: string; ids: string[]; address: string | null; contact: string | null }
 
 async function req<T>(url: string, options?: RequestInit, retried = false): Promise<T> {
   const res = await appFetch(url, {
@@ -616,16 +621,21 @@ const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, 
   signal?.addEventListener('abort', () => { clearTimeout(timer); reject(new DOMException('stopped', 'AbortError')); }, { once: true });
 });
 
-export interface Prices { premium: { year: number; month: number }; founding: { year: number }; family: { year: number; month: number }; currency: string }
-export interface Pricing { enabled: boolean; prices?: Prices; founding_left?: number; /** The family plan is sold here. */ family?: boolean }
+/** What every list the server pages says beside its rows: how many there are in all, and the page and the page size it used (the server's `routes/paging.ts`). */
+export interface Paged { total: number; page: number; limit: number }
+
+/** What each plan costs, as Stripe says; a plan the operator does not sell is absent. Nothing here is written in the app. */
+export interface Prices { currency: string; essential?: { year: number; month: number }; premium: { year: number; month: number }; founding: { year: number }; family?: { year: number; month: number }; /** What the things bought once cost, for the ones sold here. */ addons?: { page_topup?: number } }
+/** `prices` is null while Stripe cannot say what they are: the screens then show no amount and offer no purchase. */
+export interface Pricing { enabled: boolean; prices?: Prices | null; founding_left?: number; /** Essential is sold here. */ essential?: boolean; /** The family plan is sold here. */ family?: boolean; /** Who sells: the operator, and the operator's name. */ seller?: 'operator'; seller_name?: string | null }
 /** One meter of the plan: pages for reading, messages for chat, pages for translation. `own_*` only on a plan whose seats are shared. */
 export interface MeterView { used: number; /** What each month adds where unused pages carry over (the plan allowance is then what can be added by the end of this month). */ monthly?: number; /** Null where only adding is limited and using is only counted. */ allowance: number | null; own_used?: number; own_cap?: number }
 /** What the account page shows of the plan (the server's `GET /api/billing`). */
 export interface BillingView {
   enabled: boolean;
-  plan?: 'trial' | 'free' | 'premium' | 'family';
+  plan?: 'trial' | 'free' | 'essential' | 'premium' | 'family';
   trial_ends_at?: string | null;
-  subscription?: { status: string; interval: 'month' | 'year' | null; founding: boolean; ends_at: string | null; renews_at: string | null; provider: 'paddle' | 'operator' } | null;
+  subscription?: { status: string; interval: 'month' | 'year' | null; founding: boolean; ends_at: string | null; renews_at: string | null; provider: 'stripe' | 'operator' } | null;
   can_manage?: boolean;
   /** What the AI has done, in three meters: each in its own unit, the plan's (a pool on a plan with seats), and an account's own against its cap there. */
   /** What the plan lets the share links send in a month: times opened, and bytes (with what the owner's own devices read). */
@@ -636,15 +646,53 @@ export interface BillingView {
   vault?: { used_bytes: number; limit_bytes: number };
   /** `limit` is null where the plan does not limit how many are live. */
   shares?: { live: number; limit: number | null };
-  features?: { translation: boolean; chat: boolean; linking: boolean; related: boolean; approval_mode: boolean; delegation: boolean };
+  /** The things bought once: whether this account may buy each now, and what is left of it. */
+  addons?: { page_topup: { buyable: boolean; pages_left: number } };
+  /** The link this account can send, what each side gets, and how many of the most it has been rewarded for. */
+  invite?: { token: string; pages: number; reward_pages: number; rewarded: number; max: number };
+  features?: { translation: boolean; chat: boolean; linking: boolean; related: boolean; files_export: boolean; approval_mode: boolean; delegation: boolean };
   people?: { limit: number };
-  limits?: { documents: number | null };
+  limits?: { pages: number | null; /** The pages of it that invitations added to the plan's own. */ pages_bonus?: number };
+  /** A purchase asks for the billing details first (the operator issues the invoices). */
+  billing_details?: boolean;
+  /** Whether to offer withdrawing from the purchase (the fourteen days), until when, and whether a request is open. */
+  withdrawal?: { allowed: boolean; until: string | null; requested: boolean };
   /** `organizer` pays for a plan others hold seats in; `member` holds a seat in another's plan. */
   seat?: 'organizer' | 'member' | 'none';
   seats?: { limit: number };
+  essential?: boolean;
   family?: boolean;
-  prices?: Prices;
+  prices?: Prices | null;
   founding_left?: number;
+}
+
+/** Whether the company is registered for VAT, from which day (`YYYY-MM-DD`), and whether it has joined the One Stop Shop (the server's `billing/invoicing/vat.ts`). */
+export interface InvoiceVat { registered: boolean; from: string | null; oss: boolean }
+
+/** Who the invoices are made out by (the server's `billing/invoicing/seller.ts`). */
+export interface InvoiceSeller {
+  name: string; cif: string; street: string; city: string; county: string; postalCode: string;
+  tradeName?: string; sector?: string; vatId?: string; registerNo?: string; email?: string; phone?: string;
+  accounts?: Array<{ iban: string; bank?: string; bic?: string; currency?: string }>;
+}
+
+/** One setting the admin page changes (the server's `operator-settings.ts`); its words are the server's, in English. */
+export interface OperatorSetting { key: string; label: string; help: string; unit: 'count' | 'percent' | 'euros' | 'days'; min: number; max: number; fallback: number | null; env?: string; value: number | null; source: 'admin' | 'environment' | 'default'; updated_at: string | null }
+
+/** The hidden fair-use ceilings as the admin page edits them: each value with the built-in one and where the value in force comes from. */
+export interface FairUseSection { title: string; rows: Array<{ path: string; label: string; unit: 'count' | 'bytes' | 'multiple' | 'fraction' | 'euros'; value: number; builtin: number; source: 'admin' | 'file or default' }> }
+
+/** The operator's numbers (the server's `GET /api/admin/dashboard`). */
+export interface AdminDashboard {
+  generated_at: string;
+  windows: Record<'today' | 'days7' | 'days30', Record<string, number>>;
+  sources: Record<string, number>;
+  accounts: { total: number; by_plan: Record<string, number>; founding: { held: number; limit: number } };
+  funnel: { signups: number; read: number; imported: number; asked: number; translated: number };
+  cohorts: Array<{ week: string; signups: number; read: number; asked: number; translated: number }>;
+  costs: { month: string; euros: number; budget_euros: number | null; above_alert: number; by_plan: Record<string, number>; per_signup_trial: number | null };
+  limits: Record<string, number>;
+  guardrails: Array<{ key: string; value: number | null; target: number; unit: 'percent' | 'count' | 'euros'; state: 'ok' | 'amber' | 'red' | 'early'; note: string }>;
 }
 
 /** The accounts that share one plan (the server's `GET /api/family`). */
@@ -684,10 +732,25 @@ export interface EmergencyView {
 export type DemoLanguage = 'en' | 'ro' | 'fr' | 'de';
 export const demoLanguageOf = (lang: string): DemoLanguage => (lang === 'ro' || lang === 'fr' || lang === 'de' ? lang : 'en');
 
+export interface CatalogView {
+  enabled: boolean;
+  provider?: string;
+  environment?: 'sandbox' | 'production';
+  canPublish?: boolean;
+  currency?: string;
+  adoptable?: number;
+  products?: Array<{
+    id: string; name: string; description: string | null; on_sale: boolean; in_step: boolean; periods: Array<'month' | 'year' | 'once'>;
+    prices: Array<{ period: 'month' | 'year' | 'once'; currency: string; amount_minor: number; version: number; sent: boolean; earlier: Array<{ version: number; amount_minor: number }> }>;
+  }>;
+}
+
 export const api = {
   emergency: {
     get: () => req<EmergencyView>('/api/emergency'),
     save: (card: import('spine-core/emergency').CardContent) => put<EmergencyView>('/api/emergency', card),
+    /** The card's allergies, conditions, medicines and notes in a second language, for the owner to correct; nothing is saved by asking. */
+    translate: (language: string) => post<{ second: NonNullable<import('spine-core/emergency').CardContent['second']> }>('/api/emergency/translate', { language }),
     publish: () => post<EmergencyView>('/api/emergency/publish', undefined),
     unpublish: () => del<EmergencyView>('/api/emergency/publish'),
     /** The owner looked and it is still right. */
@@ -697,12 +760,27 @@ export const api = {
     /** A new code for the card (the old one is turned off first), for when the printed one is lost. */
     replace: () => post<EmergencyView>('/api/emergency/replace', undefined),
   },
+  mail: {
+    /** Stops the reminders and the trial's summary for the account a mail's link was made for. */
+    unsubscribe: (token: string) => post<{ ok: boolean }>('/api/mail/unsubscribe', { token }),
+  },
   billing: {
     pricing: () => req<Pricing>('/api/pricing'),
     get: () => req<BillingView>('/api/billing'),
     /** Where to send the person to pay: the provider's checkout, on a page of its own. */
-    checkout: (interval: 'month' | 'year', plan: 'premium' | 'family' = 'premium') => post<{ url: string }>('/api/billing/checkout', { interval, plan }),
-    portal: () => post<{ url: string }>('/api/billing/portal', {}),
+    checkout: (interval: 'month' | 'year', plan: 'essential' | 'premium' | 'family' = 'premium') => post<{ url: string }>('/api/billing/checkout', { interval, plan }),
+    /** The billing details an invoice needs: whether a purchase asks for them (where the operator issues invoices), and what is held, read from the payment provider. */
+    details: () => req<{ required: boolean; details: import('spine-core/billing/billing-details').BillingDetails | null }>('/api/billing/details'),
+    saveDetails: (details: import('spine-core/billing/billing-details').BillingDetails) => put<{ ok: true }>('/api/billing/details', details),
+    /** A request to withdraw from the purchase, which the operator decides. */
+    withdraw: () => post<{ ok: boolean; requested_at: string }>('/api/billing/withdraw', {}),
+    /** The account's invoices, and the address of one's PDF (asked for when it is pressed, since it does not last). */
+    invoices: (page = 1, limit = 20) => req<{ invoices: Array<{ ref: string; number: string; at: string; credit_note: boolean }> } & Paged>(`/api/billing/invoices?page=${page}&limit=${limit}`),
+    invoicePdf: (ref: string) => post<{ url: string }>('/api/billing/invoices/pdf', { ref }),
+    /** The thing bought once: 250 more pages. */
+    addon: (addon: 'page_topup') => post<{ url: string }>('/api/billing/checkout', { addon }),
+    /** The provider's page for the subscription: its overview, or straight to cancelling or to the card. */
+    portal: (action?: 'cancel' | 'payment_method') => post<{ url: string }>('/api/billing/portal', action ? { action } : {}),
   },
   family: {
     get: () => req<FamilyView>('/api/family'),
@@ -717,7 +795,59 @@ export const api = {
   waitlist: (email: string, source?: string) => post<{ ok: boolean }>('/api/waitlist', { email, source }),
   /** The accounts waiting for approval (SPINE_REGISTRATION=approval); only an address in SPINE_ADMIN_EMAILS is let see them. */
   admin: {
-    accounts: () => req<{ pending: Array<{ id: string; email: string; created_at: string; email_confirmed: boolean }> }>('/api/admin/accounts'),
+    /** Whether this account has a place on the operator's page: an administrator, the marketing role that reads, or neither. */
+    role: () => req<{ role: 'admin' | 'reader' | null }>('/api/admin/role'),
+    /** What the operator looks at: counts and the plans accounts are on, never a person (the server's `dashboard.ts`). */
+    dashboard: () => req<AdminDashboard>('/api/admin/dashboard'),
+    /** The settings the admin page changes: what applies, where it comes from, and whether this account may change them. */
+    settings: () => req<{ settings: OperatorSetting[]; can_edit: boolean }>('/api/admin/settings'),
+    /** Who the invoices are made out by, whether this account may change it, and which issuer the operator runs. */
+    seller: () => req<{ seller: InvoiceSeller | null; issuer: string | null; can_edit: boolean }>('/api/admin/seller'),
+    /** The invoices and credit notes of a month (`YYYY-MM`) or a quarter (`YYYY-Qn`) as a file for the accountant (the server's `routes/admin.ts`, `billing/invoicing/journal.ts`). */
+    invoiceExport: async (period: string, format: 'csv' | 'pdf'): Promise<Blob> => {
+      const res = await appFetch(`/api/admin/invoices/export?period=${encodeURIComponent(period)}&format=${format}`);
+      if (!res.ok) throw new ApiError(((await res.json().catch(() => ({}))) as { error?: string }).error ?? res.statusText, res.status);
+      return res.blob();
+    },
+    /** Whether the company is registered for VAT (the server's `billing/invoicing/vat.ts`). */
+    vat: () => req<{ vat: InvoiceVat; issuer: string | null; seller_has_vat_id: boolean; romania_rate: number; oss_available: boolean; can_edit: boolean }>('/api/admin/vat'),
+    saveVat: (vat: InvoiceVat) => put<{ vat: InvoiceVat }>('/api/admin/vat', vat),
+    saveSeller: (seller: InvoiceSeller) => put<{ seller: InvoiceSeller | null }>('/api/admin/seller', seller),
+    setSetting: (key: string, value: number | null) => put<{ settings: OperatorSetting[] }>('/api/admin/settings', { key, value }),
+    /** The hidden fair-use ceilings, for an administrator only (the server's `plans/fair-use-admin.ts`). */
+    fairUse: () => req<{ sections: FairUseSection[] }>('/api/admin/fair-use'),
+    setFairUse: (path: string, value: number | null) => put<{ sections: FairUseSection[] }>('/api/admin/fair-use', { path, value }),
+    /** The invoices the operator owes: how many in each state, the ones that stopped and why, and the EU consumer sales against the yearly threshold (the server's `billing/invoicing/`). */
+    invoices: (page = 1) => req<Paged & {
+      counts: Record<'pending' | 'issued' | 'done' | 'failed' | 'check', number>;
+      stopped: Array<{ ref: string; state: 'failed' | 'check'; attempts: number; reason: string | null; invoice: string | null; at: string; can_retry: boolean }>;
+      eu: { year: number; this_year: number; last_year: number; limit: number };
+    }>(`/api/admin/invoices?page=${page}`),
+    /** Tries an invoice that stopped again, or settles it because it was made by hand. */
+    mendInvoice: (ref: string, action: 'retry' | 'settle') => post<{ ok: boolean }>('/api/admin/invoices', { ref, action }),
+    /** Spine's own e-Factura link (the server's `spine-anaf` package): whether ANAF has authorised it and until when, and the newest documents with ANAF's word on each. */
+    efactura: (page = 1) => req<Paged & {
+      enabled: boolean; mode?: 'test' | 'prod'; series?: string; seller?: { name: string; cif: string } | null;
+      authorised?: boolean; accessExpiresAt?: string | null; refreshExpiresAt?: string | null;
+      documents?: Array<{ id: string; number: string; kind: 'invoice' | 'credit'; date: string; state: 'sent' | 'ok' | 'nok' | 'abroad' | null; message: string | null }>;
+    }>(`/api/admin/efactura?page=${page}`).then(v => v as { enabled: false } | Required<Pick<typeof v, 'mode' | 'series' | 'seller' | 'authorised' | 'accessExpiresAt' | 'refreshExpiresAt' | 'documents' | 'total' | 'page' | 'limit'>> & { enabled: true }),
+    /** Asks ANAF's own test service whether the token is accepted, with nothing sent to e-Factura. */
+    testEfactura: () => post<{ ok: boolean; status: number | null; message: string; certificateSeen: boolean }>('/api/admin/efactura/test', {}),
+    /** Where to send the browser to sign in with the certificate at ANAF. */
+    authoriseEfactura: () => post<{ url: string }>('/api/admin/efactura/authorise', {}),
+    /** The buyers who asked to withdraw from a purchase, and the operator's decision: pay back (all, or an amount) and end the plan, or decline with a reason. */
+    withdrawals: (page = 1) => req<Paged & { requests: Array<{ id: string; email: string | null; plan: string | null; interval: string | null; requested_at: string; first_payment: string | null; used: { pages: number; questions: number; translated: number } | null; earlier_refunds: number; suggested: { refundMinor: number; keptMinor: number; currency: string; basis: 'unused' | 'time'; days: number; periodDays: number } | null }> }>(`/api/admin/withdrawals?page=${page}`),
+    /** What each account with a subscription has (the plan, who bills it, its state and end), for an administrator only. */
+    subscriptions: (page = 1) => req<Paged & { subscriptions: Array<{ email: string | null; plan: string; interval: string | null; provider: string; status: string; founding: boolean; until: string | null; ends: boolean }> }>(`/api/admin/subscriptions?page=${page}`),
+    decideWithdrawal: (id: string, action: 'refund' | 'decline', extra: { amount?: number; note?: string } = {}) => post<{ ok: boolean }>('/api/admin/withdrawals', { id, action, ...extra }),
+    /** What is sold (the server's `billing/products.ts`): each product with its prices as versions, whether each has been sent to the payment provider, and the prices named in the environment that are not yet in it. */
+    catalog: () => req<CatalogView>('/api/admin/catalog'),
+    saveProduct: (id: string, patch: { name?: string; description?: string | null; on_sale?: boolean }) => put<{ ok: boolean }>(`/api/admin/catalog/${encodeURIComponent(id)}`, patch),
+    setPrice: (id: string, period: string, amountMinor: number) => put<{ ok: boolean; version: number }>(`/api/admin/catalog/${encodeURIComponent(id)}/price`, { period, amount_minor: amountMinor }),
+    publishCatalog: () => post<{ reports: Array<{ product: string; state: 'in_step' | 'published' | 'failed'; message: string | null }> }>('/api/admin/catalog/publish', {}),
+    adoptCatalog: () => post<{ adopted: number }>('/api/admin/catalog/adopt', {}),
+    checkCatalog: () => post<{ differences: Array<{ product: string; period: string; currency: string; expectedMinor: number; foundMinor: number | null; message: string | null }> }>('/api/admin/catalog/check', {}),
+    accounts: (page = 1) => req<Paged & { pending: Array<{ id: string; email: string; created_at: string; email_confirmed: boolean }> }>(`/api/admin/accounts?page=${page}`),
     approve: (id: string) => post<{ ok: boolean }>(`/api/admin/accounts/${encodeURIComponent(id)}/approve`, {}),
     refuse: (id: string) => post<{ ok: boolean }>(`/api/admin/accounts/${encodeURIComponent(id)}/refuse`, {}),
   },
@@ -824,8 +954,8 @@ export const api = {
     /** The language the account's mail is written in and its screens start in. */
     setLanguage: (language: string | null) => put<{ ok: boolean; language: string | null }>('/api/account/language', { language }),
     /** The keys are made on the device; the server gets the derived credential and the sealed keys, never the password. */
-    register: (email: string, account: { authValue: string; keys: VaultKeyPayload }, consent: { health_data: boolean; terms: boolean }, ref?: string, language?: string) =>
-      post<{ ok: boolean; message: string; pending?: boolean }>('/api/auth/register', { email, auth_value: account.authValue, keys: account.keys, consent_health_data: consent.health_data, accept_terms: consent.terms, ref, language }),
+    register: (email: string, account: { authValue: string; keys: VaultKeyPayload }, consent: { health_data: boolean; terms: boolean }, ref?: string, language?: string, by?: string) =>
+      post<{ ok: boolean; message: string; pending?: boolean }>('/api/auth/register', { email, auth_value: account.authValue, keys: account.keys, consent_health_data: consent.health_data, accept_terms: consent.terms, ref, language, by }),
     /** An account without a vault makes one: the new credential replaces the password the server knew. */
     createVault: (account: { authValue: string; keys: VaultKeyPayload }) => put<{ ok: boolean }>('/api/vault/keys', { auth_value: account.authValue, keys: account.keys }),
     rewrap: (change: { authValue?: string; keys: VaultKeyPayload }) => post<{ ok: boolean }>('/api/vault/keys/rewrap', { auth_value: change.authValue, keys: change.keys }),
@@ -920,8 +1050,8 @@ export const api = {
      * The reply arrives as lines (steps, pieces of the answer, then the whole reply), so the page can show it as it is written.
      * Refusals before the first byte are ordinary errors; a failure after it comes as an `error` line.
      */
-    ask: (question: string, conversationId: string | null, screen: Record<string, unknown> | undefined, handlers: ChatStreamHandlers, signal?: AbortSignal): Promise<ChatReply> =>
-      readReplyStream<ChatReply>('/api/chat', { question, conversation_id: conversationId ?? undefined, screen, stream: true }, handlers, signal),
+    ask: (question: string, conversationId: string | null, screen: Record<string, unknown> | undefined, handlers: ChatStreamHandlers, signal?: AbortSignal, language?: string): Promise<ChatReply> =>
+      readReplyStream<ChatReply>('/api/chat', { question, conversation_id: conversationId ?? undefined, screen, language, stream: true }, handlers, signal),
     conversations: () => req<ConversationSummary[]>('/api/chat/conversations'),
     conversation: (id: string) => req<ConversationSummary & { messages: StoredMessage[] }>(`/api/chat/conversations/${id}`),
     unread: () => req<{ count: number }>('/api/chat/unread'),
@@ -975,7 +1105,7 @@ export const api = {
     /** Titles and summaries in a language for some of the owner's documents; `pending` while the rest are being translated (`warm: false` asks for what is kept and starts nothing). */
     titles: (ids: string[], lang: string, warm = true) => req<{ titles: Record<string, string | null>; summaries?: Record<string, string>; pending: boolean }>(`/api/translations/titles?lang=${lang}&ids=${ids.map(encodeURIComponent).join(',')}${warm ? '' : '&warm=0'}`),
     /** Specialties and test names in a language, as kept; `pending` while the rest are being translated. */
-    terms: (lang: string) => req<{ specialties: Record<string, string>; tests: Record<string, string>; pending: boolean }>(`/api/translations/terms?lang=${lang}`),
+    terms: (lang: string) => req<{ specialties: Record<string, string>; tests: Record<string, string>; tags: Record<string, string>; episodes: Record<string, string>; pending: boolean }>(`/api/translations/terms?lang=${lang}`),
     related: (id: string, lang?: string) => req<{ related: RelatedDocument[]; translation_pending?: boolean; meaning: { enabled: boolean; ready: boolean } }>(`/api/documents/${id}/related${lang ? `?lang=${lang}` : ''}`),
     /** The documents around this one: what asked for it, what it asked for, what follows it up. */
     chain: (id: string) => req<Chain>(`/api/documents/${id}/chain`),
@@ -1098,11 +1228,13 @@ export const api = {
 
   share: {
     list: () => req<ShareLink[]>('/api/share-links'),
-    create: (body: { label?: string; scope: string; scope_value?: unknown; expires_days?: number; expires_hours?: number; include_scans?: boolean; language?: string | null; require_approval?: boolean; allow_chat?: boolean }) =>
+    create: (body: { label?: string; scope: string; scope_value?: unknown; expires_days?: number; expires_hours?: number; include_scans?: boolean; language?: string | null; require_approval?: boolean; allow_chat?: boolean; overview?: import('spine-core/share-overview').ShareOverview | null }) =>
       req<{ id: string; url: string; expires_at: string; approval_mail: boolean | null }>('/api/share-links', {
         method: 'POST',
         body: JSON.stringify(body),
       }),
+    /** The documents a scope picks, as a link of that scope would share them, with nothing made (the file export takes exactly these). */
+    scopeDocuments: (scope: string, scopeValue: unknown) => req<Array<{ id: string; title: string | null; doc_date: string | null; provider: string | null; doc_type: string | null; ai_summary: string | null; language: string | null; page_start: number; page_end: number }>>('/api/share-links/scope-documents', { method: 'POST', body: JSON.stringify({ scope, scope_value: scopeValue }) }),
     revoke: (id: string) => req(`/api/share-links/${id}`, { method: 'DELETE' }),
     detail: (id: string) => req<ShareLinkDetail>(`/api/share-links/${id}`),
     change: (id: string, change: ShareLinkChange) => req<{ ok: true }>(`/api/share-links/${id}`, { method: 'PATCH', body: JSON.stringify(change) }),
@@ -1115,6 +1247,8 @@ export const api = {
   publicShare: {
     documents: (shareId: string, lang?: string) => req<SharedListDocument[]>(`/api/share/${shareId}/documents${lang ? `?lang=${lang}` : ''}`),
     document: (shareId: string, id: string) => req<SharedDocument>(`/api/share/${shareId}/documents/${id}`),
+    /** The tags and episode titles of what the link shares, in the reader's language, as kept; `pending` says to ask again. */
+    terms: (shareId: string, lang: string) => req<{ tags: Record<string, string>; episodes: Record<string, string>; pending: boolean }>(`/api/share/${shareId}/terms?lang=${lang}`),
     translation: (shareId: string, id: string, lang: string, part: 'head' | 'full' = 'full') => req<TranslatedDocument>(`/api/share/${shareId}/documents/${id}/translation?lang=${lang}&part=${part}`),
     /** The language the owner started the page in, the ones it can offer, and whether translating is on. */
     /** The documents the owner linked to this one and those that read alike, each only if the link shares it too. */
@@ -1122,7 +1256,7 @@ export const api = {
     /** Values over time, from the shared documents only. */
     trends: (shareId: string) => req<TrendName[]>(`/api/share/${shareId}/trends`),
     trendSeries: (shareId: string, canonical: string) => req<TrendSeries>(`/api/share/${shareId}/trends/series?name=${encodeURIComponent(canonical)}`),
-    meta: (shareId: string) => req<{ language: string | null; languages: string[]; translation: boolean; chat: boolean; landing_url: string | null }>(`/api/share/${shareId}/meta`),
+    meta: (shareId: string) => req<{ language: string | null; languages: string[]; translation: boolean; chat: boolean; landing_url: string | null; overview: import('spine-core/share-overview').ShareOverview | null; created_at: string | null; expires_at: string | null }>(`/api/share/${shareId}/meta`),
     /** A recipient's question. `history` is the earlier turns of this page: nothing is stored on the server. */
     chat: (shareId: string, body: { question: string; history: Array<{ role: 'user' | 'assistant'; content: string }>; document_id?: string }, handlers: ChatStreamHandlers, signal?: AbortSignal) =>
       readReplyStream<{ answer: string | null; sources: ChatSource[]; documents: number }>(`/api/share/${shareId}/chat`, { ...body, stream: true }, handlers, signal),
@@ -1136,7 +1270,7 @@ export const api = {
   },
 
   /** A legal text (the privacy notice, the terms, what Spine is for), public. */
-  legal: (doc: 'privacy' | 'terms' | 'purpose') => req<{ doc: string; version: string; markdown: string }>(`/api/legal/${doc}`),
+  legal: (doc: 'privacy' | 'terms' | 'purpose' | 'refunds') => req<{ doc: string; version: string; markdown: string }>(`/api/legal/${doc}`),
 
   account: {
     /** Agree to the use of health data and the terms, given apart. */

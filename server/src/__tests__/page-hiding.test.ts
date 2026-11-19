@@ -257,7 +257,7 @@ describe('a database from before pages could be hidden', () => {
     const file = path.join(dir, 'spine.db');
     const old = `${accountsSchema}\n${recordsSchema}`
       .replace(/ {2}hidden INTEGER NOT NULL DEFAULT 0,.*\n/, '')
-      .replace(/last_accessed_at TEXT,\n {2}include_scans INTEGER NOT NULL DEFAULT 0,[^\n]*\n {2}language TEXT[^\n]*\n {2}require_approval[^\n]*\n {2}allow_chat[^\n]*\n\);/, 'last_accessed_at TEXT\n);')
+      .replace(/last_accessed_at TEXT,\n {2}include_scans INTEGER NOT NULL DEFAULT 0,[^\n]*\n {2}language TEXT[^\n]*\n {2}require_approval[^\n]*\n {2}allow_chat[^\n]*\n {2}overview[^\n]*\n\);/, 'last_accessed_at TEXT\n);')
       .replace(/reviewed INTEGER DEFAULT 0,\n {2}language TEXT[^\n]*\n\);/, 'reviewed INTEGER DEFAULT 0\n);')
       .replace(/ {2}source_page INTEGER NOT NULL DEFAULT 0,[^\n]*\n/, '')
       .replace(' AND p.hidden = 0', '')

@@ -36,6 +36,8 @@ export function userRepository(db: Database): UserRepository {
   const list = db.prepare(
     'SELECT id, email, created_at, email_verified_at, approved FROM users ORDER BY created_at',
   );
+  const waiting = db.prepare('SELECT id, email, created_at, email_verified_at, approved FROM users WHERE approved = 0 ORDER BY created_at, id LIMIT ? OFFSET ?');
+  const waitingCount = db.prepare('SELECT COUNT(*) AS n FROM users WHERE approved = 0');
   const setEmailRecovery = db.prepare('UPDATE users SET email_recovery = ? WHERE id = ?');
   const setEmailSecondFactor = db.prepare('UPDATE users SET email_second_factor = ? WHERE id = ?');
   const setLanguage = db.prepare('UPDATE users SET language = ? WHERE id = ?');
@@ -155,6 +157,7 @@ export function userRepository(db: Database): UserRepository {
     'ai_seen',
     'reminder_dues',
     'subscriptions',
+    'billing_customers',
     'user_devices',
     'user_tokens',
     'user_passkeys',
@@ -163,6 +166,7 @@ export function userRepository(db: Database): UserRepository {
     'vault_keys',
     'user_recovery_codes',
     'user_totp',
+    'invitations',
   ];
   const deleteFrom = OWNED_TABLES.filter(table => tables.has(table)).map(table => db.prepare(`DELETE FROM ${table} WHERE user_id = ?`));
   // Grants and invitations name the account as the owner or as the delegate, not as `user_id`.
@@ -172,9 +176,11 @@ export function userRepository(db: Database): UserRepository {
   const deleteSeats = db.prepare('DELETE FROM family_members WHERE member_id = ? OR organizer_id = ?');
   const deleteSeatInvites = db.prepare('DELETE FROM family_invites WHERE organizer_id = ?');
   const deleteSeatLeft = db.prepare('DELETE FROM family_left WHERE member_id = ? OR organizer_id = ?');
+  // An account that invited others: the links to them go with it.
+  const deleteInviterLinks = tables.has('invitations') ? db.prepare('DELETE FROM invitations WHERE inviter_id = ?') : null;
   const deleteUser = db.prepare('DELETE FROM users WHERE id = ?');
   // What a wipe keeps: the account and how it signs in, its plan, and what it used (the counts are the plan's and the instance's).
-  const KEPT_BY_WIPE = new Set(['model_usage', 'ai_usage', 'subscriptions', 'user_devices', 'user_passkeys', 'user_recovery_codes', 'user_totp']);
+  const KEPT_BY_WIPE = new Set(['model_usage', 'ai_usage', 'subscriptions', 'billing_customers', 'user_devices', 'user_passkeys', 'user_recovery_codes', 'user_totp']);
   const wipeFrom = OWNED_TABLES.filter(table => tables.has(table) && !KEPT_BY_WIPE.has(table)).map(table => db.prepare(`DELETE FROM ${table} WHERE user_id = ?`));
   // A passkey that opened the vault held its key sealed under the passkey: that vault is gone, so it only signs in now.
   const unwrapPasskeys = tables.has('user_passkeys') ? db.prepare('UPDATE user_passkeys SET wrapped_key = NULL WHERE user_id = ?') : null;
@@ -192,6 +198,7 @@ export function userRepository(db: Database): UserRepository {
     deleteSeats.run(id, id);
     deleteSeatInvites.run(id);
     deleteSeatLeft.run(id, id);
+    deleteInviterLinks?.run(id);
     deleteUser.run(id);
   });
 
@@ -254,6 +261,14 @@ export function userRepository(db: Database): UserRepository {
       return list.all() as Array<
         Pick<UserRecord, 'id' | 'email' | 'created_at' | 'email_verified_at' | 'approved'>
       >;
+    },
+
+    async listWaiting(limit, offset) {
+      return waiting.all(limit, offset) as Array<Pick<UserRecord, 'id' | 'email' | 'created_at' | 'email_verified_at' | 'approved'>>;
+    },
+
+    async countWaiting() {
+      return Number((waitingCount.get() as { n: number }).n);
     },
 
     async markVerified(id, at) {

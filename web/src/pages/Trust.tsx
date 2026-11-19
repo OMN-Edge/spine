@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
+import CompanyLine from '../components/CompanyLine';
 import { Wordmark } from '../components/Logo';
 import { useI18n } from '../i18n';
 import { BUILD_COMMIT, BUILD_VERSION } from '../build-info';
@@ -60,6 +61,7 @@ export default function Trust() {
           <Link to="/terms" className="hover:underline">{t('Terms of use')}</Link>
           <Link to="/purpose" className="hover:underline">{t('What Spine is for')}</Link>
         </nav>
+        <CompanyLine className="mt-4 text-gray-500" />
       </div>
     </div>
   );

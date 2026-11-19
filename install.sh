@@ -13,7 +13,7 @@ function usage() {
   printf "    -a      all of it, in order: -d -e -b -s, -r when relay.env exists, -n\n"
   printf "    -d      install system dependencies\n"
   printf "    -e      write .env (and relay.env, given a provider key) with generated secrets; an existing file is left alone\n"
-  printf "    -b      build core + server + web app\n"
+  printf "    -b      build core + anaf + billing + server + web app\n"
   printf "    -s      install and start systemd services\n"
   printf "    -r      install and start the relay for model calls on this machine (needs relay.env)\n"
   printf "    -n      set up nginx (certificates + site config, the relay's too when SPINE_RELAY_DOMAIN is set)\n"
@@ -65,7 +65,7 @@ function audit_dependencies() {
     return
   fi
   echo "Auditing dependencies..."
-  # One lockfile at the root covers core, server and web
+  # One lockfile at the root covers core, anaf, billing, server and web
   (cd "${SPINE_DIR}" && as_user npm audit --omit=dev --audit-level=high) || {
     echo "ERROR: a dependency has a high or critical advisory (see above). Update it, or SPINE_SKIP_AUDIT=1 to build anyway." >&2
     exit 1
@@ -73,8 +73,8 @@ function audit_dependencies() {
 }
 
 function build() {
-  # core, server and web are npm workspaces: one install, and core is built first because the other two use it
-  echo "Installing dependencies and building (core, server, web app)..."
+  # core, anaf, billing, server and web are npm workspaces: one install, and core, anaf and billing are built first because the server uses them
+  echo "Installing dependencies and building (core, anaf, billing, server, web app)..."
   cd "${SPINE_DIR}"
   as_user npm ci
   as_user npm run build

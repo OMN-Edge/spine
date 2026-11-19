@@ -5,7 +5,7 @@ import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { ThemeSwitcher } from '../components/ThemeSwitcher';
 import { openPart, sharePassCheck } from '../core/share/keys';
 import { DETAIL_LABELS } from '../detailLabels';
-import { normaliseCard, cardIsEmpty, type CardContent } from 'spine-core/emergency';
+import { CARD_LABELS, normaliseCard, cardIsEmpty, type CardContent } from 'spine-core/emergency';
 
 const keyName = (id: string) => `spine-card-key:${id}`;
 
@@ -101,6 +101,17 @@ export default function CardView({ id }: { id: string }) {
                 </ul>
               </section>
             )}
+            {card.second && (() => {
+              // The same card in a second language, with its own headings (they are fixed in `CARD_LABELS`, not the page's), so a reader of that language reads it as written for them.
+              const L = CARD_LABELS[card.second.language];
+              const block = (title: string, list: string[]) => list.length > 0 && <section key={title}><h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500">{title}</h2><ul className="mt-1 space-y-0.5 text-gray-900">{list.map(item => <li key={item}>{item}</li>)}</ul></section>;
+              return (
+                <div lang={card.second.language} className="border-t border-gray-200 pt-4 space-y-4" data-testid="second-language">
+                  {block(L.allergies, card.second.allergies)}{block(L.medicines, card.second.medications)}{block(L.conditions, card.second.conditions)}
+                  {card.second.notes && <section><h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500">{L.notes}</h2><p className="mt-1 text-gray-900 whitespace-pre-wrap">{card.second.notes}</p></section>}
+                </div>
+              );
+            })()}
             {card.notes && <section><h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500">{t('Notes')}</h2><p className="mt-1 text-gray-900 whitespace-pre-wrap">{card.notes}</p></section>}
             <p className="text-xs text-gray-500 border-t border-gray-100 pt-3">{t('The owner of this card wrote it. Check what it says with them, or with a doctor, before you rely on it.')}</p>
           </article>

@@ -9,11 +9,14 @@ import { MAX_MESSAGES } from '../store/types.js';
 import { askQuestion, MAX_QUESTION, MAX_TURNS, type ChatProgress, type ChatReply } from '../chat/index.js';
 import { checkScreen, type ScreenContext } from '../chat/screen.js';
 import type { ChatTurn } from '../llm/types.js';
+import { isSupportedLanguage } from '../languages.js';
 import { logger } from '../logger.js';
 import { helpTopic } from '../help.js';
 import { describeError } from '../failure.js';
 import { modelWait } from '../llm/availability.js';
 
+/** The relay's own refusals (`server/src/plans/gate.ts`): a 402 with one of these codes is the plan's words and quotes nothing; any other 402 is not passed on. */
+const PLAN_CODES = new Set(['allowance_used', 'plan_required', 'fair_use']);
 const MAX_TITLE = 60;
 /** The conversation the answers about Spine go into when the person is not in one. */
 export const GUIDE_TITLE = 'Getting started';
@@ -173,9 +176,11 @@ export async function chatRoutes(app: HttpApp) {
   // reply exactly as the plain form would have sent it, or `error`. Everything is checked before the first byte, so a refusal is
   // an ordinary 4xx either way. The answer is kept only once it is complete, as before: a question the person walked away from
   // leaves nothing behind.
-  app.post<{ Body: { question?: unknown; conversation_id?: unknown; screen?: unknown; stream?: unknown } }>('/api/chat', async (req, reply) => {
+  app.post<{ Body: { question?: unknown; conversation_id?: unknown; screen?: unknown; stream?: unknown; language?: unknown } }>('/api/chat', async (req, reply) => {
     if (!chatEnabled()) return reply.status(409).send({ error: 'asking questions is switched off' });
     const { question, conversation_id: conversationId, screen, stream } = req.body ?? {};
+    // The language the person reads in (one of the fixed list), so the answer follows it and not the records'; anything else is no language.
+    const language = isSupportedLanguage(req.body?.language) ? req.body.language : undefined;
     if (typeof question !== 'string' || !question.trim() || question.length > MAX_QUESTION) {
       return reply.status(400).send({ error: `question is required, at most ${MAX_QUESTION} characters` });
     }
@@ -209,7 +214,7 @@ export async function chatRoutes(app: HttpApp) {
     const answerAndKeep = async (progress: ChatProgress): Promise<Outcome> => {
       let answered;
       try {
-        answered = await askQuestion(req.userId, question.trim(), history, where, progress);
+        answered = await askQuestion(req.userId, question.trim(), history, where, progress, language);
       } catch (err) {
         // The person went away: nothing to say and nothing to keep.
         if (progress.signal?.aborted) return null;
@@ -217,6 +222,8 @@ export async function chatRoutes(app: HttpApp) {
         logger.warn('a question could not be answered', { error: describeError(err) });
         // The relay's daily allowance for the account is used up: say so, rather than that the question failed.
         if (modelWait(err)?.reason === 'limit') return { status: 429, error: 'the daily allowance of model calls is used up; it starts again at midnight UTC' };
+        // The plan's own words (its total is used up) are the relay's and quote nothing: they reach the screen as they are.
+        if (modelWait(err)?.reason === 'plan' && PLAN_CODES.has((err as { code?: unknown }).code as string)) return { status: 402, error: err instanceof Error ? err.message : 'the plan’s AI processing is used up' };
         return { status: 502, error: 'could not answer just now' };
       }
       if (!answered) return { status: 502, error: 'could not answer just now' };

@@ -40,7 +40,7 @@ Things that look like checking and are not, all of which happened in the first p
 | What is stored, and for how long | `core/src/store/sqlite/schema-accounts.ts` (server), `schema-records.ts` (device), the repository that writes it | every column; a retention promise needs a timed sweep for every account (`server/src/index.ts`), not a delete on the next event |
 | What is logged | `req.log` and `log(` calls, `server/src/relay/relay.ts` | the fields of every call, not only the message |
 | What is sent to a model | `core/src/llm/prompts.ts`, `core/src/chat/agent.ts`, the task in `core/src/llm/tasks.ts` | the payload of each call, including tool results (`read_pages` sends page text) |
-| What is sent by mail | `server/src/accounts.ts`, `server/src/notify.ts`, `server/src/routes/shared.ts` | every `subject:`; whether a link or an address is in the body |
+| What is sent by mail | `server/src/identity/accounts.ts`, `server/src/identity/notify.ts`, `server/src/routes/shared.ts` | every `subject:`; whether a link or an address is in the body |
 | Browser storage and cookies | `git grep -n -E "(local\|session)Storage\|setCookie\|document.cookie"` | the key, the value, the lifetime, who sets it |
 | A security property ("cannot", "never", "only") | the code that enforces it and the test that fails without it | try to break it: is there a second path? an old route? a test helper that bypasses it? |
 | A test or a check exists and covers it | the test file | open it; a name in a document is not evidence; remove the fix and see the test fail when it matters |

@@ -8,7 +8,7 @@ import { consentCurrent } from '../consent.js';
 
 /**
  * How a request is tied to a person. The routes only ask `requireAuth`, so they run unchanged where there is a session cookie to read
- * (the server: `server/src/session-auth.ts`, checked against its database on every call) and where there is one person and no cookie (the
+ * (the server: `server/src/identity/session-auth.ts`, checked against its database on every call) and where there is one person and no cookie (the
  * device: `web/src/core/boot.ts`). With none registered nobody is signed in, so a process that forgot to say refuses every request.
  */
 export interface RequestAuth {

@@ -1,10 +1,11 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type Document } from '../api';
-import { documentByline, documentTitle } from '../titles';
+import { documentByline, documentTitle, pageRef } from '../titles';
 import { useListTitles } from '../useListTitles';
 import SpineLog from '../components/SpineLog';
 import { msg, useI18n } from '../i18n';
+import { useFormat } from '../format';
 import { useScreen } from '../components/ChatProvider';
 import { Combobox } from '../components/Combobox';
 import { DOC_TYPE_LABELS } from '../components/DocumentCard';
@@ -22,6 +23,7 @@ function Snippet({ text }: { text: string }) {
 
 export default function Search() {
   const { t, tn } = useI18n();
+  const format = useFormat();
   const [query, setQuery] = useState('');
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [docs, setDocs] = useState<Document[] | null>(null);
@@ -133,13 +135,13 @@ export default function Search() {
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-gray-900">{documentTitle({ ...doc, title: titleOf(doc) }, t)}</p>
-                        <p className="text-xs text-gray-500 mt-0.5">{documentByline(doc, t)}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">{documentByline(doc, t, format.date)}</p>
                         {doc.snippet && doc.snippet.includes('\u0001') && <Snippet text={doc.snippet} />}
                         {doc.ai_summary && (
                           <p className="text-sm text-gray-500 mt-1 line-clamp-2">{summaryOf(doc)}</p>
                         )}
                       </div>
-                      <span className="text-xs text-gray-400 shrink-0">{t('p. {from}–{to}', { from: doc.page_start, to: doc.page_end })}</span>
+                      {pageRef(doc.page_start, doc.page_end, t) && <span className="text-xs text-gray-400 shrink-0">{pageRef(doc.page_start, doc.page_end, t)}</span>}
                     </div>
                   </Link>
                 ),

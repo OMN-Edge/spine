@@ -4,13 +4,14 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# One install for the workspaces (core, server, web); core is built first because server and web use it.
-server() { npm ci && npm run build:core && npm run typecheck -w spine-core && npm test -w spine-core && npm run test:accounts -w spine-core \
+# One install for the workspaces (core, anaf, billing, server, web); core is built first because the others use it, and anaf and billing before the server, which uses them.
+server() { npm ci && npm run build:core && npm run build:anaf && npm run build:billing && npm run typecheck -w spine-core && npm test -w spine-core && npm run test:accounts -w spine-core \
+  && npm run typecheck -w spine-anaf && npm test -w spine-anaf && npm run typecheck -w spine-billing && npm test -w spine-billing \
   && npm run typecheck -w spine-server && npm test -w spine-server && npm run test:accounts -w spine-server \
   && npm run build -w spine-server && npm run smoke -w spine-server && npm audit --omit=dev --audit-level=high; }
-web()    { npm ci && npm run build:core && npm test -w spine-web && npm run build -w spine-web && npm audit --omit=dev --audit-level=high; }
+web()    { npm ci && npm run build:libs && npm test -w spine-web && npm run build -w spine-web && npm audit --omit=dev --audit-level=high; }
 # The web app builds to the same files twice: hashes.txt (what a site publishes and verify-build.mjs compares) must not depend on the run.
-repro()   { npm ci && npm run build:core && npm run build -w spine-web && cp web/dist/hashes.txt "${TMPDIR:-/tmp}/spine-hashes-1.txt" \
+repro()   { npm ci && npm run build:libs && npm run build -w spine-web && cp web/dist/hashes.txt "${TMPDIR:-/tmp}/spine-hashes-1.txt" \
   && npm run build -w spine-web && diff "${TMPDIR:-/tmp}/spine-hashes-1.txt" web/dist/hashes.txt && echo "reproducible: $(wc -l < web/dist/hashes.txt) files, the same twice"; }
 # The checks in a real browser (they need Google Chrome; set CHROME elsewhere than macOS): each native piece of the device, in Chrome and again in WebKit (what every browser on an
 # iPhone runs; its build is fetched here, with the system libraries it needs where CI is set), and the whole app against a real server.
@@ -30,7 +31,7 @@ scan_semgrep() {
     --config p/typescript --config p/nodejs --config p/security-audit \
     --exclude-rule javascript.express.security.audit.xss.direct-response-write.direct-response-write \
     --exclude __tests__ --exclude __integration__ \
-    core/src server/src web/src
+    core/src packages/anaf/src packages/billing/src server/src web/src
 }
 
 case "${1:-all}" in

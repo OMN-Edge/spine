@@ -1,19 +1,19 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { vaultLimits } from '../config.js';
-import { vaultBytesFor } from '../billing/entitlements.js';
-import { standingOf } from '../billing/seat.js';
-import { chargeOwnRead } from '../billing/links.js';
+import { vaultBytesFor } from '../plans/entitlements.js';
+import { standingOf } from '../plans/seat.js';
+import { chargeOwnRead } from '../plans/links.js';
 import { loadBillingConfig } from '../billing/config.js';
-import { hashPassword, normaliseEmail } from '../passwords.js';
+import { hashPassword, normaliseEmail } from '../identity/index.js';
 import { AUTH_VALUE, DEFAULT_KDF, parseKdfParams, parseVaultKeys, pretendSalt, sealed } from '../vault-keys.js';
 import { OBJECT_ID, readObject, removeObject, streamObject, writeObject } from '../vault-files.js';
 import { readSlots } from '../read-slots.js';
 import { spaceFor } from '../disk-space.js';
-import { endOtherSessions } from '../sessions.js';
-import { mailAfter, securityChangeMail } from '../notify.js';
+import { endOtherSessions } from '../identity/index.js';
+import { mailAfter, securityChangeMail } from '../identity/index.js';
 import { requireAuth, requireRecentAuth } from 'spine-core/routes/middleware.js';
-import { type SessionData } from '../session-auth.js';
+import { type SessionData } from '../identity/index.js';
 
 /**
  * The vault (SECURITY.md M-34, docs/crypto-design.md): keys wrapped on the device, and objects sealed on the device. Nothing here can
@@ -149,7 +149,7 @@ export async function getObject(req: ObjectReq, reply: FastifyReply, ownerId: st
   let opened: Awaited<ReturnType<typeof streamObject>>;
   try { opened = await streamObject(ownerId, req.params.id); } catch (err) { release(); throw err; }
   if (!opened) { release(); return reply.status(404).send({ error: 'not found' }); }
-  // What the owner's own devices read is counted with what their links send (billing/links.ts), and never refused.
+  // What the owner's own devices read is counted with what their links send (plans/links.ts), and never refused.
   if (!only) void chargeOwnRead(ownerId, opened.size).catch(() => undefined);
   opened.body.once('close', release);
   opened.body.on('error', err => req.log.error({ err }, 'a sealed object could not be read to the end'));

@@ -68,7 +68,7 @@ async function finish(userId: string, lang: DemoLanguage, archive: DemoArchive, 
     }
     // The doctors' specialties and the tests' names are kept by their text too (`term_translations`), for the pages that list them across documents,
     // from the same hand-written wording, so those pages show them in the reader's language with no model, as the documents are.
-    const terms = new Map<string, Map<string, { kind: 'specialty' | 'test'; sourceText: string; translated: string }>>();
+    const terms = new Map<string, Map<string, { kind: 'specialty' | 'test' | 'tag' | 'episode'; sourceText: string; translated: string }>>();
     for (const record of archive.records) {
       for (const [language, t] of Object.entries(record.translations)) {
         const held = terms.get(language) ?? new Map();
@@ -77,9 +77,26 @@ async function finish(userId: string, lang: DemoLanguage, archive: DemoArchive, 
         terms.set(language, held);
       }
     }
+    // The sample's tags and the titles of its episodes are the owner's words too, kept the same way, in the four languages of the screens.
+    const held = (language: string) => terms.get(language) ?? terms.set(language, new Map()).get(language)!;
+    for (const [tag, words] of Object.entries(DEMO_TAGS)) {
+      for (const language of Object.keys(words) as DemoLanguage[]) held(language).set(`tag\u0000${tag}`, { kind: 'tag', sourceText: tag, translated: words[language] });
+    }
+    for (const e of archive.episodes) {
+      const source = e.title?.[lang];
+      if (!source) continue;
+      for (const language of Object.keys(e.title!) as DemoLanguage[]) held(language).set(`episode\u0000${source}`, { kind: 'episode', sourceText: source, translated: e.title![language] });
+    }
     for (const [language, held] of terms) await store.termTranslations.put(userId, language, [...held.values()], new Date().toISOString());
   });
 }
+
+/** The sample's tags (English words, as a model files them) in the four languages of the screens. */
+const DEMO_TAGS: Record<string, Record<DemoLanguage, string>> = {
+  thyroid: { en: 'thyroid', ro: 'tiroidă', fr: 'thyroïde', de: 'Schilddrüse' }, eye: { en: 'eye', ro: 'ochi', fr: 'œil', de: 'Auge' }, heart: { en: 'heart', ro: 'inimă', fr: 'cœur', de: 'Herz' },
+  dental: { en: 'dental', ro: 'dentar', fr: 'dentaire', de: 'zahnärztlich' }, lungs: { en: 'lungs', ro: 'plămâni', fr: 'poumons', de: 'Lunge' }, urology: { en: 'urology', ro: 'urologie', fr: 'urologie', de: 'Urologie' },
+  skin: { en: 'skin', ro: 'piele', fr: 'peau', de: 'Haut' }, 'check-up': { en: 'check-up', ro: 'control', fr: 'bilan', de: 'Vorsorge' },
+};
 
 /** What the sample is doing: whether any is held, and whether it is still being set up. */
 export async function demoState(userId: string): Promise<{ loaded: boolean; processing: boolean }> {

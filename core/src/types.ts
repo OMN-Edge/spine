@@ -112,6 +112,8 @@ export interface ShareLink {
   require_approval: boolean;
   /** The recipient may ask questions about what the link shares. Off unless the owner ticked it. */
   allow_chat: boolean;
+  /** What the owner tells the doctor about the link, as JSON (`share-overview.ts`); null where nothing. */
+  overview: string | null;
 }
 
 export interface UnstructuredElement {
@@ -219,5 +221,5 @@ export interface JobStatus {
   step: string;
   error?: string;
   /** Pending because the model could not be asked: why, and when the upload is read again by itself (`ingestion/model-wait.ts`). */
-  waiting?: { reason: 'limit' | 'unavailable'; retry_at: string };
+  waiting?: { reason: 'limit' | 'plan' | 'unavailable'; retry_at: string };
 }

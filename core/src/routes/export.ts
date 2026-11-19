@@ -1,5 +1,5 @@
 import type { HttpApp, HttpReply } from '../http.js';
-import { exportArchive, exportDocument, type ExportZip } from '../archive/export.js';
+import { exportArchive, exportDocument, exportDocumentPdf, type ExportZip } from '../archive/export.js';
 import { logger } from '../logger.js';
 import { requireAuth, requireRecentAuth } from './middleware.js';
 
@@ -32,6 +32,16 @@ export async function exportRoutes(app: HttpApp) {
     if (result === 'no_pages') return reply.status(409).send({ error: 'every page of this document is hidden' });
     if (result === 'cannot_trim') return reply.status(500).send({ error: 'could not prepare the pages of this document' });
     return sendZip(reply, result);
+  });
+
+  // One document's own pages as a PDF, for the file export that puts a chosen set in one (the page makes the cover and joins them).
+  app.get<{ Params: { id: string } }>('/api/documents/:id/pdf', async (req, reply) => {
+    const result = await exportDocumentPdf(req.userId, req.params.id);
+    if (result === 'not_found') return reply.status(404).send({ error: 'not found' });
+    if (result === 'no_pages') return reply.status(409).send({ error: 'every page of this document is hidden' });
+    if (result === 'not_pdf') return reply.status(415).send({ error: 'this document was not made from a PDF' });
+    if (result === 'cannot_trim') return reply.status(500).send({ error: 'could not prepare the pages of this document' });
+    return reply.header('content-type', 'application/pdf').header('cache-control', 'no-store').send(result);
   });
 
   // Everything the person has.

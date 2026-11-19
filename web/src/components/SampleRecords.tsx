@@ -51,7 +51,7 @@ export function SampleBanner({ processing, onChange }: { processing: boolean; on
   };
   return (
     <div role="status" className="mb-6 rounded-xl bg-brand-50 border border-brand-200 px-4 py-3 text-sm text-brand-900 flex flex-wrap items-center justify-between gap-3">
-      <span>{processing ? t('Setting up the sample records…') : t('These are sample records, invented for trying Spine. Nothing here is about a person.')}</span>
+      <span>{processing ? t('Setting up the sample records…') : <><span className="sm:hidden">{t('Sample records, invented for trying Spine.')}</span><span className="hidden sm:inline">{t('These are sample records, invented for trying Spine. Nothing here is about a person.')}</span></>}</span>
       <span className="flex items-center gap-3">
         {error && <span className="text-red-700">{error}</span>}
         <button type="button" onClick={remove} disabled={busy || processing} className="shrink-0 text-brand-700 hover:underline font-medium disabled:opacity-50">{t('Remove the sample records')}</button>

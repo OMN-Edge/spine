@@ -31,7 +31,7 @@ jobs:
         run: |
           version="$(node -p "require('./web/package.json').version")"
           [ "$GITHUB_REF_NAME" = "v$version" ] || { echo "::error::the tag is $GITHUB_REF_NAME but web/package.json says $version"; exit 1; }
-      - run: npm ci && npm run build:core
+      - run: npm ci && npm run build:libs
       - name: Build the web app from this commit
         run: SPINE_COMMIT="$GITHUB_SHA" npm run build -w spine-web
       - name: The build carries this commit, and not as dirty

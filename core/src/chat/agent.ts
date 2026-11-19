@@ -7,6 +7,7 @@ import { ToolNode } from '@langchain/langgraph/prebuilt';
 import { getStore } from '../store/index.js';
 import { chainOf } from '../linking/index.js';
 import { buildAgentSystemPrompt, buildSharedAgentSystemPrompt } from '../llm/prompts.js';
+import type { SupportedLanguage } from '../languages.js';
 import { DOC_TYPES, type ChatTurn } from '../llm/types.js';
 import { cleanTag } from '../tags.js';
 import type { Document } from '../types.js';
@@ -431,7 +432,7 @@ const graphFor = (model: BaseChatModel, shared: boolean) => {
   return (held[key] ??= buildGraph(model, shared));
 };
 
-export async function askAgent(model: BaseChatModel, userId: string, question: string, history: ChatTurn[], screen: ScreenContext | null, progress: ChatProgress = {}): Promise<ChatReply | null> {
+export async function askAgent(model: BaseChatModel, userId: string, question: string, history: ChatTurn[], screen: ScreenContext | null, progress: ChatProgress = {}, language?: SupportedLanguage): Promise<ChatReply | null> {
   const registry = new Registry();
   const budget = new Budget();
   const looked: string[] = [];
@@ -454,7 +455,7 @@ export async function askAgent(model: BaseChatModel, userId: string, question: s
   }
 
   const messages: BaseMessage[] = [
-    new SystemMessage(buildAgentSystemPrompt(MAX_ROUNDS, new Date().toISOString().slice(0, 10))),
+    new SystemMessage(buildAgentSystemPrompt(MAX_ROUNDS, new Date().toISOString().slice(0, 10), language)),
     ...history.map(t => (t.role === 'user' ? new HumanMessage(t.content) : new AIMessage(t.content))),
     ...(preload.length > 0 ? [new HumanMessage(`What the person has on screen right now:\n\n${preload.join('\n\n')}`)] : []),
     new HumanMessage(`Question: ${question}`),

@@ -1,4 +1,4 @@
-import { requireDocumentRoom } from '../plan-limits.js';
+import { requirePageRoom } from '../plan-limits.js';
 import { v4 as uuidv4 } from 'uuid';
 import { getStore, getAccountsStore } from '../store/index.js';
 import { rasterizePdf } from './rasterize.js';
@@ -89,6 +89,9 @@ async function runPipeline(
       if (!isPhoto) fileSystem().writeFileSync(sourceFile.file_path, await extractPdfPages(sourceFile.file_path, pageImages.map(image => image.page_number)));
     }
     await store.sourceFiles.setPageCount(userId, sourceFileId, pageImages.length);
+    // The pages this upload keeps must fit the plan's limit: checked as soon as they are counted, before any is read, so a file that does not fit
+    // costs nothing. A file read again replaces its own pages, which do not count against it (`plan-limits.ts`).
+    await requirePageRoom(userId, pageImages.length, options.retry ? (await store.pages.listForSourceFile(userId, sourceFileId)).length : 0);
 
     // Step 2: Parse. Which parser runs — the local sidecar, a vision model, or the
     // sidecar with the model for the pages it is bad at — is configuration. Either
@@ -169,8 +172,6 @@ async function runPipeline(
     // several times. Until then a document has no title or details, only its pages.
     job.step = 'making documents';
     job.progress = 90;
-    // The documents this upload makes must fit the plan's limit; before the first is made, so an upload that does not fit leaves none behind.
-    await requireDocumentRoom(userId, documentRanges.length);
     for (const range of documentRanges) {
       await store.documents.create(userId, { id: uuidv4(), sourceFileId, pageStart: range.start, pageEnd: range.end, needsReading: true });
     }

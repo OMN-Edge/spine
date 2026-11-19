@@ -1,9 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { isSupportedLanguage } from 'spine-core/languages.js';
-import { deleteAccount, wipeAccount } from '../accounts.js';
+import { deleteAccount, wipeAccount } from '../identity/index.js';
 import { AUTH_VALUE, parseVaultKeys } from '../vault-keys.js';
-import { mailAfter, securityChangeMail } from '../notify.js';
+import { mailAfter, securityChangeMail } from '../identity/index.js';
+import { currentOperator } from '../operator.js';
 import { HEALTH_CONSENT_VERSION, LEGAL_DOCS, TERMS_VERSION, consentNeeded, legalText, type LegalDoc } from '../legal.js';
 import { requireAuth, requireRecentAuth } from 'spine-core/routes/middleware.js';
 import { logger } from 'spine-core/logger.js';
@@ -13,7 +14,7 @@ export async function ownAccountRoutes(app: FastifyInstance) {
   // The texts a person agrees to. Public: they are read before an account exists.
   app.get<{ Params: { doc: string } }>('/api/legal/:doc', async (req, reply) => {
     const doc = req.params.doc as LegalDoc;
-    const text = LEGAL_DOCS.includes(doc) ? legalText(doc) : null;
+    const text = LEGAL_DOCS.includes(doc) ? legalText(doc, await currentOperator()) : null;
     if (!text) return reply.status(404).send({ error: 'not found' });
     return reply.header('Cache-Control', 'public, max-age=300').send({ doc, ...text });
   });
@@ -69,7 +70,7 @@ export async function ownAccountRoutes(app: FastifyInstance) {
     }
     // Leaving does not stop a subscription at the payment provider, and a person who left would go on being charged: cancel it first.
     const sub = await getAccountsStore().billing.get(req.userId);
-    if (sub?.provider === 'paddle' && !sub.cancel_scheduled && subscriptionEntitles(sub, new Date())) {
+    if (sub && sub.provider !== 'operator' && !sub.cancel_scheduled && subscriptionEntitles(sub, new Date())) {
       return reply.status(409).send({ error: 'cancel the subscription first (billing, manage), then delete the account', code: 'subscription_active' });
     }
     const summary = await deleteAccount(req.userId);

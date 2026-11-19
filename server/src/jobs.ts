@@ -1,10 +1,14 @@
 import path from 'node:path';
 import { remindDue } from './routes/reminders.js';
 import { remindCardReviews, sweepShares } from './routes/shared.js';
-import { sweepSessions } from './sessions.js';
-import { sweepUnverified } from './accounts.js';
+import { sweepSessions } from './identity/index.js';
+import { sweepUnverified } from './identity/index.js';
 import { refreshCountryFile } from './geoip-update.js';
 import { getAccountsStore } from 'spine-core/store/index.js';
+import { watchBudget } from './plans/budget.js';
+import { sendLifecycleMail } from './lifecycle.js';
+import { processDueInvoices } from './billing/invoicing/queue.js';
+import { watchEuThreshold } from 'spine-billing/invoicing/threshold.js';
 
 /**
  * The work that is done on a clock and not on a request: ended shares are deleted, a card nobody has looked at for a year is reminded, due follow-up
@@ -27,6 +31,14 @@ export const JOBS: Job[] = [
   { name: 'removing ended sign-ins', run: () => sweepSessions() },
   { name: 'removing unconfirmed accounts', run: () => sweepUnverified() },
   { name: 'removing ended limit windows', run: () => getAccountsStore().maintenance.pruneWindows(Date.now()) },
+  // The reminder to add an appointment's documents (SPINE_NUDGE_DAYS) and the mail two weeks before a trial ends; no medical content in either.
+  { name: 'mailing the reminders and the trial summaries', run: () => sendLifecycleMail(getAccountsStore()) },
+  // The invoices the operator owes for payments the provider is not the seller of, whose first try did not finish (SPINE_INVOICING); nothing without it.
+  { name: 'issuing the invoices that are owed', run: () => processDueInvoices() },
+  // Sales to consumers in other EU countries against the yearly threshold (docs/billing.md): the operator is told at 70% and 90%.
+  { name: 'watching the EU sales threshold', run: () => watchEuThreshold(getAccountsStore()) },
+  // The estimated AI cost of the month against SPINE_AI_BUDGET_EUR; nothing without it.
+  { name: 'watching the AI budget', run: () => watchBudget(getAccountsStore()) },
   // Where the country file is kept in the bucket, once a day; nothing anywhere else.
   { name: 'refreshing the country file', run: () => refreshCountryFile() },
 ];

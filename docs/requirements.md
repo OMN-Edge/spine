@@ -1,6 +1,6 @@
 # Spine: requirements
 
-What Spine must do and the technical rules it is built to. The IDs (`FR-…`, `TR-…`, `CR-…`) are the ones other documents cite: [ARCHITECTURE.md](../ARCHITECTURE.md) for how it is built, [SECURITY.md](../SECURITY.md) for the controls and known gaps, [crypto-design.md](crypto-design.md) and [key-hierarchy.md](key-hierarchy.md) for the keys, [relay.md](relay.md) for the model relay, [scenarios.md](scenarios.md) for the flows. Priority says how much a requirement matters (Must, Should, Could). Release says when it ships: Launch is the first public release, built around one loop (upload, organize, share with a doctor in their language), Soon follows it, Later waits for use.
+What Spine must do and the technical rules it is built to. The IDs (`FR-…`, `TR-…`, `CR-…`) are the ones other documents cite: [ARCHITECTURE.md](../ARCHITECTURE.md) for how it is built, [SECURITY.md](../SECURITY.md) for the controls and known gaps, [crypto-design.md](crypto-design.md) and [key-hierarchy.md](key-hierarchy.md) for the keys, [relay.md](relay.md) for the model relay, [scenarios.md](scenarios.md) for the flows, [user-stories.md](user-stories.md) for who they are for. Priority says how much a requirement matters (Must, Should, Could). Release says when it ships: Launch is the first public release, built around one loop (upload, organize, share with a doctor in their language), Soon follows it, Later waits for use.
 
 ## Purpose and scope
 
@@ -77,9 +77,9 @@ One constraint shapes the AI path: the client cannot hold Spine's model API key,
 
 | ID | Requirement | Priority | Release |
 | --- | --- | --- | --- |
-| FR-CHAT-01 | Answer questions only from the user's own documents, citing the source page for every claim | Must | Soon |
-| FR-CHAT-02 | Decline clinical interpretation ("is this result bad?") and point the user to a doctor; applies to the ingestion chat too | Must | Launch |
-| FR-CHAT-03 | Find related documents and episodes on request | Should | Soon |
+| FR-CHAT-01 | Answer questions only from the user's own documents, citing the source page for every claim | Must | Soon | Partly built: an answer cites the document and the part of it it came from (summary, results, fields …), not the page; citations are checked against what the model was shown (**M-18**) |
+| FR-CHAT-02 | Decline clinical interpretation ("is this result bad?") and point the user to a doctor; applies to the ingestion chat too | Must | Launch | Built: the prompt, the panel's note, and `chat-qa.it.ts` (**M-18**) |
+| FR-CHAT-03 | Find related documents and episodes on request | Should | Soon | Partly built: related documents (`get_connected_documents`, search by type, dates, tag or provider); no tool reads episodes |
 
 ### Follow-up reminders
 
@@ -121,15 +121,15 @@ One constraint shapes the AI path: the client cannot hold Spine's model API key,
 | FR-ACC-03 | Sample records, explorable before uploading anything real | Must | Launch |
 | FR-EXP-01 | Full export: originals plus extracted data as JSON; the export can be imported again | Must | Launch |
 | FR-EXP-02 | Account deletion destroys keys, making stored ciphertext unrecoverable | Must | Launch |
-| FR-BIL-01 | Plans where the operator offers them: a six-month trial with everything and 150 pages of AI reading, a free plan, and Premium by subscription; nothing is deleted when a plan ends | Must | Launch |
+| FR-BIL-01 | Plans where the operator offers them: a three-month trial with everything and visible totals (100 pages of AI reading, 50 questions, 30 translated pages), a free plan, and Essential, Premium and Family by subscription, every price being what the payment provider says; nothing is deleted when a plan ends | Must | Launch |
 | FR-BIL-02 | Price, renewal and cancellation shown before a purchase, cancellation from the account, the card never seen by Spine, and an account with a running subscription not deleted until it is cancelled | Must | Launch |
 | FR-BIL-03 | The first 500 paying accounts keep the yearly founding price for as long as the subscription runs | Should | Launch |
 | FR-BIL-04 | A self-hosted or private instance has no plans and no limits but its own | Must | Launch |
-| FR-BIL-05 | A family plan for up to six people, sold only where the operator has named its prices; Premium and the family plan are told apart by the prices of the subscription | Should | Launch |
-| FR-BIL-07 | The plan limits adding, not using: the pages read (counted exactly, apart from everything else the AI does), the archive import, storage and live share links are limited by plan; questions about the records and translation are counted and not limited, behind a ceiling no use of an archive reaches; on a plan with seats the pool is the plan's and each account is held to Premium's pages; the account page shows the counts and warns from 80% of an allowance | Must | Launch | Built (**M-45**, **M-52**) |
+| FR-BIL-05 | An Essential plan and a family plan for up to six people, each sold only where the operator has named its prices; Essential, Premium and the family plan are told apart by the prices of the subscription | Should | Launch |
+| FR-BIL-07 | The plan limits adding, not using: the pages read (counted exactly, apart from everything else the AI does), the archive import (a yearly plan's, once), storage and live share links are limited by plan; questions about the records and translation are counted and not limited on a plan, behind a ceiling no use of an archive reaches, and on the trial are visible totals (50 and 30); on a plan with seats the pool is the plan's and each account is held to Premium's pages; the account page shows the counts and warns from 80% of an allowance | Must | Launch | Built (**M-45**, **M-52**) |
 | FR-BIL-08 | The free plan limits how many share links are live, how many times they are opened and how many bytes they send in a month; a paid plan does not (it counts them, behind a ceiling no use reaches); past a limit the links refuse their readers until the next month, the owner's own reads are counted and never refused, and an emergency card is never stopped; a chat question counts once, however many calls it takes | Should | Launch | Built (**M-45**) |
-| FR-BIL-09 | The free plan keeps up to fifty documents; the app holds to the limit before it keeps a file or makes documents, nothing is deleted, and a plan with no limit is never told one | Should | Launch | Built (**M-45**) |
-| FR-BIL-10 | A paid plan has a one-off allowance of pages for reading an archive, once for the life of the account, used when the person says they are importing, and a pool with a cap for each account on a shared plan | Could | Launch | Built (**M-45**) |
+| FR-BIL-09 | The free plan keeps up to fifty pages; the app holds to the limit before it keeps a file and before any page of it is read, nothing is deleted, and a plan with no limit is never told one | Should | Launch | Built (**M-45**) |
+| FR-BIL-10 | A paid plan has a one-off allowance of pages for reading an archive, once for the life of the account, used as extra pages once the month's are used, and a pool with a cap for each account on a shared plan | Could | Launch | Built (**M-45**) |
 | FR-BIL-06 | A plan with seats can be shared by up to six accounts, the one that pays and five invited by a link that works once; each has the plan's features, the six people of the plan are counted over them all, and they share its AI reading; a seat gives the one who pays no access to what a member keeps, either can end it, and nothing is deleted when it ends | Should | Launch | Built (**M-52**) |
 | FR-GRW-01 | The loops in the marketing plan can be counted without identifying anyone: sign-ups from a shared page or a doctor's page, shared pages opened, checkouts started; a waitlist holds an address and a day | Should | Launch |
 
@@ -148,7 +148,7 @@ The cuts of 2026-10-23 are being undone in this order, each with its documents (
 | FR-EMG-04 | An optional code that holds the card as plain text, readable with no signal, said plainly to be readable by anyone who sees it and to hold only what fits | Should | Launch | Built |
 | FR-PRF-02 | Another account can be let into one profile, as a guardian (reads and writes) or a viewer (reads), by an invitation code that works for someone with no account yet; the owner can pause, resume and end it, and ending it replaces the profile's key | Must | Launch | Built (**M-49**) |
 | FR-PRF-03 | The account's people are listed and chosen on a page of their own; opening one saves the first and starts the screens over on the other's records, with no second password; the choice is remembered on the device | Must | Launch | Built |
-| FR-PRF-04 | How many people an account can keep follows its plan (trial six, free one, Premium one; the family plan six in all, over every account that shares it); a record is never removed because a plan ended | Must | Launch | Built |
+| FR-PRF-04 | How many people an account can keep follows its plan (trial six, free one, Essential one, Premium one; the family plan six in all, over every account that shares it); a record is never removed because a plan ended | Must | Launch | Built |
 | FR-EMG-06 | A person may keep official details (identification and health insurance numbers, a card number, organ donor, their own) with the card and choose one by one to put on it; none is on it unless chosen | Should | Launch | Built (**M-47**) |
 | FR-EMG-07 | The card can be printed at the size of a bank card, front and back, with the code on the back | Should | Launch | Built (**M-47**) |
 | FR-PRF-05 | The owner can correct a person's name and a child's birth date | Must | Launch | Built (**M-48**, **M-50**) |
@@ -297,7 +297,7 @@ What each feature, current and planned, must satisfy in law, with the source. GD
 | CR-DEL-01 | Delegating a profile to another account is a disclosure the owner chooses; the delegate's rights and the owner's right to revoke are stated, and each grant is logged | GDPR Art. 6, 9(2)(a), 26 if roles are joint | Delegation | Future |
 | CR-EMG-01 | The emergency card is data the owner chooses to expose without approval: consent for that exposure is explicit, a scan is logged and notified, and the offline QR (data in the code) warns that anyone who sees the code reads the card | GDPR Art. 9(2)(a), 25, 32 | Emergency card | Built (the owner turns it on after being told who can read it; the lawyer confirms the consent wording) |
 | CR-REM-01 | Reminders restate the document, hold no medical text on the lock screen and are the owner's to switch off | GDPR Art. 5(1)(c); MDCG 2019-11 | Reminders | Built (**M-53**) |
-| CR-PAY-01 | A paid tier: price, renewal and cancellation shown before purchase, 14-day withdrawal right and digital-content rules, a processor agreement with the payment provider | Consumer Rights Directive 2011/83; Digital Content Directive (EU) 2019/770; GDPR Art. 28 | Subscription | Draft (pricing page, terms and privacy notice say it; the agreement with Paddle is the operator's to sign) |
+| CR-PAY-01 | A paid tier: price, renewal and cancellation shown before purchase, 14-day withdrawal right and digital-content rules, a processor agreement with the payment provider | Consumer Rights Directive 2011/83; Digital Content Directive (EU) 2019/770; GDPR Art. 28 | Subscription | Draft (pricing page, terms and privacy notice say it; the agreement with Stripe is the operator's to sign) |
 | CR-MOB-01 | Store listings and privacy forms match the privacy notice and the intended purpose | Store policies; GDPR Art. 13; MDR Art. 7 | Mobile apps | Future |
 | CR-ENC-01 | An attested confidential-computing relay (so the relay could be said not to see content) is a security measure to be described in the notice and the DPIA when it replaces the current relay | GDPR Art. 25, 32, 35 | Relay | Future |
 

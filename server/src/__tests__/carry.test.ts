@@ -2,9 +2,10 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { buildTestApp } from './helpers/app.js';
 import { createTestUser } from './helpers/seed.js';
-import { createRelayGate } from '../billing/gate.js';
-import { pagesAllowed } from '../billing/carry.js';
-import { standingOf } from '../billing/seat.js';
+import { createRelayGate } from '../plans/gate.js';
+import { pagesAllowed } from '../plans/carry.js';
+import { standingOf } from '../plans/seat.js';
+import { PLANS } from 'spine-core/billing/plans.js';
 import { loginAs } from './helpers/app.js';
 
 const LONG_AGO = '2020-01-01T00:00:00.000Z';
@@ -36,6 +37,7 @@ describe('the pages kept from month to month', () => {
     await store().usage.aiAdd(user.id, '2027-04:pages', 89);
     expect(await gate(april).admit(user.id, 'extraction', { pages: 1 })).toBeNull();
     await store().usage.aiAdd(user.id, '2027-04:pages', 1);
+    await store().usage.aiAdd(user.id, 'once:import', PLANS.premium.allowance.import);
     expect(await gate(april).admit(user.id, 'extraction', { pages: 1 })).toMatchObject({ status: 402, code: 'allowance_used' });
     // And the next month has thirty again, nothing left over from the spike.
     expect(await allowed(user.id, '2027-05-10T00:00:00Z')).toBe(30);
@@ -73,7 +75,7 @@ describe('the pages kept from month to month', () => {
   });
 
   it('tells the account page its own totals and no one else’s', async () => {
-    Object.assign(process.env, { SPINE_BILLING: 'on', PADDLE_ENVIRONMENT: 'sandbox', PADDLE_API_KEY: 'pdl_test_key', PADDLE_WEBHOOK_SECRET: 'whsec_test', SPINE_CHECKOUT_URL: 'https://pay.spine.example/', SPINE_PADDLE_PRICE_YEAR: 'pri_year', SPINE_PADDLE_PRICE_MONTH: 'pri_month', SPINE_PADDLE_PRICE_FOUNDING: 'pri_founding' });
+    Object.assign(process.env, { SPINE_BILLING: 'on', STRIPE_SECRET_KEY: ['sk', 'test', 'x'].join('_'), STRIPE_WEBHOOK_SECRET: 'whsec_test', SPINE_STRIPE_PRICE_YEAR: 'pri_year', SPINE_STRIPE_PRICE_MONTH: 'pri_month', SPINE_STRIPE_PRICE_FOUNDING: 'pri_founding' });
     const mine = await premium();
     const other = await premium();
     await store().usage.aiAdd(mine.id, 'total:pages', 412);
@@ -81,5 +83,29 @@ describe('the pages kept from month to month', () => {
     const cookie = await loginAs(app, mine.email, mine.password);
     const view = (await app.inject({ method: 'GET', url: '/api/billing', headers: { cookie } })).json();
     expect(view.totals).toEqual({ pages: 412, messages: 0, translated: 0 });
+  });
+
+  it('gives the one-off import to a yearly plan only, all of it at once, and none to a monthly plan', async () => {
+    const monthly = await createTestUser(`carry-${++n}-monthly@spine.test`, { createdAt: LONG_AGO });
+    await store().billing.put({ user_id: monthly.id, provider: 'operator', customer_id: null, subscription_id: null, interval: 'month', plan: 'premium', status: 'active', founding: false, current_period_end: null, cancel_scheduled: false, updated_at: LONG_AGO });
+    const yearly = await premium();
+    const importing = (id: string) => gate('2027-01-10T00:00:00Z').admit(id, 'extraction', { pages: 1 });
+    // The month's own pages used up, so only the import can let a page in.
+    for (const id of [monthly.id, yearly.id]) await store().usage.aiAdd(id, '2027-01:pages', 30);
+    expect(await importing(monthly.id)).toMatchObject({ status: 402, code: 'allowance_used' });
+    await store().usage.aiAdd(yearly.id, 'once:import', 249);
+    expect(await importing(yearly.id)).toBeNull();
+    await store().usage.aiAdd(yearly.id, 'once:import', 1);
+    expect(await importing(yearly.id)).toMatchObject({ code: 'allowance_used' });
+  });
+
+  it('shows the account page the import of a yearly plan and none for a monthly one', async () => {
+    Object.assign(process.env, { SPINE_BILLING: 'on', STRIPE_SECRET_KEY: ['sk', 'test', 'x'].join('_'), STRIPE_WEBHOOK_SECRET: 'whsec_test', SPINE_STRIPE_PRICE_YEAR: 'pri_year', SPINE_STRIPE_PRICE_MONTH: 'pri_month', SPINE_STRIPE_PRICE_FOUNDING: 'pri_founding' });
+    const monthly = await createTestUser(`carry-${++n}-view-monthly@spine.test`, { createdAt: LONG_AGO });
+    await store().billing.put({ user_id: monthly.id, provider: 'operator', customer_id: null, subscription_id: null, interval: 'month', plan: 'premium', status: 'active', founding: false, current_period_end: null, cancel_scheduled: false, updated_at: LONG_AGO });
+    const yearly = await premium();
+    const view = async (u: { email: string; password: string }) => (await app.inject({ method: 'GET', url: '/api/billing', headers: { cookie: await loginAs(app, u.email, u.password) } })).json();
+    expect((await view(yearly)).ai.import).toMatchObject({ allowance: 250 });
+    expect((await view(monthly)).ai.import).toMatchObject({ allowance: 0 });
   });
 });

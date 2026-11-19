@@ -66,6 +66,9 @@ export const SLICE = {
     left: [],
   },
   tags: { copy: ['id', 'user_id', 'name'], left: [] },
+  // The owner's kept wording of the texts the copy holds (a shared doctor's specialty, a shared result's name, a shared tag, a shared episode's title), so the reader's core finds them
+  // at once instead of waiting for the model. Only the rows whose text is in the copy: another tag's translation says what the owner keeps that the link does not show.
+  term_translations: { copy: ['user_id', 'kind', 'language', 'source_text', 'translated', 'created_at'], left: [] },
   document_tags: { copy: ['user_id', 'document_id', 'tag_id'], left: [] },
   // A link between two documents both shared, as the owner confirmed it. Neither the reason the app gave nor how sure it was.
   document_links: {
@@ -99,7 +102,7 @@ export const SLICE_BUILT = ['share_links', 'document_translations'] as const;
 
 /** Tables of records that never leave: the owner's working state, other people's visits, the model's conversations, the secrets. */
 export const SLICE_NEVER = [
-  'regroup_plans', 'removed_readings', 'measurement_aliases', 'term_translations', 'match_decisions', 'share_access_requests', 'share_link_events', 'share_link_access_log',
+  'regroup_plans', 'removed_readings', 'measurement_aliases', 'match_decisions', 'share_access_requests', 'share_link_events', 'share_link_access_log',
   'chat_conversations', 'chat_messages', 'guide_marks', 'reminders', 'vault_files', 'share_link_keys', 'emergency_cards', 'emergency_scans',
 ] as const;
 

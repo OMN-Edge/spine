@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { checkPasswordPolicy } from '../passwords.js';
+import { checkPasswordPolicy } from '../identity/index.js';
 
 describe('password policy (S-34)', () => {
   it.each([

@@ -3,16 +3,20 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { api, type ModelWaiting, type UploadDocument, type UploadSummary } from '../api';
 import SpineLog, { type VertebraState } from '../components/SpineLog';
 import { failureKind } from 'spine-core/failure-kind';
-import { documentTitle } from '../titles';
+import { documentTitle, pageRef } from '../titles';
+import { documentToOpen } from '../scan/open-when-read';
+import { documentIsReady } from '../processing';
+import { batchSummary, isBatch } from '../batch';
 import { whereTo } from '../components/aiTarget';
 import DeleteUpload from '../components/DeleteUpload';
 import ModelWaitNote from '../components/ModelWaitNote';
 import { routeFiles } from '../scan/route';
 import { msg, useI18n } from '../i18n';
+import { useListTitles } from '../useListTitles';
+import { useFormat } from '../format';
 import type { I18n } from '../i18n';
 import { useAuth } from '../auth';
 import GuideTip from '../components/GuideTip';
-import ImportAllowance from '../components/ImportAllowance';
 
 interface UploadResult {
   id?: string;
@@ -88,14 +92,17 @@ const CHIP: Record<string, string> = {
   duplicate: 'bg-gray-100 text-gray-500',
 };
 
+/** The document with its title in the reader's language where there is one, else its own. */
+const titled = <D extends { title: string | null }>(doc: D, titleOf?: (d: D) => string | null | undefined): D => ({ ...doc, title: titleOf?.(doc) ?? doc.title });
+
 /**
  * A row is named by the documents its upload produced, never by the file name. Until
  * then there is no title to show, so the row says what is happening instead.
  */
-function heading(job: JobState, i18n: I18n): string {
+function heading(job: JobState, i18n: I18n, titleOf?: (d: JobState['documents'][number]) => string | null | undefined): string {
   const { t, tn } = i18n;
   if (job.documents.length > 1) return tn(job.documents.length, '{n} document', '{n} documents');
-  if (job.documents.length === 1) return documentTitle(job.documents[0], t);
+  if (job.documents.length === 1) return documentTitle(titled(job.documents[0], titleOf), t);
   if (job.status === 'error') return t('Could not read this upload');
   if (job.status === 'duplicate') return t('Already in your archive');
   if (job.status === 'done') return job.hiddenDocuments ? t('All documents hidden') : t('No documents found');
@@ -117,8 +124,9 @@ const STATUS_NAME: Record<string, string> = { done: msg('done'), error: msg('err
 /** How many documents an upload lists on its card before "Show all". */
 const LISTED_DOCUMENTS = 5;
 
+/** The pages of a document, or nothing for one of a single page, which "page 1" says nothing about. */
 const pagesOf = (doc: UploadDocument, t: I18n['t']) =>
-  doc.page_start === doc.page_end ? t('page {n}', { n: doc.page_start }) : t('pages {from}–{to}', { from: doc.page_start, to: doc.page_end });
+  pageRef(doc.page_start, doc.page_end, t);
 
 /** An upload read and cut into documents that is waiting for the owner to confirm the cut. */
 const needsGrouping = (job: JobState): boolean =>
@@ -126,23 +134,25 @@ const needsGrouping = (job: JobState): boolean =>
 
 function UploadRow({ job, anchor, onRetry, onDeleted }: { job: JobState; /** The first upload waiting for its grouping: where the Get started list leads. */ anchor?: boolean; onRetry: () => void; onDeleted: () => void }) {
   const i18n = useI18n();
+  const format = useFormat();
   const { t, tn } = i18n;
   const [showAll, setShowAll] = useState(false);
+  const { titleOf } = useListTitles(job.documents.map(d => d.id), false);
   const listed = showAll ? job.documents : job.documents.slice(0, LISTED_DOCUMENTS);
   const unlisted = job.documents.length - listed.length;
   return (
     <div id={anchor ? 'grouping' : undefined} className="bg-white border border-gray-200 rounded-xl px-4 py-3 scroll-mt-24">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-medium text-gray-900 truncate">{heading(job, i18n)}</p>
+        <p className="text-sm font-medium text-gray-900 truncate">{heading(job, i18n, titleOf)}</p>
         <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${CHIP[job.status] ?? 'bg-brand-100 text-brand-700'}`}>
           {t(STATUS_NAME[job.status] ?? job.status)}
         </span>
       </div>
       {(job.documents.length > 0 || !!job.hiddenDocuments) && (
         <p className="text-xs text-gray-400 mt-0.5">
-          {job.uploadedAt && <>{t('Uploaded {date}', { date: job.uploadedAt.slice(0, 10) })} · </>}
+          {job.uploadedAt && <>{t('Uploaded {date}', { date: format.date(job.uploadedAt) })} · </>}
           {job.documents.length > 0 && <>{tn(job.documents.length, '{n} document', '{n} documents')}</>}
-          {job.documents.length === 1 && <> · {pagesOf(job.documents[0], t)}</>}
+          {job.documents.length === 1 && pagesOf(job.documents[0], t) && <> · {pagesOf(job.documents[0], t)}</>}
           {!!job.hiddenDocuments && <>{job.documents.length > 0 && ' · '}{t('{n} hidden', { n: job.hiddenDocuments })}</>}
         </p>
       )}
@@ -151,9 +161,11 @@ function UploadRow({ job, anchor, onRetry, onDeleted }: { job: JobState; /** The
           {listed.map(doc => (
             <li key={doc.id} className="flex items-baseline justify-between gap-3 text-xs">
               <span className="min-w-0 truncate text-gray-700">
-                {documentTitle(doc, t)} <span className="text-gray-400">· {pagesOf(doc, t)}</span>
+                {documentTitle(titled(doc, titleOf), t)}{pagesOf(doc, t) && <span className="text-gray-400"> · {pagesOf(doc, t)}</span>}
               </span>
-              <Link to={`/documents/${doc.id}`} className="shrink-0 text-brand-600 hover:underline">{t('View document')}</Link>
+              {documentIsReady(doc, job)
+                ? <Link to={`/documents/${doc.id}`} className="shrink-0 text-brand-600 hover:underline">{t('View document')}</Link>
+                : <span className="shrink-0 text-gray-400" aria-disabled="true">{t('Being read…')}</span>}
             </li>
           ))}
           {job.documents.length > LISTED_DOCUMENTS && (
@@ -180,9 +192,9 @@ function UploadRow({ job, anchor, onRetry, onDeleted }: { job: JobState; /** The
           {job.status === 'error' && (
             <button type="button" onClick={onRetry} className="text-brand-600 hover:underline">{t('Try again')}</button>
           )}
-          {job.documents.length === 1 && (
-            <Link to={`/documents/${job.documents[0].id}`} className="text-brand-600 hover:underline">{t('View document')}</Link>
-          )}
+          {job.documents.length === 1 && (documentIsReady(job.documents[0], job)
+            ? <Link to={`/documents/${job.documents[0].id}`} className="text-brand-600 hover:underline">{t('View document')}</Link>
+            : <span className="text-gray-400" aria-disabled="true">{t('Being read…')}</span>)}
           {(job.documents.length > 0 || !!job.hiddenDocuments) && (
             <Link to={`/uploads/${job.fileId}`} className="text-brand-600 hover:underline">{t('Pages and grouping')}</Link>
           )}
@@ -226,7 +238,7 @@ function DemoUploadNotice({ limits, used, agreed, agree }: { limits: { uploads: 
 
 export default function Upload() {
   const i18n = useI18n();
-  const { t } = i18n;
+  const { t, tn } = i18n;
   const navigate = useNavigate();
   const { demo, demoUploads, demoAgreed, agreeDemo } = useAuth();
   // The visitor's own files in the demo; the sample records are not among them.
@@ -237,7 +249,7 @@ export default function Upload() {
   const [jobs, setJobs] = useState<JobState[]>([]);
   // The Get started list leads to the first upload waiting for its grouping (`#grouping`); the page scrolls there once the uploads are listed.
   const firstWaiting = jobs.find(needsGrouping);
-  const { hash } = useLocation();
+  const { hash, state: locationState } = useLocation();
   const scrolled = useRef(false);
   useEffect(() => {
     if (hash !== '#grouping' || scrolled.current || !firstWaiting) return;
@@ -248,6 +260,8 @@ export default function Upload() {
   const [refused, setRefused] = useState<Array<{ name: string; reason: string }>>([]);
   // What each zip turned out to be.
   const [zips, setZips] = useState<ZipSummary[]>([]);
+  // The rows of the last drop or zip, counted together in one block (batch.ts).
+  const [batchKeys, setBatchKeys] = useState<string[]>([]);
   // Pictures are offered where something can read them: local OCR on this device (scanned pages), or the model where the operator has
   // allowed images to leave. The demo has no Scan and no OCR, so there only the model reads them.
   const [photos, setPhotos] = useState<{ enabled: boolean; where: string; onDevice: boolean } | null>(null);
@@ -265,6 +279,8 @@ export default function Upload() {
     setJobs(prev => prev.map(j => (j.key === key ? { ...j, ...patch } : j)));
   }, []);
 
+  // A scan this page was sent from is followed, and its letter opened once it is read.
+  const openWhenRead = useRef<string | null>((locationState as { openWhenRead?: string } | null)?.openWhenRead ?? null);
   const pollStatus = useCallback((key: string, fileId: string) => {
     const interval = setInterval(async () => {
       try {
@@ -272,12 +288,14 @@ export default function Upload() {
         update(key, { status: s.status, progress: s.progress, step: s.step, error: s.error, documents: s.documents ?? [], groupingConfirmed: s.grouping_confirmed ?? true, reading: !!s.reading, waiting: s.waiting ?? null });
         // Followed until the documents have been read too, so a grouping confirmed by that is not left asking; and while it waits for the
         // reading service, so the row changes when that is over.
+        const open = openWhenRead.current === fileId ? documentToOpen(s) : null;
+        if (open) { openWhenRead.current = null; clearInterval(interval); navigate(`/documents/${open}`); return; }
         if ((s.status === 'done' && !s.reading && !s.waiting) || s.status === 'error') clearInterval(interval);
       } catch {
         clearInterval(interval);
       }
     }, 2000);
-  }, [update]);
+  }, [update, navigate]);
 
   // A failed upload run again, as it was first read; the row goes back to working and is followed like a new one.
   const retry = useCallback(async (job: JobState) => {
@@ -329,6 +347,7 @@ export default function Upload() {
       }
     });
 
+    if (replace) setBatchKeys(newJobs.map(j => j.key));
     setJobs(prev => [...newJobs.reverse(), ...prev]);
     countOwn();
   }, [pollStatus, update, t, countOwn]);
@@ -353,11 +372,17 @@ export default function Upload() {
   return (
     <div className="max-w-2xl mx-auto">
       <h1 className="mb-6 text-[1.75rem] leading-tight font-light tracking-tight text-gray-900">{t('Upload')}</h1>
-      <ImportAllowance />
 
       {demo && demoUploads && <DemoUploadNotice limits={demoUploads} used={ownUploads} agreed={demoAgreed} agree={agreeDemo} />}
       {!(demo && (!demoAgreed || (demoUploads && ownUploads >= demoUploads.uploads))) && (<>
 
+      {/* On a phone the camera is the way in: Scan finds the page, straightens it and saves the pages as one document. Where photos cannot be read there is no such button. */}
+      {!demo && photos?.enabled && (
+        <Link to="/scan" className="mb-3 flex w-full items-center justify-center gap-2 rounded-full bg-brand-600 px-4 py-3 font-medium text-white hover:bg-brand-700 sm:hidden">
+          <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z" /><circle cx="12" cy="13" r="3.5" /></svg>
+          {t('Take a photo')}
+        </Link>
+      )}
       <div
         onDragOver={e => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
@@ -376,7 +401,7 @@ export default function Upload() {
         <p className="hidden text-sm text-gray-400 sm:block">{t('or click to browse')} — {t('up to 200 MB per file')}</p>
         {photos?.onDevice
           ? <p className="text-xs text-gray-400 mt-2">{t('A photo goes to Scan to be straightened, and is read on this device: nothing of it is sent to a model.')}</p>
-          : photos?.enabled && photos.where && <p className="text-xs text-gray-400 mt-2">{t('A photo is sent to {where} to be read. A PDF with a text layer sends no image.', { where: photos.where })}</p>}
+          : photos?.enabled && photos.where && <p className="text-xs text-gray-400 mt-2">{t('A photo is read by an AI model, through a relay that keeps nothing. A PDF with a text layer sends no image.')}</p>}
         <input
           ref={fileRef}
           type="file"
@@ -430,7 +455,7 @@ export default function Upload() {
                 : r.reason === 'export_file_missing'
                 ? t('{name}: a file the export lists is missing from the ZIP.', { name: r.name })
                 : r.reason === 'photo_needs_ai'
-                ? t('{name} was not added: a photo can only be read by sending it to the AI model, and that is switched off on this server. A scanning app that saves a PDF works without it.', { name: r.name })
+                ? t('{name} was not added: reading photos is not available here yet. You can upload a PDF.', { name: r.name })
                 : photos?.enabled
                   ? t('{name} was not added: it is not a PDF, a photo, a Word document or a text file.', { name: r.name })
                   : t('{name} was not added: it is not a PDF, a Word document or a text file.', { name: r.name })}
@@ -446,6 +471,25 @@ export default function Upload() {
           </GuideTip>
         </div>
       )}
+      {(() => {
+        const batch = jobs.filter(j => batchKeys.includes(j.key));
+        if (!isBatch(batch)) return null;
+        const s = batchSummary(batch);
+        const parts = [
+          tn(s.files, '{n} file', '{n} files'), tn(s.documents, '{n} document', '{n} documents'), tn(s.pages, '{n} page', '{n} pages'),
+          s.working > 0 ? t('{n} being read', { n: s.working }) : null,
+          s.checking > 0 ? t('{n} waiting for your grouping check', { n: s.checking }) : null,
+          s.failed > 0 ? t('{n} could not be read', { n: s.failed }) : null,
+          s.duplicates > 0 ? t('{n} already in your archive', { n: s.duplicates }) : null,
+        ].filter(Boolean);
+        return (
+          <div className="mt-8 rounded-xl border border-gray-200 bg-white p-4" role="status" aria-live="polite" id="batch">
+            <p className="text-sm font-medium text-gray-900">{s.working > 0 ? t('Reading this batch…') : t('This batch has been read.')}</p>
+            <p className="mt-1 text-sm text-gray-600">{parts.join(' · ')}</p>
+            <span className="mt-3 block h-2 overflow-hidden rounded-full bg-gray-100" role="presentation"><span className="block h-2 rounded-full bg-brand-500" style={{ width: `${Math.round(((s.files - s.working) / s.files) * 100)}%` }} /></span>
+          </div>
+        );
+      })()}
       {jobs.length > 0 && (
         <div className="mt-8">
           <SpineLog

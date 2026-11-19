@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { api } from '../api';
 import { useI18n } from '../i18n';
 import { Actions, PublicPage, Section, TextLink, usePublicOptions } from '../components/PublicPage';
-import { EmergencyCardDrawing, FamilySpines, ReadingDrawing, SealingDrawing, WhoCanSee } from '../components/PublicDrawings';
+import { EmergencyCardDrawing, FamilySpines, ReadingDrawing, SealingDrawing, TranslationDrawing, WhoCanSee } from '../components/PublicDrawings';
 
 /**
  * What a signed-out visitor sees at `/`: what Spine does with their own records, how they are protected and who can see what, before they
@@ -27,6 +27,12 @@ export default function Landing() {
             <p className="mt-6 max-w-xl text-lg leading-relaxed text-ink/75">
               {t('Spine keeps your scans, results and letters, reads out the dates, values and doctors in them, and lets you show a doctor exactly what you choose, for as long as you choose.')}
             </p>
+            <p className="mt-5 max-w-xl text-lg font-medium leading-snug text-ink">
+              {t('Your records, in any doctor’s language.')} <TextLink to="/for-doctors">{t('For doctors')}</TextLink>
+            </p>
+            <p className="mt-4 max-w-xl text-sm leading-relaxed text-ink/60">
+              {t('Spine is software for keeping, organising and sharing your own documents. It does not diagnose and does not give medical advice.')}
+            </p>
             <Actions options={options} className="mt-9" />
             {options.waitlist && !open && <Waitlist />}
             {options.instance === 'private' && <p className="mt-4 text-sm text-ink/60">{t('This is a private Spine. Accounts are approved by its administrator.')}</p>}
@@ -35,6 +41,15 @@ export default function Landing() {
             <ReadingDrawing />
             <figcaption className="mt-2 text-sm text-ink/60">{t('Each value links to the page it was read from')}</figcaption>
           </figure>
+        </div>
+      </section>
+
+      <section className="border-t border-ink/10">
+        <div className="mx-auto max-w-6xl px-4 py-14 sm:px-6">
+          <h2 className={H2}>{t('A report from home, read by a doctor abroad')}</h2>
+          <p className="mt-4 max-w-2xl text-lg leading-relaxed text-ink/75">{t('A letter from a clinic abroad, read in your language. Years of records from many doctors, sorted in one place.')}</p>
+          <div className="mt-10"><TranslationDrawing /></div>
+          <p className="mt-6 max-w-2xl text-sm leading-relaxed text-ink/60">{t('Translations help a doctor read your history. They are not certified translations.')} <TextLink to="/for-doctors">{t('How a doctor sees it')}</TextLink></p>
         </div>
       </section>
 

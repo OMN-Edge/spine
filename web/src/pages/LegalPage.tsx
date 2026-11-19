@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
 import LegalText from '../components/LegalText';
+import CompanyLine from '../components/CompanyLine';
 import { Wordmark } from '../components/Logo';
 import { useI18n } from '../i18n';
 
-/** The privacy notice, the terms and the intended purpose: public, read before there is an account. */
-export default function LegalPage({ doc }: { doc: 'privacy' | 'terms' | 'purpose' }) {
+/** The privacy notice, the terms, the intended purpose and the refund policy: public, read before there is an account. */
+export default function LegalPage({ doc }: { doc: 'privacy' | 'terms' | 'purpose' | 'refunds' }) {
   const { t } = useI18n();
   const [text, setText] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -27,8 +28,10 @@ export default function LegalPage({ doc }: { doc: 'privacy' | 'terms' | 'purpose
           <Link to="/privacy" className="hover:underline">{t('Privacy notice')}</Link>
           <Link to="/terms" className="hover:underline">{t('Terms of use')}</Link>
           <Link to="/purpose" className="hover:underline">{t('What Spine is for')}</Link>
+          <Link to="/refunds" className="hover:underline">{t('Refund policy')}</Link>
           <Link to="/trust" className="hover:underline">{t('How to check this app')}</Link>
         </nav>
+        <CompanyLine className="mt-4 text-gray-500" />
       </div>
     </div>
   );

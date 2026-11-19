@@ -3,7 +3,7 @@ import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest
 import { buildTestApp, loginAs } from './helpers/app.js';
 import { createTestUser, seedDocument, TEST_PASSWORD } from './helpers/seed.js';
 import { getAccountsStore } from 'spine-core/store/index.js';
-import { HEALTH_CONSENT_VERSION, TERMS_VERSION, legalText } from '../legal.js';
+import { HEALTH_CONSENT_VERSION, TERMS_VERSION, legalText, operatorInfo } from '../legal.js';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { fakeAuthValue, fakeVaultKeys } from 'spine-core/testing/vault.js';
 import { tmpdir } from 'os';
@@ -30,23 +30,51 @@ async function newcomer(email = 'newcomer@spine.test') {
 
 const records = holdsRecordsInThisRun(); // `npm run test:accounts` runs the server's own store, which has none (SECURITY.md M-37)
 
+const seller = { name: 'Example SRL', cif: '12345678', registerNo: 'J00/0000/0000', street: '1 Example Street', city: 'Exampleville', county: 'CJ', postalCode: '000000' };
+const example = operatorInfo(seller, {});
+
 describe('the texts a person agrees to', () => {
   it('are public, carry a version, and have the operator filled in', async () => {
-    for (const doc of ['privacy', 'terms', 'purpose']) {
+    for (const doc of ['privacy', 'terms', 'purpose', 'refunds']) {
       const res = await call('GET', `/api/legal/${doc}`);
       expect(res.statusCode).toBe(200);
-      expect(res.json()).toMatchObject({ doc, version: doc === 'terms' ? TERMS_VERSION : HEALTH_CONSENT_VERSION });
+      expect(res.json()).toMatchObject({ doc, version: doc === 'terms' || doc === 'refunds' ? TERMS_VERSION : HEALTH_CONSENT_VERSION });
       expect(res.json().markdown).not.toContain('{{');
     }
     expect((await call('GET', '/api/legal/nothing')).statusCode).toBe(404);
     expect((await call('GET', '/api/legal/..%2Fpackage')).statusCode).toBe(404);
   });
 
-  it('name the operator where one is configured, and say so plainly where not', () => {
-    expect(legalText('privacy', { SPINE_OPERATOR_NAME: 'Example SRL', SPINE_OPERATOR_CONTACT: 'privacy@example.test' })!.markdown).toContain('Example SRL');
-    expect(legalText('privacy', {})!.markdown).toContain('the operator of this instance');
+  it('name the operator where one is known, and say so plainly where not', () => {
+    expect(legalText('privacy', example, { SPINE_OPERATOR_CONTACT: 'privacy@example.test' })!.markdown).toContain('Example SRL');
+    expect(legalText('privacy', null, {})!.markdown).toContain('the operator of this instance');
     // The intended purpose says what the product is not, in plain words.
-    expect(legalText('purpose', {})!.markdown).toMatch(/does not diagnose/);
+    expect(legalText('purpose', null, {})!.markdown).toMatch(/does not diagnose/);
+  });
+
+  it('sends requests about a person\'s data to the privacy contact where there is one, and to the contact where not', () => {
+    const both = { SPINE_OPERATOR_CONTACT: 'support@example.test', SPINE_OPERATOR_PRIVACY_CONTACT: 'privacy@example.test' };
+    const privacy = legalText('privacy', example, both)!.markdown;
+    expect(privacy).toContain('privacy@example.test');
+    expect(privacy).not.toContain('support@example.test');
+    // The terms and the refund policy are about the service and a purchase: the contact.
+    for (const doc of ['terms', 'refunds'] as const) {
+      expect(legalText(doc, example, both)!.markdown).toContain('support@example.test');
+      expect(legalText(doc, example, both)!.markdown).not.toContain('privacy@example.test');
+    }
+    expect(legalText('privacy', null, { SPINE_OPERATOR_CONTACT: 'support@example.test' })!.markdown).toContain('support@example.test');
+    expect(legalText('privacy', null, {})!.markdown).not.toContain('{{');
+  });
+
+  it('has a refund policy that says what the terms say: Stripe through the operator, fourteen days, and no records are asked for', () => {
+    const terms = legalText('terms', null, {})!.markdown;
+    const refunds = legalText('refunds', example, { SPINE_OPERATOR_CONTACT: 'billing@example.test' })!.markdown;
+    expect(refunds).toContain('Example SRL');
+    expect(refunds).toContain('billing@example.test');
+    expect(terms).toMatch(/fourteen days/);
+    expect(refunds).toMatch(/fourteen days/);
+    expect(refunds).toMatch(/Example SRL sells the plans and the top-up, through Stripe/);
+    expect(refunds).toMatch(/Do not send us any document/);
   });
 });
 
@@ -213,5 +241,29 @@ describe('starting over', () => {
 
   it('is not possible without signing in', async () => {
     expect((await call('POST', '/api/account/wipe', undefined, { confirm: 'x' })).statusCode).toBe(401);
+  });
+});
+
+describe('the company that operates this Spine', () => {
+  const env = { SPINE_OPERATOR_CONTACT: 'hello@example.test' };
+
+  it('is the seller saved on the admin page: its name, its tax number and register number as written, the address and the contact, and nothing where no seller is saved', () => {
+    expect(operatorInfo(seller, env)).toEqual({ name: 'Example SRL', ids: ['CIF 12345678', 'J00/0000/0000'], address: '1 Example Street, 000000 Exampleville', contact: 'hello@example.test' });
+    expect(operatorInfo({ ...seller, vatId: 'RO12345678' }, env)!.ids[0]).toBe('RO12345678');
+    expect(operatorInfo({ ...seller, registerNo: undefined }, {})).toMatchObject({ ids: ['CIF 12345678'], contact: null });
+    expect(operatorInfo(null, env)).toBeNull();
+  });
+
+  it('is named by no page where billing is off, whatever is saved: a self-hosted instance says nothing of a company', async () => {
+    expect((await call('GET', '/api/auth/options')).json().operator).toBeNull();
+  });
+
+  it('is listed in the terms under its own heading, and the terms say plainly where it is not named', () => {
+    const terms = legalText('terms', operatorInfo(seller, env), env)!.markdown;
+    expect(terms).toMatch(/## Legal \/ Company information\s+Spine is operated by:/);
+    for (const line of ['Example SRL', 'CIF 12345678', 'J00/0000/0000', '1 Example Street, 000000 Exampleville', 'hello@example.test']) expect(terms).toContain(`- ${line}`);
+    const unnamed = legalText('terms', null, {})!.markdown;
+    expect(unnamed).toContain('- the operator of this instance');
+    expect(unnamed).not.toContain('{{');
   });
 });

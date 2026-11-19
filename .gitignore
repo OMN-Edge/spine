@@ -27,8 +27,7 @@ project-*.json
 # Scratch comparisons of model readings: real records, never committed.
 compare*.txt
 
-# security review ledger: working notes, kept local
-docs/security-review.md
+# the reviewer's working directory (ledgers, screenshots, notes) is untracked personally: .git/info/exclude
 
 # the invented clinic archive is generated (npm run demo-archive -w spine-server), not kept
 docs/demo/clinic-archive/*.pdf

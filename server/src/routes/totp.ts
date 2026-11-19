@@ -1,11 +1,11 @@
-import { endOtherSessions } from '../sessions.js';
-import { mailAfter, securityChangeMail } from '../notify.js';
+import { endOtherSessions } from '../identity/index.js';
+import { mailAfter, securityChangeMail } from '../identity/index.js';
 import type { FastifyInstance } from 'fastify';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { requireAuth } from 'spine-core/routes/middleware.js';
-import { type SessionData } from '../session-auth.js';
+import { type SessionData } from '../identity/index.js';
 import { windowLimiter } from '../rate-limit.js';
-import { checkSecondFactor, newRecoveryCodes, passwordIsRight as passwordOk } from '../second-factor.js';
+import { checkSecondFactor, newRecoveryCodes, passwordIsRight as passwordOk } from '../identity/index.js';
 import {
   base32Encode,
   decryptSecret,
@@ -13,7 +13,7 @@ import {
   generateSecret,
   matchTotp,
   otpauthUri,
-} from '../totp.js';
+} from '../identity/index.js';
 
 /**
  * Managing the second factor (SECURITY.md M-12). Every route needs a session, and the

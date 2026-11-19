@@ -2,9 +2,10 @@ import { z } from 'zod';
 import type { ContinuationResult, ExtractionResult } from '../types.js';
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import type { TaskClients, TaskSpecs } from './tasks.js';
+import type { SupportedLanguage } from '../languages.js';
 
 /**
- * What the device tells the relay about a call, for the plan's counts (`billing/gate.ts`): `work` is a random id it gives every call of one piece of
+ * What the device tells the relay about a call, for the plan's counts (`plans/gate.ts`): `work` is a random id it gives every call of one piece of
  * work (a chat question, a document's translation into a language), so the plan counts the work once; `pages` is how many pages the call reads or
  * translates. Neither is a word of what is sent, and the relay does not log them.
  */
@@ -67,7 +68,7 @@ export interface ChatLlm {
    * results (never pages or scans); the answer cites them by label. Text only, to the configured provider (SECURITY.md
    * P8, M-18). Null if the answer could not be used.
    */
-  answerQuestion(question: string, records: ChatRecord[], history: ChatTurn[]): Promise<ChatAnswer | null>;
+  answerQuestion(question: string, records: ChatRecord[], history: ChatTurn[], language?: SupportedLanguage): Promise<ChatAnswer | null>;
   /**
    * The chat model itself, for an agent that binds tools to it (`chat/agent.ts`). Provider-neutral: LangChain's own base class.
    * Null where the implementation cannot offer one (a test double), and the caller then answers without tools.

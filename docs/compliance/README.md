@@ -4,7 +4,7 @@ The records a controller keeps (GDPR Art. 5(2), 24, 30, 33, 35) for a Spine serv
 
 | Item | File | Status |
 | --- | --- | --- |
-| Privacy notice (Art. 13), terms, written intended purpose (MDR, MDCG 2019-11) | `docs/legal/` (served by the app at `/privacy`, `/terms`, `/purpose`; `SPINE_LEGAL_DIR` replaces them) | Draft |
+| Privacy notice (Art. 13), terms, written intended purpose (MDR, MDCG 2019-11), refund policy | `docs/legal/` (served by the app at `/privacy`, `/terms`, `/purpose`, `/refunds`; `SPINE_LEGAL_DIR` replaces them) | Draft |
 | Consent to the use of health data, separate from the terms (Art. 9(2)(a)) | recorded per account with the version shown (`legal.ts`) | Built |
 | Record of processing activities (Art. 30) | [ropa.md](ropa.md) | Draft |
 | Data protection impact assessment (Art. 35) | [dpia.md](dpia.md) | Draft |
@@ -12,7 +12,7 @@ The records a controller keeps (GDPR Art. 5(2), 24, 30, 33, 35) for a Spine serv
 | Security measures (Art. 32) | [SECURITY.md](../../SECURITY.md) | Maintained with the code |
 | Export and deletion in the app (Art. 15, 17, 20) | account page | Built |
 | AI-generated content labelled (AI Act Art. 50) | document page, chat, shared page | Built |
-| Processing agreements with hosting, model, email and payment providers (Art. 28) | with each provider | **Not done: contracts, not code** (the payment provider is Paddle; the hosting may be a bucket and a database from a cloud provider) |
+| Processing agreements with hosting, model, email and payment providers (Art. 28) | with each provider | **Not done: contracts, not code** (the payment provider is Stripe; the hosting may be a bucket and a database from a cloud provider) |
 | Registration with a supervisory authority | none is needed in Romania since 25 May 2018 | n/a |
 
 When any text in `docs/legal/` changes, raise `HEALTH_CONSENT_VERSION` or `TERMS_VERSION` in `core/src/consent.ts`: everyone is then asked to agree again at their next sign-in.

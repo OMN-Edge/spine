@@ -2,10 +2,10 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { buildTestApp, loginAs } from './helpers/app.js';
 import { createTestUser, OWNER_EMAIL, OWNER_ID, TEST_PASSWORD } from './helpers/seed.js';
 import { getAccountsStore } from 'spine-core/store/index.js';
-import { issueUserToken } from '../accounts.js';
-import { checkSecondFactor } from '../second-factor.js';
-import { hashPassword } from '../passwords.js';
-import { base32Decode, hotp, stepAt } from '../totp.js';
+import { issueUserToken } from '../identity/index.js';
+import { checkSecondFactor } from '../identity/index.js';
+import { hashPassword } from '../identity/index.js';
+import { base32Decode, hotp, stepAt } from '../identity/index.js';
 
 /**
  * SECURITY.md M-12. These drive the real handlers, store and limiters. Time is the one
@@ -529,7 +529,7 @@ describe('other ways in do not skip it', () => {
     const routeFiles = routeDirs.flatMap(dir => readdirSync(dir).filter(f => f.endsWith('.ts')).map(f => ({ name: f, text: readFileSync(new URL(f, dir), 'utf8') })));
     const assigners = routeFiles.filter(f => /session\.userId\s*=/.test(f.text)).map(f => f.name);
     expect(assigners).toEqual([]);
-    expect(readFileSync(new URL('../sessions.ts', import.meta.url), 'utf8')).toMatch(/session\.userId\s*=/);
+    expect(readFileSync(new URL('../identity/sessions.ts', import.meta.url), 'utf8')).toMatch(/session\.userId\s*=/);
 
     const callers = routeFiles.filter(f => /startSession\(/.test(f.text)).map(f => f.name).sort();
     // routes/passkeys.ts is the second, justified in SECURITY.md M-33: a passkey is used with user verification required, so it

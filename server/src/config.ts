@@ -1,4 +1,5 @@
 import { readBillingConfig, type BillingConfig } from './billing/config.js';
+import { readInvoicingConfig, type InvoicingConfig } from './billing/invoicing/config.js';
 import {
   ConfigError,
   readEmbeddingConfig,
@@ -51,6 +52,8 @@ export interface Config {
   instance: InstanceKind;
   /** Plans and payment (`SPINE_BILLING`); off unless said, and never on a private instance. */
   billing: BillingConfig;
+  /** Whether the operator issues an invoice for each payment, and through whom (`billing/invoicing/`). */
+  invoicing: InvoicingConfig;
 }
 
 export const REGISTRATION_MODES: readonly RegistrationMode[] = ['operator', 'open', 'approval'];
@@ -113,6 +116,11 @@ export function loadInstanceKind(env: NodeJS.ProcessEnv = process.env): Instance
   return instance;
 }
 
+/** The addresses that may read the operator's numbers and nothing else (`SPINE_MARKETING_EMAILS`, the marketing role: it cannot approve or refuse an account). */
+export function marketingEmails(env: NodeJS.ProcessEnv = process.env): Set<string> {
+  return new Set((env.SPINE_MARKETING_EMAILS ?? '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean));
+}
+
 /** The addresses that may approve accounts from the app (`SPINE_ADMIN_EMAILS`, comma separated, compared lower-cased). The CLI needs none. */
 export function adminEmails(env: NodeJS.ProcessEnv = process.env): Set<string> {
   return new Set((env.SPINE_ADMIN_EMAILS ?? '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean));
@@ -155,6 +163,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const parser = readParserConfig(env, problems);
   const embeddings = readEmbeddingConfig(given, problems);
   const billing = readBillingConfig(env, instance, problems);
+  const invoicing = readInvoicingConfig(env, billing, problems);
 
   if (problems.length > 0) throw new ConfigError(problems);
 
@@ -173,6 +182,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     registration,
     instance,
     billing,
+    invoicing,
   };
 }
 

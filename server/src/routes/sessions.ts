@@ -1,11 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import { getAccountsStore } from 'spine-core/store/index.js';
-import { verifyPassword, MAX_PASSWORD_LENGTH } from '../passwords.js';
-import { checkSecondFactor, hasSecondFactor } from '../second-factor.js';
+import { verifyPassword, MAX_PASSWORD_LENGTH } from '../identity/index.js';
+import { checkSecondFactor, hasSecondFactor } from '../identity/index.js';
 import { windowLimiter } from '../rate-limit.js';
 import { recentlyAuthenticated, requireAuth } from 'spine-core/routes/middleware.js';
-import { type SessionData } from '../session-auth.js';
-import { endOtherSessions } from '../sessions.js';
+import { type SessionData } from '../identity/index.js';
+import { endOtherSessions } from '../identity/index.js';
 
 const TEN_MINUTES_MS = 10 * 60 * 1000;
 const REAUTH_ATTEMPTS = 5;

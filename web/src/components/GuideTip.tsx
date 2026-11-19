@@ -43,14 +43,21 @@ export default function GuideTip({ tip, topic, className = 'mb-4', children }: {
 /** Where "Review" leads: an upload waiting for its grouping has nothing in the review queue yet, so to the first such upload on the upload page. */
 export const reviewTarget = (progress: { grouping_waiting: number }): string => (progress.grouping_waiting > 0 ? '/upload#grouping' : '/review');
 
+/** A step is ticked only once the ones before it are, so a share made from sample records never shows as done above an "Add your first document" that is not. */
+export const stepsDone = (progress: { uploads: number; reviewed: number; shares: number }): boolean[] => {
+  let before = true;
+  return [progress.uploads > 0, progress.reviewed > 0, progress.shares > 0].map(raw => (before = before && raw));
+};
+
 export function GetStarted() {
   const { t } = useI18n();
   const guide = useGuide();
   const progress = guide?.state?.progress;
+  const ticked = progress ? stepsDone(progress) : [];
   const steps = progress ? [
-    { done: progress.uploads > 0, label: t('Add your first document'), to: '/upload', action: t('Add') },
-    { done: progress.reviewed > 0, label: t('Review what was read from it'), to: reviewTarget(progress), action: t('Review') },
-    { done: progress.shares > 0, label: t('Share it with a doctor, when you need to'), to: '/share', action: t('Share') },
+    { done: ticked[0], label: t('Add your first document'), to: '/upload', action: t('Add') },
+    { done: ticked[1], label: t('Review what was read from it'), to: reviewTarget(progress), action: t('Review') },
+    { done: ticked[2], label: t('Share it with a doctor, when you need to'), to: '/share', action: t('Share') },
   ] : [];
   const all = steps.length > 0 && steps.every(s => s.done);
   const showing = !!progress && !guide?.isDone('checklist') && !all;
@@ -66,7 +73,7 @@ export function GetStarted() {
       </div>
       <ol className="mt-2 space-y-1.5">
         {steps.map((step, i) => (
-          <li key={step.label} className="flex items-center gap-2.5 text-sm">
+          <li key={step.label} className={`${i === next ? 'flex' : 'hidden sm:flex'} items-center gap-2.5 text-sm`}>
             <span aria-hidden="true" className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${step.done ? 'bg-emerald-500 text-white' : i === next ? 'border-2 border-brand-500 text-brand-600' : 'border border-gray-300 text-gray-400'}`}>
               {step.done ? '✓' : i + 1}
             </span>

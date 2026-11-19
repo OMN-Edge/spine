@@ -1,9 +1,9 @@
 import type { AccountsStore } from 'spine-core/store/types.js';
 import { CHAT_MESSAGE, TRANSLATED_PAGE, linkKey, meterKey } from 'spine-core/billing/plans.js';
-import { standingOf } from './billing/seat.js';
-import { fairUseOf } from './billing/fair-use.js';
-import { windowMonths } from './billing/window.js';
-import { costKey, tokenKey, type Family } from './billing/cost.js';
+import { standingOf } from './plans/seat.js';
+import { fairUseOf, syncFairUse } from './plans/fair-use.js';
+import { windowMonths } from './plans/window.js';
+import { costKey, tokenKey, type Family } from './plans/cost.js';
 
 /**
  * What each account really used, for the operator (SECURITY.md **M-45**): the estimated cost of its AI use by kind of work, questions, translated pages, link
@@ -29,6 +29,7 @@ export interface UsageRow {
 const FAMILIES: Family[] = ['reading', 'chat', 'translation'];
 
 export async function usageReport(store: AccountsStore, month: string, now: Date = new Date()): Promise<UsageRow[]> {
+  await syncFairUse(store);
   const rows: UsageRow[] = [];
   const when = new Date(`${month}-15T00:00:00Z`);
   for (const user of await store.users.list()) {
@@ -61,6 +62,26 @@ export async function usageReport(store: AccountsStore, month: string, now: Date
     });
   }
   return rows.sort((a, b) => b.euros - a.euros);
+}
+
+/**
+ * What one account used from a day on, for a request to withdraw from a purchase: pages read, questions and pages translated, summed over the months from that day to now.
+ * Counters only, as in the report above; null for an account that is gone. It says whether the service was used, which is the operator's to weigh.
+ */
+export async function usedSince(store: AccountsStore, userId: string, since: Date, now: Date = new Date()): Promise<{ pages: number; questions: number; translated: number } | null> {
+  const standing = await standingOf(store, userId, now);
+  if (!standing) return null;
+  const e = standing.entitlements;
+  const total = { pages: 0, questions: 0, translated: 0 };
+  for (let y = since.getUTCFullYear(), m = since.getUTCMonth(); y < now.getUTCFullYear() || (y === now.getUTCFullYear() && m <= now.getUTCMonth()); m++) {
+    if (m > 11) { m = 0; y++; }
+    const when = new Date(Date.UTC(y, m, 15));
+    const [pages, questions, translated] = await Promise.all([
+      store.usage.aiUsed(userId, meterKey('pages', e, when)), store.usage.aiUsed(userId, meterKey('messages', e, when)), store.usage.aiUsed(userId, meterKey('translated', e, when)),
+    ]);
+    total.pages += pages; total.questions += questions; total.translated += translated;
+  }
+  return total;
 }
 
 /** The report as lines, and what the plans were priced on, worked out from what was really used: tokens per question, pages per account, bytes per open. */

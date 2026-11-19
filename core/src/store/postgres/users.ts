@@ -3,8 +3,8 @@ import { changed, many, one, type Begin, type Query } from './query.js';
 
 /** The account tables a user owns, children before parents (foreign keys). */
 const OWNED_TABLES = [
-  'shared_requests', 'shared_opens', 'shared_bundles', 'user_sessions', 'cookie_sessions', 'model_usage', 'ai_usage', 'ai_seen', 'reminder_dues', 'subscriptions', 'user_devices', 'user_tokens',
-  'user_passkeys', 'device_enrolments', 'vault_objects', 'vault_keys', 'user_recovery_codes', 'user_totp',
+  'shared_requests', 'shared_opens', 'shared_bundles', 'user_sessions', 'cookie_sessions', 'model_usage', 'ai_usage', 'ai_seen', 'reminder_dues', 'subscriptions', 'billing_customers', 'user_devices', 'user_tokens',
+  'user_passkeys', 'device_enrolments', 'vault_objects', 'vault_keys', 'user_recovery_codes', 'user_totp', 'invitations',
 ];
 
 /** What a wipe removes: all of the above but the account, how it signs in, its plan and what it used (sqlite/users.ts says the same). */
@@ -49,6 +49,14 @@ export function userRepository(q: Query, begin: Begin): UserRepository {
 
     async list() {
       return many<Pick<UserRecord, 'id' | 'email' | 'created_at' | 'email_verified_at' | 'approved'>>(q, 'SELECT id, email, created_at, email_verified_at, approved FROM users ORDER BY created_at');
+    },
+
+    async listWaiting(limit, offset) {
+      return many<Pick<UserRecord, 'id' | 'email' | 'created_at' | 'email_verified_at' | 'approved'>>(q, 'SELECT id, email, created_at, email_verified_at, approved FROM users WHERE approved = 0 ORDER BY created_at, id LIMIT $1 OFFSET $2', [limit, offset]);
+    },
+
+    async countWaiting() {
+      return Number((await one<{ n: number }>(q, 'SELECT COUNT(*) AS n FROM users WHERE approved = 0', []))!.n);
     },
 
     async setPassword(id, passwordHash) {
@@ -190,6 +198,7 @@ export function userRepository(q: Query, begin: Begin): UserRepository {
         await run('DELETE FROM family_members WHERE member_id = $1 OR organizer_id = $1', [id]);
         await run('DELETE FROM family_invites WHERE organizer_id = $1', [id]);
         await run('DELETE FROM family_left WHERE member_id = $1 OR organizer_id = $1', [id]);
+        await run('DELETE FROM invitations WHERE inviter_id = $1', [id]);
         await run('DELETE FROM users WHERE id = $1', [id]);
       });
     },

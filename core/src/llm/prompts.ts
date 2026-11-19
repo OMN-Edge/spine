@@ -1,6 +1,7 @@
 import { STARTER_TAGS } from '../tags.js';
 import { DOC_TYPES } from './types.js';
 import { guidesForPrompt } from './doc-types.js';
+import { LANGUAGE_NAMES, type SupportedLanguage } from '../languages.js';
 
 /**
  * Prompts live above the adapters: they are provider-agnostic, and keeping them
@@ -43,7 +44,17 @@ Respond with ONLY valid JSON, no markdown:
 {"is_continuation": boolean, "confidence": 0.0-1.0, "reasoning": "one concise sentence"}`;
 }
 
-export function buildAgentSystemPrompt(rounds: number, today: string): string {
+/**
+ * The sentence that says what language to answer in. The person reads the app in one language and their documents are often in another (a Romanian record read on an English screen),
+ * and a short question loses to a long record: so the screen's language is named, and wins unless the question itself is written in another one. Dates follow it, never `2026-03-09`.
+ */
+export function answerLanguageRule(language?: SupportedLanguage): string {
+  if (!language) return 'Write in the language of the question.';
+  const name = LANGUAGE_NAMES[language];
+  return `Write in ${name}, the language the person reads the app in, whatever language the records are in; answer in another language only when the question itself is written in one. Write dates the way ${name} writes them (for example "9 March 2026"), never as 2026-03-09, and keep a record's own names and terms as written.`;
+}
+
+export function buildAgentSystemPrompt(rounds: number, today: string, language?: SupportedLanguage): string {
   return `You help a person understand their own medical records. You can look things up in their records with tools, and you answer ONLY from what the records and tool results say.
 
 Today is ${today}. Count "a year ago", "last month" and "the latest" from it.
@@ -74,14 +85,14 @@ How to answer:
 - You do not interpret results. Asked whether a result is good, bad, normal for this person, worrying or serious, what it means for their health, what caused it, what to take or do about it, or what will happen: say plainly that this is a question for their doctor, and give only what the record states (the value, its unit, the range printed beside it, any flag the document itself printed, and the dates). Do not soften it into a hint, and do not answer it for "people in general" either.
 - Cite what you rely on with labels in square brackets, one label per bracket, like [D1] or [D1.results]. For the document on screen, cite the section the answer comes from: D1.summary, D1.notes, D1.doctors, D1.results, D1.fields. Use only labels you were given. Labels exist only for these brackets: in the sentences themselves name a document by what it is (its kind, date and provider), never by its label (not "D7" or "document 1"), and put the bracket after the sentence it supports.
 - Give dates and units with values. When values change over time, say in which direction and between which dates.
-- Write in the language of the question. Be concise: a short answer first, then the detail that supports it. Formatting: short paragraphs, bullet lists and **bold** for the key value are fine; no tables, no headings, no JSON.`;
+- ${answerLanguageRule(language)} Be concise: a short answer first, then the detail that supports it. Formatting: short paragraphs, bullet lists and **bold** for the key value are fine; no tables, no headings, no JSON.`;
 }
 
 /**
  * The agent's prompt for a recipient of a share link: someone the owner chose to show part of their records to, who is not the
  * owner. The link's label is the owner's own words (often a name or a purpose) and is given as context, in quotes, as data.
  */
-export function buildSharedAgentSystemPrompt(linkLabel: string | null, rounds: number, today: string): string {
+export function buildSharedAgentSystemPrompt(linkLabel: string | null, rounds: number, today: string, language?: SupportedLanguage): string {
   return `You help someone read medical records that another person (the patient) chose to share with them. You are not talking to the patient and you do not know them: refer to "the patient" or "the records", never "you" or "your". You can look things up in the shared records with tools, and you answer ONLY from what those records and tool results say.
 
 Today is ${today}.
@@ -102,10 +113,10 @@ How to answer:
 - You do not interpret results either. Asked whether a result is good, bad, normal for this patient, worrying or serious, what it means, what caused it or what should be done: say that the documents do not say, and give only what they state (the value, its unit, the printed range, any flag the document itself printed, and the dates); the recipient decides, with their own judgement.
 - Cite what you rely on with labels in square brackets, one label per bracket, like [D1] or [D1.results]. When a document is shown in sections (D1.summary, D1.notes, D1.doctors, D1.results, D1.fields), cite the section the answer comes from, so the reader is taken to it. Use only labels you were given. Labels exist only for these brackets: in the sentences themselves name a document by what it is (its kind, date and provider), never by its label (not "D7" or "document 1"), and put the bracket after the sentence it supports.
 - Give dates and units with values. When values change over time, say in which direction and between which dates.
-- Write in the language of the question. Be concise: a short answer first, then the detail that supports it. Formatting: short paragraphs, bullet lists and **bold** for the key value are fine; no tables, no headings, no JSON.`;
+- ${answerLanguageRule(language)} Be concise: a short answer first, then the detail that supports it. Formatting: short paragraphs, bullet lists and **bold** for the key value are fine; no tables, no headings, no JSON.`;
 }
 
-export function buildChatPrompt(question: string, records: Array<{ label: string; text: string }>, history: Array<{ role: string; content: string }>): string {
+export function buildChatPrompt(question: string, records: Array<{ label: string; text: string }>, history: Array<{ role: string; content: string }>, language?: SupportedLanguage): string {
   const turns = history.length
     ? `\nConversation so far:\n${history.map(t => `${t.role === 'user' ? 'Person' : 'You'}: ${t.content}`).join('\n')}\n`
     : '';
@@ -126,7 +137,7 @@ Rules:
 - The document on screen is split into sections with labels like D1.summary, D1.notes, D1.doctors, D1.results, D1.fields and D1.chain. When your answer comes from one of them, cite that section, like [D1.results], so the person can be taken there.
 - Cite the records you rely on with their labels in square brackets, like [D1], in the text, and list the same labels in "sources". Use only labels given above.
 - Give dates and units with values. When values change over time, say in which direction and between which dates.
-- Write in the language of the question. Be concise: a short answer first, then the detail that supports it.
+- ${answerLanguageRule(language)} Be concise: a short answer first, then the detail that supports it.
 
 Respond with ONLY valid JSON, no markdown:
 {"answer": "the answer, with [D1]-style citations", "sources": ["D1"]}`;
@@ -272,7 +283,7 @@ ${known}${notes}
 Return ONLY valid JSON (no markdown):
 {
   "language": "the language the document is written in, as a two-letter code (ro, en, fr, de, hu, ...), or null if you cannot tell",
-  "title": "the document's own title as printed on it (e.g. \"Bilet de externare\", \"Buletin de analize\"), in its original language; if it has none, a short descriptive title in the document's language, under 60 characters",
+  "title": "the document's own title as printed on it (e.g. \"Bilet de externare\", \"Buletin de analize\"), in its original language; if it has none, a short descriptive title in the document's language, under 60 characters. A printed title that only names a kind of document and would be the same on many (\"Raport medical\", \"Rezultat\", \"Bilet de trimitere\") is kept and followed by what tells this one apart, after a colon: the specialty, the reason for the visit or the main tests or subject, in a few words (e.g. \"Raport medical: endocrinologie, TSH și FT4\", \"Buletin de analize: hemoleucogramă\"). Never put the date, the clinic or the patient's name in it: they are shown beside it",
   "doc_date": "YYYY-MM-DD or null if not found",
   "provider": "clinic/hospital/laboratory name or null",
   "doc_type": "one of the types above",

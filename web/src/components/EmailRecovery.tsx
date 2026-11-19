@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
-import { buttonClass, Notice } from './AuthCard';
+import { Notice, secondaryButtonClass } from './AuthCard';
 import { useI18n } from '../i18n';
 
 /**
@@ -40,7 +40,7 @@ export default function EmailRecovery() {
           : t('No recovery email is sent. Your password and your recovery kit are the only way back in: without both, your records cannot be recovered.')}
       </p>
       {error && <Notice kind="error">{error}</Notice>}
-      <button type="button" onClick={change} disabled={busy} className={`${buttonClass} disabled:opacity-50`}>{on ? t('Turn off recovery by email') : t('Turn on recovery by email')}</button>
+      <button type="button" onClick={change} disabled={busy} className={on ? 'text-sm text-red-700 hover:underline disabled:opacity-50' : `${secondaryButtonClass} disabled:opacity-50`}>{on ? t('Turn off recovery by email') : t('Turn on recovery by email')}</button>
     </section>
   );
 }

@@ -2,6 +2,7 @@ import { sha256Hex } from './digest.js';
 import { getStore } from './store/index.js';
 import { getChatLlm } from './llm/index.js';
 import { KNOWN_FIELD_LABELS } from './llm/doc-types.js';
+import { STARTER_TAGS } from './tags.js';
 import { LlmBlockedError, type TranslationBundle } from './llm/types.js';
 import { translationEnabled, llmConcurrency } from './config.js';
 import { mapLimit } from './concurrency.js';
@@ -607,6 +608,10 @@ export interface KeptTerms {
   specialties: Record<string, string>;
   /** By the test's name as the trends list it. */
   tests: Record<string, string>;
+  /** By a tag as the owner or the model wrote it (the starter tags are the interface's own words and are not here). */
+  tags: Record<string, string>;
+  /** By an episode's title as the owner wrote it. */
+  episodes: Record<string, string>;
   pending: boolean;
 }
 
@@ -620,23 +625,27 @@ const termsFailedAt = new Map<string, number>();
  * background, all of it in one short call to the model (counted by the relay like a document's), and `pending` tells the page to ask again; with
  * translation off, or while a failure is being waited out, nothing is asked and the original shows.
  */
-export async function keptTerms(userId: string, language: SupportedLanguage): Promise<KeptTerms> {
+export async function keptTerms(userId: string, language: SupportedLanguage, only?: { tags: string[]; episodes: string[] }): Promise<KeptTerms> {
   const store = getStore();
   const clean = (text: string | null | undefined) => (text ?? '').trim();
   const specialties = new Set((await store.doctors.listFor(userId)).map(d => clean(d.specialty)).filter(Boolean));
   const tests = new Set((await store.measurements.names(userId)).map(n => clean(n.name)).filter(Boolean));
-  const out: KeptTerms = { specialties: {}, tests: {}, pending: false };
+  // The words the owner wrote (a tag, an episode's title) are translated as terms too, so a doctor reading another language reads them in it. The tags the app starts an account
+  // with are the interface's own words and are shown through it, so they are not asked of the model. A share names the tags and episodes of what it shares, never the whole archive's.
+  const starter = new Set<string>(STARTER_TAGS);
+  const wanted = (list: string[], among?: string[]) => new Set(list.map(clean).filter(x => x && (!among || among.includes(x))));
+  const tags = wanted((await store.tags.listFor(userId)).map(x => x.name).filter(name => !starter.has(name)), only?.tags);
+  const episodes = wanted((await store.episodes.list(userId, ['confirmed'])).map(e => e.title ?? ''), only?.episodes);
+  const sets = { specialty: specialties, test: tests, tag: tags, episode: episodes } as const;
+  const out: KeptTerms = { specialties: {}, tests: {}, tags: {}, episodes: {}, pending: false };
+  const target = { specialty: out.specialties, test: out.tests, tag: out.tags, episode: out.episodes } as const;
   const have = new Set<string>();
   for (const row of await store.termTranslations.forLanguage(userId, language)) {
-    const inUse = row.kind === 'specialty' ? specialties : tests;
-    if (!inUse.has(row.sourceText)) continue;
+    if (!sets[row.kind]?.has(row.sourceText)) continue;
     have.add(`${row.kind}\u0000${row.sourceText}`);
-    if (row.translated !== row.sourceText) (row.kind === 'specialty' ? out.specialties : out.tests)[row.sourceText] = row.translated;
+    if (row.translated !== row.sourceText) target[row.kind][row.sourceText] = row.translated;
   }
-  const missing = [
-    ...[...specialties].filter(t => !have.has(`specialty\u0000${t}`)).map(text => ({ kind: 'specialty' as const, text })),
-    ...[...tests].filter(t => !have.has(`test\u0000${t}`)).map(text => ({ kind: 'test' as const, text })),
-  ];
+  const missing = (Object.keys(sets) as Array<keyof typeof sets>).flatMap(kind => [...sets[kind]].filter(text => !have.has(`${kind}\u0000${text}`)).map(text => ({ kind, text })));
   const key = `${userId}:${language}`;
   const paused = Date.now() - (termsFailedAt.get(key) ?? 0) < FAILURE_PAUSE_MS;
   if (missing.length === 0 || !translationEnabled() || paused) return out;
@@ -652,7 +661,8 @@ export async function keptTerms(userId: string, language: SupportedLanguage): Pr
           const asked = part.map((m, n) => ({ ...m, id: String(n) }));
           const bundle: TranslationBundle = {
             title: null, summary: null, notes: null, fields: [],
-            measurements: asked.filter(m => m.kind === 'test').map(m => ({ id: m.id, name: m.text })),
+            // A test's name, a tag and an episode's title are all names: they go in the slot the model translates as one.
+            measurements: asked.filter(m => m.kind !== 'specialty').map(m => ({ id: m.id, name: m.text })),
             doctors: asked.filter(m => m.kind === 'specialty').map(m => ({ id: m.id, specialty: m.text })),
           };
           const answer = await translatePiece(bundle, b => llm.translate(b, LANGUAGE_NAMES[language], null, meta));
@@ -676,3 +686,33 @@ export async function keptTerms(userId: string, language: SupportedLanguage): Pr
 
 /** Specialties and test names asked of the model in one call. */
 const TERMS_PER_CALL = 80;
+
+
+/**
+ * The words of the emergency card (its allergies, conditions, medicines and notes) in another language, in one short call the relay counts: the owner's own texts, asked of the model once
+ * when they ask for a second language, and then theirs to correct. What the model gives back is used only where it is a translation and not a ramble; a line it could not do is left out for the
+ * owner to write. Null where it could not be asked (translation off, or a failure), with the reason in the log.
+ */
+export async function translateCardWords(
+  words: { allergies: string[]; conditions: string[]; medications: string[]; notes: string },
+  language: SupportedLanguage,
+): Promise<{ allergies: string[]; conditions: string[]; medications: string[]; notes: string } | 'off' | null> {
+  if (!translationEnabled()) return 'off';
+  const ask = (list: string[], prefix: string) => list.map((text, n) => ({ id: `${prefix}${n}`, name: text }));
+  const bundle: TranslationBundle = {
+    title: null, summary: null, notes: words.notes.trim() ? words.notes : null, fields: [], doctors: [],
+    measurements: [...ask(words.allergies, 'a'), ...ask(words.conditions, 'c'), ...ask(words.medications, 'm')],
+  };
+  if (!bundle.notes && bundle.measurements.length === 0) return { allergies: [], conditions: [], medications: [], notes: '' };
+  try {
+    const llm = getChatLlm();
+    const answer = await translatePiece(bundle, b => llm.translate(b, LANGUAGE_NAMES[language], null, { work: crypto.randomUUID(), pages: 1 }));
+    if (!answer) return null;
+    const said = new Map(answer.measurements.map(m => [m.id, m.name]));
+    const back = (list: string[], prefix: string) => list.flatMap((original, n) => { const text = said.get(`${prefix}${n}`); return text && sound(text, original) ? [text.trim()] : []; });
+    return { allergies: back(words.allergies, 'a'), conditions: back(words.conditions, 'c'), medications: back(words.medications, 'm'), notes: sound(answer.notes, words.notes) && answer.notes ? answer.notes.trim() : '' };
+  } catch (err) {
+    logger.warn('the card could not be translated', { language, error: describeError(err) });
+    return null;
+  }
+}

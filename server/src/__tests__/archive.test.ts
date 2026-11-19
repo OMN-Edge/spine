@@ -157,6 +157,21 @@ describe('export', () => {
     reader.close();
   });
 
+  it.skipIf(!hasPoppler)('gives one document’s own pages as a PDF, for the file export, to its owner alone', async () => {
+    const d = await archive();
+    const res = await app.inject({ method: 'GET', url: `/api/documents/${d.b}/pdf`, headers: { cookie } });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toBe('application/pdf');
+    expect(res.headers['cache-control']).toBe('no-store');
+    const file = path.join(dir, 'own-pages.pdf');
+    writeFileSync(file, res.rawPayload);
+    expect(execFileSync('pdfinfo', [file]).toString()).toMatch(/Pages:\s+1/);
+    expect(execFileSync('pdftotext', [file, '-']).toString()).toContain('Third page');
+    expect(execFileSync('pdftotext', [file, '-']).toString()).not.toContain('First page');
+    expect((await app.inject({ method: 'GET', url: `/api/documents/${d.b}/pdf` })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'GET', url: `/api/documents/${uuidv4()}/pdf`, headers: { cookie } })).statusCode).toBe(404);
+  });
+
   it.skipIf(!hasPoppler)('gives the whole archive with every upload as it is, and no ids, paths or share links', async () => {
     await archive();
     const res = await app.inject({ method: 'GET', url: '/api/export', headers: { cookie } });

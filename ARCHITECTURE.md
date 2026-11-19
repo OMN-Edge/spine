@@ -115,7 +115,7 @@ A profile can be opened by another account (`routes/delegation.ts`, **M-49**): a
 
 ### Sharing a plan (seats)
 
-A subscription can be shared by accounts that each hold a seat (`routes/family.ts`, `billing/seat.ts`, **M-52**): the account that pays invites others with a link whose secret is only hashed on the server, and a member has the plan's features, its people (counted over every account that shares it) and its allowances (counted in a pool under the account that pays, and in each account's own meter, which is held to Premium's amount). It is not access: the server records which accounts belong together and nothing is sealed to the one who pays, so seeing a member's records still takes a grant for a profile (**M-49**), chosen by the member. The limits are in `core/src/billing/plans.ts`.
+A subscription can be shared by accounts that each hold a seat (`routes/family.ts`, `plans/seat.ts`, **M-52**): the account that pays invites others with a link whose secret is only hashed on the server, and a member has the plan's features, its people (counted over every account that shares it) and its allowances (counted in a pool under the account that pays, and in each account's own meter, which is held to Premium's amount). It is not access: the server records which accounts belong together and nothing is sealed to the one who pays, so seeing a member's records still takes a grant for a profile (**M-49**), chosen by the member. The limits are in `core/src/billing/plans.ts`.
 
 ### The emergency card
 
@@ -123,7 +123,7 @@ A subscription can be shared by accounts that each hold a seat (`routes/family.t
 
 ### Plans and payment
 
-`SPINE_BILLING=on` gives accounts a plan (**M-45**, [docs/billing.md](docs/billing.md)): a six-month trial, a free plan and Premium, worked out from the account's age and its subscription (`entitlementsOf` in `core/src/billing/plans.ts`, never stored). The relay asks `billing/gate.ts` before and after each call; the vault and sealed-share routes ask `billing/entitlements.ts`; Paddle's signed messages (`routes/billing.ts`) write the subscription; the app only sends a person to Paddle's checkout (`checkout/`, an origin of its own) and to its customer portal. Off, none of it runs, which is the state of a self-hosted or private instance.
+`SPINE_BILLING=on` gives accounts a plan (**M-45**, [docs/billing.md](docs/billing.md)): a three-month trial with visible totals, a free plan, Essential, Premium and Family, worked out from the account's age and its subscription (`entitlementsOf` in `core/src/billing/plans.ts`, never stored). The relay asks `plans/gate.ts` before and after each call; the vault and sealed-share routes ask `plans/entitlements.ts`; Stripe's signed messages (`routes/billing.ts`) write the subscription; the app only sends a person to Stripe's checkout page and to its customer portal. Off, none of it runs, which is the state of a self-hosted or private instance. The amounts a person sees are read from the Stripe prices the operator named (`billing/catalog.ts`), never written in the code. The operator has a page of their own, `/admin` (outside the app, for the addresses in `SPINE_ADMIN_EMAILS` and, read-only, `SPINE_MARKETING_EMAILS`): counts and the plans accounts are on (`dashboard.ts`, never a person), a few settings kept in the database (`operator-settings.ts`) and the hidden fair-use ceilings (`plans/fair-use-admin.ts`, administrators only), so they change with no release and work where there is no disk (**M-54**).
 
 ### Registration
 
@@ -202,7 +202,7 @@ Every row marked "configured provider" is a call the owner's device makes to the
 | Sorting a mixed upload (the owner confirms; chat card or the upload's report) | the **text read from the pages** of that one upload, a page or so each, to judge each candidate group (at most 60 calls, groups of at most 8 pages); where embeddings are on, the pages' text to the embedder. Never an image | configured provider |
 | Parsing (text layer) | nothing — local | — |
 | Account mail (verification, reset, a sign-in from a new browser, a changed security setting, a share waiting for approval) | recipient address, a link, the time of the event. **Never document content** | configured mail provider |
-| Plan, checkout and portal (`SPINE_BILLING=on`) | the price asked for, the account's random id as custom data, and a customer and subscription id for the portal; never a card, never a record (the person gives Paddle their own details on its checkout) | Paddle |
+| Plan, checkout and portal (`SPINE_BILLING=on`) | the price asked for, the account's random id as custom data, and a customer and subscription id for the portal; never a card, never a record (the person gives Stripe their own details on its checkout) | Stripe |
 | Sealed bytes (`SPINE_OBJECTS=gcs`) | the vault's and the shares' sealed objects, under keys of their own naming; nothing readable | the operator's Google Cloud Storage bucket |
 | The country file (daily: before the backup, or by the hourly job where the file is in the bucket) | nothing of an account: a download of a public file | GitHub (ip-location-db's release) |
 

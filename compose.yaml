@@ -52,8 +52,11 @@ services:
     environment:
       SESSION_SECRET: ""
       BREVO_API_KEY: ""
-      PADDLE_API_KEY: ""
-      PADDLE_WEBHOOK_SECRET: ""
+      STRIPE_SECRET_KEY: ""
+      STRIPE_WEBHOOK_SECRET: ""
+      BILLYOU_API_KEY: ""
+      ANAF_CLIENT_SECRET: ""
+      SPINE_EFACTURA_KEY: ""
       SPINE_RELAY_ORIGIN: https://${SPINE_DOMAIN}
       SPINE_RELAY_PORT: "8080"
       # The server's own database, in the volume it keeps it in: with plans on the relay asks it what each account may do and counts the day's

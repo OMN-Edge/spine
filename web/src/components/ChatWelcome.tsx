@@ -8,6 +8,9 @@ import { useI18n } from '../i18n';
 
 const chip = 'rounded-full border border-gray-200 px-3 py-1.5 text-left text-xs text-gray-600 transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700 disabled:opacity-50';
 
+/** The greeting stands while the person has nothing of their own and has not looked around with the sample: once the sample is in, there are records to ask about. */
+export const showsGreeting = (welcomeDone: boolean, uploads: number, samplesIn: boolean): boolean => !welcomeDone && uploads === 0 && !samplesIn;
+
 /**
  * What an empty conversation shows. To someone who has not added anything yet: a welcome, with the first steps as buttons and the
  * questions about how Spine works. To everyone else: questions about their records, and the same questions about Spine underneath.
@@ -26,9 +29,9 @@ export function ChatWelcome({ suggestions, onAsk, onHelp, onLeave, busy }: {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const greeting = !!guide?.state && !guide.isDone('welcome') && guide.state.progress.uploads === 0;
   // Sample records already added (from the timeline, say) are not offered again.
   const [samplesIn, setSamplesIn] = useState(false);
+  const greeting = !!guide?.state && showsGreeting(guide.isDone('welcome'), guide.state.progress.uploads, samplesIn);
   const readSamples = () => { api.demo.state().then(s => setSamplesIn(s.loaded)).catch(() => undefined); };
   useEffect(readSamples, []);
   useOnDataChanged(readSamples);
@@ -67,7 +70,7 @@ export function ChatWelcome({ suggestions, onAsk, onHelp, onLeave, busy }: {
         </div>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => { finish(); navigate('/upload'); onLeave(); }} className="rounded-full bg-brand-600 px-3.5 py-1.5 text-xs font-medium text-white transition hover:bg-brand-700">{t('Add a document')}</button>
-          {!samplesIn && <button type="button" onClick={() => void samples()} disabled={loading} className="rounded-full border border-brand-200 bg-brand-50 px-3.5 py-1.5 text-xs font-medium text-brand-700 transition hover:bg-brand-100 disabled:opacity-50">{loading ? t('Setting up…') : t('Look around with sample records')}</button>}
+          <button type="button" onClick={() => void samples()} disabled={loading} className="rounded-full border border-brand-200 bg-brand-50 px-3.5 py-1.5 text-xs font-medium text-brand-700 transition hover:bg-brand-100 disabled:opacity-50">{loading ? t('Setting up…') : t('Look around with sample records')}</button>
         </div>
         {error && <p className="text-xs text-red-600" role="alert">{error}</p>}
         <p className="pt-1 text-xs text-gray-500">{t('Or ask how it works:')}</p>

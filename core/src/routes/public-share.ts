@@ -6,11 +6,12 @@ import { extname } from 'path';
 import { getStore, type ResolvedShareLink, type Store } from '../store/index.js';
 import { resolveStoredScope, ScopeError } from '../share-scope.js';
 import { isSupportedLanguage, SUPPORTED_LANGUAGES } from '../languages.js';
-import { translateDocument, warmTranslations } from '../translation.js';
+import { keptTerms, translateDocument, warmTranslations } from '../translation.js';
 import { translationEnabled } from '../config.js';
 import { buildSeries } from './trends.js';
 import { streamReply } from './ndjson.js';
 import { chatEnabled, landingUrl, publicUrl } from '../config.js';
+import { parseOverview } from '../share-overview.js';
 import { getChatLlm } from '../llm/index.js';
 import { askSharedAgent } from '../chat/agent.js';
 import { MAX_QUESTION, MAX_TURN, MAX_TURNS, trimHistory } from '../chat/index.js';
@@ -79,7 +80,11 @@ export async function publicShareRoutes(app: HttpApp) {
     const store = getStore();
     const link = await store.shareLinks.findLive(req.params.link);
     if (!link) return reply.status(410).send({ error: 'link expired or revoked' });
-    return reply.header('Cache-Control', 'no-store').send({ language: link.language, languages: SUPPORTED_LANGUAGES, translation: translationEnabled(), chat: link.allowChat && chatEnabled(), landing_url: landingUrl() });
+    return reply.header('Cache-Control', 'no-store').send({
+      language: link.language, languages: SUPPORTED_LANGUAGES, translation: translationEnabled(), chat: link.allowChat && chatEnabled(), landing_url: landingUrl(),
+      // What the owner told the doctor about the link (whose records, a note, what they take now), and when it was made and ends: the page's first screen.
+      overview: parseOverview(link.overview), created_at: link.createdAt ?? null, expires_at: link.expiresAt,
+    });
   });
 
   /**
@@ -177,6 +182,25 @@ export async function publicShareRoutes(app: HttpApp) {
       if (result === 'not_found') return reply.status(404).send({ error: 'not found' });
       if (result === null) return reply.status(502).send({ error: 'the document could not be translated right now' });
       return reply.header('Cache-Control', 'no-store').send(result);
+    },
+  );
+
+  // The words the owner wrote on what the link shares (a tag, an episode's title) in the reader's language, kept as terms and translated in the background (`pending` says to ask again).
+  // Only the tags and episode titles of the shared documents are named, never the rest of the archive's.
+  app.get<{ Params: { link: string }; Querystring: { lang?: string } }>(
+    '/api/share/:link/terms',
+    async (req, reply) => {
+      const language = req.query.lang;
+      const none = { specialties: {}, tests: {}, tags: {}, episodes: {}, pending: false };
+      if (!isSupportedLanguage(language)) return reply.header('Cache-Control', 'no-store').send(none);
+      const opened = await openLink(req, reply);
+      if (!opened) return;
+      const { link, store } = opened;
+      const docs = await store.documents.listForShare(link);
+      const tags = [...new Set((await Promise.all(docs.map(d => store.tags.namesForDocument(link.userId, d.id)))).flat())];
+      const shared = new Set(docs.map(d => d.id));
+      const episodes = (await store.episodes.list(link.userId, ['confirmed'])).filter(e => e.document_ids.some(id => shared.has(id))).map(e => e.title).filter((x): x is string => !!x);
+      return reply.header('Cache-Control', 'no-store').send(await keptTerms(link.userId, language, { tags, episodes }));
     },
   );
 

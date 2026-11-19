@@ -60,7 +60,7 @@ export function createShareHost(deps: { store: () => Store; mail: () => boolean 
       // The copy is built by the store, in a store of its own, and leaves it as changes: the form in which records travel, not a database file.
       const result = await store.slice({
         userId, documentIds, includeText: link.allow_chat, includeScans: link.include_scans,
-        link: { id: link.id, label: link.label, createdAt: link.created_at, expiresAt: link.expires_at, language: link.language, allowChat: link.allow_chat },
+        link: { id: link.id, label: link.label, createdAt: link.created_at, expiresAt: link.expires_at, language: link.language, allowChat: link.allow_chat, overview: link.overview ?? null },
         imagePathOf: (pageId, from) => { const name = nameOf(pageId, from); names.set(pageId, name); return SHARE_IMAGE(name); },
         // What the owner already had translated goes with it, so a reader in that language is not kept waiting for the model again.
         finish: copy => carryTranslations(userId, documentIds, copy),

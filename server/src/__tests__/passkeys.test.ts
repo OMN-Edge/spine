@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest
 import { buildTestApp, loginAs } from './helpers/app.js';
 import { createTestUser, TEST_PASSWORD } from './helpers/seed.js';
 import { SoftAuthenticator } from 'spine-core/testing/authenticator.js';
-import { relyingParty } from '../passkeys.js';
+import { relyingParty } from '../identity/index.js';
 import { getAccountsStore } from 'spine-core/store/index.js';
 
 let app: Awaited<ReturnType<typeof buildTestApp>>;

@@ -54,10 +54,11 @@ import type {
  *     here.
  *  7. `cookieSessions.*` — the cookie session's state, found by the digest of the cookie's random id before there is an acting
  *     user (it is what says who that is), and holding no record.
- *  8. `billing.findBySubscription`/`findByCustomer`/`recordEvent`/`pruneEvents`/`foundingHeld` — the payment provider's side (SECURITY.md **M-45**):
+ *  8. `billing.findBySubscription`/`findByCustomer`/`recordEvent`/`pruneEvents`/`foundingHeld`/`subscriptions` (the operator's list of what accounts pay for) and the invoice queue (`queueInvoice`, `invoicesDue`, `invoice`, `updateInvoice`) — the payment provider's side (SECURITY.md **M-45**):
  *     a webhook names the provider's own ids, which the server recorded when it first heard of them, and the count of founding prices is of
  *     all accounts. Nothing here answers more than a plan.
- *  9. `metrics.*` and `waitlist.*` — counts a day under a name, and addresses of people who are not accounts: neither belongs to a user.
+ *  9. `metrics.*`, `waitlist.*`, `settings.*` and `catalog.*` — counts a day under a name, addresses of people who are not accounts, the few settings
+ *     the operator changes from the admin page (targets, budgets), and the products and prices the operator sells: none of them belongs to a user.
  */
 /**
  * What the server keeps: accounts, sessions, the vault's sealed objects and the sealed copies of shares (SECURITY.md **M-37**). It is a
@@ -71,11 +72,14 @@ export interface AccountsStore {
   vault: VaultRepository;
   shared: SharedRepository;
   enrolments: EnrolmentRepository;
+  invitations: InvitationRepository;
   cookieSessions: CookieSessionRepository;
   maintenance: MaintenanceRepository;
   billing: BillingRepository;
   metrics: MetricsRepository;
   waitlist: WaitlistRepository;
+  settings: OperatorSettingsRepository;
+  catalog: CatalogRepository;
   delegations: DelegationRepository;
   family: FamilyRepository;
   reminderDates: ReminderDateRepository;
@@ -104,7 +108,9 @@ export interface SliceOptions {
   documentIds: string[];
   includeText: boolean;
   includeScans: boolean;
-  link: { id: string; label: string | null; createdAt: string; expiresAt: string; language: string | null; allowChat: boolean };
+  link: { id: string; label: string | null; createdAt: string; expiresAt: string; language: string | null; allowChat: boolean;
+    /** What the owner tells the doctor (`share-overview.ts`): required, so a copy made without it cannot be written by mistake (the doctor would see no name and no note). */
+    overview: string | null };
   /** Where a page's image is in the share's own file system (when scans are included). */
   imagePathOf: (pageId: string, from: string) => string;
   /**
@@ -236,6 +242,9 @@ export interface UserRepository {
   /** Replaces the hash and bumps `auth_version`, ending the user's other sessions. */
   setPassword(id: string, passwordHash: string): Promise<number>;
   list(): Promise<Array<Pick<UserRecord, 'id' | 'email' | 'created_at' | 'email_verified_at' | 'approved'>>>;
+  /** The accounts waiting for the administrator's approval, oldest first, a page of them and how many there are in all (the admin page's list: never every account). */
+  listWaiting(limit: number, offset: number): Promise<Array<Pick<UserRecord, 'id' | 'email' | 'created_at' | 'email_verified_at' | 'approved'>>>;
+  countWaiting(): Promise<number>;
   markVerified(id: string, at: string): Promise<void>;
   /** Approves an account that was waiting, and confirms its address if it was not (the administrator vouches for it). False if it was not waiting. */
   approve(id: string, at: string): Promise<boolean>;
@@ -360,6 +369,8 @@ export interface PageRepository {
   create(userId: string, page: NewPage): Promise<void>;
   /** Ordered by page number — ingestion depends on that order. */
   listForSourceFile(userId: string, sourceFileId: string): Promise<PageSummary[]>;
+  /** How many pages the person keeps, hidden ones and those of documents set aside or waiting to be read included: what a plan's limit on pages counts. */
+  count(userId: string): Promise<number>;
   /** The document's pages the owner has not hidden. */
   listForDocument(userId: string, documentId: string): Promise<PageWithoutPath[]>;
   /**
@@ -486,8 +497,6 @@ export interface DocumentRepository {
   renameProvider(userId: string, from: string, to: string | null): Promise<number>;
   /** Those of these documents that are the user's and shown (not set aside, grouping confirmed), in the order given. */
   listShownByIds(userId: string, ids: string[]): Promise<Document[]>;
-  /** How many documents the person keeps, set aside and waiting to be read included: what a plan's limit on documents counts. */
-  count(userId: string): Promise<number>;
   /** Which of these ids are the user's. For checking a share link names only their own. */
   ownedIds(userId: string, ids: string[]): Promise<string[]>;
   /** Resolved from the link and scoped by the link's owner — P12's exception. */
@@ -607,6 +616,8 @@ export interface MeasurementName {
   latest_value_text: string;
   latest_taken_on: string | null;
   latest_flag: MeasurementFlag | null;
+  /** How many of its values are numbers, which is what a trend is made of. */
+  numeric_count: number;
 }
 
 /** One value of one test, with the document it came from: one point on a chart. */
@@ -754,6 +765,19 @@ export interface SessionRecord {
 }
 
 /** An offer to let a new device in, as the signed-in side sees it. Never the sealed key. */
+/**
+ * Who invited an account, kept only until the account first buys a plan (the inviter is then rewarded, `server/src/plans/invitations.ts`) or the link is too old.
+ * The row is the invitee's (`user_id`); the inviter has no list of the people they invited, and is told nothing of who bought. Deleting either account deletes the row.
+ */
+export interface InvitationRepository {
+  /** Notes that `inviterId` invited the account, once: false where the account already has a row. */
+  record(userId: string, inviterId: string, at: string): Promise<boolean>;
+  /** The account's inviter, if it has one made at `notBefore` or later, and forgets it: only one call gets the answer. */
+  take(userId: string, notBefore: string): Promise<string | null>;
+  /** Forgets every link made before `before`; answers how many. */
+  sweep(before: string): Promise<number>;
+}
+
 export interface EnrolmentOffer {
   id: string;
   state: 'offered' | 'requested' | 'approved' | 'denied';
@@ -864,13 +888,13 @@ export interface FileRegistryRepository {
 /** What an account pays for (`billing/plans.ts` says what that gives). One row per account; none means it has never subscribed. */
 export interface SubscriptionRecord {
   user_id: string;
-  /** Who bills it: `paddle`, or `operator` for an account the operator granted (CLI `grant-plan`). */
-  provider: 'paddle' | 'operator';
+  /** Who bills it: `stripe`, or `operator` for an account the operator granted (CLI `grant-plan`). */
+  provider: 'stripe' | 'operator';
   customer_id: string | null;
   subscription_id: string | null;
   interval: 'month' | 'year' | null;
   /** What it is a subscription to. */
-  plan: 'premium' | 'family';
+  plan: 'essential' | 'premium' | 'family';
   /** The provider's word: active, trialing, past_due, paused, canceled. */
   status: string;
   /** Pays the founding price, locked for as long as the subscription runs. */
@@ -934,18 +958,161 @@ export interface ReminderDateRepository {
 
 export interface BillingRepository {
   get(userId: string): Promise<SubscriptionRecord | null>;
+  /** The accounts that have a subscription row, the most recently changed first: the operator's list on the admin page (plan, status, end; never what an account holds). */
+  subscriptions(limit: number, offset?: number): Promise<SubscriptionRecord[]>;
+  subscriptionCount(): Promise<number>;
   /** The provider's side (a webhook) names a subscription or a customer, not a user: the fifth and sixth lookups with no acting user (SECURITY.md **M-45**). */
   findBySubscription(subscriptionId: string): Promise<SubscriptionRecord | null>;
   findByCustomer(customerId: string): Promise<SubscriptionRecord | null>;
   /** Writes the account's row, replacing any. An account's subscription is one row. */
   put(record: SubscriptionRecord): Promise<void>;
-  /** Accounts that hold the founding price now (not counting ended subscriptions). */
-  foundingHeld(now: string): Promise<number>;
+  /** Founding places taken: every account that ever had the founding price, a cancelled subscription's too and a deleted account's (a place, once taken, stays taken for good). */
+  foundingHeld(): Promise<number>;
   /** Records a provider event's id; false if it was already seen, so a repeated delivery is applied once. */
   recordEvent(eventId: string, at: string): Promise<boolean>;
   /** Forgets event ids older than this. */
   pruneEvents(before: string): Promise<number>;
+  /** The payment provider's customer record for the account's billing details (none until it gave them): only its id; what it holds is at the provider. */
+  customerOf(userId: string): Promise<string | null>;
+  setCustomer(userId: string, customerId: string, at: string): Promise<void>;
+  /** Puts a payment on the queue of invoices to issue (`billing/invoicing/queue.ts`), by the provider's reference for it; false if it was there already, so a payment told twice is invoiced once. The account may be gone or unknown: the invoice is owed all the same. */
+  queueInvoice(ref: string, userId: string | null, at: string): Promise<boolean>;
+  /** The invoices that are waiting (to be issued, or to be sent to e-Factura) and whose time has come, oldest first. */
+  invoicesDue(now: string, limit: number): Promise<QueuedInvoice[]>;
+  invoice(ref: string): Promise<QueuedInvoice | null>;
+  /** The invoice as a person reads it (JSON), kept once for a payment whose invoice a service issued, and read for Spine's own PDF; the first one kept stands, since an invoice does not change. */
+  keepInvoiceDocument(ref: string, document: string, at: string): Promise<void>;
+  invoiceDocument(ref: string): Promise<string | null>;
+  /** The kept documents made from `from` up to but not including `to` (ISO times), oldest first: for the month's summary, which keeps the ones whose own date is in the month. */
+  invoiceDocumentsMadeBetween(from: string, to: string): Promise<Array<{ ref: string; document: string }>>;
+  /** A buyer's request to withdraw from a purchase: one open at a time for an account (false if there is one). */
+  requestWithdrawal(id: string, userId: string, at: string): Promise<boolean>;
+  /** The requests in a state (every state if null), newest first. */
+  withdrawals(state: WithdrawalState | null, limit: number, offset?: number): Promise<WithdrawalRecord[]>;
+  withdrawalCount(state: WithdrawalState | null): Promise<number>;
+  /** How many of the account's requests ended in a refund. */
+  refundedWithdrawalsOf(userId: string): Promise<number>;
+  withdrawal(id: string): Promise<WithdrawalRecord | null>;
+  /** The account's request that has not been decided, if any. */
+  openWithdrawalOf(userId: string): Promise<WithdrawalRecord | null>;
+  decideWithdrawal(id: string, decision: { state: 'refunded' | 'declined'; refundedMinor: number | null; note: string | null }, at: string): Promise<void>;
+  /** The account's invoices (and their stornos), newest first, and when its first payment was queued (the day a purchase began). */
+  invoicesOf(userId: string): Promise<QueuedInvoice[]>;
+  /** The invoices and credit notes that are made (they have a number), newest first, a page of them, and how many there are: the account's list. */
+  invoicesMadeOf(userId: string, limit: number, offset?: number): Promise<QueuedInvoice[]>;
+  invoicesMadeCountOf(userId: string): Promise<number>;
+  firstPaymentAt(userId: string): Promise<string | null>;
+  /** The invoices that stopped for the operator (`failed`, `check`), newest first, and how many there are in each state. */
+  invoicesStopped(limit: number, offset?: number): Promise<QueuedInvoice[]>;
+  invoiceCounts(): Promise<Record<InvoiceState, number>>;
+  /** What the invoices made in a calendar year count for in the EU consumer threshold (minor units of EUR). */
+  euSalesMinor(year: number): Promise<number>;
+  updateInvoice(ref: string, patch: InvoicePatch, at: string): Promise<void>;
+
+  /**
+   * What the operator's own e-Factura link keeps (`packages/anaf/`): the sealed authorisation ANAF gave (only the operator's, never an account's), the numbered
+   * documents it made, and the number each series has reached. None of these is about one account, so none takes a user.
+   */
+  efacturaTokens(): Promise<EfacturaTokens | null>;
+  efacturaSaveTokens(tokens: EfacturaTokens): Promise<void>;
+  /** Starts an authorisation: remembers the `state` the browser must come back with, replacing any earlier one. */
+  efacturaBeginAuthorisation(state: string, at: string): Promise<void>;
+  /** Ends it: true only if `state` is the one remembered and not older than `maxAgeMs`; it can be used once. */
+  efacturaFinishAuthorisation(state: string, now: string, maxAgeMs: number): Promise<boolean>;
+  /**
+   * The numbered document for a draft: the one it has, or a new one with the series' next number. Done in one transaction, so the numbers have no gaps (a document is made
+   * for a draft once, and a number is never given twice or given and lost).
+   */
+  efacturaReserve(draftId: string, kind: EfacturaKind, series: string, issueDate: string, at: string, reverses: string | null): Promise<EfacturaDocument>;
+  efacturaDocument(draftId: string): Promise<EfacturaDocument | null>;
+  efacturaUpdateDocument(draftId: string, patch: EfacturaDocumentPatch, at: string): Promise<void>;
+  /** The newest documents, for the operator's page. */
+  efacturaDocuments(limit: number, offset?: number): Promise<EfacturaDocument[]>;
+  /** The documents dated from `from` up to but not including `to` (`YYYY-MM-DD`), by date and number: for the month's summary (without the XML and ANAF's signed answer, which are large). */
+  efacturaDocumentsDatedBetween(from: string, to: string): Promise<Array<Pick<EfacturaDocument, 'draft_id' | 'kind' | 'series' | 'number' | 'issue_date' | 'reverses' | 'input' | 'anaf_index' | 'anaf_state'>>>;
+  efacturaDocumentCount(): Promise<number>;
 }
+
+/** The authorisation ANAF gave: the access and refresh tokens sealed as one string (AES-GCM; the key is the operator's, not in the store), and when each ends. */
+export interface EfacturaTokens {
+  sealed: string;
+  access_expires_at: string;
+  refresh_expires_at: string;
+  authorised_at: string;
+  updated_at: string;
+}
+
+export type EfacturaKind = 'invoice' | 'credit';
+
+/** A numbered invoice or credit note and how far it has got with ANAF. The XML is kept (an invoice is kept ten years), and the signed answer ANAF gives, which it keeps for 60 days only. */
+export interface EfacturaDocument {
+  draft_id: string;
+  kind: EfacturaKind;
+  series: string;
+  number: number;
+  issue_date: string;
+  /** The draft id of the invoice a credit note reverses. */
+  reverses: string | null;
+  xml: string | null;
+  /** What the document was made from (the issuer's own JSON), kept so a credit note, or the same invoice made again after ANAF refused it, is made from the same data. */
+  input: string | null;
+  /** ANAF's upload index, once it has the file. */
+  anaf_index: string | null;
+  /** `sent` (ANAF has it, undecided), `ok`, `nok`, or `abroad` (the buyer is outside Romania: nothing to send). */
+  anaf_state: 'sent' | 'ok' | 'nok' | 'abroad' | null;
+  anaf_message: string | null;
+  /** ANAF's answer as it sent it (a zip: the invoice and the Ministry's signature), base64. */
+  signed: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type EfacturaDocumentPatch = Partial<Pick<EfacturaDocument, 'xml' | 'input' | 'anaf_index' | 'anaf_state' | 'anaf_message' | 'signed'>>;
+
+/**
+ * Where a payment's invoice has got to. Only references and numbers, never the buyer: the name and address are read from the payment provider each
+ * time they are needed. `pending`: not yet issued. `issued`: made, and waiting to be sent to e-Factura. `done`: nothing more to do. `failed`: refused, or tried
+ * too often; the operator looks. `check`: an attempt ended with no answer at a service that cannot tell a repeat from a new invoice, so nothing is sent again until the operator has looked.
+ */
+export type InvoiceState = 'pending' | 'issued' | 'done' | 'failed' | 'check';
+
+export interface QueuedInvoice {
+  /** The provider's reference for the payment (a checkout session or an invoice of its own): one invoice for each. */
+  ref: string;
+  user_id: string | null;
+  state: InvoiceState;
+  attempts: number;
+  /** Not before this (ISO). */
+  next_attempt_at: string;
+  /** What went wrong the last time, in the issuer's words (never what was sent), cut short. */
+  last_error: string | null;
+  /** The issuing service's own id, series and number of the invoice, once it is made. */
+  issuer_ref: string | null;
+  series: string | null;
+  number: string | null;
+  /** Where an invoice that stopped had got to (`pending` or `issued`), for the operator's retry. */
+  resume: 'pending' | 'issued' | null;
+  /** What the invoice counts for in the EU consumer threshold, in minor units of EUR (negative for a storno); null where it counts for nothing. */
+  eu_minor: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type WithdrawalState = 'requested' | 'refunded' | 'declined';
+
+export interface WithdrawalRecord {
+  id: string;
+  user_id: string;
+  state: WithdrawalState;
+  requested_at: string;
+  decided_at: string | null;
+  /** What was paid back, in minor units, once refunded. */
+  refunded_minor: number | null;
+  /** The operator's reason, for a request it declined. */
+  note: string | null;
+}
+
+export type InvoicePatch = Partial<Pick<QueuedInvoice, 'state' | 'attempts' | 'next_attempt_at' | 'last_error' | 'issuer_ref' | 'series' | 'number' | 'resume' | 'eu_minor'>>;
 
 /**
  * Letting another account see (and, for a guardian, write to) one profile of the owner's vault (FR-PRF-02, SECURITY.md **M-49**). The
@@ -1042,6 +1209,37 @@ export interface MetricsRepository {
   bump(name: string, day: string): Promise<void>;
   /** Totals by name since the day (YYYY-MM-DD). */
   totals(sinceDay: string): Promise<Array<{ name: string; total: number }>>;
+}
+
+/** The operator's settings changed from the admin page (`server/src/operator-settings.ts` says which there are, and checks a value before it is kept). A name and its value as text; none belongs to a user. */
+export interface OperatorSettingsRepository {
+  all(): Promise<Array<{ key: string; value: string; updated_at: string }>>;
+  set(key: string, value: string, at: string): Promise<void>;
+  /** Forgets a setting, so its default applies again. */
+  clear(key: string): Promise<void>;
+}
+
+/** A thing the operator sells, as the application declared it (its `id`) and the operator named it. */
+export interface CatalogProduct { id: string; name: string; description: string | null; on_sale: number; updated_at: string }
+/** One price of a product: an amount in minor units for a billing period (`once` for a thing bought once) in a currency, as a numbered version. A version is never changed. */
+export interface CatalogPrice { id: string; product_id: string; period: 'month' | 'year' | 'once'; currency: string; amount_minor: number; version: number; created_at: string }
+/** What a provider calls a price: where a version was sent, and when it was taken off sale there (`archived_at`; the provider keeps it for the subscribers who bought it). */
+export interface CatalogLink { price_id: string; provider: string; provider_product_id: string; provider_price_id: string; synced_at: string; archived_at: string | null }
+
+/** The operator's product catalog (`packages/billing/src/products.ts`): none of it belongs to a user. */
+export interface CatalogRepository {
+  products(): Promise<CatalogProduct[]>;
+  /** Makes the product or changes what the operator may edit (name, description, whether it is on sale). */
+  saveProduct(product: Omit<CatalogProduct, 'updated_at'>, at: string): Promise<void>;
+  /** Every version of every price, oldest first. */
+  prices(): Promise<CatalogPrice[]>;
+  /** The next version of a price, made in one transaction so two writers do not make the same number. */
+  addPrice(price: Pick<CatalogPrice, 'product_id' | 'period' | 'currency' | 'amount_minor'>, at: string): Promise<CatalogPrice>;
+  links(provider: string): Promise<CatalogLink[]>;
+  /** Records where a version is at a provider (made, or found there again). */
+  saveLink(link: Omit<CatalogLink, 'archived_at'>): Promise<void>;
+  /** Records that a version was taken off sale at the provider. */
+  archiveLink(priceId: string, provider: string, at: string): Promise<void>;
 }
 
 /** People who asked to be told when Spine opens. Not accounts: an address and a time. */
@@ -1156,6 +1354,8 @@ export interface ShareLinkPatch {
   language?: string | null;
   scope?: ShareLink['scope'];
   scopeValue?: string | null;
+  /** The stored text of the overview (`share-overview.ts`), or null to clear it. */
+  overview?: string | null;
 }
 
 export interface AccessSummary {
@@ -1221,6 +1421,7 @@ export interface NewShareLink {
   language: string | null;
   requireApproval: boolean;
   allowChat: boolean;
+  overview?: string | null;
 }
 
 /** A live link with its owner resolved, which is what scopes a share read. */
@@ -1236,11 +1437,15 @@ export interface ResolvedShareLink {
   language: string | null;
   requireApproval: boolean;
   allowChat: boolean;
+  /** When the link was made, for the page the recipient opens. */
+  createdAt?: string;
+  /** What the owner tells the doctor (`share-overview.ts`), as stored. */
+  overview?: string | null;
 }
 
 /** A document's details in another language, kept until what was translated changes (see the schema files). */
 /** What a doctor's specialty or a test's name is called in a language, by the text it translates. */
-export type TermKind = 'specialty' | 'test';
+export type TermKind = 'specialty' | 'test' | 'tag' | 'episode';
 export interface TermTranslationRepository {
   forLanguage(userId: string, language: string): Promise<Array<{ kind: TermKind; sourceText: string; translated: string }>>;
   /** Adds or replaces these (by kind, language and text). */

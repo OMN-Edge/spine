@@ -1,9 +1,9 @@
-import { emailSecondFactorRequired } from './email-code.js';
+import { emailSecondFactorRequired } from './identity/index.js';
 import { formatReport, usageReport } from './usage-report.js';
 import { pathToFileURL } from 'url';
 import { v4 as uuidv4 } from 'uuid';
 import { getAccountsStore } from 'spine-core/store/index.js';
-import { RESET_TTL_MS, deleteAccount, describeAccount, issueUserToken, resetLink } from './accounts.js';
+import { RESET_TTL_MS, deleteAccount, describeAccount, issueUserToken, resetLink } from './identity/index.js';
 import { useAccountsStore } from './store.js';
 import { useModelProviders } from './providers.js';
 import {
@@ -12,7 +12,7 @@ import {
   hashPassword,
   isPlausibleEmail,
   normaliseEmail,
-} from './passwords.js';
+} from './identity/index.js';
 
 /**
  * Operator commands. Accounts are created here, not through the web app: there is
@@ -30,6 +30,7 @@ import {
  *   npm run cli -- waitlist-remove <email>
  *   npm run cli -- metrics [--days=N]
  *   npm run cli -- list-users
+ *   npm run cli -- invoices [retry|settle <reference>]   the invoices that stopped for the operator, the EU consumer sales so far, and what to do about one
  *   npm run cli -- usage [--month=YYYY-MM] [--top=N]   what each account really used, and how near the hidden ceilings (estimates, numbers only)
  *   npm run check-embeddings      (with relay.env too: the embedding provider's settings are the relay's)
  *
@@ -57,6 +58,7 @@ const USAGE = `usage:
   metrics [--days=N]
   delete-user <email> [--yes]
   list-users
+  invoices [retry|settle <reference>]
   usage [--month=YYYY-MM] [--top=N]
   check-embeddings`;
 
@@ -226,9 +228,9 @@ export async function runCli(args: string[], io: CliIo): Promise<number> {
       const days = daysFlag ? Number(daysFlag.split('=')[1]) : 365;
       if (!Number.isInteger(days) || days < 1 || days > 3650) { io.err('--days must be a whole number from 1 to 3650'); return 2; }
       const planFlag = flags.find(flag => flag.startsWith('--plan='))?.split('=')[1] ?? 'premium';
-      if (planFlag !== 'premium' && planFlag !== 'family') { io.err('--plan must be premium or family'); return 2; }
+      if (planFlag !== 'essential' && planFlag !== 'premium' && planFlag !== 'family') { io.err('--plan must be essential, premium or family'); return 2; }
       const existing = await store.billing.get(user.id);
-      if (existing?.provider === 'paddle' && existing.status !== 'canceled') { io.err(`${email} pays for a plan; change it in the payment provider's dashboard`); return 1; }
+      if (existing && existing.provider !== 'operator' && existing.status !== 'canceled') { io.err(`${email} pays for a plan; change it in the payment provider's dashboard`); return 1; }
       const now = new Date();
       await store.billing.put({
         user_id: user.id, provider: 'operator', customer_id: null, subscription_id: null, interval: null, plan: planFlag, status: 'active', founding: false,
@@ -282,6 +284,29 @@ export async function runCli(args: string[], io: CliIo): Promise<number> {
       if (!/^\d{4}-\d{2}$/.test(month)) { io.err('--month must be YYYY-MM'); return 2; }
       const top = Number(flags.find(f => f.startsWith('--top='))?.slice('--top='.length) ?? 20);
       for (const line of formatReport(await usageReport(store, month), month, Number.isInteger(top) && top > 0 ? top : 20)) io.out(line);
+      return 0;
+    }
+    // The invoices the operator owes for payments the provider is not the seller of (docs/billing.md): what stopped and why, and the EU consumer sales so far this year.
+    // `retry` puts one that stopped back where it had got to; `settle` marks it done because it was made or mended by hand. References and the service's words, never a buyer.
+    case 'invoices': {
+      const { retryInvoice, settleInvoice } = await import('./billing/invoicing/queue.js');
+      const { euSalesTotals } = await import('spine-billing/invoicing/threshold.js');
+      const [action, ref] = positional;
+      if (action === 'retry' || action === 'settle') {
+        if (!ref) { io.err(`${action} needs the invoice's reference (the first column of the list)`); return 2; }
+        const done = await (action === 'retry' ? retryInvoice(ref) : settleInvoice(ref));
+        if (!done.ok) { io.err(done.error); return 1; }
+        io.out(action === 'retry' ? `${ref} will be tried again within the hour (or at once, by the next pass)` : `${ref} is marked done`);
+        return 0;
+      }
+      if (action !== undefined) { io.err('invoices [retry|settle <reference>]'); return 2; }
+      const counts = await store.billing.invoiceCounts();
+      io.out(Object.entries(counts).map(([state, n]) => `${state} ${n}`).join('\t'));
+      const stopped = await store.billing.invoicesStopped(50);
+      for (const r of stopped) io.out(`${r.ref}\t${r.state}\ttried ${r.attempts}\t${r.series ? `${r.series}-${r.number}\t` : ''}${r.last_error ?? ''}`);
+      if (stopped.length === 0) io.out('nothing is waiting for the operator');
+      const eu = await euSalesTotals(store);
+      io.out(`EU consumer sales outside Romania: ${(eu.thisYear / 100).toFixed(2)} EUR in ${eu.year}, ${(eu.lastYear / 100).toFixed(2)} EUR in ${eu.year - 1}, against ${(eu.limit / 100).toFixed(0)} EUR`);
       return 0;
     }
     case 'list-users': {

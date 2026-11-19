@@ -2,21 +2,22 @@ import type { SubscriptionRecord } from '../store/types.js';
 
 /**
  * What each plan includes, and the one function that says what an account has now. Pure: the relay, the routes and the account page all
- * ask it, so a limit is written once. Prices are Paddle's (the operator creates them there and names their ids in the environment); the
- * amounts here are what the page shows, and must match them (`docs/billing.md`).
+ * ask it, so a limit is written once. Prices are Stripe's: the operator creates them there and names their ids in the environment.
+ *
+ * **No amount is written here**: what a plan costs is what Stripe says about the price the operator named in the environment (`server/src/billing/catalog.ts`).
  *
  * With billing off (`SPINE_BILLING`, the default, and every self-hosted instance) nothing here applies: `entitlementsOf` is not asked.
  */
-export type PlanId = 'trial' | 'free' | 'premium' | 'family';
+export type PlanId = 'trial' | 'free' | 'essential' | 'premium' | 'family';
 /** What a subscription can be for. */
-export type PaidPlan = 'premium' | 'family';
+export type PaidPlan = 'essential' | 'premium' | 'family';
 
 /** A page of AI processing is 1000, so a call can cost a part of one and the totals stay whole numbers. */
 export const PAGE = 1000;
-export const TRIAL_MONTHS = 6;
+export const TRIAL_MONTHS = 3;
 /** The first this many paying accounts keep the founding price for as long as they stay subscribed. */
 export const FOUNDING_LIMIT = 500;
-/** A payment that failed leaves the account its plan this long (Paddle retries and reminds meanwhile). */
+/** A payment that failed leaves the account its plan this long (Stripe retries and reminds meanwhile). */
 export const PAST_DUE_GRACE_DAYS = 7;
 /** An account that left a family (or was removed) cannot take a seat in another for this long, so seats cannot be passed around; coming back to the same family is allowed. */
 export const SEAT_COOLDOWN_DAYS = 30;
@@ -24,13 +25,6 @@ export const SEAT_COOLDOWN_DAYS = 30;
 export const SEAT_INVITE_DAYS = 7;
 /** Invitations that may wait at once. */
 export const SEAT_INVITES_WAITING = 10;
-
-export const PRICES = {
-  premium: { year: 39, month: 3.99 },
-  founding: { year: 29 },
-  family: { year: 79, month: 7.99 },
-  currency: 'EUR',
-} as const;
 
 /**
  * What the AI does is counted in meters a person can read, each an exact count of its own: **pages** read (`pages`: the pages of the documents
@@ -44,7 +38,7 @@ export const PRICES = {
  * so `messages` and `translated` are counted (the account page shows them) and have no allowance. Behind them are hidden fair-use ceilings, high
  * enough that no use of an archive meets them and low enough that an abuse of an account, or an app that does not tell the truth about what it
  * sends, cannot make a plan pay for more than a bounded amount; they are not here, and not in what a browser is sent: the server holds them in its
- * configuration (`server/src/billing/fair-use.ts`). The cost meters (`reading`, `chat`, `translation`, in thousandths of one page of reading, the unit
+ * configuration (`server/src/plans/fair-use.ts`). The cost meters (`reading`, `chat`, `translation`, in thousandths of one page of reading, the unit
  * of `taskCost`) are what they are counted in.
  */
 export type Count = 'pages' | 'messages' | 'translated' | 'import';
@@ -67,7 +61,7 @@ export interface Entitlements {
   memberCap: Allowances | null;
   /** `trial`: reading once, for the whole trial; `month`: a calendar month (UTC). Chat and translation are always by the month. */
   aiPeriod: 'trial' | 'month';
-  /** How many months of the page allowance can be kept: what a month does not use carries into the next, up to this many months' worth (`billing/carry.ts`). One: nothing carries. */
+  /** How many months of the page allowance can be kept: what a month does not use carries into the next, up to this many months' worth (`plans/carry.ts`). One: nothing carries. */
   carryMonths: number;
   /** Bytes of sealed objects an account may keep (on a plan with seats, all its accounts together), or null for the instance's own ceiling (`vaultLimits`); never above that ceiling. */
   vaultBytes: number | null;
@@ -81,8 +75,8 @@ export interface Entitlements {
    */
   linkViews: number;
   linkBytes: number;
-  /** Documents a person may keep, or null for no limit. Counted by the app, not the server, which cannot see into sealed records (`plan-limits.ts`). */
-  documents: number | null;
+  /** Pages a person may keep, in all their documents (hidden ones too), or null for no limit. Counted by the app, not the server, which cannot see into sealed records (`plan-limits.ts`). */
+  keptPages: number | null;
   /** Translating documents, for the owner and for a share's recipient. */
   translation: boolean;
   /** Asking questions of the records (the assistant), and a share's chat. */
@@ -91,6 +85,8 @@ export interface Entitlements {
   linking: boolean;
   /** Related documents by meaning (embeddings). */
   related: boolean;
+  /** Downloading a chosen set of documents as one PDF for an insurer or a doctor who wants files (a device-side export, so the page holds to it; nothing it costs the server). */
+  filesExport: boolean;
   /** A share link that waits for the owner to approve a visitor. */
   approvalMode: boolean;
   /**
@@ -115,29 +111,39 @@ export const IMPORT_PAGES = 250;
 export const CARRY_MONTHS = 3;
 
 /**
- * Allowances from what a plan limits: the pages and the import. Using what was added (`messages`, `translated`) has none where the plan includes it at all (the
- * free plan does not), and the cost meters have none here: their ceilings are the server's to hold.
+ * Allowances from what a plan limits: the pages and the import, and, on the trial only, the questions and the translated pages, which are visible totals for
+ * the whole trial (`uses`: true is no allowance, a number is the total). Using what was added has no allowance on a paid plan that includes it (the free plan
+ * does not include it), and the cost meters have none here: their ceilings are the server's to hold.
  */
-const allowances = (c: { pages: number; import: number }, uses: boolean): Allowances => ({
-  pages: c.pages, import: c.import, messages: uses ? UNLIMITED : 0, translated: uses ? UNLIMITED : 0,
+const allowances = (c: { pages: number; import: number }, uses: boolean | { messages: number; translated: number }): Allowances => ({
+  pages: c.pages, import: c.import,
+  messages: uses === true ? UNLIMITED : uses === false ? 0 : uses.messages,
+  translated: uses === true ? UNLIMITED : uses === false ? 0 : uses.translated,
   reading: UNLIMITED, chat: UNLIMITED, translation: UNLIMITED,
 });
 /** The Premium plan's allowances: also what one account of a plan with seats may add of the plan's (use is the plan's, not the account's). */
 const PREMIUM_ALLOWANCE = allowances({ pages: 30, import: IMPORT_PAGES }, true);
 const FAMILY_ACCOUNT: Allowances = PREMIUM_ALLOWANCE;
+/** Essential's one-off import: a history of about 150 pages. */
+export const ESSENTIAL_IMPORT_PAGES = 150;
+/** What the trial gives, in all, for the three months: shown from the first day, and the offer made at a limit (`docs/billing.md`). */
+export const TRIAL_TOTALS = { pages: 100, messages: 50, translated: 30 } as const;
 
 /**
  * The limits of each plan: "fair use" on the pricing page and in the plan's words. Raising one later is a gift; lowering one is not.
  */
 export const PLANS: Record<PlanId, Omit<Entitlements, 'plan'>> = {
-  // The trial has Premium's limits, with pages as one total for the whole trial.
-  trial: { allowance: allowances({ pages: 150, import: 0 }, true), memberCap: null, aiPeriod: 'trial', carryMonths: 1, vaultBytes: 5 * GB, liveShares: null, linkViews: UNLIMITED, linkBytes: UNLIMITED, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 6, documents: null, seats: 1, delegation: true },
-  free: { allowance: allowances({ pages: 10, import: 0 }, false), memberCap: null, aiPeriod: 'month', carryMonths: 1, vaultBytes: GB, liveShares: 1, linkViews: 20, linkBytes: GB, translation: false, chat: false, linking: false, related: false, approvalMode: false, profiles: 1, documents: 50, seats: 1, delegation: false },
-  premium: { allowance: PREMIUM_ALLOWANCE, memberCap: null, aiPeriod: 'month', carryMonths: CARRY_MONTHS, vaultBytes: 5 * GB, liveShares: null, linkViews: UNLIMITED, linkBytes: UNLIMITED, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 1, documents: null, seats: 1, delegation: false },
+  // The trial has Premium's features, with visible totals for the whole trial: pages (the import is part of them), questions and translated pages.
+  trial: { allowance: allowances({ pages: TRIAL_TOTALS.pages, import: 0 }, { messages: TRIAL_TOTALS.messages, translated: TRIAL_TOTALS.translated }), memberCap: null, aiPeriod: 'trial', carryMonths: 1, vaultBytes: 5 * GB, liveShares: null, linkViews: UNLIMITED, linkBytes: UNLIMITED, translation: true, chat: true, linking: true, related: true, filesExport: true, approvalMode: true, profiles: 6, keptPages: null, seats: 1, delegation: true },
+  // The free plan keeps and shows up to fifty pages, and reads three a month, which carry for three months (nine at most).
+  free: { allowance: allowances({ pages: 3, import: 0 }, false), memberCap: null, aiPeriod: 'month', carryMonths: CARRY_MONTHS, vaultBytes: GB, liveShares: 1, linkViews: 20, linkBytes: 250 * 1024 ** 2, translation: false, chat: false, linking: false, related: false, filesExport: false, approvalMode: false, profiles: 1, keptPages: 50, seats: 1, delegation: false },
+  // Essential is for a history that has outgrown fifty pages and for asking questions: five pages a month and an import of 150, no translation.
+  essential: { allowance: allowances({ pages: 5, import: ESSENTIAL_IMPORT_PAGES }, true), memberCap: null, aiPeriod: 'month', carryMonths: CARRY_MONTHS, vaultBytes: 2 * GB, liveShares: null, linkViews: UNLIMITED, linkBytes: UNLIMITED, translation: false, chat: true, linking: true, related: true, filesExport: false, approvalMode: true, profiles: 1, keptPages: null, seats: 1, delegation: false },
+  premium: { allowance: PREMIUM_ALLOWANCE, memberCap: null, aiPeriod: 'month', carryMonths: CARRY_MONTHS, vaultBytes: 5 * GB, liveShares: null, linkViews: UNLIMITED, linkBytes: UNLIMITED, translation: true, chat: true, linking: true, related: true, filesExport: true, approvalMode: true, profiles: 1, keptPages: null, seats: 1, delegation: false },
   // Premium for up to six people, who may be children and may have accounts of their own: six accounts at most (the seats), six people in
-  // all (each account's own included), and one pool for the lot (twice Premium's pages and 25 GB of storage, shared), with each account held
-  // to Premium's pages. A larger plan would be another entry here.
-  family: { allowance: allowances({ pages: 60, import: 2 * IMPORT_PAGES }, true), memberCap: FAMILY_ACCOUNT, aiPeriod: 'month', carryMonths: CARRY_MONTHS, vaultBytes: 25 * GB, liveShares: null, linkViews: UNLIMITED, linkBytes: UNLIMITED, translation: true, chat: true, linking: true, related: true, approvalMode: true, profiles: 6, documents: null, seats: 6, delegation: true },
+  // all (each account's own included), and one pool for the lot (twice Premium's pages and 25 GB of storage, shared), with each account
+  // held to Premium's pages. A larger plan would be another entry here.
+  family: { allowance: allowances({ pages: 60, import: 2 * IMPORT_PAGES }, true), memberCap: FAMILY_ACCOUNT, aiPeriod: 'month', carryMonths: CARRY_MONTHS, vaultBytes: 25 * GB, liveShares: null, linkViews: UNLIMITED, linkBytes: UNLIMITED, translation: true, chat: true, linking: true, related: true, filesExport: true, approvalMode: true, profiles: 6, keptPages: null, seats: 6, delegation: true },
 };
 
 const addMonths = (iso: string, months: number): Date => {
@@ -148,13 +154,16 @@ const addMonths = (iso: string, months: number): Date => {
 
 export const trialEnd = (accountCreatedAt: string): string => addMonths(accountCreatedAt, TRIAL_MONTHS).toISOString();
 
-/** Whether a subscription gives the paid plan at `now`: running, late within the grace, or cancelled but paid up to a date still ahead. */
+/** Whether a subscription gives the paid plan at `now`: running (an end set for a date ahead included), late within the grace, or paused but paid up to a date still ahead. Cancelled at once gives nothing. */
 export function subscriptionEntitles(sub: SubscriptionRecord | null, now: Date): boolean {
   if (!sub) return false;
   const end = sub.current_period_end ? Date.parse(sub.current_period_end) : null;
   if (sub.status === 'active' || sub.status === 'trialing') return end === null || end + 24 * 3600e3 > now.getTime();
   if (sub.status === 'past_due') return end === null || end + PAST_DUE_GRACE_DAYS * 24 * 3600e3 > now.getTime();
-  // Cancelled (or paused) keeps what was paid for.
+  // Cancelled at once (a withdrawal, a refund, the provider's own end after payments that failed): nothing more is given. An end set for a date is still
+  // `active` until the date comes, and keeps what was paid for.
+  if (sub.status === 'canceled') return false;
+  // Paused keeps what was paid for.
   return end !== null && end > now.getTime();
 }
 
@@ -176,13 +185,13 @@ export const linkKey = (what: 'views' | 'egress', now: Date, pool = false): stri
 
 /**
  * The key a meter is counted under (`ai_usage.period`): the hidden cost ceiling of reading keeps the plain period it has always had (the
- * trial's, or the month); every other meter is by the month with its name after it, except the pages of the trial, which are one total
- * (`trial:pages`), and the import allowance, which is once (`once:import`, no month, so nothing forgets it). A plan's pool is the same key with
+ * trial's, or the month); every other meter is by the month with its name after it, except the pages, questions and translated pages of the trial, which are one total
+ * each (`trial:pages`, `trial:messages`, `trial:translated`), and the import allowance, which is once (`once:import`, no month, so nothing forgets it). A plan's pool is the same key with
  * `pool:` before it, under the account that pays.
  */
 export const meterKey = (meter: Meter, e: Pick<Entitlements, 'aiPeriod'>, now: Date, pool = false): string => {
   const month = now.toISOString().slice(0, 7);
-  const key = meter === 'reading' ? usagePeriod(e, now) : meter === 'pages' ? `${usagePeriod(e, now)}:pages` : meter === 'import' ? 'once:import' : `${month}:${meter}`;
+  const key = meter === 'reading' ? usagePeriod(e, now) : meter === 'pages' ? `${usagePeriod(e, now)}:pages` : meter === 'import' ? 'once:import' : meter === 'messages' || meter === 'translated' ? `${usagePeriod(e, now)}:${meter}` : `${month}:${meter}`;
   return pool ? `pool:${key}` : key;
 };
 

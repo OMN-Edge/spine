@@ -9,5 +9,6 @@
   { "path": "/trust", "title": "How to check Spine", "description": "Spine runs in your browser, and your records are encrypted there before the server keeps anything. This page explains how anyone can check the app." },
   { "path": "/pricing", "title": "Plans and prices", "description": "The plans and prices of this Spine.", "when": "billing" },
   { "path": "/privacy", "title": "Privacy notice", "description": "How this Spine handles your data." },
-  { "path": "/terms", "title": "Terms of use", "description": "The terms of using this Spine." }
+  { "path": "/terms", "title": "Terms of use", "description": "The terms of using this Spine." },
+  { "path": "/refunds", "title": "Refund policy", "description": "How withdrawal and refunds work for this Spine's plans.", "when": "billing" }
 ]

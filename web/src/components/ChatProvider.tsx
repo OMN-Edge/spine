@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useLocation } from 'react-router-dom';
 import { api, ApiError, type AttachmentData, type ChatSource, type ChatStep, type ConversationSummary, type HelpData, type Proposal, type RegroupNotice, type UploadNotice } from '../api';
 import { useOnDataChanged } from '../dataChanged';
-import { msg } from '../i18n';
+import { msg, useI18n } from '../i18n';
 
 /**
  * The chat is one conversation for the whole app: it lives here, above the pages, so it follows the person from page to page
@@ -139,6 +139,10 @@ const toTurn = (m: { role: 'user' | 'assistant'; content: string; sources: ChatS
 
 export function ChatProvider({ authenticated, children }: { authenticated: boolean; children: React.ReactNode }) {
   const location = useLocation();
+  // The language the person reads in goes with each question, so an answer follows it and not the language of the records.
+  const { lang } = useI18n();
+  const languageRef = useRef(lang);
+  languageRef.current = lang;
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [open, setOpen] = useState(false);
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -229,7 +233,7 @@ export function ChatProvider({ authenticated, children }: { authenticated: boole
         step: step => setDraft(d => d && { ...d, steps: [...d.steps, step] }),
         delta: text => setDraft(d => d && { ...d, text: d.text + text }),
         reset: () => setDraft(d => d && { ...d, text: '' }),
-      }, controller.signal);
+      }, controller.signal, languageRef.current);
       setCurrentId(reply.conversation.id); setTitle(reply.conversation.title); remember(reply.conversation.id);
       if (reply.conversation.id !== currentId) setOrigin(null);
       setTurns(prev => [...prev, reply.answer === null

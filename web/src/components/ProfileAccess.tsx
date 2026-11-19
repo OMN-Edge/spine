@@ -9,6 +9,7 @@ import { mayHaveOwnAccount } from 'spine-core/family';
 import { Notice } from './AuthCard';
 import { Combobox } from './Combobox';
 import { useI18n } from '../i18n';
+import { useFormat } from '../format';
 
 /**
  * Who else may open one person's records (SECURITY.md **M-49**): invite someone with a code, see who is let in, pause or end it. Ending it
@@ -16,6 +17,7 @@ import { useI18n } from '../i18n';
  */
 export default function ProfileAccess({ person }: { person: Person }) {
   const { t } = useI18n();
+  const format = useFormat();
   const { id: profileId, name } = person;
   // A child may have an account of their own from sixteen, with their guardian's consent: making the invitation is that consent.
   const ownAccount = person.kind !== 'child' || mayHaveOwnAccount(person.born);
@@ -90,7 +92,7 @@ export default function ProfileAccess({ person }: { person: Person }) {
         ))}
         {waiting.map(i => (
           <li key={i.id} className="py-1.5 flex items-center justify-between gap-2">
-            <span className="text-gray-500">{t('An invitation is waiting, until {when}', { when: new Date(i.expires_at).toLocaleDateString() })}</span>
+            <span className="text-gray-500">{t('An invitation is waiting, until {when}', { when: format.date(i.expires_at) })}</span>
             <button disabled={busy} className="text-red-600 hover:underline" onClick={() => void run(() => session.cancelInvite(i.id), t('Could not cancel this'))}>{t('Cancel')}</button>
           </li>
         ))}

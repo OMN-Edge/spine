@@ -14,7 +14,7 @@ import {
   normaliseRecoveryCode,
   otpauthUri,
   stepAt,
-} from '../totp.js';
+} from '../identity/index.js';
 
 beforeEach(() => {
   process.env.SESSION_SECRET = testSecret('session');

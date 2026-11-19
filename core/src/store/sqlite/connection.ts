@@ -42,6 +42,7 @@ const columnsOf = (db: Database, table: string): string[] =>
  *  - `share_links.include_scans`: whether a link also shows the page images. Nothing names it but the queries.
  *  - `share_links.require_approval`: whether a visitor's browser must be approved by the owner. Off for every earlier link.
  *  - `share_links.allow_chat`: whether the recipient may ask questions about what the link shares. Off for every earlier link.
+ *  - `share_links.overview`: what the owner tells the doctor about a link (whose records, a note, what they take now). Null for every earlier link.
  *  - `document_doctors.printed_code`: the code a document printed for a doctor, kept so a clash with the directory's can be asked about. Null for earlier links.
  *  - `source_files.chat_conversation_id`: the conversation a file was attached in. Null for every earlier upload.
  *  - `chat_conversations.unread`/`origin`, `chat_messages.kind`/`data`: conversations the app starts when an upload finishes, and the notice in them. Nothing earlier has them.
@@ -69,6 +70,9 @@ function addColumnsInPlace(db: Database): void {
   for (const column of ['delegate_hello', 'owner_blob', 'delegate_pin', 'owner_pin']) {
     if (grants.length > 0 && !grants.includes(column)) db.exec(`ALTER TABLE delegations ADD COLUMN ${column} TEXT`);
   }
+
+  const shareLinks = columnsOf(db, 'share_links');
+  if (shareLinks.length > 0 && !shareLinks.includes('overview')) db.exec('ALTER TABLE share_links ADD COLUMN overview TEXT');
 
   const pages = columnsOf(db, 'pages');
   if (pages.length > 0 && !pages.includes('hidden')) {

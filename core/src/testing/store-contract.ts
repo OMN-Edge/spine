@@ -200,12 +200,27 @@ export function describeStoreContract(name: string, make: () => Store | Promise<
     });
 
     describe('what a share holds', () => {
-      const slice = (documentIds: string[], over: { includeText?: boolean } = {}) => store.slice({
+      const slice = (documentIds: string[], over: { includeText?: boolean; overview?: string } = {}) => store.slice({
         userId: A, documentIds, includeText: over.includeText ?? false, includeScans: false,
-        link: { id: 'link-1', label: null, createdAt: '2026-01-01T00:00:00.000Z', expiresAt: '2999-01-01T00:00:00.000Z', language: null, allowChat: false },
+        link: { id: 'link-1', label: null, createdAt: '2026-01-01T00:00:00.000Z', expiresAt: '2999-01-01T00:00:00.000Z', language: null, allowChat: false, overview: over.overview ?? null },
         imagePathOf: id => `/share/${id}.png`,
       });
       const rowsOf = (changes: Array<{ t: string; r: Record<string, unknown> | null }>, table: string) => changes.filter(c => c.t === table && c.r).map(c => c.r!);
+
+      it('carries what the owner tells the doctor, so the recipient sees the name and the note', async () => {
+        const shared = await document(A, { title: 'shared' });
+        const overview = JSON.stringify({ by: 'Ana Exemplu', note: 'For the new endocrinologist', now: null });
+        const { changes } = await slice([shared.id], { overview });
+        expect(rowsOf(changes, 'share_links')[0]).toMatchObject({ overview });
+      });
+
+      it('carries the owner’s kept wording of the tags it shows, and of no other tag', async () => {
+        const shared = await document(A, { title: 'shared', tags: ['lungs'] });
+        await document(A, { title: 'not shared', tags: ['skin'] });
+        await store.termTranslations.put(A, 'de', [{ kind: 'tag', sourceText: 'lungs', translated: 'Lunge' }, { kind: 'tag', sourceText: 'skin', translated: 'Haut' }], new Date().toISOString());
+        const { changes } = await slice([shared.id]);
+        expect(rowsOf(changes, 'term_translations').map(r => [r.source_text, r.translated])).toEqual([['lungs', 'Lunge']]);
+      });
 
       it('holds the documents named and what belongs to them, and no other document of the owner', async () => {
         const shared = await document(A, { title: 'shared', tags: ['kept'] });

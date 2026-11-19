@@ -16,7 +16,7 @@ export function LanguageSwitcher({ className = '', opens = 'left' }: { className
     <Combobox
       value={lang} ariaLabel={t('Language')} onChange={v => setLang(v as LanguageCode)} wrapperClassName={`relative w-32 ${className}`} listClassName={opens === 'left' ? 'right-0 w-64' : 'left-0 w-64'}
       className={`w-full ${TOP_BAR_CONTROL}`}
-      options={LANGUAGES.map(l => ({ value: l.code, label: languageChoice(l.code), ...(l.screens ? {} : { hint: t('documents only') }) }))}
+      options={LANGUAGES.map(l => ({ value: l.code, label: languageChoice(l.code), short: l.name, ...(l.screens ? {} : { hint: t('documents only') }) }))}
     />
   );
 }

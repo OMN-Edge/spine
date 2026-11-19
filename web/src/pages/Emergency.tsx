@@ -2,13 +2,15 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, ApiError, type EmergencyView } from '../api';
 import { DETAIL_LABELS } from '../detailLabels';
-import { DETAIL_KINDS, EMPTY_CARD, publicCard, type CardContent, type CardDetail } from 'spine-core/emergency';
+import { CARD_LANGUAGES, cardText, DETAIL_KINDS, EMPTY_CARD, publicCard, type CardContent, type CardDetail } from 'spine-core/emergency';
+import { BLOOD_TYPES, proposalsFrom, type Proposals } from '../emergency-fill';
 import PrintCard, { printCard } from '../components/PrintCard';
 import CardQr from '../components/CardQr';
 import { buttonClass, inputClass, Notice } from '../components/AuthCard';
 import { Combobox } from '../components/Combobox';
 import { DateInput } from '../components/DateInput';
-import { useI18n } from '../i18n';
+import { languageChoice, useI18n } from '../i18n';
+import { useFormat } from '../format';
 
 /** One item to a line; the card keeps them as a list. */
 const lines = (text: string) => text.split('\n').map(s => s.trim()).filter(Boolean);
@@ -20,9 +22,13 @@ const lines = (text: string) => text.split('\n').map(s => s.trim()).filter(Boole
  */
 export default function Emergency() {
   const { t, tn } = useI18n();
+  const format = useFormat();
   const [view, setView] = useState<EmergencyView | null>(null);
   const [card, setCard] = useState<CardContent>(EMPTY_CARD);
   const [text, setText] = useState({ allergies: '', conditions: '', medications: '' });
+  // The second language's words, one to a line like the first's; kept with the card when saved.
+  const [second, setSecond] = useState<{ language: string; allergies: string; conditions: string; medications: string; notes: string } | null>(null);
+  const [translating, setTranslating] = useState(false);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -33,10 +39,14 @@ export default function Emergency() {
     setView(v);
     setCard(v.card);
     setText({ allergies: v.card.allergies.join('\n'), conditions: v.card.conditions.join('\n'), medications: v.card.medications.join('\n') });
+    setSecond(v.card.second ? { language: v.card.second.language, allergies: v.card.second.allergies.join('\n'), conditions: v.card.second.conditions.join('\n'), medications: v.card.second.medications.join('\n'), notes: v.card.second.notes } : null);
   };
   useEffect(() => { api.emergency.get().then(show).catch(() => setError(t('Could not load the card'))); }, [t]);
 
-  const current = (): CardContent => ({ ...card, allergies: lines(text.allergies), conditions: lines(text.conditions), medications: lines(text.medications) });
+  const current = (): CardContent => ({
+    ...card, allergies: lines(text.allergies), conditions: lines(text.conditions), medications: lines(text.medications),
+    second: second && second.language ? { language: second.language as CardContent['language'] & ('en' | 'ro' | 'fr' | 'de'), allergies: lines(second.allergies), conditions: lines(second.conditions), medications: lines(second.medications), notes: second.notes } : null,
+  });
   const run = async (what: () => Promise<EmergencyView>, failed: string) => {
     setError(''); setSaved(false); setBusy(true);
     try { show(await what()); return true; } catch (err) {
@@ -45,6 +55,19 @@ export default function Emergency() {
       void api.emergency.get().then(show).catch(() => undefined);
       return false;
     } finally { setBusy(false); }
+  };
+  // Asks for the card's words in the language chosen: the card is saved first (it is what is translated), the answer is shown for the owner to correct, and nothing of it is kept until they save.
+  const translate = async () => {
+    if (!second?.language) return;
+    setError(''); setTranslating(true);
+    try {
+      await api.emergency.save(current());
+      const done = await api.emergency.translate(second.language);
+      setSecond({ language: done.second.language, allergies: done.second.allergies.join('\n'), conditions: done.second.conditions.join('\n'), medications: done.second.medications.join('\n'), notes: done.second.notes });
+      setSaved(false);
+    } catch (err) {
+      setError(err instanceof ApiError && err.code === 'translation_off' ? t('Translation is switched off here: write the second language yourself.') : t('The card could not be translated right now. You can write the second language yourself.'));
+    } finally { setTranslating(false); }
   };
   const save = async () => { if (await run(() => api.emergency.save(current()), t('Could not save the card'))) setSaved(true); };
   const set = <K extends keyof CardContent>(key: K, value: CardContent[K]) => { setSaved(false); setCard(c => ({ ...c, [key]: value })); };
@@ -70,8 +93,12 @@ export default function Emergency() {
         <label className="block text-sm text-gray-700">{t('Name')}<input className={inputClass} value={card.name} maxLength={120} onChange={e => set('name', e.target.value)} /></label>
         <div className="grid grid-cols-2 gap-3">
           <label className="block text-sm text-gray-700">{t('Born (year or date)')}<DateInput className={inputClass} value={card.born} onChange={born => set('born', born)} max={new Date().toISOString().slice(0, 10)} /></label>
-          <label className="block text-sm text-gray-700">{t('Blood type')}<input className={inputClass} value={card.blood_type} maxLength={5} onChange={e => set('blood_type', e.target.value)} /></label>
+          <label className="block text-sm text-gray-700">{t('Blood type')}
+            <Combobox ariaLabel={t('Blood type')} value={card.blood_type} onChange={v => set('blood_type', v)} className={inputClass}
+              options={[{ value: '', label: t('Not known') }, ...BLOOD_TYPES.map(b => ({ value: b, label: b })), ...(card.blood_type && !(BLOOD_TYPES as readonly string[]).includes(card.blood_type) ? [{ value: card.blood_type, label: card.blood_type }] : [])]} />
+          </label>
         </div>
+        <FillFromRecords already={{ medications: lines(text.medications), conditions: lines(text.conditions) }} onAdd={added => { setSaved(false); setText(x => ({ ...x, medications: [...lines(x.medications), ...added.medications].join('\n'), conditions: [...lines(x.conditions), ...added.conditions].join('\n') })); }} />
         {([['allergies', 'Allergies'], ['medications', 'Medications'], ['conditions', 'Conditions']] as const).map(([key, label]) => (
           <label key={key} className="block text-sm text-gray-700">{t(label)}
             <textarea className={`${inputClass} h-20`} placeholder={t('One to a line')} value={text[key]} onChange={e => { setSaved(false); setText(x => ({ ...x, [key]: e.target.value })); }} />
@@ -109,6 +136,21 @@ export default function Emergency() {
           {card.details.length < 8 && <button type="button" className="text-sm text-brand-600 hover:underline" onClick={() => set('details', [...card.details, { kind: 'national_id', label: '', value: '', on_card: false }])}>{t('Add a detail')}</button>}
         </fieldset>
         <label className="block text-sm text-gray-700">{t('Notes')}<textarea className={`${inputClass} h-20`} maxLength={500} value={card.notes} onChange={e => set('notes', e.target.value)} /></label>
+        <fieldset className="rounded-lg border border-gray-200 p-3 space-y-3">
+          <legend className="px-1 text-sm text-gray-700">{t('A second language')}</legend>
+          <p className="text-xs text-gray-500">{t('So a paramedic who does not read your language can read the card. Your allergies, conditions, medicines and notes are translated once by the model when you ask, shown here for you to correct, and kept as your words. Names and phone numbers are not translated.')}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Combobox ariaLabel={t('Second language')} wrapperClassName="relative w-48" value={second?.language ?? ''} onChange={v => { setSaved(false); setSecond(v ? { language: v, allergies: second?.allergies ?? '', conditions: second?.conditions ?? '', medications: second?.medications ?? '', notes: second?.notes ?? '' } : null); }}
+              options={[{ value: '', label: t('None') }, ...CARD_LANGUAGES.filter(l => l !== card.language).map(l => ({ value: l, label: languageChoice(l) }))]} />
+            {second?.language && <button type="button" disabled={translating || busy} onClick={() => void translate()} className="rounded-full border border-gray-300 px-4 py-1.5 text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-50">{translating ? t('Translating…') : t('Translate the card')}</button>}
+          </div>
+          {second?.language && (['allergies', 'medications', 'conditions'] as const).map(key => (
+            <label key={key} className="block text-sm text-gray-700">{t(key === 'allergies' ? 'Allergies' : key === 'medications' ? 'Medications' : 'Conditions')} ({languageChoice(second.language as 'en')})
+              <textarea className={`${inputClass} h-16`} placeholder={t('One to a line')} value={second[key]} onChange={e => { setSaved(false); setSecond(x => (x ? { ...x, [key]: e.target.value } : x)); }} />
+            </label>
+          ))}
+          {second?.language && <label className="block text-sm text-gray-700">{t('Notes')} ({languageChoice(second.language as 'en')})<textarea className={`${inputClass} h-16`} maxLength={500} value={second.notes} onChange={e => { setSaved(false); setSecond(x => (x ? { ...x, notes: e.target.value } : x)); }} /></label>}
+        </fieldset>
         {error && <Notice kind="error">{error}</Notice>}
         {saved && <Notice kind="ok">{t('Saved')}</Notice>}
         <button disabled={busy} onClick={() => void save()} className={buttonClass}>{t('Save the card')}</button>
@@ -121,7 +163,7 @@ export default function Emergency() {
           <div className="space-y-3">
             <CardQr text={view.published.address} label={t('Code that opens the card')} />
             <p className="text-xs text-gray-500 break-all">{view.published.address}</p>
-            {view.reviewed_at && <p className="text-xs text-gray-500">{t('Last checked {when}', { when: new Date(view.reviewed_at).toLocaleDateString() })}</p>}
+            {view.reviewed_at && <p className="text-xs text-gray-500">{t('Last checked {when}', { when: format.date(view.reviewed_at) })}</p>}
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
               <button className="text-brand-600 hover:underline" onClick={() => printCard('home')}>{t('Print at home (A4)')}</button>
               <button className="text-brand-600 hover:underline" onClick={() => printCard('shop')}>{t('Print for a print shop')}</button>
@@ -137,7 +179,10 @@ export default function Emergency() {
             </div>
           </div>
         ) : (
-          <button disabled={busy} className={buttonClass} onClick={() => void run(() => api.emergency.publish(), t('Could not turn the card on'))}>{t('Turn the card on')}</button>
+          <div className="space-y-3">
+            <CardPreview card={publicCard(current())} />
+            <button disabled={busy} className={buttonClass} onClick={() => void run(() => api.emergency.publish(), t('Could not turn the card on'))}>{t('Turn the card on')}</button>
+          </div>
         )}
       </section>
 
@@ -162,12 +207,80 @@ export default function Emergency() {
         <h2 className="font-medium text-gray-900 mb-2">{t('When the card was opened')}</h2>
         {view.scans.length === 0 ? <p className="text-sm text-gray-500">{t('It has not been opened yet.')}</p> : (
           <ul className="text-sm text-gray-700 divide-y divide-gray-100">
-            {view.scans.map(s => <li key={s.id} className="py-1">{new Date(s.at).toLocaleString()}{s.country ? ` · ${s.country}` : ''}</li>)}
+            {view.scans.map(s => <li key={s.id} className="py-1">{format.dateTime(s.at)}{s.country ? ` · ${s.country}` : ''}</li>)}
           </ul>
         )}
       </section>
       <PrintCard card={publicCard(view.card)} qr={view.published ? { text: view.published.address, online: true } : { text: view.offline.text, online: false }} />
       <p className="mt-6 text-sm"><Link to="/share" className="text-brand-600 hover:underline">{t('Share links')}</Link></p>
+    </div>
+  );
+}
+
+
+/** What anyone who opens the card will read, as the card says it, before it is turned on: the written text, with the details the owner chose to put on it and none they did not. */
+function CardPreview({ card }: { card: CardContent }) {
+  const { t } = useI18n();
+  const { text } = cardText(card, 4000);
+  return (
+    <details className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm">
+      <summary className="cursor-pointer text-brand-600">{t('Preview what they will read')}</summary>
+      <pre className="mt-2 whitespace-pre-wrap font-sans text-gray-800">{text}</pre>
+      <p className="mt-2 text-xs text-gray-500">{t('This is only a preview of what is written now. Nothing is turned on.')}</p>
+    </details>
+  );
+}
+
+/**
+ * Offers what the records say, to start from (T-20): the medicines on prescriptions of the last twelve months and the names given to confirmed episodes, each unticked. Nothing is
+ * filled in; the owner ticks what is right and adds it to the lists below, where it can be changed like anything they typed.
+ */
+function FillFromRecords({ already, onAdd }: { already: { medications: string[]; conditions: string[] }; onAdd: (added: Proposals) => void }) {
+  const { t } = useI18n();
+  const [found, setFound] = useState<Proposals | null>(null);
+  const [ticked, setTicked] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  const look = async () => {
+    setBusy(true); setFailed(false); setTicked(new Set());
+    try {
+      const prescriptions = await api.documents.listAll({ doc_type: 'prescription' });
+      const detailed = await Promise.all(prescriptions.slice(0, 40).map(d => api.documents.get(d.id).catch(() => d)));
+      const episodes = await api.episodes.list('confirmed');
+      setFound(proposalsFrom(detailed, episodes, already));
+    } catch { setFailed(true); } finally { setBusy(false); }
+  };
+  const toggle = (line: string) => setTicked(s => { const next = new Set(s); if (next.has(line)) next.delete(line); else next.add(line); return next; });
+  const add = () => {
+    if (!found) return;
+    onAdd({ medications: found.medications.filter(l => ticked.has(l)), conditions: found.conditions.filter(l => ticked.has(l)) });
+    setFound({ medications: found.medications.filter(l => !ticked.has(l)), conditions: found.conditions.filter(l => !ticked.has(l)) });
+    setTicked(new Set());
+  };
+  const none = found && found.medications.length + found.conditions.length === 0;
+  return (
+    <div className="rounded-lg border border-dashed border-gray-300 p-3">
+      <button type="button" disabled={busy} onClick={() => void look()} className="text-sm text-brand-600 hover:underline disabled:opacity-50">{t('Fill from my records')}</button>
+      <p className="text-xs text-gray-500 mt-1">{t('Shows the medicines on your prescriptions of the last year and the episodes you named. Nothing is added until you tick it.')}</p>
+      {failed && <p className="text-xs text-red-600 mt-2" role="alert">{t('Could not look through your records.')}</p>}
+      {none && <p className="text-xs text-gray-600 mt-2" role="status">{t('Nothing to offer from your records.')}</p>}
+      {found && !none && (
+        <div className="mt-3 space-y-3">
+          {([[t('Medications'), found.medications], [t('Conditions'), found.conditions]] as const).filter(([, list]) => list.length > 0).map(([name, list]) => (
+            <fieldset key={name}>
+              <legend className="text-xs font-medium text-gray-600">{name}</legend>
+              {list.map(line => (
+                <label key={line} className="flex items-start gap-2 text-sm text-gray-800">
+                  <input type="checkbox" checked={ticked.has(line)} onChange={() => toggle(line)} className="mt-1" />
+                  <span className="break-words">{line}</span>
+                </label>
+              ))}
+            </fieldset>
+          ))}
+          <button type="button" disabled={ticked.size === 0} onClick={add} className="rounded-full border border-gray-300 px-4 py-1.5 text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-50">{t('Add the ticked ones')}</button>
+        </div>
+      )}
     </div>
   );
 }

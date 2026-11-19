@@ -7,7 +7,7 @@ Personal medical document archive running on a Raspberry Pi. Uploads PDFs, uses 
 - **No AI attribution in git history.** Do not add `Co-Authored-By`, `Claude-Session`, or any similar trailer to commit messages or PR descriptions. This overrides the default Claude Code attribution behaviour.
 - **Commit when a unit of work is complete**, not per exchange. Leave in-progress work in the working tree and say what is pending instead of sealing a draft.
 - **Do not hard-wrap prose** in docs or Markdown. A paragraph or list item is one line; the editor wraps it, and a diff shows the sentence that changed.
-- **Structure is checked, not judged.** `docs/structure-rules.md` defines what "clean" means here (rules S1-S13, two known exceptions, E1 and E2); `core/src/__tests__/architecture.test.ts` and `server/scripts/smoke-entrypoints.mjs` enforce it. A change that needs an exception edits the test and that page in the same commit. "Done" for a structural change means those, `check:browser` and `check:app` pass, not only the unit tests.
+- **Structure is checked, not judged.** `docs/structure-rules.md` defines what "clean" means here (rules S1-S16, two known exceptions, E1 and E2); `core/src/__tests__/architecture.test.ts` and `server/scripts/smoke-entrypoints.mjs` enforce it. A change that needs an exception edits the test and that page in the same commit. "Done" for a structural change means those, `check:browser` and `check:app` pass, not only the unit tests.
 
 ## Repo layout
 
@@ -20,7 +20,7 @@ spine/
 ├── install.sh              # All install steps: -a (all of them), -d (deps), -e (.env and relay.env, secrets generated), -b (build), -s (services), -r (the relay here), -n (nginx+cert)
 ├── relay.env               # The relay's provider credential when it runs beside the server (copy from relay.env.example); the server never reads it
 ├── .env                    # Runtime config (copy from .env.example)
-├── package.json            # npm workspaces: core, server, web (one install, one lockfile at the root)
+├── package.json            # npm workspaces: core, packages/anaf, packages/billing, server, web (one install, one lockfile at the root)
 ├── core/                   # `spine-core`: everything the device's core (a Web Worker) runs, and the server too. Built to core/dist; web and the tests use core/src
 │   └── src/
 │       ├── config.ts       # env parsed + validated once at startup; resolveDataDir() is the one place DATA_DIR is decided
@@ -38,6 +38,7 @@ spine/
 │       ├── chat/           # agent.ts (the LangGraph agent and its read-only tools), screen.ts (what is on screen, resolved), index.ts (askQuestion; the fixed-pipeline fallback), retrieval.ts (keywords, fused search)
 │       ├── episodes/       # index.ts: proposing episodes from the data (no model), scheduleEpisodes(); cluster.ts: joining documents by links, nearest first, within a care cycle
 │       ├── linking/        # index.ts: candidates (no model), the judge, links as proposals, the chain; copies.ts: a document held twice
+│       ├── billing/billing-details.ts # what an invoice needs of a buyer (the name, the country, and a county in Romania), shared by the app's form and the server
 │       ├── billing/plans.ts # the plans, what each includes (seats and people among it), entitlementsOf() and taskCost(): the one place a limit is written (the server enforces, the account page shows)
 │       ├── reminders/index.ts, reminder-host.ts # follow-up reminders: proposing them from what a document says, their dates, and the port the device tells them to the server through (the words never go); routes/reminders.ts confirms them
 │       ├── plan-limits.ts  # what a plan limits that only the app can count (documents), told to the core by the page
@@ -52,25 +53,26 @@ spine/
 │       ├── routes/         # the records routes (documents.ts, source-files.ts, share.ts, public-share.ts, tags.ts, trends.ts, doctors.ts, ...) and middleware.ts; the device's LocalApp registers these
 │       ├── testing/        # (in no build; the tests and the server's type-check read the source) helpers the tests of core and server share (seed data, a scripted model, a software authenticator, the store contract suite)
 │       └── __tests__/      # Vitest tests of core (the units; the tests that drive the whole composed app are in server/)
+├── packages/anaf/          # `spine-anaf`: Spine's own link to ANAF, a package that names nothing of Spine's (S15): the authorisation (anaf.ts), e-Factura (ubl.ts the XML, issuer.ts the numbering and the calls, seal.ts, zip.ts), journal.ts (the month's or quarter's invoices as a CSV and a PDF for the accountant), vat.ts (the EU rates and what each buyer is charged), the store it asks for (store.ts); built before the server (`npm run build:anaf`): docs/efactura.md
+├── packages/billing/       # `spine-billing`: what an application paid by a provider needs, naming no plan and nothing of Spine's (S16): providers/stripe.ts, provider.ts (the interface, the events, `Presentation`), events.ts (a provider's message applied to an account, with a `PlanMapping`), products.ts (the product catalog and its sync), withdrawal-share.ts, invoicing/ (issuer.ts, queue.ts, billyou.ts, bnr.ts, threshold.ts, efactura.ts the door to `spine-anaf`), store.ts and host.ts (what it asks of the application); built before the server (`npm run build:billing`)
 ├── server/                 # `spine-server`: Node.js + Fastify. Only what the server runs; the records routes are registered by the device, not here
 │   └── src/
 │       ├── index.ts        # registers the account routes, the vault, sealed shares and the relay pass; sets the accounts-only store scope
 │       ├── config.ts       # the settings only the server has (port, secret, registration, mailer, session, vault and share limits); loadConfig reads them with core's
-│       ├── store.ts        # useAccountsStore(): the store this process keeps (accounts only); session-auth.ts: sessions, `authenticate` and the server's RequestAuth
+│       ├── store.ts        # useAccountsStore(): the store this process keeps (accounts only); identity/session-auth.ts: sessions, `authenticate` and the server's RequestAuth (now in identity/)
 │       ├── http-host.ts, rate-limit.ts  # Fastify as core's HttpApp (asHttp, asPlugin); windowLimiter(): per-key limits the Fastify plugin cannot stack
-│       ├── accounts.ts, sessions.ts, user-tokens.ts, legal.ts, vault-files.ts, shared-files.ts  # accounts, sign-ins, one-time tokens, the legal texts, the vault's and sealed shares' files
+│       ├── identity/       # accounts and sign-in behind one door (index.ts; S14): accounts.ts, sessions.ts, session-auth.ts, user-tokens.ts, passwords.ts (argon2id hash/verify, policy, email normalisation), totp.ts (RFC 6238 codes, secret encryption at rest, recovery codes; pure), second-factor.ts (checkSecondFactor(): joins totp.ts to the store; atomic spend), email-code.ts (the second step by mail, S-20: the six-digit code, its keyed hash in the pending login, the mail), passkeys.ts, notify.ts (account mail: new browser, password or 2FA change; never records)
+│       ├── legal.ts, vault-files.ts, shared-files.ts  # the legal texts, the vault's and sealed shares' files
 │       ├── mail/           # mailer interface: types.ts, index.ts (registry), adapters/{none,brevo}.ts
 │       ├── native/         # the Node versions of the tools the shared code asks for (poppler, Tesseract, sharp, pdfkit, yauzl, yazl, maxmind): for the tests that run the whole app on Node; none is used in production
 │       ├── objects/        # the object store the sealed bytes go to: types.ts (the port), filesystem.ts and gcs.ts (the adapters), index.ts (SPINE_OBJECTS; `useObjects` is called by `useAccountsStore`); vault-files.ts and shared-files.ts build the keys
-│       ├── billing/        # config.ts (SPINE_BILLING and Paddle's settings), paddle.ts (signature check, checkout, portal), entitlements.ts (an account's limits for the routes), seat.ts (what an account has and whose plan it is: its own, or the plan whose seat it holds), fair-use.ts (the hidden ceilings, the operator's file), window.ts, cost.ts, watch.ts (the twelve months a yearly ceiling counts over, what an account's AI use cost, and who is told), links.ts, gate.ts (what the relay asks before and after a call)
+│       ├── plans/          # what Spine's plans are made of, kept out of billing/ (S16): the meters and what they allow (gate.ts, budget.ts, cost.ts, fair-use.ts, fair-use-admin.ts, carry.ts, window.ts, watch.ts, totals.ts, links.ts), the seats (seat.ts), the limits routes ask (entitlements.ts), the top-up and invitation bonus (addons.ts, invitations.ts) mapping.ts (what Spine's prices are for, as the billing code's `PlanMapping`) and products.ts (the products Spine declares to the catalog, and the catalog's prices in place of the environment's)
+│       ├── billing/        # Spine's side of billing, what is not in `packages/billing/` (S16): config.ts (SPINE_BILLING, SPINE_BILLING_PROVIDER and the provider's settings), provider.ts (the package's provider with Spine's checkout words, return address and billing details rules), host.ts (gives the package the store, the log and the operator's alert), catalog.ts (the prices the pricing page shows, read from the provider: no amount is written in the code), withdrawal-mail.ts, invoicing/ (config.ts the settings, alert.ts the operator's mail, queue.ts the issuer the settings name and the entry points the payment route and the hourly job call, journal.ts the month's or quarter's invoices and credit notes for the accountant (the CSV and the PDF), vat.ts whether the company is registered for VAT (what each invoice carries follows from it), seller.ts the seller the administrator saves on the admin page, the one company on the invoices (a service's or Spine's own e-Factura), the footer and the terms (operator.ts, where billing is on), own-pdf.ts the copy kept of such an invoice and Spine's own PDF made from it)
 │       ├── geo.ts          # the country a share was opened from (maxmind, reading data/geoip/country.mmdb or SPINE_GEOIP_DB, or the newest geoip/country-*.mmdb of the bucket where there is no disk; looked at again every minute, or ten: the one native library the production server uses
 │       ├── geoip-update.ts # downloads that file (ip-location-db "user-country", public domain) and checks it before it replaces the one in use; best effort, always ends well; run by install.sh -s and daily before the backup
 │       ├── providers.ts    # registers the model providers the relay service runs; llm/adapters/ (anthropic, vertex) and embedding/adapters/ (vertex) hold them
 │       ├── driver-native.ts, driver-pg.ts # the native SQLite driver and the `pg` pool, both registered by useAccountsStore(); the store config says which is opened
-│       ├── email-code.ts   # the second step by mail (chosen by the owner, or the floor under SPINE_EMAIL_2FA=required): the six-digit code, its keyed hash in the pending login, the mail (S-20); routes/email-second-factor.ts turns it on and off
-│       ├── passwords.ts    # argon2id hash/verify, policy, email normalisation
-│       ├── totp.ts         # RFC 6238 codes, secret encryption at rest, recovery codes (pure; no store)
-│       ├── second-factor.ts # checkSecondFactor(): joins totp.ts to the store; atomic spend
+│       ├── dashboard.ts, operator-settings.ts, lifecycle.ts  # the numbers of the admin page (counts, never a person), the settings an administrator changes there (the targets, the AI budget and alert, the reminder interval; kept in `operator_settings`), and the mail about using Spine (welcome, reminder, trial summary; no medical content, with a link that stops them); routes/admin.ts serves the page's data
 │       ├── cli.ts          # operator commands: create-user, set-password, reset-link, disable-2fa, delete-user, list-users
 │       ├── trust-proxy.ts  # the only addresses whose X-Forwarded-For is believed (loopback, SPINE_TRUSTED_PROXIES), or the platform's hops (SPINE_TRUSTED_HOPS, Cloud Run) (one hop on Cloud Run itself, or two behind a load balancer whose SPINE_EDGE_SECRET the request carries); limiters key on req.ip
 │       ├── headers.ts, limits.ts, jobs.ts, local-files.ts  # for a host with no proxy of ours and no disk (docs/deploy-cloud-run.md): the security headers the server sets (SPINE_SERVER_HEADERS), limits counted in the database for every instance (SPINE_LIMITS), the hourly work as `node dist/jobs.js` (SPINE_JOBS), and whether the process keeps a file at all
@@ -78,14 +80,12 @@ spine/
 │       ├── disk-space.ts, permissions.ts  # the free-space reserve a sealed write must leave (`SPINE_MIN_FREE_MB`, S-56); the modes data and backups are made with and the start-up check that the data directory is closed (S-61)
 │       ├── read-budget.ts, read-slots.ts  # bytes of a share one source may read an hour, and reads of sealed objects one account may have open at once (S-57, S-58)
 │       ├── same-origin.ts, reset-proof.ts # a request that changes something must come from the app's own origin (S-50); the signature a reset must carry, checked against the vault's verifier (S-38)
-│       ├── notify.ts       # account mail (new browser, password or 2FA change); never records
-│       ├── passkeys.ts, trust-anchors.ts, vault-keys.ts, backup.ts  # WebAuthn, the signature trust anchors, the vault's keys, the VACUUM INTO snapshot + vault mirror run by spine-backup.timer
+│       ├── trust-anchors.ts, vault-keys.ts, backup.ts  # the signature trust anchors, the vault's keys, the VACUUM INTO snapshot + vault mirror run by spine-backup.timer
 │       ├── relay/          # the relay service: token.ts (the pass), relay.ts (checks, runs the task through the configured provider adapter, stores nothing), serve.ts (reads the settings and listens), main.ts (`node dist/relay/main.js`: registers the store and the vendors, then serves)
 │       ├── routes/         # auth.ts (login + second step), accounts.ts, totp.ts, passkeys.ts, enrolment.ts (a device let in by one that is signed in), sessions.ts, own-account.ts, vault.ts, shared.ts, family.ts (accounts that share one plan, each holding a seat), reminders.ts (the dates of follow-up reminders, and the mail on the day), relay.ts, trust-anchors.ts
 │       ├── testing/        # stand-in.ts (a model for tests) and stand-in-relay.ts (the relay's entry point with it, for check:app): in no build
 │       └── __tests__/      # Vitest tests that drive the composed app, plus helpers/app.ts (buildTestApp) and helpers/seed.ts
-├── web/                    # React + Vite + Tailwind
-├── checkout/               # Paddle's checkout page, served from an origin of its own so its script never runs beside the vault (docs/billing.md)
+├── web/                    # React + Vite + Tailwind; pages/Admin.tsx is `/admin`, the operator's page outside the app, and pages/Pricing.tsx the public plans
 ├── deploy/                 # gcp/ (one VM, docs/deploy-gcp.md) and cloud-run/ (services, job and build, docs/deploy-cloud-run.md): settings with no secret in them
 ├── nginx/                  # Site config template (spine.conf), security.txt template, /source /docs /security redirects
 └── systemd/                # spine-web.service, spine-backup.{service,timer}
@@ -164,6 +164,7 @@ What it must do (the `FR-`, `TR-` and `CR-` IDs cited around the repo): [docs/re
 
 | To change | Read |
 |---|---|
+| A screen or a flow: who it is for and why | [docs/user-stories.md](docs/user-stories.md) (profiles and stories), then [docs/scenarios.md](docs/scenarios.md) |
 | Anything: where the code runs, trust boundaries | [ARCHITECTURE.md](ARCHITECTURE.md) and its detail pages in [docs/architecture/](docs/architecture/README.md) |
 | Routing, auth, share links, storage, providers, static serving | [SECURITY.md](SECURITY.md): the principles and the checklist at its end |
 | The store, SQL, schema, sync | [docs/design-decisions.md](docs/design-decisions.md#records-and-the-store) |

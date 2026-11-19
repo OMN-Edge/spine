@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
-import { buttonClass, inputClass, Notice } from './AuthCard';
+import { inputClass, Notice, secondaryButtonClass } from './AuthCard';
 import { useI18n } from '../i18n';
 
 type Step =
@@ -83,7 +83,7 @@ export default function EmailTwoFactor({ onState }: { onState?: (on: boolean) =>
         <input type="password" placeholder={t('Your password')} autoComplete="current-password"
           value={password} onChange={e => setPassword(e.target.value)} className={inputClass} />
         {error && <Notice kind="error">{error}</Notice>}
-        <button type="submit" className={buttonClass}>{t('Send me a code')}</button>
+        <button type="submit" className={secondaryButtonClass}>{t('Send me a code')}</button>
       </form>
     );
   }
@@ -96,7 +96,7 @@ export default function EmailTwoFactor({ onState }: { onState?: (on: boolean) =>
         <input type="text" inputMode="numeric" placeholder={t('6-digit code')} autoComplete="one-time-code" autoFocus
           value={code} onChange={e => setCode(e.target.value)} className={inputClass} />
         {error && <Notice kind="error">{error}</Notice>}
-        <button type="submit" className={buttonClass}>{t('Turn on')}</button>
+        <button type="submit" className={secondaryButtonClass}>{t('Turn on')}</button>
         <button type="button" className="mt-2 text-sm text-gray-500 underline" onClick={() => { reset(); refresh(); }}>{t('Cancel')}</button>
       </form>
     );
@@ -125,7 +125,7 @@ export default function EmailTwoFactor({ onState }: { onState?: (on: boolean) =>
       <input type="password" placeholder={t('Your password')} autoComplete="current-password" autoFocus
         value={password} onChange={e => setPassword(e.target.value)} className={inputClass} />
       {error && <Notice kind="error">{error}</Notice>}
-      <button type="submit" className={buttonClass}>{t('Turn off')}</button>
+      <button type="submit" className={secondaryButtonClass}>{t('Turn off')}</button>
       <button type="button" className="mt-2 text-sm text-gray-500 underline" onClick={() => { reset(); refresh(); }}>{t('Cancel')}</button>
     </form>
   );

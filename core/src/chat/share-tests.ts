@@ -20,6 +20,7 @@ export async function sharedTestNames(owner: string, docs: Document[]): Promise<
         latest_value_text: newer ? m.value_text : held.latest_value_text,
         latest_taken_on: newer ? m.taken_on : held.latest_taken_on,
         latest_flag: newer ? m.flag : held.latest_flag,
+        numeric_count: (held?.numeric_count ?? 0) + (m.value_num !== null && m.value_num !== undefined ? 1 : 0),
       });
     }
   }

@@ -38,6 +38,8 @@
     "google-auth-library": "^11.3.1",
     "maxmind": "^5.0.7",
     "pg": "^8.23.1",
+    "spine-anaf": "*",
+    "spine-billing": "*",
     "spine-core": "*",
     "uuid": "^14.0.3"
   },

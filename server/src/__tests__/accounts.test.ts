@@ -3,9 +3,9 @@ import { buildTestApp, loginAs } from './helpers/app.js';
 import { OWNER_EMAIL, TEST_PASSWORD, createTestUser } from './helpers/seed.js';
 import { getAccountsStore } from 'spine-core/store/index.js';
 import { resetMailer, type Mailer, type MailMessage } from '../mail/index.js';
-import { hashUserToken } from '../user-tokens.js';
-import { issueUserToken } from '../accounts.js';
-import { verifyPassword } from '../passwords.js';
+import { hashUserToken } from '../identity/index.js';
+import { issueUserToken } from '../identity/index.js';
+import { verifyPassword } from '../identity/index.js';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
@@ -50,7 +50,7 @@ const CONSENT = { consent_health_data: true, accept_terms: true };
 describe('GET /api/auth/options', () => {
   it('tells the sign-in page what is available', async () => {
     expect((await app.inject({ method: 'GET', url: '/api/auth/options' })).json())
-      .toEqual({ registration: 'open', recovery: true, instance: 'public', billing: false, waitlist: false });
+      .toEqual({ registration: 'open', recovery: true, instance: 'public', billing: false, waitlist: false, operator: null });
 
     mailerEnabled = false;
     expect((await app.inject({ method: 'GET', url: '/api/auth/options' })).json())

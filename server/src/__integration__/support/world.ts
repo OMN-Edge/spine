@@ -24,10 +24,10 @@ export interface Reply {
 }
 
 /** Ask the assistant something, as the panel does (without streaming). */
-export async function ask(w: World, question: string, options: { conversation?: string | null; screen?: Record<string, unknown> } = {}): Promise<Reply> {
+export async function ask(w: World, question: string, options: { conversation?: string | null; screen?: Record<string, unknown>; language?: string } = {}): Promise<Reply> {
   const res = await w.app.inject({
     method: 'POST', url: '/api/chat', headers: { cookie: w.cookie },
-    payload: { question, conversation_id: options.conversation ?? undefined, screen: options.screen },
+    payload: { question, conversation_id: options.conversation ?? undefined, screen: options.screen, language: options.language },
   });
   if (res.statusCode !== 200) throw new Error(`the assistant answered ${res.statusCode}: ${res.body.slice(0, 300)}`);
   return res.json() as Reply;

@@ -81,3 +81,39 @@ describe('official details', () => {
   });
 });
 
+
+describe('the card in a second language', () => {
+  const card = (over = {}) => normaliseCard({ name: 'Ana Exemplu', allergies: ['penicilină'], medications: ['Levotiroxină 50 µg'], conditions: ['hipotiroidism'], notes: 'Port stimulator', language: 'ro', second: { language: 'de', allergies: ['Penicillin'], medications: ['Levothyroxin 50 µg'], conditions: ['Hypothyreose'], notes: 'Trage einen Schrittmacher' }, ...over });
+
+  it('is kept as written and is nothing for a card that has none', () => {
+    expect(card().second).toMatchObject({ language: 'de', allergies: ['Penicillin'] });
+    expect(normaliseCard({ name: 'x' }).second).toBeNull();
+    expect(EMPTY_CARD.second).toBeNull();
+  });
+
+  it('refuses a language the headings are not written in', () => {
+    expect(() => normaliseCard({ name: 'x', second: { language: 'xx', allergies: [] } })).toThrow(CardError);
+  });
+
+  it('puts the second language after everything urgent of the first, with its own headings, in the offline code', () => {
+    const { text, omitted } = cardText(card());
+    expect(omitted).toBe(0);
+    const lines = text.split('\n');
+    expect(lines.indexOf('Allergies: penicilină')).toBeGreaterThan(0);
+    expect(lines.indexOf('Allergien: Penicillin')).toBeGreaterThan(lines.indexOf('Notes: Port stimulator'));
+    expect(text).toContain('Medikamente: Levothyroxin 50 µg');
+    expect(text).toContain('Erkrankungen: Hypothyreose');
+  });
+
+  it('keeps the first language whole and counts what of the second did not fit, instead of cutting the first', () => {
+    const { text, omitted } = cardText(card(), 150);
+    expect(text).toContain('Allergies: penicilină');
+    expect(text).not.toContain('Hinweise');
+    expect(omitted).toBeGreaterThan(0);
+  });
+
+  it('is not empty because of a second language alone, and leaves it in what others read', () => {
+    expect(cardIsEmpty(card({ allergies: [], medications: [], conditions: [], notes: '', name: '' }))).toBe(false);
+    expect(publicCard(card()).second?.language).toBe('de');
+  });
+});

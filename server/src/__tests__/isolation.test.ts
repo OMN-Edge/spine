@@ -161,6 +161,10 @@ describe('P1 — deny by default', () => {
     'GET /api/share/:link/documents/:id',
     'GET /api/share/:link/pages/:pageId/image',
     'GET /api/share/:link/meta',
+    // Public on purpose, and carrying no session: ANAF's redirect back from the certificate sign-in (the cookie is SameSite=strict) is trusted by the one-time state an administrator asked for, and an invoice's PDF is at a link the
+    // account's own request signed for ten minutes (billing-efactura.test.ts).
+    'GET /api/admin/efactura/callback',
+    'GET /api/billing/invoice-pdf/:id',
     // Public on purpose: the privacy notice, the terms and the intended purpose are read before an account exists (own-account.test.ts).
     'GET /api/legal/:doc',
     // Public on purpose: they are how a passkey signs in (passkeys.test.ts); each is rate limited and single use.
@@ -172,11 +176,15 @@ describe('P1 — deny by default', () => {
     'POST /api/enrol/claim',
     'GET /api/share/:link/documents/:id/translation',
     'GET /api/share/:link/trends',
+    'GET /api/share/:link/terms',
     'GET /api/share/:link/trends/series',
     // Public on purpose, and scoped by the link (its documents only, confirmed links only): share-connections.test.ts.
     'GET /api/share/:link/documents/:id/connections',
     // Public on purpose, and scoped by the link: share-chat.test.ts.
     'POST /api/share/:link/chat',
+    // Public on purpose (lifecycle.test.ts): the link in a reminder stops those mails for the account its signed token names, signed in or not; a token that is
+    // not ours is answered the same and changes nothing.
+    'POST /api/mail/unsubscribe',
     // Public on purpose (billing.test.ts, growth.test.ts): the prices and the founding places left, read before an account exists; the payment
     // provider's signed messages, refused unless the signature is right; and asking to be told when Spine opens, an address and nothing else.
     'GET /api/pricing',
