@@ -1,5 +1,6 @@
 import { loadBillingConfig } from '../billing/config.js';
-import { HEALTH_CONSENT_VERSION, TERMS_VERSION, operatorInfo } from '../legal.js';
+import { HEALTH_CONSENT_VERSION, TERMS_VERSION } from '../legal.js';
+import { currentOperator } from '../operator.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { v4 as uuidv4 } from 'uuid';
 import { getAccountsStore } from 'spine-core/store/index.js';
@@ -122,7 +123,7 @@ export async function accountRoutes(app: FastifyInstance, opts: AccountRouteOpti
 
   // What the sign-in page needs to know before anyone is signed in.
   app.get('/api/auth/options', async (_req, reply) => {
-    return reply.send({ registration, recovery: getMailer().enabled, instance, billing: loadBillingConfig().enabled, waitlist: (process.env.SPINE_WAITLIST ?? 'off') === 'on', operator: operatorInfo() });
+    return reply.send({ registration, recovery: getMailer().enabled, instance, billing: loadBillingConfig().enabled, waitlist: (process.env.SPINE_WAITLIST ?? 'off') === 'on', operator: await currentOperator() });
   });
 
   if (registration === 'open' || registration === 'approval') {

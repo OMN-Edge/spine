@@ -59,15 +59,11 @@ spec:
             - { name: SPINE_JOBS, value: external }
             - { name: SPINE_FAIR_USE_FILE, value: /secrets/fair-use/fair-use.json }
             - { name: SPINE_RELAY_URL, value: "https://relay.spinevault.eu" }
-            - { name: SPINE_OPERATOR_NAME, value: CHANGE }
             - { name: SPINE_OPERATOR_CONTACT, value: privacy@spinevault.eu }
             # Where vulnerability reports go (/.well-known/security.txt), when that is not the contact above.
             # - { name: SPINE_OPERATOR_SECURITY_CONTACT, value: CHANGE }
             # Where requests about a person's data go (the privacy notice), when that is not the contact above.
             # - { name: SPINE_OPERATOR_PRIVACY_CONTACT, value: CHANGE }
-            # The company line at the foot of every page and in the terms: its numbers (separated by ;, each shown as written) and its address.
-            # - { name: SPINE_OPERATOR_IDS, value: "Reg. no. CHANGE; Tax no. CHANGE" }
-            # - { name: SPINE_OPERATOR_ADDRESS, value: "CHANGE" }
             - { name: SPINE_REPO_URL, value: "https://github.com/OMN-Edge/spine" }
             - { name: SPINE_MAILER, value: brevo }
             - { name: SPINE_MAIL_SENDER, value: "Account Notices <notices@spinevault.eu>" }

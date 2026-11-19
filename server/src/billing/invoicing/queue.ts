@@ -13,6 +13,7 @@ import { invoiceReadyMail } from '../invoice-mail.js';
 import { getMailer } from '../../mail/index.js';
 import { loadInvoicingConfig, type InvoicingConfig } from './config.js';
 import { keepDocument } from './own-pdf.js';
+import { sellerOf } from './seller.js';
 
 /**
  * The queue of invoices (`spine-billing`, `invoicing/queue.ts`) with Spine's settings: which issuer the operator named, made once for the process, the context a pass runs in, and the
@@ -28,7 +29,7 @@ function build(config: Active): NonNullable<typeof made> {
   const key = JSON.stringify([config.issuer, config.issuer === 'billyou' ? config.billyou : { ...config.direct, key: config.direct.key.toString('base64') }, config.vatPercent]);
   if (made?.key === key) return made;
   if (config.issuer === 'efactura') {
-    const efactura = openEfactura(config.direct, getAccountsStore().billing, { brand: invoiceBrand() });
+    const efactura = openEfactura({ ...config.direct, seller: () => sellerOf(getAccountsStore()) }, getAccountsStore().billing, { brand: invoiceBrand() });
     return (made = { key, issuer: efactura.issuer, efactura });
   }
   const issuer = billyouIssuer({ apiKey: config.billyou.apiKey, seriesId: config.billyou.seriesId, exchangeRate: currency => bnrRate(currency), ...(config.billyou.zeroVat ? { zeroVat: config.billyou.zeroVat } : {}) });

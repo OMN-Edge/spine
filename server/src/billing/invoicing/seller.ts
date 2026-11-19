@@ -4,8 +4,8 @@ import type { AccountsStore } from 'spine-core/store/types.js';
 /**
  * Who the invoices are made out by, kept in the database and changed from the admin page (`routes/admin.ts`), so it works on a host with no disk and changes without a
  * release. It is what Spine's own PDF of an invoice a service issued shows (`document.ts`) and is copied into each invoice's document when it is made, so a later change
- * does not touch an invoice already issued. With none saved, no document is kept and the service's own PDF is the one served. Spine's own e-Factura link (`SPINE_INVOICING=efactura`)
- * takes the seller from the environment, since it must have it at start-up to write the XML.
+ * does not touch an invoice already issued. With none saved, a service's invoice keeps no document and the service's own PDF is the one served, and Spine's own e-Factura link (`SPINE_INVOICING=efactura`)
+ * numbers the invoice and lets it wait until one is saved. It is the one place the company is written for invoices, whichever way they are made.
  */
 const KEY = 'invoice.seller';
 
@@ -58,6 +58,7 @@ export function readSeller(input: unknown): { ok: true; seller: UblSeller } | { 
   };
 }
 
+/** The saved seller, or null where none is saved (or what is kept no longer checks out). */
 export async function sellerOf(store: Pick<AccountsStore, 'settings'>): Promise<UblSeller | null> {
   const row = (await store.settings.all()).find(r => r.key === KEY);
   if (!row) return null;

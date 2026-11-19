@@ -13,7 +13,8 @@ import { buildUbl, routeOf, UblError, type UblBuyer, type UblDocument, type UblS
  * The PDF is made here (`document.ts`) from the stored document, the same one the XML is written from; the Ministry's converter is kept as `pdfByAnaf`, to compare. What this has not got, that a service has: a ledger for the accountant (the documents are kept here, and in the buyer's and the seller's SPV).
  */
 export interface EfacturaSettings {
-  seller: UblSeller;
+  /** Who the invoices are made out by, read when one is made (it is copied into the document, so a later change leaves an issued invoice as it was); null where none is set. */
+  seller: () => Promise<UblSeller | null>;
   /** The series' name ("SPN"); the invoice is printed as "SPN-00001". */
   series: string;
   zeroVat: ZeroVat;
@@ -114,9 +115,12 @@ export function efacturaIssuer(settings: EfacturaSettings, store: Store, link: A
         if (!settings.exchangeRate) throw new AnafError('an invoice with VAT in another currency needs the National Bank\'s rate', false);
         try { rate = await settings.exchangeRate(draft.currency, doc.issue_date); } catch (err) { throw new AnafError(`the exchange rate could not be read: ${err instanceof Error ? err.message : String(err)}`, true); }
       }
+      // No seller yet: the invoice is numbered and waits, and is made once an administrator has saved one.
+      const seller = await settings.seller();
+      if (!seller) throw new AnafError('no seller is set: an administrator saves it on the invoices page', true);
       const input: UblDocument = {
         kind: 'invoice', id: printed(doc), issueDate: doc.issue_date, currency: draft.currency.toUpperCase(), ...(rate ? { rate } : {}),
-        seller: settings.seller, buyer: buyerOf(draft.buyer), lines: netLines(draft.lines), zeroVat: settings.zeroVat, paid: true,
+        seller, buyer: buyerOf(draft.buyer), lines: netLines(draft.lines), zeroVat: settings.zeroVat, paid: true,
       };
       const xml = written(input);
       await store.efacturaUpdateDocument(draft.id, { xml, input: JSON.stringify(input) }, now().toISOString());
@@ -177,7 +181,7 @@ export function efacturaIssuer(settings: EfacturaSettings, store: Store, link: A
           await store.efacturaUpdateDocument(d.draft_id, { anaf_state: 'nok', anaf_message: text.slice(0, 1000) }, stamp());
           return { sent: false, code: 2, text };
         }
-        const sent = await link.upload(current.xml!, settings.seller.cif, current.kind === 'credit' ? 'CN' : 'UBL', route);
+        const sent = await link.upload(current.xml!, input.seller.cif, current.kind === 'credit' ? 'CN' : 'UBL', route);
         if (!sent.ok) {
           await store.efacturaUpdateDocument(d.draft_id, { anaf_state: 'nok', anaf_message: sent.message.slice(0, 1000) }, stamp());
           return { sent: false, code: 2, text: sent.message };

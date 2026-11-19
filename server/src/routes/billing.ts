@@ -25,7 +25,7 @@ import { withdrawalReceivedMail } from '../billing/withdrawal-mail.js';
 import { getMailer } from '../mail/index.js';
 import { randomUUID } from 'node:crypto';
 import { grantOnce, mayBuy, topupLeft, type Addon } from '../plans/addons.js';
-import { operatorInfo } from '../legal.js';
+import { currentOperator } from '../operator.js';
 import { pageInfo, pagingOf } from './paging.js';
 
 /** The billing configuration with the catalog's prices in place of the environment's where it has them (`plans/products.ts`): what the pricing page shows and a checkout charges. */
@@ -76,7 +76,7 @@ export async function billingRoutes(app: FastifyInstance) {
     if (!config.enabled) return reply.header('Cache-Control', 'no-store').send({ enabled: false });
     const held = await getAccountsStore().billing.foundingHeld();
     // Who sells: the operator, and the page says in whose name (the same name as the footer's company line).
-    const seller = { seller: 'operator' as const, seller_name: operatorInfo()?.name ?? null };
+    const seller = { seller: 'operator' as const, seller_name: (await currentOperator())?.name ?? null };
     return reply.header('Cache-Control', 'public, max-age=60').send({ enabled: true, prices: await loadPrices(config), essential: !!config.essential, family: !!config.family, founding_left: Math.max(0, FOUNDING_LIMIT - held), ...seller });
   });
 

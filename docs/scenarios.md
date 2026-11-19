@@ -469,7 +469,7 @@ The owner finds two entries for one person ("Popescu I." and "Popescu Ion").
 Status: auto (`trends-doctors`, `structured`); screens: hand.
 
 ### 5.2b Before a visit
-A doctor's page shows, under the details, "From others since your last visit here": the documents of others dated after the newest one that names this doctor (the last visit), newest first, up to ten, each opening its document. The list holds what any doctor wants whoever wrote it: lab results, imaging, discharge letters, vaccinations and prescriptions; everything else (a consultation with another doctor, a receipt, a document of no type) is behind "Other documents (n)". "Share these" opens the share form with exactly the first list chosen (`web/src/since-last-visit.ts`); nothing is made until the owner creates the link. A doctor with no dated document, or with nothing newer from others, shows no such block.
+A doctor's page shows, under the details, "From others since your last visit here": the documents of others dated after the newest one that names this doctor (the last visit), newest first, up to ten, each opening its document; when there are more, a line says how many are shown of how many, and that Share these takes all of them. Nothing is left out by its type: what a doctor needs is for the owner to choose, not for the app to infer. "Share these" opens the share form with exactly that list chosen (`web/src/since-last-visit.ts`); nothing is made until the owner creates the link. A doctor with no dated document, or with nothing newer from others, shows no such block.
 
 ### 5.3 A doctor's professional code
 The code printed beside a signature ("Cod parafa X12345") identifies a person better than a name does.

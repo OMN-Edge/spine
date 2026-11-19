@@ -71,18 +71,3 @@ describe('the National Bank’s rates', () => {
     expect(rates.get('HUF')).toBe(0.0125);
   });
 });
-
-describe('one company on the pages and on the invoice', () => {
-  const efactura = (name: string) => ({ enabled: true as const, issuer: 'efactura' as const, vatPercent: 0, efactura: true as const, mail: false as const, direct: { seller: { name } } as never });
-  it('says nothing where the names are the same, however they are written', async () => {
-    const { sellerNameWarning } = await import('../billing/invoicing/config.js');
-    expect(sellerNameWarning(efactura('Exemplu Software SRL'), 'Exemplu Software SRL')).toBeNull();
-    expect(sellerNameWarning(efactura('Exemplu Software S.R.L.'), ' exemplu software srl ')).toBeNull();
-  });
-  it('warns where they differ, or the operator’s is not set, and only where Spine makes the invoices', async () => {
-    const { sellerNameWarning } = await import('../billing/invoicing/config.js');
-    expect(sellerNameWarning(efactura('Exemplu Software SRL'), 'Altă Firmă SRL')).toContain('two companies');
-    expect(sellerNameWarning(efactura('Exemplu Software SRL'), undefined)).toContain('SPINE_OPERATOR_NAME is not set');
-    expect(sellerNameWarning({ enabled: false }, 'x')).toBeNull();
-  });
-});

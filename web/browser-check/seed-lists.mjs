@@ -1,6 +1,6 @@
 /**
  * Long lists for the screenshots (`screens.mjs`): 60 made invoices for one account and 60 accounts with a subscription, so the paging of the account's invoices
- * and the operator's subscriptions (25 to a page) is seen and not only said. Writes to the accounts store as the CLI does (invented addresses, no payment), with the
+ * and the operator's subscriptions (25 to a page) is seen and not only said, and the seller the invoices, the footer and the terms name. Writes to the accounts store as the CLI does (invented addresses, no payment), with the
  * same environment as the server it is run beside.
  *
  *   node browser-check/seed-lists.mjs owner@example.com [count]
@@ -17,6 +17,11 @@ useAccountsStore();
 const store = getAccountsStore();
 const owner = await store.users.findByEmail(email);
 if (!owner) throw new Error(`no account ${email}`);
+
+// The company, as the administrator saves it on /admin/invoices: the one seller for the invoices, the footer and the terms (invented).
+const { changeSeller } = await import(pathToFileURL(path.join(root, 'server/dist/billing/invoicing/seller.js')).href);
+const saved = await changeSeller(store, { name: 'Exemplu Software SRL', cif: '12345678', registerNo: 'J40/1234/2020', street: 'Strada Exemplului 1', city: 'București', county: 'B', sector: '1', postalCode: '010101', email: 'billing@example.com' }, new Date().toISOString());
+if (saved) throw new Error(`the seller was not saved: ${saved}`);
 
 const day = n => new Date(Date.UTC(2026, 0, 1) + n * 86_400_000).toISOString();
 for (let n = 1; n <= Number(count); n++) {

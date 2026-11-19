@@ -20,7 +20,8 @@ export interface AnafConfig {
   redirectUri: string;
   /** The 32 bytes that seal ANAF's tokens in the store. */
   key: Buffer;
-  seller: UblSeller;
+  /** Who the invoices are made out by, read each time one is made: null where none is set yet, and the invoice then waits. */
+  seller: () => Promise<UblSeller | null>;
   series: string;
   zeroVat: ZeroVat;
   /** The address the host is served from, for the links to an invoice's PDF. */

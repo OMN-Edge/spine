@@ -136,7 +136,7 @@ describe('the issuer’s PDF', () => {
       efacturaTokens: async () => null, efacturaSaveTokens: async () => undefined, efacturaBeginAuthorisation: async () => undefined, efacturaFinishAuthorisation: async () => false,
     };
     const link = new AnafLink({ mode: 'test', clientId: 'id', clientSecret: 'secret', redirectUri: 'https://spine.example/cb', key: Buffer.alloc(32, 1), fetcher }, store);
-    return efacturaIssuer({ seller: SELLER, series: 'SPN', zeroVat: { category: 'O' }, pdfLink: id => `https://spine.example/pdf/${id}`, fetcher }, store, link);
+    return efacturaIssuer({ seller: async () => SELLER, series: 'SPN', zeroVat: { category: 'O' }, pdfLink: id => `https://spine.example/pdf/${id}`, fetcher }, store, link);
   };
 
   it('is made with no request to ANAF, so a download does not depend on the Ministry’s service', async () => {

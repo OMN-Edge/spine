@@ -22,11 +22,10 @@ describe('what came from others since', () => {
     expect(documents.map(d => d.id)).toEqual(['ecg', 'lab-new']);
   });
 
-  it('keeps a receipt and an unrelated consultation out of the first list, and offers them as the others', () => {
+  it('leaves no document out by its type: a receipt and a consultation with another doctor are listed too', () => {
     const more = [...all, doc('receipt', '2026-09-01', 'other'), doc('derm', '2026-09-10', 'consultation_note'), doc('untyped', '2026-09-12', null)];
-    const { documents, other } = sinceLastVisit(own, more);
-    expect(documents.map(d => d.id)).toEqual(['ecg', 'lab-new']);
-    expect(other.map(d => d.id)).toEqual(['untyped', 'derm', 'receipt']);
+    const { documents } = sinceLastVisit(own, more);
+    expect(documents.map(d => d.id)).toEqual(['ecg', 'untyped', 'derm', 'receipt', 'lab-new']);
   });
 
   it('never lists the doctor’s own documents, nor one with no date, nor one of the day itself', () => {
@@ -35,7 +34,7 @@ describe('what came from others since', () => {
   });
 
   it('is nothing for a doctor with no dated document: there is no visit to count from', () => {
-    expect(sinceLastVisit([doc('x', null)], all)).toEqual({ since: null, documents: [], other: [] });
-    expect(sinceLastVisit([], all)).toEqual({ since: null, documents: [], other: [] });
+    expect(sinceLastVisit([doc('x', null)], all)).toEqual({ since: null, documents: [] });
+    expect(sinceLastVisit([], all)).toEqual({ since: null, documents: [] });
   });
 });

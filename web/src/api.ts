@@ -669,7 +669,7 @@ export interface BillingView {
 /** Who the invoices are made out by (the server's `billing/invoicing/seller.ts`). */
 export interface InvoiceSeller {
   name: string; cif: string; street: string; city: string; county: string; postalCode: string;
-  sector?: string; vatId?: string; registerNo?: string; email?: string; phone?: string;
+  tradeName?: string; sector?: string; vatId?: string; registerNo?: string; email?: string; phone?: string;
   accounts?: Array<{ iban: string; bank?: string; bic?: string; currency?: string }>;
 }
 
@@ -815,7 +815,7 @@ export const api = {
     mendInvoice: (ref: string, action: 'retry' | 'settle') => post<{ ok: boolean }>('/api/admin/invoices', { ref, action }),
     /** Spine's own e-Factura link (the server's `spine-anaf` package): whether ANAF has authorised it and until when, and the newest documents with ANAF's word on each. */
     efactura: (page = 1) => req<Paged & {
-      enabled: boolean; mode?: 'test' | 'prod'; series?: string; seller?: { name: string; cif: string };
+      enabled: boolean; mode?: 'test' | 'prod'; series?: string; seller?: { name: string; cif: string } | null;
       authorised?: boolean; accessExpiresAt?: string | null; refreshExpiresAt?: string | null;
       documents?: Array<{ id: string; number: string; kind: 'invoice' | 'credit'; date: string; state: 'sent' | 'ok' | 'nok' | 'abroad' | null; message: string | null }>;
     }>(`/api/admin/efactura?page=${page}`).then(v => v as { enabled: false } | Required<Pick<typeof v, 'mode' | 'series' | 'seller' | 'authorised' | 'accessExpiresAt' | 'refreshExpiresAt' | 'documents' | 'total' | 'page' | 'limit'>> & { enabled: true }),

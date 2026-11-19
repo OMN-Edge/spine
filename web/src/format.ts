@@ -65,6 +65,11 @@ export function currencySymbol(currency: string, lang: InterfaceLanguage): strin
   return new Intl.NumberFormat(LOCALE[lang], { style: 'currency', currency, currencyDisplay: 'narrowSymbol' }).formatToParts(0).find(p => p.type === 'currency')?.value ?? currency;
 }
 
+/** A name that starts a line written with a capital, as the language writes it (a Turkish "i" is not an English one); the rest as it is. */
+export function startsWithCapital(text: string, lang: InterfaceLanguage): string {
+  return text.charAt(0).toLocaleUpperCase(LOCALE[lang]) + text.slice(1);
+}
+
 /** The formatters for the language the screens are in, for a component to call. */
 export function useFormat() {
   const { lang } = useI18n();

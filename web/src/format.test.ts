@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { currencySymbol, formatAmount, formatBytes, formatDate, formatDateTime, formatDayMonth, formatMoney, formatNumber, formatTime } from './format';
+import { currencySymbol, startsWithCapital, formatAmount, formatBytes, formatDate, formatDateTime, formatDayMonth, formatMoney, formatNumber, formatTime } from './format';
 
 /** Dates, times, money and sizes in the language of the screens (T-05), and a check that no screen writes one with the browser's own. */
 /** The spaces Intl writes between a number and its sign are not ordinary ones. */
@@ -83,5 +83,14 @@ describe('the screens', () => {
       });
     }
     expect(offenders).toEqual([]);
+  });
+});
+
+describe('a name that starts a line', () => {
+  it('starts with a capital in each language, and the rest is left as it is', () => {
+    expect(startsWithCapital('family medicine', 'en')).toBe('Family medicine');
+    expect(startsWithCapital('cardiologie', 'ro')).toBe('Cardiologie');
+    expect(startsWithCapital('Kardiologie', 'de')).toBe('Kardiologie');
+    expect(startsWithCapital('', 'en')).toBe('');
   });
 });

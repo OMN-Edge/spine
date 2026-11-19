@@ -12,6 +12,7 @@ import DeleteUpload from '../components/DeleteUpload';
 import ModelWaitNote from '../components/ModelWaitNote';
 import { routeFiles } from '../scan/route';
 import { msg, useI18n } from '../i18n';
+import { useListTitles } from '../useListTitles';
 import { useFormat } from '../format';
 import type { I18n } from '../i18n';
 import { useAuth } from '../auth';
@@ -91,14 +92,17 @@ const CHIP: Record<string, string> = {
   duplicate: 'bg-gray-100 text-gray-500',
 };
 
+/** The document with its title in the reader's language where there is one, else its own. */
+const titled = <D extends { title: string | null }>(doc: D, titleOf?: (d: D) => string | null | undefined): D => ({ ...doc, title: titleOf?.(doc) ?? doc.title });
+
 /**
  * A row is named by the documents its upload produced, never by the file name. Until
  * then there is no title to show, so the row says what is happening instead.
  */
-function heading(job: JobState, i18n: I18n): string {
+function heading(job: JobState, i18n: I18n, titleOf?: (d: JobState['documents'][number]) => string | null | undefined): string {
   const { t, tn } = i18n;
   if (job.documents.length > 1) return tn(job.documents.length, '{n} document', '{n} documents');
-  if (job.documents.length === 1) return documentTitle(job.documents[0], t);
+  if (job.documents.length === 1) return documentTitle(titled(job.documents[0], titleOf), t);
   if (job.status === 'error') return t('Could not read this upload');
   if (job.status === 'duplicate') return t('Already in your archive');
   if (job.status === 'done') return job.hiddenDocuments ? t('All documents hidden') : t('No documents found');
@@ -133,12 +137,13 @@ function UploadRow({ job, anchor, onRetry, onDeleted }: { job: JobState; /** The
   const format = useFormat();
   const { t, tn } = i18n;
   const [showAll, setShowAll] = useState(false);
+  const { titleOf } = useListTitles(job.documents.map(d => d.id), false);
   const listed = showAll ? job.documents : job.documents.slice(0, LISTED_DOCUMENTS);
   const unlisted = job.documents.length - listed.length;
   return (
     <div id={anchor ? 'grouping' : undefined} className="bg-white border border-gray-200 rounded-xl px-4 py-3 scroll-mt-24">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-medium text-gray-900 truncate">{heading(job, i18n)}</p>
+        <p className="text-sm font-medium text-gray-900 truncate">{heading(job, i18n, titleOf)}</p>
         <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${CHIP[job.status] ?? 'bg-brand-100 text-brand-700'}`}>
           {t(STATUS_NAME[job.status] ?? job.status)}
         </span>
@@ -156,7 +161,7 @@ function UploadRow({ job, anchor, onRetry, onDeleted }: { job: JobState; /** The
           {listed.map(doc => (
             <li key={doc.id} className="flex items-baseline justify-between gap-3 text-xs">
               <span className="min-w-0 truncate text-gray-700">
-                {documentTitle(doc, t)}{pagesOf(doc, t) && <span className="text-gray-400"> · {pagesOf(doc, t)}</span>}
+                {documentTitle(titled(doc, titleOf), t)}{pagesOf(doc, t) && <span className="text-gray-400"> · {pagesOf(doc, t)}</span>}
               </span>
               {documentIsReady(doc, job)
                 ? <Link to={`/documents/${doc.id}`} className="shrink-0 text-brand-600 hover:underline">{t('View document')}</Link>

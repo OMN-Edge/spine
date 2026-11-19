@@ -4,7 +4,7 @@ import { useI18n } from '../i18n';
 
 /**
  * Who the invoices are made out by, on the admin page (the server's `billing/invoicing/seller.ts` checks it): what Spine's own PDF of an invoice a service issued shows, as it was when the invoice was made.
- * An administrator edits it, the marketing role reads it. Spine's own e-Factura link takes the seller from the environment and says so here.
+ * An administrator edits it, the marketing role reads it. It is the one place the company is written for invoices, whether a service or Spine's own e-Factura link makes them.
  */
 const EMPTY: InvoiceSeller = { name: '', cif: '', street: '', city: '', county: '', postalCode: '' };
 const EMPTY_ACCOUNT = { iban: '', bank: '', bic: '', currency: '' };
@@ -33,10 +33,10 @@ export default function AdminSeller() {
       setMessage({ text: err instanceof Error ? err.message : t('Could not save'), error: true });
     }
   };
-  const field = (key: keyof InvoiceSeller, label: string, opts: { wide?: boolean; hint?: string } = {}) => (
+  const field = (key: keyof InvoiceSeller, label: string, opts: { wide?: boolean } = {}) => (
     <label className={`block text-sm ${opts.wide ? 'md:col-span-2' : ''}`}>
       <span className="text-ink/70">{label}</span>
-      <input value={(form[key] as string | undefined) ?? ''} onChange={e => set(key, e.target.value)} disabled={!canEdit} placeholder={opts.hint}
+      <input value={(form[key] as string | undefined) ?? ''} onChange={e => set(key, e.target.value)} disabled={!canEdit}
         className="mt-1 w-full rounded-xl border border-ink/20 bg-surface px-3 py-2 outline-none focus:border-accent disabled:opacity-60" />
     </label>
   );
@@ -44,19 +44,19 @@ export default function AdminSeller() {
     <section>
       <h2 className="font-display text-[clamp(1.5rem,2.6vw,2rem)] font-normal leading-tight">{t('Seller on invoices')}</h2>
       <p className="mt-1 text-sm text-ink/60">{t('Who the invoices are made out by. Spine’s own PDF of an invoice shows this, as it was when the invoice was made.')}</p>
-      {loaded.issuer === 'efactura' && <p className="mt-2 text-sm text-ink/60">{t('Invoices made by Spine’s own e-Factura link take the seller from the environment (SPINE_SELLER_*); this applies to invoices a service issues.')}</p>}
-      {!loaded.seller && loaded.issuer === 'billyou' && <p className="mt-2 text-sm text-amber-700">{t('No seller saved yet: until there is one, an invoice is read in the service’s own PDF.')}</p>}
+      {!loaded.seller && <p className="mt-2 text-sm text-amber-700">{loaded.issuer === 'efactura' ? t('No seller saved yet: until there is one, an invoice is numbered and waits.') : t('No seller saved yet: until there is one, an invoice is read in the service’s own PDF.')}</p>}
       {!canEdit && <p className="mt-2 text-sm text-ink/60">{t('Only an administrator can change these.')}</p>}
       <form className="mt-5 rounded-2xl border border-ink/10 bg-surface p-5" onSubmit={e => { e.preventDefault(); if (canEdit) void save(); }}>
         <div className="grid gap-3 md:grid-cols-2">
           {field('name', t('Company name'), { wide: true })}
-          {field('cif', t('Tax number (CIF)'), { hint: '12345678' })}
-          {field('registerNo', t('Trade register no.'), { hint: 'J40/1234/2020' })}
-          {field('vatId', t('VAT id, if a VAT payer'), { hint: 'RO12345678' })}
+          {field('tradeName', t('Trade name, if it differs'), { wide: true })}
+          {field('cif', t('Tax number (CIF)'))}
+          {field('registerNo', t('Trade register no.'))}
+          {field('vatId', t('VAT id, if a VAT payer'))}
           {field('email', t('Email'))}
           {field('street', t('Street'), { wide: true })}
           {field('city', t('City'))}
-          {field('county', t('County code'), { hint: 'CJ' })}
+          {field('county', t('County code'))}
           {field('sector', t('Sector (Bucharest)'))}
           {field('postalCode', t('Postal code'))}
           {field('phone', t('Phone'))}

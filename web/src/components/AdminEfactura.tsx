@@ -63,7 +63,7 @@ export default function AdminEfactura() {
             {view.authorised && <button type="button" disabled={testing} onClick={() => void test()} className="rounded-full border border-ink/20 px-4 py-1.5 text-sm text-ink/80 hover:bg-ink/5 disabled:opacity-50">{t('Test the connection')}</button>}
           </div>
           {tested && <Notice kind={tested.ok ? 'ok' : 'error'}>{tested.ok ? (tested.certificateSeen ? t('ANAF accepted the token and saw the certificate. Nothing was sent to e-Factura.') : t('ANAF accepted the token. Nothing was sent to e-Factura.')) : tested.message}</Notice>}
-          <p className="text-xs text-ink/60 mt-3">{t('Series {series}, seller {name} ({cif}).', { series: view.series, name: view.seller.name, cif: view.seller.cif })}</p>
+          <p className="text-xs text-ink/60 mt-3">{view.seller ? t('Series {series}, seller {name} ({cif}).', { series: view.series, name: view.seller.name, cif: view.seller.cif }) : t('Series {series}. No seller is saved yet: invoices wait until one is saved above.', { series: view.series })}</p>
           {view.documents.length > 0 && (
             <>
               <h3 className="text-sm font-medium text-ink mt-4 mb-1">{t('Newest invoices')}</h3>

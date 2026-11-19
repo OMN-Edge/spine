@@ -4,6 +4,7 @@ import { isSupportedLanguage } from 'spine-core/languages.js';
 import { deleteAccount, wipeAccount } from '../identity/index.js';
 import { AUTH_VALUE, parseVaultKeys } from '../vault-keys.js';
 import { mailAfter, securityChangeMail } from '../identity/index.js';
+import { currentOperator } from '../operator.js';
 import { HEALTH_CONSENT_VERSION, LEGAL_DOCS, TERMS_VERSION, consentNeeded, legalText, type LegalDoc } from '../legal.js';
 import { requireAuth, requireRecentAuth } from 'spine-core/routes/middleware.js';
 import { logger } from 'spine-core/logger.js';
@@ -13,7 +14,7 @@ export async function ownAccountRoutes(app: FastifyInstance) {
   // The texts a person agrees to. Public: they are read before an account exists.
   app.get<{ Params: { doc: string } }>('/api/legal/:doc', async (req, reply) => {
     const doc = req.params.doc as LegalDoc;
-    const text = LEGAL_DOCS.includes(doc) ? legalText(doc) : null;
+    const text = LEGAL_DOCS.includes(doc) ? legalText(doc, await currentOperator()) : null;
     if (!text) return reply.status(404).send({ error: 'not found' });
     return reply.header('Cache-Control', 'public, max-age=300').send({ doc, ...text });
   });

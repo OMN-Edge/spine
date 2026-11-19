@@ -9,6 +9,7 @@ import { billingOn, loadBillingConfig } from '../billing/config.js';
 import { createRelayGate } from '../plans/gate.js';
 import { accountEntitlements, liveSharesFor, vaultBytesFor } from '../plans/entitlements.js';
 import { loadPrices, resetCatalog } from '../billing/catalog.js';
+import { changeSeller } from '../billing/invoicing/seller.js';
 import { topupLeft } from '../plans/addons.js';
 import { REWARD_PAGES } from '../plans/invitations.js';
 import { loadConfig } from '../config.js';
@@ -147,12 +148,12 @@ describe('plans and payment', () => {
       expect((await get('/api/pricing', {})).json()).toMatchObject({ enabled: true, founding_left: 500, essential: false, prices: { currency: 'EUR', premium: { year: 49, month: 4.99 }, founding: { year: 39 } } });
     });
 
-    it('says the operator sells, under the name the footer shows', async () => {
+    it('says the operator sells, under the name of the saved seller, the footer\u2019s name', async () => {
       on();
       stripe();
       expect((await get('/api/pricing', {})).json()).toMatchObject({ seller: 'operator' });
       expect((await get('/api/pricing', {})).json().seller_name ?? null).toBeNull();
-      process.env = { ...process.env, SPINE_OPERATOR_NAME: 'Exemplu Software SRL' };
+      expect(await changeSeller(getAccountsStore(), { name: 'Exemplu Software SRL', cif: '12345678', street: 'Strada Exemplului 1', city: 'București', county: 'B', sector: '1', postalCode: '010101' }, new Date().toISOString())).toBeNull();
       resetCatalog();
       stripe();
       expect((await get('/api/pricing', {})).json()).toMatchObject({ enabled: true, seller: 'operator', seller_name: 'Exemplu Software SRL' });

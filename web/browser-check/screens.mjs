@@ -4,7 +4,7 @@
 // (1440) and phone (390@2x) widths, in English and Romanian (the share link in German too).
 // `npm run screens -- <outdir>` in web/ (needs `npm run build`, Google Chrome, and a Stripe test key in .env: billing runs as the branch does,
 // Stripe in test mode with Spine's own e-Factura invoicing on ANAF's test platform; the key is refused unless it is a test one). The default
-// <outdir> is .workspace/ux/<today>/shots, which git does not track. SECTIONS=pub,demo,onb,acc runs only some; CHROME and CHROME_FLAGS as for check:app.
+// <outdir> is .workspace/ux/<today>/shots, which git does not track. SECTIONS=pub,demo,onb,acc runs only some; INVOICING=billyou runs the operator's pages in Billyou mode; CHROME and CHROME_FLAGS as for check:app.
 // The Stripe prices are the sandbox's own; SPINE_STRIPE_PRICE_* in .env or the environment replace them. No record here is a real person's.
 import { spawn, execFileSync } from 'node:child_process';
 import http from 'node:http';
@@ -39,15 +39,14 @@ const env = {
   SPINE_EMBEDDINGS: 'vertex', SPINE_EMBEDDING_ENDPOINT: 'aiplatform.eu.example', SPINE_EMBEDDING_REGION: 'eu', SPINE_EMBEDDING_PROJECT: 'proj-1', SPINE_LLM_PROVIDER: 'vertex', SPINE_LLM_ENDPOINT: 'aiplatform.eu.example', SPINE_LLM_REGION: 'eu', SPINE_LLM_PROJECT: 'proj-1', SPINE_LLM_MODEL: 'gemini-test',
   SPINE_RELAY_URL: relayUrl, SPINE_RELAY_SECRET: RELAY_SECRET, SPINE_DOMAIN: `localhost:${front}`, SPINE_DEMO_UPLOADS: 'on',
   // Billing as the branch runs it: Stripe (test mode, the sandbox's prices) through spine-billing, invoices by Spine's own e-Factura module on ANAF's test platform.
-  // The seller and the ANAF application are invented; nothing is signed in to ANAF and nothing is bought.
+  // The ANAF application is invented (the seller is saved by seed-lists.mjs); nothing is signed in to ANAF and nothing is bought.
   SPINE_BILLING: 'on', SPINE_BILLING_PROVIDER: 'stripe', STRIPE_WEBHOOK_SECRET: ['whsec', 'ux', 'review'].join('_'),
   SPINE_STRIPE_PRICE_YEAR: 'price_1Uc8gEFMVsdHvrD5AjN1GbjV', SPINE_STRIPE_PRICE_MONTH: 'price_1Uc8gFFMVsdHvrD5bIDdTjJi', SPINE_STRIPE_PRICE_FOUNDING: 'price_1Uc8gGFMVsdHvrD5qBOUHZtJ',
   SPINE_STRIPE_PRICE_ESSENTIAL_YEAR: 'price_1Uc8gHFMVsdHvrD5nw1UUExc', SPINE_STRIPE_PRICE_ESSENTIAL_MONTH: 'price_1Uc8gIFMVsdHvrD517DjA5lm',
   SPINE_STRIPE_PRICE_FAMILY_YEAR: 'price_1Uc8gIFMVsdHvrD5zfMT5vZm', SPINE_STRIPE_PRICE_FAMILY_MONTH: 'price_1Uc8gJFMVsdHvrD5mS4mJLkV', SPINE_STRIPE_PRICE_TOPUP_PAGES: 'price_1Uc8gNFMVsdHvrD5aCq547Tq',
   SPINE_INVOICING: 'efactura', SPINE_INVOICING_VAT_PERCENT: '21', SPINE_EFACTURA_MODE: 'test', ANAF_CLIENT_ID: 'ux-review-client', ANAF_CLIENT_SECRET: ['ux', 'review', 'anaf'].join('-'),
   SPINE_EFACTURA_REDIRECT_URI: 'https://spine.example/api/admin/efactura/callback', SPINE_EFACTURA_KEY: Buffer.alloc(32, 7).toString('base64'), SPINE_EFACTURA_SERIES: 'TST',
-  SPINE_SELLER_NAME: 'Exemplu Software SRL', SPINE_SELLER_CIF: '12345678', SPINE_SELLER_REGISTER_NO: 'J40/1234/2020', SPINE_SELLER_STREET: 'Strada Exemplului 1', SPINE_SELLER_CITY: 'București', SPINE_SELLER_COUNTY: 'RO-B', SPINE_SELLER_SECTOR: '1', SPINE_SELLER_POSTAL_CODE: '010101', SPINE_SELLER_EMAIL: 'billing@example.com',
-  SPINE_OPERATOR_NAME: 'Exemplu Software SRL', SPINE_OPERATOR_IDS: 'CIF RO12345678; J40/1234/2020', SPINE_OPERATOR_ADDRESS: 'Strada Exemplului 1, București', SPINE_OPERATOR_CONTACT: 'contact@example.com',
+  SPINE_OPERATOR_CONTACT: 'contact@example.com',
   SPINE_REGISTRATION: 'approval', SPINE_ADMIN_EMAILS: 'owner@example.com',
 };
 {
@@ -55,6 +54,11 @@ const env = {
   // The Stripe sandbox key only (rk_test_/sk_test_): never a live one.
   if (/^(rk|sk)_test_/.test(dotenv.STRIPE_SECRET_KEY ?? '')) env.STRIPE_SECRET_KEY = dotenv.STRIPE_SECRET_KEY; else throw new Error('no Stripe test key in .env');
   for (const [k, v] of Object.entries({ ...dotenv, ...process.env })) if (k.startsWith('SPINE_STRIPE_PRICE_') && v) env[k] = v;
+}
+// INVOICING=billyou shows the operator's pages with a service issuing the invoices instead of Spine's own e-Factura link. Nothing calls the service (the pages only list what was made), so the key and the series are invented.
+if (process.env.INVOICING === 'billyou') {
+  for (const k of ['SPINE_EFACTURA_MODE', 'ANAF_CLIENT_ID', 'ANAF_CLIENT_SECRET', 'SPINE_EFACTURA_REDIRECT_URI', 'SPINE_EFACTURA_KEY', 'SPINE_EFACTURA_SERIES']) delete env[k];
+  Object.assign(env, { SPINE_INVOICING: 'billyou', BILLYOU_API_KEY: ['bk', 'ux', 'review'].join('_'), BILLYOU_SERIES_ID: '1', SPINE_INVOICING_EFACTURA: 'on', SPINE_INVOICING_MAIL: 'off' });
 }
 const cli = (...args) => execFileSync('node', ['dist/cli.js', ...args], { cwd: path.join(root, 'server'), env, encoding: 'utf8' });
 const password = cli('create-user', 'owner@example.com').match(/password \(shown once\): (\S+)/)[1];
@@ -247,6 +251,9 @@ try {
       // A touch viewport reloads the page (Puppeteer), which locks the records again: open them with the master password before asking.
       if (await p.$('input[type=password]')) { await p.type('input[type=password]', MASTER); await p.evaluate(() => document.querySelector('form button[type=submit]')?.click()); await wait(8000); }
       await p.evaluate(() => { const b = [...document.querySelectorAll('button')].find(b => (b.getAttribute('aria-label') ?? '').startsWith('Ask your records')); b?.click(); }); await wait(1500); await h.shot('acc-d-chat', '', false);
+      // The greeting stands while the person has no upload of their own; a help topic puts it away, and a new conversation then offers the questions drawn from the records.
+      await p.evaluate(() => [...document.querySelectorAll('button')].find(b => b.textContent?.trim() === 'What can the assistant do?')?.click()); await wait(1500);
+      await p.evaluate(() => document.querySelector('button[aria-label="New conversation"]')?.click()); await wait(1500); await h.shot('acc-d-chat-suggestions', '', false);
       await p.keyboard.press('Escape');
     }
   }

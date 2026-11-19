@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from './api';
-import { useI18n } from './i18n';
+import { startsWithCapital } from './format';
+import { screensIn, useI18n } from './i18n';
 
 /** The most titles one request asks for (the core's limit); a longer list is asked for in turns. */
 const CHUNK = 60;
@@ -64,7 +65,7 @@ export function useTerms() {
     return () => { live = false; window.clearTimeout(timer); };
   }, [lang]);
   return useMemo(() => ({
-    specialty: (text: string): string => names.specialties[text] ?? text,
+    specialty: (text: string): string => startsWithCapital(names.specialties[text] ?? text, screensIn(lang)),
     test: (text: string): string => names.tests[text] ?? text,
     tag: (text: string): string => names.tags[text] ?? text,
     episode: (text: string): string => names.episodes[text] ?? text,

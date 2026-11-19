@@ -7,6 +7,7 @@ import { getAccountsStore } from 'spine-core/store/index.js';
 import { AnafError } from 'spine-anaf/error.js';
 import { InvoiceError, type InvoiceDraft } from 'spine-billing/invoicing/issuer.js';
 import { processInvoice, reverseRefunded } from '../billing/invoicing/queue.js';
+import { changeSeller } from '../billing/invoicing/seller.js';
 import type { Sale } from '../billing/provider.js';
 import { efacturaIssuer, linkIsValid, signedLink } from 'spine-anaf/issuer.js';
 import { AnafLink, expiryOf } from 'spine-anaf/anaf.js';
@@ -28,8 +29,6 @@ const ENV = {
   SPINE_STRIPE_PRICE_YEAR: 'pri_year', SPINE_STRIPE_PRICE_MONTH: 'pri_month', SPINE_STRIPE_PRICE_FOUNDING: 'pri_founding',
   SPINE_INVOICING: 'efactura', SPINE_INVOICING_VAT_PERCENT: '0', SPINE_INVOICING_ZERO_VAT: 'O', SPINE_DOMAIN: 'spine.test',
   ANAF_CLIENT_ID: 'client-id', ANAF_CLIENT_SECRET: 'client-secret', SPINE_EFACTURA_REDIRECT_URI: 'https://spine.test/api/admin/efactura/callback', SPINE_EFACTURA_KEY: KEY.toString('base64'),
-  SPINE_SELLER_NAME: SELLER.name, SPINE_SELLER_TRADE_NAME: 'Spine', SPINE_SELLER_CIF: 'RO 12345678', SPINE_SELLER_STREET: SELLER.street, SPINE_SELLER_CITY: SELLER.city,
-  SPINE_SELLER_COUNTY: 'B', SPINE_SELLER_SECTOR: '1', SPINE_SELLER_POSTAL_CODE: SELLER.postalCode,
 };
 
 /** A JWT as ANAF's: only its dates are read. */
@@ -71,6 +70,8 @@ describe('Spine’s own e-Factura link', () => {
     Object.assign(process.env, ENV);
     app = await buildTestApp({ accounts: { registration: 'approval' }, admin: { admins: () => new Set([ADMIN]), readers: () => new Set([ADMIN]) } });
     await createTestUser(ADMIN);
+    // The seller is saved on the admin page, for e-Factura as for a service.
+    expect(await changeSeller(getAccountsStore(), SELLER, T0.toISOString())).toBeNull();
   });
   afterAll(async () => {
     for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
@@ -80,9 +81,9 @@ describe('Spine’s own e-Factura link', () => {
   afterEach(() => vi.unstubAllGlobals());
   const store = () => getAccountsStore().billing;
   const settings = (fetcher: typeof fetch, now = T0) => ({ mode: 'test' as const, clientId: 'client-id', clientSecret: 'client-secret', redirectUri: 'https://spine.test/cb', key: KEY, fetcher, now: () => now });
-  const issuerOver = (fetcher: typeof fetch, now = T0) => {
+  const issuerOver = (fetcher: typeof fetch, now = T0, seller: typeof SELLER | null = SELLER) => {
     const link = new AnafLink(settings(fetcher, now), store());
-    return efacturaIssuer({ seller: SELLER, series: 'SPN', zeroVat: { category: 'O' }, pdfLink: id => `https://spine.test/pdf/${id}`, now: () => now, fetcher }, store(), link);
+    return efacturaIssuer({ seller: async () => seller, series: 'SPN', zeroVat: { category: 'O' }, pdfLink: id => `https://spine.test/pdf/${id}`, now: () => now, fetcher }, store(), link);
   };
 
   describe('the authorisation', () => {
@@ -205,6 +206,15 @@ describe('Spine’s own e-Factura link', () => {
       expect(row.xml).toContain(`<cbc:ID>SPN-${first.number}</cbc:ID>`);
       expect(row.xml).toContain('<cbc:TaxAmount currencyID="EUR">0.00</cbc:TaxAmount>');
       expect(await issuer.pdfUrl({ id: 'cs_n1' })).toBe('https://spine.test/pdf/cs_n1');
+    });
+
+    it('wait, numbered, until an administrator has saved a seller, and are made once there is one', async () => {
+      const draftNow = draft({ id: 'cs_noseller' });
+      await expect(issuerOver(anaf({}).fetcher, T0, null).issue(draftNow)).rejects.toMatchObject({ name: 'AnafError', retry: true, message: expect.stringContaining('no seller') });
+      expect((await store().efacturaDocument('cs_noseller'))!.xml).toBeNull();
+      const made = await issuerOver(anaf({}).fetcher).issue(draftNow);
+      expect(made).toMatchObject({ id: 'cs_noseller', series: 'SPN' });
+      expect((await store().efacturaDocument('cs_noseller'))!.xml).toContain('Omni Edge SRL');
     });
 
     it('are dated the day they were paid, never a day that has not come', async () => {
@@ -359,7 +369,7 @@ describe('Spine’s own e-Factura link', () => {
   describe('the billing code\u2019s door to it', () => {
     it('answers every call in the billing code\u2019s own error, with what the queue decides by (retry, status) kept', async () => {
       const { fetcher } = anaf({});
-      const open = openEfactura({ mode: 'test', clientId: 'client-id', clientSecret: 'client-secret', redirectUri: 'https://spine.test/cb', key: KEY, seller: SELLER, series: 'SPN', zeroVat: { category: 'O' }, publicUrl: 'https://spine.test' }, store(), { fetcher, now: () => T0 });
+      const open = openEfactura({ mode: 'test', clientId: 'client-id', clientSecret: 'client-secret', redirectUri: 'https://spine.test/cb', key: KEY, seller: async () => SELLER, series: 'SPN', zeroVat: { category: 'O' }, publicUrl: 'https://spine.test' }, store(), { fetcher, now: () => T0 });
       // an invoice that does not exist is refused for good: the same class and flag as the issuer's own
       const refused = await open.issuer.reverse({ id: 'cs_none', series: 'SPN', number: '1' }, 'x').catch((e: unknown) => e);
       expect(refused).toBeInstanceOf(InvoiceError);
@@ -402,6 +412,12 @@ describe('Spine’s own e-Factura link', () => {
 
   describe('the page and the routes', () => {
     const as = (email: string) => loginAs(app, email, TEST_PASSWORD);
+
+    it('name the saved seller as the company on the pages where billing is on: the footer\u2019s line and the pricing page\u2019s seller', async () => {
+      const options = (await app.inject({ method: 'GET', url: '/api/auth/options' })).json();
+      expect(options.operator).toMatchObject({ name: 'Omni Edge SRL', ids: ['CIF 12345678'], address: 'Str. Exemplului 1, 010101 Sector 1' });
+      expect((await app.inject({ method: 'GET', url: '/api/legal/terms' })).json().markdown).toContain('- Omni Edge SRL');
+    });
 
     it('show the operator whether it is authorised and the newest documents, and nothing to anyone else', async () => {
       expect((await app.inject({ method: 'GET', url: '/api/admin/efactura' })).statusCode).toBe(401);
@@ -473,15 +489,13 @@ describe('Spine’s own e-Factura link', () => {
       const env = { ...process.env, ...ENV, ...over } as NodeJS.ProcessEnv;
       try { loadInvoicingConfig(loadBillingConfig(env), env); return ''; } catch (err) { return (err as Error).message; }
     };
-    it('are read whole, with the seller’s address and the sealing key checked before the process starts', () => {
+    it('are read whole, with the sealing key checked before the process starts', () => {
       expect(problemsWith({})).toBe('');
       const config = loadInvoicingConfig(loadBillingConfig(), process.env);
-      expect(config).toMatchObject({ enabled: true, issuer: 'efactura', efactura: true, direct: { mode: 'test', series: 'SPN', publicUrl: 'https://spine.test', seller: { cif: '12345678', county: 'B', sector: '1' }, zeroVat: { category: 'O' } } });
+      expect(config).toMatchObject({ enabled: true, issuer: 'efactura', efactura: true, direct: { mode: 'test', series: 'SPN', publicUrl: 'https://spine.test', zeroVat: { category: 'O' } } });
       expect(problemsWith({ SPINE_EFACTURA_KEY: Buffer.alloc(8).toString('base64') })).toContain('32 random bytes');
       expect(problemsWith({ SPINE_EFACTURA_REDIRECT_URI: 'http://spine.test/cb' })).toContain('https');
       expect(problemsWith({ SPINE_EFACTURA_MODE: 'live' })).toContain('test or prod');
-      expect(problemsWith({ SPINE_SELLER_SECTOR: undefined })).toContain('SPINE_SELLER_SECTOR');
-      expect(problemsWith({ SPINE_SELLER_CIF: 'abc' })).toContain('SPINE_SELLER_CIF');
       expect(problemsWith({ ANAF_CLIENT_ID: undefined, ANAF_CLIENT_SECRET: undefined })).toMatch(/ANAF_CLIENT_ID[\s\S]*ANAF_CLIENT_SECRET/);
     });
   });

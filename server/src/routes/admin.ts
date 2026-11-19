@@ -93,9 +93,10 @@ export async function adminRoutes(app: FastifyInstance, opts: AdminRouteOptions 
     if (!efactura) return reply.header('Cache-Control', 'no-store').send({ enabled: false });
     const paging = pagingOf(req.query);
     const [status, documents, total] = await Promise.all([efactura.link.status(), getAccountsStore().billing.efacturaDocuments(paging.limit, paging.offset), getAccountsStore().billing.efacturaDocumentCount()]);
-    const { seller, series, mode, redirectUri } = efactura.config;
+    const { series, mode, redirectUri } = efactura.config;
+    const seller = await sellerOf(getAccountsStore());
     return reply.header('Cache-Control', 'no-store').send({
-      enabled: true, ...pageInfo(paging, total), mode, series, redirect_uri: redirectUri, seller: { name: seller.name, cif: seller.cif }, ...status,
+      enabled: true, ...pageInfo(paging, total), mode, series, redirect_uri: redirectUri, seller: seller ? { name: seller.name, cif: seller.cif } : null, ...status,
       documents: documents.map(d => ({ id: d.draft_id, number: `${d.series}-${String(d.number).padStart(5, '0')}`, kind: d.kind, date: d.issue_date, state: d.anaf_state, message: d.anaf_message })),
     });
   });

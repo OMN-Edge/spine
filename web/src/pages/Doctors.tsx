@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type DoctorEntry, type DoctorSummary } from '../api';
 import { useI18n } from '../i18n';
+import { useFormat } from '../format';
 import { useTerms } from '../useListTitles';
 import GuideTip from '../components/GuideTip';
 
@@ -66,6 +67,7 @@ function Duplicates({ onMerged }: { onMerged: () => void }) {
 export default function Doctors() {
   const { t, tn } = useI18n();
   const name = useTerms();
+  const format = useFormat();
   const [doctors, setDoctors] = useState<DoctorEntry[] | null>(null);
   const [query, setQuery] = useState('');
 
@@ -105,7 +107,7 @@ export default function Doctors() {
                       </span>
                       <span className="text-right shrink-0 text-xs text-gray-500">
                         {tn(d.document_count, '{n} document', '{n} documents')}
-                        {d.last_seen && <span className="block text-gray-400">{t('last {date}', { date: d.last_seen })}</span>}
+                        {d.last_seen && <span className="block text-gray-400">{t('last {date}', { date: format.date(d.last_seen) })}</span>}
                       </span>
                     </Link>
                   </li>
