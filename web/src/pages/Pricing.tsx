@@ -39,7 +39,7 @@ export function PricingPage({ pricing, authenticated, options, initialPeriod = '
     ? { to: '/account', label: t('Choose a plan on your account page') }
     : { to: '/register', label: t('Start with three months free') };
   // The trial is the one way in, and says so once, above the plans. A plan's own button says what it is: where it goes with the plan named, to be found on the account page.
-  const toPlan = (plan: 'free' | 'essential' | 'premium' | 'family', label: string) => ({ to: authenticated ? '/account' : `/register?plan=${plan}`, label });
+  const toPlan = (plan: 'free' | 'essential' | 'premium' | 'family', label: string) => ({ to: authenticated ? (plan === 'free' ? '/account' : '/account?buy') : `/register?plan=${plan}`, label });
 
   return (
     <PublicPage options={options}>

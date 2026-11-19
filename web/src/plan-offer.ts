@@ -13,6 +13,9 @@ export interface Standing {
   now?: Date;
 }
 
+/** A person who pressed a plan's button on the pricing page arrives at the account page with `?buy` and has chosen: the buttons are there whatever the trial's day (the page that sent them cannot leave them with nothing to press). */
+export const wantsToBuy = (search: string): boolean => new URLSearchParams(search).has('buy');
+
 export function offerPlans({ plan, trialEndsAt, used, now = new Date() }: Standing): boolean {
   if (plan !== 'trial') return true;
   if (used.some(u => u >= NEARLY)) return true;

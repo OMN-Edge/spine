@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import type { BillingDetails } from 'spine-core/billing/billing-details';
 import { api, ApiError } from '../api';
 import { planChanged, useBilling } from '../billing';
@@ -10,7 +10,7 @@ import ArchiveProgress from './ArchiveProgress';
 import BillingDetailsForm from './BillingDetailsForm';
 import InviteLink from './InviteLink';
 import InvoiceList, { type InvoiceRow } from './InvoiceList';
-import { offerPlans, trialDaysLeft } from '../plan-offer';
+import { offerPlans, trialDaysLeft, wantsToBuy } from '../plan-offer';
 import { extraPages, importLeft } from '../reading-estimate';
 
 /** How many invoices the plan card lists; the rest are on their own page. */
@@ -93,7 +93,7 @@ export default function PlanCard() {
   };
   // The trial's own totals, each as a share used: the plans are offered late in the trial or when one is nearly used (`plan-offer.ts`).
   const shares_ = [r && r.allowance !== null && r.allowance > 0 ? r.used / r.allowance : 0, chat ? chat.used / chat.allowance! : 0, translation ? translation.used / translation.allowance! : 0];
-  const offer = offerPlans({ plan, trialEndsAt: billing.trial_ends_at, used: plan === 'trial' ? shares_ : [] });
+  const offer = wantsToBuy(useLocation().search) || offerPlans({ plan, trialEndsAt: billing.trial_ends_at, used: plan === 'trial' ? shares_ : [] });
   if (asking) {
     return (
       <section className="bg-white border border-gray-200 rounded-xl p-5 mt-6">
