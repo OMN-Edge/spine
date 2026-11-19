@@ -481,6 +481,9 @@ describe('Spine’s own e-Factura link', () => {
       expect(sealed).not.toContain('secret');
       expect(openText(KEY, sealed)).toBe('secret');
       expect(() => openText(KEY, `${sealed.slice(0, -2)}AA`)).toThrow();
+      // A tag cut short is refused, not checked as far as it goes.
+      const [version, iv, tag, body] = sealed.split('.');
+      expect(() => openText(KEY, [version, iv, Buffer.from(tag!, 'base64url').subarray(0, 4).toString('base64url'), body].join('.'))).toThrow(/not a sealed text/);
       expect(() => sealText(Buffer.alloc(16), 'x')).toThrow(/32 bytes/);
       expect([...readZip(await zipOf({ 'a.xml': '<a/>'.repeat(100), 'b.xml': 'b' })).values()].map(b => b.length)).toEqual([400, 1]);
       expect(() => readZip(Buffer.from('not a zip at all, not even close to one'))).toThrow(/not a zip/);

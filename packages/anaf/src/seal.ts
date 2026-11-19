@@ -15,7 +15,10 @@ export function sealText(key: Buffer, plain: string): string {
 export function openText(key: Buffer, sealed: string): string {
   const [version, iv, tag, body] = sealed.split('.');
   if (version !== 'v1' || !iv || !tag || !body) throw new Error('not a sealed text');
-  const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(iv, 'base64url'));
-  decipher.setAuthTag(Buffer.from(tag, 'base64url'));
+  // The tag is exactly sixteen bytes: a shorter one is refused, since GCM would otherwise check as few bytes as it is given.
+  const authTag = Buffer.from(tag, 'base64url');
+  if (authTag.length !== 16) throw new Error('not a sealed text');
+  const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(iv, 'base64url'), { authTagLength: 16 });
+  decipher.setAuthTag(authTag);
   return Buffer.concat([decipher.update(Buffer.from(body, 'base64url')), decipher.final()]).toString('utf8');
 }

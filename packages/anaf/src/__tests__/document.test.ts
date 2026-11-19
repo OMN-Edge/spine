@@ -16,7 +16,7 @@ const doc = (over: Partial<UblDocument> = {}): UblDocument => ({
 
 /** The text of every page, read with PDF.js as the app reads a PDF. */
 async function textOf(pdf: Buffer): Promise<string> {
-  const loaded = await getDocument({ data: new Uint8Array(pdf), useSystemFonts: false, isEvalSupported: false }).promise;
+  const loaded = await getDocument({ data: new Uint8Array(pdf), useSystemFonts: false, isEvalSupported: false } as Parameters<typeof getDocument>[0]).promise;
   let out = '';
   for (let i = 1; i <= loaded.numPages; i++) out += ` ${(await (await loaded.getPage(i)).getTextContent()).items.map(it => ('str' in it ? it.str : '')).join(' ')}`;
   return out.replace(/\s+/g, ' ');
@@ -117,7 +117,7 @@ describe('the invoice document', () => {
   it('goes on to a second page, with the head again, where the lines do not fit', async () => {
     const many = Array.from({ length: 40 }, (_, i) => ({ name: `Spine, line ${i + 1}`, quantity: 1, netMinor: 100, vatPercent: 21 }));
     const pdf = await renderInvoicePdf(doc({ lines: many }));
-    const loaded = await getDocument({ data: new Uint8Array(pdf), isEvalSupported: false }).promise;
+    const loaded = await getDocument({ data: new Uint8Array(pdf), isEvalSupported: false } as Parameters<typeof getDocument>[0]).promise;
     expect(loaded.numPages).toBeGreaterThan(1);
     const text = await textOf(pdf);
     expect(text).toContain('Spine, line 40');
