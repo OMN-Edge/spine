@@ -16,6 +16,13 @@ repro()   { npm ci && npm run build:libs && npm run build -w spine-web && cp web
 # The checks in a real browser (they need Google Chrome; set CHROME elsewhere than macOS): each native piece of the device, in Chrome and again in WebKit (what every browser on an
 # iPhone runs; its build is fetched here, with the system libraries it needs where CI is set), and the whole app against a real server.
 browser() { npm ci && npm run build && npm run check:browser -w spine-web && npx playwright-core install ${CI:+--with-deps} webkit && npm run check:webkit -w spine-web && npm run check:app -w spine-web; }
+# The same three checks one at a time, so that CI runs them side by side (each builds what it needs): Chrome, WebKit and the whole app.
+browser-chrome() { npm ci && npm run build && npm run check:browser -w spine-web; }
+# In CI WebKit's system libraries are installed with apt (`--with-deps`), which took fourteen minutes once on a slow mirror; where the job runs in Playwright's own image
+# (SPINE_BROWSER_IMAGE is set: .github/workflows/ci.yml) they and the browser are already there.
+# Playwright's image has no compiler, and nothing the WebKit check runs needs better-sqlite3 (the server's native SQLite: the device uses WebAssembly), so there the install skips the packages' install scripts.
+browser-webkit() { if [ -n "${SPINE_BROWSER_IMAGE:-}" ]; then npm ci --ignore-scripts; else npm ci; fi && npm run build && if [ -n "${CI:-}" ] && [ -z "${SPINE_BROWSER_IMAGE:-}" ]; then npx playwright-core install --with-deps webkit; else npx playwright-core install webkit; fi && npm run check:webkit -w spine-web; }
+browser-app() { npm ci && npm run build && npm run check:app -w spine-web; }
 scan() {
   command -v gitleaks >/dev/null || { echo "gitleaks is not installed (brew install gitleaks)" >&2; exit 1; }
   command -v semgrep  >/dev/null || { echo "semgrep is not installed (brew install semgrep)" >&2; exit 1; }
@@ -38,9 +45,12 @@ case "${1:-all}" in
   server) server ;;
   web) web ;;
   browser) browser ;;
+  browser-chrome) browser-chrome ;;
+  browser-webkit) browser-webkit ;;
+  browser-app) browser-app ;;
   repro) repro ;;
   scan) scan ;;
   scan-semgrep) scan_semgrep ;;
   all) server; web; scan ;;
-  *) echo "usage: $0 [server|web|browser|repro|scan|all]" >&2; exit 2 ;;
+  *) echo "usage: $0 [server|web|browser|browser-chrome|browser-webkit|browser-app|repro|scan|all]" >&2; exit 2 ;;
 esac

@@ -40,6 +40,7 @@ describe('the container images the build and the pipelines use', () => {
   it('are found: the references this reads are the ones there are', () => {
     const found = FILES.flatMap(f => imagesIn(f).map(i => `${f}: ${i.ref.split('@')[0]}`)).sort();
     expect(found).toEqual([
+      '.github/workflows/ci.yml: mcr.microsoft.com/playwright:v1.49.1-noble',
       '.github/workflows/ci.yml: semgrep/semgrep',
       '.gitlab-ci.yml: node:22',
       '.gitlab-ci.yml: semgrep/semgrep',

@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with: { node-version: 22 }
+        with: { node-version: 22, cache: npm }
       # The export, import, photo and sample-record tests run poppler for real; without it they would be skipped and still pass.
       - run: sudo apt-get update && sudo apt-get install -y poppler-utils
       - run: ./scripts/check.sh server
@@ -25,19 +25,42 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with: { node-version: 22 }
+        with: { node-version: 22, cache: npm }
       - run: ./scripts/check.sh web
   # The device's code in a real browser: each native piece (text, rendering, OCR, photos, zip, stamps, signatures), then the whole app
-  # against a real server (sign-up, vault, sample records, reload, search, upload, shares, export, a save that fails, passkeys).
+  # against a real server (sign-up, vault, sample records, reload, search, upload, shares, export, a save that fails, passkeys). Three jobs side by side (each builds what it needs): Chrome, WebKit, the whole app.
   # WebKit is fetched by Playwright with its system libraries, and Playwright 1.49 knows the package names of Ubuntu 22.04 and 24.04 only: on `ubuntu-latest` (26.04
   # now) `apt` cannot find `libicu74` and the others, so this job is pinned to 24.04 until Playwright is raised.
-  browser:
+  browser-chrome:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with: { node-version: 22 }
-      - run: ./scripts/check.sh browser
+        with: { node-version: 22, cache: npm }
+      - run: ./scripts/check.sh browser-chrome
+        env:
+          CHROME: /usr/bin/google-chrome
+          CHROME_FLAGS: --no-sandbox
+  # In Playwright's own image for the version in the lockfile (pinned by digest, like the others): WebKit and its system libraries are in it, where installing them with apt
+  # took fourteen minutes on one run, the mirror being slow.
+  browser-webkit:
+    runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.49.1-noble@sha256:70e367e0cbf60340a5b5fd562f6247a34eb3196efab9f88a3dd56482d9fe09d2
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with: { node-version: 22, cache: npm }
+      - run: ./scripts/check.sh browser-webkit
+        env:
+          SPINE_BROWSER_IMAGE: playwright
+  browser-app:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with: { node-version: 22, cache: npm }
+      - run: ./scripts/check.sh browser-app
         env:
           CHROME: /usr/bin/google-chrome
           CHROME_FLAGS: --no-sandbox
@@ -47,7 +70,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with: { node-version: 22 }
+        with: { node-version: 22, cache: npm }
       - run: ./scripts/check.sh repro
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
