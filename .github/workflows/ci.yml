@@ -41,18 +41,19 @@ jobs:
         env:
           CHROME: /usr/bin/google-chrome
           CHROME_FLAGS: --no-sandbox
+  # In Playwright's own image for the version in the lockfile (pinned by digest, like the others): WebKit and its system libraries are in it, where installing them with apt
+  # took fourteen minutes on one run, the mirror being slow.
   browser-webkit:
     runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.49.1-noble@sha256:70e367e0cbf60340a5b5fd562f6247a34eb3196efab9f88a3dd56482d9fe09d2
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with: { node-version: 22, cache: npm }
-      # WebKit's download is kept between runs (the system libraries are installed each time)
-      - uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-webkit-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - run: ./scripts/check.sh browser-webkit
+        env:
+          SPINE_BROWSER_IMAGE: playwright
   browser-app:
     runs-on: ubuntu-24.04
     steps:
