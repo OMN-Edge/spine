@@ -93,13 +93,18 @@ export default function ChatPanel() {
     view?.addEventListener('resize', sync);
     view?.addEventListener('scroll', sync);
     phone.addEventListener('change', sync);
-    const was = document.body.style.overflow;
-    if (phone.matches) document.body.style.overflow = 'hidden';
+    // The page behind is held still where it was (a fixed body, not `overflow: hidden`, which a phone's browser scrolls anyway to bring the box into view) and put back exactly, so the top bar is where it was when the chat closes.
+    const style = document.body.style;
+    const was = { position: style.position, top: style.top, left: style.left, right: style.right, width: style.width };
+    const scrolled = window.scrollY;
+    const locked = phone.matches;
+    if (locked) Object.assign(style, { position: 'fixed', top: `-${scrolled}px`, left: '0', right: '0', width: '100%' });
     return () => {
       view?.removeEventListener('resize', sync);
       view?.removeEventListener('scroll', sync);
       phone.removeEventListener('change', sync);
-      document.body.style.overflow = was;
+      Object.assign(style, was);
+      if (locked) window.scrollTo(0, scrolled);
       setSeen(null);
     };
   }, [open]);
