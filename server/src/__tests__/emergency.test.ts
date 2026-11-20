@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
 import { holdsRecordsInThisRun } from 'spine-core/testing/store-kind.js';
 import { useShareHost, type ShareHost } from 'spine-core/share-host.js';
+import { useIdentity } from 'spine-core/identity.js';
 import { getAccountsStore, getStore } from 'spine-core/store/index.js';
 import { buildTestApp, loginAs, loginSession, testShareHost } from './helpers/app.js';
 import { createTestUser, OWNER_ID } from './helpers/seed.js';
@@ -227,6 +228,32 @@ describe.runIf(records)('the owner’s emergency card', () => {
     const theirs = await call('GET', '/api/emergency', undefined, await loginAs(app, other.email, other.password));
     expect(theirs.json().scans).toEqual([]);
     expect(theirs.json().card.name).toBe('');
+  });
+
+  it('takes the name and birth date from the profile where the card has none, says so, and sends the card with them', async () => {
+    useIdentity(() => ({ name: 'Ana Exemplu', born: '1990-04-02' }));
+    try {
+      const view = (await call('PUT', '/api/emergency', { allergies: ['penicillin'] })).json();
+      expect(view.card).toMatchObject({ name: '', born: '' });
+      expect(view.from_profile).toEqual({ name: 'Ana Exemplu', born: '1990-04-02' });
+      expect(view.offline.text).toContain('Name: Ana Exemplu');
+      await call('POST', '/api/emergency/publish');
+      expect(JSON.parse(sent.at(-1)!.content)).toMatchObject({ name: 'Ana Exemplu', born: '1990-04-02' });
+      // What the card writes itself stands over the profile's.
+      await call('PUT', '/api/emergency', { name: 'Ana E.', allergies: ['penicillin'] });
+      expect(JSON.parse(sent.at(-1)!.content)).toMatchObject({ name: 'Ana E.', born: '1990-04-02' });
+    } finally {
+      await call('DELETE', '/api/emergency/publish');
+      useIdentity(null);
+    }
+  });
+
+  it('is not turned on for a profile’s name alone', async () => {
+    useIdentity(() => ({ name: 'Ana Exemplu', born: '' }));
+    try {
+      await call('PUT', '/api/emergency', {});
+      expect((await call('POST', '/api/emergency/publish')).statusCode).toBe(400);
+    } finally { useIdentity(null); }
   });
 });
 

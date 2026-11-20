@@ -10,6 +10,7 @@ import { useRelayHooks } from 'spine-core/llm/adapters/relay';
 import { usePlanLimits } from 'spine-core/plan-limits';
 import { useDemoSource } from 'spine-core/demo/archive';
 import { deviceSettings } from './native/settings';
+import { useIdentity } from 'spine-core/identity';
 import { VaultSession, type KeysResponse } from '../crypto/vault-client';
 import { deriveFromPassword } from '../crypto/keys';
 import { indexIdFor } from './persist';
@@ -51,6 +52,12 @@ let knownProfiles: Person[] = [];
 const grants = new Map<string, { session: VaultSession; profileId: string }>();
 
 interface Person { id: string; name: string; kind?: 'child'; born?: string; shared?: { owner: string; role: 'guardian' | 'viewer' | 'self' } }
+
+// Who is open, as the profile says: the card and a share link start from it, so a name is written once (core/src/identity.ts). "Me" is what an account calls its first records, not a name.
+useIdentity(() => {
+  const person = knownProfiles.find(p => p.id === currentProfile);
+  return { name: person && person.name !== 'Me' ? person.name : '', born: person?.born ?? '' };
+});
 
 /**
  * Opens the profiles other accounts have let this one into. A failure leaves them out and the account's own people are still there. The

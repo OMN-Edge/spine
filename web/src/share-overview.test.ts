@@ -6,9 +6,6 @@ describe('the name a share link starts with', () => {
   it('is the emergency card\'s, else the open person\'s, and nothing for "Me"', () => {
     expect(defaultShareName('Ana Exemplu', 'Me')).toBe('Ana Exemplu');
     expect(defaultShareName(undefined, 'Ana')).toBe('Ana');
-    // What the owner showed on the last link stands in for a card with no name, and for "Me", which is not a name.
-    expect(defaultShareName(undefined, 'Me', 'Ana Exemplu')).toBe('Ana Exemplu');
-    expect(defaultShareName('Card Name', 'Me', 'Ana Exemplu')).toBe('Card Name');
     expect(defaultShareName('', 'Ana')).toBe('Ana');
     expect(defaultShareName(undefined, 'Me')).toBe('');
     expect(defaultShareName('  ', 'Me')).toBe('');

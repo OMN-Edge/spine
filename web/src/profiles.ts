@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { PEOPLE_CHANGED, PROFILE_CHANGED, device, rememberProfile, type Person } from './core/client';
 import { vaultState } from './crypto/vault-state';
+import { api } from './api';
 
 export type { Person };
 
@@ -32,4 +33,18 @@ export async function openPerson(id: string, force = false, dropEmpty = false): 
   await device.switchProfile(id, force, dropEmpty);
   const account = vaultState.email();
   if (account) rememberProfile(account, id);
+}
+
+/**
+ * Changes who a profile says it is (its name and birth date, which the emergency card and a share link start from). The record is changed in the vault and the people are read
+ * again; the card, if it is on, is sent again so the code already printed shows the change.
+ */
+export async function changeProfile(id: string, change: { name?: string; born?: string }): Promise<void> {
+  const session = vaultState.session();
+  if (!session) throw new Error('the records are not open');
+  await session.loadProfiles();
+  await session.updateProfile(id, change);
+  await device.reloadKeys();
+  const { current } = await device.profiles();
+  if (id === current) await api.emergency.get().then(v => (v.published ? api.emergency.save(v.card) : undefined)).catch(() => undefined);
 }

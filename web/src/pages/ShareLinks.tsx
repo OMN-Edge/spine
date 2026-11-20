@@ -6,7 +6,7 @@ import { episodeName } from '../components/episode';
 import { useOnDataChanged } from '../dataChanged';
 import ShareOverview from '../components/ShareOverview';
 import { useProfiles } from '../profiles';
-import { buildOverview, defaultShareName, rememberedShareName, rememberShareName } from '../share-overview';
+import { buildOverview, defaultShareName } from '../share-overview';
 import { makeShareSheet, sheetFonts, sheetLanguage } from '../share-sheet';
 import ClaimExport from '../components/ClaimExport';
 import ShareRequestCard from '../components/ShareRequestCard';
@@ -139,9 +139,9 @@ export default function ShareLinks() {
     api.emergency.get().then(v => { setCard(v.card); setCardDay((v.updated_at ?? '').slice(0, 10)); }).catch(() => undefined);
   }, []);
 
-  // The name starts as the card's, else the one shown on the last link, else the open person's, and the owner can change it or leave it out.
+  // The name starts as the card's (the profile's, unless written over), else the open person's, and the owner can change it or leave it out.
   const personName = people?.profiles.find(p => p.id === people.current)?.name ?? '';
-  useEffect(() => { setAbout(a => (a.name ? a : { ...a, name: defaultShareName(card?.name, personName, people?.current ? rememberedShareName(people.current) : '') })); }, [card, personName, people?.current]);
+  useEffect(() => { setAbout(a => (a.name ? a : { ...a, name: defaultShareName(card?.name, personName) })); }, [card, personName]);
   const cardHasNow = !!card && card.medications.length + card.allergies.length + card.conditions.length > 0;
   const overview = buildOverview(about, card, cardDay);
 
@@ -177,8 +177,6 @@ export default function ShareLinks() {
         allow_chat: form.allow_chat,
         overview,
       });
-      // The name shown is kept for the next link of this person.
-      if (people?.current && overview?.by) rememberShareName(people.current, overview.by);
       setNewUrl(result.url);
       setMailNote(result.approval_mail);
       if (sheetUrl) URL.revokeObjectURL(sheetUrl);
@@ -278,6 +276,7 @@ export default function ShareLinks() {
               </span>
             </label>
             {about.showName && <input aria-label={t('Name shown to the doctor')} placeholder={t('Your name, as the doctor knows it')} value={about.name} maxLength={120} onChange={e => setAbout(a => ({ ...a, name: e.target.value }))} className={input} />}
+            {about.showName && !about.name.trim() && <p className="text-xs text-gray-500">{t('Your name is kept in your profile, once, and starts here.')}{' '}<Link to="/profiles" className="text-brand-600 hover:underline">{t('Add it to your profile')}</Link></p>}
             <label className={`flex items-start gap-2 text-sm ${cardHasNow ? 'text-gray-700' : 'text-gray-400'}`}>
               <input type="checkbox" disabled={!cardHasNow} checked={about.includeNow && cardHasNow} onChange={e => setAbout(a => ({ ...a, includeNow: e.target.checked }))} className="mt-0.5" />
               <span className="min-w-0 flex-1">

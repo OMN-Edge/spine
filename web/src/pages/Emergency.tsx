@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api, ApiError, type EmergencyView } from '../api';
 import { DETAIL_LABELS } from '../detailLabels';
 import { CARD_LANGUAGES, cardText, DETAIL_KINDS, EMPTY_CARD, publicCard, type CardContent, type CardDetail } from 'spine-core/emergency';
+import { NOBODY } from 'spine-core/identity';
 import { BLOOD_TYPES, proposalsFrom, type Proposals } from '../emergency-fill';
 import PrintCard, { printCard } from '../components/PrintCard';
 import CardQr from '../components/CardQr';
@@ -11,6 +12,18 @@ import { Combobox } from '../components/Combobox';
 import { DateInput } from '../components/DateInput';
 import { languageChoice, useI18n } from '../i18n';
 import { useFormat } from '../format';
+
+/**
+ * Says where a name or birth date on the card comes from. Left empty, it is the profile's (shown greyed in the box, and not copied into it, so it follows the profile); written, the
+ * card's own words stand, and one click gives the profile's back. With none in the profile, it says where to put it once.
+ */
+function FromProfile({ written, from, onUseProfile }: { written: string; from: string; onUseProfile: () => void }) {
+  const { t } = useI18n();
+  if (!from) return <p className="mt-1 text-xs text-gray-500">{written ? null : <>{t('Not on the card yet.')}{' '}<Link to="/profiles" className="text-brand-600 hover:underline">{t('Add it to your profile')}</Link></>}</p>;
+  if (!written.trim()) return <p className="mt-1 text-xs text-gray-500">{t('From your profile. Write here to show something else on the card.')}{' '}<Link to="/profiles" className="text-brand-600 hover:underline">{t('Change it in your profile')}</Link></p>;
+  if (written.trim() === from) return <p className="mt-1 text-xs text-gray-500">{t('Same as your profile.')}{' '}<button type="button" onClick={onUseProfile} className="text-brand-600 hover:underline">{t('Follow the profile')}</button></p>;
+  return <p className="mt-1 text-xs text-gray-500">{t('Written here: your profile says “{value}”.', { value: from })}{' '}<button type="button" onClick={onUseProfile} className="text-brand-600 hover:underline">{t('Use the profile’s')}</button></p>;
+}
 
 /** One item to a line; the card keeps them as a list. */
 const lines = (text: string) => text.split('\n').map(s => s.trim()).filter(Boolean);
@@ -90,9 +103,17 @@ export default function Emergency() {
         </div>
       )}
       <section className="bg-white border border-gray-200 rounded-xl p-5 space-y-3">
-        <label className="block text-sm text-gray-700">{t('Name')}<input className={inputClass} value={card.name} maxLength={120} onChange={e => set('name', e.target.value)} /></label>
+        <div>
+          <label className="block text-sm text-gray-700">{t('Name')}
+            <input className={inputClass} value={card.name} maxLength={120} placeholder={view?.from_profile.name} onChange={e => set('name', e.target.value)} />
+          </label>
+          <FromProfile written={card.name} from={view?.from_profile.name ?? ''} onUseProfile={() => set('name', '')} />
+        </div>
         <div className="grid grid-cols-2 gap-3">
-          <label className="block text-sm text-gray-700">{t('Born (year or date)')}<DateInput className={inputClass} value={card.born} onChange={born => set('born', born)} max={new Date().toISOString().slice(0, 10)} /></label>
+          <div>
+            <label className="block text-sm text-gray-700">{t('Born (year or date)')}<DateInput className={inputClass} value={card.born} placeholder={view?.from_profile.born} onChange={born => set('born', born)} max={new Date().toISOString().slice(0, 10)} /></label>
+            <FromProfile written={card.born} from={view?.from_profile.born ?? ''} onUseProfile={() => set('born', '')} />
+          </div>
           <label className="block text-sm text-gray-700">{t('Blood type')}
             <Combobox ariaLabel={t('Blood type')} value={card.blood_type} onChange={v => set('blood_type', v)} className={inputClass}
               options={[{ value: '', label: t('Not known') }, ...BLOOD_TYPES.map(b => ({ value: b, label: b })), ...(card.blood_type && !(BLOOD_TYPES as readonly string[]).includes(card.blood_type) ? [{ value: card.blood_type, label: card.blood_type }] : [])]} />
@@ -180,7 +201,7 @@ export default function Emergency() {
           </div>
         ) : (
           <div className="space-y-3">
-            <CardPreview card={publicCard(current())} />
+            <CardPreview card={publicCard(current(), view?.from_profile ?? NOBODY)} />
             <button disabled={busy} className={buttonClass} onClick={() => void run(() => api.emergency.publish(), t('Could not turn the card on'))}>{t('Turn the card on')}</button>
           </div>
         )}
@@ -211,7 +232,7 @@ export default function Emergency() {
           </ul>
         )}
       </section>
-      <PrintCard card={publicCard(view.card)} qr={view.published ? { text: view.published.address, online: true } : { text: view.offline.text, online: false }} />
+      <PrintCard card={publicCard(view.card, view.from_profile)} qr={view.published ? { text: view.published.address, online: true } : { text: view.offline.text, online: false }} />
       <p className="mt-6 text-sm"><Link to="/share" className="text-brand-600 hover:underline">{t('Share links')}</Link></p>
     </div>
   );

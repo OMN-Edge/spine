@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { CardError, EMPTY_CARD, OFFLINE_BYTES, cardIsEmpty, cardText, detailLabel, normaliseCard, publicCard } from '../emergency.js';
+import { CardError, EMPTY_CARD, OFFLINE_BYTES, cardIsEmpty, cardText, detailLabel, normaliseCard, publicCard, withIdentity } from '../emergency.js';
+import { NOBODY, personIdentity, useIdentity } from '../identity.js';
 
 const card = (over: Record<string, unknown> = {}) => normaliseCard({ ...EMPTY_CARD, name: 'Jane Example', ...over });
 
@@ -115,5 +116,29 @@ describe('the card in a second language', () => {
   it('is not empty because of a second language alone, and leaves it in what others read', () => {
     expect(cardIsEmpty(card({ allergies: [], medications: [], conditions: [], notes: '', name: '' }))).toBe(false);
     expect(publicCard(card()).second?.language).toBe('de');
+  });
+});
+
+describe('the name and birth date on the card', () => {
+  const profile = { name: 'Ana Exemplu', born: '1990-04-02' };
+
+  it('are the profile’s where the card holds none of its own, so a name is written once', () => {
+    const blank = normaliseCard({ ...EMPTY_CARD, allergies: ['penicillin'] });
+    expect(withIdentity(blank, profile)).toMatchObject({ name: 'Ana Exemplu', born: '1990-04-02' });
+    expect(publicCard(blank, profile)).toMatchObject({ name: 'Ana Exemplu', born: '1990-04-02' });
+    // The card as stored is not changed: a profile that is renamed renames the card with it.
+    expect(blank.name).toBe('');
+  });
+
+  it('stand as written where the card has its own, and a blank or spaces is no name of its own', () => {
+    expect(withIdentity(card({ name: 'Ana', born: '1990' }), profile)).toMatchObject({ name: 'Ana', born: '1990' });
+    expect(withIdentity({ ...EMPTY_CARD, name: '   ' }, profile).name).toBe('Ana Exemplu');
+  });
+
+  it('are nobody’s where no profile was registered, and a card that holds only the profile’s name is still empty', () => {
+    expect(personIdentity()).toEqual(NOBODY);
+    expect(cardIsEmpty(publicCard(EMPTY_CARD))).toBe(true);
+    useIdentity(() => profile);
+    try { expect(personIdentity()).toEqual(profile); } finally { useIdentity(null); }
   });
 });

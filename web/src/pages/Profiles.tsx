@@ -4,7 +4,7 @@ import { sodium, toB64 } from '../crypto/sodium';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { device, UnsavedChangesError } from '../core/client';
-import { openPerson, personLabel, useProfiles } from '../profiles';
+import { changeProfile, openPerson, personLabel, useProfiles } from '../profiles';
 import { planRefusal } from '../billing';
 import { buttonClass, inputClass, Notice } from '../components/AuthCard';
 import { DateInput } from '../components/DateInput';
@@ -163,13 +163,12 @@ export default function Profiles() {
     const person = people?.profiles.find(p => p.id === editing.id);
     if (!person || !editing.name.trim()) return;
     if (person.kind === 'child' && !parseBorn(editing.born)) { setError(t('A child’s records need a birth date, written year-month-day.')); return; }
+    // An adult's is optional, and the emergency card and a share start from it: written, it is a date.
+    if (person.kind !== 'child' && editing.born.trim() && !parseBorn(editing.born)) { setError(t('The birth date is written year-month-day.')); return; }
     setError(''); setBusy(true);
     try {
-      const session = vaultState.session();
-      if (!session) { setError(t('Open your records first.')); return; }
-      await session.loadProfiles();
-      await session.updateProfile(editing.id, { name: editing.name.trim().slice(0, 60), ...(person.kind === 'child' ? { born: editing.born.trim() } : {}) });
-      await device.reloadKeys();
+      if (!vaultState.session()) { setError(t('Open your records first.')); return; }
+      await changeProfile(editing.id, { name: editing.name.trim().slice(0, 60), born: editing.born.trim() });
       await refresh();
       setEditing(null);
     } catch {
@@ -287,7 +286,7 @@ export default function Profiles() {
             {editing?.id === p.id && (
               <form onSubmit={e => void saveEdit(e)} className="mt-2 space-y-2">
                 <input className={inputClass} value={editing.name} maxLength={60} onChange={e => setEditing({ ...editing, name: e.target.value })} aria-label={t('Name')} />
-                {p.kind === 'child' && <DateInput className={inputClass} value={editing.born} onChange={born => setEditing({ ...editing, born })} aria-label={t('Born (year-month-day)')} placeholder={t('Born (year-month-day)')} min="1900-01-01" max={new Date().toISOString().slice(0, 10)} />}
+                <DateInput className={inputClass} value={editing.born} onChange={born => setEditing({ ...editing, born })} aria-label={t('Born (year-month-day)')} placeholder={p.kind === 'child' ? t('Born (year-month-day)') : t('Born (year-month-day), optional')} min="1900-01-01" max={new Date().toISOString().slice(0, 10)} />
                 <button type="submit" disabled={busy} className={buttonClass}>{t('Save')}</button>
                 <button type="button" className="ml-3 text-sm text-gray-500 hover:underline" onClick={() => setEditing(null)}>{t('Cancel')}</button>
               </form>

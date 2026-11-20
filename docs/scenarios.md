@@ -1039,6 +1039,11 @@ The owner opens Share links, then "Write an emergency card", writes what someone
 
 Status: auto (`emergency`, `plans`, `keys`); real browser (`check:app`: the card's QR codes read back, a lost code replaced, each side the size of a bank card with what is written inside it, the home page's steps and its 5 cm line, the fold and cut lines and the turned back, the print shop's PDF two pages of exactly that size, the mark on both sides). (One card for each person the account keeps records for, at most ten.)
 
+### 14.1a Whose name and birth date it carries
+A person's name and birth date are written once, in their profile. The first records of an account are called "Me", which is no name: the Get started card asks for one on the timeline (and the profiles page changes it, with the birth date, which is optional for an adult and required for a child). The card's Name and Born boxes are empty by default and show the profile's value greyed in the box, with a line saying it comes from the profile and a link to change it there; writing in a box makes the card's own value stand, with a line saying what the profile says and one click to follow the profile again. What the card sends, prints and puts in the offline code carries the profile's value where the box is empty, and a card that is on is sent again when the profile is renamed. A card with nothing written but the profile's name is still empty and is not turned on. A new share link's name starts from the same. Billing details are separate: they are a payer's.
+
+Status: auto (`emergency` in core and server, `GuideTip`, `share-overview`).
+
 ### 14.2 Someone scans it
 A person with a phone scans the code and sees the card in their language (the labels; the owner's words stay as written), with the owner's phone numbers as links, a line that the owner wrote it and it should be checked, and a short note on what Spine is with a link to it. No account, no question. The owner is mailed the first time in fifteen minutes and sees the time and country in the card's list.
 

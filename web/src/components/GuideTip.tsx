@@ -1,9 +1,10 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { GuideKey } from '../api';
 import { useGuide } from '../guide';
 import { useI18n } from '../i18n';
 import { useChat } from './ChatProvider';
+import { changeProfile, useProfiles } from '../profiles';
 
 /**
  * A tip shown the first time something happens (an upload waits for its grouping, documents have been read, a link has been made, results,
@@ -49,9 +50,41 @@ export const stepsDone = (progress: { uploads: number; reviewed: number; shares:
   return [progress.uploads > 0, progress.reviewed > 0, progress.shares > 0].map(raw => (before = before && raw));
 };
 
+/**
+ * The first thing the profile can be given: a name. An account's first records are called "Me", which is no name; the card and a share link start from the profile's, so it is
+ * written once, here or on the profiles page. Shown while the open person is that profile, and gone once it has a name.
+ */
+export const needsName = (person: { name: string; shared?: unknown } | undefined): boolean => !!person && !person.shared && person.name === 'Me';
+
+function NameStep({ id }: { id: string }) {
+  const { t } = useI18n();
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setBusy(true); setFailed(false);
+    try { await changeProfile(id, { name: name.trim().slice(0, 60) }); } catch { setFailed(true); } finally { setBusy(false); }
+  };
+  return (
+    <form onSubmit={e => void save(e)} className="mt-2 mb-3 border-b border-gray-100 pb-3">
+      <label className="block text-sm text-gray-800" htmlFor="gs-name">{t('Your name')}</label>
+      <div className="mt-1 flex gap-2">
+        <input id="gs-name" value={name} maxLength={60} autoComplete="name" onChange={e => setName(e.target.value)} placeholder={t('As a doctor knows you')} className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm" />
+        <button type="submit" disabled={busy || !name.trim()} className="rounded-full bg-brand-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50">{t('Save')}</button>
+      </div>
+      <p className="mt-1 text-xs text-gray-500">{t('Kept in your profile, once. Your emergency card and your share links start from it.')}</p>
+      {failed && <p role="alert" className="mt-1 text-xs text-red-600">{t('Could not save this change')}</p>}
+    </form>
+  );
+}
+
 export function GetStarted() {
   const { t } = useI18n();
   const guide = useGuide();
+  const { people } = useProfiles(true);
+  const open = people?.profiles.find(p => p.id === people.current);
   const progress = guide?.state?.progress;
   const ticked = progress ? stepsDone(progress) : [];
   const steps = progress ? [
@@ -71,6 +104,7 @@ export function GetStarted() {
         <h2 className="text-sm font-medium text-gray-900">{t('Get started')}</h2>
         <button type="button" onClick={() => guide?.done('checklist')} className="text-xs text-gray-400 hover:text-gray-700 hover:underline">{t('Hide')}</button>
       </div>
+      {needsName(open) && <NameStep id={open!.id} />}
       <ol className="mt-2 space-y-1.5">
         {steps.map((step, i) => (
           <li key={step.label} className={`${i === next ? 'flex' : 'hidden sm:flex'} items-center gap-2.5 text-sm`}>

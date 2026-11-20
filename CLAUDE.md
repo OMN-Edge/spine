@@ -25,6 +25,7 @@ spine/
 │   └── src/
 │       ├── config.ts       # env parsed + validated once at startup; resolveDataDir() is the one place DATA_DIR is decided
 │       ├── consent.ts      # the versions of the texts a person agrees to, and whether an account has agreed (the device's own user is created with them)
+│       ├── identity.ts     # port: who the open person is (the profile's name and birth date), registered by the device; the emergency card and a share link start from it, so a name is written once
 │       ├── share-host.ts   # port: what a device does for a share (seal and send the copy, answer a request); the device registers it, and a process without one cannot make a share
 │       ├── http.ts         # the request, reply and app the route files are written against (core's own types; no framework): the server's tests give them Fastify (`server/src/http-host.ts`), the device its own router (`web/src/core/local-app.ts`)
 │       ├── logger.ts       # the logger for modules without the app; server/src/index.ts points it at the structured log
