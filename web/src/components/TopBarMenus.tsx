@@ -14,7 +14,7 @@ export const MORE_LINKS = [
   { to: '/trends', label: msg('Trends') },
   { to: '/doctors', label: msg('Doctors') },
   { to: '/library', label: msg('Library') },
-  { to: '/emergency', label: msg('Emergency card') },
+  { to: '/emergency', label: msg('Profile') },
 ];
 
 /** A menu opened from the top bar closes on a click outside it, on Escape, and when a link in it is followed. */

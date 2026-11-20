@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { api, ApiError, type EmergencyView } from '../api';
 import { DETAIL_LABELS } from '../detailLabels';
 import { CARD_LANGUAGES, cardText, DETAIL_KINDS, EMPTY_CARD, publicCard, type CardContent, type CardDetail } from 'spine-core/emergency';
-import { NOBODY } from 'spine-core/identity';
 import { BLOOD_TYPES, proposalsFrom, type Proposals } from '../emergency-fill';
 import PrintCard, { printCard } from '../components/PrintCard';
 import CardQr from '../components/CardQr';
@@ -11,19 +10,8 @@ import { buttonClass, inputClass, Notice } from '../components/AuthCard';
 import { Combobox } from '../components/Combobox';
 import { DateInput } from '../components/DateInput';
 import { languageChoice, useI18n } from '../i18n';
+import { changeProfile, useProfiles } from '../profiles';
 import { useFormat } from '../format';
-
-/**
- * Says where a name or birth date on the card comes from. Left empty, it is the profile's (shown greyed in the box, and not copied into it, so it follows the profile); written, the
- * card's own words stand, and one click gives the profile's back. With none in the profile, it says where to put it once.
- */
-function FromProfile({ written, from, onUseProfile }: { written: string; from: string; onUseProfile: () => void }) {
-  const { t } = useI18n();
-  if (!from) return <p className="-mt-2 mb-3 text-xs text-gray-500">{written ? null : <>{t('Not on the card yet.')}{' '}<Link to="/profiles" className="text-brand-600 hover:underline">{t('Add it to your profile')}</Link></>}</p>;
-  if (!written.trim()) return <p className="-mt-2 mb-3 text-xs text-gray-500">{t('From your profile. Type to use something else.')}{' '}<Link to="/profiles" className="text-brand-600 hover:underline">{t('Edit in profile')}</Link></p>;
-  if (written.trim() === from) return <p className="-mt-2 mb-3 text-xs text-gray-500">{t('Same as your profile.')}{' '}<button type="button" onClick={onUseProfile} className="text-brand-600 hover:underline">{t('Follow the profile')}</button></p>;
-  return <p className="-mt-2 mb-3 text-xs text-gray-500">{t('Written here: your profile says “{value}”.', { value: from })}{' '}<button type="button" onClick={onUseProfile} className="text-brand-600 hover:underline">{t('Use the profile’s')}</button></p>;
-}
 
 /** One item to a line; the card keeps them as a list. */
 const lines = (text: string) => text.split('\n').map(s => s.trim()).filter(Boolean);
@@ -38,6 +26,9 @@ export default function Emergency() {
   const format = useFormat();
   const [view, setView] = useState<EmergencyView | null>(null);
   const [card, setCard] = useState<CardContent>(EMPTY_CARD);
+  // Who the person is: the profile's own name and birth date, written here and kept there (a card written before this took them as its own words, which are offered once).
+  const [identity, setIdentity] = useState({ name: '', born: '' });
+  const { people } = useProfiles(true);
   const [text, setText] = useState({ allergies: '', conditions: '', medications: '' });
   // The second language's words, one to a line like the first's; kept with the card when saved.
   const [second, setSecond] = useState<{ language: string; allergies: string; conditions: string; medications: string; notes: string } | null>(null);
@@ -51,6 +42,7 @@ export default function Emergency() {
   const show = (v: EmergencyView) => {
     setView(v);
     setCard(v.card);
+    setIdentity({ name: v.from_profile.name || v.card.name, born: v.from_profile.born || v.card.born });
     setText({ allergies: v.card.allergies.join('\n'), conditions: v.card.conditions.join('\n'), medications: v.card.medications.join('\n') });
     setSecond(v.card.second ? { language: v.card.second.language, allergies: v.card.second.allergies.join('\n'), conditions: v.card.second.conditions.join('\n'), medications: v.card.second.medications.join('\n'), notes: v.card.second.notes } : null);
   };
@@ -82,7 +74,16 @@ export default function Emergency() {
       setError(err instanceof ApiError && err.code === 'translation_off' ? t('Translation is switched off here: write the second language yourself.') : t('The card could not be translated right now. You can write the second language yourself.'));
     } finally { setTranslating(false); }
   };
-  const save = async () => { if (await run(() => api.emergency.save(current()), t('Could not save the card'))) setSaved(true); };
+  // One save: the profile's name and birth date (if they changed, or were still the card's own words), then the card's record with the name and birth date left to the profile.
+  const save = async () => {
+    const id = people?.current;
+    const ok = await run(async () => {
+      const name = identity.name.trim(); const born = identity.born.trim();
+      if (id && (name !== (view?.from_profile.name ?? '') || born !== (view?.from_profile.born ?? ''))) await changeProfile(id, { ...(name ? { name: name.slice(0, 60) } : {}), born });
+      return api.emergency.save({ ...current(), name: '', born: '' });
+    }, t('Could not save the card'));
+    if (ok) setSaved(true);
+  };
   const set = <K extends keyof CardContent>(key: K, value: CardContent[K]) => { setSaved(false); setCard(c => ({ ...c, [key]: value })); };
   const setDetail = (n: number, change: Partial<CardDetail>) => set('details', card.details.map((d, i) => i === n ? { ...d, ...change } : d));
   const setContact = (n: number, key: 'name' | 'relation' | 'phone', value: string) => set('contacts', card.contacts.map((c, i) => i === n ? { ...c, [key]: value } : c));
@@ -92,8 +93,8 @@ export default function Emergency() {
 
   return (
     <div className="max-w-xl mx-auto">
-      <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900 mb-1">{t('Emergency card')}</h1>
-      <p className="text-sm text-gray-500 mb-6">{t('A short card for someone who has to help you quickly: what they must know first. You write it yourself, and only what you write is on it.')}</p>
+      <h1 className="text-[1.75rem] leading-tight font-light tracking-tight text-gray-900 mb-1">{t('Profile')}</h1>
+      <p className="text-sm text-gray-500 mb-6">{t('Who you are, and what you want a doctor or a helper to know. You write it yourself; nothing is taken from your documents.')}</p>
 
       {view.review_due && (
         <div role="status" className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
@@ -103,21 +104,23 @@ export default function Emergency() {
         </div>
       )}
       <section className="bg-white border border-gray-200 rounded-xl p-5 space-y-3">
-        <div>
-          <label className="block text-sm text-gray-700">{t('Name')}
-            <input className={inputClass} value={card.name} maxLength={120} placeholder={view?.from_profile.name} onChange={e => set('name', e.target.value)} />
-          </label>
-          <FromProfile written={card.name} from={view?.from_profile.name ?? ''} onUseProfile={() => set('name', '')} />
-        </div>
+        <h2 className="font-medium text-gray-900">{t('About')}</h2>
+        <label className="block text-sm text-gray-700">{t('Name')}
+          <input className={inputClass} value={identity.name} maxLength={60} placeholder={t('Your name')} autoComplete="name" onChange={e => { setSaved(false); setIdentity(x => ({ ...x, name: e.target.value })); }} />
+        </label>
         <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-sm text-gray-700">{t('Born (year or date)')}<DateInput className={inputClass} value={card.born} placeholder={view?.from_profile.born} onChange={born => set('born', born)} max={new Date().toISOString().slice(0, 10)} /></label>
-            <FromProfile written={card.born} from={view?.from_profile.born ?? ''} onUseProfile={() => set('born', '')} />
-          </div>
+          <label className="block text-sm text-gray-700">{t('Born (year or date)')}<DateInput className={inputClass} value={identity.born} onChange={born => { setSaved(false); setIdentity(x => ({ ...x, born })); }} max={new Date().toISOString().slice(0, 10)} /></label>
           <label className="block text-sm text-gray-700">{t('Blood type')}
             <Combobox ariaLabel={t('Blood type')} value={card.blood_type} onChange={v => set('blood_type', v)} className={inputClass}
               options={[{ value: '', label: t('Not known') }, ...BLOOD_TYPES.map(b => ({ value: b, label: b })), ...(card.blood_type && !(BLOOD_TYPES as readonly string[]).includes(card.blood_type) ? [{ value: card.blood_type, label: card.blood_type }] : [])]} />
           </label>
+        </div>
+      </section>
+
+      <section className="bg-white border border-gray-200 rounded-xl p-5 mt-6 space-y-3">
+        <div>
+          <h2 className="font-medium text-gray-900">{t('Health now')}</h2>
+          <p className="text-sm text-gray-500">{t('What someone treating you needs to know. You write it yourself; nothing is taken from your documents. Share links can include it, and the emergency card shows it.')}</p>
         </div>
         <FillFromRecords already={{ medications: lines(text.medications), conditions: lines(text.conditions) }} onAdd={added => { setSaved(false); setText(x => ({ ...x, medications: [...lines(x.medications), ...added.medications].join('\n'), conditions: [...lines(x.conditions), ...added.conditions].join('\n') })); }} />
         {([['allergies', 'Allergies'], ['medications', 'Medications'], ['conditions', 'Conditions']] as const).map(([key, label]) => (
@@ -125,6 +128,14 @@ export default function Emergency() {
             <textarea className={`${inputClass} h-20`} placeholder={t('One to a line')} value={text[key]} onChange={e => { setSaved(false); setText(x => ({ ...x, [key]: e.target.value })); }} />
           </label>
         ))}
+        <label className="block text-sm text-gray-700">{t('Notes')}<textarea className={`${inputClass} h-20`} maxLength={500} value={card.notes} onChange={e => set('notes', e.target.value)} /></label>
+      </section>
+
+      <section className="bg-white border border-gray-200 rounded-xl p-5 mt-6 space-y-3">
+        <div>
+          <h2 className="font-medium text-gray-900">{t('Emergency card')}</h2>
+          <p className="text-sm text-gray-500">{t('What only makes sense on a card: who to call and the numbers a helper may need. These are not part of your share links.')}</p>
+        </div>
         <fieldset>
           <legend className="text-sm text-gray-700 mb-1">{t('Emergency contacts')}</legend>
           {card.contacts.map((c, n) => (
@@ -156,7 +167,6 @@ export default function Emergency() {
           ))}
           {card.details.length < 8 && <button type="button" className="text-sm text-brand-600 hover:underline" onClick={() => set('details', [...card.details, { kind: 'national_id', label: '', value: '', on_card: false }])}>{t('Add a detail')}</button>}
         </fieldset>
-        <label className="block text-sm text-gray-700">{t('Notes')}<textarea className={`${inputClass} h-20`} maxLength={500} value={card.notes} onChange={e => set('notes', e.target.value)} /></label>
         <fieldset className="rounded-lg border border-gray-200 p-3 space-y-3">
           <legend className="px-1 text-sm text-gray-700">{t('A second language')}</legend>
           <p className="text-xs text-gray-500">{t('So a paramedic who does not read your language can read the card. Your allergies, conditions, medicines and notes are translated once by the model when you ask, shown here for you to correct, and kept as your words. Names and phone numbers are not translated.')}</p>
@@ -172,10 +182,13 @@ export default function Emergency() {
           ))}
           {second?.language && <label className="block text-sm text-gray-700">{t('Notes')} ({languageChoice(second.language as 'en')})<textarea className={`${inputClass} h-16`} maxLength={500} value={second.notes} onChange={e => { setSaved(false); setSecond(x => (x ? { ...x, notes: e.target.value } : x)); }} /></label>}
         </fieldset>
+      </section>
+
+      <div className="mt-6 space-y-3">
         {error && <Notice kind="error">{error}</Notice>}
         {saved && <Notice kind="ok">{t('Saved')}</Notice>}
-        <button disabled={busy} onClick={() => void save()} className={buttonClass}>{t('Save the card')}</button>
-      </section>
+        <button disabled={busy} onClick={() => void save()} className={buttonClass}>{t('Save the profile')}</button>
+      </div>
 
       <section className="bg-white border border-gray-200 rounded-xl p-5 mt-6">
         <h2 className="font-medium text-gray-900 mb-1">{on ? t('The card is on') : t('Turn the card on')}</h2>
@@ -201,7 +214,7 @@ export default function Emergency() {
           </div>
         ) : (
           <div className="space-y-3">
-            <CardPreview card={publicCard(current(), view?.from_profile ?? NOBODY)} />
+            <CardPreview card={publicCard(current(), identity)} />
             <button disabled={busy} className={buttonClass} onClick={() => void run(() => api.emergency.publish(), t('Could not turn the card on'))}>{t('Turn the card on')}</button>
           </div>
         )}

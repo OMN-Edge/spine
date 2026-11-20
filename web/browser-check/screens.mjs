@@ -219,13 +219,15 @@ try {
     await h.shot(`acc-${tag}-document`);
     const routes = tag === 'ro' ? ['/account', '/share', '/emergency', '/review', '/episodes'] : ['/review', '/episodes', '/trends', '/doctors', '/library', '/search', '/upload', '/scan', '/reminders', '/profiles', '/emergency', '/share', '/account', '/review/fields', '/account/invoices', '/family'];
     if (tag === 'd') {
-      // The profile is given a name and a birth date, where the emergency card and a share link take them from.
-      await h.go('/profiles'); await wait(2000);
-      await p.evaluate(() => [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Edit')?.click()); await wait(400);
-      await p.type('form input[maxlength="60"]', 'Ana Exemplu');
-      await p.type('form input[inputmode="numeric"]', '1990-04-02');
-      await h.shot('acc-d-profile-edit', '', false);
-      await p.evaluate(() => [...document.querySelectorAll('form button[type=submit]')].find(b => b.textContent.trim() === 'Save')?.click()); await wait(3000);
+      // The profile page, empty and then written: the name and birth date are the person's own, the health lists feed the card and a share link.
+      await h.go('/emergency'); await wait(2500);
+      await h.shot('acc-d-profile-empty');
+      await p.type('input[autocomplete="name"]', 'Ana Exemplu');
+      await p.type('input[inputmode="numeric"]', '1990-04-02');
+      const areas = await p.$$('textarea');
+      await areas[0].type('Penicillin'); await areas[1].type('Levothyroxine 50 µg'); await areas[2].type('Hypothyroidism');
+      await p.evaluate(() => [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Save the profile')?.click()); await wait(3500);
+      await h.shot('acc-d-profile-saved');
     }
     for (const r of routes) { await h.go(r); await wait(2500); await h.shot(`acc-${tag}-${r.slice(1).replace(/\//g, '-')}`); }
     if (tag === 'd') {

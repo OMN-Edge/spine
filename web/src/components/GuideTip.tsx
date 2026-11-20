@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import type { GuideKey } from '../api';
 import { useGuide } from '../guide';
 import { useI18n } from '../i18n';
 import { useChat } from './ChatProvider';
-import { changeProfile, useProfiles } from '../profiles';
+import { useProfiles } from '../profiles';
 
 /**
  * A tip shown the first time something happens (an upload waits for its grouping, documents have been read, a link has been made, results,
@@ -50,34 +50,8 @@ export const stepsDone = (progress: { uploads: number; reviewed: number; shares:
   return [progress.uploads > 0, progress.reviewed > 0, progress.shares > 0].map(raw => (before = before && raw));
 };
 
-/**
- * The first thing the profile can be given: a name. An account's first records are called "Me", which is no name; the card and a share link start from the profile's, so it is
- * written once, here or on the profiles page. Shown while the open person is that profile, and gone once it has a name.
- */
+/** The first step is the profile: an account's first records are called "Me", which is no name, and the card and a share link start from the profile's. Ticked once it has one. */
 export const needsName = (person: { name: string; shared?: unknown } | undefined): boolean => !!person && !person.shared && person.name === 'Me';
-
-function NameField({ id }: { id: string }) {
-  const { t } = useI18n();
-  const [name, setName] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const save = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) return;
-    setBusy(true); setFailed(false);
-    try { await changeProfile(id, { name: name.trim().slice(0, 60) }); } catch { setFailed(true); } finally { setBusy(false); }
-  };
-  return (
-    <form onSubmit={e => void save(e)} className="basis-full pl-[30px]">
-      <div className="flex gap-2">
-        <input aria-label={t('Your name')} value={name} maxLength={60} autoComplete="name" onChange={e => setName(e.target.value)} placeholder={t('As a doctor knows you')} className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm" />
-        <button type="submit" disabled={busy || !name.trim()} className="rounded-full bg-brand-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50">{t('Save')}</button>
-      </div>
-      <p className="mt-1 text-xs text-gray-500">{t('Kept in your profile, once. Your emergency card and your share links start from it.')}</p>
-      {failed && <p role="alert" className="mt-1 text-xs text-red-600">{t('Could not save this change')}</p>}
-    </form>
-  );
-}
 
 export function GetStarted() {
   const { t } = useI18n();
@@ -88,8 +62,8 @@ export function GetStarted() {
   const ticked = progress ? stepsDone(progress) : [];
   // The first step is the profile's name, for the account's own records: the card and a share link start from it, so it is written once, here or on the profiles page.
   const own = open && !open.shared ? open : null;
-  const steps: Array<{ done: boolean; label: string; to?: string; action?: string; name?: string }> = progress ? [
-    ...(own ? [{ done: !needsName(own), label: t('Add your name'), name: own.id }] : []),
+  const steps: Array<{ done: boolean; label: string; to: string; action: string }> = progress ? [
+    ...(own ? [{ done: !needsName(own), label: t('Set up your profile'), to: '/emergency', action: t('Open') }] : []),
     { done: ticked[0], label: t('Add your first document'), to: '/upload', action: t('Add') },
     { done: ticked[1], label: t('Review what was read from it'), to: reviewTarget(progress), action: t('Review') },
     { done: ticked[2], label: t('Share it with a doctor, when you need to'), to: '/share', action: t('Share') },
@@ -115,8 +89,7 @@ export function GetStarted() {
             <span className={`min-w-0 flex-1 ${step.done ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
               {step.label}<span className="sr-only">{step.done ? ` (${t('done')})` : ''}</span>
             </span>
-            {!step.done && i === next && step.to && <Link to={step.to} className="shrink-0 text-xs font-medium text-brand-600 hover:underline">{step.action} →</Link>}
-            {!step.done && i === next && step.name && <NameField id={step.name} />}
+            {!step.done && i === next && <Link to={step.to} className="shrink-0 text-xs font-medium text-brand-600 hover:underline">{step.action} →</Link>}
           </li>
         ))}
       </ol>

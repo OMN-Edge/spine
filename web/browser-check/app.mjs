@@ -1024,7 +1024,7 @@ try {
     await click('Add a detail');
     await type('input[aria-label="Number or value"]', '1234567890123');
     await (await p.evaluateHandle(() => [...document.querySelectorAll('label')].find(l => l.innerText.includes('Put it on the card'))?.querySelector('input'))).asElement().click();
-    await click('Save the card');
+    await click('Save the profile');
     check(await waitFor('Saved'), 'the card is saved');
     await click('Turn the card on');
     check(await waitFor('The card is on', 20000) && /\/share\/[A-Za-z0-9-]+#[A-Za-z0-9_-]{43}/.test(await text()), 'turning it on gives an address that holds its key');
