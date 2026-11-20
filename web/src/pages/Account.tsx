@@ -1,3 +1,4 @@
+import CompanyLine from '../components/CompanyLine';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api';
@@ -100,6 +101,8 @@ export default function Account() {
         <h2 id="data" className={heading}>{t('Data and privacy')}</h2>
         <YourData />
         <AdministrationCard />
+        {/* Who operates this Spine: on the public pages, the legal pages and the sign-in, and here, rather than under every screen of the app. */}
+        <CompanyLine className="mt-10 text-gray-500" />
       </div>
     </div>
   );

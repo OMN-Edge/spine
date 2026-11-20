@@ -45,7 +45,6 @@ import LegalPage from './pages/LegalPage';
 import ConsentGate from './pages/ConsentGate';
 import VaultSetup from './pages/VaultSetup';
 import { vaultState } from './crypto/vault-state';
-import CompanyLine from './components/CompanyLine';
 import UnlockScreen from './components/UnlockScreen';
 import SyncNotice from './components/SyncNotice';
 import SaveStatus from './components/SaveStatus';
@@ -261,7 +260,7 @@ function Layout({ children }: { children: React.ReactNode }) {
       )}
       {demo && <DemoBanner />}
       {/* With the chat open beside it, the page gives it room instead of sitting under it. */}
-      <main className={`max-w-6xl mx-auto px-4 sm:px-6 py-6 pb-24 sm:py-8 transition-[margin] duration-200 ${chat?.enabled && chat.open ? 'sm:mr-[26.5rem] sm:max-w-none' : ''}`}>{children}<CompanyLine className="mt-12 text-gray-500" /></main>
+      <main className={`max-w-6xl mx-auto px-4 sm:px-6 py-6 pb-24 sm:py-8 transition-[margin] duration-200 ${chat?.enabled && chat.open ? 'sm:mr-[26.5rem] sm:max-w-none' : ''}`}>{children}</main>
       <ChatPanel />
     </div>
   );

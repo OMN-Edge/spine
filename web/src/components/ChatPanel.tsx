@@ -16,6 +16,9 @@ import { useGuide } from '../guide';
 import { suggestionsFor } from '../chat-suggestions';
 import AnswerSources, { chipClass, numbered, sourceFor, useSourceName } from './AnswerSources';
 
+/** How long the panel takes to come and go, in milliseconds (the class `duration-300`). */
+const PANEL_MS = 300;
+
 const hrefOf = (s: ChatSource) => `/documents/${s.id}${s.section ? `?section=${s.section}` : ''}`;
 
 /**
@@ -71,10 +74,34 @@ export default function ChatPanel() {
   }, [text, view, chat?.open]);
 
   const open = chat?.open ?? false;
+  // The panel slides up from the bottom of a phone's screen (and eases in beside the page on a wide one), and goes the same way: it stays drawn for the length of the move before it is taken away.
+  const [mounted, setMounted] = useState(open);
   useEffect(() => {
-    if (!open) { setEntered(false); return; }
-    const frame = requestAnimationFrame(() => setEntered(true));
-    return () => cancelAnimationFrame(frame);
+    if (open) { setMounted(true); const frame = requestAnimationFrame(() => setEntered(true)); return () => cancelAnimationFrame(frame); }
+    setEntered(false);
+    const gone = setTimeout(() => setMounted(false), PANEL_MS);
+    return () => clearTimeout(gone);
+  }, [open]);
+  // On a phone the panel is the height of what can be seen, not of the page: with the keyboard up the box stays at the keyboard's edge, and the page behind does not move under it.
+  const [seen, setSeen] = useState<{ top: number; height: number } | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const view = window.visualViewport;
+    const phone = window.matchMedia('(max-width: 639px)');
+    const sync = () => setSeen(phone.matches && view ? { top: view.offsetTop, height: view.height } : null);
+    sync();
+    view?.addEventListener('resize', sync);
+    view?.addEventListener('scroll', sync);
+    phone.addEventListener('change', sync);
+    const was = document.body.style.overflow;
+    if (phone.matches) document.body.style.overflow = 'hidden';
+    return () => {
+      view?.removeEventListener('resize', sync);
+      view?.removeEventListener('scroll', sync);
+      phone.removeEventListener('change', sync);
+      document.body.style.overflow = was;
+      setSeen(null);
+    };
   }, [open]);
   // To the latest message; an empty conversation (the welcome) is read from its top.
   useEffect(() => { if (open && view === 'chat' && ((chat?.turns.length ?? 0) > 0 || chat?.busy)) { end.current?.scrollIntoView({ block: 'end' }); } }, [open, view, chat?.turns, chat?.busy, chat?.draft]);
@@ -116,7 +143,7 @@ export default function ChatPanel() {
     if (photos.length > 0) { chat?.setOpen(false); navigate('/scan', { state: { files: photos, conversationId: chat?.currentId ?? null, fromChat: true } }); }
   };
 
-  if (!open) {
+  if (!open && !mounted) {
     // The app started a conversation (an upload finished): a note beside the button says so, and opens it.
     const waiting = conversations?.find(c => c.unread) ?? null;
     // Otherwise, for a person who has not started yet, the welcome is offered the next few times the app is opened, and can be put away.
@@ -166,7 +193,8 @@ export default function ChatPanel() {
       onDragLeave={e => { if (e.currentTarget === e.target) setDragging(false); }}
       onDrop={e => { if (e.dataTransfer.files.length > 0) { e.preventDefault(); addFiles(e.dataTransfer.files); } setDragging(false); }}
       role="complementary" aria-label={t('Ask your records')}
-      className={`fixed inset-0 z-40 flex flex-col bg-white transition duration-200 ease-out sm:inset-auto sm:bottom-3 sm:right-3 sm:top-[4.25rem] sm:w-[25rem] sm:rounded-2xl sm:border sm:border-gray-200 sm:shadow-[0_10px_40px_-12px_rgba(15,23,42,0.2)] ${entered ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0'}`}
+      style={seen ? { top: seen.top, bottom: 'auto', height: seen.height } : undefined}
+      className={`fixed inset-0 z-40 flex flex-col overscroll-contain bg-white transition-[transform,opacity] duration-300 ease-out motion-reduce:transition-none sm:inset-auto sm:bottom-3 sm:right-3 sm:top-[4.25rem] sm:w-[25rem] sm:rounded-2xl sm:border sm:border-gray-200 sm:shadow-[0_10px_40px_-12px_rgba(15,23,42,0.2)] ${entered ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 sm:translate-y-2'}`}
     >
       {dragging && <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl border-2 border-dashed border-brand-400 bg-brand-50/80 text-sm font-medium text-brand-700">{t('Drop files to attach them')}</div>}
       <div className="flex items-start justify-between gap-3 px-4 pb-2 pt-3.5">
