@@ -1003,13 +1003,13 @@ try {
     // A person's name and a child's birth date can be corrected, and the list shows the correction.
     await openPeople();
     await (await p.evaluateHandle(() => [...document.querySelectorAll('li')].find(li => li.innerText.includes('Kid'))?.querySelectorAll('button')[1])).asElement().click();
-    await p.waitForSelector('li input[aria-label=Name]', { visible: true });
-    await p.focus('li input[aria-label=Name]');
+    await p.waitForSelector('li form input[maxlength="60"]', { visible: true });
+    await p.focus('li form input[maxlength="60"]');
     for (let i = 0; i < 12; i++) await p.keyboard.press('Backspace');
-    await p.type('li input[aria-label=Name]', 'Kiddo');
-    await p.focus('li input[aria-label="Born (year-month-day)"]');
+    await p.type('li form input[maxlength="60"]', 'Kiddo');
+    await p.focus('li form input[inputmode="numeric"]');
     for (let i = 0; i < 12; i++) await p.keyboard.press('Backspace');
-    await p.type('li input[aria-label="Born (year-month-day)"]', '2010-01-01');
+    await p.type('li form input[inputmode="numeric"]', '2010-01-01');
     await (await p.evaluateHandle(() => [...document.querySelectorAll('li button[type=submit]')][0])).asElement().click();
     check(await waitFor('Kiddo', 15000) && /Kiddo[\s\S]{0,40}child, 16 years old/.test(await text()), "a person's name and a child's birth date can be corrected");
     await click('Timeline');
@@ -1020,7 +1020,7 @@ try {
     await waitFor('Write an emergency card');
     await click('Write an emergency card');
     check(await waitFor('Official details'), 'the emergency card is written under Share links');
-    await type('input[maxlength="120"]', 'Jane Example');
+    await type('input[autocomplete="name"]', 'Jane Example');
     await click('Add a detail');
     await type('input[aria-label="Number or value"]', '1234567890123');
     await (await p.evaluateHandle(() => [...document.querySelectorAll('label')].find(l => l.innerText.includes('Put it on the card'))?.querySelector('input'))).asElement().click();
@@ -1148,7 +1148,7 @@ try {
       await confirmWhoJoined(q, qWait, 'check@example.com');
       // Accepting reloads the keys and the page of people is drawn again; the message that it worked has to survive that, so it is looked for often.
       let sawNotice = false; let listed = false;
-      for (let t = 0; t < 40000 && !(listed && sawNotice); t += 40) { const now = await qText(); sawNotice ||= now.includes('the records check@example.com shared with you. Switch between people'); listed = now.includes('Shared by check@example.com'); await wait(40); }
+      for (let t = 0; t < 40000 && !(listed && sawNotice); t += 40) { const now = await qText(); sawNotice ||= now.includes('the records check@example.com shared with you. Switch between people') || now.includes('’s records, shared by check@example.com. Switch between people'); listed = now.includes('Shared by check@example.com'); await wait(40); }
       check(listed, 'accepting the invitation works');
       check(sawNotice, 'and the page says whose records are open now, and where to switch');
       check(/only read/.test(await qText()), 'the person is listed as shared by the owner, as someone the guest can only read');
@@ -1157,7 +1157,7 @@ try {
       check(await qWait('This invitation cannot be used', 15000), 'the code does not work twice');
       // The shared person is open: the owner's sample records are there.
       await q.evaluate(() => [...document.querySelectorAll('a')].find(a => a.getAttribute('href') === '/')?.click());
-      check(await qWait('Radiografie pulmonară', 60000), "the shared person's records, the owner's, are what is open");
+      { const seen = await qWait('Radiografie pulmonară', 60000); check(seen, "the shared person's records, the owner's, are what is open"); if (!seen) console.log('     the guest sees:', (await qText()).replace(/\s+/g, ' ').slice(0, 500)); }
       // A change made by someone who can only read is refused by the vault, and the page says it was not saved.
       await q.evaluate(async () => { // the Library is under More in the top bar
         if (!document.querySelector('a[href="/library"]')) { document.querySelector('nav button[aria-haspopup=menu]:not([title]):not([aria-label])')?.click(); await new Promise(r => setTimeout(r, 100)); }

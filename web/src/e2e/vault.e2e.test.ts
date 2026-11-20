@@ -222,6 +222,18 @@ describe.skipIf(!haveServer)('the device and the server together', () => {
     await session.close();
   });
 
+  it('lists the profiles in the order they were made, whatever their names', async () => {
+    const f = browser();
+    const { masterKey } = await signIn(f);
+    const session = await VaultSession.open(masterKey!, f);
+    const before = (await session.loadProfiles()).length;
+    const zed = await session.createProfile('Zed');
+    await new Promise(r => setTimeout(r, 20));
+    const ana = await session.createProfile('Ana');
+    expect((await session.loadProfiles()).slice(before).map(p => p.id)).toEqual([zed, ana]);
+    await session.close();
+  });
+
   it('resets a forgotten password with the recovery kit and keeps the records', async () => {
     const token = await accounts.issueUserToken(userId, 'reset', 60_000);
     const f = browser();
