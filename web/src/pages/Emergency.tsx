@@ -19,10 +19,10 @@ import { useFormat } from '../format';
  */
 function FromProfile({ written, from, onUseProfile }: { written: string; from: string; onUseProfile: () => void }) {
   const { t } = useI18n();
-  if (!from) return <p className="mt-1 text-xs text-gray-500">{written ? null : <>{t('Not on the card yet.')}{' '}<Link to="/profiles" className="text-brand-600 hover:underline">{t('Add it to your profile')}</Link></>}</p>;
-  if (!written.trim()) return <p className="mt-1 text-xs text-gray-500">{t('From your profile. Write here to show something else on the card.')}{' '}<Link to="/profiles" className="text-brand-600 hover:underline">{t('Change it in your profile')}</Link></p>;
-  if (written.trim() === from) return <p className="mt-1 text-xs text-gray-500">{t('Same as your profile.')}{' '}<button type="button" onClick={onUseProfile} className="text-brand-600 hover:underline">{t('Follow the profile')}</button></p>;
-  return <p className="mt-1 text-xs text-gray-500">{t('Written here: your profile says “{value}”.', { value: from })}{' '}<button type="button" onClick={onUseProfile} className="text-brand-600 hover:underline">{t('Use the profile’s')}</button></p>;
+  if (!from) return <p className="-mt-2 mb-3 text-xs text-gray-500">{written ? null : <>{t('Not on the card yet.')}{' '}<Link to="/profiles" className="text-brand-600 hover:underline">{t('Add it to your profile')}</Link></>}</p>;
+  if (!written.trim()) return <p className="-mt-2 mb-3 text-xs text-gray-500">{t('From your profile. Type to use something else.')}{' '}<Link to="/profiles" className="text-brand-600 hover:underline">{t('Edit in profile')}</Link></p>;
+  if (written.trim() === from) return <p className="-mt-2 mb-3 text-xs text-gray-500">{t('Same as your profile.')}{' '}<button type="button" onClick={onUseProfile} className="text-brand-600 hover:underline">{t('Follow the profile')}</button></p>;
+  return <p className="-mt-2 mb-3 text-xs text-gray-500">{t('Written here: your profile says “{value}”.', { value: from })}{' '}<button type="button" onClick={onUseProfile} className="text-brand-600 hover:underline">{t('Use the profile’s')}</button></p>;
 }
 
 /** One item to a line; the card keeps them as a list. */

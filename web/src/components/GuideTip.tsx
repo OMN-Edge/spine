@@ -56,7 +56,7 @@ export const stepsDone = (progress: { uploads: number; reviewed: number; shares:
  */
 export const needsName = (person: { name: string; shared?: unknown } | undefined): boolean => !!person && !person.shared && person.name === 'Me';
 
-function NameStep({ id }: { id: string }) {
+function NameField({ id }: { id: string }) {
   const { t } = useI18n();
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -68,10 +68,9 @@ function NameStep({ id }: { id: string }) {
     try { await changeProfile(id, { name: name.trim().slice(0, 60) }); } catch { setFailed(true); } finally { setBusy(false); }
   };
   return (
-    <form onSubmit={e => void save(e)} className="mt-2 mb-3 border-b border-gray-100 pb-3">
-      <label className="block text-sm text-gray-800" htmlFor="gs-name">{t('Your name')}</label>
-      <div className="mt-1 flex gap-2">
-        <input id="gs-name" value={name} maxLength={60} autoComplete="name" onChange={e => setName(e.target.value)} placeholder={t('As a doctor knows you')} className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm" />
+    <form onSubmit={e => void save(e)} className="basis-full pl-[30px]">
+      <div className="flex gap-2">
+        <input aria-label={t('Your name')} value={name} maxLength={60} autoComplete="name" onChange={e => setName(e.target.value)} placeholder={t('As a doctor knows you')} className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm" />
         <button type="submit" disabled={busy || !name.trim()} className="rounded-full bg-brand-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50">{t('Save')}</button>
       </div>
       <p className="mt-1 text-xs text-gray-500">{t('Kept in your profile, once. Your emergency card and your share links start from it.')}</p>
@@ -87,7 +86,10 @@ export function GetStarted() {
   const open = people?.profiles.find(p => p.id === people.current);
   const progress = guide?.state?.progress;
   const ticked = progress ? stepsDone(progress) : [];
-  const steps = progress ? [
+  // The first step is the profile's name, for the account's own records: the card and a share link start from it, so it is written once, here or on the profiles page.
+  const own = open && !open.shared ? open : null;
+  const steps: Array<{ done: boolean; label: string; to?: string; action?: string; name?: string }> = progress ? [
+    ...(own ? [{ done: !needsName(own), label: t('Add your name'), name: own.id }] : []),
     { done: ticked[0], label: t('Add your first document'), to: '/upload', action: t('Add') },
     { done: ticked[1], label: t('Review what was read from it'), to: reviewTarget(progress), action: t('Review') },
     { done: ticked[2], label: t('Share it with a doctor, when you need to'), to: '/share', action: t('Share') },
@@ -104,17 +106,17 @@ export function GetStarted() {
         <h2 className="text-sm font-medium text-gray-900">{t('Get started')}</h2>
         <button type="button" onClick={() => guide?.done('checklist')} className="text-xs text-gray-400 hover:text-gray-700 hover:underline">{t('Hide')}</button>
       </div>
-      {needsName(open) && <NameStep id={open!.id} />}
       <ol className="mt-2 space-y-1.5">
         {steps.map((step, i) => (
-          <li key={step.label} className={`${i === next ? 'flex' : 'hidden sm:flex'} items-center gap-2.5 text-sm`}>
+          <li key={step.label} className={`${i === next ? 'flex' : 'hidden sm:flex'} flex-wrap items-center gap-x-2.5 gap-y-1.5 text-sm`}>
             <span aria-hidden="true" className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${step.done ? 'bg-emerald-500 text-white' : i === next ? 'border-2 border-brand-500 text-brand-600' : 'border border-gray-300 text-gray-400'}`}>
               {step.done ? '✓' : i + 1}
             </span>
             <span className={`min-w-0 flex-1 ${step.done ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
               {step.label}<span className="sr-only">{step.done ? ` (${t('done')})` : ''}</span>
             </span>
-            {!step.done && i === next && <Link to={step.to} className="shrink-0 text-xs font-medium text-brand-600 hover:underline">{step.action} →</Link>}
+            {!step.done && i === next && step.to && <Link to={step.to} className="shrink-0 text-xs font-medium text-brand-600 hover:underline">{step.action} →</Link>}
+            {!step.done && i === next && step.name && <NameField id={step.name} />}
           </li>
         ))}
       </ol>
