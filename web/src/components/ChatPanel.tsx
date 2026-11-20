@@ -48,6 +48,7 @@ export default function ChatPanel() {
   const [entered, setEntered] = useState(false);
   const end = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
+  const panel = useRef<HTMLElement>(null);
   // On a phone the button is a round icon that steps aside while the page is read downwards, so it never rests on a card's text; scrolling up brings it back.
   // What the person has, for the questions the chat offers outside a document.
   const [tests, setTests] = useState<TrendName[]>([]);
@@ -99,7 +100,13 @@ export default function ChatPanel() {
     const scrolled = window.scrollY;
     const locked = phone.matches;
     if (locked) Object.assign(style, { position: 'fixed', top: `-${scrolled}px`, left: '0', right: '0', width: '100%' });
+    // A drag that starts on the panel's own chrome (the heading, the notice under the box) is not for scrolling anything, and a phone's browser would move the visible area with it,
+    // the top bar included. Only the conversation, the list of conversations and the text box scroll.
+    const box = panel.current;
+    const hold = (e: TouchEvent) => { if (!(e.target instanceof Element) || !e.target.closest('[data-chat-scroll], textarea')) e.preventDefault(); };
+    if (locked) box?.addEventListener('touchmove', hold, { passive: false });
     return () => {
+      box?.removeEventListener('touchmove', hold);
       view?.removeEventListener('resize', sync);
       view?.removeEventListener('scroll', sync);
       phone.removeEventListener('change', sync);
@@ -193,7 +200,7 @@ export default function ChatPanel() {
   );
 
   return (
-    <aside
+    <aside ref={panel}
       onDragOver={e => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragging(true); } }}
       onDragLeave={e => { if (e.currentTarget === e.target) setDragging(false); }}
       onDrop={e => { if (e.dataTransfer.files.length > 0) { e.preventDefault(); addFiles(e.dataTransfer.files); } setDragging(false); }}
@@ -224,7 +231,7 @@ export default function ChatPanel() {
       </div>
 
       {view === 'history' ? (
-        <div className="flex-1 overflow-y-auto px-2 py-2">
+        <div data-chat-scroll className="overscroll-contain flex-1 overflow-y-auto px-2 py-2">
           {conversations === null ? (
             <p className="px-2 py-3 text-sm text-gray-400">{t('Loading…')}</p>
           ) : conversations.length === 0 ? (
@@ -266,7 +273,7 @@ export default function ChatPanel() {
           )}
         </div>
       ) : (
-        <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
+        <div data-chat-scroll className="overscroll-contain flex-1 space-y-4 overflow-y-auto px-4 py-4">
           {turns.length === 0 && !busy && (
             <div className="space-y-4">
               <ChatWelcome suggestions={suggestionsFor(chat.page, t, tests)} busy={busy} onAsk={q => void chat.send(q)} onHelp={topic => void chat.help(topic)} onLeave={follow} />
