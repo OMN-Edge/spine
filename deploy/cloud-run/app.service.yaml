@@ -59,6 +59,10 @@ spec:
             - { name: SPINE_JOBS, value: external }
             - { name: SPINE_FAIR_USE_FILE, value: /secrets/fair-use/fair-use.json }
             - { name: SPINE_RELAY_URL, value: "https://relay.spinevault.eu" }
+            # The models the relay offers, the same as on the relay: the server tells each device which one to ask for. Without them a device asks for the built-in default,
+            # which the relay refuses ("that model is not offered") and every reading waits for "the reading service".
+            - { name: SPINE_LLM_MODEL, value: gemini-3.5-flash }
+            - { name: SPINE_LLM_MODELS, value: "gemini-3.7-flash=Gemini 3.7 Flash,gemini-3.5-flash=Gemini 3.5 Flash" }
             - { name: SPINE_OPERATOR_CONTACT, value: privacy@spinevault.eu }
             # Where vulnerability reports go (/.well-known/security.txt), when that is not the contact above.
             # - { name: SPINE_OPERATOR_SECURITY_CONTACT, value: CHANGE }
