@@ -68,6 +68,7 @@ import { Wordmark } from './components/Logo';
 import { isLanguage, msg, onLanguageChosen, useI18n } from './i18n';
 import { LanguageSwitcher } from './components/LanguageSwitcher';
 import { ThemeSwitcher } from './components/ThemeSwitcher';
+import { wherePersonWas } from './safe-path';
 import { AccountMenu, MORE_LINKS, MoreMenu, ReviewBadge, useReviewCount } from './components/TopBarMenus';
 
 /** The pages in the bar itself, in the order of the work: what is kept, adding to it, checking it, showing it, finding in it. The rest are under More. */
@@ -114,12 +115,16 @@ function Layout({ children }: { children: React.ReactNode }) {
 
   // Signing out drops what is on this device, so it does not go ahead over changes the vault does not have: the person is asked.
   const [losing, setLosing] = useState(false);
+  const [signOutFailed, setSignOutFailed] = useState(false);
   const logout = async (force = false) => {
+    setSignOutFailed(false);
     try {
       await api.auth.logout(force);
     } catch (err) {
       if (err instanceof UnsavedChangesError) { setLosing(true); return; }
-      throw err;
+      // Nothing was signed out: say so, rather than leave a click that appears to do nothing.
+      setSignOutFailed(true);
+      return;
     }
     setLosing(false);
     signedOutOnPurpose = true;
@@ -139,6 +144,12 @@ function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {signOutFailed && (
+        <p role="alert" className="border-b border-red-200 bg-red-50 px-4 py-2 text-center text-sm text-red-700">
+          {t('Could not sign out. Check your connection and try again.')}
+          <button type="button" onClick={() => setSignOutFailed(false)} className="ml-3 underline">{t('Hide')}</button>
+        </p>
+      )}
       {losing && (
         <div role="alertdialog" aria-modal="true" aria-labelledby="losing-text" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="max-w-md rounded-lg bg-white p-5 shadow-lg">
@@ -275,7 +286,7 @@ function PrivateRoute({ children, inDemo = true }: { children: React.ReactNode; 
   // The records are sealed in the vault and open only on this device, with the key made from the master password.
   if (authenticated && deviceState === 'starting') return <div className="min-h-screen flex items-center justify-center text-gray-400">{t('Opening…')}</div>;
   if (authenticated && deviceState === 'locked') return <UnlockScreen opened={deviceOpened} signOut={() => setAuthenticated(false)} />;
-  return authenticated ? <Layout><SaveStatus /><SyncNotice /><DemoCarryOver />{children}</Layout> : <Navigate to="/login" replace state={{ from: signedOutOnPurpose ? '/' : location.pathname }} />;
+  return authenticated ? <Layout><SaveStatus /><SyncNotice /><DemoCarryOver />{children}</Layout> : <Navigate to="/login" replace state={{ from: signedOutOnPurpose ? '/' : wherePersonWas(location) }} />;
 }
 
 /** Signing in from the demo ends it first: the device's core is the demo's until then. */

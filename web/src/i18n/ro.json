@@ -1065,6 +1065,7 @@
  "Your latest changes are not saved yet. Spine keeps trying, so keep this page open.": "Ultimele tale modificări nu au fost încă salvate. Spine continuă să încerce, așa că păstrezi această pagină deschisă.",
  "Some of your latest changes are not saved yet. If you sign out now, they will be lost.": "Unele dintre ultimele tale modificări nu au fost încă salvate. Dacă te deconectezi acum, ele se vor pierde.",
  "Keep this page open": "Păstrează pagina deschisă",
+ "Could not sign out. Check your connection and try again.": "Deconectarea nu a reușit. Verifică conexiunea și încearcă din nou.",
  "Sign out and lose them": "Deconectare și pierderea modificărilor",
  "How your records are protected": "Cum îți sunt protejate documentele",
  "Your records are read, searched and kept in your browser. The keys that open them are made there, from your password. The server stores them only as sealed pieces it cannot open.": "Documentele tale sunt citite, căutate și păstrate în browser. Cheile care le deschid sunt create tot acolo, din parola ta. Serverul le stochează doar ca bucăți sigilate pe care nu le poate deschide.",

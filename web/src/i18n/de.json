@@ -1065,6 +1065,7 @@
  "Your latest changes are not saved yet. Spine keeps trying, so keep this page open.": "Ihre letzten Änderungen sind noch nicht gespeichert. Spine versucht es weiter – lassen Sie diese Seite geöffnet.",
  "Some of your latest changes are not saved yet. If you sign out now, they will be lost.": "Einige Ihrer letzten Änderungen sind noch nicht gespeichert. Wenn Sie sich jetzt abmelden, gehen sie verloren.",
  "Keep this page open": "Seite geöffnet lassen",
+ "Could not sign out. Check your connection and try again.": "Das Abmelden hat nicht geklappt. Prüfen Sie Ihre Verbindung und versuchen Sie es erneut.",
  "Sign out and lose them": "Abmelden und Änderungen verlieren",
  "How your records are protected": "Wie Ihre Unterlagen geschützt sind",
  "Your records are read, searched and kept in your browser. The keys that open them are made there, from your password. The server stores them only as sealed pieces it cannot open.": "Ihre Unterlagen werden in Ihrem Browser gelesen, durchsucht und aufbewahrt. Die Schlüssel, die sie öffnen, entstehen dort, aus Ihrem Passwort. Der Server speichert sie nur als versiegelte Teile, die er nicht öffnen kann.",

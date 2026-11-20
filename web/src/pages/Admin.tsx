@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
+import { wherePersonWas } from '../safe-path';
 import { api, ApiError, type AdminDashboard } from '../api';
 import { useAuth } from '../auth';
 import AdminAccounts from '../components/AdminAccounts';
@@ -57,7 +58,7 @@ export default function Admin() {
     return () => { live = false; window.clearInterval(timer); };
   }, [authenticated]);
 
-  if (!authenticated) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  if (!authenticated) return <Navigate to="/login" replace state={{ from: wherePersonWas(location) }} />;
   return (
     <div className="min-h-screen bg-paper text-ink antialiased">
       <header className="border-b border-ink/10">
