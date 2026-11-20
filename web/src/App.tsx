@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { lockPage } from './page-lock';
 import { Routes, Route, Link, NavLink, useNavigate, useLocation, useParams, Navigate } from 'react-router-dom';
 import { api, type DemoLanguage } from './api';
 import { AuthContext, useAuth } from './auth';
@@ -112,6 +113,16 @@ function Layout({ children }: { children: React.ReactNode }) {
   useEffect(() => setMenuOpen(false), [location.pathname]);
   // The floating pills hide while the menu is open (nav-open.ts).
   useEffect(() => { setNavOpen(document.body, menuOpen); return () => setNavOpen(document.body, false); }, [menuOpen]);
+  // On a phone the menu is a panel under the top bar with a scroll of its own, over a page that is held still: it used to open inside the bar and push the page down, so a scroll went on into the
+  // timeline below it. It opens with the page at the top, where the bar is.
+  const bar = useRef<HTMLElement>(null);
+  const [barBottom, setBarBottom] = useState(0);
+  useEffect(() => {
+    if (!menuOpen || !window.matchMedia('(max-width: 1023px)').matches) return;
+    window.scrollTo(0, 0);
+    setBarBottom(bar.current?.getBoundingClientRect().bottom ?? 0);
+    return lockPage();
+  }, [menuOpen]);
 
   // Signing out drops what is on this device, so it does not go ahead over changes the vault does not have: the person is asked.
   const [losing, setLosing] = useState(false);
@@ -161,7 +172,7 @@ function Layout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       )}
-      <nav className="bg-white border-b border-gray-200">
+      <nav ref={bar} className="bg-white border-b border-gray-200">
         <div className="px-4 sm:px-6 py-3 flex items-center gap-6">
           <Link to="/" className="mr-2 lg:mr-4" aria-label={t('Spine, home')}><Wordmark /></Link>
 
@@ -204,7 +215,7 @@ function Layout({ children }: { children: React.ReactNode }) {
         </div>
 
         {menuOpen && (
-          <div id="nav-menu" className="lg:hidden border-t border-gray-100 px-4 pb-3">
+          <div id="nav-menu" style={{ top: barBottom }} className="fixed inset-x-0 bottom-0 z-40 overflow-y-auto overscroll-contain border-t border-gray-100 bg-white px-4 pb-8 lg:hidden">
             {links.map(link => (
               <NavLink
                 key={link.to} to={link.to} end={link.to === '/'}

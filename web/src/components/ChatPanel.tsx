@@ -13,6 +13,7 @@ import AttachmentMessage from './AttachmentMessage';
 import { ChatWelcome, HelpMessage } from './ChatWelcome';
 import { routeFiles } from '../scan/route';
 import { useGuide } from '../guide';
+import { lockPage } from '../page-lock';
 import { suggestionsFor } from '../chat-suggestions';
 import AnswerSources, { chipClass, numbered, sourceFor, useSourceName } from './AnswerSources';
 
@@ -94,12 +95,9 @@ export default function ChatPanel() {
     view?.addEventListener('resize', sync);
     view?.addEventListener('scroll', sync);
     phone.addEventListener('change', sync);
-    // The page behind is held still where it was (a fixed body, not `overflow: hidden`, which a phone's browser scrolls anyway to bring the box into view) and put back exactly, so the top bar is where it was when the chat closes.
-    const style = document.body.style;
-    const was = { position: style.position, top: style.top, left: style.left, right: style.right, width: style.width };
-    const scrolled = window.scrollY;
+    // The page behind is held still, and put back exactly when the chat closes, so the top bar is where it was.
     const locked = phone.matches;
-    if (locked) Object.assign(style, { position: 'fixed', top: `-${scrolled}px`, left: '0', right: '0', width: '100%' });
+    const unlock = locked ? lockPage() : null;
     // A drag that starts on the panel's own chrome (the heading, the notice under the box) is not for scrolling anything, and a phone's browser would move the visible area with it,
     // the top bar included. Only the conversation, the list of conversations and the text box scroll.
     const box = panel.current;
@@ -110,8 +108,7 @@ export default function ChatPanel() {
       view?.removeEventListener('resize', sync);
       view?.removeEventListener('scroll', sync);
       phone.removeEventListener('change', sync);
-      Object.assign(style, was);
-      if (locked) window.scrollTo(0, scrolled);
+      unlock?.();
       setSeen(null);
     };
   }, [open]);
