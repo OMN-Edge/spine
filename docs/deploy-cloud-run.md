@@ -102,7 +102,7 @@ A Google Cloud project with billing, `gcloud` signed in, and a domain whose reco
 
    The relay gets none of the server's secrets (`SESSION_SECRET`, the mail key, the payment keys): a test fails if its files name one (**S-62**).
 
-7. **Fill in the files and deploy.** In `deploy/cloud-run/` replace `PROJECT_ID`, `INSTANCE`, `TAG`, `BUCKET` and `CHANGE`, and the domain if it is not `spinevault.eu`; then:
+7. **Fill in the files and deploy.** `scripts/deploy-cloud-run.mjs` does it the same way each time: it fills the placeholders from `deploy/cloud-run/values.env` (`PROJECT_ID`, `INSTANCE`, `BUCKET`, and `REGION` and `DOMAIN` if they differ), adds the settings you keep outside the repository from `deploy/cloud-run/overlay.app.env`, `overlay.relay.env` and `overlay.jobs.env` (`NAME=value`, or `NAME=secret:name` for a Secret Manager secret; `node scripts/deploy-cloud-run.mjs capture` writes them from a service that already runs), and prints what would change against what runs now. `--apply` deploys, and a setting that runs and would be lost is refused unless `--allow-removal` says so. All three files are ignored by git. The same by hand: in `deploy/cloud-run/` replace `PROJECT_ID`, `INSTANCE`, `TAG`, `BUCKET` and `CHANGE`, and the domain if it is not `spinevault.eu`; then:
 
    ```bash
    gcloud run services replace deploy/cloud-run/app.service.yaml --region=$REGION
