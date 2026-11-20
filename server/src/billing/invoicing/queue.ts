@@ -3,7 +3,7 @@ import { logger } from 'spine-core/logger.js';
 import { billyouIssuer } from 'spine-billing/invoicing/billyou.js';
 import { bnrRate } from 'spine-billing/invoicing/bnr.js';
 import { openEfactura, type EfacturaForBilling as Efactura } from 'spine-billing/invoicing/efactura.js';
-import type { InvoiceIssuer } from 'spine-billing/invoicing/issuer.js';
+import { InvoiceError, type InvoiceIssuer } from 'spine-billing/invoicing/issuer.js';
 import { processInvoice, reverseRefunded as reverse, type InvoicingContext } from 'spine-billing/invoicing/queue.js';
 import { billingProvider, type Enabled } from '../provider.js';
 import { loadBillingConfig } from '../config.js';
@@ -61,7 +61,11 @@ export function contextFromSettings(env: NodeJS.ProcessEnv = process.env): Invoi
   const provider = billingProvider(billing as Enabled);
   // Through a service the VAT is put on the lines here, from the buyer's country and the company's registration, as Spine's own link does when it makes the invoice (`vat.ts`); the service takes only Romania's rates,
   // so the One Stop Shop is not used with it (what a buyer in another EU country is charged is then Romania's).
-  const vat = config.issuer === 'billyou' ? async (country: string, date: string) => vatTreatment(country, date, { ...(await vatOf(getAccountsStore())), oss: false }, { exemptNote: config.exemptNote }) : undefined;
+  // The buyer's document is Spine's own PDF whoever issues the invoice, and it carries the seller: with none saved the invoice waits, as Spine's own link's does, rather than be numbered at the service first.
+  const vat = config.issuer === 'billyou' ? async (country: string, date: string) => {
+    if (!(await sellerOf(getAccountsStore()))) throw new InvoiceError('no seller is set: an administrator saves it on the invoices page', true);
+    return vatTreatment(country, date, { ...(await vatOf(getAccountsStore())), oss: false }, { exemptNote: config.exemptNote });
+  } : undefined;
   return { issuer: issuerFor(config), config, readSale: ref => provider.readSale(ref), made: tellOfInvoice, keep: keepDocument(config), ...(vat ? { vat } : {}) };
 }
 

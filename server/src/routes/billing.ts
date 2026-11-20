@@ -15,7 +15,6 @@ import { TOTALS, totalKey } from '../plans/totals.js';
 import { standingOf } from '../plans/seat.js';
 import { inviteToken, keptBonus, MAX_REWARDED, BONUS_PAGES, REWARD_PAGES } from '../plans/invitations.js';
 import { billingDetailsSchema } from 'spine-core/billing/billing-details.js';
-import { loadInvoicingConfig } from '../billing/invoicing/config.js';
 import { contextFromSettings, efacturaFromSettings, invoiceNewPayment, reverseRefunded } from '../billing/invoicing/queue.js';
 import { linkIsValid, signedLink } from 'spine-anaf/index.js';
 import { ownPdf, pdfKeyOf } from '../billing/invoicing/own-pdf.js';
@@ -59,9 +58,9 @@ async function withdrawalOf(userId: string, config: ReturnType<typeof loadBillin
   return { allowed: !!running && !open && (until === null || Date.parse(until) > Date.now()), until, requested: !!open };
 }
 
-/** Whether a purchase here needs the billing details first: where the operator issues the invoice (`SPINE_INVOICING`), the invoice needs a buyer the provider's page does not describe. */
+/** Whether a purchase here needs the billing details first: wherever there are plans. The payment provider's page is not where a buyer is described: the invoice, and the PDF the buyer is given, are made from what the app collected, whichever service issues it. */
 function needsDetails(config: ReturnType<typeof loadBillingConfig>): boolean {
-  return config.enabled && loadInvoicingConfig(config).enabled;
+  return config.enabled;
 }
 
 /**

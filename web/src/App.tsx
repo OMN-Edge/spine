@@ -69,6 +69,7 @@ import { isLanguage, msg, onLanguageChosen, useI18n } from './i18n';
 import { LanguageSwitcher } from './components/LanguageSwitcher';
 import { ThemeSwitcher } from './components/ThemeSwitcher';
 import { wherePersonWas } from './safe-path';
+import { ScrollToHash } from './scroll-to-hash';
 import { AccountMenu, MORE_LINKS, MoreMenu, ReviewBadge, useReviewCount } from './components/TopBarMenus';
 
 /** The pages in the bar itself, in the order of the work: what is kept, adding to it, checking it, showing it, finding in it. The rest are under More. */
@@ -393,6 +394,7 @@ export default function App() {
       <ChatProvider key={people} authenticated={(authenticated && deviceState === 'open') || demo}>
       <GuideProvider enabled={authenticated && deviceState === 'open' && !demo}>
       <ReauthDialog />
+      <ScrollToHash />
       <Routes>
         <Route path="/login" element={<NotInDemo><Login /></NotInDemo>} />
         <Route path="/register" element={<NotInDemo><Register /></NotInDemo>} />

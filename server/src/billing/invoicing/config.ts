@@ -40,7 +40,11 @@ export type InvoicingConfig =
 
 export function readInvoicingConfig(env: NodeJS.ProcessEnv, billing: BillingConfig, problems: string[]): InvoicingConfig {
   const issuer = (env.SPINE_INVOICING ?? 'off').trim().toLowerCase();
-  if (issuer === 'off' || issuer === '') return { enabled: false };
+  if (issuer === 'off' || issuer === '') {
+    // Live payments without an invoice for each are not a state to run in: the operator is the seller. A test key may go without, to try the plans before the invoicing is set up.
+    if (billing.enabled && billing.environment === 'production') problems.push('SPINE_BILLING with a live Stripe key needs SPINE_INVOICING=billyou or efactura: the operator issues an invoice for each payment');
+    return { enabled: false };
+  }
   if (issuer !== 'billyou' && issuer !== 'efactura') {
     problems.push(`SPINE_INVOICING is "${issuer}"; expected off, billyou or efactura`);
     return { enabled: false };

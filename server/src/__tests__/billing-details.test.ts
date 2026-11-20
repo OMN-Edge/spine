@@ -113,9 +113,9 @@ describe('where the operator issues no invoices', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('nothing is asked: the details are not required, cannot be saved, and the purchase goes straight to the provider’s page', async () => {
-    expect((await app.inject({ method: 'GET', url: '/api/billing/details', headers: { cookie } })).json()).toEqual({ required: false, details: null });
-    expect((await app.inject({ method: 'PUT', url: '/api/billing/details', headers: { cookie }, payload: RO })).statusCode).toBe(404);
-    expect((await app.inject({ method: 'GET', url: '/api/billing', headers: { cookie } })).json()).toMatchObject({ billing_details: false });
+  it('are asked for all the same: the invoice and its PDF are Spine’s whoever issues them, so the details are required and can be saved, and a purchase waits for them', async () => {
+    expect((await app.inject({ method: 'GET', url: '/api/billing/details', headers: { cookie } })).json()).toEqual({ required: true, details: null });
+    expect((await app.inject({ method: 'PUT', url: '/api/billing/details', headers: { cookie }, payload: RO })).statusCode).not.toBe(404);
+    expect((await app.inject({ method: 'GET', url: '/api/billing', headers: { cookie } })).json()).toMatchObject({ billing_details: true });
   });
 });

@@ -26,6 +26,12 @@ describe('the invoicing settings', () => {
     expect(read({ ...BILLYOU, SPINE_INVOICING_EFACTURA: 'on', SPINE_INVOICING_MAIL: 'off' }).invoicing).toMatchObject({ efactura: true, mail: false });
   });
 
+  it('stop the start with a live Stripe key and no invoicing, which a test key may go without', () => {
+    expect(read({}).problems).toEqual([]);
+    expect(read({ STRIPE_SECRET_KEY: 'sk_live_not_real' }).problems).toEqual([expect.stringContaining('live Stripe key needs SPINE_INVOICING')]);
+    expect(read({ STRIPE_SECRET_KEY: 'sk_live_not_real', ...BILLYOU }).problems).toEqual([]);
+  });
+
   it('stop the start without a service’s settings, and with billing off', () => {
     expect(read({ SPINE_INVOICING: 'billyou' }).problems).toEqual(expect.arrayContaining([expect.stringContaining('BILLYOU_API_KEY'), expect.stringContaining('BILLYOU_SERIES_ID')]));
     expect(read({ SPINE_INVOICING: 'nobody' }).problems.join()).toContain('expected off, billyou or efactura');

@@ -36,7 +36,7 @@ export function PricingPage({ pricing, authenticated, options, initialPeriod = '
   const money = (n: number) => format.amount(n, prices?.currency ?? 'EUR');
   // Every account starts on the trial; a plan is chosen from the account page.
   const cta = authenticated
-    ? { to: '/account', label: t('Choose a plan on your account page') }
+    ? { to: '/account?buy', label: t('Choose a plan on your account page') }
     : { to: '/register', label: t('Start with three months free') };
   // The trial is the one way in, and says so once, above the plans. A plan's own button says what it is: where it goes with the plan named, to be found on the account page.
   const toPlan = (plan: 'free' | 'essential' | 'premium' | 'family', label: string) => ({ to: authenticated ? (plan === 'free' ? '/account' : '/account?buy') : `/register?plan=${plan}`, label });
