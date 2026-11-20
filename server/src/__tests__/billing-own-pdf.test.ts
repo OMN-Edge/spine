@@ -22,7 +22,7 @@ const ADMIN = 'admin-own-pdf@spine.test';
 const ENV = {
   SPINE_BILLING: 'on', SPINE_BILLING_PROVIDER: 'stripe', STRIPE_SECRET_KEY: 'sk_test_ownpdf', STRIPE_WEBHOOK_SECRET: 'whsec_ownpdf',
   SPINE_STRIPE_PRICE_YEAR: 'pri_year', SPINE_STRIPE_PRICE_MONTH: 'pri_month', SPINE_STRIPE_PRICE_FOUNDING: 'pri_founding',
-  SPINE_INVOICING: 'billyou', SPINE_INVOICING_VAT_PERCENT: '0', SPINE_INVOICING_ZERO_VAT: 'O', SPINE_INVOICING_MAIL: 'off', BILLYOU_API_KEY: 'bk_ownpdf_not_real', BILLYOU_SERIES_ID: 'series_1',
+  SPINE_INVOICING_PROVIDER: 'billyou', SPINE_INVOICING_VAT_PERCENT: '0', SPINE_INVOICING_ZERO_VAT: 'O', SPINE_INVOICING_MAIL: 'off', BILLYOU_API_KEY: 'bk_ownpdf_not_real', BILLYOU_SERIES_ID: 'series_1',
 };
 const SELLER = {
   name: 'Exemplu Software SRL', cif: 'RO 12345678', registerNo: 'J40/1234/2020', street: 'Strada Exemplului 1', city: 'Cluj-Napoca', county: 'cj', postalCode: '400000',

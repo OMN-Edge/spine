@@ -4,7 +4,7 @@ import type { AccountsStore } from 'spine-core/store/types.js';
 /**
  * Who the invoices are made out by, kept in the database and changed from the admin page (`routes/admin.ts`), so it works on a host with no disk and changes without a
  * release. It is what Spine's own PDF of an invoice a service issued shows (`document.ts`) and is copied into each invoice's document when it is made, so a later change
- * does not touch an invoice already issued. With none saved, a service's invoice keeps no document and the service's own PDF is the one served, and Spine's own e-Factura link (`SPINE_INVOICING=efactura`)
+ * does not touch an invoice already issued. With none saved, a service's invoice keeps no document and the service's own PDF is the one served, and Spine's own e-Factura link (`SPINE_INVOICING_PROVIDER=efactura`)
  * numbers the invoice and lets it wait until one is saved. It is the one place the company is written for invoices, whichever way they are made.
  */
 const KEY = 'invoice.seller';

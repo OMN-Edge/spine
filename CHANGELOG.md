@@ -4,6 +4,9 @@ Spine is versioned `0.x` until its first production release: anything may change
 
 ## Unreleased
 
+- `SPINE_INVOICING` is now `SPINE_INVOICING_PROVIDER` (`none`, `billyou` or `efactura`), named like the other providers; a process that still has the old name does not start. A live Stripe key now needs a provider, billing details are asked for before any purchase, and the buyer's PDF is Spine's own whichever service issues the invoice (a Billyou invoice waits for a saved seller).
+- Links no longer open a page at the height of the one before, and a link to a section (`/account#shared`) scrolls to it; `/source`, `/docs` and `/security` redirect to the repository from the server where nginx is not in front, and signing in returns a person to the whole address they were sent from (`/account?buy`).
+
 ## 0.2.0
 
 - Plans and payment, off unless `SPINE_BILLING=on` (M-45, `docs/billing.md`): a three-month trial with visible totals (100 pages of AI reading, 50 questions, 30 translated pages), a free plan, Essential, Premium and Family (Premium for up to six people), sold through Stripe with the operator as the seller. What each plan includes is `core/src/billing/plans.ts`; the amounts are read from the Stripe prices the operator names and are written nowhere in the code.

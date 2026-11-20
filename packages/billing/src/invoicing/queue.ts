@@ -5,7 +5,7 @@ import { euMinorOf } from './threshold.js';
 import { InvoiceError, type InvoiceDraft, type InvoiceIssuer, type IssuedInvoice } from './issuer.js';
 
 /**
- * The invoices the operator owes for payments the provider is not the seller of (`SPINE_INVOICING`, docs/billing.md, "Invoices"). A payment event puts the provider's
+ * The invoices the operator owes for payments the provider is not the seller of (`SPINE_INVOICING_PROVIDER`, docs/billing.md, "Invoices"). A payment event puts the provider's
  * reference for it on a queue (`invoice_queue`: the reference, where its invoice has got to, the service's number; never the buyer), and an invoice is made from it by
  * reading the sale from the provider again whenever it is tried: at once after the event, and every hour by the job until it is done. So a failure of the service, or
  * of this server between the payment and the invoice, delays an invoice and loses none, and nothing of the buyer is kept here.

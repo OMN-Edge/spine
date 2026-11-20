@@ -4,7 +4,7 @@ import { EXEMPT_NOTE } from 'spine-anaf/index.js';
 import type { ZeroVat } from 'spine-anaf/index.js';
 
 /**
- * Whether the operator issues an invoice for each payment, and through which: **off unless `SPINE_INVOICING` names one** (`billyou`, a service, or `efactura`, Spine's own link to ANAF), and only with billing on (Stripe takes the payment and the operator is the seller). On, every setting of the service and the VAT the operator charges is given, or the
+ * Whether the operator issues an invoice for each payment, and through which: **`none` unless `SPINE_INVOICING_PROVIDER` names one** (`billyou`, a service, or `efactura`, Spine's own link to ANAF), and only with billing on (Stripe takes the payment and the operator is the seller). On, every setting of the service and the VAT the operator charges is given, or the
  * process does not start (P3): the VAT is the accountant's word and is never assumed (`docs/billing.md`, "Invoices").
  */
 export interface EfacturaConfig {
@@ -39,21 +39,23 @@ export type InvoicingConfig =
     };
 
 export function readInvoicingConfig(env: NodeJS.ProcessEnv, billing: BillingConfig, problems: string[]): InvoicingConfig {
-  const issuer = (env.SPINE_INVOICING ?? 'off').trim().toLowerCase();
-  if (issuer === 'off' || issuer === '') {
+  // The setting this was called before it was named like the other providers (SPINE_LLM_PROVIDER, SPINE_BILLING_PROVIDER): a process that still has it says so, rather than invoice nothing.
+  if ((env.SPINE_INVOICING ?? '').trim() !== '') problems.push('SPINE_INVOICING is now SPINE_INVOICING_PROVIDER (none, billyou or efactura)');
+  const issuer = (env.SPINE_INVOICING_PROVIDER ?? 'none').trim().toLowerCase() || 'none';
+  if (issuer === 'none') {
     // Live payments without an invoice for each are not a state to run in: the operator is the seller. A test key may go without, to try the plans before the invoicing is set up.
-    if (billing.enabled && billing.environment === 'production') problems.push('SPINE_BILLING with a live Stripe key needs SPINE_INVOICING=billyou or efactura: the operator issues an invoice for each payment');
+    if (billing.enabled && billing.environment === 'production') problems.push('SPINE_BILLING with a live Stripe key needs SPINE_INVOICING_PROVIDER=billyou or efactura: the operator issues an invoice for each payment');
     return { enabled: false };
   }
   if (issuer !== 'billyou' && issuer !== 'efactura') {
-    problems.push(`SPINE_INVOICING is "${issuer}"; expected off, billyou or efactura`);
+    problems.push(`SPINE_INVOICING_PROVIDER is "${issuer}"; expected none, billyou or efactura`);
     return { enabled: false };
   }
-  if (!billing.enabled) problems.push('SPINE_INVOICING needs SPINE_BILLING=on: the operator issues an invoice for each payment');
+  if (!billing.enabled) problems.push('SPINE_INVOICING_PROVIDER needs SPINE_BILLING=on: the operator issues an invoice for each payment');
 
   const need = (name: string): string => {
     const value = (env[name] ?? '').trim();
-    if (!value) problems.push(`SPINE_INVOICING=${issuer} needs ${name}`);
+    if (!value) problems.push(`SPINE_INVOICING_PROVIDER=${issuer} needs ${name}`);
     return value;
   };
   const flag = (name: string, fallback: boolean): boolean => {

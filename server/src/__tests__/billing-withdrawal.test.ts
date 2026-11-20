@@ -13,7 +13,7 @@ const ADMIN = 'admin-withdraw@spine.test';
 const ENV = {
   SPINE_BILLING: 'on', SPINE_BILLING_PROVIDER: 'stripe', STRIPE_SECRET_KEY: 'sk_test_withdraw', STRIPE_WEBHOOK_SECRET: 'whsec_withdraw',
   SPINE_STRIPE_PRICE_YEAR: 'pri_year', SPINE_STRIPE_PRICE_MONTH: 'pri_month', SPINE_STRIPE_PRICE_FOUNDING: 'pri_founding',
-  SPINE_INVOICING: 'billyou', SPINE_INVOICING_VAT_PERCENT: '0', SPINE_INVOICING_ZERO_VAT: 'O', BILLYOU_API_KEY: 'bk_withdraw_not_real', BILLYOU_SERIES_ID: 'series_1',
+  SPINE_INVOICING_PROVIDER: 'billyou', SPINE_INVOICING_VAT_PERCENT: '0', SPINE_INVOICING_ZERO_VAT: 'O', BILLYOU_API_KEY: 'bk_withdraw_not_real', BILLYOU_SERIES_ID: 'series_1',
 };
 const NOW = () => new Date().toISOString();
 const ago = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();

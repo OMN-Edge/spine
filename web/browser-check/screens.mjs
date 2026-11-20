@@ -44,7 +44,7 @@ const env = {
   SPINE_STRIPE_PRICE_YEAR: 'price_1Uc8gEFMVsdHvrD5AjN1GbjV', SPINE_STRIPE_PRICE_MONTH: 'price_1Uc8gFFMVsdHvrD5bIDdTjJi', SPINE_STRIPE_PRICE_FOUNDING: 'price_1Uc8gGFMVsdHvrD5qBOUHZtJ',
   SPINE_STRIPE_PRICE_ESSENTIAL_YEAR: 'price_1Uc8gHFMVsdHvrD5nw1UUExc', SPINE_STRIPE_PRICE_ESSENTIAL_MONTH: 'price_1Uc8gIFMVsdHvrD517DjA5lm',
   SPINE_STRIPE_PRICE_FAMILY_YEAR: 'price_1Uc8gIFMVsdHvrD5zfMT5vZm', SPINE_STRIPE_PRICE_FAMILY_MONTH: 'price_1Uc8gJFMVsdHvrD5mS4mJLkV', SPINE_STRIPE_PRICE_TOPUP_PAGES: 'price_1Uc8gNFMVsdHvrD5aCq547Tq',
-  SPINE_INVOICING: 'efactura', SPINE_EFACTURA_MODE: 'test', ANAF_CLIENT_ID: 'ux-review-client', ANAF_CLIENT_SECRET: ['ux', 'review', 'anaf'].join('-'),
+  SPINE_INVOICING_PROVIDER: 'efactura', SPINE_EFACTURA_MODE: 'test', ANAF_CLIENT_ID: 'ux-review-client', ANAF_CLIENT_SECRET: ['ux', 'review', 'anaf'].join('-'),
   SPINE_EFACTURA_REDIRECT_URI: 'https://spine.example/api/admin/efactura/callback', SPINE_EFACTURA_KEY: Buffer.alloc(32, 7).toString('base64'), SPINE_EFACTURA_SERIES: 'TST',
   SPINE_OPERATOR_CONTACT: 'contact@example.com',
   SPINE_REGISTRATION: 'approval', SPINE_ADMIN_EMAILS: 'owner@example.com',
@@ -58,7 +58,7 @@ const env = {
 // INVOICING=billyou shows the operator's pages with a service issuing the invoices instead of Spine's own e-Factura link. Nothing calls the service (the pages only list what was made), so the key and the series are invented.
 if (process.env.INVOICING === 'billyou') {
   for (const k of ['SPINE_EFACTURA_MODE', 'ANAF_CLIENT_ID', 'ANAF_CLIENT_SECRET', 'SPINE_EFACTURA_REDIRECT_URI', 'SPINE_EFACTURA_KEY', 'SPINE_EFACTURA_SERIES']) delete env[k];
-  Object.assign(env, { SPINE_INVOICING: 'billyou', BILLYOU_API_KEY: ['bk', 'ux', 'review'].join('_'), BILLYOU_SERIES_ID: '1', SPINE_INVOICING_EFACTURA: 'on', SPINE_INVOICING_MAIL: 'off' });
+  Object.assign(env, { SPINE_INVOICING_PROVIDER: 'billyou', BILLYOU_API_KEY: ['bk', 'ux', 'review'].join('_'), BILLYOU_SERIES_ID: '1', SPINE_INVOICING_EFACTURA: 'on', SPINE_INVOICING_MAIL: 'off' });
 }
 const cli = (...args) => execFileSync('node', ['dist/cli.js', ...args], { cwd: path.join(root, 'server'), env, encoding: 'utf8' });
 const password = cli('create-user', 'owner@example.com').match(/password \(shown once\): (\S+)/)[1];

@@ -254,7 +254,7 @@ export async function billingRoutes(app: FastifyInstance) {
     }
   });
 
-  // The PDF of an invoice Spine made itself (`SPINE_INVOICING=efactura`), or of the copy it kept of one a service issued, at a link that the account's own request for it signed and that ends in ten minutes: a link carries no cookie.
+  // The PDF of an invoice Spine made itself (`SPINE_INVOICING_PROVIDER=efactura`), or of the copy it kept of one a service issued, at a link that the account's own request for it signed and that ends in ten minutes: a link carries no cookie.
   app.get<{ Params: { id: string }; Querystring: { t?: string } }>(`${PDF_PATH}/:id`, { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (req, reply) => {
     const efactura = efacturaFromSettings();
     const { id } = req.params;

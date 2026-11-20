@@ -89,7 +89,7 @@ export async function adminRoutes(app: FastifyInstance, opts: AdminRouteOptions 
     return done.ok ? reply.send({ ok: true }) : reply.status(409).send({ error: done.error });
   });
 
-  // Spine's own link to ANAF's e-Factura (`SPINE_INVOICING=efactura`, docs/efactura.md): whether the operator has authorised it, until when, and the newest documents with ANAF's word on each.
+  // Spine's own link to ANAF's e-Factura (`SPINE_INVOICING_PROVIDER=efactura`, docs/efactura.md): whether the operator has authorised it, until when, and the newest documents with ANAF's word on each.
   // The operator starts the authorisation here and finishes it in a browser that holds the certificate; ANAF sends the browser back to the callback, which has no session to rely on (the
   // cookie is SameSite=strict and the redirect comes from another site), so what it checks is the one-time `state` that only a recently typed password could have asked for.
   app.get<{ Querystring: { page?: string; limit?: string } }>('/api/admin/efactura', { preHandler: [requireAuth, onlyReaders] }, async (req, reply) => {

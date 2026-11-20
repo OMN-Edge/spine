@@ -19,7 +19,7 @@ const SELLER = { name: 'Omni Edge SRL', cif: '12345678', registerNo: 'J40/1234/2
 const ENV = {
   SPINE_BILLING: 'on', SPINE_BILLING_PROVIDER: 'stripe', STRIPE_SECRET_KEY: 'sk_test_vat', STRIPE_WEBHOOK_SECRET: 'whsec_vat',
   SPINE_STRIPE_PRICE_YEAR: 'pri_year', SPINE_STRIPE_PRICE_MONTH: 'pri_month', SPINE_STRIPE_PRICE_FOUNDING: 'pri_founding',
-  SPINE_INVOICING: 'efactura', SPINE_DOMAIN: 'spine.test', ANAF_CLIENT_ID: 'client-id', ANAF_CLIENT_SECRET: 'client-secret',
+  SPINE_INVOICING_PROVIDER: 'efactura', SPINE_DOMAIN: 'spine.test', ANAF_CLIENT_ID: 'client-id', ANAF_CLIENT_SECRET: 'client-secret',
   SPINE_EFACTURA_REDIRECT_URI: 'https://spine.test/api/admin/efactura/callback', SPINE_EFACTURA_KEY: KEY.toString('base64'),
 };
 const T0 = new Date('2026-12-05T10:00:00.000Z');

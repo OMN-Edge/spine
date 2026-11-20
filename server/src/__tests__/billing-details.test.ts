@@ -8,7 +8,7 @@ import { buildTestApp, loginSession } from './helpers/app.js';
 const ENV = {
   SPINE_BILLING: 'on', SPINE_BILLING_PROVIDER: 'stripe', STRIPE_SECRET_KEY: 'sk_test_details', STRIPE_WEBHOOK_SECRET: 'whsec_details',
   SPINE_STRIPE_PRICE_YEAR: 'pri_year', SPINE_STRIPE_PRICE_MONTH: 'pri_month', SPINE_STRIPE_PRICE_FOUNDING: 'pri_founding',
-  SPINE_INVOICING: 'billyou', SPINE_INVOICING_VAT_PERCENT: '0', SPINE_INVOICING_ZERO_VAT: 'O', BILLYOU_API_KEY: 'bk_details_not_real', BILLYOU_SERIES_ID: 'series_1',
+  SPINE_INVOICING_PROVIDER: 'billyou', SPINE_INVOICING_VAT_PERCENT: '0', SPINE_INVOICING_ZERO_VAT: 'O', BILLYOU_API_KEY: 'bk_details_not_real', BILLYOU_SERIES_ID: 'series_1',
 };
 const RO = { name: 'Ana Test', country: 'RO', county: 'CJ', city: 'Cluj-Napoca', address: 'Str. Test 1' };
 
@@ -101,7 +101,7 @@ describe('where the operator issues no invoices', () => {
   const saved: Record<string, string | undefined> = {};
   beforeAll(async () => {
     process.env.DATA_DIR = dir;
-    const env = { ...ENV, SPINE_INVOICING: 'off' };
+    const env = { ...ENV, SPINE_INVOICING_PROVIDER: 'none' };
     for (const k of Object.keys(env)) saved[k] = process.env[k];
     Object.assign(process.env, env);
     app = await buildTestApp();

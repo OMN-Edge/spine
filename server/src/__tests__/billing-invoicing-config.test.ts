@@ -11,12 +11,12 @@ const read = (env: Record<string, string>) => {
   const invoicing = readInvoicingConfig({ ...STRIPE, ...env } as never, billing, problems);
   return { invoicing, problems };
 };
-const BILLYOU = { SPINE_INVOICING: 'billyou', BILLYOU_API_KEY: 'k', BILLYOU_SERIES_ID: 's1' };
+const BILLYOU = { SPINE_INVOICING_PROVIDER: 'billyou', BILLYOU_API_KEY: 'k', BILLYOU_SERIES_ID: 's1' };
 
 describe('the invoicing settings', () => {
   it('are off unless a service is named', () => {
     expect(read({})).toEqual({ invoicing: { enabled: false }, problems: [] });
-    expect(read({ SPINE_INVOICING: 'off' }).invoicing).toEqual({ enabled: false });
+    expect(read({ SPINE_INVOICING_PROVIDER: 'none' }).invoicing).toEqual({ enabled: false });
   });
 
   it('read a Billyou account, with e-Factura off and the service’s mail on unless said, and no VAT of their own: the buyer’s is decided when an invoice is made', () => {
@@ -26,18 +26,22 @@ describe('the invoicing settings', () => {
     expect(read({ ...BILLYOU, SPINE_INVOICING_EFACTURA: 'on', SPINE_INVOICING_MAIL: 'off' }).invoicing).toMatchObject({ efactura: true, mail: false });
   });
 
+  it('stop the start while the setting still has its old name, rather than invoice nothing', () => {
+    expect(read({ SPINE_INVOICING: 'billyou' }).problems).toEqual(expect.arrayContaining([expect.stringContaining('SPINE_INVOICING is now SPINE_INVOICING_PROVIDER')]));
+  });
+
   it('stop the start with a live Stripe key and no invoicing, which a test key may go without', () => {
     expect(read({}).problems).toEqual([]);
-    expect(read({ STRIPE_SECRET_KEY: 'sk_live_not_real' }).problems).toEqual([expect.stringContaining('live Stripe key needs SPINE_INVOICING')]);
+    expect(read({ STRIPE_SECRET_KEY: 'sk_live_not_real' }).problems).toEqual([expect.stringContaining('live Stripe key needs SPINE_INVOICING_PROVIDER')]);
     expect(read({ STRIPE_SECRET_KEY: 'sk_live_not_real', ...BILLYOU }).problems).toEqual([]);
   });
 
   it('stop the start without a service’s settings, and with billing off', () => {
-    expect(read({ SPINE_INVOICING: 'billyou' }).problems).toEqual(expect.arrayContaining([expect.stringContaining('BILLYOU_API_KEY'), expect.stringContaining('BILLYOU_SERIES_ID')]));
-    expect(read({ SPINE_INVOICING: 'nobody' }).problems.join()).toContain('expected off, billyou or efactura');
+    expect(read({ SPINE_INVOICING_PROVIDER: 'billyou' }).problems).toEqual(expect.arrayContaining([expect.stringContaining('BILLYOU_API_KEY'), expect.stringContaining('BILLYOU_SERIES_ID')]));
+    expect(read({ SPINE_INVOICING_PROVIDER: 'nobody' }).problems.join()).toContain('expected none, billyou or efactura');
     const problems: string[] = [];
     readInvoicingConfig({ ...BILLYOU } as never, { enabled: false } as never, problems);
-    expect(problems.join()).toContain('SPINE_INVOICING needs SPINE_BILLING=on');
+    expect(problems.join()).toContain('SPINE_INVOICING_PROVIDER needs SPINE_BILLING=on');
   });
 
   it('read no VAT percentage, tax class or exemption code: the VAT follows the buyer’s country and the company’s registration, and only the wording of the art. 310 mention is set', () => {
