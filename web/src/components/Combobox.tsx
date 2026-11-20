@@ -99,6 +99,8 @@ export function Combobox({ id, ariaLabel, options, value, onChange, placeholder,
         <input
           id={id} type="text" role="combobox" aria-label={ariaLabel} aria-expanded={open} aria-controls={listId} aria-autocomplete="list"
           autoComplete="off" disabled={disabled}
+          // A list only chosen from has no keyboard on a touch screen, which covered the list; one that takes a new entry needs it.
+          inputMode={newLabel === undefined && typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches ? 'none' : undefined}
           // Open, the box is for typing; what is chosen stays visible, greyed, until something is typed.
           placeholder={open ? shown || placeholder : placeholder}
           className={`${className} pr-7`}

@@ -1,21 +1,22 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { listSide } from './LanguageSwitcher';
 
 /**
  * The language list is wider than its button. Opened from the button's right edge, it runs off the screen where the button starts a row
- * at the screen's left (the phone menu: the list was cut off and the languages could not be read), so those places open it to the right.
+ * at the screen's left (the phone menu, a share's page: the list was cut off and the languages could not be read), so it opens to the right there, by where the button is.
  */
 const source = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8');
 
 describe('the language list', () => {
-  it('opens to the right where the button starts a row at the left edge of a phone’s screen', () => {
-    expect(source('../App.tsx')).toContain('<div className="py-3 flex items-center gap-2"><LanguageSwitcher opens="right" />');
-    expect(source('./PublicPage.tsx')).toContain('sm:hidden"><LanguageSwitcher opens="right" />');
-    expect(source('../pages/PublicShareView.tsx')).toContain('justify-center gap-2"><LanguageSwitcher opens="right" />');
+  it('opens back from the button’s right edge where there is room for it, and forward from the left edge where the button starts a row at the left of a phone’s screen', () => {
+    expect(listSide({ left: 900, right: 1032 })).toBe('left');
+    expect(listSide({ left: 13, right: 131 })).toBe('right');
+    expect(listSide({ left: 16, right: 148 })).toBe('right');
   });
 
-  it('is placed from the side it opens towards', () => {
-    expect(source('./LanguageSwitcher.tsx')).toContain("listClassName={opens === 'left' ? 'right-0 w-64' : 'left-0 w-64'}");
+  it('is not told which side by the place it is put in, which was wrong on the share page', () => {
+    for (const file of ['../App.tsx', './PublicPage.tsx', '../pages/PublicShareView.tsx']) expect(source(file)).not.toContain('opens=');
   });
 });
 

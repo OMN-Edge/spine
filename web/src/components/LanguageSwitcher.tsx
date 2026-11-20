@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { LANGUAGE_NAMES, isInterfaceLanguage } from 'spine-core/languages';
 import { Combobox } from './Combobox';
 import { LANGUAGES, languageChoice, useI18n, type LanguageCode } from '../i18n';
@@ -6,18 +6,38 @@ import { LANGUAGES, languageChoice, useI18n, type LanguageCode } from '../i18n';
 /** The look of a control in the top bar (the language, whose records are open), so they read as one set. */
 export const TOP_BAR_CONTROL = 'rounded-full border border-gray-300 bg-white px-3 py-1 text-sm text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-500';
 
+/** The width of the open list (`w-64`), in pixels. */
+const LIST_WIDTH = 256;
+
+/** Which way the open list grows: back from the button's right edge where there is room for it on that side, else forward from the left edge. */
+export function listSide(button: { left: number; right: number }): 'left' | 'right' {
+  return button.right - LIST_WIDTH >= 0 ? 'left' : 'right';
+}
+
 /**
- * The list is wider than the button, so it opens towards the side with room: from the right edge in a corner (the default), from the
- * left where the button starts a row at the screen's left edge (the phone menu), or it is cut off there.
+ * The list is wider than the button, so it opens towards the side with room, worked out from where the button is on the screen: from the right edge in a corner (the
+ * top bar), from the left where the button starts a row at the screen's left edge (a phone's menu, a share's page). A place is not told, since a page's layout
+ * changes with the width of the screen, and it was cut off at the edge each time one was wrong.
  */
-export function LanguageSwitcher({ className = '', opens = 'left' }: { className?: string; opens?: 'left' | 'right' }) {
+export function LanguageSwitcher({ className = '' }: { className?: string }) {
   const { lang, setLang, t } = useI18n();
+  const holder = useRef<HTMLSpanElement>(null);
+  const [side, setSide] = useState<'left' | 'right'>('left');
+  useLayoutEffect(() => {
+    const measure = () => { const r = holder.current?.getBoundingClientRect(); if (r) setSide(listSide(r)); };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, []);
   return (
-    <Combobox
-      value={lang} ariaLabel={t('Language')} onChange={v => setLang(v as LanguageCode)} wrapperClassName={`relative w-32 ${className}`} listClassName={opens === 'left' ? 'right-0 w-64' : 'left-0 w-64'}
-      className={`w-full ${TOP_BAR_CONTROL}`}
-      options={LANGUAGES.map(l => ({ value: l.code, label: languageChoice(l.code), short: l.name, ...(l.screens ? {} : { hint: t('documents only') }) }))}
-    />
+    // Looked at again as it is used: a menu that opens moves the button.
+    <span ref={holder} className="inline-block" onPointerDownCapture={() => { const r = holder.current?.getBoundingClientRect(); if (r) setSide(listSide(r)); }}>
+      <Combobox
+        value={lang} ariaLabel={t('Language')} onChange={v => setLang(v as LanguageCode)} wrapperClassName={`relative w-32 ${className}`} listClassName={side === 'left' ? 'right-0 w-64' : 'left-0 w-64'}
+        className={`w-full ${TOP_BAR_CONTROL}`}
+        options={LANGUAGES.map(l => ({ value: l.code, label: languageChoice(l.code), short: l.name, ...(l.screens ? {} : { hint: t('documents only') }) }))}
+      />
+    </span>
   );
 }
 

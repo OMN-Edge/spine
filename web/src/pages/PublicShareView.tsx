@@ -99,7 +99,7 @@ export default function PublicShareView() {
           </>
         )}
         {state === 'denied' && <p className="text-gray-500 text-sm" role="alert">{t('The owner did not approve this request.')}</p>}
-        <div className="mt-6 flex items-center justify-center gap-2"><LanguageSwitcher opens="right" /><ThemeSwitcher /></div>
+        <div className="mt-6 flex items-center justify-center gap-2"><LanguageSwitcher /><ThemeSwitcher /></div>
       </div>
     </div>
   );
