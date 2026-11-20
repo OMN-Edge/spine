@@ -239,6 +239,7 @@ try {
         await (await p.waitForFunction(() => [...document.querySelectorAll('[role=combobox]')].find(i => i.getAttribute('aria-label') === 'What to share' && i.offsetParent))).asElement().evaluate(e => { if (e.getAttribute('aria-expanded') !== 'true') e.click(); }); await wait(500);
         await h.shot('acc-d-share-scope-options', '', false);
         await (await p.waitForFunction(() => [...document.querySelectorAll('[role=listbox] [role=option]')].find(e => e.innerText.trim() === 'All history'))).asElement().evaluate(e => e.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))); await wait(400);
+        await p.evaluate(() => [...document.querySelectorAll('label')].find(l => l.textContent?.includes('Include my health summary'))?.querySelector('input')?.click()); await wait(400);
         await h.shot('acc-d-share-filled');
         await h.press('Create link'); await h.waitFor('Link created', 40000); await wait(1500); await h.shot('acc-d-share-created');
         const link = await p.evaluate(() => [...document.querySelectorAll('input,a,code')].map(e => e.value ?? e.getAttribute('href') ?? e.innerText).find(v => /\/share\/[^/]+#/.test(v ?? '')));
@@ -251,6 +252,14 @@ try {
             await g.evaluate(() => [...document.querySelectorAll('a,button')].find(a => /X-ray|Röntgen|Radiografie/.test(a.innerText))?.click()); await wait(3000); await gh.shot(`guest-${gtag}-share-document`);
             await gctx.close();
           }
+          // The link follows the profile: a medicine is changed there, and the same link, opened again, shows it.
+          const fctx = await browser.createBrowserContext(); const f = await newPage(fctx, DESKTOP, 'en'); const fh = helpers(f);
+          await f.goto(url, { waitUntil: 'networkidle0' }); await wait(5000); await fh.shot('guest-d-summary-before');
+          await h.go('/emergency'); await wait(2500);
+          const areas = await p.$$('textarea'); await areas[1].type('\nMetformin 500 mg');
+          await p.evaluate(() => [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Save the profile')?.click()); await wait(25000);
+          await f.reload({ waitUntil: 'networkidle0' }); await wait(5000); await fh.shot('guest-d-summary-after');
+          await fctx.close();
         }
         await h.go('/share'); await wait(2000); await h.shot('acc-d-share-list');
       } catch (e) { log('share flow failed', e.message); }

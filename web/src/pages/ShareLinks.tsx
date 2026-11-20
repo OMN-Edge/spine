@@ -7,6 +7,7 @@ import { useOnDataChanged } from '../dataChanged';
 import ShareOverview from '../components/ShareOverview';
 import { useProfiles } from '../profiles';
 import { buildOverview, defaultShareName } from '../share-overview';
+import { summaryOf } from 'spine-core/share-overview';
 import { makeShareSheet, sheetFonts, sheetLanguage } from '../share-sheet';
 import ClaimExport from '../components/ClaimExport';
 import ShareRequestCard from '../components/ShareRequestCard';
@@ -142,7 +143,7 @@ export default function ShareLinks() {
   // The name starts as the card's (the profile's, unless written over), else the open person's, and the owner can change it or leave it out.
   const personName = people?.profiles.find(p => p.id === people.current)?.name ?? '';
   useEffect(() => { setAbout(a => (a.name ? a : { ...a, name: defaultShareName(card?.name, personName) })); }, [card, personName]);
-  const cardHasNow = !!card && card.medications.length + card.allergies.length + card.conditions.length > 0;
+  const cardHasNow = summaryOf(card) !== null;
   const overview = buildOverview(about, card, cardDay);
 
   // A link made or revoked from the chat.
@@ -276,13 +277,13 @@ export default function ShareLinks() {
               </span>
             </label>
             {about.showName && <input aria-label={t('Name shown to the doctor')} placeholder={t('Your name, as the doctor knows it')} value={about.name} maxLength={120} onChange={e => setAbout(a => ({ ...a, name: e.target.value }))} className={input} />}
-            {about.showName && !about.name.trim() && <p className="text-xs text-gray-500">{t('Your name is kept in your profile, once, and starts here.')}{' '}<Link to="/profiles" className="text-brand-600 hover:underline">{t('Add it to your profile')}</Link></p>}
+            {about.showName && !about.name.trim() && <p className="text-xs text-gray-500">{t('Your name is kept in your profile, once, and starts here.')}{' '}<Link to="/emergency" className="text-brand-600 hover:underline">{t('Add it to your profile')}</Link></p>}
             <label className={`flex items-start gap-2 text-sm ${cardHasNow ? 'text-gray-700' : 'text-gray-400'}`}>
               <input type="checkbox" disabled={!cardHasNow} checked={about.includeNow && cardHasNow} onChange={e => setAbout(a => ({ ...a, includeNow: e.target.checked }))} className="mt-0.5" />
               <span className="min-w-0 flex-1">
-                {t('Include what I take now and my allergies')}
+                {t('Include my health summary')}
                 <span className="block text-xs text-gray-500">
-                  {cardHasNow ? t('Taken from your emergency card, in your own words, with the day you wrote it.') : <>{t('Nothing is written on your emergency card yet.')} <Link to="/emergency" className="text-brand-600 hover:underline">{t('Write it')}</Link></>}
+                  {cardHasNow ? t('From your profile, in your own words. The link shows it as you last saved it, and follows your changes.') : <>{t('Nothing is written in your profile yet.')} <Link to="/emergency" className="text-brand-600 hover:underline">{t('Write it')}</Link></>}
                 </span>
               </span>
             </label>

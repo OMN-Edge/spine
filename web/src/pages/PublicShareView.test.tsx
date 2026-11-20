@@ -38,7 +38,7 @@ describe('a share link whose owner’s plan has used up the month', () => {
 
 /** The first screen a doctor sees (T-02) and what the page says in the doctor's language (T-04), search (T-03). */
 const draw = (node: JSX.Element) => text(renderToStaticMarkup(<I18nProvider><MemoryRouter>{node}</MemoryRouter></I18nProvider>));
-const OVERVIEW = { by: 'Ana Exemplu', note: 'For a new endocrinologist', now: { medications: ['Levothyroxine 50 µg, once a day'], allergies: ['penicillin'], conditions: [], written_on: '2026-11-17' } };
+const OVERVIEW = { by: 'Ana Exemplu', note: 'For a new endocrinologist', now: { medications: ['Levothyroxine 50 µg, once a day'], allergies: ['penicillin'], conditions: [], blood_type: '', notes: '', written_on: '2026-11-17' }, summary: false };
 
 describe('the overview a doctor opens on', () => {
   it('says whose records, when they were shared and until when, why, what the owner takes now and the years the documents cover', () => {
@@ -48,7 +48,7 @@ describe('the overview a doctor opens on', () => {
   });
 
   it('leaves out the owner’s name, the note and the medicines where the owner left them out, and still says when it ends and how many documents', () => {
-    const page = draw(<ShareOverview overview={{ by: null, note: null, now: null }} createdAt={null} expiresAt="2026-11-24T10:00:00.000Z" count={1} years={['2026', '2026']} />);
+    const page = draw(<ShareOverview overview={{ by: null, note: null, now: null, summary: false }} createdAt={null} expiresAt="2026-11-24T10:00:00.000Z" count={1} years={['2026', '2026']} />);
     expect(page).not.toContain('Records of');
     expect(page).not.toContain('Why this was shared');
     expect(page).not.toContain('Medicines');

@@ -89,15 +89,22 @@ describe('the documents a scope picks, for the file export', () => {
 });
 
 describe('what the owner tells the doctor', () => {
-  const overview = { by: 'Ana Exemplu', note: 'For a new endocrinologist', now: { medications: ['Levothyroxine 50 µg, once a day'], allergies: ['penicillin'], conditions: [], written_on: '2026-11-17' } };
+  const overview = { by: 'Ana Exemplu', note: 'For a new endocrinologist', now: { medications: ['Levothyroxine 50 µg, once a day'], allergies: ['penicillin'], conditions: [], written_on: '2026-11-17' }, summary: false };
 
   it('is kept with the link and given to the page the recipient opens, with when it was made and when it ends, and the owner’s own label stays theirs', async () => {
     const { id } = await make({ overview });
     const meta = (await app.inject({ method: 'GET', url: `/api/share/${id}/meta` })).json();
-    expect(meta.overview).toEqual(overview);
+    expect(meta.overview).toEqual({ ...overview, now: { ...overview.now, blood_type: '', notes: '' } });
     expect(new Date(meta.expires_at).getTime()).toBeGreaterThan(Date.now());
     expect(typeof meta.created_at).toBe('string');
     expect(JSON.stringify(meta)).not.toContain('For Dr. Invented');
+  });
+
+  it('keeps a request for the health summary and no lists of its own, so the copy reads them from the profile when it is made', async () => {
+    const { id } = await make({ overview: { by: 'Ana Exemplu', note: null, now: { medications: ['Should not be kept'], allergies: [], conditions: [], blood_type: 'A+', notes: '', written_on: '2026-11-17' }, summary: true } });
+    const meta = (await app.inject({ method: 'GET', url: `/api/share/${id}/meta` })).json();
+    expect(meta.overview).toMatchObject({ by: 'Ana Exemplu', now: null, summary: true });
+    expect(JSON.stringify(meta)).not.toContain('Should not be kept');
   });
 
   it('is nothing for a link made without it, and for one whose owner left every part empty', async () => {
@@ -116,7 +123,7 @@ describe('what the owner tells the doctor', () => {
   it('can be changed or taken away later, and the history says that it changed but never what it said', async () => {
     const { id } = await make({ overview });
     expect((await patch(id, { overview: { by: null, note: 'Changed note' } })).statusCode).toBe(200);
-    expect((await app.inject({ method: 'GET', url: `/api/share/${id}/meta` })).json().overview).toEqual({ by: null, note: 'Changed note', now: null });
+    expect((await app.inject({ method: 'GET', url: `/api/share/${id}/meta` })).json().overview).toEqual({ by: null, note: 'Changed note', now: null, summary: false });
     expect((await patch(id, { overview: null })).statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: `/api/share/${id}/meta` })).json().overview).toBeNull();
     const events = (await detail(id)).json().events as Array<{ kind: string; detail: string }>;
