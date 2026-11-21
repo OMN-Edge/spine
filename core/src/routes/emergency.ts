@@ -2,6 +2,7 @@ import type { HttpApp } from '../http.js';
 import { getStore } from '../store/index.js';
 import { requireAuth } from './middleware.js';
 import { shareHost } from '../share-host.js';
+import { personIdentity } from '../identity.js';
 import { translateCardWords } from '../translation.js';
 import { CARD_LANGUAGES, CardError, EMPTY_CARD, cardIsEmpty, cardText, normaliseCard, publicCard, type CardContent } from '../emergency.js';
 
@@ -29,7 +30,9 @@ export async function emergencyRoutes(app: HttpApp) {
       review_due: !!row?.card_id && Date.now() - Date.parse(row.reviewed_at ?? row.updated_at) > REVIEW_AFTER_MS,
       published: row?.card_id && row.card_key && host ? { id: row.card_id, address: host.addressOf(row.card_id, row.card_key), since: row.published_at } : null,
       // The card as others read it, as the plain text an offline code holds, and what did not fit: only the details turned on are in it.
-      offline: cardText(publicCard(content)),
+      offline: cardText(publicCard(content, personIdentity())),
+      // What the name and the birth date are when the card leaves them empty: the person's profile, so the page can say where they come from.
+      from_profile: personIdentity(),
       scans: await store.emergency.scans(userId, 50),
     };
   };
@@ -59,7 +62,7 @@ export async function emergencyRoutes(app: HttpApp) {
     const host = shareHost();
     if (row?.card_id && row.card_key && host) {
       try {
-        await host.publishCard({ id: row.card_id, key: row.card_key, content: JSON.stringify(publicCard(card)) });
+        await host.publishCard({ id: row.card_id, key: row.card_key, content: JSON.stringify(publicCard(card, personIdentity())) });
       } catch {
         return reply.status(502).send({ error: 'the card was saved here but could not be sent; it will be sent when you save again', code: 'not_sent' });
       }
@@ -76,7 +79,7 @@ export async function emergencyRoutes(app: HttpApp) {
     const card = row ? normaliseCard(JSON.parse(row.content || '{}')) : EMPTY_CARD;
     if (cardIsEmpty(publicCard(card))) return reply.status(400).send({ error: 'write something on the card first', code: 'empty' });
     try {
-      const made = await host.publishCard({ id: row?.card_id ?? null, key: row?.card_key ?? null, content: JSON.stringify(publicCard(card)) });
+      const made = await host.publishCard({ id: row?.card_id ?? null, key: row?.card_key ?? null, content: JSON.stringify(publicCard(card, personIdentity())) });
       await store.emergency.setPublished(req.userId, made, new Date().toISOString());
     } catch (err) {
       const code = (err as { code?: string }).code;
@@ -118,7 +121,7 @@ export async function emergencyRoutes(app: HttpApp) {
     try { await host.revokeCard(row.card_id); } catch { return reply.status(502).send({ error: 'the old code could not be turned off; nothing was changed', code: 'not_sent' }); }
     await store.emergency.setPublished(req.userId, null, new Date().toISOString());
     try {
-      const made = await host.publishCard({ id: null, key: null, content: JSON.stringify(publicCard(card)) });
+      const made = await host.publishCard({ id: null, key: null, content: JSON.stringify(publicCard(card, personIdentity())) });
       await store.emergency.setPublished(req.userId, made, new Date().toISOString());
     } catch {
       // The old code is already dead and the card is off: the page says so, and the owner turns it on again.

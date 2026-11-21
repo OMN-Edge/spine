@@ -8,7 +8,7 @@ import { buildTestApp, loginSession } from './helpers/app.js';
 const ENV = {
   SPINE_BILLING: 'on', SPINE_BILLING_PROVIDER: 'stripe', STRIPE_SECRET_KEY: 'sk_test_details', STRIPE_WEBHOOK_SECRET: 'whsec_details',
   SPINE_STRIPE_PRICE_YEAR: 'pri_year', SPINE_STRIPE_PRICE_MONTH: 'pri_month', SPINE_STRIPE_PRICE_FOUNDING: 'pri_founding',
-  SPINE_INVOICING: 'billyou', SPINE_INVOICING_VAT_PERCENT: '0', SPINE_INVOICING_ZERO_VAT: 'O', BILLYOU_API_KEY: 'bk_details_not_real', BILLYOU_SERIES_ID: 'series_1',
+  SPINE_INVOICING_PROVIDER: 'billyou', SPINE_INVOICING_VAT_PERCENT: '0', SPINE_INVOICING_ZERO_VAT: 'O', BILLYOU_API_KEY: 'bk_details_not_real', BILLYOU_SERIES_ID: 'series_1',
 };
 const RO = { name: 'Ana Test', country: 'RO', county: 'CJ', city: 'Cluj-Napoca', address: 'Str. Test 1' };
 
@@ -101,7 +101,7 @@ describe('where the operator issues no invoices', () => {
   const saved: Record<string, string | undefined> = {};
   beforeAll(async () => {
     process.env.DATA_DIR = dir;
-    const env = { ...ENV, SPINE_INVOICING: 'off' };
+    const env = { ...ENV, SPINE_INVOICING_PROVIDER: 'none' };
     for (const k of Object.keys(env)) saved[k] = process.env[k];
     Object.assign(process.env, env);
     app = await buildTestApp();
@@ -113,9 +113,9 @@ describe('where the operator issues no invoices', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('nothing is asked: the details are not required, cannot be saved, and the purchase goes straight to the provider’s page', async () => {
-    expect((await app.inject({ method: 'GET', url: '/api/billing/details', headers: { cookie } })).json()).toEqual({ required: false, details: null });
-    expect((await app.inject({ method: 'PUT', url: '/api/billing/details', headers: { cookie }, payload: RO })).statusCode).toBe(404);
-    expect((await app.inject({ method: 'GET', url: '/api/billing', headers: { cookie } })).json()).toMatchObject({ billing_details: false });
+  it('are asked for all the same: the invoice and its PDF are Spine’s whoever issues them, so the details are required and can be saved, and a purchase waits for them', async () => {
+    expect((await app.inject({ method: 'GET', url: '/api/billing/details', headers: { cookie } })).json()).toEqual({ required: true, details: null });
+    expect((await app.inject({ method: 'PUT', url: '/api/billing/details', headers: { cookie }, payload: RO })).statusCode).not.toBe(404);
+    expect((await app.inject({ method: 'GET', url: '/api/billing', headers: { cookie } })).json()).toMatchObject({ billing_details: true });
   });
 });

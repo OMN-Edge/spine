@@ -14,7 +14,7 @@ const SECRET = 'whsec_invoicing_route';
 const ENV = {
   SPINE_BILLING: 'on', SPINE_BILLING_PROVIDER: 'stripe', STRIPE_SECRET_KEY: 'sk_test_route', STRIPE_WEBHOOK_SECRET: SECRET,
   SPINE_STRIPE_PRICE_YEAR: 'pri_year', SPINE_STRIPE_PRICE_MONTH: 'pri_month', SPINE_STRIPE_PRICE_FOUNDING: 'pri_founding',
-  SPINE_INVOICING: 'billyou', SPINE_INVOICING_VAT_PERCENT: '21', BILLYOU_API_KEY: 'bk_route_not_real', BILLYOU_SERIES_ID: 'series_1', SPINE_INVOICING_MAIL: 'off',
+  SPINE_INVOICING_PROVIDER: 'billyou', SPINE_INVOICING_VAT_PERCENT: '21', BILLYOU_API_KEY: 'bk_route_not_real', BILLYOU_SERIES_ID: 'series_1', SPINE_INVOICING_MAIL: 'off',
 };
 const sign = (body: string) => { const t = Math.floor(Date.now() / 1000); return `t=${t},v1=${createHmac('sha256', SECRET).update(`${t}.${body}`).digest('hex')}`; };
 

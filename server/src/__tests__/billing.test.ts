@@ -92,6 +92,18 @@ const subscription = (user: string | null, extra: Record<string, unknown> = {}) 
   billing_cycle: { interval: 'year' }, current_billing_period: { ends_at: new Date(Date.now() + 300 * 24 * 3600e3).toISOString() }, ...extra,
 });
 
+/** The default owner has given its billing details. */
+async function ownerGivesDetails() {
+  await getAccountsStore().billing.setCustomer(OWNER_ID, 'cus_owner', new Date().toISOString());
+}
+
+/** An account that has given its billing details, as a purchase needs wherever there are plans: the customer the provider holds them as. */
+async function buyer(email: string) {
+  const user = await createTestUser(email);
+  await getAccountsStore().billing.setCustomer(user.id, `cus_${user.id}`, new Date().toISOString());
+  return user;
+}
+
 describe('plans and payment', () => {
   let app: Awaited<ReturnType<typeof buildTestApp>>;
   let cookie: string;
@@ -337,7 +349,7 @@ describe('plans and payment', () => {
     it('opens a checkout at the provider for the yearly founding price while places are left, naming the account', async () => {
       on();
       const api = stripe();
-      const user = await createTestUser('buyer@spine.test');
+      const user = await buyer('buyer@spine.test');
       const res = await checkout('year', { cookie: await loginAs(app, user.email, user.password) });
       expect(res.json()).toEqual({ url: 'https://checkout.stripe.com/c/pay/cs_test_1' });
       const [form] = api.checkouts();
@@ -348,6 +360,7 @@ describe('plans and payment', () => {
 
     it('charges the monthly price as it is, and refuses a nonsense interval', async () => {
       on();
+      await ownerGivesDetails();
       const api = stripe();
       expect((await checkout('month')).statusCode).toBe(200);
       expect(api.checkouts()[0]!.get('line_items[0][price]')).toBe('pri_month');
@@ -373,6 +386,7 @@ describe('plans and payment', () => {
 
     it('offers the regular yearly price once the founding places are gone', async () => {
       on();
+      await ownerGivesDetails();
       const store = getAccountsStore();
       for (let n = 0; n < 500; n++) {
         const id = `founder-${n}`;
@@ -389,7 +403,7 @@ describe('plans and payment', () => {
       on();
       stripe(CATALOG, () => ({ status: 500, json: {} }));
       expect((await checkout('month')).statusCode).toBe(502);
-      const user = await createTestUser('twice@spine.test');
+      const user = await buyer('twice@spine.test');
       await getAccountsStore().billing.put({ user_id: user.id, provider: 'stripe', customer_id: 'ctm_t', subscription_id: 'sub_t', interval: 'month', plan: 'premium', status: 'active', founding: false, current_period_end: null, cancel_scheduled: false, updated_at: LONG_AGO });
       const res = await checkout('month', { cookie: await loginAs(app, user.email, user.password) });
       expect(res.statusCode).toBe(409);
@@ -767,7 +781,7 @@ describe('plans and payment', () => {
     it('opens a checkout at its own prices, with no founding price, and refuses it where it is not sold', async () => {
       on();
       const api = stripe();
-      const user = await createTestUser('essential-buyer@spine.test');
+      const user = await buyer('essential-buyer@spine.test');
       const who = await loginAs(app, user.email, user.password);
       // From an address of its own: the checkout is limited to ten a minute for each, and the other tests of this file use up the test client's.
       const ask = (interval: string) => app.inject({ method: 'POST', url: '/api/billing/checkout', headers: { cookie: who }, remoteAddress: '10.9.9.9', payload: { plan: 'essential', interval } });
@@ -797,6 +811,7 @@ describe('plans and payment', () => {
     const bought = (user: string, price: string, id: string) => hook(eventBody('transaction.completed', { id, status: 'completed', customer_id: 'ctm_x', custom_data: { user_id: user }, items: [{ price: { id: price } }] }));
     const granted = async (email: string, plan: 'essential' | 'premium' | null) => {
       const user = await createTestUser(email, { createdAt: LONG_AGO });
+      await store().billing.setCustomer(user.id, `cus_${user.id}`, LONG_AGO);
       if (plan) await store().billing.put({ user_id: user.id, provider: 'operator', customer_id: null, subscription_id: null, interval: 'year', plan, status: 'active', founding: false, current_period_end: null, cancel_scheduled: false, updated_at: LONG_AGO });
       return user;
     };
@@ -896,7 +911,7 @@ describe('plans and payment', () => {
     it('opens a checkout at the family price, with no founding price, and refuses it where it is not sold', async () => {
       on();
       const api = stripe();
-      const user = await createTestUser('family-buyer@spine.test');
+      const user = await buyer('family-buyer@spine.test');
       const who = await loginAs(app, user.email, user.password);
       const ask = (plan: string, interval: string) => app.inject({ method: 'POST', url: '/api/billing/checkout', headers: { cookie: who }, payload: { plan, interval } });
       const refused = await ask('family', 'year');

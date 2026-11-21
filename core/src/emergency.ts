@@ -1,3 +1,4 @@
+import { NOBODY, type PersonIdentity } from './identity.js';
 import { z } from 'zod';
 
 /**
@@ -91,8 +92,16 @@ export const cardIsEmpty = (c: CardContent): boolean =>
  * The card as others read it: the official details the owner turned on, and no others. Everything that leaves the device (the sealed card,
  * the offline code, a printed copy) is made from this, never from the card as stored.
  */
-export function publicCard(c: CardContent): CardContent {
-  return { ...c, details: c.details.filter(d => d.on_card) };
+export function publicCard(c: CardContent, identity: PersonIdentity = NOBODY): CardContent {
+  return { ...withIdentity(c, identity), details: c.details.filter(d => d.on_card) };
+}
+
+/**
+ * The card with the name and birth date it does not hold itself taken from the person's profile (identity.ts): what is written on the card stands, and what is left empty is the
+ * profile's, so the name is kept in one place. The card as stored keeps its fields empty, so a profile that changes changes the card with it the next time it is sent.
+ */
+export function withIdentity(c: CardContent, identity: PersonIdentity): CardContent {
+  return { ...c, name: c.name.trim() || identity.name, born: c.born.trim() || identity.born };
 }
 
 /** What an official detail is called: its kind's name, or the owner's own label. Said in English; the page translates the kinds. */

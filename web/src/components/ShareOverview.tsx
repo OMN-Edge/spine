@@ -27,7 +27,7 @@ export default function ShareOverview({ overview, createdAt, expiresAt, count, y
           <p className="text-sm text-gray-800 whitespace-pre-wrap break-words">{overview.note}</p>
         </div>
       )}
-      {lists.some(([, items]) => items.length > 0) && (
+      {(lists.some(([, items]) => items.length > 0) || !!now?.blood_type || !!now?.notes) && (
         <div className="mt-3 rounded-lg bg-gray-50 p-3">
           <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{now?.written_on ? t('Written by the patient on {date}', { date: format.date(now.written_on) }) : t('Written by the patient')}</p>
           <dl className="mt-2 space-y-2">
@@ -37,6 +37,18 @@ export default function ShareOverview({ overview, createdAt, expiresAt, count, y
                 <dd className="text-sm text-gray-700"><ul className="list-disc pl-5">{items.map(item => <li key={item} className="break-words">{item}</li>)}</ul></dd>
               </div>
             ))}
+            {now?.blood_type && (
+              <div>
+                <dt className="text-sm font-medium text-gray-900">{t('Blood type')}</dt>
+                <dd className="text-sm text-gray-700">{now.blood_type}</dd>
+              </div>
+            )}
+            {now?.notes && (
+              <div>
+                <dt className="text-sm font-medium text-gray-900">{t('Notes')}</dt>
+                <dd className="text-sm text-gray-700 whitespace-pre-wrap break-words">{now.notes}</dd>
+              </div>
+            )}
           </dl>
         </div>
       )}

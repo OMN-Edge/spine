@@ -13,3 +13,6 @@ export function inAppPath(value: unknown, fallback = '/'): string {
   if (/[\\\u0000-\u001f\u007f]/.test(decoded) || decoded.startsWith('//')) return fallback;
   return value;
 }
+
+/** Where a person was going, whole (`/account?buy`, `/account#shared`): what signing in returns them to, not only the page. */
+export const wherePersonWas = (location: { pathname: string; search: string; hash: string }): string => `${location.pathname}${location.search}${location.hash}`;

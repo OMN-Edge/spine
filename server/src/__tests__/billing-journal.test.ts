@@ -16,7 +16,7 @@ const SELLER = { name: 'Omni Edge SRL', cif: '12345678', registerNo: 'J40/1234/2
 const ENV = {
   SPINE_BILLING: 'on', SPINE_BILLING_PROVIDER: 'stripe', STRIPE_SECRET_KEY: 'sk_test_journal', STRIPE_WEBHOOK_SECRET: 'whsec_journal',
   SPINE_STRIPE_PRICE_YEAR: 'pri_year', SPINE_STRIPE_PRICE_MONTH: 'pri_month', SPINE_STRIPE_PRICE_FOUNDING: 'pri_founding',
-  SPINE_INVOICING: 'efactura', SPINE_INVOICING_VAT_PERCENT: '0', SPINE_INVOICING_ZERO_VAT: 'O', SPINE_DOMAIN: 'spine.test',
+  SPINE_INVOICING_PROVIDER: 'efactura', SPINE_INVOICING_VAT_PERCENT: '0', SPINE_INVOICING_ZERO_VAT: 'O', SPINE_DOMAIN: 'spine.test',
   ANAF_CLIENT_ID: 'client-id', ANAF_CLIENT_SECRET: 'client-secret', SPINE_EFACTURA_REDIRECT_URI: 'https://spine.test/api/admin/efactura/callback', SPINE_EFACTURA_KEY: Buffer.alloc(32, 7).toString('base64'),
 };
 const doc = (over: Partial<UblDocument> & { id: string; issueDate: string }): UblDocument => ({

@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
@@ -27,7 +28,7 @@ const SELLER = { name: 'Omni Edge SRL', tradeName: 'Spine', cif: '12345678', str
 const ENV = {
   SPINE_BILLING: 'on', SPINE_BILLING_PROVIDER: 'stripe', STRIPE_SECRET_KEY: 'sk_test_efactura', STRIPE_WEBHOOK_SECRET: 'whsec_efactura',
   SPINE_STRIPE_PRICE_YEAR: 'pri_year', SPINE_STRIPE_PRICE_MONTH: 'pri_month', SPINE_STRIPE_PRICE_FOUNDING: 'pri_founding',
-  SPINE_INVOICING: 'efactura', SPINE_INVOICING_VAT_PERCENT: '0', SPINE_INVOICING_ZERO_VAT: 'O', SPINE_DOMAIN: 'spine.test',
+  SPINE_INVOICING_PROVIDER: 'efactura', SPINE_INVOICING_VAT_PERCENT: '0', SPINE_INVOICING_ZERO_VAT: 'O', SPINE_DOMAIN: 'spine.test',
   ANAF_CLIENT_ID: 'client-id', ANAF_CLIENT_SECRET: 'client-secret', SPINE_EFACTURA_REDIRECT_URI: 'https://spine.test/api/admin/efactura/callback', SPINE_EFACTURA_KEY: KEY.toString('base64'),
 };
 
@@ -418,6 +419,43 @@ describe('Spine’s own e-Factura link', () => {
       expect(await store_.billing.invoice('storno:cs_queue_e1')).toMatchObject({ state: 'issued', issuer_ref: 'credit:cs_queue_e1' });
       expect(await processInvoice('storno:cs_queue_e1', { ...ctx, now: () => new Date(T0.getTime() + 12 * 60_000) })).toBe('done');
       expect(await store().efacturaDocument('credit:cs_queue_e1')).toMatchObject({ kind: 'credit', anaf_state: 'ok' });
+    });
+  });
+
+  describe('a refund through the webhook', () => {
+    const sign = (body: string) => { const t = Math.floor(Date.now() / 1000); return `t=${t},v1=${createHmac('sha256', 'whsec_efactura').update(`${t}.${body}`).digest('hex')}`; };
+    const refund = (id: string, amountRefunded: number, paymentIntent: string) => {
+      const raw = JSON.stringify({ id, type: 'charge.refunded', created: 1_794_000_200, data: { object: { id: `ch_${id}`, amount: 1190, amount_refunded: amountRefunded, refunded: amountRefunded === 1190, currency: 'eur', payment_intent: paymentIntent } } });
+      return app.inject({ method: 'POST', url: '/api/billing/webhook', headers: { 'content-type': 'application/json', 'stripe-signature': sign(raw) }, payload: raw });
+    };
+    // Stripe says which payment the refund is of; ANAF is not reachable, so the credit note is made and sent on a later try.
+    const stripeAndNoAnaf = (session: string) => vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const json = (j: unknown, status = 200) => new Response(JSON.stringify(j), { status });
+      if (String(url).startsWith('https://api.stripe.com/v1/checkout/sessions?payment_intent=')) return json({ data: [{ id: session }] });
+      if (String(url).startsWith('https://api.stripe.com/v1/invoice_payments')) return json({ data: [] });
+      return json({}, 503);
+    }));
+
+    it('queues the credit note of an invoice Spine’s own link issued, when the whole payment is refunded, once however often it is told', async () => {
+      const store_ = getAccountsStore();
+      await store_.billing.queueInvoice('cs_hook_e1', null, T0.toISOString());
+      await store_.billing.updateInvoice('cs_hook_e1', { state: 'done', issuer_ref: 'cs_hook_e1', series: 'SPN', number: '00001' }, T0.toISOString());
+      stripeAndNoAnaf('cs_hook_e1');
+      expect((await refund('evt_hook_e1', 1190, 'pi_hook_e1')).statusCode).toBe(200);
+      // The credit note is the invoice's own row, tried at once (here ANAF is not authorised, so it is left for the operator), and the plan is not touched.
+      expect(await store_.billing.invoice('storno:cs_hook_e1')).toMatchObject({ ref: 'storno:cs_hook_e1' });
+      // Told again, it is the same credit note.
+      expect((await refund('evt_hook_e1', 1190, 'pi_hook_e1')).statusCode).toBe(200);
+      expect(await store_.billing.invoice('storno:cs_hook_e1')).toMatchObject({ ref: 'storno:cs_hook_e1' });
+    });
+
+    it('leaves a part-refund for the operator, as no credit note can reverse a part of an invoice', async () => {
+      const store_ = getAccountsStore();
+      await store_.billing.queueInvoice('cs_hook_e2', null, T0.toISOString());
+      await store_.billing.updateInvoice('cs_hook_e2', { state: 'done', issuer_ref: 'cs_hook_e2', series: 'SPN', number: '00002' }, T0.toISOString());
+      stripeAndNoAnaf('cs_hook_e2');
+      expect((await refund('evt_hook_e2', 500, 'pi_hook_e2')).statusCode).toBe(200);
+      expect(await store_.billing.invoice('storno:cs_hook_e2:evt_hook_e2')).toMatchObject({ state: 'check', last_error: expect.stringContaining('part of the payment') });
     });
   });
 

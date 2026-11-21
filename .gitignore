@@ -32,3 +32,7 @@ compare*.txt
 # the invented clinic archive is generated (npm run demo-archive -w spine-server), not kept
 docs/demo/clinic-archive/*.pdf
 docs/demo/clinic-archive/manifest.json
+
+# The operator's own values for scripts/deploy-cloud-run.mjs (project, database instance, bucket, and the settings the templates leave out)
+deploy/cloud-run/values.env
+deploy/cloud-run/overlay.*.env

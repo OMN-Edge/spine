@@ -126,7 +126,7 @@ describe('the pages of a list', () => {
       await store().billing.queueInvoice('cs_page_other', other.id, new Date().toISOString());
       await store().billing.updateInvoice('cs_page_other', { state: 'done', series: 'SPN', number: '00099' }, new Date().toISOString());
       const saved = { ...process.env };
-      Object.assign(process.env, { SPINE_BILLING: 'on', SPINE_BILLING_PROVIDER: 'stripe', STRIPE_SECRET_KEY: ['sk', 'test', 'paging'].join('_'), STRIPE_WEBHOOK_SECRET: 'whsec_paging', SPINE_STRIPE_PRICE_YEAR: 'p1', SPINE_STRIPE_PRICE_MONTH: 'p2', SPINE_STRIPE_PRICE_FOUNDING: 'p3', SPINE_STRIPE_PRICE_TOPUP_PAGES: 'p4', SPINE_INVOICING: 'billyou', SPINE_INVOICING_VAT_PERCENT: '21', BILLYOU_API_KEY: 'k', BILLYOU_SERIES_ID: 's' });
+      Object.assign(process.env, { SPINE_BILLING: 'on', SPINE_BILLING_PROVIDER: 'stripe', STRIPE_SECRET_KEY: ['sk', 'test', 'paging'].join('_'), STRIPE_WEBHOOK_SECRET: 'whsec_paging', SPINE_STRIPE_PRICE_YEAR: 'p1', SPINE_STRIPE_PRICE_MONTH: 'p2', SPINE_STRIPE_PRICE_FOUNDING: 'p3', SPINE_STRIPE_PRICE_TOPUP_PAGES: 'p4', SPINE_INVOICING_PROVIDER: 'billyou', SPINE_INVOICING_VAT_PERCENT: '21', BILLYOU_API_KEY: 'k', BILLYOU_SERIES_ID: 's' });
       try {
         const mine = await loginAs(app, 'invoiced@spine.test', TEST_PASSWORD);
         const page = async (n: number) => (await app.inject({ method: 'GET', url: `/api/billing/invoices?page=${n}&limit=5`, headers: { cookie: mine } })).json();

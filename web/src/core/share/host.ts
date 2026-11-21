@@ -3,6 +3,8 @@ import { Buffer } from 'buffer';
 import type { Store } from 'spine-core/store/types';
 import type { ShareHost } from 'spine-core/share-host';
 import { carryTranslations } from 'spine-core/translation';
+import { normaliseCard } from 'spine-core/emergency';
+import { parseOverview, resolveOverview, summaryOf } from 'spine-core/share-overview';
 import { sodium } from '../../crypto/sodium';
 import { uprightJpeg } from '../native/image-ops';
 import { newShareKey, sealPart, sharePassCheck, wrapShareKey } from './keys';
@@ -40,6 +42,14 @@ async function call(method: string, url: string, init: { headers?: Record<string
  * visitors did, and answers a browser that asks to be let in. The route files (`routes/share.ts`) call this; nothing here is sent to the
  * server unsealed except the end time and the approval setting.
  */
+/** The overview as the copy carries it: for a link that includes the health summary, the summary as the profile has it now, so a link that follows the records follows it too. */
+async function currentOverview(store: Store, userId: string, stored: string | null): Promise<string | null> {
+  if (!stored || !parseOverview(stored)?.summary) return stored;
+  const row = await store.emergency.get(userId);
+  const card = row ? normaliseCard(JSON.parse(row.content || '{}')) : null;
+  return resolveOverview(stored, summaryOf(card, row?.updated_at.slice(0, 10) ?? ''));
+}
+
 export function createShareHost(deps: { store: () => Store; mail: () => boolean }): ShareHost {
   return {
     async publish({ link, userId, documentIds, newKey, unlessUnchanged }) {
@@ -58,9 +68,10 @@ export function createShareHost(deps: { store: () => Store; mail: () => boolean 
       const nameOf = (pageId: string, from: string) =>
         s.to_base64(s.crypto_generichash(16, new TextEncoder().encode(`jpeg-${SHARE_IMAGE_SIDE}:${pageId}:${fs.statSync(from).size}`), keyBytes), s.base64_variants.URLSAFE_NO_PADDING);
       // The copy is built by the store, in a store of its own, and leaves it as changes: the form in which records travel, not a database file.
+      const overview = await currentOverview(store, userId, link.overview ?? null);
       const result = await store.slice({
         userId, documentIds, includeText: link.allow_chat, includeScans: link.include_scans,
-        link: { id: link.id, label: link.label, createdAt: link.created_at, expiresAt: link.expires_at, language: link.language, allowChat: link.allow_chat, overview: link.overview ?? null },
+        link: { id: link.id, label: link.label, createdAt: link.created_at, expiresAt: link.expires_at, language: link.language, allowChat: link.allow_chat, overview },
         imagePathOf: (pageId, from) => { const name = nameOf(pageId, from); names.set(pageId, name); return SHARE_IMAGE(name); },
         // What the owner already had translated goes with it, so a reader in that language is not kept waiting for the model again.
         finish: copy => carryTranslations(userId, documentIds, copy),

@@ -7,6 +7,7 @@ import type { Enabled } from '../billing/provider.js';
 import { resetCatalog } from '../billing/catalog.js';
 import { plansFor } from '../plans/mapping.js';
 import { buildTestApp, loginAs } from './helpers/app.js';
+import { getAccountsStore } from 'spine-core/store/index.js';
 import { createTestUser, TEST_PASSWORD } from './helpers/seed.js';
 
 /** The catalog on the admin page, end to end against a Stripe that keeps what it is sent: what is edited and sent is what the pricing page shows and a checkout charges. */
@@ -127,6 +128,8 @@ describe('the catalog on the admin page', () => {
     const pricing = (await app.inject({ method: 'GET', url: '/api/pricing' })).json() as { prices: { premium: { month: number; year: number } } };
     expect(pricing.prices.premium).toEqual({ month: 3.49, year: 24.9 });
     const buyer = await createTestUser('buyer-catalog@spine.test');
+    // A purchase waits for the billing details, wherever there are plans.
+    await getAccountsStore().billing.setCustomer(buyer.id, 'cus_catalog', new Date().toISOString());
     const start = await app.inject({ method: 'POST', url: '/api/billing/checkout', payload: { plan: 'premium', interval: 'month' }, headers: { cookie: await loginAs(app, buyer.email, TEST_PASSWORD) } });
     expect(start.statusCode).toBe(200);
     expect(api.checkouts.at(-1)!.get('line_items[0][price]')).toBe(made.id);

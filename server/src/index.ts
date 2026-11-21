@@ -30,7 +30,8 @@ import { relayRoutes } from './routes/relay.js';
 import { demoRelayRoutes } from './routes/demo-relay.js';
 import { trustAnchorRoutes } from './routes/trust-anchors.js';
 import { securityTxtRoutes } from './routes/security-txt.js';
-import { copyOfTheSite, seoRoutes } from './seo.js';
+import { pointerRoutes } from './routes/pointers.js';
+import { copyOfTheSite, publicPages, seoRoutes } from './seo.js';
 import { healthRoutes } from './routes/health.js';
 import { sharedRoutes, shareShellRoutes } from './routes/shared.js';
 import { jobsAreExternal, runJobs } from './jobs.js';
@@ -137,6 +138,8 @@ await app.register(fastifyRateLimit, {
 });
 
 const webDist = path.join(__dirname, '../../web/dist');
+// Before the routes that serve the built files: the hook is for the routes registered after it.
+publicPages(app, webDist);
 
 // requireAuth sets req.userId; the property has to exist before routes use it.
 decorateAuth(asHttp(app));
@@ -161,6 +164,7 @@ await app.register(relayRoutes);
 await app.register(demoRelayRoutes);
 await app.register(trustAnchorRoutes);
 await app.register(securityTxtRoutes);
+await app.register(pointerRoutes);
 await app.register(seoRoutes, { webDist });
 await app.register(healthRoutes);
 await app.register(sharedRoutes);

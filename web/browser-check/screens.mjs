@@ -44,7 +44,7 @@ const env = {
   SPINE_STRIPE_PRICE_YEAR: 'price_1Uc8gEFMVsdHvrD5AjN1GbjV', SPINE_STRIPE_PRICE_MONTH: 'price_1Uc8gFFMVsdHvrD5bIDdTjJi', SPINE_STRIPE_PRICE_FOUNDING: 'price_1Uc8gGFMVsdHvrD5qBOUHZtJ',
   SPINE_STRIPE_PRICE_ESSENTIAL_YEAR: 'price_1Uc8gHFMVsdHvrD5nw1UUExc', SPINE_STRIPE_PRICE_ESSENTIAL_MONTH: 'price_1Uc8gIFMVsdHvrD517DjA5lm',
   SPINE_STRIPE_PRICE_FAMILY_YEAR: 'price_1Uc8gIFMVsdHvrD5zfMT5vZm', SPINE_STRIPE_PRICE_FAMILY_MONTH: 'price_1Uc8gJFMVsdHvrD5mS4mJLkV', SPINE_STRIPE_PRICE_TOPUP_PAGES: 'price_1Uc8gNFMVsdHvrD5aCq547Tq',
-  SPINE_INVOICING: 'efactura', SPINE_EFACTURA_MODE: 'test', ANAF_CLIENT_ID: 'ux-review-client', ANAF_CLIENT_SECRET: ['ux', 'review', 'anaf'].join('-'),
+  SPINE_INVOICING_PROVIDER: 'efactura', SPINE_EFACTURA_MODE: 'test', ANAF_CLIENT_ID: 'ux-review-client', ANAF_CLIENT_SECRET: ['ux', 'review', 'anaf'].join('-'),
   SPINE_EFACTURA_REDIRECT_URI: 'https://spine.example/api/admin/efactura/callback', SPINE_EFACTURA_KEY: Buffer.alloc(32, 7).toString('base64'), SPINE_EFACTURA_SERIES: 'TST',
   SPINE_OPERATOR_CONTACT: 'contact@example.com',
   SPINE_REGISTRATION: 'approval', SPINE_ADMIN_EMAILS: 'owner@example.com',
@@ -58,7 +58,7 @@ const env = {
 // INVOICING=billyou shows the operator's pages with a service issuing the invoices instead of Spine's own e-Factura link. Nothing calls the service (the pages only list what was made), so the key and the series are invented.
 if (process.env.INVOICING === 'billyou') {
   for (const k of ['SPINE_EFACTURA_MODE', 'ANAF_CLIENT_ID', 'ANAF_CLIENT_SECRET', 'SPINE_EFACTURA_REDIRECT_URI', 'SPINE_EFACTURA_KEY', 'SPINE_EFACTURA_SERIES']) delete env[k];
-  Object.assign(env, { SPINE_INVOICING: 'billyou', BILLYOU_API_KEY: ['bk', 'ux', 'review'].join('_'), BILLYOU_SERIES_ID: '1', SPINE_INVOICING_EFACTURA: 'on', SPINE_INVOICING_MAIL: 'off' });
+  Object.assign(env, { SPINE_INVOICING_PROVIDER: 'billyou', BILLYOU_API_KEY: ['bk', 'ux', 'review'].join('_'), BILLYOU_SERIES_ID: '1', SPINE_INVOICING_EFACTURA: 'on', SPINE_INVOICING_MAIL: 'off' });
 }
 const cli = (...args) => execFileSync('node', ['dist/cli.js', ...args], { cwd: path.join(root, 'server'), env, encoding: 'utf8' });
 const password = cli('create-user', 'owner@example.com').match(/password \(shown once\): (\S+)/)[1];
@@ -218,6 +218,17 @@ try {
     await p.evaluate(() => [...document.querySelectorAll('a')].find(a => a.getAttribute('href')?.startsWith('/documents/'))?.click()); await wait(3000);
     await h.shot(`acc-${tag}-document`);
     const routes = tag === 'ro' ? ['/account', '/share', '/emergency', '/review', '/episodes'] : ['/review', '/episodes', '/trends', '/doctors', '/library', '/search', '/upload', '/scan', '/reminders', '/profiles', '/emergency', '/share', '/account', '/review/fields', '/account/invoices', '/family'];
+    if (tag === 'd') {
+      // The profile page, empty and then written: the name and birth date are the person's own, the health lists feed the card and a share link.
+      await h.go('/emergency'); await wait(2500);
+      await h.shot('acc-d-profile-empty');
+      await p.type('input[autocomplete="name"]', 'Ana Exemplu');
+      await p.type('input[inputmode="numeric"]', '1990-04-02');
+      const areas = await p.$$('textarea');
+      await areas[0].type('Penicillin'); await areas[1].type('Levothyroxine 50 µg'); await areas[2].type('Hypothyroidism');
+      await p.evaluate(() => [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Save the profile')?.click()); await wait(3500);
+      await h.shot('acc-d-profile-saved');
+    }
     for (const r of routes) { await h.go(r); await wait(2500); await h.shot(`acc-${tag}-${r.slice(1).replace(/\//g, '-')}`); }
     if (tag === 'd') {
       // a share link made
@@ -228,6 +239,7 @@ try {
         await (await p.waitForFunction(() => [...document.querySelectorAll('[role=combobox]')].find(i => i.getAttribute('aria-label') === 'What to share' && i.offsetParent))).asElement().evaluate(e => { if (e.getAttribute('aria-expanded') !== 'true') e.click(); }); await wait(500);
         await h.shot('acc-d-share-scope-options', '', false);
         await (await p.waitForFunction(() => [...document.querySelectorAll('[role=listbox] [role=option]')].find(e => e.innerText.trim() === 'All history'))).asElement().evaluate(e => e.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))); await wait(400);
+        await p.evaluate(() => [...document.querySelectorAll('label')].find(l => l.textContent?.includes('Include my health summary'))?.querySelector('input')?.click()); await wait(400);
         await h.shot('acc-d-share-filled');
         await h.press('Create link'); await h.waitFor('Link created', 40000); await wait(1500); await h.shot('acc-d-share-created');
         const link = await p.evaluate(() => [...document.querySelectorAll('input,a,code')].map(e => e.value ?? e.getAttribute('href') ?? e.innerText).find(v => /\/share\/[^/]+#/.test(v ?? '')));
@@ -240,6 +252,14 @@ try {
             await g.evaluate(() => [...document.querySelectorAll('a,button')].find(a => /X-ray|Röntgen|Radiografie/.test(a.innerText))?.click()); await wait(3000); await gh.shot(`guest-${gtag}-share-document`);
             await gctx.close();
           }
+          // The link follows the profile: a medicine is changed there, and the same link, opened again, shows it.
+          const fctx = await browser.createBrowserContext(); const f = await newPage(fctx, DESKTOP, 'en'); const fh = helpers(f);
+          await f.goto(url, { waitUntil: 'networkidle0' }); await wait(5000); await fh.shot('guest-d-summary-before');
+          await h.go('/emergency'); await wait(2500);
+          const areas = await p.$$('textarea'); await areas[1].type('\nMetformin 500 mg');
+          await p.evaluate(() => [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Save the profile')?.click()); await wait(25000);
+          await f.reload({ waitUntil: 'networkidle0' }); await wait(5000); await fh.shot('guest-d-summary-after');
+          await fctx.close();
         }
         await h.go('/share'); await wait(2000); await h.shot('acc-d-share-list');
       } catch (e) { log('share flow failed', e.message); }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { inAppPath } from './safe-path';
+import { inAppPath, wherePersonWas } from './safe-path';
 
 describe('where signing in may send a person', () => {
   it('follows a path of this app, with its query and fragment', () => {
@@ -18,5 +18,14 @@ describe('where signing in may send a person', () => {
   it('goes home for what is not a path at all', () => {
     for (const bad of [undefined, null, 5, {}, '', '/%E0%A4%A']) expect(inAppPath(bad)).toBe('/');
     expect(inAppPath('/' + 'a'.repeat(3000))).toBe('/');
+  });
+});
+
+describe('where a person was going when they were sent to sign in', () => {
+  it('keeps the query and the fragment, so a chosen plan is still chosen after signing in', () => {
+    const was = wherePersonWas({ pathname: '/account', search: '?buy', hash: '' });
+    expect(was).toBe('/account?buy');
+    expect(inAppPath(was)).toBe('/account?buy');
+    expect(wherePersonWas({ pathname: '/account', search: '', hash: '#shared' })).toBe('/account#shared');
   });
 });

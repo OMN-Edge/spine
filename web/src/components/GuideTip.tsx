@@ -4,6 +4,7 @@ import type { GuideKey } from '../api';
 import { useGuide } from '../guide';
 import { useI18n } from '../i18n';
 import { useChat } from './ChatProvider';
+import { useProfiles } from '../profiles';
 
 /**
  * A tip shown the first time something happens (an upload waits for its grouping, documents have been read, a link has been made, results,
@@ -49,12 +50,20 @@ export const stepsDone = (progress: { uploads: number; reviewed: number; shares:
   return [progress.uploads > 0, progress.reviewed > 0, progress.shares > 0].map(raw => (before = before && raw));
 };
 
+/** The first step is the profile: an account's first records are called "Me", which is no name, and the card and a share link start from the profile's. Ticked once it has one. */
+export const needsName = (person: { name: string; shared?: unknown } | undefined): boolean => !!person && !person.shared && person.name === 'Me';
+
 export function GetStarted() {
   const { t } = useI18n();
   const guide = useGuide();
+  const { people } = useProfiles(true);
+  const open = people?.profiles.find(p => p.id === people.current);
   const progress = guide?.state?.progress;
   const ticked = progress ? stepsDone(progress) : [];
-  const steps = progress ? [
+  // The first step is the profile's name, for the account's own records: the card and a share link start from it, so it is written once, here or on the profiles page.
+  const own = open && !open.shared ? open : null;
+  const steps: Array<{ done: boolean; label: string; to: string; action: string }> = progress ? [
+    ...(own ? [{ done: !needsName(own), label: t('Set up your profile'), to: '/emergency', action: t('Open') }] : []),
     { done: ticked[0], label: t('Add your first document'), to: '/upload', action: t('Add') },
     { done: ticked[1], label: t('Review what was read from it'), to: reviewTarget(progress), action: t('Review') },
     { done: ticked[2], label: t('Share it with a doctor, when you need to'), to: '/share', action: t('Share') },
@@ -73,7 +82,7 @@ export function GetStarted() {
       </div>
       <ol className="mt-2 space-y-1.5">
         {steps.map((step, i) => (
-          <li key={step.label} className={`${i === next ? 'flex' : 'hidden sm:flex'} items-center gap-2.5 text-sm`}>
+          <li key={step.label} className={`${i === next ? 'flex' : 'hidden sm:flex'} flex-wrap items-center gap-x-2.5 gap-y-1.5 text-sm`}>
             <span aria-hidden="true" className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${step.done ? 'bg-emerald-500 text-white' : i === next ? 'border-2 border-brand-500 text-brand-600' : 'border border-gray-300 text-gray-400'}`}>
               {step.done ? '✓' : i + 1}
             </span>

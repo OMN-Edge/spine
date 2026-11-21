@@ -34,10 +34,8 @@ export function PricingPage({ pricing, authenticated, options, initialPeriod = '
   const prices = pricing?.prices;
   // A whole amount without its cents (€49, not €49.00); any other with them, written as the reader's language writes money.
   const money = (n: number) => format.amount(n, prices?.currency ?? 'EUR');
-  // Every account starts on the trial; a plan is chosen from the account page.
-  const cta = authenticated
-    ? { to: '/account', label: t('Choose a plan on your account page') }
-    : { to: '/register', label: t('Start with three months free') };
+  // Every account starts on the trial: the way in is offered to a person who has no account, and not to one who has (the plans below have their own buttons).
+  const cta = authenticated ? null : { to: '/register', label: t('Start with three months free') };
   // The trial is the one way in, and says so once, above the plans. A plan's own button says what it is: where it goes with the plan named, to be found on the account page.
   const toPlan = (plan: 'free' | 'essential' | 'premium' | 'family', label: string) => ({ to: authenticated ? (plan === 'free' ? '/account' : '/account?buy') : `/register?plan=${plan}`, label });
 
@@ -189,7 +187,7 @@ function amounts(p: { year: number; month: number }, period: Period, money: (n: 
 }
 
 /** Three months of everything, up to three totals, drawn as the three numbers they are. */
-function Trial({ cta }: { cta: { to: string; label: string } }) {
+function Trial({ cta }: { cta: { to: string; label: string } | null }) {
   const { t } = useI18n();
   const items: Array<[number, string]> = [[TRIAL_TOTALS.pages, t('pages of AI reading')], [TRIAL_TOTALS.messages, t('questions about your records')], [TRIAL_TOTALS.translated, t('translated pages')]];
   return (
@@ -198,7 +196,7 @@ function Trial({ cta }: { cta: { to: string; label: string } }) {
         <div>
           <h2 className="font-display text-[clamp(1.8rem,3.4vw,2.6rem)] font-normal leading-tight">{t('Every account starts with three months of everything, free.')}</h2>
           <p className="mt-4 max-w-md text-lg leading-relaxed text-band-fg/75">{t('No card. Every feature of Premium, up to these totals for the whole three months. After that you keep the free plan or choose one.')}</p>
-          <Link to={cta.to} className="mt-6 inline-block rounded-full bg-accent-light px-6 py-3 font-medium text-band hover:bg-accent-light/90">{cta.label}</Link>
+          {cta && <Link to={cta.to} className="mt-6 inline-block rounded-full bg-accent-light px-6 py-3 font-medium text-band hover:bg-accent-light/90">{cta.label}</Link>}
         </div>
         <ul className="grid grid-cols-3 gap-3 sm:gap-5">
           {items.map(([n, label]) => (

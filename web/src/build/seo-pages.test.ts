@@ -48,6 +48,29 @@ describe('a public page', () => {
   });
 });
 
+describe('a page the build drew', () => {
+  it('has its text in the root, where a reader with no script and a search engine find it, and the head it always had', () => {
+    const html = pageHtml(SHELL, PAGE, '<main><h1>Records sealed on your device</h1><p>Plain words.</p></main>');
+    expect(html).toContain('<div id="root"><main><h1>Records sealed on your device</h1><p>Plain words.</p></main></div>');
+    expect(html).toContain('<title>How to check &quot;Spine&quot;</title>');
+  });
+
+  it('is written for the front page beside the shell, never into it: the shell is every screen behind a sign-in', () => {
+    const dir = built({ 'index.html': SHELL });
+    const problems = writePages(dir, [{ path: '/', title: 'Home', description: 'd' }, PAGE], { '/': '<main>the front page</main>', '/trust': '<main>trust</main>' });
+    expect(problems).toEqual([]);
+    expect(fs.readFileSync(path.join(dir, 'index.html'), 'utf8')).toBe(SHELL);
+    expect(fs.readFileSync(path.join(dir, 'home.html'), 'utf8')).toContain('<div id="root"><main>the front page</main></div>');
+    expect(fs.readFileSync(path.join(dir, 'trust/index.html'), 'utf8')).toContain('<div id="root"><main>trust</main></div>');
+  });
+
+  it('is not written where the build drew nothing', () => {
+    const dir = built({ 'index.html': SHELL });
+    writePages(dir, [{ path: '/', title: 'Home', description: 'd' }, PAGE]);
+    expect(fs.existsSync(path.join(dir, 'home.html'))).toBe(false);
+  });
+});
+
 describe('writing the pages', () => {
   it('makes a file for each page but the first, and lists every page for the server', () => {
     const dir = built({ 'index.html': SHELL });

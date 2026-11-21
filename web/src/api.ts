@@ -725,6 +725,8 @@ export interface EmergencyView {
   published: { id: string; address: string; since: string | null } | null;
   /** The card as the plain text an offline code holds, and how many items did not fit. */
   offline: { text: string; omitted: number };
+  /** The name and birth date the card takes from the person's profile where it holds none of its own (empty where the profile has none). */
+  from_profile: { name: string; born: string };
   scans: Array<{ id: string; at: string; country: string | null }>;
 }
 

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /**
- * What an invoice needs to know of a buyer, collected by the app before a purchase where the operator issues the invoice (`SPINE_INVOICING`, docs/billing.md): the
+ * What an invoice needs to know of a buyer, collected by the app before a purchase where the operator issues the invoice (`SPINE_INVOICING_PROVIDER`, docs/billing.md): the
  * payment provider's own checkout asks a Romanian buyer for a city and a postal code and not for a county, which e-Factura cannot do without. The details are kept at
  * the payment provider, on the customer record, and never here (SECURITY.md **M-45**); this is only what they are and when they are complete.
  */

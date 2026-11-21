@@ -219,7 +219,9 @@ export class VaultSession {
 
   /** The profiles this account has, opened. `listed` is a listing the caller already has, so it is not asked for twice. */
   async loadProfiles(listed?: ObjectList): Promise<ProfileSummary[]> {
-    const profiles = (listed ?? (await this.list(0))).objects.filter(meta => meta.kind === 'profile' && !meta.deleted);
+    // In the order they were made, whatever order the server lists them in: the first is the account's own records, which the people page says is "you", and it stayed first only
+    // until the list was read again.
+    const profiles = (listed ?? (await this.list(0))).objects.filter(meta => meta.kind === 'profile' && !meta.deleted).sort((a, b) => a.created_at.localeCompare(b.created_at));
     // Together, not one after the other: each is a round trip.
     return Promise.all(profiles.map(async meta => {
       const got = await this.fetchObject(meta.id);

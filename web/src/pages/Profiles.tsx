@@ -4,7 +4,7 @@ import { sodium, toB64 } from '../crypto/sodium';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { device, UnsavedChangesError } from '../core/client';
-import { openPerson, personLabel, useProfiles } from '../profiles';
+import { changeProfile, openPerson, personLabel, useProfiles } from '../profiles';
 import { planRefusal } from '../billing';
 import { buttonClass, inputClass, Notice } from '../components/AuthCard';
 import { DateInput } from '../components/DateInput';
@@ -163,13 +163,12 @@ export default function Profiles() {
     const person = people?.profiles.find(p => p.id === editing.id);
     if (!person || !editing.name.trim()) return;
     if (person.kind === 'child' && !parseBorn(editing.born)) { setError(t('A child’s records need a birth date, written year-month-day.')); return; }
+    // An adult's is optional, and the emergency card and a share start from it: written, it is a date.
+    if (person.kind !== 'child' && editing.born.trim() && !parseBorn(editing.born)) { setError(t('The birth date is written year-month-day.')); return; }
     setError(''); setBusy(true);
     try {
-      const session = vaultState.session();
-      if (!session) { setError(t('Open your records first.')); return; }
-      await session.loadProfiles();
-      await session.updateProfile(editing.id, { name: editing.name.trim().slice(0, 60), ...(person.kind === 'child' ? { born: editing.born.trim() } : {}) });
-      await device.reloadKeys();
+      if (!vaultState.session()) { setError(t('Open your records first.')); return; }
+      await changeProfile(editing.id, { name: editing.name.trim().slice(0, 60), born: editing.born.trim() });
       await refresh();
       setEditing(null);
     } catch {
@@ -271,7 +270,7 @@ export default function Profiles() {
               <span className="shrink-0 flex gap-3 text-sm">
                 {p.id !== people.current && <button disabled={busy} onClick={() => void open(p.id)} className="text-brand-600 hover:underline">{t('Open')}</button>}
                 {p.shared ? <button disabled={busy} onClick={() => void leave(p.id)} className="text-red-600 hover:underline">{t('Leave')}</button>
-                  : <button className="text-gray-500 hover:underline" onClick={() => setEditing(editing?.id === p.id ? null : { id: p.id, name: p.name, born: p.born ?? '' })}>{t('Edit')}</button>}
+                  : <button className="text-gray-500 hover:underline" onClick={() => setEditing(editing?.id === p.id ? null : { id: p.id, name: p.name === 'Me' ? '' : p.name, born: p.born ?? '' })}>{t('Edit')}</button>}
               </span>
             </div>
             {p.shared?.role === 'self' && isAdult(p.born) && (
@@ -286,8 +285,12 @@ export default function Profiles() {
             {!p.shared && p.kind === 'child' && isAdult(p.born) && <p className="mt-2 text-xs text-brand-800 bg-brand-50 rounded-lg px-3 py-2">{t('{name} is now 18, and these records should be theirs. Let them in as themselves, below.', { name: p.name })}</p>}
             {editing?.id === p.id && (
               <form onSubmit={e => void saveEdit(e)} className="mt-2 space-y-2">
-                <input className={inputClass} value={editing.name} maxLength={60} onChange={e => setEditing({ ...editing, name: e.target.value })} aria-label={t('Name')} />
-                {p.kind === 'child' && <DateInput className={inputClass} value={editing.born} onChange={born => setEditing({ ...editing, born })} aria-label={t('Born (year-month-day)')} placeholder={t('Born (year-month-day)')} min="1900-01-01" max={new Date().toISOString().slice(0, 10)} />}
+                <label className="block text-sm text-gray-700">{t('Name')}
+                  <input className={inputClass} value={editing.name} maxLength={60} placeholder={p.name === 'Me' ? t('Your name') : undefined} onChange={e => setEditing({ ...editing, name: e.target.value })} />
+                </label>
+                <label className="block text-sm text-gray-700">{p.kind === 'child' ? t('Born (year-month-day)') : t('Born (year-month-day), optional')}
+                  <DateInput className={inputClass} value={editing.born} onChange={born => setEditing({ ...editing, born })} placeholder={p.kind === 'child' ? t('Born (year-month-day)') : t('Born (year-month-day), optional')} min="1900-01-01" max={new Date().toISOString().slice(0, 10)} />
+                </label>
                 <button type="submit" disabled={busy} className={buttonClass}>{t('Save')}</button>
                 <button type="button" className="ml-3 text-sm text-gray-500 hover:underline" onClick={() => setEditing(null)}>{t('Cancel')}</button>
               </form>

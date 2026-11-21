@@ -33,7 +33,7 @@ export const JOBS: Job[] = [
   { name: 'removing ended limit windows', run: () => getAccountsStore().maintenance.pruneWindows(Date.now()) },
   // The reminder to add an appointment's documents (SPINE_NUDGE_DAYS) and the mail two weeks before a trial ends; no medical content in either.
   { name: 'mailing the reminders and the trial summaries', run: () => sendLifecycleMail(getAccountsStore()) },
-  // The invoices the operator owes for payments the provider is not the seller of, whose first try did not finish (SPINE_INVOICING); nothing without it.
+  // The invoices the operator owes for payments the provider is not the seller of, whose first try did not finish (SPINE_INVOICING_PROVIDER); nothing without it.
   { name: 'issuing the invoices that are owed', run: () => processDueInvoices() },
   // Sales to consumers in other EU countries against the yearly threshold (docs/billing.md): the operator is told at 70% and 90%.
   { name: 'watching the EU sales threshold', run: () => watchEuThreshold(getAccountsStore()) },

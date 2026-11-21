@@ -2,6 +2,8 @@
 
 Personal medical document archive. Upload PDFs and scans, let AI extract and index the content, review it, and share a read-only link with a doctor when needed.
 
+[Spine Vault](https://spinevault.eu) is a service that runs this code: you can try it there, or run your own.
+
 Your records are read, searched and kept on your own device, in your browser. The server, which runs on a Raspberry Pi, holds only your account and sealed pieces of your records that it cannot open (see [docs/key-hierarchy.md](docs/key-hierarchy.md)). Model calls go through a relay that stores and logs nothing.
 
 ## What it does

@@ -4,7 +4,7 @@ import { tmpdir } from 'os';
 import path from 'path';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { getAccountsStore } from 'spine-core/store/index.js';
-import { processInvoice, reverseRefunded, type InvoicingContext } from '../billing/invoicing/queue.js';
+import { contextFromSettings, processInvoice, reverseRefunded, type InvoicingContext } from '../billing/invoicing/queue.js';
 import { loadInvoicingConfig } from '../billing/invoicing/config.js';
 import { loadBillingConfig } from '../billing/config.js';
 import { keepDocument } from '../billing/invoicing/own-pdf.js';
@@ -22,7 +22,7 @@ const ADMIN = 'admin-own-pdf@spine.test';
 const ENV = {
   SPINE_BILLING: 'on', SPINE_BILLING_PROVIDER: 'stripe', STRIPE_SECRET_KEY: 'sk_test_ownpdf', STRIPE_WEBHOOK_SECRET: 'whsec_ownpdf',
   SPINE_STRIPE_PRICE_YEAR: 'pri_year', SPINE_STRIPE_PRICE_MONTH: 'pri_month', SPINE_STRIPE_PRICE_FOUNDING: 'pri_founding',
-  SPINE_INVOICING: 'billyou', SPINE_INVOICING_VAT_PERCENT: '0', SPINE_INVOICING_ZERO_VAT: 'O', SPINE_INVOICING_MAIL: 'off', BILLYOU_API_KEY: 'bk_ownpdf_not_real', BILLYOU_SERIES_ID: 'series_1',
+  SPINE_INVOICING_PROVIDER: 'billyou', SPINE_INVOICING_VAT_PERCENT: '0', SPINE_INVOICING_ZERO_VAT: 'O', SPINE_INVOICING_MAIL: 'off', BILLYOU_API_KEY: 'bk_ownpdf_not_real', BILLYOU_SERIES_ID: 'series_1',
 };
 const SELLER = {
   name: 'Exemplu Software SRL', cif: 'RO 12345678', registerNo: 'J40/1234/2020', street: 'Strada Exemplului 1', city: 'Cluj-Napoca', county: 'cj', postalCode: '400000',
@@ -143,11 +143,13 @@ describe('Spine’s own PDF of an invoice a service issued', () => {
     expect((await app.inject({ method: 'POST', url: '/api/billing/invoices/pdf', headers: { cookie: b.cookie }, payload: { ref: 'cs_own_c' } })).json()).toEqual({ url: 'https://files.example/billyou.pdf' });
   });
 
-  it('keeps no copy while there is no seller, and the invoice is made all the same', async () => {
+  it('waits for a seller before the invoice is numbered at the service, since the buyer’s PDF is always Spine’s own and carries the seller', async () => {
     await store().settings.clear('invoice.seller');
     const b = await buyer('own-pdf-d');
     await store().billing.queueInvoice('cs_own_d', b.id, T0);
-    expect(await processInvoice('cs_own_d', context(T0))).toBe('done');
-    expect(await store().billing.invoiceDocument('cs_own_d')).toBeNull();
+    const ctx = contextFromSettings()!;
+    await expect(ctx.vat!('DE', '2026-11-15')).rejects.toMatchObject({ retry: true, message: expect.stringContaining('no seller is set') });
+    await app.inject({ method: 'PUT', url: '/api/admin/seller', headers: { cookie: await loginAs(app, ADMIN, TEST_PASSWORD) }, payload: SELLER });
+    await expect(ctx.vat!('DE', '2026-11-15')).resolves.toBeDefined();
   });
 });
