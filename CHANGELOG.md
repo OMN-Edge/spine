@@ -4,6 +4,10 @@ Spine is versioned `0.x` until its first production release: anything may change
 
 ## Unreleased
 
+- A person's name and birth date are written once, in their profile. The emergency card page is the Profile page (About, Health now, Emergency card, one save), the card and a share link take the name from it, and the first step of Get started opens it. People are listed in the order they were made, so the first is the account's own records.
+- A share link includes the owner's health summary (allergies, conditions, medicines, blood type, notes) by reference: it follows the profile, with the day it was last saved, and the doctor's page shows it. A link made before keeps the lists it was written with.
+- The public pages carry their text in the HTML (drawn at build), with a canonical link, a preview image and schema.org data added by the server for its own address; `www` redirects to the plain address and the sitemap is dated. `scripts/deploy-cloud-run.mjs` deploys the Cloud Run services from the templates, the operator's ignored settings files and a diff against what runs.
+- On a phone the chat slides in and out and stays at the keyboard's edge, the menu is a panel of its own over a page held still, the language list opens towards the side with room, and the company line is under the public pages, the sign-in and the account page rather than every screen.
 - `SPINE_INVOICING` is now `SPINE_INVOICING_PROVIDER` (`none`, `billyou` or `efactura`), named like the other providers; a process that still has the old name does not start. A live Stripe key now needs a provider, billing details are asked for before any purchase, and the buyer's PDF is Spine's own whichever service issues the invoice (a Billyou invoice waits for a saved seller).
 - Links no longer open a page at the height of the one before, and a link to a section (`/account#shared`) scrolls to it; `/source`, `/docs` and `/security` redirect to the repository from the server where nginx is not in front, and signing in returns a person to the whole address they were sent from (`/account?buy`).
 
