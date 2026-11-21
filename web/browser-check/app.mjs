@@ -188,8 +188,10 @@ try {
     check(await waitDemo('Radiografie pulmonară', 120000), 'and the demo shows the sample records (an invented archive of thirty-eight documents, in Romanian)');
     const nav = await d.evaluate(() => [...document.querySelectorAll('nav a, nav button')].map(e => e.innerText.trim()).filter(Boolean));
     check(nav.includes('Upload') && !nav.includes('Share') && !nav.includes('Sign out') && nav.includes('Leave the demo'), `and offers uploading, but no sharing or account (${nav.join(', ')})`);
-    await d.evaluate(() => [...document.querySelectorAll('a')].find(a => a.innerText.includes('Radiografie pulmonară — condensare'))?.click());
-    check(await waitDemo('Chest X-ray — left lower lobe consolidation', 90000) && (await d.evaluate(() => location.pathname)).startsWith('/documents/'), 'a sample document opens, already translated into the screen\u2019s language with no model');
+    // The list shows a title in the screen's language as soon as its translation is read, so on a quick machine the link may already say the English one.
+    await d.evaluate(() => [...document.querySelectorAll('a')].find(a => /Radiografie pulmonară — condensare|Chest X-ray — left lower lobe consolidation/.test(a.innerText))?.click());
+    for (let t = 0; t < 90000 && !(await d.evaluate(() => location.pathname)).startsWith('/documents/'); t += 250) await pause(250);
+    check((await d.evaluate(() => location.pathname)).startsWith('/documents/') && await waitDemo('Chest X-ray — left lower lobe consolidation', 90000),'a sample document opens, already translated into the screen\u2019s language with no model');
     await go('/scan');
     await pause(500);
     check(await d.evaluate(() => location.pathname) === '/', 'the camera is not in the demo');
