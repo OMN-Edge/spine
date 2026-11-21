@@ -11,8 +11,8 @@ import { fileURLToPath } from 'node:url';
 
 const escape = text => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-/** The shell with one page's head: its title, description and preview text, and its text for a reader with no script. */
-export function pageHtml(shell, page) {
+/** The shell with one page's head: its title, description and preview text, its text for a reader with no script, and, where the build drew the page (`prerender.mjs`), the page itself in the root. */
+export function pageHtml(shell, page, body = '') {
   const title = escape(page.title);
   const description = escape(page.description);
   const meta = [
@@ -24,11 +24,14 @@ export function pageHtml(shell, page) {
   let html = shell.replace(/<title>[^<]*<\/title>/, `<title>${title}</title>`);
   html = html.replace(/\s*<meta (?:name="description"|property="og:[a-z]+")[^>]*>/g, '');
   html = html.replace('</title>', `</title>\n    ${meta}`);
-  return html.replace('<div id="root"></div>', `<div id="root"></div>\n    <noscript><h1>${title}</h1><p>${description}</p></noscript>`);
+  return html.replace('<div id="root"></div>', `<div id="root">${body}</div>\n    <noscript><h1>${title}</h1><p>${description}</p></noscript>`);
 }
 
-/** Writes `<path>/index.html` for every page but `/`, and `seo.json` listing all of them. Returns what is wrong. */
-export function writePages(dir, pages) {
+/**
+ * Writes `<path>/index.html` for every page but `/`, and `seo.json` listing all of them. Returns what is wrong. `bodies` are the pages the build drew (path to markup). The front page's
+ * is written to `home.html`, not into the shell: the shell is every screen behind a sign-in, and the server gives `home.html` to a visitor with no session (`server/src/seo.ts`).
+ */
+export function writePages(dir, pages, bodies = {}) {
   const shellFile = path.join(dir, 'index.html');
   if (!fs.existsSync(shellFile)) return ['dist/index.html is missing: build the app first'];
   const shell = fs.readFileSync(shellFile, 'utf8');
@@ -38,10 +41,10 @@ export function writePages(dir, pages) {
     if (!/^\/[a-z0-9-]*$/.test(page.path) || seen.has(page.path)) { problems.push(`${page.path}: not a path of one word, or listed twice`); continue; }
     seen.add(page.path);
     if (!page.title || !page.description) problems.push(`${page.path}: needs a title and a description`);
-    if (page.path === '/') continue;
+    if (page.path === '/') { if (bodies['/']) fs.writeFileSync(path.join(dir, 'home.html'), pageHtml(shell, page, bodies['/'])); continue; }
     const folder = path.join(dir, page.path.slice(1));
     fs.mkdirSync(folder, { recursive: true });
-    fs.writeFileSync(path.join(folder, 'index.html'), pageHtml(shell, page));
+    fs.writeFileSync(path.join(folder, 'index.html'), pageHtml(shell, page, bodies[page.path]));
   }
   fs.writeFileSync(path.join(dir, 'seo.json'), `${JSON.stringify(pages.map(({ path: p, when }) => (when ? { path: p, when } : { path: p })))}\n`);
   return problems;
@@ -50,10 +53,14 @@ export function writePages(dir, pages) {
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const here = path.dirname(fileURLToPath(import.meta.url));
   const pages = JSON.parse(fs.readFileSync(path.join(here, '../seo-pages.json'), 'utf8'));
-  const problems = writePages(path.join(here, '../dist'), pages);
+  // What `prerender.mjs` drew, if it ran: put into the pages, and not kept (it is not a file of the site).
+  const drawn = path.join(here, '../dist/prerender.json');
+  const bodies = fs.existsSync(drawn) ? JSON.parse(fs.readFileSync(drawn, 'utf8')) : {};
+  const problems = writePages(path.join(here, '../dist'), pages, bodies);
+  fs.rmSync(drawn, { force: true });
   if (problems.length > 0) {
     console.error(`FAIL the public pages cannot be written:\n  - ${problems.join('\n  - ')}`);
     process.exit(1);
   }
-  console.log(`public pages written: ${pages.length - 1} files and seo.json`);
+  console.log(`public pages written: ${pages.length - 1} files and seo.json (${Object.keys(bodies).length} with their text)`);
 }

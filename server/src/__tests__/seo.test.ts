@@ -5,7 +5,7 @@ import path from 'node:path';
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import { useSettings } from 'spine-core/config.js';
-import { copyOfTheSite, readSeoPages, robotsTxt, seoRoutes, sitemapXml, type SeoPage } from '../seo.js';
+import { copyOfTheSite, publicPages, readSeoPages, robotsTxt, seoRoutes, sitemapXml, withAddress, type SeoPage } from '../seo.js';
 
 /** What a search engine is told, from the instance's own address (docs/deploy-cloud-run.md): the pages, the sitemap, and that a copy is not the site. */
 let dist: string;
@@ -26,6 +26,7 @@ afterEach(() => { fs.rmSync(dist, { recursive: true, force: true }); vi.unstubAl
 async function build() {
   const app = Fastify();
   copyOfTheSite(app);
+  publicPages(app, dist);
   await app.register(fastifyStatic, { root: dist, prefix: '/', decorateReply: true });
   await app.register(seoRoutes, { webDist: dist });
   app.setNotFoundHandler(async (_req, reply) => reply.header('x-robots-tag', 'noindex').sendFile('index.html', dist));
@@ -85,7 +86,13 @@ describe('a copy of the site at another address', () => {
     const res = await ask('/trust?x=1', 'spine-abc123-ew.a.run.app');
     expect(res.headers['x-robots-tag']).toBe('noindex');
     expect(res.headers.link).toBe('<https://spine.example.org/trust>; rel="canonical"');
-    expect((await ask('/trust', 'www.spine.example.org')).headers.link).toContain('rel="canonical"');
+  });
+
+  it('is sent to the plain address for good where it is the www name, with the path and the query', async () => {
+    const res = await ask('/trust?x=1', 'www.spine.example.org');
+    expect(res.statusCode).toBe(301);
+    expect(res.headers.location).toBe('https://spine.example.org/trust?x=1');
+    expect((await ask('/', 'www.spine.example.org')).headers.location).toBe('https://spine.example.org/');
   });
 
   it('says nothing at its own name, whatever the case or port', async () => {
@@ -99,5 +106,58 @@ describe('a copy of the site at another address', () => {
   it('says nothing where the instance has no address of its own, as on a local run', async () => {
     useSettings({ ...process.env, SPINE_DOMAIN: '' } as never);
     expect((await ask('/trust', 'localhost:3000')).headers.link).toBeUndefined();
+  });
+});
+
+describe('the address in a public page', () => {
+  const HEAD = (title: string) => `<!doctype html><html><head><title>${title}</title></head><body><div id="root"></div></body></html>`;
+
+  it('is its own canonical address, the preview image and what the page is, as data, and names no other host', async () => {
+    fs.writeFileSync(path.join(dist, 'trust/index.html'), HEAD('How to check &quot;Spine&quot;'));
+    const html = (await ask('/trust')).body;
+    expect(html).toContain('<link rel="canonical" href="https://spine.example.org/trust" />');
+    expect(html).toContain('<meta property="og:url" content="https://spine.example.org/trust" />');
+    expect(html).toContain('<meta property="og:image" content="https://spine.example.org/og.png" />');
+    const data = JSON.parse(/<script type="application\/ld\+json">([^<]*)<\/script>/.exec(html)![1]!);
+    expect(data).toMatchObject({ '@type': 'WebPage', name: 'How to check "Spine"', url: 'https://spine.example.org/trust', isPartOf: { '@type': 'WebSite', url: 'https://spine.example.org' } });
+    expect(html).not.toMatch(/spinevault|cocinda/);
+  });
+
+  it('says on the front page what the site and the application are', () => {
+    const html = withAddress(HEAD('Home'), '/');
+    const data = JSON.parse(/<script type="application\/ld\+json">([^<]*)<\/script>/.exec(html)![1]!);
+    expect(data['@graph'].map((g: { '@type': string }) => g['@type'])).toEqual(['WebSite', 'SoftwareApplication']);
+    expect(html).toContain('<link rel="canonical" href="https://spine.example.org/" />');
+  });
+
+  it('cannot close its own tag: a title with a tag in it is data, not markup', () => {
+    const html = withAddress(HEAD('A &lt;/script&gt;&lt;b&gt; page'), '/trust');
+    expect(html.match(/<\/script>/g)).toHaveLength(1);
+  });
+});
+
+describe('the front page', () => {
+  it('is the page drawn with its text for a visitor with no session, and the shell for anyone signed in', async () => {
+    fs.writeFileSync(path.join(dist, 'home.html'), '<html><head><title>home</title></head><body><main>drawn text</main></body></html>');
+    const visitor = await ask('/');
+    expect(visitor.body).toContain('<main>drawn text</main>');
+    expect(visitor.body).toContain('rel="canonical" href="https://spine.example.org/"');
+    const app = await build();
+    const signedIn = await app.inject({ url: '/', headers: { host: 'spine.example.org', cookie: 'a=b; sessionId=abc' } });
+    await app.close();
+    expect(signedIn.body).toBe('<title>shell</title>');
+  });
+
+  it('is the shell where the build drew nothing', async () => {
+    expect((await ask('/')).body).toBe('<title>shell</title>');
+  });
+});
+
+describe('the sitemap dates', () => {
+  it('carry the day the site was put up, the same for every page', async () => {
+    const body = (await ask('/sitemap.xml')).body;
+    const today = new Date().toISOString().slice(0, 10);
+    expect(body).toContain(`<loc>https://spine.example.org/trust</loc><lastmod>${today}</lastmod>`);
+    expect(sitemapXml(PAGES, false)).not.toContain('lastmod');
   });
 });

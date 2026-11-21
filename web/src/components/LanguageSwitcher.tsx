@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { LANGUAGE_NAMES, isInterfaceLanguage } from 'spine-core/languages';
 import { Combobox } from './Combobox';
 import { LANGUAGES, languageChoice, useI18n, type LanguageCode } from '../i18n';
@@ -23,7 +23,7 @@ export function LanguageSwitcher({ className = '' }: { className?: string }) {
   const { lang, setLang, t } = useI18n();
   const holder = useRef<HTMLSpanElement>(null);
   const [side, setSide] = useState<'left' | 'right'>('left');
-  useLayoutEffect(() => {
+  useEffect(() => {
     const measure = () => { const r = holder.current?.getBoundingClientRect(); if (r) setSide(listSide(r)); };
     measure();
     window.addEventListener('resize', measure);
